@@ -6,6 +6,7 @@ import { Upload, Table, Settings, BrainCircuit, BarChart } from 'lucide-react'
 
 export default function Sidebar() {
   const { user } = useUser()
+  const userName = user?.fullName || 'Guest'
 
   const menuItems = [
     { name: 'Load Data', icon: <Upload size={20} />, href: '/load' },
@@ -32,6 +33,10 @@ export default function Sidebar() {
         </nav>
       </div>
       <div className="space-y-2 border-t border-gray-700 pt-4">
+        <div className="p-2">
+          <p className="text-sm text-gray-400 mb-1">Signed in </p>
+          <p className="text-sm font-semibold truncate">{userName}</p>
+        </div>
         <div className="flex items-center space-x-2 p-2">
           <UserButton />
         </div>
