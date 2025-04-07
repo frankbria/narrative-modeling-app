@@ -1,3 +1,5 @@
+# app/models/user_data.py
+
 from beanie import Document
 from pydantic import BaseModel, HttpUrl, Field
 from typing import List, Optional
@@ -12,7 +14,7 @@ class SchemaField(BaseModel):
 class UserData(Document):
     userId: str
     name: Optional[str]
-    uploadDate: datetime = datetime.now(timezone.utc)
+    uploadDate: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     schema_data: dict = Field(..., alias="schema")
     fileUrl: HttpUrl
     previewRows: Optional[List[dict]] = None
