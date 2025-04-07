@@ -3,8 +3,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from beanie import PydanticObjectId
-from models.plot import Plot
-from auth.clerk_auth import get_current_user_id
+from app.models.plot import Plot
+from app.auth.clerk_auth import get_current_user_id
 
 router = APIRouter()
 

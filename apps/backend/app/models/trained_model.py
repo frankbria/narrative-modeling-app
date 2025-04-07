@@ -2,7 +2,7 @@ from beanie import Document, Link
 from pydantic import HttpUrl
 from typing import Optional
 from datetime import datetime
-from models.user_data import UserData
+from app.models.user_data import UserData
 
 
 class TrainedModel(Document):
