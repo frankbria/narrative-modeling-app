@@ -1,7 +1,7 @@
 from beanie import Document
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class SchemaField(BaseModel):
@@ -12,11 +12,14 @@ class SchemaField(BaseModel):
 class UserData(Document):
     userId: str
     name: Optional[str]
-    uploadDate: datetime = datetime.utcnow()
-    schema: List[SchemaField]
+    uploadDate: datetime = datetime.now(timezone.utc)
+    schema_data: dict = Field(..., alias="schema")
     fileUrl: HttpUrl
     previewRows: Optional[List[dict]] = None
     metadata: Optional[dict] = None
 
     class Settings:
         name = "users_data"
+
+    class Config:
+        allow_population_by_field_name = True
