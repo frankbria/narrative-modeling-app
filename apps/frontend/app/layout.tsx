@@ -37,7 +37,7 @@ export default function RootLayout({
           <SignedOut>
             {/* Optional: Full-screen sign-in fallback or redirect */}
             <main className="flex-1 p-4 bg-gray-100 min-h-screen flex items-center justify-center">
-              <p className="text-xl text-black">Please sign in to access the app.</p>
+              <p className="text-xl text-gray-900">Please sign in to access the app.</p>
                 <SignInButton mode="modal" />
             </main>
           </SignedOut>
