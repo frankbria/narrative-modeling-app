@@ -12,3 +12,4 @@ beanie
 motor
 python-jose[cryptography]
 python-dotenv
+boto3
