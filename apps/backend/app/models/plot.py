@@ -1,4 +1,4 @@
-# app\models\plot.py
+# app/models/plot.py
 
 from beanie import Document, Link
 from pydantic import HttpUrl, Field
@@ -17,3 +17,8 @@ class Plot(Document):
 
     class Settings:
         name = "plots"
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+    }

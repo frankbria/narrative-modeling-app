@@ -1,4 +1,4 @@
-# \app\models\analytics_result.py
+# app/models/analytics_result.py
 
 from beanie import Document, Link
 from pydantic import BaseModel, Field
@@ -20,3 +20,8 @@ class AnalyticsResult(Document):
 
     class Settings:
         name = "analytics_results"
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+    }

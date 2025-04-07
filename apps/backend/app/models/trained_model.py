@@ -18,3 +18,8 @@ class TrainedModel(Document):
 
     class Settings:
         name = "trained_models"
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+    }
