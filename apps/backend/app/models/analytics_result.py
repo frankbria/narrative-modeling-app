@@ -2,8 +2,8 @@ from beanie import Document, Link
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from models.user_data import UserData
-from models.plot import Plot
+from app.models.user_data import UserData
+from app.models.plot import Plot
 
 
 class AnalyticsResult(Document):
