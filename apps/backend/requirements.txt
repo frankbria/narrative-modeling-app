@@ -8,3 +8,7 @@ sqlalchemy
 sqlalchemy-utils
 pydantic-sqlalchemy
 python-multipart
+beanie
+motor
+python-jose[cryptography]
+python-dotenv
