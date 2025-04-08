@@ -1,35 +1,52 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export default function AIChat() {
   const [messages, setMessages] = useState<string[]>([])
   const [input, setInput] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const controllerRef = useRef<AbortController | null>(null)
 
   const sendMessage = async () => {
-  if (!input.trim()) return
+    if (!input.trim() || isSending) return
 
-  setMessages((prev) => [...prev, input])
-  setInput('')
+    const controller = new AbortController()
+    controllerRef.current = controller
+    setIsSending(true)
 
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: input }),
-    })
+    setMessages((prev) => [...prev, `You: ${input}`])
+    const messageToSend = input
+    setInput('')
 
-    const text = await res.text() // 👈 get raw text first
-    console.log('🔍 Raw response from API:', text) // 👈 log it out
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageToSend }),
+        signal: controller.signal,
+      })
 
-    const data = JSON.parse(text) // try to parse
-    setMessages((prev) => [...prev, data.reply])
-  } catch (err) {
-    console.error('💥 Error in sendMessage:', err)
-    setMessages((prev) => [...prev, 'Error contacting AI'])
+      const text = await res.text()
+      console.log('🔍 Raw response from API:', text)
+
+      const data = JSON.parse(text)
+      setMessages((prev) => [...prev, `AI: ${data.reply}`])
+    } catch (err) {
+      console.error('💥 Error in sendMessage:', err)
+      setMessages((prev) => [...prev, '⚠️ Error contacting AI'])
+    } finally {
+      setIsSending(false)
+    }
   }
-}
 
+  useEffect(() => {
+    return () => {
+      if (controllerRef.current) {
+        controllerRef.current.abort()
+      }
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full p-4 border-l border-gray-300 w-80 bg-gray-300">
@@ -48,10 +65,12 @@ export default function AIChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           placeholder="Type a message..."
+          disabled={isSending}
         />
         <button
           onClick={sendMessage}
-          className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
+          disabled={isSending}
+          className="bg-blue-500 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
         >
           Send
         </button>

@@ -1,4 +1,12 @@
 // apps/frontend/app/model/page.tsx
+
+import { useUser } from '@clerk/nextjs'
+
 export default function ModelPage() {
-  return <h1 className="text-2xl font-bold">Model Builder</h1>
+
+  const { isSignedIn } = useUser()
+
+  if (!isSignedIn) return <p>Please log in to access this page.</p>
+  
+  return <h1 className="text-2xl font-bold text-gray-800">Model Builder</h1>
 }
