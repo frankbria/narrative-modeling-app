@@ -1,0 +1,46 @@
+// /apps/frontend//api/proxy/upload.ts
+
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { Readable } from 'stream'
+import fetch from 'node-fetch'
+
+export const config = {
+  api: {
+    bodyParser: false, // allow streaming of multipart/form-data
+  },
+}
+
+const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const targetUrl = `${backendUrl}/api/upload`
+
+  const headers: Record<string, string> = {}
+
+    for (const [key, value] of Object.entries(req.headers)) {
+    if (
+        !['host', 'connection', 'content-length'].includes(key.toLowerCase()) &&
+        typeof value === 'string'
+    ) {
+        headers[key] = value
+    }
+    }
+
+
+  const nodeReadableStream = Readable.from(req)
+
+  const fetchRes = await fetch(targetUrl, {
+    method: req.method,
+    headers,
+    body: req.method === 'GET' ? undefined : nodeReadableStream,
+  })
+
+  // Forward headers
+  fetchRes.headers.forEach((value, key) => {
+    res.setHeader(key, value)
+  })
+
+  res.status(fetchRes.status)
+  fetchRes.body?.pipe(res)
+}
+

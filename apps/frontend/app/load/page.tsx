@@ -1,6 +1,6 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
+import { useUser, useSession } from '@clerk/nextjs'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { CheckCircle, XCircle, UploadCloud, FileText } from 'lucide-react'
@@ -13,21 +13,39 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+interface SchemaField {
+  field_name: string
+  field_type: string
+  data_type: string
+  inferred_dtype: string
+  unique_values: number
+  missing_values: number
+  example_values: string[]
+  is_constant: boolean
+  is_high_cardinality: boolean
+}
+
 interface PreviewData {
   headers: string[]
-  previewData: (string | number | boolean | null)[][]
+  previewData: Array<Array<string | number | boolean | null>>
   fileName: string
   fileType: string
+  id?: string
+  s3_url?: string
+  schema?: SchemaField[]
 }
 
 export default function LoadPage() {
   const { isSignedIn } = useUser()
+  const { session } = useSession()
   const [file, setFile] = useState<File | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [isUploading, setIsUploading] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [uploadedFileId, setUploadedFileId] = useState<string | null>(null)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     console.log('Files dropped:', acceptedFiles)
@@ -42,6 +60,8 @@ export default function LoadPage() {
     setUploadStatus('idle')
     setPreviewData(null)
     setErrorMessage(null)
+    setShowSuccessMessage(false)
+    setUploadedFileId(null)
   }, [])
 
   const handleUpload = async () => {
@@ -55,34 +75,27 @@ export default function LoadPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log('Sending request to /api/upload')
+      console.log('Sending request to /api/upload for preview')
       
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        }
       })
 
       console.log('Response status:', response.status)
       
-      // Check if the response is ok before trying to parse JSON
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Error response:', errorText)
         throw new Error(`Upload failed: ${errorText}`)
       }
 
-      // Try to parse the response as JSON
-      let responseData
-      try {
-        const text = await response.text()
-        console.log('Raw response:', text)
-        responseData = JSON.parse(text)
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError)
-        throw new Error('Failed to parse server response')
-      }
-      
-      console.log('Response data:', responseData)
+      const responseData = await response.json()
+      console.log('Preview data:', responseData)
       
       if (!responseData.headers || !responseData.previewData) {
         throw new Error('Invalid response format: missing headers or preview data')
@@ -100,23 +113,54 @@ export default function LoadPage() {
   }
 
   const handleConfirmUpload = async () => {
-    if (!previewData) return
+    if (!file || !previewData) return
     
     setIsConfirming(true)
     try {
-      // TODO: Implement the actual database write
-      console.log('Writing to database:', previewData)
+      console.log('Sending file to backend for storage')
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Create a new FormData
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      // Log file details
+      console.log('File details:', {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      })
+
+      // Send the file directly to the backend
+      const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+      const response = await fetch(`${backendUrl}/api/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${await session?.getToken()}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to store data: ${errorText}`)
+      }
+
+      const result = await response.json()
+      console.log('Storage result:', result)
       
       // Show success message
       setUploadStatus('success')
       setErrorMessage(null)
+      setShowSuccessMessage(true)
+      setUploadedFileId(result.id)
+      
+      // Reset the form after successful upload
+      setFile(null)
+      setPreviewData(null)
     } catch (err) {
-      console.error('Database write error:', err)
+      console.error('Error:', err)
       setUploadStatus('error')
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to save data to database')
+      setErrorMessage(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setIsConfirming(false)
     }
@@ -137,6 +181,26 @@ export default function LoadPage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Load Data</h1>
+
+      {/* Success Message */}
+      {showSuccessMessage && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex items-center">
+            <CheckCircle className="text-green-500 mr-2" size={20} />
+            <div>
+              <p className="font-medium text-green-800">File uploaded successfully!</p>
+              <p className="text-sm text-green-700">
+                Your data has been processed and stored. You can now use it for analysis.
+              </p>
+              {uploadedFileId && (
+                <p className="text-xs text-green-600 mt-1">
+                  File ID: {uploadedFileId}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         {...getRootProps()}
@@ -247,7 +311,7 @@ export default function LoadPage() {
       )}
 
       {/* Fallback Display */}
-      {uploadStatus === 'success' && !previewData && (
+      {uploadStatus === 'success' && !previewData && !isConfirming && !showSuccessMessage && (
         <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="font-medium text-yellow-800">Upload successful but no preview data available.</p>
           <p className="text-sm text-yellow-700 mt-2">This might be due to an issue with the table component or the data format.</p>

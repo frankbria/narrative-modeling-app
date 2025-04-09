@@ -1,27 +1,44 @@
 import os
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+from pathlib import Path
+import logging
+
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import FastAPI
-from contextlib import asynccontextmanager
-from app.api.routes import s3, user_data, analytics_result, plot, trained_model
-from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes import (
+    user_data,
+    analytics_result,
+    plot,
+    trained_model,
+    upload,
+    store,
+)
+from app.config import settings
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.models.user_data import UserData
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
 
-app = FastAPI()
-
-load_dotenv()
-
-app.include_router(s3.router, prefix="/api")
-app.include_router(user_data.router, prefix="/api/user_data", tags=["user_data"])
-app.include_router(
-    analytics_result.router, prefix="/api/analytics", tags=["AnalyticsResult"]
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-app.include_router(plot.router, prefix="/api/plots", tags=["Plot"])
-app.include_router(trained_model.router, prefix="/api/models", tags=["TrainedModel"])
+
+# Suppress AWS logging
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("s3transfer").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+# Get the path to the .env file
+env_path = Path(__file__).resolve().parent.parent / ".env"
+print(f"Loading .env file from: {env_path}")
+load_dotenv(dotenv_path=env_path)
 
 
 @asynccontextmanager
@@ -35,12 +52,46 @@ async def lifespan(app: FastAPI):
         document_models=[UserData, AnalyticsResult, Plot, TrainedModel],
     )
 
-    yield  # This is where the app will run
+    await connect_to_mongo()
+    yield
+    await close_mongo_connection()
 
 
-app = FastAPI(lifespan=lifespan)
+# ✅ Create the app only once
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
+)
+
+# ✅ Apply CORS to the correct app instance
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ✅ Include routers
+app.include_router(
+    upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
+)
+app.include_router(store.router, prefix=settings.API_V1_STR, tags=["store"])
+app.include_router(
+    user_data.router, prefix=f"{settings.API_V1_STR}/user_data", tags=["user_data"]
+)
+app.include_router(
+    analytics_result.router,
+    prefix=f"{settings.API_V1_STR}/analytics",
+    tags=["analytics"],
+)
+app.include_router(plot.router, prefix=f"{settings.API_V1_STR}/plots", tags=["plots"])
+app.include_router(
+    trained_model.router, prefix=f"{settings.API_V1_STR}/models", tags=["models"]
+)
 
 
 @app.get("/")
-def read_root():
-    return {"message": "🎉 Your FastAPI app is live on Render!"}
+async def root():
+    return {"message": "Welcome to the Narrative Modeling API"}
