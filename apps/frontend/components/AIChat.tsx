@@ -27,14 +27,21 @@ export default function AIChat() {
         signal: controller.signal,
       })
 
-      const text = await res.text()
-      console.log('🔍 Raw response from API:', text)
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`)
+      }
 
-      const data = JSON.parse(text)
+      const data = await res.json()
+      console.log('Response from API:', data)
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
       setMessages((prev) => [...prev, `AI: ${data.reply}`])
     } catch (err) {
-      console.error('💥 Error in sendMessage:', err)
-      setMessages((prev) => [...prev, '⚠️ Error contacting AI'])
+      console.error('Error in sendMessage:', err)
+      setMessages((prev) => [...prev, `⚠️ Error: ${err instanceof Error ? err.message : 'Failed to get response'}`])
     } finally {
       setIsSending(false)
     }
