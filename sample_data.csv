@@ -1,0 +1,11 @@
+ID,Name,Age,Active,Salary,JoinDate,Department,ProjectsCompleted,PerformanceScore,IsManager
+1,John Smith,32,true,75000,2020-03-15,Engineering,12,4.8,true
+2,Sarah Johnson,28,true,68000,2021-06-22,Marketing,8,4.2,false
+3,Michael Brown,45,false,95000,2018-11-05,Finance,15,4.9,true
+4,Emily Davis,24,true,55000,2022-01-10,Engineering,3,3.8,false
+5,Robert Wilson,39,true,82000,2019-08-14,Sales,10,4.5,true
+6,Jennifer Lee,31,false,72000,2020-09-30,HR,7,4.0,false
+7,David Miller,52,true,105000,2017-04-12,Finance,18,4.7,true
+8,Lisa Anderson,27,true,61000,2021-11-18,Marketing,5,3.9,false
+9,James Taylor,41,true,88000,2019-02-25,Engineering,13,4.6,true
+10,Jessica Martinez,29,false,65000,2021-03-08,Sales,6,4.1,false 
