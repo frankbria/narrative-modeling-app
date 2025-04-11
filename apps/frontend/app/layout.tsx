@@ -2,6 +2,7 @@
 
 
 import './globals.css'
+import './animations.css'
 import { type Metadata } from 'next'
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from '@clerk/nextjs'
 import SidebarWrapper from '@/components/SidebarWrapper'
