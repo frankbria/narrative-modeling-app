@@ -1,4 +1,4 @@
-import { type ClassValue, clsx } from "clsx"
+import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
@@ -6,141 +6,123 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export interface StatItem {
-  field: string
-  type: 'numeric' | 'date' | 'text'
+  field_name: string
+  field_type: string
   count: number
-  missing: number
-  unique: number
-  min?: number | string | null
-  max?: number | string | null
-  mean?: number | null
-  median?: number | null
-  mode?: number[] | null
-  std?: number | null
-  minLength?: number
-  maxLength?: number
-  avgLength?: number
+  missing_values: number
+  unique_values: number
+  numeric_stats?: {
+    min: number
+    max: number
+    mean: number
+    median: number
+    mode: number
+    std_dev: number
+    histogram?: {
+      bins: number[]
+      counts: number[]
+    }
+  }
+  categorical_stats?: {
+    top_values: Array<{
+      value: string
+      count: number
+    }>
+  }
+  date_stats?: {
+    min_date: string
+    max_date: string
+  }
+  text_stats?: {
+    avg_length: number
+    sample_values: string[]
+  }
 }
 
-// Function to calculate descriptive statistics for a dataset
-export function calculateDescriptiveStats(data: (string | number | boolean | null)[][], headers: string[]): StatItem[] {
-  if (!data || data.length === 0 || !headers || headers.length === 0) {
-    return []
-  }
+export function calculateDescriptiveStats(data: Array<Array<string | number | boolean | null>>, headers: string[]): StatItem[] {
+  return headers.map((header, columnIndex) => {
+    const columnData = data.map(row => row[columnIndex])
+    const nonNullData = columnData.filter(value => value !== null && value !== undefined && value !== '')
+    const numericData = nonNullData.map(value => typeof value === 'number' ? value : Number(value)).filter(value => !isNaN(value))
+    
+    const stats: StatItem = {
+      field_name: header,
+      field_type: numericData.length === nonNullData.length ? 'numeric' : 
+                 nonNullData.every(value => !isNaN(Date.parse(String(value)))) ? 'date' :
+                 typeof nonNullData[0] === 'string' && nonNullData[0].length > 50 ? 'text' : 'categorical',
+      count: nonNullData.length,
+      missing_values: data.length - nonNullData.length,
+      unique_values: new Set(nonNullData).size,
+    }
 
-  // Initialize result array
-  const stats = headers.map((header, index) => {
-    // Extract column data
-    const columnData = data.map(row => row[index])
-    
-    // Determine data type
-    const isNumeric = columnData.every(val => 
-      typeof val === 'number' || 
-      (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '')
-    )
-    
-    const isDate = columnData.every(val => 
-      typeof val === 'string' && 
-      !isNaN(Date.parse(val)) && 
-      val.trim() !== ''
-    )
-    
-    // Calculate statistics based on data type
-    if (isNumeric) {
-      const numericData = columnData
-        .map(val => typeof val === 'string' ? Number(val) : val)
-        .filter((val): val is number => typeof val === 'number' && !isNaN(val))
-      
-      if (numericData.length === 0) {
-        return {
-          field: header,
-          type: 'numeric' as const,
-          count: columnData.length,
-          missing: columnData.filter(val => val === null || val === undefined || val === '').length,
-          unique: new Set(columnData).size,
-          min: null,
-          max: null,
-          mean: null,
-          median: null,
-          mode: null,
-          std: null
-        }
-      }
-      
-      // Sort for median calculation
+    if (stats.field_type === 'numeric' && numericData.length > 0) {
       const sorted = [...numericData].sort((a, b) => a - b)
-      
-      // Calculate mean
-      const sum = numericData.reduce((acc, val) => acc + val, 0)
+      const sum = numericData.reduce((a, b) => a + b, 0)
       const mean = sum / numericData.length
-      
-      // Calculate median
-      const median = sorted.length % 2 === 0
+      const median = sorted.length % 2 === 0 
         ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
         : sorted[Math.floor(sorted.length / 2)]
       
       // Calculate mode
-      const frequency: Record<number, number> = {}
-      numericData.forEach(val => {
-        frequency[val] = (frequency[val] || 0) + 1
-      })
-      const maxFreq = Math.max(...Object.values(frequency))
-      const mode = Object.keys(frequency)
-        .filter(key => frequency[Number(key)] === maxFreq)
-        .map(Number)
+      const valueCounts = new Map<number, number>()
+      numericData.forEach(value => valueCounts.set(value, (valueCounts.get(value) || 0) + 1))
+      const modeEntry = Array.from(valueCounts.entries()).reduce((a, b) => a[1] > b[1] ? a : b)
+      const mode = modeEntry[0]
       
       // Calculate standard deviation
-      const variance = numericData.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / numericData.length
-      const std = Math.sqrt(variance)
+      const squareDiffs = numericData.map(value => Math.pow(value - mean, 2))
+      const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / numericData.length
+      const stdDev = Math.sqrt(avgSquareDiff)
+
+      // Create histogram data
+      const binCount = Math.min(10, Math.ceil(Math.sqrt(numericData.length)))
+      const binSize = (sorted[sorted.length - 1] - sorted[0]) / binCount
+      const bins = Array.from({ length: binCount }, (_, i) => sorted[0] + i * binSize)
+      const histogramCounts = new Array(binCount).fill(0)
       
-      return {
-        field: header,
-        type: 'numeric' as const,
-        count: columnData.length,
-        missing: columnData.filter(val => val === null || val === undefined || val === '').length,
-        unique: new Set(columnData).size,
-        min: Math.min(...numericData),
-        max: Math.max(...numericData),
+      numericData.forEach(value => {
+        const binIndex = Math.min(Math.floor((value - sorted[0]) / binSize), binCount - 1)
+        histogramCounts[binIndex]++
+      })
+
+      stats.numeric_stats = {
+        min: sorted[0],
+        max: sorted[sorted.length - 1],
         mean,
         median,
         mode,
-        std
+        std_dev: stdDev,
+        histogram: {
+          bins,
+          counts: histogramCounts
+        }
       }
-    } else if (isDate) {
-      const dateData = columnData
-        .filter((val): val is string => typeof val === 'string')
-        .map(val => new Date(val))
+    } else if (stats.field_type === 'categorical') {
+      const valueCounts = new Map<string, number>()
+      nonNullData.forEach(value => valueCounts.set(String(value), (valueCounts.get(String(value)) || 0) + 1))
       
-      return {
-        field: header,
-        type: 'date' as const,
-        count: columnData.length,
-        missing: columnData.filter(val => val === null || val === undefined || val === '').length,
-        unique: new Set(columnData).size,
-        min: new Date(Math.min(...dateData.map(d => d.getTime()))).toISOString().split('T')[0],
-        max: new Date(Math.max(...dateData.map(d => d.getTime()))).toISOString().split('T')[0]
+      const topValues = Array.from(valueCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([value, count]) => ({ value, count }))
+
+      stats.categorical_stats = { top_values: topValues }
+    } else if (stats.field_type === 'date') {
+      const dates = nonNullData.map(value => new Date(String(value)))
+      stats.date_stats = {
+        min_date: new Date(Math.min(...dates.map(d => d.getTime()))).toISOString(),
+        max_date: new Date(Math.max(...dates.map(d => d.getTime()))).toISOString()
       }
-    } else {
-      // Text data
-      const textData = columnData
-        .filter((val): val is string | number | boolean => 
-          val !== null && val !== undefined && val !== '')
-        .map(val => String(val))
+    } else if (stats.field_type === 'text') {
+      const lengths = nonNullData.map(value => String(value).length)
+      const avgLength = lengths.reduce((a, b) => a + b, 0) / lengths.length
       
-      return {
-        field: header,
-        type: 'text' as const,
-        count: columnData.length,
-        missing: columnData.filter(val => val === null || val === undefined || val === '').length,
-        unique: new Set(columnData).size,
-        minLength: textData.length > 0 ? Math.min(...textData.map(val => val.length)) : 0,
-        maxLength: textData.length > 0 ? Math.max(...textData.map(val => val.length)) : 0,
-        avgLength: textData.length > 0 
-          ? textData.reduce((acc, val) => acc + val.length, 0) / textData.length 
-          : 0
+      stats.text_stats = {
+        avg_length: avgLength,
+        sample_values: nonNullData.slice(0, 3).map(String)
       }
     }
+
+    return stats
   })
-  
-  return stats
-} 
+}

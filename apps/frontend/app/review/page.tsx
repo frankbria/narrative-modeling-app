@@ -94,7 +94,7 @@ export default function ReviewPage() {
   if (!isSignedIn) return <p>Please log in to access this page.</p>
   
   return (
-    <div className="p-6">
+    <div className="p-6 ml-64 mr-80">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Review Data</h1>
       
       {isLoading && <p>Loading...</p>}
@@ -140,98 +140,108 @@ export default function ReviewPage() {
           </div>
           
           <div className="md:col-span-3">
-            {data && (
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Dataset Information</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Filename</p>
-                        <p className="font-medium">{data.filename}</p>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-500">Rows</p>
-                          <p className="font-medium">{data.num_rows || 'Unknown'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Columns</p>
-                          <p className="font-medium">{data.num_columns || 'Unknown'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Created</p>
-                          <p className="font-medium">
-                            {data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Last Updated</p>
-                          <p className="font-medium">
-                            {data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Unknown'}
-                          </p>
-                        </div>
-                      </div>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dataset Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Filename</p>
+                      <p className="font-medium">{data.filename}</p>
                     </div>
-                  </CardContent>
-                </Card>
-                
-                {stats.length > 0 && <StatsCard stats={stats} />}
-                
-                {data.headers && data.previewData && data.previewData.length > 0 ? (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Data Preview</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-gray-800">
-                              {data.headers.map((header: string, index: number) => (
-                                <TableHead key={index} className="text-white font-semibold">
-                                  {header}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {data.previewData.map((row: Array<string | number | boolean | null>, rowIndex: number) => (
-                              <TableRow
-                                key={rowIndex}
-                                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                              >
-                                {row.map((cell: string | number | boolean | null, cellIndex: number) => (
-                                  <TableCell key={cellIndex} className="text-gray-900">
-                                    {cell?.toString() ?? ''}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-500">Rows</p>
+                        <p className="font-medium">{data.num_rows || 'Unknown'}</p>
                       </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Data Preview</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
-                        <p className="font-medium">No preview data available</p>
-                        <p className="text-sm mt-1">
-                          {data.error ? data.error : "The preview data could not be loaded. This might be due to an issue with the S3 storage or file format."}
+                      <div>
+                        <p className="text-sm text-gray-500">Columns</p>
+                        <p className="font-medium">{data.num_columns || 'Unknown'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Created</p>
+                        <p className="font-medium">
+                          {data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}
                         </p>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                      <div>
+                        <p className="text-sm text-gray-500">Last Updated</p>
+                        <p className="font-medium">
+                          {data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Unknown'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {data && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="md:col-span-4">
+            {stats.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {stats.map((stat, index) => (
+                  <StatsCard key={index} stats={stat} />
+                ))}
               </div>
+            )}
+            
+            {data.headers && data.previewData && data.previewData.length > 0 ? (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Data Preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-800">
+                          {data.headers.map((header: string, index: number) => (
+                            <TableHead key={index} className="text-white font-semibold">
+                              {header}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {data.previewData.map((row: Array<string | number | boolean | null>, rowIndex: number) => (
+                          <TableRow
+                            key={rowIndex}
+                            className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                          >
+                            {row.map((cell: string | number | boolean | null, cellIndex: number) => (
+                              <TableCell key={cellIndex} className="text-gray-900">
+                                {cell?.toString() ?? ''}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Data Preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
+                    <p className="font-medium">No preview data available</p>
+                    <p className="text-sm mt-1">
+                      {data.error ? data.error : "The preview data could not be loaded. This might be due to an issue with the S3 storage or file format."}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         </div>

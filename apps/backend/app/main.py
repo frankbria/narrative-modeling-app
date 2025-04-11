@@ -23,6 +23,7 @@ from app.models.user_data import UserData
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
+from app.models.column_stats import ColumnStats
 
 # Configure logging
 logging.basicConfig(
@@ -49,7 +50,7 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, AnalyticsResult, Plot, TrainedModel],
+        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats],
     )
 
     await connect_to_mongo()
