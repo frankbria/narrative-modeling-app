@@ -21,6 +21,7 @@ export function AIChat() {
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const { contextString, isLoading: isContextLoading, error: contextError, isAvailable } = useDatasetChatContext(user?.id ?? null)
   const initialMessageSetRef = useRef(false)
+  const contextUpdatedRef = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -109,14 +110,17 @@ How can I help you analyze this data? You can ask me questions about:
     if (isPageLoading || isContextLoading || !initialMessageSetRef.current) return;
     
     // Only update if we have a new context and it's available
-    if (contextString && isAvailable && messages.length > 0) {
-      // Check if the first message is from the assistant (welcome message)
-      if (messages[0].role === 'assistant') {
+    if (contextString && isAvailable) {
+      // Use a ref to track if we've already updated for this context
+      if (!contextUpdatedRef.current) {
         // Update the first message with the new context
-        setMessages(prev => [
-          {
-            role: 'assistant',
-            content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
+        setMessages(prev => {
+          // Only update if the first message is from the assistant (welcome message)
+          if (prev.length > 0 && prev[0].role === 'assistant') {
+            return [
+              {
+                role: 'assistant',
+                content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
 
 Here's what I've found so far:
 ${contextString}
@@ -127,12 +131,21 @@ How can I help you analyze this data? You can ask me questions about:
 - Relationships between variables
 - Suggestions for further analysis
 - Or any other aspects of your dataset`
-          },
-          ...prev.slice(1) // Keep all other messages
-        ]);
+              },
+              ...prev.slice(1) // Keep all other messages
+            ];
+          }
+          return prev;
+        });
+        
+        // Mark that we've updated for this context
+        contextUpdatedRef.current = true;
       }
+    } else {
+      // Reset the context updated flag when context is not available
+      contextUpdatedRef.current = false;
     }
-  }, [contextString, isAvailable, isContextLoading, isPageLoading, messages.length]);
+  }, [contextString, isAvailable, isContextLoading, isPageLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
