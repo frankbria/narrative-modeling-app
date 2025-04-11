@@ -6,7 +6,7 @@ import './animations.css'
 import { type Metadata } from 'next'
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from '@clerk/nextjs'
 import SidebarWrapper from '@/components/SidebarWrapper'
-import AIChat from '@/components/AIChat'
+import ConditionalAIChat from '@/components/ConditionalAIChat'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',
@@ -26,7 +26,7 @@ export default function RootLayout({
             <SidebarWrapper />
             <main className="flex flex-1 min-h-screen">
               <div className="flex-1 p-4 bg-gray-100">{children}</div>
-              < AIChat /> 
+              <ConditionalAIChat />
             </main>
           </SignedIn>
 
