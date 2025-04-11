@@ -62,6 +62,7 @@ export default function LoadPage() {
     setErrorMessage(null)
     setShowSuccessMessage(false)
     setUploadedFileId(null)
+    setIsUploading(false)
   }, [])
 
   const handleUpload = async () => {
@@ -107,6 +108,7 @@ export default function LoadPage() {
       console.error('Upload error:', err)
       setUploadStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'An unknown error occurred')
+      setFile(null)
     } finally {
       setIsUploading(false)
     }
@@ -179,7 +181,7 @@ export default function LoadPage() {
   if (!isSignedIn) return <p>Please log in to access this page.</p>
 
   return (
-    <div className="p-6">
+    <div className="p-6 ml-64">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Load Data</h1>
 
       {/* Success Message */}
@@ -226,7 +228,7 @@ export default function LoadPage() {
 
       {/* Upload Button */}
       {file && !previewData && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex items-center justify-center">
           <button
             onClick={handleUpload}
             disabled={isUploading || uploadStatus === 'success'}
@@ -240,20 +242,20 @@ export default function LoadPage() {
           >
             {isUploading ? 'Uploading...' : uploadStatus === 'success' ? 'Uploaded' : 'Upload File'}
           </button>
+        </div>
+      )}
 
-          {/* Status indicator */}
-          {uploadStatus === 'success' && (
-            <div className="flex items-center text-green-600 space-x-1 text-sm">
-              <CheckCircle size={18} />
-              <span>Upload successful</span>
-            </div>
-          )}
-          {uploadStatus === 'error' && (
-            <div className="flex items-center text-red-600 space-x-1 text-sm">
-              <XCircle size={18} />
-              <span>Upload failed</span>
-            </div>
-          )}
+      {/* Status indicator */}
+      {uploadStatus === 'success' && (
+        <div className="mt-4 flex items-center justify-center text-green-600 space-x-1 text-sm">
+          <CheckCircle size={18} />
+          <span>Upload successful</span>
+        </div>
+      )}
+      {uploadStatus === 'error' && (
+        <div className="mt-4 flex items-center justify-center text-red-600 space-x-1 text-sm">
+          <XCircle size={18} />
+          <span>Upload failed</span>
         </div>
       )}
 

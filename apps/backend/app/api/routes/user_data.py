@@ -9,6 +9,10 @@ import pandas as pd
 import io
 import boto3
 import os
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,6 +29,32 @@ async def create_user_data(
 @router.get("/", response_model=List[UserData])
 async def get_user_data_for_user(user_id: str = Depends(get_current_user_id)):
     return await UserData.find(UserData.user_id == user_id).to_list()
+
+
+@router.get("/latest", response_model=UserData)
+async def get_latest_user_data(user_id: str = Depends(get_current_user_id)):
+    """
+    Get the most recent dataset for the current user.
+    """
+    try:
+        # Get the most recent user data document
+        user_data = (
+            await UserData.find(UserData.user_id == user_id)
+            .sort(-UserData.created_at)
+            .first_or_none()
+        )
+
+        if not user_data:
+            raise HTTPException(status_code=404, detail="No data found for user")
+
+        return user_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting latest user data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error getting latest user data: {str(e)}"
+        )
 
 
 @router.get("/{id}", response_model=UserData)
@@ -168,3 +198,76 @@ async def delete_user_data(
         raise HTTPException(status_code=403, detail="Access denied")
     await doc.delete()
     return {"success": True}
+
+
+@router.get("/{id}/ai-summary", response_model=Dict[str, Any])
+async def get_ai_summary(
+    id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get the AI summary for a specific user data entry.
+    Returns the raw markdown and a structured context string for the frontend chat.
+    """
+    try:
+        # Get the UserData document
+        user_data = await UserData.get(id)
+        if not user_data or user_data.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Check if AI summary exists
+        if not user_data.aiSummary:
+            raise HTTPException(status_code=404, detail="AI summary not found")
+
+        # Create a structured context string for the frontend chat
+        context_string = f"""
+        Dataset: {user_data.filename}
+        Rows: {user_data.num_rows}
+        Columns: {user_data.num_columns}
+        
+        Overview: {user_data.aiSummary.overview}
+        
+        Issues:
+        {chr(10).join([f"- {issue}" for issue in user_data.aiSummary.issues])}
+        
+        Relationships:
+        {chr(10).join([f"- {rel}" for rel in user_data.aiSummary.relationships])}
+        
+        Suggestions:
+        {chr(10).join([f"- {sug}" for sug in user_data.aiSummary.suggestions])}
+        
+        Column Information:
+        """
+
+        # Add column information
+        for field in user_data.data_schema:
+            context_string += f"""
+            {field.field_name}:
+            - Type: {field.field_type}
+            - Data Type: {field.data_type or 'Not specified'}
+            - Unique Values: {field.unique_values}
+            - Missing Values: {field.missing_values}
+            - Example Values: {', '.join([str(val) for val in field.example_values[:3]])}
+            """
+
+        # Return the response
+        return {
+            "rawMarkdown": user_data.aiSummary.rawMarkdown,
+            "contextString": context_string,
+            "overview": user_data.aiSummary.overview,
+            "issues": user_data.aiSummary.issues,
+            "relationships": user_data.aiSummary.relationships,
+            "suggestions": user_data.aiSummary.suggestions,
+            "createdAt": (
+                user_data.aiSummary.createdAt.isoformat()
+                if user_data.aiSummary.createdAt
+                else None
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting AI summary: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error getting AI summary: {str(e)}"
+        )

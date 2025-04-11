@@ -1,4 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    Depends,
+    Request,
+    BackgroundTasks,
+)
 from typing import List, Dict, Any
 import pandas as pd
 import io
@@ -9,6 +17,7 @@ from app.models.user_data import UserData, SchemaField
 from app.auth.clerk_auth import get_current_user_id
 from app.utils.schema_inference import infer_schema, generate_s3_filename
 from app.utils.s3 import upload_file_to_s3
+from app.utils.ai_summary import generate_dataset_summary
 import logging
 
 # Set up logging
@@ -28,6 +37,7 @@ async def test_endpoint():
 @router.post("/")
 async def upload_file(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
 ) -> Dict[str, Any]:
@@ -142,6 +152,12 @@ async def upload_file(
         # Save to database
         await user_data.insert()
         logger.info(f"UserData document saved to database with ID: {user_data.id}")
+
+        # Add AI summary generation to background tasks
+        background_tasks.add_task(generate_dataset_summary, str(user_data.id))
+        logger.info(
+            f"Added AI summary generation to background tasks for dataset {user_data.id}"
+        )
 
         # Get preview data for response
         preview_data = df.head(10).values.tolist()
