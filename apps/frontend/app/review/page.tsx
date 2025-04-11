@@ -7,6 +7,8 @@ import { StatsCard } from '@/components/StatsCard'
 import { calculateDescriptiveStats, StatItem } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext';
+import ReactMarkdown from 'react-markdown';
 
 interface UserData {
   id: string
@@ -39,6 +41,7 @@ export default function ReviewPage() {
   const [stats, setStats] = useState<StatItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const { rawMarkdown, isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
 
   const fetchPreviewData = useCallback(async () => {
     if (!user?.id) return
@@ -147,32 +150,85 @@ export default function ReviewPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Filename</p>
-                      <p className="font-medium">{data.filename}</p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Rows</p>
-                        <p className="font-medium">{data.num_rows || 'Unknown'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Columns</p>
-                        <p className="font-medium">{data.num_columns || 'Unknown'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Created</p>
-                        <p className="font-medium">
-                          {data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Last Updated</p>
-                        <p className="font-medium">
-                          {data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Unknown'}
-                        </p>
-                      </div>
+                    <div className="mt-6">
+                      {isLoadingAISummary ? (
+                        <div className="text-sm text-gray-500">
+                          <p>Loading AI analysis...</p>
+                        </div>
+                      ) : aiSummaryError ? (
+                        <div className="text-sm text-red-500">
+                          <p>Error loading AI analysis: {aiSummaryError}</p>
+                        </div>
+                      ) : !isAISummaryAvailable ? (
+                        <div className="text-sm text-gray-500">
+                          <p>AI analysis is not yet available. It will be generated automatically after the dataset is processed.</p>
+                        </div>
+                      ) : rawMarkdown ? (
+                        <div className="prose prose-sm max-w-none">
+                          <div className="space-y-6">
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                              <h4 className="text-blue-800 font-medium mb-2">Overview</h4>
+                              <div className="text-blue-700">
+                                <ReactMarkdown>
+                                  {rawMarkdown.split('Potential Data Issues')[0] || 'No overview available.'}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                              <h4 className="text-red-800 font-medium mb-2">Data Quality Issues</h4>
+                              <div className="text-red-700">
+                                <ReactMarkdown>
+                                  {rawMarkdown.includes('Potential Data Issues')
+                                    ? rawMarkdown.split('Potential Data Issues')[1]?.split('Suggested Relationships')[0] || 'No data quality issues identified.'
+                                    : 'No data quality issues identified.'}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                              <h4 className="text-green-800 font-medium mb-2">Potential Relationships</h4>
+                              <div className="text-green-700">
+                                <ReactMarkdown>
+                                  {rawMarkdown.includes('Suggested Relationships')
+                                    ? rawMarkdown.split('Suggested Relationships')[1]?.split('Recommendations for Further Analysis')[0] || 'No potential relationships identified.'
+                                    : 'No potential relationships identified.'}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                              <h4 className="text-purple-800 font-medium mb-2">Recommendations</h4>
+                              <div className="text-purple-700">
+                                <ReactMarkdown>
+                                  {rawMarkdown.includes('Recommendations for Further Analysis')
+                                    ? rawMarkdown.split('Recommendations for Further Analysis')[1] || 'No recommendations available.'
+                                    : 'No recommendations available.'}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
+                              <div>
+                                <p>Created</p>
+                                <p className="font-medium text-gray-700">
+                                  {data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}
+                                </p>
+                              </div>
+                              <div>
+                                <p>Last Updated</p>
+                                <p className="font-medium text-gray-700">
+                                  {data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Unknown'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">
+                          <p>No AI analysis available.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>

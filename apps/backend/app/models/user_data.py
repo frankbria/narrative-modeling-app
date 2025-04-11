@@ -22,6 +22,17 @@ class SchemaField(BaseModel):
     is_high_cardinality: bool
 
 
+class AISummary(BaseModel):
+    """Model for storing AI-generated summaries of datasets"""
+
+    overview: str
+    issues: List[str]
+    relationships: List[str]
+    suggestions: List[str]
+    rawMarkdown: str
+    createdAt: datetime = Field(default_factory=get_current_time)
+
+
 class UserData(Document):
     """Model for storing user uploaded data metadata"""
 
@@ -33,6 +44,7 @@ class UserData(Document):
     data_schema: List[SchemaField]
     created_at: datetime = Field(default_factory=get_current_time)
     updated_at: datetime = Field(default_factory=get_current_time)
+    aiSummary: Optional[AISummary] = None
 
     class Settings:
         name = "user_data"

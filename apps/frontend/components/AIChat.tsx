@@ -1,18 +1,26 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send } from 'lucide-react'
+import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
+import { useUser } from '@clerk/nextjs'
+import { Send, Loader2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
 }
 
-export default function AIChat() {
+export function AIChat() {
+  const { user } = useUser()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPageLoading, setIsPageLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const { contextString, isLoading: isContextLoading, error: contextError, isAvailable } = useDatasetChatContext(user?.id ?? null)
+  const initialMessageSetRef = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -22,19 +30,158 @@ export default function AIChat() {
     scrollToBottom()
   }, [messages])
 
+  // Simulate page loading for 2 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsPageLoading(false)
+    }, 2000)
+    
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Initialize chat with a welcome message when context is loaded
+  useEffect(() => {
+    // Don't set any messages while the page is loading
+    if (isPageLoading) return;
+    
+    // Don't set messages if we're still loading the context
+    if (isContextLoading) return;
+    
+    // Only set initial message once when context is loaded
+    if (initialMessageSetRef.current) return;
+    
+    if (contextError) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: `Hello! I'm your AI data analysis assistant. I noticed there was an issue loading your dataset analysis. 
+
+You can still ask me questions about your data, but I may not have all the context about your dataset.
+
+What would you like to know about your data?`
+        }
+      ]);
+      initialMessageSetRef.current = true;
+      return;
+    }
+
+    // Only show "no dataset" message if we're not loading and there's no context
+    if (!contextString && !isAvailable) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: `Hello! I'm your AI data analysis assistant. I don't see any dataset analysis available yet.
+
+You can upload a dataset to get started, or you can ask me general questions about data analysis.
+
+How can I help you today?`
+        }
+      ]);
+      initialMessageSetRef.current = true;
+      return;
+    }
+
+    // Show dataset context if available
+    if (contextString && isAvailable) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
+
+Here's what I've found so far:
+${contextString}
+
+How can I help you analyze this data? You can ask me questions about:
+- Specific patterns or trends
+- Data quality issues
+- Relationships between variables
+- Suggestions for further analysis
+- Or any other aspects of your dataset`
+        }
+      ]);
+      initialMessageSetRef.current = true;
+    }
+  }, [contextString, isContextLoading, contextError, isPageLoading, isAvailable]);
+
+  // Update messages when context changes after initial load
+  useEffect(() => {
+    // Skip if still loading or if initial message hasn't been set yet
+    if (isPageLoading || isContextLoading || !initialMessageSetRef.current) return;
+    
+    // Only update if we have a new context and it's available
+    if (contextString && isAvailable && messages.length > 0) {
+      // Check if the first message is from the assistant (welcome message)
+      if (messages[0].role === 'assistant') {
+        // Update the first message with the new context
+        setMessages(prev => [
+          {
+            role: 'assistant',
+            content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
+
+Here's what I've found so far:
+${contextString}
+
+How can I help you analyze this data? You can ask me questions about:
+- Specific patterns or trends
+- Data quality issues
+- Relationships between variables
+- Suggestions for further analysis
+- Or any other aspects of your dataset`
+          },
+          ...prev.slice(1) // Keep all other messages
+        ]);
+      }
+    }
+  }, [contextString, isAvailable, isContextLoading, isPageLoading, messages.length]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (!input.trim() || isSubmitting) return
 
     const newMessage: Message = { role: 'user', content: input }
     setMessages(prev => [...prev, newMessage])
     setInput('')
+    setIsSubmitting(true)
 
-    // TODO: Implement actual API call to AI service
-    // For now, just echo back a response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', content: `You said: ${input}` }])
-    }, 1000)
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: input,
+          context: contextString || 'No dataset context available.'
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to get response from AI');
+      }
+
+      const data = await response.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+    } catch (error) {
+      console.error('Error getting AI response:', error)
+      
+      let errorMessage = 'I apologize, but I encountered an error processing your request.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('OpenAI')) {
+          errorMessage = 'I apologize, but there was an issue connecting to the AI service. This might be due to rate limiting or a temporary service disruption. Please try again in a few minutes.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'I apologize, but there was a network error. Please check your internet connection and try again.';
+        }
+      }
+      
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: errorMessage
+      }])
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -47,22 +194,51 @@ export default function AIChat() {
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-4 space-y-4"
       >
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-800'
-              }`}
-            >
-              {message.content}
-            </div>
+        {isPageLoading ? (
+          <div className="flex flex-col items-center justify-center h-full space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <p className="text-gray-600 text-center">Loading dataset analysis...</p>
           </div>
-        ))}
+        ) : isContextLoading ? (
+          <div className="flex flex-col items-center justify-center h-full space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <p className="text-gray-600 text-center">Analyzing your dataset...</p>
+          </div>
+        ) : (
+          <>
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-3 ${
+                    message.role === 'user'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                </div>
+              </div>
+            ))}
+            
+            {isSubmitting && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-lg p-3 bg-gray-100 text-gray-800">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                    <span className="text-sm text-gray-500">Thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -74,12 +250,18 @@ export default function AIChat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-900 placeholder-gray-500"
+            disabled={isContextLoading || isSubmitting || isPageLoading}
           />
           <button
             type="submit"
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isContextLoading || isSubmitting || isPageLoading}
           >
-            <Send size={20} />
+            {isSubmitting ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            ) : (
+              <Send size={20} />
+            )}
           </button>
         </div>
       </form>
