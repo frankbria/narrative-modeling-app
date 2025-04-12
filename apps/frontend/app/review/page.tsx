@@ -23,7 +23,7 @@ interface UserData {
   histogram_data: Record<string, number[]>;
   boxplot_data: Record<string, number[]>;
   preview_data: Record<string, string | number | boolean | null>[];
-  previewData?: (string | number | boolean | null)[][];
+  previewData?: Array<Array<string | number | boolean | null>>;
   headers?: string[];
   ai_summary: string;
   error?: string;
@@ -192,45 +192,76 @@ export default function ReviewPage() {
                             </div>
                             
                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                              <h4 className="text-blue-800 font-medium mb-2">Overview</h4>
+                              <h4 className="text-blue-800 font-bold mb-2">Overview</h4>
                               <div className="text-blue-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('## Overview')
-                                    ? rawMarkdown.split('## Overview')[1]?.split('##')[0] || 'No overview available.'
-                                    : 'No overview available.'}
+                                  {(() => {
+                                    const overviewText = rawMarkdown.includes('### Overview')
+                                      ? rawMarkdown.split('### Overview')[1]?.split('###')[0] || 'No overview available.'
+                                      : 'No overview available.';
+                                    
+                                    // Remove errant colon at the beginning if present
+                                    return overviewText.startsWith(':') ? overviewText.substring(1) : overviewText;
+                                  })()}
                                 </ReactMarkdown>
                               </div>
                             </div>
                             
                             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                              <h4 className="text-red-800 font-medium mb-2">Data Quality Issues</h4>
+                              <h4 className="text-red-800 font-bold mb-2">Data Quality Issues</h4>
                               <div className="text-red-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('## Data Quality Issues')
-                                    ? rawMarkdown.split('## Data Quality Issues')[1]?.split('##')[0] || 'No data quality issues identified.'
-                                    : 'No data quality issues identified.'}
+                                  {(() => {
+                                    const issuesText = rawMarkdown.includes('## Data Quality Issues')
+                                      ? rawMarkdown.split('### Data Quality Issues')[1]?.split('###')[0] || 'No data quality issues identified.'
+                                      : 'No data quality issues identified.';
+                                    
+                                    // Remove errant colon at the beginning if present
+                                    return issuesText.startsWith(':') ? issuesText.substring(1) : issuesText;
+                                  })()}
                                 </ReactMarkdown>
                               </div>
                             </div>
                             
                             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                              <h4 className="text-green-800 font-medium mb-2">Potential Relationships</h4>
+                              <h4 className="text-green-800 font-bold mb-2">Potential Relationships</h4>
                               <div className="text-green-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('## Potential Relationships')
-                                    ? rawMarkdown.split('## Potential Relationships')[1]?.split('##')[0] || 'No potential relationships identified.'
-                                    : 'No potential relationships identified.'}
+                                  {(() => {
+                                    const relationshipsText = rawMarkdown.includes('### Potential Relationships')
+                                      ? rawMarkdown.split('### Potential Relationships')[1]?.split('###')[0] || 'No potential relationships identified.'
+                                      : 'No potential relationships identified.';
+                                    
+                                    // Remove errant colon at the beginning if present
+                                    return relationshipsText.startsWith(':') ? relationshipsText.substring(1) : relationshipsText;
+                                  })()}
                                 </ReactMarkdown>
                               </div>
                             </div>
                             
                             <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                              <h4 className="text-purple-800 font-medium mb-2">Recommendations</h4>
+                              <h4 className="text-purple-800 font-bold mb-2">Recommendations</h4>
                               <div className="text-purple-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('## Recommendations')
-                                    ? rawMarkdown.split('## Recommendations')[1]?.split('##')[0] || 'No recommendations available.'
-                                    : 'No recommendations available.'}
+                                  {(() => {
+                                    let recommendationsText = '';
+                                    
+                                    // Get the Recommendations section
+                                    if (rawMarkdown.includes('### Recommendations')) {
+                                      recommendationsText = rawMarkdown.split('### Recommendations')[1]?.split('###')[0] || '';
+                                    }
+                                    
+                                    // Get the Suggestions for further Analysis section
+                                    if (rawMarkdown.includes('### Suggestions for Further Analysis')) {
+                                      const suggestionsText = rawMarkdown.split('### Suggestions for Further Analysis')[1]?.split('###')[0] || '';
+                                      if (suggestionsText) {
+                                        // recommendationsText += '\n\n### Suggestions for Further Analysis\n' + suggestionsText;
+                                        recommendationsText = suggestionsText;
+                                      }
+                                    }
+                                    
+                                    return recommendationsText.startsWith(':') ? recommendationsText.substring(1) : recommendationsText || 'No recommendations available.';
+                                  })()}
                                 </ReactMarkdown>
                               </div>
                             </div>
@@ -291,8 +322,7 @@ export default function ReviewPage() {
                         
                         return (
                           <CorrelationHeatmap 
-                            stats={data.schema} 
-                            className="w-full" 
+                            stats={data.schema}
                           />
                         );
                       })()}

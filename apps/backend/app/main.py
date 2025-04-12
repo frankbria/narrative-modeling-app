@@ -32,6 +32,7 @@ from app.api.routes import (
     trained_model,
     upload,
     store,
+    visualizations,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -94,6 +95,11 @@ app.include_router(
 app.include_router(plot.router, prefix=f"{settings.API_V1_STR}/plots", tags=["plots"])
 app.include_router(
     trained_model.router, prefix=f"{settings.API_V1_STR}/models", tags=["models"]
+)
+app.include_router(
+    visualizations.router,
+    prefix=f"{settings.API_V1_STR}/visualizations",
+    tags=["visualizations"],
 )
 
 
