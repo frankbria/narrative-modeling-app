@@ -25,7 +25,7 @@ interface HistogramModalProps {
   isOpen: boolean
   onClose: () => void
   columnName: string
-  histogramData: {
+  histogramData?: {
     bin_edges: number[]
     bin_counts: number[]
     bin_width: number
@@ -35,6 +35,8 @@ interface HistogramModalProps {
 }
 
 export function HistogramModal({ isOpen, onClose, columnName, histogramData }: HistogramModalProps) {
+  if (!isOpen || !histogramData) return null;
+
   // Prepare data for the chart
   const labels = histogramData.bin_edges.slice(0, -1).map((edge, index) => {
     const start = edge.toFixed(2)

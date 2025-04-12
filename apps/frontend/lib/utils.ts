@@ -24,6 +24,7 @@ export interface StatItem {
     }
   }
   categorical_stats?: {
+    unique_categories: number
     top_values: Array<{
       value: string
       count: number
@@ -106,7 +107,10 @@ export function calculateDescriptiveStats(data: Array<Array<string | number | bo
         .slice(0, 5)
         .map(([value, count]) => ({ value, count }))
 
-      stats.categorical_stats = { top_values: topValues }
+      stats.categorical_stats = { 
+        unique_categories: valueCounts.size,
+        top_values: topValues 
+      }
     } else if (stats.field_type === 'date') {
       const dates = nonNullData.map(value => new Date(String(value)))
       stats.date_stats = {
