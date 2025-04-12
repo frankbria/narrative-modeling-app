@@ -107,3 +107,45 @@ def upload_file_to_s3(
     except Exception as e:
         logger.error(f"Unexpected error uploading file to S3: {e}")
         return False, None
+
+
+def get_file_from_s3(s3_url: str) -> io.BytesIO:
+    """
+    Download a file from S3 using its URL.
+
+    Args:
+        s3_url: The S3 URL of the file to download
+
+    Returns:
+        A BytesIO object containing the file content
+    """
+    # Get the S3 client
+    client = get_s3_client()
+    if client is None:
+        raise Exception("Failed to initialize S3 client")
+
+    # Parse the S3 URL to get bucket and key
+    # URL format: https://bucket-name.s3.amazonaws.com/key
+    try:
+        # Remove the https:// prefix if present
+        if s3_url.startswith("https://"):
+            s3_url = s3_url[8:]
+
+        # Split by the first slash to separate bucket and key
+        parts = s3_url.split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+
+        bucket_name = parts[0].split(".")[0]  # Remove .s3.amazonaws.com
+        key = parts[1]
+
+        # Download the file to a BytesIO object
+        file_obj = io.BytesIO()
+        client.download_fileobj(bucket_name, key, file_obj)
+        file_obj.seek(0)
+
+        logger.info(f"File downloaded successfully from {s3_url}")
+        return file_obj
+    except Exception as e:
+        logger.error(f"Error downloading file from S3: {e}")
+        raise
