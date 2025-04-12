@@ -19,31 +19,26 @@ load_dotenv(override=True)
 
 # Get Clerk issuer from environment variable
 CLERK_ISSUER = os.getenv("CLERK_ISSUER")
-logger.info(f"Loaded CLERK_ISSUER from environment: {CLERK_ISSUER}")
-
 if not CLERK_ISSUER:
     logger.error(
         "CLERK_ISSUER environment variable is not set. Authentication will fail."
     )
-    # Don't set a default value as it would be incorrect
 else:
     # Remove any trailing slashes
     CLERK_ISSUER = CLERK_ISSUER.rstrip("/")
-    logger.info(f"Cleaned CLERK_ISSUER: {CLERK_ISSUER}")
+    logger.info(f"Using CLERK_ISSUER: {CLERK_ISSUER}")
 
-# Ensure the issuer URL has a protocol
-if (
-    CLERK_ISSUER
-    and not CLERK_ISSUER.startswith("http://")
-    and not CLERK_ISSUER.startswith("https://")
-):
-    CLERK_ISSUER = f"https://{CLERK_ISSUER}"
-    logger.info(f"Added protocol to CLERK_ISSUER: {CLERK_ISSUER}")
+    # Ensure the issuer URL has a protocol
+    if not CLERK_ISSUER.startswith("http://") and not CLERK_ISSUER.startswith(
+        "https://"
+    ):
+        CLERK_ISSUER = f"https://{CLERK_ISSUER}"
+        logger.info(f"Added protocol to CLERK_ISSUER: {CLERK_ISSUER}")
 
 # Construct the JWKS URL
 CLERK_JWKS_URL = f"{CLERK_ISSUER}/.well-known/jwks.json" if CLERK_ISSUER else None
 if CLERK_JWKS_URL:
-    logger.info(f"CLERK_JWKS_URL: {CLERK_JWKS_URL}")
+    logger.info(f"Using CLERK_JWKS_URL: {CLERK_JWKS_URL}")
 else:
     logger.error("CLERK_JWKS_URL is not set because CLERK_ISSUER is missing")
 

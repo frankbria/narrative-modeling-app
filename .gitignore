@@ -48,3 +48,6 @@ __pycache__/
 *.pyc
 .env
 
+.venv/
+apps/.venv/
+apps/backend/.venv/

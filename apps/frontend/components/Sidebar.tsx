@@ -2,7 +2,7 @@
 
 import { useUser, UserButton } from '@clerk/nextjs'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck } from 'lucide-react'
 
 export default function Sidebar() {
   const { user } = useUser()
@@ -11,6 +11,7 @@ export default function Sidebar() {
   const menuItems = [
     { name: 'Load Data', icon: <Upload size={20} />, href: '/load' },
     { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
+    { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
     { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
     { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
   ]

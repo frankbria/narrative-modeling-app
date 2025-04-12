@@ -57,6 +57,8 @@ export function AIChat() {
           role: 'assistant',
           content: `Hello! I'm your AI data analysis assistant. I noticed there was an issue loading your dataset analysis. 
 
+${contextError}
+
 You can still ask me questions about your data, but I may not have all the context about your dataset.
 
 What would you like to know about your data?`
