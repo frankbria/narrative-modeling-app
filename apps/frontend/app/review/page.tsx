@@ -9,29 +9,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext';
 import ReactMarkdown from 'react-markdown';
+import { CorrelationHeatmap } from "@/components/CorrelationHeatmap";
 
 interface UserData {
-  id: string
-  filename: string
-  s3_url: string
-  num_rows: number
-  num_columns: number
-  data_schema: Array<{
-    field_name: string
-    field_type: string
-    data_type: string
-    inferred_dtype: string
-    unique_values: number
-    missing_values: number
-    example_values: string[]
-    is_constant: boolean
-    is_high_cardinality: boolean
-  }>
-  created_at: string
-  updated_at: string
-  headers: string[]
-  previewData: Array<Array<string | number | boolean | null>>
-  error?: string
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  file_type: string;
+  upload_date: string;
+  schema: StatItem[];
+  histogram_data: Record<string, number[]>;
+  boxplot_data: Record<string, number[]>;
+  preview_data: Record<string, string | number | boolean | null>[];
+  previewData?: (string | number | boolean | null)[][];
+  headers?: string[];
+  ai_summary: string;
+  error?: string;
 }
 
 export default function ReviewPage() {
@@ -73,7 +68,28 @@ export default function ReviewPage() {
       }
 
       const result = await response.json()
-      setData(result)
+      console.log('Preview data response:', result)
+      
+      // Transform the data to match our UserData interface
+      const transformedData: UserData = {
+        id: result.id,
+        user_id: user.id,
+        file_name: result.fileName,
+        file_path: result.s3_url,
+        file_size: 0, // Not provided by API
+        file_type: result.fileType,
+        upload_date: result.created_at || new Date().toISOString(),
+        schema: result.schema || [],
+        histogram_data: {},
+        boxplot_data: {},
+        preview_data: [],
+        previewData: result.previewData,
+        headers: result.headers,
+        ai_summary: '',
+        error: result.error
+      }
+      
+      setData(transformedData)
       
       // Calculate descriptive statistics
       if (result.headers && result.previewData) {
@@ -132,9 +148,9 @@ export default function ReviewPage() {
                     }`}
                     onClick={() => fetchPreviewData()}
                   >
-                    <p className="font-medium truncate">{data.filename}</p>
+                    <p className="font-medium truncate">{data.file_name}</p>
                     <p className="text-sm text-gray-500">
-                      {data.num_rows ? `${data.num_rows} rows` : 'Unknown rows'} × {data.num_columns ? `${data.num_columns} columns` : 'Unknown columns'}
+                      {data.file_size ? `${data.file_size} bytes` : 'Unknown size'}
                     </p>
                   </div>
                 </div>
@@ -166,11 +182,22 @@ export default function ReviewPage() {
                       ) : rawMarkdown ? (
                         <div className="prose prose-sm max-w-none">
                           <div className="space-y-6">
+                            {/* Debug: Log the raw markdown and data schema */}
+                            <div className="hidden">
+                              {(() => { 
+                                console.log('Raw Markdown:', rawMarkdown);
+                                console.log('Data Schema:', data.schema);
+                                return null; 
+                              })()}
+                            </div>
+                            
                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                               <h4 className="text-blue-800 font-medium mb-2">Overview</h4>
                               <div className="text-blue-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.split('Potential Data Issues')[0] || 'No overview available.'}
+                                  {rawMarkdown.includes('## Overview')
+                                    ? rawMarkdown.split('## Overview')[1]?.split('##')[0] || 'No overview available.'
+                                    : 'No overview available.'}
                                 </ReactMarkdown>
                               </div>
                             </div>
@@ -179,8 +206,8 @@ export default function ReviewPage() {
                               <h4 className="text-red-800 font-medium mb-2">Data Quality Issues</h4>
                               <div className="text-red-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('Potential Data Issues')
-                                    ? rawMarkdown.split('Potential Data Issues')[1]?.split('Suggested Relationships')[0] || 'No data quality issues identified.'
+                                  {rawMarkdown.includes('## Data Quality Issues')
+                                    ? rawMarkdown.split('## Data Quality Issues')[1]?.split('##')[0] || 'No data quality issues identified.'
                                     : 'No data quality issues identified.'}
                                 </ReactMarkdown>
                               </div>
@@ -190,8 +217,8 @@ export default function ReviewPage() {
                               <h4 className="text-green-800 font-medium mb-2">Potential Relationships</h4>
                               <div className="text-green-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('Suggested Relationships')
-                                    ? rawMarkdown.split('Suggested Relationships')[1]?.split('Recommendations for Further Analysis')[0] || 'No potential relationships identified.'
+                                  {rawMarkdown.includes('## Potential Relationships')
+                                    ? rawMarkdown.split('## Potential Relationships')[1]?.split('##')[0] || 'No potential relationships identified.'
                                     : 'No potential relationships identified.'}
                                 </ReactMarkdown>
                               </div>
@@ -201,8 +228,8 @@ export default function ReviewPage() {
                               <h4 className="text-purple-800 font-medium mb-2">Recommendations</h4>
                               <div className="text-purple-700">
                                 <ReactMarkdown>
-                                  {rawMarkdown.includes('Recommendations for Further Analysis')
-                                    ? rawMarkdown.split('Recommendations for Further Analysis')[1] || 'No recommendations available.'
+                                  {rawMarkdown.includes('## Recommendations')
+                                    ? rawMarkdown.split('## Recommendations')[1]?.split('##')[0] || 'No recommendations available.'
                                     : 'No recommendations available.'}
                                 </ReactMarkdown>
                               </div>
@@ -210,15 +237,9 @@ export default function ReviewPage() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
                               <div>
-                                <p>Created</p>
+                                <p>Upload Date</p>
                                 <p className="font-medium text-gray-700">
-                                  {data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}
-                                </p>
-                              </div>
-                              <div>
-                                <p>Last Updated</p>
-                                <p className="font-medium text-gray-700">
-                                  {data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Unknown'}
+                                  {data.upload_date ? new Date(data.upload_date).toLocaleString() : 'Unknown'}
                                 </p>
                               </div>
                             </div>
@@ -249,38 +270,93 @@ export default function ReviewPage() {
               </div>
             )}
             
-            {data.headers && data.previewData && data.previewData.length > 0 ? (
+            {data.schema && data.schema.length > 0 && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Correlation Analysis</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="w-full overflow-x-auto">
+                    <div className="min-w-[600px]">
+                      {(() => {
+                        console.log('Rendering CorrelationHeatmap with schema:', data.schema);
+                        console.log('schema length:', data.schema.length);
+                        console.log('schema structure:', JSON.stringify(data.schema, null, 2));
+                        
+                        // Check if there are any numeric fields
+                        const numericFields = data.schema.filter(
+                          field => field.field_type === 'numeric'
+                        );
+                        console.log('Numeric fields count:', numericFields.length);
+                        
+                        return (
+                          <CorrelationHeatmap 
+                            stats={data.schema} 
+                            className="w-full" 
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {data.schema && data.schema.length > 0 ? (
               <Card className="mt-6">
                 <CardHeader>
                   <CardTitle>Data Preview</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-gray-800">
-                          {data.headers.map((header: string, index: number) => (
-                            <TableHead key={index} className="text-white font-semibold">
-                              {header}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.previewData.map((row: Array<string | number | boolean | null>, rowIndex: number) => (
-                          <TableRow
-                            key={rowIndex}
-                            className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                          >
-                            {row.map((cell: string | number | boolean | null, cellIndex: number) => (
-                              <TableCell key={cellIndex} className="text-gray-900">
-                                {cell?.toString() ?? ''}
-                              </TableCell>
+                    {(() => {
+                      console.log('Data Preview - data:', data);
+                      console.log('Data Preview - previewData:', data.previewData);
+                      console.log('Data Preview - headers:', data.headers);
+                      
+                      // Check if previewData exists and has items
+                      if (!data.previewData || data.previewData.length === 0) {
+                        return (
+                          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
+                            <p className="font-medium">No preview data available</p>
+                            <p className="text-sm mt-1">
+                              The preview data could not be loaded. This might be due to an issue with the data format.
+                            </p>
+                          </div>
+                        );
+                      }
+                      
+                      // Get headers from API response or schema
+                      const headers = data.headers || data.schema.map(field => field.field_name);
+                      
+                      return (
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-800">
+                              {headers.map((header, index) => (
+                                <TableHead key={index} className="text-white font-semibold">
+                                  {header}
+                                </TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {data.previewData.map((row, rowIndex) => (
+                              <TableRow
+                                key={rowIndex}
+                                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                              >
+                                {row.map((cell, cellIndex) => (
+                                  <TableCell key={cellIndex} className="text-gray-900">
+                                    {cell !== null && cell !== undefined ? String(cell) : ''}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
                             ))}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                          </TableBody>
+                        </Table>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>
