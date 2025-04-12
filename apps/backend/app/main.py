@@ -4,6 +4,22 @@ from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
+# Get the path to the .env file and load it first
+env_path = Path(__file__).resolve().parent.parent / ".env"
+print(f"Loading .env file from: {env_path}")
+load_dotenv(dotenv_path=env_path, override=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Suppress AWS logging
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("s3transfer").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import FastAPI
@@ -24,22 +40,7 @@ from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
 from app.models.column_stats import ColumnStats
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-
-# Suppress AWS logging
-logging.getLogger("boto3").setLevel(logging.WARNING)
-logging.getLogger("botocore").setLevel(logging.WARNING)
-logging.getLogger("s3transfer").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-# Get the path to the .env file
-env_path = Path(__file__).resolve().parent.parent / ".env"
-print(f"Loading .env file from: {env_path}")
-load_dotenv(dotenv_path=env_path)
+from app.utils.ai_summary import initialize_openai_client
 
 
 @asynccontextmanager
@@ -52,6 +53,9 @@ async def lifespan(app: FastAPI):
         database=client[db_name],
         document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats],
     )
+
+    # Initialize OpenAI client
+    initialize_openai_client()
 
     await connect_to_mongo()
     yield

@@ -10,7 +10,18 @@ from app.models.user_data import UserData, AISummary
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = None
+
+
+def initialize_openai_client():
+    global client
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logging.error("OPENAI_API_KEY not set in environment variables")
+        return
+    client = OpenAI(api_key=api_key)
+    logging.info("OpenAI client initialized successfully")
+
 
 # Get the model name from environment variable, default to "gpt-4"
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
@@ -107,6 +118,10 @@ async def call_openai_api(dataset_summary: Dict[str, Any]) -> Optional[AISummary
     Returns:
         An AISummary object if successful, None otherwise
     """
+    if not client:
+        logging.error("OpenAI client not initialized")
+        return None
+
     try:
         # Convert the dataset summary to a JSON string
         dataset_json = json.dumps(dataset_summary, indent=2)
