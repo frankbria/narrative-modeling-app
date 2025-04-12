@@ -1,110 +1,80 @@
 import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HistogramModal } from './HistogramModal'
+import { BoxplotModal } from './BoxplotModal'
+import { Button } from '@/components/ui/button'
 
-interface StatsCardProps {
-  stats: {
-    field_name: string
-    field_type: string
-    count: number
-    missing_values: number
-    unique_values: number
-    numeric_stats?: {
-      min: number
-      max: number
-      mean: number
-      median: number
-      mode: number
-      std_dev: number
-      histogram?: {
-        bins: number[]
-        counts: number[]
-      }
-    }
-    categorical_stats?: {
-      top_values: Array<{
-        value: string
-        count: number
-      }>
-    }
-    date_stats?: {
-      min_date: string
-      max_date: string
-    }
-    text_stats?: {
-      avg_length: number
-      sample_values: string[]
-    }
+interface NumericStats {
+  min: number
+  max: number
+  mean: number
+  median: number
+  mode: number
+  std_dev: number
+  histogram?: {
+    bins: number[]
+    counts: number[]
   }
+  q1?: number
+  q3?: number
+  outliers?: number[]
 }
 
-export function StatsCard({ stats }: StatsCardProps) {
-  const [isHistogramOpen, setIsHistogramOpen] = useState(false)
+interface DateStats {
+  min_date: string
+  max_date: string
+}
 
-  const renderNumericStats = () => {
-    if (!stats.numeric_stats) return null
+interface TextStats {
+  avg_length: number
+  sample_values: string[]
+}
 
-    return (
-      <>
-        <tr>
-          <td className="py-2 font-medium">Min</td>
-          <td className="py-2">{stats.numeric_stats.min.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Max</td>
-          <td className="py-2">{stats.numeric_stats.max.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Mean</td>
-          <td className="py-2">{stats.numeric_stats.mean.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Median</td>
-          <td className="py-2">{stats.numeric_stats.median.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Mode</td>
-          <td className="py-2">{stats.numeric_stats.mode.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Standard Deviation</td>
-          <td className="py-2">{stats.numeric_stats.std_dev.toFixed(2)}</td>
-        </tr>
-        {stats.numeric_stats.histogram && (
-          <tr>
-            <td className="py-2 font-medium">Histogram</td>
-            <td className="py-2">
-              <button
-                onClick={() => setIsHistogramOpen(true)}
-                className="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-              >
-                View Histogram
-              </button>
-            </td>
-          </tr>
-        )}
-      </>
-    )
-  }
+interface StatsCardProps {
+  title?: string;
+  stats: {
+    field_name: string;
+    field_type: string;
+    count: number;
+    missing_values: number;
+    unique_values: number;
+    numeric_stats?: NumericStats;
+    categorical_stats?: {
+      unique_categories: number;
+      top_values: Array<{ value: string; count: number }>;
+    };
+    date_stats?: DateStats;
+    text_stats?: TextStats;
+  };
+}
+
+export function StatsCard({ title, stats }: StatsCardProps) {
+  const [showHistogram, setShowHistogram] = useState(false)
+  const [showBoxplot, setShowBoxplot] = useState(false)
 
   const renderCategoricalStats = () => {
     if (!stats.categorical_stats) return null
 
     return (
-      <>
-        <tr>
-          <td className="py-2 font-medium">Top Values</td>
-          <td className="py-2">
-            <ul className="list-disc list-inside">
-              {stats.categorical_stats.top_values.map((item, index) => (
-                <li key={index}>
-                  {item.value}: {item.count}
-                </li>
-              ))}
-            </ul>
-          </td>
-        </tr>
-      </>
+      <div className="border-t pt-4">
+        <h3 className="text-sm font-medium mb-2">Categorical Statistics</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Unique Categories</p>
+            <p className="font-medium">{stats.categorical_stats.unique_categories}</p>
+          </div>
+        </div>
+        <div className="mt-2">
+          <p className="text-sm text-gray-500">Top Values</p>
+          <ul className="list-disc list-inside text-sm">
+            {stats.categorical_stats.top_values.map((item, index) => (
+              <li key={index}>
+                {item.value}: {item.count}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     )
   }
 
@@ -112,16 +82,19 @@ export function StatsCard({ stats }: StatsCardProps) {
     if (!stats.date_stats) return null
 
     return (
-      <>
-        <tr>
-          <td className="py-2 font-medium">Earliest Date</td>
-          <td className="py-2">{new Date(stats.date_stats.min_date).toLocaleDateString()}</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Latest Date</td>
-          <td className="py-2">{new Date(stats.date_stats.max_date).toLocaleDateString()}</td>
-        </tr>
-      </>
+      <div className="border-t pt-4">
+        <h3 className="text-sm font-medium mb-2">Date Statistics</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Min Date</p>
+            <p className="font-medium">{new Date(stats.date_stats.min_date).toLocaleDateString()}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Max Date</p>
+            <p className="font-medium">{new Date(stats.date_stats.max_date).toLocaleDateString()}</p>
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -129,72 +102,134 @@ export function StatsCard({ stats }: StatsCardProps) {
     if (!stats.text_stats) return null
 
     return (
-      <>
-        <tr>
-          <td className="py-2 font-medium">Average Length</td>
-          <td className="py-2">{stats.text_stats.avg_length.toFixed(2)} characters</td>
-        </tr>
-        <tr>
-          <td className="py-2 font-medium">Sample Values</td>
-          <td className="py-2">
-            <ul className="list-disc list-inside">
-              {stats.text_stats.sample_values.map((value, index) => (
-                <li key={index} className="truncate max-w-xs">{value}</li>
-              ))}
-            </ul>
-          </td>
-        </tr>
-      </>
+      <div className="border-t pt-4">
+        <h3 className="text-sm font-medium mb-2">Text Statistics</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-gray-500">Average Length</p>
+            <p className="font-medium">{stats.text_stats.avg_length.toFixed(2)}</p>
+          </div>
+        </div>
+        <div className="mt-2">
+          <p className="text-sm text-gray-500">Sample Values</p>
+          <ul className="list-disc list-inside text-sm">
+            {stats.text_stats.sample_values.map((value, index) => (
+              <li key={index}>{value}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
     )
   }
 
   return (
-    <>
-      <Card className="w-full bg-white shadow-md rounded-lg overflow-hidden">
-        <CardHeader className="bg-gray-50 border-b">
-          <CardTitle className="text-lg font-semibold">
-            {stats.field_name}
-            <span className="ml-2 text-sm text-gray-500">({stats.field_type})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <table className="w-full">
-            <tbody>
-              <tr>
-                <td className="py-2 font-medium">Count</td>
-                <td className="py-2">{stats.count}</td>
-              </tr>
-              <tr>
-                <td className="py-2 font-medium">Missing Values</td>
-                <td className="py-2">{stats.missing_values}</td>
-              </tr>
-              <tr>
-                <td className="py-2 font-medium">Unique Values</td>
-                <td className="py-2">{stats.unique_values}</td>
-              </tr>
-              {renderNumericStats()}
-              {renderCategoricalStats()}
-              {renderDateStats()}
-              {renderTextStats()}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+    <Card className="bg-white shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg font-bold">{title || stats.field_name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Type</p>
+              <p className="font-medium">{stats.field_type}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Count</p>
+              <p className="font-medium">{stats.count}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Missing Values</p>
+              <p className="font-medium">{stats.missing_values}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Unique Values</p>
+              <p className="font-medium">{stats.unique_values}</p>
+            </div>
+          </div>
 
-      {stats.numeric_stats?.histogram && (
-        <HistogramModal
-          isOpen={isHistogramOpen}
-          onClose={() => setIsHistogramOpen(false)}
-          columnName={stats.field_name}
-          histogramData={{
-            bin_edges: stats.numeric_stats.histogram.bins,
-            bin_counts: stats.numeric_stats.histogram.counts,
-            bin_width: (stats.numeric_stats.max - stats.numeric_stats.min) / stats.numeric_stats.histogram.bins.length,
-            min_value: stats.numeric_stats.min,
-            max_value: stats.numeric_stats.max
-          }}
-        />
-      )}
-    </>
+          {stats.numeric_stats && (
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-medium mb-2">Numeric Statistics</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Min</p>
+                  <p className="font-medium">{stats.numeric_stats.min.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Max</p>
+                  <p className="font-medium">{stats.numeric_stats.max.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Mean</p>
+                  <p className="font-medium">{stats.numeric_stats.mean.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Median</p>
+                  <p className="font-medium">{stats.numeric_stats.median.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Mode</p>
+                  <p className="font-medium">{stats.numeric_stats.mode.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Std Dev</p>
+                  <p className="font-medium">{stats.numeric_stats.std_dev.toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowHistogram(true)}
+                >
+                  View Histogram
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBoxplot(true)}
+                >
+                  View Boxplot
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {renderCategoricalStats()}
+          {renderDateStats()}
+          {renderTextStats()}
+        </div>
+      </CardContent>
+
+      <HistogramModal
+        isOpen={showHistogram}
+        onClose={() => setShowHistogram(false)}
+        columnName={stats.field_name}
+        histogramData={stats.numeric_stats?.histogram ? {
+          bin_edges: stats.numeric_stats.histogram.bins,
+          bin_counts: stats.numeric_stats.histogram.counts,
+          bin_width: stats.numeric_stats.histogram.bins.length > 1 
+            ? stats.numeric_stats.histogram.bins[1] - stats.numeric_stats.histogram.bins[0] 
+            : 1,
+          min_value: stats.numeric_stats.min,
+          max_value: stats.numeric_stats.max
+        } : undefined}
+      />
+
+      <BoxplotModal
+        isOpen={showBoxplot}
+        onClose={() => setShowBoxplot(false)}
+        columnName={stats.field_name}
+        boxplotData={{
+          min: stats.numeric_stats?.min || 0,
+          q1: stats.numeric_stats?.q1 || 0,
+          median: stats.numeric_stats?.median || 0,
+          q3: stats.numeric_stats?.q3 || 0,
+          max: stats.numeric_stats?.max || 0,
+          outliers: stats.numeric_stats?.outliers || []
+        }}
+      />
+    </Card>
   )
 } 
