@@ -37,6 +37,12 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { rawMarkdown, isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
+  const [aiSummary, setAiSummary] = useState<{
+    overview: string;
+    issues: string[];
+    relationships: string[];
+    suggestions: string[];
+  } | null>(null);
 
   const fetchPreviewData = useCallback(async () => {
     if (!user?.id) return
@@ -109,6 +115,46 @@ export default function ReviewPage() {
       fetchPreviewData()
     }
   }, [isSignedIn, fetchPreviewData])
+
+  useEffect(() => {
+    const fetchAISummary = async () => {
+      if (!data?.id) return;
+
+      try {
+        // Ensure the URL has a protocol
+        let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+          backendUrl = `http://${backendUrl}`;
+        }
+        
+        // Remove trailing /api if present
+        backendUrl = backendUrl.replace(/\/api$/, '');
+        
+        const response = await fetch(`${backendUrl}/api/user_data/${data.id}/ai-summary`, {
+          headers: {
+            'Authorization': `Bearer ${await session?.getToken()}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch AI summary: ${await response.text()}`);
+        }
+
+        const summary = await response.json();
+        setAiSummary({
+          overview: summary.overview || '',
+          issues: summary.issues || [],
+          relationships: summary.relationships || [],
+          suggestions: summary.suggestions || []
+        });
+      } catch (error) {
+        console.error('Error fetching AI summary:', error);
+        setAiSummary(null);
+      }
+    };
+
+    fetchAISummary();
+  }, [data?.id, session]);
 
   if (!isSignedIn) return <p>Please log in to access this page.</p>
   
@@ -195,14 +241,7 @@ export default function ReviewPage() {
                               <h4 className="text-blue-800 font-bold mb-2">Overview</h4>
                               <div className="text-blue-700">
                                 <ReactMarkdown>
-                                  {(() => {
-                                    const overviewText = rawMarkdown.includes('### Overview')
-                                      ? rawMarkdown.split('### Overview')[1]?.split('###')[0] || 'No overview available.'
-                                      : 'No overview available.';
-                                    
-                                    // Remove errant colon at the beginning if present
-                                    return overviewText.startsWith(':') ? overviewText.substring(1) : overviewText;
-                                  })()}
+                                  {aiSummary?.overview || 'No overview available.'}
                                 </ReactMarkdown>
                               </div>
                             </div>
@@ -211,14 +250,9 @@ export default function ReviewPage() {
                               <h4 className="text-red-800 font-bold mb-2">Data Quality Issues</h4>
                               <div className="text-red-700">
                                 <ReactMarkdown>
-                                  {(() => {
-                                    const issuesText = rawMarkdown.includes('## Data Quality Issues')
-                                      ? rawMarkdown.split('### Data Quality Issues')[1]?.split('###')[0] || 'No data quality issues identified.'
-                                      : 'No data quality issues identified.';
-                                    
-                                    // Remove errant colon at the beginning if present
-                                    return issuesText.startsWith(':') ? issuesText.substring(1) : issuesText;
-                                  })()}
+                                  {aiSummary?.issues && aiSummary.issues.length > 0
+                                    ? aiSummary.issues.map(issue => `- ${issue}`).join('\n')
+                                    : 'No data quality issues identified.'}
                                 </ReactMarkdown>
                               </div>
                             </div>
@@ -227,14 +261,9 @@ export default function ReviewPage() {
                               <h4 className="text-green-800 font-bold mb-2">Potential Relationships</h4>
                               <div className="text-green-700">
                                 <ReactMarkdown>
-                                  {(() => {
-                                    const relationshipsText = rawMarkdown.includes('### Potential Relationships')
-                                      ? rawMarkdown.split('### Potential Relationships')[1]?.split('###')[0] || 'No potential relationships identified.'
-                                      : 'No potential relationships identified.';
-                                    
-                                    // Remove errant colon at the beginning if present
-                                    return relationshipsText.startsWith(':') ? relationshipsText.substring(1) : relationshipsText;
-                                  })()}
+                                  {aiSummary?.relationships && aiSummary.relationships.length > 0
+                                    ? aiSummary.relationships.map(relationship => `- ${relationship}`).join('\n')
+                                    : 'No potential relationships identified.'}
                                 </ReactMarkdown>
                               </div>
                             </div>
@@ -243,25 +272,9 @@ export default function ReviewPage() {
                               <h4 className="text-purple-800 font-bold mb-2">Recommendations</h4>
                               <div className="text-purple-700">
                                 <ReactMarkdown>
-                                  {(() => {
-                                    let recommendationsText = '';
-                                    
-                                    // Get the Recommendations section
-                                    if (rawMarkdown.includes('### Recommendations')) {
-                                      recommendationsText = rawMarkdown.split('### Recommendations')[1]?.split('###')[0] || '';
-                                    }
-                                    
-                                    // Get the Suggestions for further Analysis section
-                                    if (rawMarkdown.includes('### Suggestions for Further Analysis')) {
-                                      const suggestionsText = rawMarkdown.split('### Suggestions for Further Analysis')[1]?.split('###')[0] || '';
-                                      if (suggestionsText) {
-                                        // recommendationsText += '\n\n### Suggestions for Further Analysis\n' + suggestionsText;
-                                        recommendationsText = suggestionsText;
-                                      }
-                                    }
-                                    
-                                    return recommendationsText.startsWith(':') ? recommendationsText.substring(1) : recommendationsText || 'No recommendations available.';
-                                  })()}
+                                  {aiSummary?.suggestions && aiSummary.suggestions.length > 0
+                                    ? aiSummary.suggestions.map(suggestion => `- ${suggestion}`).join('\n')
+                                    : 'No recommendations available.'}
                                 </ReactMarkdown>
                               </div>
                             </div>
