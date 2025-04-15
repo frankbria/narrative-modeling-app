@@ -6,6 +6,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from app.models.user_data import UserData
 from app.models.plot import Plot
+from inspect import signature, Parameter
 
 
 class AnalyticsResult(Document):
@@ -18,6 +19,10 @@ class AnalyticsResult(Document):
     plotRefs: Optional[List[Link[Plot]]] = None
     summaryText: Optional[str] = None
 
+    def __init__(self, **data):
+        # Pass only keyword arguments to the parent initalizer.
+        super().__init__(**data)
+
     class Settings:
         name = "analytics_results"
 
@@ -25,3 +30,19 @@ class AnalyticsResult(Document):
         "populate_by_name": True,
         "arbitrary_types_allowed": True,
     }
+
+
+def get_clean_signature(model):
+    # Get the signature of the model's __init__ method
+    sig = signature(model.__init__)
+    # Filter out the parameters named 'args' and 'kwargs'
+    new_params = [
+        param
+        for name, param in sig.parameters.items()
+        if name not in ("args", "kwargs")
+    ]
+    return sig.replace(parameters=new_params)
+
+
+# Override the signature
+AnalyticsResult.__signature__ = get_clean_signature(AnalyticsResult)

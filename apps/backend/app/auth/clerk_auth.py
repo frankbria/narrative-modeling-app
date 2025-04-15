@@ -10,6 +10,7 @@ from jose import jwt, jwk
 from jose.exceptions import JWTError, ExpiredSignatureError
 import logging
 from dotenv import load_dotenv
+from inspect import signature, Signature
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -43,6 +44,22 @@ else:
     logger.error("CLERK_JWKS_URL is not set because CLERK_ISSUER is missing")
 
 security = HTTPBearer()
+
+
+def clean_signature(fn) -> Signature:
+    # Get the original signature.
+    sig = signature(fn)
+    # Filter out any parameters named 'args' or 'kwargs'
+    new_params = [
+        param
+        for param in sig.parameters.values()
+        if param.name not in ("args", "kwargs")
+    ]
+    return sig.replace(parameters=new_params)
+
+
+# Override the __signature__ attribute of security’s __call__ method.
+security.__signature__ = clean_signature(security.__call__)
 
 
 def get_unverified_header(token: str):

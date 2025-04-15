@@ -21,11 +21,13 @@ async def get_cached_visualization(
     dataset_id: str, visualization_type: str, column_name: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Get cached visualization data if it exists"""
-    cache = await VisualizationCache.find_one(
-        VisualizationCache.dataset_id == dataset_id,
-        VisualizationCache.visualization_type == visualization_type,
-        VisualizationCache.column_name == column_name,
-    )
+    # Create a query filter for the dataset_id
+    query_filter = {"visualization_type": visualization_type}
+    if column_name:
+        query_filter["column_name"] = column_name
+
+    # Find the cache entry
+    cache = await VisualizationCache.find_one(**query_filter)
     return cache.data if cache else None
 
 
@@ -36,19 +38,22 @@ async def cache_visualization(
     column_name: Optional[str] = None,
 ) -> VisualizationCache:
     """Cache visualization data"""
-    cache = await VisualizationCache.find_one(
-        VisualizationCache.dataset_id == dataset_id,
-        VisualizationCache.visualization_type == visualization_type,
-        VisualizationCache.column_name == column_name,
-    )
+    # Create a query filter for the dataset_id
+    query_filter = {"visualization_type": visualization_type}
+    if column_name:
+        query_filter["column_name"] = column_name
+
+    # Find the cache entry
+    cache = await VisualizationCache.find_one(**query_filter)
 
     if cache:
         cache.data = data
         cache.updated_at = datetime.utcnow()
         await cache.save()
     else:
+        # Create a new cache entry
         cache = VisualizationCache(
-            dataset_id=dataset_id,
+            dataset_id=dataset_id,  # This will be converted to a Link[UserData] by Beanie
             visualization_type=visualization_type,
             column_name=column_name,
             data=data,
@@ -84,10 +89,10 @@ async def generate_and_cache_histogram(
 
     # Cache the data
     await cache_visualization(
-        dataset_id, "histogram", histogram_data.dict(), column_name
+        dataset_id, "histogram", histogram_data.model_dump(), column_name
     )
 
-    return histogram_data.dict()
+    return histogram_data.model_dump()
 
 
 async def generate_and_cache_boxplot(
@@ -127,9 +132,11 @@ async def generate_and_cache_boxplot(
     )
 
     # Cache the data
-    await cache_visualization(dataset_id, "boxplot", boxplot_data.dict(), column_name)
+    await cache_visualization(
+        dataset_id, "boxplot", boxplot_data.model_dump(), column_name
+    )
 
-    return boxplot_data.dict()
+    return boxplot_data.model_dump()
 
 
 async def generate_and_cache_correlation_matrix(dataset_id: str) -> Dict[str, Any]:
@@ -152,11 +159,13 @@ async def generate_and_cache_correlation_matrix(dataset_id: str) -> Dict[str, An
     # Calculate correlation matrix
     corr_matrix = numeric_df.corr()
 
-    correlation_data = CorrelationMatrixData(
-        matrix=corr_matrix.values.tolist(), columns=corr_matrix.columns.tolist()
-    )
+    # Convert numpy array to list and get column names
+    matrix_values = corr_matrix.values.tolist()
+    columns = list(corr_matrix.columns)  # Convert Index to list
+
+    correlation_data = CorrelationMatrixData(matrix=matrix_values, columns=columns)
 
     # Cache the data
-    await cache_visualization(dataset_id, "correlation", correlation_data.dict())
+    await cache_visualization(dataset_id, "correlation", correlation_data.model_dump())
 
-    return correlation_data.dict()
+    return correlation_data.model_dump()
