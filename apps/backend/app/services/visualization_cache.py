@@ -15,14 +15,23 @@ from app.utils.plotting import (
     generate_boxplot,
     generate_correlation_matrix,
 )
+from beanie import Link
 
 
 async def get_cached_visualization(
     dataset_id: str, visualization_type: str, column_name: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Get cached visualization data if it exists"""
+    # Get the dataset to create a proper Link
+    dataset = await UserData.get(dataset_id)
+    if not dataset:
+        raise ValueError(f"Dataset {dataset_id} not found")
+
     # Create a query filter for the dataset_id
-    query_filter = {"visualization_type": visualization_type}
+    query_filter = {
+        "dataset_id": Link(dataset),
+        "visualization_type": visualization_type,
+    }
     if column_name:
         query_filter["column_name"] = column_name
 
@@ -38,6 +47,11 @@ async def cache_visualization(
     column_name: Optional[str] = None,
 ) -> VisualizationCache:
     """Cache visualization data"""
+    # Get the dataset to create a proper Link
+    dataset = await UserData.get(dataset_id)
+    if not dataset:
+        raise ValueError(f"Dataset {dataset_id} not found")
+
     # Create a query filter for the dataset_id
     query_filter = {"visualization_type": visualization_type}
     if column_name:
@@ -53,7 +67,7 @@ async def cache_visualization(
     else:
         # Create a new cache entry
         cache = VisualizationCache(
-            dataset_id=dataset_id,  # This will be converted to a Link[UserData] by Beanie
+            dataset_id=Link(dataset),  # Create a proper Link to the UserData document
             visualization_type=visualization_type,
             column_name=column_name,
             data=data,
