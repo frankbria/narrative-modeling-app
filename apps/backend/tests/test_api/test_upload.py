@@ -36,7 +36,7 @@ async def test_validate_file_invalid_type():
 
 
 @pytest.mark.asyncio
-async def test_process_file_success(mock_user_id):
+async def test_process_file_success(mock_user_id, setup_database):
     """Test successful file processing."""
     # Create sample data
     data = pd.DataFrame(
@@ -151,7 +151,7 @@ async def test_process_file_success(mock_user_id):
 
 
 @pytest.mark.asyncio
-async def test_process_file_empty_data(mock_user_id):
+async def test_process_file_empty_data(mock_user_id, setup_database):
     """Test file processing with empty data."""
     # Create empty dataframe
     data = pd.DataFrame()
@@ -189,7 +189,7 @@ async def test_process_file_empty_data(mock_user_id):
 
 
 @pytest.mark.asyncio
-async def test_process_file_invalid_data(mock_user_id):
+async def test_process_file_invalid_data(mock_user_id, setup_database):
     """Test file processing with invalid data."""
     # Create invalid data (non-serializable)
     data = pd.DataFrame({"invalid_col": [np.nan, np.inf, -np.inf]})
