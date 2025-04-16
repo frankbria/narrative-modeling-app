@@ -33,7 +33,7 @@ export default function RootLayout({
           <SignedIn>
             <SidebarWrapper />
             <main className="flex flex-1 min-h-screen">
-              <div className="flex-1 p-4 bg-gray-100">{children}</div>
+              <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
               <ConditionalAIChat />
             </main>
           </SignedIn>
