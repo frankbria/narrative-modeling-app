@@ -3,7 +3,8 @@
 import { useUser, useSession } from '@clerk/nextjs'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { CheckCircle, XCircle, UploadCloud, FileText } from 'lucide-react'
+import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ interface PreviewData {
 export default function LoadPage() {
   const { isSignedIn } = useUser()
   const { session } = useSession()
+  const router = useRouter()
   const [file, setFile] = useState<File | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [isUploading, setIsUploading] = useState(false)
@@ -168,6 +170,10 @@ export default function LoadPage() {
     }
   }
 
+  const handleNextStep = () => {
+    router.push('/review')
+  }
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -199,6 +205,14 @@ export default function LoadPage() {
                   File ID: {uploadedFileId}
                 </p>
               )}
+              <button
+                onClick={handleNextStep}
+                className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center space-x-2"
+              >
+                <span>Next Step</span>
+                <ArrowRight size={16} />
+                <span>Review Data</span>
+              </button>
             </div>
           </div>
         </div>

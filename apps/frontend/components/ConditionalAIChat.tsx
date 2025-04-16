@@ -6,8 +6,8 @@ import { AIChat } from './AIChat'
 export default function ConditionalAIChat() {
   const pathname = usePathname()
   
-  // Only show AIChat on the review page
-  if (pathname === '/review') {
+  // Show AIChat on both review and explore pages
+  if (pathname === '/review' || pathname === '/explore') {
     return <AIChat />
   }
   

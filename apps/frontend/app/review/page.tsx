@@ -10,6 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext';
 import ReactMarkdown from 'react-markdown';
 import { CorrelationHeatmap } from "@/components/CorrelationHeatmap";
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 interface UserData {
   id: string;
@@ -29,23 +33,68 @@ interface UserData {
   error?: string;
 }
 
+interface Dataset {
+  _id: string;
+  filename: string;
+  num_rows: number;
+  num_columns: number;
+  created_at: string;
+  user_id: string;
+}
+
+interface AISummary {
+  overview: string;
+  issues: string[];
+  relationships: string[];
+  suggestions: string[];
+}
+
 export default function ReviewPage() {
   const { isSignedIn, user } = useUser()
   const { session } = useSession()
+  const router = useRouter()
   const [data, setData] = useState<UserData | null>(null)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
   const [stats, setStats] = useState<StatItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const { rawMarkdown, isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
-  const [aiSummary, setAiSummary] = useState<{
-    overview: string;
-    issues: string[];
-    relationships: string[];
-    suggestions: string[];
-  } | null>(null);
+  const { isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
+  const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
+
+  const fetchDatasets = useCallback(async () => {
+    if (!user?.id) return
+
+    try {
+      // Ensure the URL has a protocol
+      let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+        backendUrl = `http://${backendUrl}`
+      }
+      
+      // Remove trailing /api if present
+      backendUrl = backendUrl.replace(/\/api$/, '')
+      
+      const response = await fetch(`${backendUrl}/api/user_data`, {
+        headers: {
+          'Authorization': `Bearer ${await session?.getToken()}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch datasets')
+      }
+
+      const result = await response.json()
+      setDatasets(result)
+    } catch (err) {
+      console.error('Error fetching datasets:', err)
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    }
+  }, [user?.id, session])
 
   const fetchPreviewData = useCallback(async () => {
-    if (!user?.id) return
+    if (!user?.id || !selectedDatasetId) return
 
     try {
       setIsLoading(true)
@@ -60,9 +109,7 @@ export default function ReviewPage() {
       // Remove trailing /api if present
       backendUrl = backendUrl.replace(/\/api$/, '')
       
-      console.log('Fetching preview data from:', `${backendUrl}/api/user_data/preview/${user.id}`)
-      
-      const response = await fetch(`${backendUrl}/api/user_data/preview/${user.id}`, {
+      const response = await fetch(`${backendUrl}/api/user_data/preview/${selectedDatasetId}`, {
         headers: {
           'Authorization': `Bearer ${await session?.getToken()}`
         }
@@ -74,7 +121,6 @@ export default function ReviewPage() {
       }
 
       const result = await response.json()
-      console.log('Preview data response:', result)
       
       // Transform the data to match our UserData interface
       const transformedData: UserData = {
@@ -108,13 +154,19 @@ export default function ReviewPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id, session])
+  }, [user?.id, session, selectedDatasetId])
 
   useEffect(() => {
     if (isSignedIn) {
+      fetchDatasets()
+    }
+  }, [isSignedIn, fetchDatasets])
+
+  useEffect(() => {
+    if (selectedDatasetId) {
       fetchPreviewData()
     }
-  }, [isSignedIn, fetchPreviewData])
+  }, [selectedDatasetId, fetchPreviewData])
 
   useEffect(() => {
     const fetchAISummary = async () => {
@@ -156,59 +208,90 @@ export default function ReviewPage() {
     fetchAISummary();
   }, [data?.id, session]);
 
+  const handleDatasetSelect = (datasetId: string) => {
+    setSelectedDatasetId(datasetId)
+  }
+
+  const handleNextStep = () => {
+    if (selectedDatasetId) {
+      router.push(`/explore/${selectedDatasetId}`)
+    }
+  }
+
   if (!isSignedIn) return <p>Please log in to access this page.</p>
   
   return (
-    <div className="p-6 ml-64 mr-80">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Review Data</h1>
-      
-      {isLoading && <p>Loading...</p>}
-      
-      {error && (
-        <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-md text-red-700">
-          <p className="font-medium">Error:</p>
-          <p>{error}</p>
+    <div className="flex-1 p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Dataset Review</h1>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-6 w-6 animate-spin mr-2 text-blue-600" />
+          <span>Loading data...</span>
         </div>
-      )}
-      
-      {!isLoading && !data && (
-        <div className="p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
-          <p>No data available. Please upload a file in the Load Data page.</p>
-        </div>
-      )}
-      
-      {data && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+      ) : error ? (
+        <div className="text-red-500 p-6">{error}</div>
+      ) : !data ? (
+        <div className="text-gray-500 p-6">Select a dataset to view its analysis</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="md:col-span-1">
             <Card>
               <CardHeader>
-                <CardTitle>Your Datasets</CardTitle>
+                <CardTitle>Select Dataset</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <div
-                    className={`p-3 rounded-md cursor-pointer ${
-                      data.id === data.id
-                        ? 'bg-blue-100 border border-blue-300'
-                        : 'hover:bg-gray-100'
-                    }`}
-                    onClick={() => fetchPreviewData()}
-                  >
-                    <p className="font-medium truncate">{data.file_name}</p>
-                    <p className="text-sm text-gray-500">
-                      {data.file_size ? `${data.file_size} bytes` : 'Unknown size'}
-                    </p>
-                  </div>
+                <div className="space-y-4">
+                  {datasets.length === 0 ? (
+                    <div className="text-center">
+                      <p className="text-gray-500 mb-4">No datasets available</p>
+                      <Link href="/load">
+                        <Button className="w-full">Upload Dataset</Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {datasets.map((dataset) => (
+                        <div
+                          key={dataset._id}
+                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                            selectedDatasetId === dataset._id
+                              ? 'bg-blue-100 border-2 border-blue-500 shadow-md'
+                              : 'hover:bg-gray-50 border border-gray-200'
+                          }`}
+                          onClick={() => handleDatasetSelect(dataset._id)}
+                        >
+                          <h3 className="font-medium">{dataset.filename}</h3>
+                          <p className="text-sm text-gray-500">
+                            {dataset.num_rows} rows × {dataset.num_columns} columns
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Created: {new Date(dataset.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {selectedDatasetId && (
+                    <div className="mt-4">
+                      <Button onClick={handleNextStep} className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white">
+                        Next Step <ArrowRight className="h-4 w-4" />
+                        Explore Data
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
-          
+
           <div className="md:col-span-3">
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dataset Information</CardTitle>
+                  <CardTitle>AI Analysis</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -225,73 +308,56 @@ export default function ReviewPage() {
                         <div className="text-sm text-gray-500">
                           <p>AI analysis is not yet available. It will be generated automatically after the dataset is processed.</p>
                         </div>
-                      ) : rawMarkdown ? (
-                        <div className="prose prose-sm max-w-none">
-                          <div className="space-y-6">
-                            {/* Debug: Log the raw markdown and data schema */}
-                            <div className="hidden">
-                              {(() => { 
-                                console.log('Raw Markdown:', rawMarkdown);
-                                console.log('Data Schema:', data.schema);
-                                return null; 
-                              })()}
-                            </div>
-                            
-                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                              <h4 className="text-blue-800 font-bold mb-2">Overview</h4>
-                              <div className="text-blue-700">
-                                <ReactMarkdown>
-                                  {aiSummary?.overview || 'No overview available.'}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                            
-                            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                              <h4 className="text-red-800 font-bold mb-2">Data Quality Issues</h4>
-                              <div className="text-red-700">
-                                <ReactMarkdown>
-                                  {aiSummary?.issues && aiSummary.issues.length > 0
-                                    ? aiSummary.issues.map(issue => `- ${issue}`).join('\n')
-                                    : 'No data quality issues identified.'}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                            
-                            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                              <h4 className="text-green-800 font-bold mb-2">Potential Relationships</h4>
-                              <div className="text-green-700">
-                                <ReactMarkdown>
-                                  {aiSummary?.relationships && aiSummary.relationships.length > 0
-                                    ? aiSummary.relationships.map(relationship => `- ${relationship}`).join('\n')
-                                    : 'No potential relationships identified.'}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-                            
-                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                              <h4 className="text-purple-800 font-bold mb-2">Recommendations</h4>
-                              <div className="text-purple-700">
-                                <ReactMarkdown>
-                                  {aiSummary?.suggestions && aiSummary.suggestions.length > 0
-                                    ? aiSummary.suggestions.map(suggestion => `- ${suggestion}`).join('\n')
-                                    : 'No recommendations available.'}
-                                </ReactMarkdown>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
-                              <div>
-                                <p>Upload Date</p>
-                                <p className="font-medium text-gray-700">
-                                  {data.upload_date ? new Date(data.upload_date).toLocaleString() : 'Unknown'}
-                                </p>
-                              </div>
+                      ) : (
+                        <div className="space-y-6">
+                          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <h4 className="text-blue-800 font-bold mb-2">Overview</h4>
+                            <div className="text-blue-700">
+                              <ReactMarkdown>{aiSummary?.overview || 'No overview available.'}</ReactMarkdown>
                             </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-500">
-                          <p>No AI analysis available.</p>
+                          
+                          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                            <h4 className="text-yellow-800 font-bold mb-2">Potential Issues</h4>
+                            <div className="text-yellow-700">
+                              <ReactMarkdown>
+                                {aiSummary?.issues && aiSummary.issues.length > 0
+                                  ? aiSummary.issues.map((issue: string) => `- ${issue}`).join('\n')
+                                  : 'No potential issues identified.'}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                            <h4 className="text-green-800 font-bold mb-2">Potential Relationships</h4>
+                            <div className="text-green-700">
+                              <ReactMarkdown>
+                                {aiSummary?.relationships && aiSummary.relationships.length > 0
+                                  ? aiSummary.relationships.map((relationship: string) => `- ${relationship}`).join('\n')
+                                  : 'No potential relationships identified.'}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                            <h4 className="text-purple-800 font-bold mb-2">Recommendations</h4>
+                            <div className="text-purple-700">
+                              <ReactMarkdown>
+                                {aiSummary?.suggestions && aiSummary.suggestions.length > 0
+                                  ? aiSummary.suggestions.map((suggestion: string) => `- ${suggestion}`).join('\n')
+                                  : 'No recommendations available.'}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
+                            <div>
+                              <p>Upload Date</p>
+                              <p className="font-medium text-gray-700">
+                                {data.upload_date ? new Date(data.upload_date).toLocaleString() : 'Unknown'}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -307,7 +373,7 @@ export default function ReviewPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="md:col-span-4">
             {stats.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {stats.map((stat, index) => (
                   <StatsCard key={index} stats={stat} />
                 ))}
