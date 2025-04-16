@@ -5,6 +5,7 @@ from beanie import PydanticObjectId
 from typing import List, Dict, Any
 from app.models.user_data import UserData
 from app.auth.clerk_auth import get_current_user_id
+from app.services.eda_summary import generate_eda_summary
 import pandas as pd
 import io
 import boto3
@@ -270,4 +271,38 @@ async def get_ai_summary(
         logger.error(f"Error getting AI summary: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error getting AI summary: {str(e)}"
+        )
+
+
+@router.get("/{id}/eda-summary", response_model=Dict[str, Any])
+async def get_eda_summary(
+    id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
+):
+    """
+    Generate and return an Exploratory Data Analysis (EDA) summary for a specific dataset.
+    This endpoint will analyze the dataset and provide insights about its structure and content.
+    """
+    try:
+        # Get the UserData document
+        user_data = await UserData.get(id)
+        if not user_data or user_data.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Generate EDA summary using the service
+        eda_summary = await generate_eda_summary(user_data)
+
+        return {
+            "summary": eda_summary,
+            "dataset_id": str(id),
+            "created_at": (
+                user_data.created_at.isoformat() if user_data.created_at else None
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating EDA summary: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating EDA summary: {str(e)}"
         )
