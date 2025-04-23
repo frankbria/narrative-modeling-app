@@ -40,7 +40,7 @@ async def get_column_stats(
     if not column_stats:
         try:
             # Get the dataset
-            from app.models.user_data import UserData
+            from shared.models.user_data import UserData
 
             dataset = await UserData.get(dataset_id)
 
@@ -127,7 +127,7 @@ async def recalculate_column_stats(
     """
     try:
         # Get the dataset
-        from app.models.user_data import UserData
+        from shared.models.user_data import UserData
 
         dataset = await UserData.get(dataset_id)
 
