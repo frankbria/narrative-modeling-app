@@ -1,3 +1,4 @@
+# apps/backend/app/main.py
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -5,14 +6,15 @@ from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
+# Add the app directory to sys.path if needed
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
 # Get the path to the .env file and load it first
 env_path = Path(__file__).resolve().parent.parent / ".env"
 print(f"Loading .env file from: {env_path}")
 load_dotenv(dotenv_path=env_path, override=True)
-
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../shared"))
-)
 
 
 # Configure logging
@@ -42,7 +44,7 @@ from app.api.routes import (
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel

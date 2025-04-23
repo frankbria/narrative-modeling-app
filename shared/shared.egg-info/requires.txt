@@ -1,0 +1,4 @@
+beanie>=1.25.0
+motor>=3.3.2
+pydantic>=2.5.3
+python-dotenv>=1.0.0

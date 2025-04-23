@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "narrative-modeling-app"
+version = "0.1.0"
+description = "Narrative Modeling Application"
+authors = ["Frank Bria <frank.bria@pm.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+shared = {path = "shared", develop = true}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api" 

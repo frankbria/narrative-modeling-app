@@ -11,7 +11,7 @@ from app.models.visualization_cache import (
 from app.api.deps import get_current_user_id
 from app.main import app
 from beanie import PydanticObjectId, Link
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 
 
 @pytest.fixture

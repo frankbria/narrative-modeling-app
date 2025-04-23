@@ -7,7 +7,7 @@ from app.models.column_stats import (
     NumericHistogram,
     CategoricalValueCounts,
 )
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 from beanie import Link
 
 

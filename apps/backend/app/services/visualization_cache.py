@@ -8,7 +8,7 @@ from app.models.visualization_cache import (
     BoxplotData,
     CorrelationMatrixData,
 )
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 from app.utils.s3 import get_file_from_s3
 from app.utils.plotting import (
     generate_histogram,

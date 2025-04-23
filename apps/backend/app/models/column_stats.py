@@ -2,7 +2,7 @@ from beanie import Document, Link, Indexed
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timezone
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 
 
 def get_current_time() -> datetime:

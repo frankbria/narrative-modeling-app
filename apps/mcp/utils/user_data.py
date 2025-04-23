@@ -1,6 +1,6 @@
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
-from shared.models.user_data import UserData  # Adjust path if needed
+from ..models.user_data import UserData
 import os
 import asyncio
 

@@ -2,7 +2,7 @@ from beanie import Document, Link, Indexed
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 
 
 class HistogramData(BaseModel):

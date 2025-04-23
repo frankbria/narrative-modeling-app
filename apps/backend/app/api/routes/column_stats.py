@@ -10,6 +10,7 @@ import io
 import boto3
 import os
 import logging
+from app.models.user_data import UserData
 
 from app.utils.column_stats import calculate_and_store_column_stats
 
@@ -40,8 +41,6 @@ async def get_column_stats(
     if not column_stats:
         try:
             # Get the dataset
-            from shared.models.user_data import UserData
-
             dataset = await UserData.get(dataset_id)
 
             if not dataset:
@@ -127,8 +126,6 @@ async def recalculate_column_stats(
     """
     try:
         # Get the dataset
-        from shared.models.user_data import UserData
-
         dataset = await UserData.get(dataset_id)
 
         if not dataset:

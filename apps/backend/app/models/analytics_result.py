@@ -4,7 +4,7 @@ from beanie import Document, Link
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 from app.models.plot import Plot
 from inspect import signature, Parameter
 
