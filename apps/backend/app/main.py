@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from pathlib import Path
@@ -8,6 +9,11 @@ import logging
 env_path = Path(__file__).resolve().parent.parent / ".env"
 print(f"Loading .env file from: {env_path}")
 load_dotenv(dotenv_path=env_path, override=True)
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../shared"))
+)
+
 
 # Configure logging
 logging.basicConfig(
