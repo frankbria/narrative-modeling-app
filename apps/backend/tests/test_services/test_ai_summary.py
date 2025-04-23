@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
-from shared.models.user_data import UserData, AISummary, SchemaField
+from app.models.user_data import UserData, AISummary, SchemaField
 from app.utils.ai_summary import (
     generate_dataset_summary,
     prepare_dataset_summary,

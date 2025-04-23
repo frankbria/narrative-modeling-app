@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
 from app.models.plot import Plot
-from shared.models.user_data import UserData
+from app.models.user_data import UserData
 from app.main import app
 from pydantic import HttpUrl
 import json
