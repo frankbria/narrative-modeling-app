@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import numpy as np
 from fastapi import UploadFile
-from app.models.user_data import UserData, SchemaField
+from shared.models.user_data import UserData, SchemaField
 from app.utils.schema_inference import infer_schema
 from app.utils.s3 import upload_file_to_s3
 import io

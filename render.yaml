@@ -7,3 +7,20 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port 10000
     workingDir: apps/backend
     autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority&appName=<appname>
+
+    - type: web
+      name: mcp
+      env: python
+      rootDir: apps/mcp
+      buildCommand: uv pip install -e .
+      startCommand: uvicorn tools.eda_summary:app --host 0.0.0.0 --port 10001
+      envVars:
+        - key: ENV
+          value: production
+        - key: MONGODB_URI
+          value: mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority&appName=<appname>

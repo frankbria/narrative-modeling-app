@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime, timezone
 from beanie import PydanticObjectId, Link
 from app.models.analytics_result import AnalyticsResult
-from app.models.user_data import UserData, SchemaField
+from shared.models.user_data import UserData, SchemaField
 from app.models.plot import Plot
 from app.config import settings
 from app.auth.clerk_auth import get_current_user_id

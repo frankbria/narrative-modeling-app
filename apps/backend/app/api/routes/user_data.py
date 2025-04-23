@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from beanie import PydanticObjectId
 from typing import List, Dict, Any
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.auth.clerk_auth import get_current_user_id
 from app.services.eda_summary import generate_eda_summary
 import pandas as pd
