@@ -1,7 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 from app.config import settings
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.models.column_stats import ColumnStats
 
 

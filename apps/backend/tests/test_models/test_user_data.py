@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
-from app.models.user_data import UserData, SchemaField, AISummary, get_current_time
+from shared.models.user_data import UserData, SchemaField, AISummary, get_current_time
 
 
 def test_get_current_time():

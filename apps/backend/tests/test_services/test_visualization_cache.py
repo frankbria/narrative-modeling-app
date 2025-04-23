@@ -11,7 +11,7 @@ from app.models.visualization_cache import (
     BoxplotData,
     CorrelationMatrixData,
 )
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.services.visualization_cache import (
     get_cached_visualization,
     cache_visualization,

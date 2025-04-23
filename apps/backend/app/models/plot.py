@@ -4,7 +4,7 @@ from beanie import Document, Link
 from pydantic import HttpUrl, Field
 from typing import Optional
 from datetime import datetime, timezone
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 
 
 class Plot(Document):

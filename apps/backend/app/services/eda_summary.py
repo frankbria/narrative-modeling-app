@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.services.s3_service import download_file_from_s3
 import logging
 import pandas as pd

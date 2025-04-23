@@ -36,7 +36,7 @@ from app.api.routes import (
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel

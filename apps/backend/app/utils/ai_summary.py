@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
-from app.models.user_data import UserData, AISummary
+from shared.models.user_data import UserData, AISummary
 
 # Set up logging
 logger = logging.getLogger(__name__)

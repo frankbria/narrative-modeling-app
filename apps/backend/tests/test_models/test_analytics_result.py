@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timezone
 from beanie import PydanticObjectId, Link
 from app.models.analytics_result import AnalyticsResult
-from app.models.user_data import UserData
+from shared.models.user_data import UserData
 from app.models.plot import Plot
 
 
