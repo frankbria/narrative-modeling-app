@@ -1,4 +1,5 @@
-from fastmcp import FastMCP
+# apps/mcp/main.py
+from fastmcp.src.fastmcp.server.server import FastMCP
 from tools.eda_summary import EdaInput, eda_summary
 
 mcp = FastMCP("Narrative Modeling Application")
