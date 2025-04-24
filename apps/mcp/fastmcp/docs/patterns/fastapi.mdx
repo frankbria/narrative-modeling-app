@@ -1,0 +1,123 @@
+---
+title: FastAPI Integration
+sidebarTitle: FastAPI
+description: Generate MCP servers from FastAPI apps
+icon: square-bolt
+---
+import { VersionBadge } from '/snippets/version-badge.mdx'
+
+<VersionBadge version="2.0.0" />
+
+
+FastMCP can automatically convert FastAPI applications into MCP servers.
+
+<Tip>
+FastMCP does *not* include FastAPI as a dependency; you must install it separately to run these examples.
+</Tip>
+
+
+```python {2, 22, 25}
+from fastapi import FastAPI
+from fastmcp import FastMCP
+
+
+# A FastAPI app
+app = FastAPI()
+
+@app.get("/items")
+def list_items():
+    return [{"id": 1, "name": "Item 1"}, {"id": 2, "name": "Item 2"}]
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    return {"id": item_id, "name": f"Item {item_id}"}
+
+@app.post("/items")
+def create_item(name: str):
+    return {"id": 3, "name": name}
+
+
+# Create an MCP server from your FastAPI app
+mcp = FastMCP.from_fastapi(app=app)
+
+if __name__ == "__main__":
+    mcp.run()  # Start the MCP server
+```
+
+## Route Mapping
+
+By default, FastMCP will map FastAPI routes to MCP components according to the following rules:
+
+| FastAPI Route Type | FastAPI Example | MCP Component | Notes |
+|--------------------|--------------|---------|-------|
+| GET without path params | `@app.get("/stats")` | Resource | Simple resources for fetching data |
+| GET with path params | `@app.get("/users/{id}")` | Resource Template | Path parameters become template parameters |
+| POST, PUT, DELETE, etc. | `@app.post("/users")` | Tool | Operations that modify data |
+
+For more details on route mapping or custom mapping rules, see the [OpenAPI integration documentation](/patterns/openapi#route-mapping); FastMCP uses the same mapping rules for both FastAPI and OpenAPI integrations.
+
+## Complete Example
+
+Here's a more detailed example with a data model:
+
+```python
+import asyncio
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from fastmcp import FastMCP, Client
+
+# Define your Pydantic model
+class Item(BaseModel):
+    name: str
+    price: float
+
+# Create your FastAPI app
+app = FastAPI()
+items = {}  # In-memory database
+
+@app.get("/items")
+def list_items():
+    """List all items"""
+    return list(items.values())
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    """Get item by ID"""
+    if item_id not in items:
+        raise HTTPException(404, "Item not found")
+    return items[item_id]
+
+@app.post("/items")
+def create_item(item: Item):
+    """Create a new item"""
+    item_id = len(items) + 1
+    items[item_id] = {"id": item_id, **item.model_dump()}
+    return items[item_id]
+
+# Test your MCP server with a client
+async def test():
+    # Create MCP server from FastAPI app
+    mcp = await FastMCP.from_fastapi(app=app)
+    
+    # List the components that were created
+    tools = await mcp.list_tools()
+    resources = await mcp.list_resources()
+    templates = await mcp.list_resource_templates()
+    
+    print(f"Generated {len(tools)} tools")
+    print(f"Generated {len(resources)} resources")
+    print(f"Generated {len(templates)} templates")
+    
+    # In a real scenario, you would run the server:
+    # mcp.run()
+
+if __name__ == "__main__":
+    asyncio.run(test())
+```
+
+## Benefits
+
+- **Leverage existing FastAPI apps** - No need to rewrite your API logic
+- **Schema reuse** - FastAPI's Pydantic models and validation are inherited
+- **Full feature support** - Works with FastAPI's authentication, dependencies, etc.
+- **ASGI transport** - Direct communication without additional HTTP overhead
