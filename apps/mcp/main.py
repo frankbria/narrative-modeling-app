@@ -18,7 +18,8 @@ try:
         return eda_summary(params)
 
     if __name__ == "__main__":
-        mcp.run()
+        port = int(os.environ.get("PORT", 10000))
+        mcp.run(transport="sse", host="0.0.0.0", port=port)
 
 except Exception as e:
     import traceback
