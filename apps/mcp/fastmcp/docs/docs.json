@@ -1,0 +1,75 @@
+{
+    "$schema": "https://mintlify.com/docs.json",
+    "background": {
+        "color": {
+            "dark": "#222831",
+            "light": "#EEEEEE"
+        },
+        "decoration": "windows"
+    },
+    "colors": {
+        "dark": "#f72585",
+        "light": "#4cc9f0",
+        "primary": "#2d00f7"
+    },
+    "description": "The fast, Pythonic way to build MCP servers and clients.",
+    "footer": {
+        "socials": {
+            "bluesky": "https://bsky.app/profile/jlowin.dev",
+            "github": "https://github.com/jlowin/fastmcp",
+            "x": "https://x.com/jlowin"
+        }
+    },
+    "name": "FastMCP",
+    "navbar": {
+        "primary": {
+            "href": "https://github.com/jlowin/fastmcp",
+            "type": "github"
+        }
+    },
+    "navigation": {
+        "groups": [
+            {
+                "group": "Get Started",
+                "pages": [
+                    "getting-started/welcome",
+                    "getting-started/installation",
+                    "getting-started/quickstart"
+                ]
+            },
+            {
+                "group": "Servers",
+                "pages": [
+                    "servers/fastmcp",
+                    "servers/tools",
+                    "servers/resources",
+                    "servers/prompts",
+                    "servers/context"
+                ]
+            },
+            {
+                "group": "Clients",
+                "pages": [
+                    "clients/client",
+                    "clients/transports"
+                ]
+            },
+            {
+                "group": "Patterns",
+                "pages": [
+                    "patterns/proxy",
+                    "patterns/composition",
+                    "patterns/decorating-methods",
+                    "patterns/openapi",
+                    "patterns/fastapi",
+                    "patterns/contrib"
+                ]
+            },
+            {
+                "group": "Deployment",
+                "pages": []
+            }
+        ]
+    },
+    "theme": "mint"
+}
