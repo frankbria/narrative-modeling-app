@@ -1,5 +1,12 @@
 # apps/mcp/main.py
-from fastmcp.src.fastmcp.server.server import FastMCP
+import sys
+import os
+
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "fastmcp", "src"))
+)
+
+from fastmcp.server.server import FastMCP
 from tools.eda_summary import EdaInput, eda_summary
 
 mcp = FastMCP("Narrative Modeling Application")
