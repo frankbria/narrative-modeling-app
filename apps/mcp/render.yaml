@@ -1,3 +1,5 @@
-startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
-buildCommand: uv pip install -e .
+startCommand: poetry run python main.py
+buildCommand: | 
+  poetry pip install -e .
+  poetry run pip install -e ./fastmcp
 rootDir: apps/mcp
