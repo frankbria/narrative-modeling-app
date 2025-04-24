@@ -1,19 +1,40 @@
-[project]
-name = "fastmcp"
+# This file is part of the MCP project.
+
+[tool.poetry]
+name = "mcp-modeling-server"
 version = "0.1.0"
-dependencies = [
-    "fastapi",
-    "uvicorn",
-    "pandas",
-    "numpy",
-    "matplotlib",
-    "pydantic",
-    "scikit-learn",
-    "httpx",
-    "python-multipart",
-    "boto3",
-    "openai",
-]
+description = "FastMCP server for Narrative Modeling App"
+authors = ["Frank Bria <frank.bria@gmail.com>"]
+readme = "README.md"
+packages = [ { include = "main.py" } ]
 
 [tool.uv]
 virtualenvs.in-project = true
+
+[tool.poetry.dependencies]
+python = "^3.10"
+logging = "^0.4.9.6"
+pandas = "^2.2.3"
+pytest = "^8.3.5"
+numpy = "^2.2.4"
+matplotlib = "^3.8.4"
+pydantic = "^2.11.0"
+scikit-learn = "^1.6.1"
+httpx = "^0.28.1"
+python-multipart = "^0.0.20"
+boto3 = "^1.37.31"
+openai = "^1.72.0"
+python-dotenv = "^1.1.0"
+exceptiongroup = "^1.2.2"
+mcp = "^1.6.0"
+openapi-pydantic = "^0.5.1"
+rich = "^14.0.0"
+typer = "^0.15.2"
+websockets = "^15.0.1"
+
+[tool.poetry.dev-dependencies]
+pytest = "^8.3.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
