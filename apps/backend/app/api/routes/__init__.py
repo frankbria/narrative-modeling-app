@@ -7,6 +7,8 @@ from app.api.routes import (
     upload,
     store,
     column_stats,
+    health,
+    secure_upload,
 )
 
 api_router = APIRouter()
@@ -24,3 +26,5 @@ api_router.include_router(store.router, prefix="/store", tags=["store"])
 api_router.include_router(
     column_stats.router, prefix="/column_stats", tags=["column_stats"]
 )
+api_router.include_router(health.router, prefix="", tags=["health"])
+api_router.include_router(secure_upload.router, prefix="/secure-upload", tags=["secure-upload"])

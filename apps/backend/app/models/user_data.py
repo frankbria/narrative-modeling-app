@@ -45,6 +45,12 @@ class UserData(Document):
     created_at: datetime = Field(default_factory=get_current_time)
     updated_at: datetime = Field(default_factory=get_current_time)
     aiSummary: Optional[AISummary] = None
+    
+    # PII-related fields
+    contains_pii: bool = False
+    pii_report: Optional[Dict[str, Any]] = None
+    pii_risk_level: Optional[str] = None  # "low", "medium", "high"
+    pii_masked: bool = False
 
     class Settings:
         name = "user_data"
