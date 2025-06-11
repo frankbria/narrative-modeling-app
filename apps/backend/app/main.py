@@ -45,6 +45,7 @@ from app.api.routes import (
     s3,
     data_processing,
     ai_analysis,
+    model_training,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -53,6 +54,7 @@ from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
 from app.models.column_stats import ColumnStats
+from app.models.ml_model import MLModel
 from app.utils.ai_summary import initialize_openai_client
 
 
@@ -64,7 +66,7 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats],
+        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel],
     )
 
     # Initialize OpenAI client
@@ -132,6 +134,11 @@ app.include_router(
     ai_analysis.router,
     prefix=f"{settings.API_V1_STR}/ai",
     tags=["ai_analysis"],
+)
+app.include_router(
+    model_training.router,
+    prefix=f"{settings.API_V1_STR}/ml",
+    tags=["model_training"],
 )
 
 
