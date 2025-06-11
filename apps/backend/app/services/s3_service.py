@@ -5,6 +5,7 @@ import logging
 import re
 from urllib.parse import urlparse, unquote
 from typing import Optional
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -58,3 +59,33 @@ def download_file_from_s3(s3_url: str) -> str:
     except Exception as e:
         logger.error(f"Error downloading file from S3: {str(e)}")
         raise
+
+
+class S3Service:
+    """Service for S3 operations"""
+    
+    def __init__(self):
+        self.bucket_name = os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
+        self.s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+        )
+    
+    async def download_file_bytes(self, file_key: str) -> bytes:
+        """Download file from S3 and return as bytes"""
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
+            return response['Body'].read()
+        except ClientError as e:
+            logger.error(f"Error downloading file from S3: {str(e)}")
+            raise
+    
+    def get_file_url(self, file_key: str) -> str:
+        """Get S3 URL for a file"""
+        return f"s3://{self.bucket_name}/{file_key}"
+
+
+# Create singleton instance
+s3_service = S3Service()
