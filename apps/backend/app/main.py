@@ -50,6 +50,8 @@ from app.api.routes import (
     monitoring,
     ab_testing,
     batch_prediction,
+    model_export,
+    documentation,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -166,6 +168,16 @@ app.include_router(
     batch_prediction.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["batch-prediction"],
+)
+app.include_router(
+    model_export.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["model-export"],
+)
+app.include_router(
+    documentation.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["documentation"],
 )
 
 
