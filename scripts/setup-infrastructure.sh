@@ -6,7 +6,12 @@ echo ""
 
 # Check prerequisites
 if ! command -v aws &> /dev/null; then
-    echo "ERROR: aws CLI is not installed. Please install it first."
+    echo "ERROR: aws CLI is not installed."
+    echo ""
+    echo "To install AWS CLI v2:"
+    echo "  1. Download from: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    echo "  2. Or use the install script in scripts/aws/install"
+    echo ""
     exit 1
 fi
 
