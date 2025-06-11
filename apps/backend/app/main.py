@@ -41,6 +41,8 @@ from app.api.routes import (
     upload,
     store,
     visualizations,
+    secure_upload,
+    health,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -108,6 +110,16 @@ app.include_router(
     visualizations.router,
     prefix=f"{settings.API_V1_STR}/visualizations",
     tags=["visualizations"],
+)
+app.include_router(
+    secure_upload.router,
+    prefix=f"{settings.API_V1_STR}/upload",
+    tags=["secure_upload"],
+)
+app.include_router(
+    health.router,
+    prefix=f"{settings.API_V1_STR}/health",
+    tags=["health"],
 )
 
 
