@@ -48,6 +48,8 @@ from app.api.routes import (
     model_training,
     production,
     monitoring,
+    ab_testing,
+    batch_prediction,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -58,6 +60,8 @@ from app.models.trained_model import TrainedModel
 from app.models.column_stats import ColumnStats
 from app.models.ml_model import MLModel
 from app.models.api_key import APIKey
+from app.models.ab_test import ABTest
+from app.models.batch_job import BatchJob
 from app.utils.ai_summary import initialize_openai_client
 
 
@@ -69,7 +73,7 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel, APIKey],
+        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel, APIKey, ABTest, BatchJob],
     )
 
     # Initialize OpenAI client
@@ -152,6 +156,16 @@ app.include_router(
     monitoring.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["monitoring"],
+)
+app.include_router(
+    ab_testing.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["ab-testing"],
+)
+app.include_router(
+    batch_prediction.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["batch-prediction"],
 )
 
 
