@@ -3,7 +3,7 @@
 import { useUser, useSession } from '@clerk/nextjs'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight } from 'lucide-react'
+import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight, AlertTriangle, Shield, Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
   Table,
@@ -26,6 +26,23 @@ interface SchemaField {
   is_high_cardinality: boolean
 }
 
+interface PIIDetection {
+  column: string
+  field: string
+  type: string
+  confidence: number
+  start?: number
+  end?: number
+}
+
+interface PIIReport {
+  has_pii: boolean
+  detections: PIIDetection[]
+  risk_level: string
+  total_detections: number
+  affected_columns: string[]
+}
+
 interface PreviewData {
   headers: string[]
   previewData: Array<Array<string | number | boolean | null>>
@@ -34,6 +51,9 @@ interface PreviewData {
   id?: string
   s3_url?: string
   schema?: SchemaField[]
+  pii_report?: PIIReport
+  status?: string
+  requires_confirmation?: boolean
 }
 
 export default function LoadPage() {
@@ -48,6 +68,8 @@ export default function LoadPage() {
   const [isConfirming, setIsConfirming] = useState(false)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null)
+  const [showPIIWarning, setShowPIIWarning] = useState(false)
+  const [piiData, setPiiData] = useState<PIIReport | null>(null)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     console.log('Files dropped:', acceptedFiles)
@@ -65,6 +87,8 @@ export default function LoadPage() {
     setShowSuccessMessage(false)
     setUploadedFileId(null)
     setIsUploading(false)
+    setShowPIIWarning(false)
+    setPiiData(null)
   }, [])
 
   const handleUpload = async () => {
@@ -72,20 +96,22 @@ export default function LoadPage() {
 
     setIsUploading(true)
     setErrorMessage(null)
+    setShowPIIWarning(false)
     console.log('Uploading file:', file.name, file.type)
 
     try {
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log('Sending request to /api/upload for preview')
+      console.log('Sending request to secure upload API')
       
-      const response = await fetch('/api/upload', {
+      // Send directly to backend secure upload API
+      const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+      const response = await fetch(`${backendUrl}/api/v1/upload/secure`, {
         method: 'POST',
         body: formData,
-        credentials: 'include',
         headers: {
-          'Accept': 'application/json',
+          'Authorization': `Bearer ${await session?.getToken()}`
         }
       })
 
@@ -94,49 +120,62 @@ export default function LoadPage() {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Error response:', errorText)
-        throw new Error(`Upload failed: ${errorText}`)
+        throw new Error(`Upload failed: ${response.status} ${errorText}`)
       }
 
       const responseData = await response.json()
-      console.log('Preview data:', responseData)
+      console.log('Upload response:', responseData)
       
-      if (!responseData.headers || !responseData.previewData) {
-        throw new Error('Invalid response format: missing headers or preview data')
+      // Handle different response types
+      if (responseData.status === 'pii_detected' && responseData.requires_confirmation) {
+        // High-risk PII detected, show warning
+        setPiiData(responseData.pii_report)
+        setShowPIIWarning(true)
+        setUploadStatus('idle') // Keep in idle state for user decision
+      } else if (responseData.status === 'success') {
+        // Successful upload, show preview
+        const previewDataWithPII: PreviewData = {
+          headers: Object.keys(responseData.preview?.[0] || {}),
+          previewData: responseData.preview?.slice(0, 10).map((row: any) => 
+            Object.values(row)
+          ) || [],
+          fileName: responseData.filename || file.name,
+          fileType: file.name.split('.').pop()?.toLowerCase() || '',
+          id: responseData.file_id,
+          pii_report: responseData.pii_report,
+          status: responseData.status
+        }
+        
+        setPreviewData(previewDataWithPII)
+        setUploadStatus('success')
+        setShowSuccessMessage(true)
+        setUploadedFileId(responseData.file_id)
+      } else {
+        throw new Error('Unexpected response format')
       }
       
-      setPreviewData(responseData)
-      setUploadStatus('success')
     } catch (err) {
       console.error('Upload error:', err)
       setUploadStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'An unknown error occurred')
-      setFile(null)
     } finally {
       setIsUploading(false)
     }
   }
 
-  const handleConfirmUpload = async () => {
-    if (!file || !previewData) return
+  const handleConfirmPII = async (maskPII: boolean = true) => {
+    if (!file || !piiData) return
     
     setIsConfirming(true)
     try {
-      console.log('Sending file to backend for storage')
+      console.log('Confirming PII upload with masking:', maskPII)
       
-      // Create a new FormData
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('mask_pii', maskPII.toString())
       
-      // Log file details
-      console.log('File details:', {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      })
-
-      // Send the file directly to the backend
       const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
-      const response = await fetch(`${backendUrl}/api/upload`, {
+      const response = await fetch(`${backendUrl}/api/v1/upload/confirm-pii-upload`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -146,25 +185,36 @@ export default function LoadPage() {
 
       if (!response.ok) {
         const errorText = await response.text()
-        throw new Error(`Failed to store data: ${errorText}`)
+        throw new Error(`Failed to upload with PII: ${errorText}`)
       }
 
       const result = await response.json()
-      console.log('Storage result:', result)
+      console.log('PII upload result:', result)
       
-      // Show success message
+      // Show success and preview
+      const previewDataWithPII: PreviewData = {
+        headers: Object.keys(result.preview?.[0] || {}),
+        previewData: result.preview?.slice(0, 10).map((row: any) => 
+          Object.values(row)
+        ) || [],
+        fileName: result.filename || file.name,
+        fileType: file.name.split('.').pop()?.toLowerCase() || '',
+        id: result.file_id,
+        pii_report: result.pii_report,
+        status: result.status
+      }
+      
+      setPreviewData(previewDataWithPII)
       setUploadStatus('success')
-      setErrorMessage(null)
       setShowSuccessMessage(true)
-      setUploadedFileId(result.id)
+      setUploadedFileId(result.file_id)
+      setShowPIIWarning(false)
+      setPiiData(null)
       
-      // Reset the form after successful upload
-      setFile(null)
-      setPreviewData(null)
     } catch (err) {
-      console.error('Error:', err)
+      console.error('PII confirmation error:', err)
       setUploadStatus('error')
-      setErrorMessage(err instanceof Error ? err.message : 'An error occurred')
+      setErrorMessage(err instanceof Error ? err.message : 'An error occurred during PII confirmation')
     } finally {
       setIsConfirming(false)
     }
@@ -218,6 +268,110 @@ export default function LoadPage() {
         </div>
       )}
 
+      {/* PII Warning */}
+      {showPIIWarning && piiData && (
+        <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-center mb-4">
+            <AlertTriangle className="text-amber-500 mr-3" size={24} />
+            <div>
+              <h3 className="font-bold text-amber-800 text-lg">Sensitive Data Detected</h3>
+              <p className="text-amber-700">
+                We've detected potentially sensitive information in your file that may require special handling.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-md p-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-amber-600">{piiData.total_detections}</div>
+                <div className="text-sm text-gray-600">Total Detections</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">{piiData.risk_level.toUpperCase()}</div>
+                <div className="text-sm text-gray-600">Risk Level</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{piiData.affected_columns.length}</div>
+                <div className="text-sm text-gray-600">Affected Columns</div>
+              </div>
+            </div>
+
+            {piiData.detections.length > 0 && (
+              <div>
+                <h4 className="font-medium text-gray-800 mb-2">Detected Sensitive Information:</h4>
+                <div className="space-y-2">
+                  {piiData.detections.slice(0, 5).map((detection, index) => (
+                    <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                      <span className="text-sm font-medium text-gray-700">{detection.column}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                          {detection.type}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {Math.round(detection.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {piiData.detections.length > 5 && (
+                    <div className="text-sm text-gray-500 italic">
+                      ... and {piiData.detections.length - 5} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => handleConfirmPII(true)}
+              disabled={isConfirming}
+              className={`flex-1 px-4 py-3 rounded-md text-white font-medium transition-colors flex items-center justify-center space-x-2 ${
+                isConfirming
+                  ? 'bg-green-400 cursor-wait'
+                  : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              <Shield size={16} />
+              <span>{isConfirming ? 'Processing...' : 'Upload with Data Masking'}</span>
+              <EyeOff size={16} />
+            </button>
+            <button
+              onClick={() => handleConfirmPII(false)}
+              disabled={isConfirming}
+              className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${
+                isConfirming
+                  ? 'bg-orange-400 cursor-wait text-white'
+                  : 'bg-orange-100 hover:bg-orange-200 text-orange-800'
+              }`}
+            >
+              <Eye size={16} />
+              <span>{isConfirming ? 'Processing...' : 'Upload Original Data'}</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowPIIWarning(false)
+                setPiiData(null)
+                setFile(null)
+              }}
+              className="px-4 py-3 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel Upload
+            </button>
+          </div>
+
+          <div className="mt-4 text-xs text-gray-600">
+            <p>
+              <strong>Data Masking:</strong> Sensitive information will be replaced with placeholder values (e.g., ***@***.com for emails).
+              <br />
+              <strong>Original Data:</strong> Keep sensitive information as-is. Ensure you have proper authorization for handling this data.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer text-center ${
@@ -241,7 +395,7 @@ export default function LoadPage() {
       </div>
 
       {/* Upload Button */}
-      {file && !previewData && (
+      {file && !previewData && !showPIIWarning && (
         <div className="mt-4 flex items-center justify-center">
           <button
             onClick={handleUpload}
@@ -254,7 +408,7 @@ export default function LoadPage() {
                 : 'bg-blue-500 hover:bg-blue-600'
             }`}
           >
-            {isUploading ? 'Uploading...' : uploadStatus === 'success' ? 'Uploaded' : 'Upload File'}
+            {isUploading ? 'Scanning for PII...' : uploadStatus === 'success' ? 'Uploaded' : 'Upload & Scan File'}
           </button>
         </div>
       )}
@@ -284,7 +438,26 @@ export default function LoadPage() {
       {/* Preview Grid */}
       {previewData && (
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Preview Data</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Preview Data</h2>
+            {previewData.pii_report && (
+              <div className="flex items-center space-x-2">
+                {previewData.pii_report.has_pii ? (
+                  <>
+                    <Shield className="text-amber-500" size={16} />
+                    <span className="text-sm text-amber-700 font-medium">
+                      PII {previewData.pii_report.risk_level.toUpperCase()} RISK
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="text-green-500" size={16} />
+                    <span className="text-sm text-green-700 font-medium">NO PII DETECTED</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div className="border rounded-lg overflow-hidden">
             <Table>
               <TableHeader>
@@ -309,20 +482,6 @@ export default function LoadPage() {
             </Table>
           </div>
 
-          {/* Confirmation Button */}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleConfirmUpload}
-              disabled={isConfirming}
-              className={`px-6 py-2 rounded-md text-white font-medium transition-colors ${
-                isConfirming
-                  ? 'bg-blue-400 cursor-wait'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {isConfirming ? 'Saving...' : 'Confirm & Save Data'}
-            </button>
-          </div>
         </div>
       )}
 
