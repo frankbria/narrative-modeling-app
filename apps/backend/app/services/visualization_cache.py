@@ -16,13 +16,24 @@ from app.utils.plotting import (
     generate_correlation_matrix,
 )
 from beanie import Link
+from app.services.redis_cache import cache_service
 
 
 async def get_cached_visualization(
     dataset_id: str, visualization_type: str, column_name: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Get cached visualization data if it exists"""
-    # Get the dataset to create a proper Link
+    """Get cached visualization data from Redis first, then MongoDB"""
+    # Generate Redis cache key
+    cache_key = f"viz:{dataset_id}:{visualization_type}"
+    if column_name:
+        cache_key += f":{column_name}"
+    
+    # Try Redis cache first
+    cached_data = await cache_service.get(cache_key)
+    if cached_data:
+        return cached_data
+    
+    # Fall back to MongoDB
     dataset = await UserData.get(dataset_id)
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
@@ -37,7 +48,12 @@ async def get_cached_visualization(
 
     # Find the cache entry
     cache = await VisualizationCache.find_one(**query_filter)
-    return cache.data if cache else None
+    if cache and cache.data:
+        # Cache in Redis for faster access next time
+        await cache_service.set(cache_key, cache.data, ttl=3600)  # 1 hour
+        return cache.data
+    
+    return None
 
 
 async def cache_visualization(
@@ -46,7 +62,15 @@ async def cache_visualization(
     data: Dict[str, Any],
     column_name: Optional[str] = None,
 ) -> VisualizationCache:
-    """Cache visualization data"""
+    """Cache visualization data in both Redis and MongoDB"""
+    # Generate Redis cache key
+    cache_key = f"viz:{dataset_id}:{visualization_type}"
+    if column_name:
+        cache_key += f":{column_name}"
+    
+    # Cache in Redis for fast access
+    await cache_service.set(cache_key, data, ttl=3600)  # 1 hour
+    
     # Get the dataset to create a proper Link
     dataset = await UserData.get(dataset_id)
     if not dataset:
