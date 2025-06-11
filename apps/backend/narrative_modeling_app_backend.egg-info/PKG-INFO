@@ -1,0 +1,32 @@
+Metadata-Version: 2.4
+Name: narrative-modeling-app-backend
+Version: 0.1.0
+Summary: Narrative Modeling App
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+Requires-Dist: asgi-lifespan>=2.1.0
+Requires-Dist: axios>=0.4.0
+Requires-Dist: beanie>=1.30.0
+Requires-Dist: boto3>=1.38.34
+Requires-Dist: fastapi>=0.115.12
+Requires-Dist: httpx>=0.28.1
+Requires-Dist: jwt>=1.3.1
+Requires-Dist: motor>=3.7.1
+Requires-Dist: numpy>=2.3.0
+Requires-Dist: openai>=1.86.0
+Requires-Dist: pandas>=2.3.0
+Requires-Dist: psutil>=6.1.0
+Requires-Dist: pydantic>=2.11.5
+Requires-Dist: pydantic-settings>=2.9.1
+Requires-Dist: pytest>=8.4.0
+Requires-Dist: pytest-asyncio>=0.23.0
+Requires-Dist: python-dotenv>=1.1.0
+Requires-Dist: python-jose[cryptography]>=3.5.0
+Requires-Dist: python-multipart>=0.0.20
+Requires-Dist: scikit-learn>=1.7.0
+Requires-Dist: sqlalchemy>=2.0.41
+Requires-Dist: sqlalchemy-utils>=0.41.2
+Requires-Dist: uvicorn>=0.34.3
+Requires-Dist: aiofiles>=24.1.0
+
+"## Backend API" | Out-File -Encoding utf8 README.md
