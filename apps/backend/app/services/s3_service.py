@@ -85,7 +85,37 @@ class S3Service:
     def get_file_url(self, file_key: str) -> str:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
+    
+    async def upload_file_obj(self, file_obj, file_key: str) -> str:
+        """Upload a file-like object to S3"""
+        try:
+            self.s3_client.upload_fileobj(file_obj, self.bucket_name, file_key)
+            logger.info(f"File uploaded successfully to {file_key}")
+            return self.get_file_url(file_key)
+        except ClientError as e:
+            logger.error(f"Error uploading file to S3: {str(e)}")
+            raise
+    
+    async def download_file_obj(self, file_key: str) -> bytes:
+        """Download file from S3 and return as bytes"""
+        return await self.download_file_bytes(file_key)
+    
+    async def delete_file(self, file_key: str) -> bool:
+        """Delete a file from S3"""
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=file_key)
+            logger.info(f"File deleted successfully: {file_key}")
+            return True
+        except ClientError as e:
+            logger.error(f"Error deleting file from S3: {str(e)}")
+            raise
 
 
 # Create singleton instance
 s3_service = S3Service()
+
+
+# Helper functions for backward compatibility
+async def get_file_from_s3(file_key: str) -> bytes:
+    """Get file data from S3"""
+    return await s3_service.download_file_bytes(file_key)
