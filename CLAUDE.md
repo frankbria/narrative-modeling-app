@@ -63,3 +63,17 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 
 ## Current Stage
 Sprint 0 - Foundation phase with data ingestion and exploration complete. Model building and prediction features pending implementation.
+
+## MCP Server Setup
+When using Claude Desktop with this project, install the Context7 MCP server for better context management:
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
+```
+Add this to `~/.config/claude/claude_desktop_config.json` and restart Claude Desktop.

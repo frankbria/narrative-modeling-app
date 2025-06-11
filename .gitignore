@@ -64,3 +64,6 @@ terraform.tfvars
 infrastructure/secrets/
 *.pem
 *.key
+
+# Large binary files
+scripts/awscliv2.zip
