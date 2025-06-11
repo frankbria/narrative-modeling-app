@@ -36,4 +36,10 @@ dependencies = [
     "xgboost>=3.0.2",
     "lightgbm>=4.6.0",
     "joblib>=1.5.1",
+    "redis>=6.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=6.1.1",
 ]
