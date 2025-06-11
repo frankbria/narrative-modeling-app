@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: narrative-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: localpassword
+      MONGO_INITDB_DATABASE: narrative_modeling
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - narrative-network
+
+  # LocalStack for S3 (AWS services locally)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: narrative-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - narrative-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    container_name: narrative-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://admin:localpassword@mongodb:27017/narrative_modeling?authSource=admin
+      - DATABASE_NAME=narrative_modeling
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - S3_BUCKET_NAME=narrative-modeling-local
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
+      - ENVIRONMENT=development
+      - CORS_ORIGINS=["http://localhost:3000"]
+    volumes:
+      - ./apps/backend:/app
+      - backend_venv:/app/.venv
+    depends_on:
+      - mongodb
+      - localstack
+    networks:
+      - narrative-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.dev
+    container_name: narrative-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - NEXT_PUBLIC_ENVIRONMENT=development
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - narrative-network
+
+  # MCP Server (for later)
+  # mcp:
+  #   build:
+  #     context: ./apps/mcp
+  #     dockerfile: Dockerfile.dev
+  #   container_name: narrative-mcp
+  #   ports:
+  #     - "10000:10000"
+  #   environment:
+  #     - MONGODB_URI=mongodb://admin:localpassword@mongodb:27017/narrative_modeling?authSource=admin
+  #     - AWS_ENDPOINT_URL=http://localstack:4566
+  #     - S3_BUCKET_NAME=narrative-modeling-local
+  #   volumes:
+  #     - ./apps/mcp:/app
+  #   networks:
+  #     - narrative-network
+
+volumes:
+  mongodb_data:
+  localstack_data:
+  backend_venv:
+
+networks:
+  narrative-network:
+    driver: bridge

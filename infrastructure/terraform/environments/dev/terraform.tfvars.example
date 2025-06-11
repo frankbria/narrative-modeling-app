@@ -1,0 +1,22 @@
+# Example terraform.tfvars file for development environment
+# Copy this to terraform.tfvars and fill in your actual values
+
+environment  = "dev"
+aws_region   = "us-east-1"
+project_name = "narrative-modeling"
+
+# MongoDB URI (e.g., mongodb+srv://username:password@cluster.mongodb.net/database)
+mongodb_uri = "your-mongodb-uri-here"
+
+# OpenAI API Key
+openai_api_key = "your-openai-api-key-here"
+
+# Clerk Authentication
+clerk_secret_key     = "your-clerk-secret-key-here"
+clerk_webhook_secret = "your-clerk-webhook-secret-here"
+
+# Datadog (optional, leave empty to skip)
+datadog_api_key = ""
+
+# Domain (optional for dev)
+domain_name = ""

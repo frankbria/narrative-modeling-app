@@ -51,3 +51,16 @@ __pycache__/
 .venv/
 apps/.venv/
 apps/backend/.venv/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+!terraform.tfvars.example
+
+# Infrastructure secrets
+infrastructure/secrets/
+*.pem
+*.key
