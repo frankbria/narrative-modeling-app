@@ -3,7 +3,7 @@
 import { useUser, useSession } from '@clerk/nextjs'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight, AlertTriangle, Shield, Eye, EyeOff } from 'lucide-react'
+import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight, AlertTriangle, Shield, Eye, EyeOff, HardDrive } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
   Table,
@@ -13,6 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import useChunkedUpload from '@/lib/hooks/useChunkedUpload'
+import ChunkedUploadProgress from '@/components/ChunkedUploadProgress'
 
 interface SchemaField {
   field_name: string
@@ -70,6 +72,52 @@ export default function LoadPage() {
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null)
   const [showPIIWarning, setShowPIIWarning] = useState(false)
   const [piiData, setPiiData] = useState<PIIReport | null>(null)
+  const [useChunkedUploadMode, setUseChunkedUploadMode] = useState(false)
+  const [isLargeFile, setIsLargeFile] = useState(false)
+
+  // File size threshold for chunked upload (50MB)
+  const CHUNKED_UPLOAD_THRESHOLD = 50 * 1024 * 1024
+
+  // Initialize chunked upload hook
+  const {
+    uploadFile: uploadFileChunked,
+    uploadState: chunkUploadState,
+    isUploading: isChunkUploading,
+    cancelUpload: cancelChunkUpload,
+    resetUpload: resetChunkUpload
+  } = useChunkedUpload({
+    onProgress: (progress) => {
+      console.log('Chunk upload progress:', progress)
+    },
+    onComplete: (fileId, response) => {
+      console.log('Chunk upload completed:', { fileId, response })
+      
+      // Handle successful chunked upload
+      const previewDataWithPII: PreviewData = {
+        headers: Object.keys(response.preview?.[0] || {}),
+        previewData: response.preview?.slice(0, 10).map((row: any) => 
+          Object.values(row)
+        ) || [],
+        fileName: response.filename || file?.name || '',
+        fileType: file?.name.split('.').pop()?.toLowerCase() || '',
+        id: fileId,
+        pii_report: response.pii_report,
+        status: response.status
+      }
+      
+      setPreviewData(previewDataWithPII)
+      setUploadStatus('success')
+      setShowSuccessMessage(true)
+      setUploadedFileId(fileId)
+      setUseChunkedUploadMode(false)
+    },
+    onError: (error) => {
+      console.error('Chunk upload error:', error)
+      setUploadStatus('error')
+      setErrorMessage(error)
+      setUseChunkedUploadMode(false)
+    }
+  })
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     console.log('Files dropped:', acceptedFiles)
@@ -80,7 +128,11 @@ export default function LoadPage() {
       return
     }
 
-    setFile(acceptedFiles[0])
+    const selectedFile = acceptedFiles[0]
+    const isLarge = selectedFile.size > CHUNKED_UPLOAD_THRESHOLD
+    
+    setFile(selectedFile)
+    setIsLargeFile(isLarge)
     setUploadStatus('idle')
     setPreviewData(null)
     setErrorMessage(null)
@@ -89,11 +141,34 @@ export default function LoadPage() {
     setIsUploading(false)
     setShowPIIWarning(false)
     setPiiData(null)
-  }, [])
+    setUseChunkedUploadMode(false)
+    resetChunkUpload()
+  }, [CHUNKED_UPLOAD_THRESHOLD, resetChunkUpload])
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
 
   const handleUpload = async () => {
     if (!file) return
 
+    // Use chunked upload for large files
+    if (isLargeFile) {
+      setUseChunkedUploadMode(true)
+      try {
+        await uploadFileChunked(file)
+      } catch (error) {
+        console.error('Chunked upload failed:', error)
+        // Error handling is done in the hook's onError callback
+      }
+      return
+    }
+
+    // Regular upload for smaller files
     setIsUploading(true)
     setErrorMessage(null)
     setShowPIIWarning(false)
@@ -372,6 +447,20 @@ export default function LoadPage() {
         </div>
       )}
 
+      {/* Chunked Upload Progress */}
+      {useChunkedUploadMode && chunkUploadState && (
+        <div className="mb-6">
+          <ChunkedUploadProgress
+            progress={chunkUploadState}
+            onCancel={() => {
+              cancelChunkUpload()
+              setUseChunkedUploadMode(false)
+              setFile(null)
+            }}
+          />
+        </div>
+      )}
+
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer text-center ${
@@ -380,9 +469,22 @@ export default function LoadPage() {
       >
         <input {...getInputProps()} />
         {file ? (
-          <div className="flex flex-col items-center space-y-2">
-            <FileText className="text-blue-500" size={32} />
-            <p className="text-sm text-gray-800">{file.name}</p>
+          <div className="flex flex-col items-center space-y-3">
+            <div className="flex items-center space-x-2">
+              <FileText className="text-blue-500" size={32} />
+              {isLargeFile && <HardDrive className="text-orange-500" size={20} />}
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-medium text-gray-800">{file.name}</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {formatFileSize(file.size)}
+                {isLargeFile && (
+                  <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded-md text-xs font-medium">
+                    Large File - Chunked Upload
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-2">
@@ -395,21 +497,48 @@ export default function LoadPage() {
       </div>
 
       {/* Upload Button */}
-      {file && !previewData && !showPIIWarning && (
+      {file && !previewData && !showPIIWarning && !useChunkedUploadMode && (
         <div className="mt-4 flex items-center justify-center">
           <button
             onClick={handleUpload}
-            disabled={isUploading || uploadStatus === 'success'}
+            disabled={isUploading || isChunkUploading || uploadStatus === 'success'}
             className={`px-4 py-2 rounded text-white text-sm font-semibold transition-all ${
               uploadStatus === 'success'
                 ? 'bg-green-500 cursor-default'
-                : isUploading
+                : isUploading || isChunkUploading
                 ? 'bg-blue-300 cursor-wait'
+                : isLargeFile
+                ? 'bg-orange-500 hover:bg-orange-600'
                 : 'bg-blue-500 hover:bg-blue-600'
             }`}
           >
-            {isUploading ? 'Scanning for PII...' : uploadStatus === 'success' ? 'Uploaded' : 'Upload & Scan File'}
+            {isUploading || isChunkUploading 
+              ? (isLargeFile ? 'Starting Chunked Upload...' : 'Scanning for PII...') 
+              : uploadStatus === 'success' 
+              ? 'Uploaded' 
+              : (isLargeFile ? 'Start Chunked Upload' : 'Upload & Scan File')
+            }
           </button>
+        </div>
+      )}
+
+      {/* Large File Info */}
+      {file && isLargeFile && !useChunkedUploadMode && (
+        <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-md">
+          <div className="flex items-center space-x-2 mb-2">
+            <HardDrive className="text-orange-500" size={16} />
+            <span className="text-sm font-medium text-orange-800">Large File Detected</span>
+          </div>
+          <p className="text-sm text-orange-700">
+            Your file is {formatFileSize(file.size)}, which exceeds our {formatFileSize(CHUNKED_UPLOAD_THRESHOLD)} threshold. 
+            We'll use chunked upload for optimal performance and reliability.
+          </p>
+          <ul className="text-xs text-orange-600 mt-2 space-y-1">
+            <li>• Upload can be resumed if interrupted</li>
+            <li>• Progress tracking with detailed statistics</li>
+            <li>• Automatic retry for failed chunks</li>
+            <li>• PII scanning after complete upload</li>
+          </ul>
         </div>
       )}
 
