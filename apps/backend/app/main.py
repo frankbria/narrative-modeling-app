@@ -52,6 +52,8 @@ from app.api.routes import (
     batch_prediction,
     model_export,
     documentation,
+    onboarding,
+    cache,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -65,6 +67,7 @@ from app.models.api_key import APIKey
 from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
 from app.utils.ai_summary import initialize_openai_client
+from app.services.redis_cache import init_cache, cleanup_cache
 
 
 @asynccontextmanager
@@ -81,9 +84,13 @@ async def lifespan(app: FastAPI):
     # Initialize OpenAI client
     initialize_openai_client()
 
+    # Initialize Redis cache
+    await init_cache()
+
     await connect_to_mongo()
     yield
     await close_mongo_connection()
+    await cleanup_cache()
 
 
 # ✅ Create the app only once
@@ -178,6 +185,16 @@ app.include_router(
     documentation.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["documentation"],
+)
+app.include_router(
+    onboarding.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["onboarding"],
+)
+app.include_router(
+    cache.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["cache"],
 )
 
 

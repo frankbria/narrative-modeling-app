@@ -8,6 +8,10 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from pydantic import BaseModel, Field
+import hashlib
+import json
+
+from app.services.redis_cache import cache_service, cache_result
 
 
 class ColumnStatistics(BaseModel):
@@ -86,9 +90,25 @@ class StatisticsEngine:
         self.outlier_method = outlier_method
         self.correlation_threshold = correlation_threshold
 
+    def _generate_cache_key(self, df: pd.DataFrame, column_types: Dict[str, str]) -> str:
+        """Generate a unique cache key for the dataset and column types"""
+        # Create a hash of the dataframe structure and content sample
+        df_info = {
+            "shape": df.shape,
+            "columns": df.columns.tolist(),
+            "dtypes": df.dtypes.astype(str).to_dict(),
+            "column_types": column_types,
+            "sample_hash": hashlib.md5(
+                str(df.head().to_dict()).encode()
+            ).hexdigest()
+        }
+        
+        info_str = json.dumps(df_info, sort_keys=True)
+        return f"stats:{hashlib.md5(info_str.encode()).hexdigest()}"
+
     async def calculate_statistics(self, df: pd.DataFrame, column_types: Dict[str, str]) -> DatasetStatistics:
         """
-        Calculate comprehensive statistics for a dataset
+        Calculate comprehensive statistics for a dataset with caching
         
         Args:
             df: Input DataFrame
@@ -97,6 +117,15 @@ class StatisticsEngine:
         Returns:
             DatasetStatistics object with all calculated metrics
         """
+        # Generate cache key
+        cache_key = self._generate_cache_key(df, column_types)
+        
+        # Try to get from cache first
+        cached_stats = await cache_service.get(cache_key)
+        if cached_stats is not None:
+            return DatasetStatistics(**cached_stats)
+        
+        # Calculate statistics
         column_stats = []
         
         for col_name in df.columns:
@@ -118,7 +147,7 @@ class StatisticsEngine:
         # Memory usage
         memory_usage_mb = df.memory_usage(deep=True).sum() / 1024 / 1024
         
-        return DatasetStatistics(
+        result = DatasetStatistics(
             row_count=len(df),
             column_count=len(df.columns),
             memory_usage_mb=float(memory_usage_mb),
@@ -126,6 +155,11 @@ class StatisticsEngine:
             correlation_matrix=correlation_matrix,
             missing_value_summary=missing_summary
         )
+        
+        # Cache the result for 2 hours
+        await cache_service.set(cache_key, result.dict(), ttl=7200)
+        
+        return result
 
     async def _calculate_column_statistics(self, series: pd.Series, col_name: str, col_type: str) -> ColumnStatistics:
         """Calculate statistics for a single column"""

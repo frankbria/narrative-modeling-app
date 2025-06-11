@@ -16,6 +16,18 @@ services:
     networks:
       - narrative-network
 
+  # Redis for caching
+  redis:
+    image: redis:7.2-alpine
+    container_name: narrative-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - narrative-network
+
   # LocalStack for S3 (AWS services locally)
   localstack:
     image: localstack/localstack:latest
@@ -44,6 +56,7 @@ services:
     environment:
       - MONGODB_URI=mongodb://admin:localpassword@mongodb:27017/narrative_modeling?authSource=admin
       - DATABASE_NAME=narrative_modeling
+      - REDIS_URL=redis://redis:6379
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack:4566
@@ -60,6 +73,7 @@ services:
       - backend_venv:/app/.venv
     depends_on:
       - mongodb
+      - redis
       - localstack
       - mcp
     networks:
@@ -116,6 +130,7 @@ services:
 
 volumes:
   mongodb_data:
+  redis_data:
   localstack_data:
   backend_venv:
   mcp_venv:
