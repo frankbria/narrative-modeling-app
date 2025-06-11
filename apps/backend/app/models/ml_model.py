@@ -40,7 +40,7 @@ class MLModel(Document):
     feature_transformer_path: Optional[str] = None  # S3 path to feature transformer
     
     # Versioning
-    version: int = 1
+    version: str = Field(default="1.0.0", description="Semantic version (major.minor.patch)")
     is_active: bool = True
     
     # Timestamps

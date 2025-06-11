@@ -37,6 +37,7 @@ dependencies = [
     "lightgbm>=4.6.0",
     "joblib>=1.5.1",
     "redis>=6.2.0",
+    "gunicorn>=23.0.0",
 ]
 
 [dependency-groups]
