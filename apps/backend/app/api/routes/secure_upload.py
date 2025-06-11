@@ -109,10 +109,14 @@ async def secure_upload(
         user_data = UserData(
             user_id=current_user_id,
             filename=file.filename,
+            original_filename=file.filename,
             s3_url=s3_url,
             num_rows=len(df),
             num_columns=len(df.columns),
-            data_schema=schema
+            data_schema=schema,
+            file_type="csv",  # TODO: Detect from file extension
+            columns=list(df.columns),
+            data_preview=df.head(100).to_dict('records')
         )
         
         # Add PII information

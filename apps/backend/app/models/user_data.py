@@ -38,6 +38,7 @@ class UserData(Document):
 
     user_id: str = Indexed(str)
     filename: str
+    original_filename: str  # Original filename from upload
     s3_url: str
     num_rows: int
     num_columns: int
@@ -51,6 +52,17 @@ class UserData(Document):
     pii_report: Optional[Dict[str, Any]] = None
     pii_risk_level: Optional[str] = None  # "low", "medium", "high"
     pii_masked: bool = False
+    
+    # Data processing fields
+    is_processed: bool = False
+    processed_at: Optional[datetime] = None
+    schema: Optional[Dict[str, Any]] = None  # Inferred schema from data processing
+    statistics: Optional[Dict[str, Any]] = None  # Calculated statistics
+    quality_report: Optional[Dict[str, Any]] = None  # Data quality assessment
+    row_count: Optional[int] = None  # Actual row count after processing
+    columns: Optional[List[str]] = None  # Column names after processing
+    data_preview: Optional[List[Dict[str, Any]]] = None  # Preview rows
+    file_type: Optional[str] = None  # csv, excel, json, etc.
 
     class Settings:
         name = "user_data"

@@ -53,12 +53,15 @@ services:
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
       - ENVIRONMENT=development
       - CORS_ORIGINS=["http://localhost:3000"]
+      - MCP_HOST=mcp
+      - MCP_PORT=10000
     volumes:
       - ./apps/backend:/app
       - backend_venv:/app/.venv
     depends_on:
       - mongodb
       - localstack
+      - mcp
     networks:
       - narrative-network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -85,27 +88,37 @@ services:
     networks:
       - narrative-network
 
-  # MCP Server (for later)
-  # mcp:
-  #   build:
-  #     context: ./apps/mcp
-  #     dockerfile: Dockerfile.dev
-  #   container_name: narrative-mcp
-  #   ports:
-  #     - "10000:10000"
-  #   environment:
-  #     - MONGODB_URI=mongodb://admin:localpassword@mongodb:27017/narrative_modeling?authSource=admin
-  #     - AWS_ENDPOINT_URL=http://localstack:4566
-  #     - S3_BUCKET_NAME=narrative-modeling-local
-  #   volumes:
-  #     - ./apps/mcp:/app
-  #   networks:
-  #     - narrative-network
+  # MCP Server
+  mcp:
+    build:
+      context: ./apps/mcp
+      dockerfile: Dockerfile.dev
+    container_name: narrative-mcp
+    ports:
+      - "10000:10000"
+    environment:
+      - MONGODB_URI=mongodb://admin:localpassword@mongodb:27017/narrative_modeling?authSource=admin
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - S3_BUCKET_NAME=narrative-modeling-local
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PORT=10000
+    volumes:
+      - ./apps/mcp:/app
+      - mcp_venv:/app/.venv
+    depends_on:
+      - mongodb
+      - localstack
+    networks:
+      - narrative-network
+    command: python main.py
 
 volumes:
   mongodb_data:
   localstack_data:
   backend_venv:
+  mcp_venv:
 
 networks:
   narrative-network:

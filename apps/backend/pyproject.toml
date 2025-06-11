@@ -29,4 +29,8 @@ dependencies = [
     "sqlalchemy-utils>=0.41.2",
     "uvicorn>=0.34.3",
     "aiofiles>=24.1.0",
+    "scipy>=1.11.0",
+    "pyarrow>=14.0.0",
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.0",
 ]

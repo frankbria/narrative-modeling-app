@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv sync --frozen
+
+# Copy application code
+COPY . .
+
+# Set Python path to include fastmcp
+ENV PYTHONPATH=/app:/app/fastmcp/src:$PYTHONPATH
+
+# Expose port
+EXPOSE 10000
+
+# Run the MCP server
+CMD ["uv", "run", "python", "main.py"]
