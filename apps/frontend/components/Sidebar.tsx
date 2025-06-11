@@ -2,7 +2,7 @@
 
 import { useUser, UserButton } from '@clerk/nextjs'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield } from 'lucide-react'
 
 export default function Sidebar() {
   const { user } = useUser()
@@ -41,6 +41,10 @@ export default function Sidebar() {
         <div className="flex items-center space-x-2 p-2">
           <UserButton />
         </div>
+        <Link href="/admin" className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
+          <Shield size={20} />
+          <span>Admin</span>
+        </Link>
         <Link href="/settings" className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
           <Settings size={20} />
           <span>Settings</span>
