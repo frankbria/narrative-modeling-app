@@ -63,6 +63,13 @@ class UserData(Document):
     columns: Optional[List[str]] = None  # Column names after processing
     data_preview: Optional[List[Dict[str, Any]]] = None  # Preview rows
     file_type: Optional[str] = None  # csv, excel, json, etc.
+    
+    # Onboarding progress
+    onboarding_progress: Optional[Dict[str, Any]] = None  # User's onboarding tutorial progress
+    
+    # Transformation tracking
+    file_path: Optional[str] = None  # Current file path (S3 key)
+    transformation_history: List[Dict[str, Any]] = Field(default_factory=list)  # History of transformations applied
 
     class Settings:
         name = "user_data"
