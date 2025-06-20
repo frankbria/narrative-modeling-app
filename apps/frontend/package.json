@@ -20,6 +20,7 @@
     "@radix-ui/react-tabs": "^1.0.4",
     "@tanstack/react-table": "^8.21.2",
     "@types/xlsx": "^0.0.35",
+    "@xyflow/react": "^12.7.0",
     "axios": "^1.8.4",
     "chart.js": "^4.4.8",
     "chartjs-chart-box-and-violin-plot": "^4.0.0",
