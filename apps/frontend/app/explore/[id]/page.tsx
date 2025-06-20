@@ -16,6 +16,7 @@ import { StatisticsDashboard } from '@/components/StatisticsDashboard'
 import { QualityReportCard } from '@/components/QualityReportCard'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
 import { InteractiveVisualizationDashboard } from '@/components/InteractiveVisualizationDashboard'
+import { ModelTrainingButton } from '@/components/ModelTrainingButton'
 
 interface ProcessedDataset {
   id: string
@@ -200,9 +201,27 @@ export default function DatasetAnalysisPage() {
             )}
           </div>
         </div>
-        <Button onClick={handleExport} disabled={!dataset.is_processed}>
-          Export Data
-        </Button>
+        <div className="flex gap-2">
+          {dataset.is_processed && (
+            <Link href={`/transform?datasetId=${dataset.id}`}>
+              <Button variant="outline">
+                Transform Data
+              </Button>
+            </Link>
+          )}
+          {dataset.is_processed && dataset.schema?.columns && (
+            <ModelTrainingButton 
+              datasetId={dataset.id}
+              columns={dataset.schema.columns.map((col: any) => col.name)}
+              onTrainingStarted={() => {
+                // Could show a toast notification here
+              }}
+            />
+          )}
+          <Button onClick={handleExport} disabled={!dataset.is_processed}>
+            Export Data
+          </Button>
+        </div>
       </div>
 
       {!dataset.is_processed ? (
