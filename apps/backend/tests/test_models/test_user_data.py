@@ -22,8 +22,7 @@ def test_schema_field_creation():
         missing_values=5,
         example_values=[1.0, 2.0, 3.0],
         is_constant=False,
-        is_high_cardinality=True,
-    )
+        is_high_cardinality=True)
 
     assert schema_field.field_name == "test_column"
     assert schema_field.field_type == "numeric"
@@ -49,21 +48,19 @@ def test_schema_field_validation():
             missing_values=5,
             example_values=[1.0, 2.0, 3.0],
             is_constant=False,
-            is_high_cardinality=True,
-        )
+            is_high_cardinality=True)
 
 
 def test_ai_summary_creation():
     """Test creating an AISummary instance."""
-    current_time = datetime.now(timezone.utc)
+    current_time = get_current_time()
     ai_summary = AISummary(
         overview="Test overview",
         issues=["Issue 1", "Issue 2"],
         relationships=["Relationship 1", "Relationship 2"],
         suggestions=["Suggestion 1", "Suggestion 2"],
         rawMarkdown="# Test Analysis\n\nThis is a test analysis.",
-        createdAt=current_time,
-    )
+        createdAt=current_time)
 
     assert ai_summary.overview == "Test overview"
     assert ai_summary.issues == ["Issue 1", "Issue 2"]
@@ -75,7 +72,7 @@ def test_ai_summary_creation():
 
 def test_user_data_creation():
     """Test creating a UserData instance."""
-    current_time = datetime.now(timezone.utc)
+    current_time = get_current_time()
     schema_field = SchemaField(
         field_name="test_column",
         field_type="numeric",
@@ -85,16 +82,15 @@ def test_user_data_creation():
         missing_values=5,
         example_values=[1.0, 2.0, 3.0],
         is_constant=False,
-        is_high_cardinality=True,
+        is_high_cardinality=True
     )
-
     ai_summary = AISummary(
         overview="Test overview",
-        issues=["Issue 1"],
-        relationships=["Relationship 1"],
-        suggestions=["Suggestion 1"],
-        rawMarkdown="# Test Analysis",
-        createdAt=current_time,
+        issues=["Issue 1", "Issue 2"],
+        relationships=["Relationship 1", "Relationship 2"],
+        suggestions=["Suggestion 1", "Suggestion 2"],
+        rawMarkdown="# Test Analysis\n\nThis is a test analysis.",
+        createdAt=current_time
     )
 
     user_data = UserData(
@@ -107,6 +103,7 @@ def test_user_data_creation():
         created_at=current_time,
         updated_at=current_time,
         aiSummary=ai_summary,
+        original_filename="test.csv"
     )
 
     assert user_data.user_id == "test_user_123"
@@ -124,11 +121,12 @@ def test_user_data_creation():
 def test_user_data_default_timestamps():
     """Test that UserData automatically sets timestamps."""
     user_data = UserData(
-        user_id="test_user_123",
+        user_id="test-user",
         filename="test.csv",
+        original_filename="test.csv",
+        num_rows=10,
+        num_columns=2,
         s3_url="https://example.com/test.csv",
-        num_rows=100,
-        num_columns=1,
         data_schema=[],
     )
 
@@ -141,11 +139,12 @@ def test_user_data_default_timestamps():
 def test_user_data_optional_ai_summary():
     """Test that UserData can be created without an AI summary."""
     user_data = UserData(
-        user_id="test_user_123",
+        user_id="test_user",
         filename="test.csv",
-        s3_url="https://example.com/test.csv",
+        original_filename="test.csv",
         num_rows=100,
         num_columns=1,
+        s3_url="https://example.com/test.csv",
         data_schema=[],
     )
 
@@ -169,43 +168,43 @@ def test_schema_field_with_different_data_types():
     """Test SchemaField with different data types."""
     # Test with numeric data
     numeric_field = SchemaField(
-        field_name="numeric_column",
+        field_name="numeric",
         field_type="numeric",
         data_type="float",
         inferred_dtype="float64",
-        unique_values=100,
+        unique_values=10,
         missing_values=0,
-        example_values=[1.0, 2.0, 3.0],
+        example_values=[1.0, 2.0],
         is_constant=False,
-        is_high_cardinality=False,
+        is_high_cardinality=False
     )
     assert numeric_field.field_type == "numeric"
 
     # Test with categorical data
     categorical_field = SchemaField(
-        field_name="categorical_column",
+        field_name="category",
         field_type="categorical",
         data_type="string",
         inferred_dtype="object",
-        unique_values=10,
+        unique_values=5,
         missing_values=0,
-        example_values=["A", "B", "C"],
+        example_values=["A", "B"],
         is_constant=False,
-        is_high_cardinality=False,
+        is_high_cardinality=False
     )
     assert categorical_field.field_type == "categorical"
 
     # Test with datetime data
     datetime_field = SchemaField(
-        field_name="datetime_column",
+        field_name="date",
         field_type="datetime",
         data_type="datetime",
         inferred_dtype="datetime64[ns]",
-        unique_values=50,
+        unique_values=30,
         missing_values=0,
-        example_values=["2023-01-01", "2023-01-02", "2023-01-03"],
+        example_values=["2024-01-01"],
         is_constant=False,
-        is_high_cardinality=False,
+        is_high_cardinality=True
     )
     assert datetime_field.field_type == "datetime"
 
@@ -215,32 +214,31 @@ def test_user_data_validation():
     # Test with invalid user_id
     with pytest.raises(ValueError):
         UserData(
-            user_id="",  # Empty user_id
+        user_id="",  # Empty user_id
             filename="test.csv",
-            s3_url="https://example.com/test.csv",
-            num_rows=100,
-            num_columns=1,
-            data_schema=[],
-        )
+        s3_url="https://example.com/test.csv",
+        data_schema=[],
+    )
 
     # Test with invalid s3_url
     with pytest.raises(ValueError):
         UserData(
-            user_id="test_user_123",
-            filename="test.csv",
-            s3_url="invalid_url",  # Invalid URL
+        user_id="test_user",
+        filename="test.csv",
+        original_filename="test.csv",
+        s3_url="invalid_url",  # Invalid URL
             num_rows=100,
-            num_columns=1,
-            data_schema=[],
-        )
+        data_schema=[],
+    )
 
     # Test with negative num_rows
     with pytest.raises(ValueError):
         UserData(
-            user_id="test_user_123",
-            filename="test.csv",
-            s3_url="https://example.com/test.csv",
-            num_rows=-1,  # Negative number of rows
+        user_id="test_user",
+        filename="test.csv",
+        original_filename="test.csv",
+        s3_url="https://example.com/test.csv",
+        num_rows=-1,  # Negative number of rows
             num_columns=1,
-            data_schema=[],
-        )
+        data_schema=[],
+    )

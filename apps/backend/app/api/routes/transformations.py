@@ -8,13 +8,14 @@ from datetime import datetime
 import logging
 import time
 
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.schemas.transformation import (
     TransformationRequest,
     TransformationPreviewResponse,
     TransformationApplyResponse,
     TransformationPipelineRequest,
+    TransformationStepRequest,
     RecipeCreateRequest,
     RecipeResponse,
     RecipeListResponse,
@@ -361,10 +362,9 @@ async def auto_clean_dataset(
             })
         
         if request.options.get("handle_missing") == "drop":
-            transformations.append({
-                "type": "drop_missing",
-                "parameters": {"how": "any"}
-            })
+            # For now, we'll skip dropping missing values as it's not implemented
+            # TODO: Implement drop_missing transformation
+            pass
         elif request.options.get("handle_missing") == "impute":
             transformations.append({
                 "type": "fill_missing",

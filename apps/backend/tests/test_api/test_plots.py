@@ -78,7 +78,7 @@ def mock_auth():
 
 
 @pytest.mark.asyncio
-async def test_create_plot(async_test_client, mock_plot, serializable_plot):
+async def test_create_plot(async_authorized_client, mock_plot, serializable_plot):
     """Test creating a new plot."""
     with patch("app.models.plot.Plot.insert") as mock_insert:
         mock_insert.return_value = None
@@ -107,7 +107,7 @@ async def test_create_plot(async_test_client, mock_plot, serializable_plot):
 
 
 @pytest.mark.asyncio
-async def test_get_plots_for_user(async_test_client, mock_plot):
+async def test_get_plots_for_user(async_authorized_client, mock_plot):
     """Test getting all plots for a user."""
     with patch("app.models.plot.Plot.find") as mock_find:
         # Create an AsyncMock for to_list() that returns a list
@@ -128,7 +128,7 @@ async def test_get_plots_for_user(async_test_client, mock_plot):
 
 
 @pytest.mark.asyncio
-async def test_get_plot_by_id(async_test_client, mock_plot):
+async def test_get_plot_by_id(async_authorized_client, mock_plot):
     """Test getting a plot by ID."""
     with patch("app.models.plot.Plot.get") as mock_get:
         mock_get.return_value = mock_plot
@@ -147,7 +147,7 @@ async def test_get_plot_by_id(async_test_client, mock_plot):
 
 
 @pytest.mark.asyncio
-async def test_get_plot_by_id_not_found(async_test_client):
+async def test_get_plot_by_id_not_found(async_authorized_client):
     """Test getting a non-existent plot by ID."""
     with patch("app.models.plot.Plot.get") as mock_get:
         mock_get.return_value = None
@@ -183,7 +183,7 @@ async def test_get_plot_by_id_not_found(async_test_client):
 
 
 @pytest.mark.asyncio
-async def test_update_plot(async_test_client, mock_plot, serializable_plot):
+async def test_update_plot(async_authorized_client, mock_plot, serializable_plot):
     """Test updating a plot."""
     with patch("app.models.plot.Plot.get") as mock_get, patch(
         "app.models.plot.Plot.save"
@@ -219,7 +219,7 @@ async def test_update_plot(async_test_client, mock_plot, serializable_plot):
 
 
 @pytest.mark.asyncio
-async def test_update_plot_not_found(async_test_client, mock_plot, serializable_plot):
+async def test_update_plot_not_found(async_authorized_client, mock_plot, serializable_plot):
     """Test updating a non-existent plot."""
     with patch("app.models.plot.Plot.get") as mock_get:
         mock_get.return_value = None
@@ -266,7 +266,7 @@ async def test_update_plot_not_found(async_test_client, mock_plot, serializable_
 
 
 @pytest.mark.asyncio
-async def test_delete_plot(async_test_client, mock_plot):
+async def test_delete_plot(async_authorized_client, mock_plot):
     """Test deleting a plot."""
     with patch("app.models.plot.Plot.get") as mock_get, patch(
         "app.models.plot.Plot.delete"
@@ -285,7 +285,7 @@ async def test_delete_plot(async_test_client, mock_plot):
 
 
 @pytest.mark.asyncio
-async def test_delete_plot_not_found(async_test_client):
+async def test_delete_plot_not_found(async_authorized_client):
     """Test deleting a non-existent plot."""
     with patch("app.models.plot.Plot.get") as mock_get:
         mock_get.return_value = None
@@ -321,7 +321,7 @@ async def test_delete_plot_not_found(async_test_client):
 
 
 @pytest.mark.asyncio
-async def test_get_plot_with_different_user(async_test_client, mock_plot):
+async def test_get_plot_with_different_user(async_authorized_client, mock_plot):
     """Test getting a plot with a different user ID."""
     with patch("app.models.plot.Plot.get") as mock_get:
         mock_get.return_value = mock_plot
@@ -361,7 +361,7 @@ async def test_get_plot_with_different_user(async_test_client, mock_plot):
 
 @pytest.mark.asyncio
 async def test_create_plot_with_dataset_link(
-    async_test_client, mock_plot, serializable_plot
+    async_authorized_client, mock_plot, serializable_plot
 ):
     """Test creating a plot with a dataset link."""
     with patch("app.models.plot.Plot.insert") as mock_insert:

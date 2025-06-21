@@ -23,8 +23,8 @@ def sample_dataset():
     mock_dataset.id = "dataset_123"
     mock_dataset.user_id = "test_user"
     mock_dataset.filename = "test_data.csv"
-    mock_dataset.file_size = 1024
-    mock_dataset.file_type = "csv"
+    mock_dataset.num_rows = 100  # Changed from file_size 1024
+    mock_dataset.data_schema = []  # Changed from file_type "csv"
     mock_dataset.file_key = "uploads/test_user/test_data.csv"
     mock_dataset.created_at = datetime.now(timezone.utc)
     return mock_dataset
@@ -72,7 +72,7 @@ class TestModelTrainingEndpoints:
     """Test model training API endpoints"""
     
     @pytest.mark.asyncio
-    async def test_train_model_endpoint(self, mock_async_client):
+    async def test_train_model_endpoint(self, async_authorized_client):
         """Test POST /api/v1/ml/train"""
         # Mock dataset lookup
         mock_user_data = MagicMock(
@@ -96,7 +96,7 @@ class TestModelTrainingEndpoints:
                     "description": "Test model"
                 }
                 
-                response = await mock_async_client.post(
+                response = await async_authorized_client.post(
                     "/api/v1/ml/train",
                     json=request_data,
                     headers={"Authorization": "Bearer test_token"}
@@ -109,7 +109,7 @@ class TestModelTrainingEndpoints:
                 assert "message" in data
     
     @pytest.mark.asyncio
-    async def test_list_models_endpoint(self, mock_async_client):
+    async def test_list_models_endpoint(self, async_authorized_client):
         """Test GET /api/v1/ml/"""
         # Mock model listing
         with patch('app.services.model_storage.ModelStorageService.list_models') as mock_list:
@@ -129,7 +129,7 @@ class TestModelTrainingEndpoints:
                 )
             ])()
             
-            response = await mock_async_client.get(
+            response = await async_authorized_client.get(
                 "/api/v1/ml/",
                 headers={"Authorization": "Bearer test_token"}
             )
@@ -141,14 +141,13 @@ class TestModelTrainingEndpoints:
             assert data[0]["name"] == "Test Model"
     
     @pytest.mark.asyncio
-    async def test_get_model_endpoint(self, mock_async_client, sample_ml_model):
+    async def test_get_model_endpoint(self, async_authorized_client, sample_ml_model):
         """Test GET /api/v1/ml/{model_id}"""
         with patch('app.models.ml_model.MLModel.find_one') as mock_find:
             mock_find.return_value = AsyncMock(return_value=sample_ml_model)()
             
-            response = await mock_async_client.get(
-                "/api/v1/ml/model_123",
-                headers={"Authorization": "Bearer test_token"}
+            response = await async_authorized_client.get(
+                "/api/v1/ml/model_123"
             )
             
             assert response.status_code == 200
@@ -158,7 +157,7 @@ class TestModelTrainingEndpoints:
             assert data["algorithm"] == "Random Forest"
     
     @pytest.mark.asyncio
-    async def test_predict_endpoint(self, mock_async_client):
+    async def test_predict_endpoint(self, async_authorized_client):
         """Test POST /api/v1/ml/{model_id}/predict"""
         # Mock model loading
         mock_model = MagicMock()
@@ -171,10 +170,6 @@ class TestModelTrainingEndpoints:
             # Mock model metadata
             with patch('app.models.ml_model.MLModel.find_one') as mock_find:
                 mock_find.return_value = AsyncMock(return_value=MagicMock(
-                    model_id="model_123",
-                    algorithm="Random Forest",
-                    problem_type="binary_classification",
-                    target_column="target",
                     feature_names=["feature1", "feature2", "feature3"]
                 ))()
                 
@@ -187,27 +182,25 @@ class TestModelTrainingEndpoints:
                     "include_probabilities": True
                 }
                 
-                response = await mock_async_client.post(
+                response = await async_authorized_client.post(
                     "/api/v1/ml/model_123/predict",
-                    json=request_data,
-                    headers={"Authorization": "Bearer test_token"}
+                    json=request_data
                 )
+                data = response.json()
                 
                 assert response.status_code == 200
-                data = response.json()
                 assert data["predictions"] == [0, 1, 0]
                 assert len(data["probabilities"]) == 3
                 assert data["feature_names"] == ["feature1", "feature2", "feature3"]
     
     @pytest.mark.asyncio
-    async def test_delete_model_endpoint(self, mock_async_client):
+    async def test_delete_model_endpoint(self, async_authorized_client):
         """Test DELETE /api/v1/ml/{model_id}"""
         with patch('app.services.model_storage.ModelStorageService.delete_model') as mock_delete:
             mock_delete.return_value = AsyncMock(return_value=True)()
             
-            response = await mock_async_client.delete(
-                "/api/v1/ml/model_123",
-                headers={"Authorization": "Bearer test_token"}
+            response = await async_authorized_client.delete(
+                "/api/v1/ml/model_123"
             )
             
             assert response.status_code == 200
@@ -216,26 +209,25 @@ class TestModelTrainingEndpoints:
             assert "deleted successfully" in data["message"]
     
     @pytest.mark.asyncio
-    async def test_deactivate_model_endpoint(self, mock_async_client, sample_ml_model):
+    async def test_deactivate_model_endpoint(self, async_authorized_client, sample_ml_model):
         """Test PUT /api/v1/ml/{model_id}/deactivate"""
         sample_ml_model.save = AsyncMock()
         
         with patch('app.models.ml_model.MLModel.find_one') as mock_find:
             mock_find.return_value = AsyncMock(return_value=sample_ml_model)()
             
-            response = await mock_async_client.put(
-                "/api/v1/ml/model_123/deactivate",
-                headers={"Authorization": "Bearer test_token"}
+            response = await async_authorized_client.put(
+                "/api/v1/ml/model_123/deactivate"
             )
+            data = response.json()
             
             assert response.status_code == 200
-            data = response.json()
             assert "message" in data
             assert "deactivated" in data["message"]
             assert sample_ml_model.is_active is False
     
     @pytest.mark.asyncio
-    async def test_train_model_not_found(self, mock_async_client):
+    async def test_train_model_not_found(self, async_authorized_client):
         """Test training with non-existent dataset"""
         with patch('app.models.user_data.UserData.find_one') as mock_find:
             mock_find.return_value = AsyncMock(return_value=None)()
@@ -245,17 +237,16 @@ class TestModelTrainingEndpoints:
                 "target_column": "target"
             }
             
-            response = await mock_async_client.post(
+            response = await async_authorized_client.post(
                 "/api/v1/ml/train",
-                json=request_data,
-                headers={"Authorization": "Bearer test_token"}
+                json=request_data
             )
             
             assert response.status_code == 404
             assert "Dataset not found" in response.json()["detail"]
     
     @pytest.mark.asyncio
-    async def test_predict_model_not_found(self, mock_async_client):
+    async def test_predict_model_not_found(self, async_authorized_client):
         """Test prediction with non-existent model"""
         with patch('app.services.model_storage.ModelStorageService.load_model') as mock_load:
             mock_load.side_effect = ValueError("Model not found")
@@ -264,10 +255,9 @@ class TestModelTrainingEndpoints:
                 "data": [{"feature1": 1.0}]
             }
             
-            response = await mock_async_client.post(
+            response = await async_authorized_client.post(
                 "/api/v1/ml/non_existent/predict",
-                json=request_data,
-                headers={"Authorization": "Bearer test_token"}
+                json=request_data
             )
             
             assert response.status_code == 404
@@ -293,11 +283,8 @@ class TestModelTrainingBackgroundTask:
             # Mock AutoML engine
             mock_result = AutoMLResult(
                 best_model=ModelCandidate(
-                    name="Random Forest",
                     estimator=MagicMock(),
                     hyperparameters={},
-                    cv_score=0.85,
-                    test_score=0.83,
                     training_time=10.5
                 ),
                 all_models=[],

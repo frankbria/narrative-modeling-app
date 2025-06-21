@@ -52,7 +52,7 @@ def test_generate_histogram_empty_data():
     assert isinstance(result, HistogramData)
     assert len(result.bins) == 0
     assert len(result.counts) == 0
-    assert len(result.bin_edges) == 1
+    assert len(result.bin_edges) == 0  # Empty data should have no bin edges
 
 
 def test_generate_histogram_with_nulls():

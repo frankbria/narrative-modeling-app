@@ -7,8 +7,7 @@ from app.utils.ai_summary import (
     generate_dataset_summary,
     prepare_dataset_summary,
     call_openai_api,
-    initialize_openai_client,
-)
+    initialize_openai_client)
 
 
 @pytest.fixture
@@ -16,11 +15,12 @@ def mock_user_data():
     """Create a mock UserData object for testing."""
     return UserData(
         id=PydanticObjectId(),
-        user_id="test_user_123",
-        filename="test_dataset.csv",
-        s3_url="https://example.com/test_dataset.csv",
+        s3_url="s3://test-bucket/test-file.csv",
+        filename="test.csv",
+        original_filename="test.csv",
         num_rows=100,
-        num_columns=3,
+        num_columns=5,
+        user_id="test_user_123",
         data_schema=[
             SchemaField(
                 field_name="column1",
@@ -30,30 +30,18 @@ def mock_user_data():
                 missing_values=5,
                 is_constant=False,
                 is_high_cardinality=False,
-                example_values=[1.0, 2.0, 3.0],
-            ),
+                example_values=[1.0, 2.0, 3.0]),
             SchemaField(
-                field_name="column2",
+                field_name="categorical_col",
                 field_type="categorical",
                 data_type="string",
-                unique_values=10,
+                inferred_dtype="object",
                 missing_values=0,
                 is_constant=False,
                 is_high_cardinality=False,
-                example_values=["A", "B", "C"],
-            ),
-            SchemaField(
-                field_name="column3",
-                field_type="numeric",
-                data_type="integer",
-                unique_values=100,
-                missing_values=0,
-                is_constant=False,
-                is_high_cardinality=True,
-                example_values=[1, 2, 3],
-            ),
-        ],
-    )
+                unique_values=3,
+                example_values=["A", "B", "C"])
+        ])
 
 
 @pytest.fixture
@@ -65,8 +53,7 @@ def mock_ai_summary():
         relationships=["Relationship 1", "Relationship 2"],
         suggestions=["Suggestion 1", "Suggestion 2"],
         rawMarkdown="# Test Dataset Analysis\n\nThis is a test analysis.",
-        createdAt=datetime.now(timezone.utc),
-    )
+        createdAt=datetime.now(timezone.utc))
 
 
 @pytest.mark.asyncio
@@ -99,7 +86,6 @@ async def test_generate_dataset_summary_existing(mock_user_data, mock_ai_summary
 
         mock_get.return_value = mock_user_data
 
-        result = await generate_dataset_summary(str(mock_user_data.id))
 
         assert result == mock_ai_summary
         mock_get.assert_called_once_with(mock_user_data.id)
@@ -112,7 +98,6 @@ async def test_generate_dataset_summary_not_found():
     with patch("app.models.user_data.UserData.get") as mock_get:
         mock_get.return_value = None
 
-        result = await generate_dataset_summary(str(PydanticObjectId()))
 
         assert result is None
         mock_get.assert_called_once()
@@ -128,7 +113,6 @@ async def test_generate_dataset_summary_api_error(mock_user_data):
         mock_get.return_value = mock_user_data
         mock_call_api.return_value = None
 
-        result = await generate_dataset_summary(str(mock_user_data.id))
 
         assert result is None
         mock_get.assert_called_once_with(mock_user_data.id)
@@ -193,20 +177,17 @@ async def test_call_openai_api_success():
 async def test_call_openai_api_client_not_initialized():
     """Test when OpenAI client is not initialized."""
     with patch("app.utils.ai_summary.client", None):
-        result = await call_openai_api({})
         assert result is None
 
 
 @pytest.mark.asyncio
 async def test_call_openai_api_invalid_json():
     """Test when OpenAI returns invalid JSON."""
-    mock_response = MagicMock()
     mock_response.choices = [MagicMock(message=MagicMock(content="Invalid JSON"))]
 
     with patch("app.utils.ai_summary.client") as mock_client:
         mock_client.chat.completions.create.return_value = mock_response
 
-        result = await call_openai_api({})
         assert result is None
 
 
@@ -216,7 +197,6 @@ async def test_call_openai_api_exception():
     with patch("app.utils.ai_summary.client") as mock_client:
         mock_client.chat.completions.create.side_effect = Exception("API Error")
 
-        result = await call_openai_api({})
         assert result is None
 
 

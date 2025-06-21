@@ -41,12 +41,13 @@ narrative-modeling-app/
 
 ## 📦 Tech Stack
 
-- **Frontend:** Next.js, Tailwind CSS, Clerk (Auth)
-- **Backend:** FastAPI, Python, Pydantic
+- **Frontend:** Next.js, Tailwind CSS, NextAuth v5 (Auth), React Flow
+- **Backend:** FastAPI, Python, Pydantic, Beanie ODM
 - **Modeling:** scikit-learn, pandas, XGBoost, SHAP
-- **Database:** MongoDB (or Postgres w/ Prisma in future)
-- **Auth:** Clerk.dev
-- **Dev Tools:** GitHub, Evernote (planning), Linear (issue tracking), MS Copilot, ChatGPT
+- **Database:** MongoDB with Redis caching
+- **Storage:** AWS S3
+- **Auth:** NextAuth with Google/GitHub providers
+- **Dev Tools:** GitHub, Linear (issue tracking), uv (Python), Docker
 
 ---
 
@@ -57,25 +58,39 @@ narrative-modeling-app/
 ### To run the backend (FastAPI):
 ```bash
 cd apps/backend
-pip install -r requirements.txt
+uv sync  # Install dependencies
 uvicorn app.main:app --reload
 ```
 
-### To run the frontend (placeholder):
+### To run the frontend:
 ```bash
 cd apps/frontend
 npm install
 npm run dev
 ```
 
+### Environment Setup:
+- Backend: Copy `.env.example` to `.env` and configure
+- Frontend: Copy `.env.local.example` to `.env.local` and configure
+- For development: Set `SKIP_AUTH=true` to bypass authentication
+
 ---
 
 ## 📌 Status
 
-✅ Sprint 0 in progress:  
-- Backend scaffold ✅  
-- File upload + schema parsing pipeline 🚧  
-- Data preview UI planned next
+✅ **Sprint 6+ Complete:** Advanced features phase
+- ✅ **8-Stage Workflow System** - Complete ML pipeline navigation
+- ✅ **Data Transformation Pipeline** - Visual drag-and-drop with backend integration
+- ✅ **NextAuth Migration** - Google/GitHub OAuth with JWT validation
+- ✅ **Redis Caching Layer** - Performance optimization
+- ✅ **Model Export System** - PMML, ONNX, Python code generation
+- ✅ **Docker Infrastructure** - Production-ready containerization
+
+🚧 **Current Focus:**
+- Backend workflow persistence API
+- Advanced ML algorithms (time series, clustering)
+- CI/CD pipeline completion
+- Test suite stabilization (87% passing)
 
 ---
 

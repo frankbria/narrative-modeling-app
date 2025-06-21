@@ -18,7 +18,7 @@ def client():
     from app.api.deps import get_current_user_id
     app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
     
-    client = TestClient(app)
+    # Use authorized_client fixture instead
     
     yield client
     
@@ -114,7 +114,7 @@ class TestOnboardingRoutes:
     def test_get_onboarding_status_success(
         self, 
         mock_service_class, 
-        client, 
+        authorized_client, 
         mock_onboarding_status
     ):
         """Test successful onboarding status retrieval"""
@@ -125,7 +125,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/status")
+        response = authorized_client.get("/api/onboarding/status")
         
         # Verify response
         assert response.status_code == 200
@@ -145,7 +145,7 @@ class TestOnboardingRoutes:
     def test_get_onboarding_steps_success(
         self, 
         mock_service_class, 
-        client, 
+        authorized_client, 
         mock_onboarding_steps
     ):
         """Test successful onboarding steps retrieval"""
@@ -156,7 +156,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/steps")
+        response = authorized_client.get("/api/onboarding/steps")
         
         # Verify response
         assert response.status_code == 200
@@ -175,7 +175,7 @@ class TestOnboardingRoutes:
     def test_get_onboarding_step_success(
         self, 
         mock_service_class, 
-        client, 
+        authorized_client, 
         mock_onboarding_steps
     ):
         """Test successful single step retrieval"""
@@ -186,7 +186,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/steps/welcome")
+        response = authorized_client.get("/api/onboarding/steps/welcome")
         
         # Verify response
         assert response.status_code == 200
@@ -200,7 +200,7 @@ class TestOnboardingRoutes:
         mock_service.get_onboarding_step.assert_called_once_with("test_user_123", "welcome")
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_get_onboarding_step_not_found(self, mock_service_class, client):
+    def test_get_onboarding_step_not_found(self, mock_service_class, authorized_client):
         """Test step not found"""
         
         # Setup mock
@@ -209,14 +209,14 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/steps/nonexistent")
+        response = authorized_client.get("/api/onboarding/steps/nonexistent")
         
         # Verify response
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_complete_onboarding_step_success(self, mock_service_class, client):
+    def test_complete_onboarding_step_success(self, mock_service_class, authorized_client):
         """Test successful step completion"""
         
         # Setup mock
@@ -229,7 +229,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post(
+        response = authorized_client.post(
             "/api/onboarding/steps/upload_data/complete",
             json={"completion_data": {"file_uploaded": True}}
         )
@@ -251,7 +251,7 @@ class TestOnboardingRoutes:
         )
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_complete_onboarding_step_error(self, mock_service_class, client):
+    def test_complete_onboarding_step_error(self, mock_service_class, authorized_client):
         """Test step completion error"""
         
         # Setup mock
@@ -260,7 +260,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post(
+        response = authorized_client.post(
             "/api/onboarding/steps/invalid/complete",
             json={"completion_data": {}}
         )
@@ -270,7 +270,7 @@ class TestOnboardingRoutes:
         assert "Invalid step" in response.json()["detail"]
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_skip_onboarding_step_success(self, mock_service_class, client):
+    def test_skip_onboarding_step_success(self, mock_service_class, authorized_client):
         """Test successful step skipping"""
         
         # Setup mock
@@ -282,7 +282,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post("/api/onboarding/skip-step/explore_data")
+        response = authorized_client.post("/api/onboarding/skip-step/explore_data")
         
         # Verify response
         assert response.status_code == 200
@@ -296,7 +296,7 @@ class TestOnboardingRoutes:
         mock_service.skip_step.assert_called_once_with("test_user_123", "explore_data")
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_skip_onboarding_step_not_skippable(self, mock_service_class, client):
+    def test_skip_onboarding_step_not_skippable(self, mock_service_class, authorized_client):
         """Test skipping non-skippable step"""
         
         # Setup mock
@@ -305,14 +305,14 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post("/api/onboarding/skip-step/welcome")
+        response = authorized_client.post("/api/onboarding/skip-step/welcome")
         
         # Verify response
         assert response.status_code == 400
         assert "cannot be skipped" in response.json()["detail"]
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_get_tutorial_progress_success(self, mock_service_class, client):
+    def test_get_tutorial_progress_success(self, mock_service_class, authorized_client):
         """Test tutorial progress retrieval"""
         
         mock_progress = {
@@ -333,7 +333,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/tutorial-progress")
+        response = authorized_client.get("/api/onboarding/tutorial-progress")
         
         # Verify response
         assert response.status_code == 200
@@ -348,7 +348,7 @@ class TestOnboardingRoutes:
     def test_get_sample_datasets_success(
         self, 
         mock_service_class, 
-        client, 
+        authorized_client, 
         mock_sample_datasets
     ):
         """Test sample datasets retrieval"""
@@ -359,7 +359,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/sample-datasets")
+        response = authorized_client.get("/api/onboarding/sample-datasets")
         
         # Verify response
         assert response.status_code == 200
@@ -372,7 +372,7 @@ class TestOnboardingRoutes:
         assert data[0]["difficulty_level"] == "beginner"
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_load_sample_dataset_success(self, mock_service_class, client):
+    def test_load_sample_dataset_success(self, mock_service_class, authorized_client):
         """Test successful sample dataset loading"""
         
         mock_result = {
@@ -388,7 +388,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post("/api/onboarding/sample-datasets/customer_churn/load")
+        response = authorized_client.post("/api/onboarding/sample-datasets/customer_churn/load")
         
         # Verify response
         assert response.status_code == 200
@@ -406,7 +406,7 @@ class TestOnboardingRoutes:
         )
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_load_sample_dataset_not_found(self, mock_service_class, client):
+    def test_load_sample_dataset_not_found(self, mock_service_class, authorized_client):
         """Test loading non-existent sample dataset"""
         
         # Setup mock
@@ -417,14 +417,14 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post("/api/onboarding/sample-datasets/nonexistent/load")
+        response = authorized_client.post("/api/onboarding/sample-datasets/nonexistent/load")
         
         # Verify response
         assert response.status_code == 400
         assert "not found" in response.json()["detail"]
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_reset_onboarding_success(self, mock_service_class, client):
+    def test_reset_onboarding_success(self, mock_service_class, authorized_client):
         """Test successful onboarding reset"""
         
         # Setup mock
@@ -433,7 +433,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.post("/api/onboarding/reset")
+        response = authorized_client.post("/api/onboarding/reset")
         
         # Verify response
         assert response.status_code == 200
@@ -446,7 +446,7 @@ class TestOnboardingRoutes:
         mock_service.reset_onboarding_progress.assert_called_once_with("test_user_123")
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_get_user_achievements_success(self, mock_service_class, client):
+    def test_get_user_achievements_success(self, mock_service_class, authorized_client):
         """Test user achievements retrieval"""
         
         mock_achievements = [
@@ -474,7 +474,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/achievements")
+        response = authorized_client.get("/api/onboarding/achievements")
         
         # Verify response
         assert response.status_code == 200
@@ -493,7 +493,7 @@ class TestOnboardingRoutes:
         assert milestones[0]["title"] == "Model Builder"
     
     @patch('app.api.routes.onboarding.OnboardingService')
-    def test_get_contextual_help_success(self, mock_service_class, client):
+    def test_get_contextual_help_success(self, mock_service_class, authorized_client):
         """Test contextual help retrieval"""
         
         mock_tips = [
@@ -528,7 +528,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/onboarding/help-tips?current_step=upload_data")
+        response = authorized_client.get("/api/onboarding/help-tips?current_step=upload_data")
         
         # Verify response
         assert response.status_code == 200

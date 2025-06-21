@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { TransformationPipeline } from '@/components/TransformationPipeline';
 import { TransformationSidebar } from '@/components/TransformationSidebar';
 import { TransformationPreview } from '@/components/TransformationPreview';
@@ -9,12 +10,15 @@ import { RecipeBrowser } from '@/components/RecipeBrowser';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Wand2, Save, Play, History, BookOpen } from 'lucide-react';
+import { TransformationService } from '@/lib/services/transformation';
+import { getAuthToken } from '@/lib/auth-helpers';
 import axios from 'axios';
 import { API_BASE_URL } from '@/lib/config';
 
 export default function TransformPage() {
   const searchParams = useSearchParams();
   const datasetId = searchParams.get('datasetId');
+  const { data: session } = useSession();
   
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
@@ -23,6 +27,7 @@ export default function TransformPage() {
   const [isApplying, setIsApplying] = useState(false);
   const [activeTab, setActiveTab] = useState('build');
   const [datasetInfo, setDatasetInfo] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
     if (datasetId) {
@@ -45,13 +50,12 @@ export default function TransformPage() {
   };
 
   const fetchSuggestions = async () => {
+    if (!session || !datasetId) return;
+    
     try {
-      const response = await axios.get(`${API_BASE_URL}/transformations/suggestions/${datasetId}`, {
-        headers: {
-          'Authorization': `Bearer ${await getAuthToken()}`
-        }
-      });
-      // Process suggestions and add to UI
+      const token = await getAuthToken();
+      const response = await TransformationService.getTransformationSuggestions(datasetId, token);
+      setSuggestions(response.suggestions);
     } catch (error) {
       console.error('Failed to fetch suggestions:', error);
     }
@@ -80,23 +84,20 @@ export default function TransformPage() {
   };
 
   const previewTransformation = async (node) => {
+    if (!session || !datasetId) return;
+    
     try {
-      const transformations = buildTransformationPipeline();
-      const response = await axios.post(
-        `${API_BASE_URL}/transformations/preview`,
+      const token = await getAuthToken();
+      const response = await TransformationService.previewTransformation(
         {
           dataset_id: datasetId,
           transformation_type: node.data.type,
           parameters: node.data.parameters,
           preview_rows: 100
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`
-          }
-        }
+        token
       );
-      setPreviewData(response.data);
+      setPreviewData(response);
     } catch (error) {
       console.error('Preview failed:', error);
     }
@@ -111,11 +112,13 @@ export default function TransformPage() {
   };
 
   const handleApplyTransformations = async () => {
+    if (!session || !datasetId) return;
+    
     setIsApplying(true);
     try {
       const transformations = buildTransformationPipeline();
-      const response = await axios.post(
-        `${API_BASE_URL}/transformations/pipeline/apply`,
+      const token = await getAuthToken();
+      const response = await TransformationService.applyTransformationPipeline(
         {
           dataset_id: datasetId,
           transformations: transformations.map(t => ({
@@ -124,16 +127,17 @@ export default function TransformPage() {
             description: `Apply ${t.type}`
           }))
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`
-          }
-        }
+        token
       );
       
-      if (response.data.success) {
+      if (response.success) {
         // Show success message and refresh dataset info
         await fetchDatasetInfo();
+        // Clear the pipeline after successful application
+        setNodes([]);
+        setEdges([]);
+        setSelectedNode(null);
+        setPreviewData(null);
       }
     } catch (error) {
       console.error('Apply transformations failed:', error);
@@ -143,9 +147,11 @@ export default function TransformPage() {
   };
 
   const handleAutoClean = async () => {
+    if (!session || !datasetId) return;
+    
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/transformations/auto-clean`,
+      const token = await getAuthToken();
+      const response = await TransformationService.autoCleanDataset(
         {
           dataset_id: datasetId,
           options: {
@@ -154,14 +160,10 @@ export default function TransformPage() {
             handle_missing: 'impute'
           }
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`
-          }
-        }
+        token
       );
       
-      if (response.data.success) {
+      if (response.success) {
         // Refresh and show results
         await fetchDatasetInfo();
       }
@@ -170,10 +172,18 @@ export default function TransformPage() {
     }
   };
 
-  const getAuthToken = async () => {
-    // Get auth token from Clerk
-    return 'mock-token'; // Replace with actual Clerk integration
-  };
+
+  // Authentication guard
+  if (!session) {
+    return (
+      <div className="container mx-auto p-8">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
+          <p className="text-muted-foreground">Please sign in to access the transformation pipeline.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!datasetId) {
     return (

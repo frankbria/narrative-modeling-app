@@ -6,7 +6,7 @@ from beanie import PydanticObjectId
 from app.models.analytics_result import AnalyticsResult
 from app.schemas.analytics_result_in import AnalyticsResultIn
 from app.schemas.analytics_result_out import AnalyticsResultOut
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 router = APIRouter()
 

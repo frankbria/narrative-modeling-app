@@ -20,7 +20,7 @@ def client():
     from app.api.deps import get_current_user_id
     app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
     
-    client = TestClient(app)
+    # Use authorized_client fixture instead
     
     yield client
     
@@ -102,7 +102,7 @@ class TestDocumentationRoutes:
     """Test cases for documentation API routes"""
     
     @patch('app.api.routes.documentation.APIDocumentationService')
-    def test_get_openapi_spec_success(self, mock_doc_service_class, client, mock_openapi_spec):
+    def test_get_openapi_spec_success(self, mock_doc_service_class, authorized_client, mock_openapi_spec):
         """Test successful OpenAPI spec retrieval"""
         
         # Setup mock
@@ -111,7 +111,7 @@ class TestDocumentationRoutes:
         mock_doc_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/docs/openapi.json")
+        response = authorized_client.get("/api/docs/openapi.json")
         
         # Verify response
         assert response.status_code == 200
@@ -127,10 +127,10 @@ class TestDocumentationRoutes:
         mock_doc_service_class.assert_called_once()
         mock_service.generate_openapi_spec.assert_called_once()
     
-    def test_get_swagger_ui_success(self, client):
+    def test_get_swagger_ui_success(self, authorized_client):
         """Test successful Swagger UI retrieval"""
         
-        response = client.get("/api/docs/swagger")
+        response = authorized_client.get("/api/docs/swagger")
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
@@ -140,10 +140,10 @@ class TestDocumentationRoutes:
         assert "swagger" in html_content.lower()
         assert "cdn.jsdelivr.net" in html_content  # CDN for Swagger resources
     
-    def test_get_redoc_ui_success(self, client):
+    def test_get_redoc_ui_success(self, authorized_client):
         """Test successful ReDoc UI retrieval"""
         
-        response = client.get("/api/docs/redoc")
+        response = authorized_client.get("/api/docs/redoc")
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
@@ -157,7 +157,7 @@ class TestDocumentationRoutes:
     def test_get_client_libraries_success(
         self, 
         mock_doc_service_class, 
-        client, 
+        authorized_client, 
         mock_client_libraries
     ):
         """Test successful client libraries retrieval"""
@@ -168,7 +168,7 @@ class TestDocumentationRoutes:
         mock_doc_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/docs/client-libraries")
+        response = authorized_client.get("/api/docs/client-libraries")
         
         # Verify response
         assert response.status_code == 200
@@ -198,7 +198,7 @@ class TestDocumentationRoutes:
     def test_get_integration_examples_success(
         self, 
         mock_doc_service_class, 
-        client, 
+        authorized_client, 
         mock_integration_examples
     ):
         """Test successful integration examples retrieval"""
@@ -209,7 +209,7 @@ class TestDocumentationRoutes:
         mock_doc_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/docs/examples")
+        response = authorized_client.get("/api/docs/examples")
         
         # Verify response
         assert response.status_code == 200
@@ -238,7 +238,7 @@ class TestDocumentationRoutes:
     def test_get_postman_collection_success(
         self, 
         mock_doc_service_class, 
-        client, 
+        authorized_client, 
         mock_postman_collection
     ):
         """Test successful Postman collection retrieval"""
@@ -249,7 +249,7 @@ class TestDocumentationRoutes:
         mock_doc_service_class.return_value = mock_service
         
         # Make request
-        response = client.get("/api/docs/postman")
+        response = authorized_client.get("/api/docs/postman")
         
         # Verify response
         assert response.status_code == 200
@@ -264,10 +264,10 @@ class TestDocumentationRoutes:
         # Verify service was called
         mock_service.generate_postman_collection.assert_called_once()
     
-    def test_get_getting_started_guide_success(self, client):
+    def test_get_getting_started_guide_success(self, authorized_client):
         """Test successful getting started guide retrieval"""
         
-        response = client.get("/api/docs/getting-started")
+        response = authorized_client.get("/api/docs/getting-started")
         
         assert response.status_code == 200
         data = response.json()
@@ -311,10 +311,10 @@ class TestDocumentationRoutes:
         assert "examples" in resources
         assert "support" in resources
     
-    def test_get_api_changelog_success(self, client):
+    def test_get_api_changelog_success(self, authorized_client):
         """Test successful API changelog retrieval"""
         
-        response = client.get("/api/docs/changelog")
+        response = authorized_client.get("/api/docs/changelog")
         
         assert response.status_code == 200
         data = response.json()
@@ -347,10 +347,10 @@ class TestDocumentationRoutes:
         assert len(upcoming) > 0
         assert any("ensemble" in feature.lower() for feature in upcoming)
     
-    def test_get_api_status_success(self, client):
+    def test_get_api_status_success(self, authorized_client):
         """Test successful API status retrieval"""
         
-        response = client.get("/api/docs/status")
+        response = authorized_client.get("/api/docs/status")
         
         assert response.status_code == 200
         data = response.json()
@@ -390,10 +390,10 @@ class TestDocumentationRoutes:
         region_names = [region["name"] for region in regions]
         assert "US East" in region_names
     
-    def test_get_sdk_information_success(self, client):
+    def test_get_sdk_information_success(self, authorized_client):
         """Test successful SDK information retrieval"""
         
-        response = client.get("/api/docs/sdk")
+        response = authorized_client.get("/api/docs/sdk")
         
         assert response.status_code == 200
         data = response.json()

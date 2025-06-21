@@ -12,7 +12,7 @@ from datetime import datetime
 
 from app.main import app
 from app.models.user_data import UserData
-
+from beanie import PydanticObjectId
 
 @pytest.fixture
 def sample_csv_file():
@@ -20,10 +20,10 @@ def sample_csv_file():
     df = pd.DataFrame({
         'customer_id': range(1, 101),
         'name': [f'Customer {i}' for i in range(1, 101)],
-        'age': pd.Series(range(20, 120)).sample(100, replace=True, random_state=42),
-        'purchase_amount': pd.Series(range(10, 1000)).sample(100, replace=True, random_state=42),
+        'age': pd.Series(range(20, 120)).sample(100, replace=True, random_state=42).reset_index(drop=True),
+        'purchase_amount': pd.Series(range(10, 1000)).sample(100, replace=True, random_state=42).reset_index(drop=True),
         'purchase_date': pd.date_range('2024-01-01', periods=100, freq='D'),
-        'category': pd.Series(['Electronics', 'Clothing', 'Food', 'Books']).sample(100, replace=True, random_state=42),
+        'category': pd.Series(['Electronics', 'Clothing', 'Food', 'Books']).sample(100, replace=True, random_state=42).reset_index(drop=True),
         'email': [f'customer{i}@example.com' for i in range(1, 101)]
     })
     
@@ -31,7 +31,6 @@ def sample_csv_file():
     df.to_csv(csv_buffer, index=False)
     csv_buffer.seek(0)
     return csv_buffer.getvalue()
-
 
 class TestFullWorkflow:
     """Integration tests for complete data processing workflow"""
@@ -46,12 +45,17 @@ class TestFullWorkflow:
             
             with patch('app.models.user_data.UserData.insert', new_callable=AsyncMock) as mock_insert:
                 mock_user_data = UserData(
+
                     id="test-file-123",
-                    user_id="test-user-123",
-                    filename="customer_data.csv",
-                    file_path="https://test-bucket.s3.amazonaws.com/test-file-123.csv",
-                    file_size=len(sample_csv_file),
-                    file_type="csv",
+        user_id="test-user-123",
+        filename="customer_data.csv",
+        original_filename="test-file-123.csv",
+        s3_url="s3://test-bucket/test-file.csv",
+        num_rows=100,
+        num_columns=5,
+        data_schema=[]
+    ,
+        file_type="csv",
                     upload_date=datetime.utcnow(),
                     is_processed=False
                 )
@@ -129,9 +133,10 @@ class TestFullWorkflow:
                     metadata={"execution_time": 2.5}
                 )
                 
-                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
+                response = await async_authorized_client.get("/api/v1/ai/analysis/test-file-123")
                 
                 assert response.status_code == 200
+                
                 analysis_data = response.json()
                 assert "Purchase Patterns" in str(analysis_data["insights"])
                 assert len(analysis_data["recommendations"]) == 2
@@ -149,17 +154,19 @@ class TestFullWorkflow:
                     "max": 100
                 }
                 
-                response = authorized_client.get("/api/v1/visualizations/histogram/test-file-123/age")
+                response = await async_authorized_client.get("/api/v1/visualizations/histogram/test-file-123/age")
+                
                 assert response.status_code == 200
                 
-            # Test correlation matrix
+                # Test correlation matrix
             with patch('app.services.visualization_cache.generate_and_cache_correlation_matrix', new_callable=AsyncMock) as mock_corr:
                 mock_corr.return_value = {
                     "columns": ["age", "purchase_amount"],
                     "matrix": [[1.0, 0.3], [0.3, 1.0]]
                 }
-                
-                response = authorized_client.get("/api/v1/visualizations/correlation/test-file-123")
+
+                response = await async_authorized_client.get("/api/v1/visualizations/correlation/test-file-123")
+
                 assert response.status_code == 200
         
         # Step 5: Export processed data
@@ -172,9 +179,8 @@ class TestFullWorkflow:
                 with patch('app.utils.s3.upload_file_to_s3') as mock_s3_upload:
                     mock_s3_upload.return_value = (True, "https://test-bucket.s3.amazonaws.com/exports/processed.csv")
                     
-                    response = authorized_client.post(
-                        "/api/v1/data/test-file-123/export",
-                        json={"format": "csv"}
+                    response = await async_authorized_client.post(
+                        "/api/v1/data/test-file-123/export"
                     )
                     
                     assert response.status_code == 200
@@ -201,21 +207,21 @@ class TestFullWorkflow:
             
             with patch('app.models.user_data.UserData.insert', new_callable=AsyncMock) as mock_insert:
                 mock_user_data = UserData(
-                    id="pii-file-123",
-                    user_id="test-user-123",
-                    filename="pii_data.csv",
-                    file_path="https://test-bucket.s3.amazonaws.com/pii-file.csv",
-                    file_size=len(csv_content),
-                    file_type="csv",
-                    upload_date=datetime.utcnow(),
-                    is_processed=False,
+                    id=PydanticObjectId(),
+                    user_id="test_user_123",
+                    filename="pii.csv",
+                    original_filename="pii.csv",
+                    s3_url="s3://test-bucket/test-file.csv",
+                    num_rows=2,
+                    num_columns=4,
+                    data_schema=[],
                     pii_detected=True,
                     pii_columns=["ssn", "email", "phone"]
                 )
                 mock_insert.return_value = mock_user_data
                 
                 # Upload should detect PII
-                files = {'file': ('pii_data.csv', csv_content, 'text/csv')}
+                files = {'file': ('pii.csv', csv_content, 'text/csv')}
                 response = authorized_client.post("/api/v1/upload", files=files)
                 
                 assert response.status_code == 200
@@ -239,19 +245,22 @@ class TestFullWorkflow:
         
         # Test analysis on unprocessed file
         unprocessed_data = UserData(
-            id="test-file-123",
-            user_id="test-user-123",
-            filename="test.csv",
-            file_path="s3://test.csv",
-            file_size=1024,
-            file_type="csv",
-            upload_date=datetime.utcnow(),
-            is_processed=False
+        id=PydanticObjectId(),
+        user_id="test_user_123",
+        filename="test.csv",
+        original_filename="test.csv",
+        s3_url="s3://test-bucket/test-file.csv",
+        num_rows=100,
+        num_columns=1,
+        data_schema=[],
+        is_processed=False
         )
         
         with patch('app.models.user_data.UserData.get', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = unprocessed_data
             
-            response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
+            response = await async_authorized_client.get("/api/v1/ai/analysis/unprocessed")
+            
             assert response.status_code == 400
+            
             assert "must be processed" in response.json()["detail"]

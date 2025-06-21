@@ -54,6 +54,7 @@ from app.api.routes import (
     documentation,
     onboarding,
     cache,
+    transformations,
 )
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -66,6 +67,7 @@ from app.models.ml_model import MLModel
 from app.models.api_key import APIKey
 from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
+from app.services.transformation_service.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 
@@ -78,7 +80,7 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel, APIKey, ABTest, BatchJob],
+        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel, APIKey, ABTest, BatchJob, TransformationRecipe, RecipeExecutionHistory],
     )
 
     # Initialize OpenAI client
@@ -195,6 +197,11 @@ app.include_router(
     cache.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["cache"],
+)
+app.include_router(
+    transformations.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["transformations"],
 )
 
 
