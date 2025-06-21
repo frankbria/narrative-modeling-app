@@ -92,9 +92,9 @@ async def test_create_plot(async_authorized_client, mock_plot, serializable_plot
             plot_data["datasetId"] = str(PydanticObjectId())
 
         print(
-            f"DEBUG: Sending POST request to /api/plots/ with data: {json.dumps(plot_data, indent=2)}"
+            f"DEBUG: Sending POST request to /api/v1/plots/ with data: {json.dumps(plot_data, indent=2)}"
         )
-        response = await async_test_client.post("/api/plots/", json=plot_data)
+        response = await async_authorized_client.post("/api/v1/plots/", json=plot_data)
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
 
@@ -114,8 +114,8 @@ async def test_get_plots_for_user(async_authorized_client, mock_plot):
         mock_find.return_value.to_list = AsyncMock(return_value=[mock_plot])
         print("DEBUG: Mocked Plot.find().to_list() to return a list with one plot")
 
-        print("DEBUG: Sending GET request to /api/plots/")
-        response = await async_test_client.get("/api/plots/")
+        print("DEBUG: Sending GET request to /api/v1/plots/")
+        response = await async_authorized_client.get("/api/v1/plots/")
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
 
@@ -134,8 +134,8 @@ async def test_get_plot_by_id(async_authorized_client, mock_plot):
         mock_get.return_value = mock_plot
         print(f"DEBUG: Mocked Plot.get() to return a plot with ID: {mock_plot.id}")
 
-        print(f"DEBUG: Sending GET request to /api/plots/{mock_plot.id}")
-        response = await async_test_client.get(f"/api/plots/{mock_plot.id}")
+        print(f"DEBUG: Sending GET request to /api/v1/plots/{mock_plot.id}")
+        response = await async_authorized_client.get(f"/api/v1/plots/{mock_plot.id}")
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
 
@@ -163,8 +163,8 @@ async def test_get_plot_by_id_not_found(async_authorized_client):
         )
 
         try:
-            print(f"DEBUG: Sending GET request to /api/plots/{non_existent_id}")
-            response = await async_test_client.get(f"/api/plots/{non_existent_id}")
+            print(f"DEBUG: Sending GET request to /api/v1/plots/{non_existent_id}")
+            response = await async_authorized_client.get(f"/api/v1/plots/{non_existent_id}")
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
@@ -203,11 +203,11 @@ async def test_update_plot(async_authorized_client, mock_plot, serializable_plot
         updated_data["type"] = "scatter"
         updated_data["metadata"] = {"title": "Updated Plot"}
         print(
-            f"DEBUG: Sending PUT request to /api/plots/{mock_plot.id} with data: {json.dumps(updated_data, indent=2)}"
+            f"DEBUG: Sending PUT request to /api/v1/plots/{mock_plot.id} with data: {json.dumps(updated_data, indent=2)}"
         )
 
-        response = await async_test_client.put(
-            f"/api/plots/{mock_plot.id}", json=updated_data
+        response = await async_authorized_client.put(
+            f"/api/v1/plots/{mock_plot.id}", json=updated_data
         )
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
@@ -243,10 +243,10 @@ async def test_update_plot_not_found(async_authorized_client, mock_plot, seriali
                 updated_data["datasetId"] = str(PydanticObjectId())
 
             print(
-                f"DEBUG: Sending PUT request to /api/plots/{mock_plot.id} with data: {json.dumps(updated_data, indent=2)}"
+                f"DEBUG: Sending PUT request to /api/v1/plots/{mock_plot.id} with data: {json.dumps(updated_data, indent=2)}"
             )
-            response = await async_test_client.put(
-                f"/api/plots/{mock_plot.id}", json=updated_data
+            response = await async_authorized_client.put(
+                f"/api/v1/plots/{mock_plot.id}", json=updated_data
             )
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
@@ -275,8 +275,8 @@ async def test_delete_plot(async_authorized_client, mock_plot):
         mock_delete.return_value = None
         print(f"DEBUG: Mocked Plot.get() to return a plot with ID: {mock_plot.id}")
 
-        print(f"DEBUG: Sending DELETE request to /api/plots/{mock_plot.id}")
-        response = await async_test_client.delete(f"/api/plots/{mock_plot.id}")
+        print(f"DEBUG: Sending DELETE request to /api/v1/plots/{mock_plot.id}")
+        response = await async_authorized_client.delete(f"/api/v1/plots/{mock_plot.id}")
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
 
@@ -301,8 +301,8 @@ async def test_delete_plot_not_found(async_authorized_client):
         )
 
         try:
-            print(f"DEBUG: Sending DELETE request to /api/plots/{non_existent_id}")
-            response = await async_test_client.delete(f"/api/plots/{non_existent_id}")
+            print(f"DEBUG: Sending DELETE request to /api/v1/plots/{non_existent_id}")
+            response = await async_authorized_client.delete(f"/api/v1/plots/{non_existent_id}")
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
@@ -337,8 +337,8 @@ async def test_get_plot_with_different_user(async_authorized_client, mock_plot):
         print("DEBUG: Authentication dependency overridden with different_user_123")
 
         try:
-            print(f"DEBUG: Sending GET request to /api/plots/{mock_plot.id}")
-            response = await async_test_client.get(f"/api/plots/{mock_plot.id}")
+            print(f"DEBUG: Sending GET request to /api/v1/plots/{mock_plot.id}")
+            response = await async_authorized_client.get(f"/api/v1/plots/{mock_plot.id}")
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
@@ -372,10 +372,10 @@ async def test_create_plot_with_dataset_link(
         # Ensure datasetId is a string representation of an ObjectId
         plot_data["datasetId"] = str(PydanticObjectId())
         print(
-            f"DEBUG: Sending POST request to /api/plots/ with data: {json.dumps(plot_data, indent=2)}"
+            f"DEBUG: Sending POST request to /api/v1/plots/ with data: {json.dumps(plot_data, indent=2)}"
         )
 
-        response = await async_test_client.post("/api/plots/", json=plot_data)
+        response = await async_authorized_client.post("/api/v1/plots/", json=plot_data)
         print(f"DEBUG: Response status code: {response.status_code}")
         print(f"DEBUG: Response body: {response.text}")
 

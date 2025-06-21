@@ -125,7 +125,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/status")
+        response = authorized_client.get("/api/v1/onboarding/status")
         
         # Verify response
         assert response.status_code == 200
@@ -156,8 +156,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/steps")
-        
+        response = authorized_client.get("/api/v1/onboarding/steps")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -186,8 +186,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/steps/welcome")
-        
+        response = authorized_client.get("/api/v1/onboarding/steps/welcome")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -209,8 +209,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/steps/nonexistent")
-        
+        response = authorized_client.get("/api/v1/onboarding/steps/nonexistent")
+
         # Verify response
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
@@ -261,7 +261,7 @@ class TestOnboardingRoutes:
         
         # Make request
         response = authorized_client.post(
-            "/api/onboarding/steps/invalid/complete",
+            "/api/v1/onboarding/steps/invalid/complete",
             json={"completion_data": {}}
         )
         
@@ -282,8 +282,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.post("/api/onboarding/skip-step/explore_data")
-        
+        response = authorized_client.post("/api/v1/onboarding/skip-step/explore_data")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -305,8 +305,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.post("/api/onboarding/skip-step/welcome")
-        
+        response = authorized_client.post("/api/v1/onboarding/skip-step/welcome")
+
         # Verify response
         assert response.status_code == 400
         assert "cannot be skipped" in response.json()["detail"]
@@ -333,8 +333,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/tutorial-progress")
-        
+        response = authorized_client.get("/api/v1/onboarding/tutorial-progress")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -359,8 +359,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/sample-datasets")
-        
+        response = authorized_client.get("/api/v1/onboarding/sample-datasets")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -388,8 +388,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.post("/api/onboarding/sample-datasets/customer_churn/load")
-        
+        response = authorized_client.post("/api/v1/onboarding/sample-datasets/customer_churn/load")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -417,8 +417,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.post("/api/onboarding/sample-datasets/nonexistent/load")
-        
+        response = authorized_client.post("/api/v1/onboarding/sample-datasets/nonexistent/load")
+
         # Verify response
         assert response.status_code == 400
         assert "not found" in response.json()["detail"]
@@ -433,7 +433,7 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.post("/api/onboarding/reset")
+        response = authorized_client.post("/api/v1/onboarding/reset")
         
         # Verify response
         assert response.status_code == 200
@@ -474,8 +474,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/achievements")
-        
+        response = authorized_client.get("/api/v1/onboarding/achievements")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
@@ -528,8 +528,8 @@ class TestOnboardingRoutes:
         mock_service_class.return_value = mock_service
         
         # Make request
-        response = authorized_client.get("/api/onboarding/help-tips?current_step=upload_data")
-        
+        response = authorized_client.get("/api/v1/onboarding/help-tips?current_step=upload_data")
+
         # Verify response
         assert response.status_code == 200
         data = response.json()
