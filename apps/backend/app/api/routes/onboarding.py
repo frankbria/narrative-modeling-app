@@ -15,7 +15,7 @@ from app.schemas.onboarding import (
     SampleDatasetResponse
 )
 
-router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+router = APIRouter()
 
 
 @router.get("/status", response_model=OnboardingStatusResponse)
