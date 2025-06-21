@@ -10,7 +10,7 @@ import io
 
 from app.models.batch_job import BatchJob, JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
