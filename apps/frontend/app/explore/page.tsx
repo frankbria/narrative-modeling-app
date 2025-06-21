@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-react'
 import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 
 // Define the Dataset type
 interface Dataset {
@@ -18,7 +19,7 @@ interface Dataset {
 }
 
 export default function ExploreDataPage() {
-  const { getToken } = useAuth()
+  const { data: session } = useSession()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -32,7 +33,7 @@ export default function ExploreDataPage() {
         setIsLoading(true)
         
         // Get authentication token
-        const token = await getToken()
+        const token = await getAuthToken()
         
         // Fetch list of available datasets
         const response = await axios.get(`${apiUrl}/api/user_data`, {
@@ -50,8 +51,18 @@ export default function ExploreDataPage() {
       }
     }
 
-    fetchData()
-  }, [getToken, apiUrl])
+    if (session) {
+      fetchData()
+    }
+  }, [session, apiUrl])
+
+  if (!session) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Please sign in to explore datasets</p>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (

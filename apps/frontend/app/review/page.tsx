@@ -1,7 +1,8 @@
 'use client'
 
 // apps/frontend/app/review/page.tsx
-import { useUser, useSession } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { useState, useEffect, useCallback } from 'react'
 import { StatsCard } from '@/components/StatsCard'
 import { calculateDescriptiveStats, StatItem } from '@/lib/utils'
@@ -50,8 +51,7 @@ interface AISummary {
 }
 
 export default function ReviewPage() {
-  const { isSignedIn, user } = useUser()
-  const { session } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const [data, setData] = useState<UserData | null>(null)
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -63,7 +63,7 @@ export default function ReviewPage() {
   const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
 
   const fetchDatasets = useCallback(async () => {
-    if (!user?.id) return
+    if (!session?.user?.id) return
 
     try {
       // Ensure the URL has a protocol
@@ -77,7 +77,7 @@ export default function ReviewPage() {
       
       const response = await fetch(`${backendUrl}/api/user_data`, {
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       })
 
@@ -91,10 +91,10 @@ export default function ReviewPage() {
       console.error('Error fetching datasets:', err)
       setError(err instanceof Error ? err.message : 'An error occurred')
     }
-  }, [user?.id, session])
+  }, [session])
 
   const fetchPreviewData = useCallback(async () => {
-    if (!user?.id || !selectedDatasetId) return
+    if (!session?.user?.id || !selectedDatasetId) return
 
     try {
       setIsLoading(true)
@@ -111,7 +111,7 @@ export default function ReviewPage() {
       
       const response = await fetch(`${backendUrl}/api/user_data/preview/${selectedDatasetId}`, {
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       })
 
@@ -125,7 +125,7 @@ export default function ReviewPage() {
       // Transform the data to match our UserData interface
       const transformedData: UserData = {
         id: result.id,
-        user_id: user.id,
+        user_id: session.user.id,
         file_name: result.fileName,
         file_path: result.s3_url,
         file_size: 0, // Not provided by API
@@ -154,13 +154,13 @@ export default function ReviewPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id, session, selectedDatasetId])
+  }, [session, selectedDatasetId])
 
   useEffect(() => {
-    if (isSignedIn) {
+    if (session) {
       fetchDatasets()
     }
-  }, [isSignedIn, fetchDatasets])
+  }, [session, fetchDatasets])
 
   useEffect(() => {
     if (selectedDatasetId) {
@@ -184,7 +184,7 @@ export default function ReviewPage() {
         
         const response = await fetch(`${backendUrl}/api/user_data/${data.id}/ai-summary`, {
           headers: {
-            'Authorization': `Bearer ${await session?.getToken()}`
+            'Authorization': `Bearer ${await getAuthToken()}`
           }
         });
 
@@ -218,7 +218,7 @@ export default function ReviewPage() {
     }
   }
 
-  if (!isSignedIn) return <p>Please log in to access this page.</p>
+  if (!session) return <p>Please log in to access this page.</p>
   
   return (
     <div className="flex-1 p-6 space-y-6">
