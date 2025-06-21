@@ -188,7 +188,7 @@ class TestSecureUploadAPI:
         assert response.status_code == 200
         
         # Check metrics endpoint to verify tracking
-        metrics_response = await mock_async_client.get("/api/health/metrics")
+        metrics_response = await mock_async_client.get("/api/v1/health/metrics")
         assert metrics_response.status_code == 200
         
         metrics = metrics_response.json()

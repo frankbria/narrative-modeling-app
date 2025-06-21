@@ -201,7 +201,7 @@ app.include_router(
 )
 app.include_router(
     onboarding.router,
-    prefix=f"{settings.API_V1_STR}",
+    prefix=f"{settings.API_V1_STR}/onboarding",
     tags=["onboarding"],
 )
 app.include_router(
@@ -211,7 +211,7 @@ app.include_router(
 )
 app.include_router(
     transformations.router,
-    prefix=f"{settings.API_V1_STR}",
+    prefix=f"{settings.API_V1_STR}/transformations",
     tags=["transformations"],
 )
 

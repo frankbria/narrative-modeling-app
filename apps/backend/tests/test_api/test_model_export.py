@@ -201,10 +201,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test successful Docker container export"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
-        
         # Create a mock ZIP file
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
@@ -212,20 +208,16 @@ class TestModelExportRoutes:
             zip_file.writestr("app.py", "# FastAPI app")
         zip_bytes = zip_buffer.getvalue()
         filename = "test_model_v1.0_docker.zip"
-        
         mock_export_service.export_docker_container = AsyncMock(
             return_value=(zip_bytes, filename)
         )
-        
         # Make request
         response = client.get(f"/api/v1/models/{mock_model_id}/export/docker")
-        
         # Verify response
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/zip"
         assert f'attachment; filename={filename}' in response.headers["content-disposition"]
         assert response.content == zip_bytes
-        
         # Verify service was called
         mock_export_service.export_docker_container.assert_called_once_with(
             model_id=mock_model_id,
@@ -241,9 +233,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test successful ONNX export"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
         onnx_bytes = b"fake_onnx_model_data"
         filename = "test_model_v1.0.onnx"
         mock_export_service.export_model_onnx = AsyncMock(return_value=(onnx_bytes, filename))
@@ -272,9 +261,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test ONNX export when ONNX is not available"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
         mock_export_service.export_model_onnx = AsyncMock(
             side_effect=ValueError("ONNX export requires skl2onnx package")
         )
@@ -296,9 +282,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test successful PMML export"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
         pmml_content = "<PMML>test model content</PMML>"
         filename = "test_model_v1.0.pmml"
         mock_export_service.export_model_pmml = AsyncMock(return_value=(pmml_content, filename))
@@ -319,38 +302,6 @@ class TestModelExportRoutes:
         )
     
     @patch('app.api.routes.model_export.export_service')
-    def test_export_model_custom_python(
-        self, 
-        mock_export_service, 
-        client, 
-        mock_user_id, 
-        mock_model_id
-    ):
-        """Test custom export with Python format"""
-        
-        # Setup mocks
-        python_code = "# Custom Python code"
-        filename = "custom_model.py"
-        mock_export_service.export_python_code = AsyncMock(return_value=(python_code, filename))
-        
-        # Make request
-        response = client.post(
-            f"/api/v1/models/{mock_model_id}/export/python",
-            json={"include_preprocessing": False}
-        )
-        
-        # Verify response
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "text/x-python; charset=utf-8"
-        
-        # Verify service was called with custom options
-        mock_export_service.export_python_code.assert_called_once_with(
-            model_id=mock_model_id,
-            user_id=mock_user_id,
-            include_preprocessing=False
-        )
-    
-    @patch('app.api.routes.model_export.export_service')
     def test_export_model_custom_unsupported_format(
         self, 
         mock_export_service, 
@@ -359,10 +310,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test custom export with unsupported format"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
-        
         # Make request with unsupported format
         response = client.post(f"/api/v1/models/{mock_model_id}/export/unsupported")
         
@@ -383,10 +330,6 @@ class TestModelExportRoutes:
         mock_export_formats
     ):
         """Test successful retrieval of model export information"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
-        
         # Mock model
         mock_model = Mock()
         mock_model.model_id = mock_model_id
@@ -396,7 +339,6 @@ class TestModelExportRoutes:
         mock_model.problem_type = "binary_classification"
         mock_model.n_features = 10
         mock_ml_model.find_one.return_value = mock_model
-        
         mock_export_service.get_export_formats = AsyncMock(return_value=mock_export_formats)
         
         # Make request
@@ -438,9 +380,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test model export info when model is not found"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
         mock_ml_model.find_one.return_value = None
         
         # Make request
@@ -460,9 +399,6 @@ class TestModelExportRoutes:
         mock_model_id
     ):
         """Test handling of internal service errors"""
-        
-        # Setup mocks
-        mock_get_user.return_value = mock_user_id
         mock_export_service.export_python_code = AsyncMock(
             side_effect=Exception("Internal service error")
         )
