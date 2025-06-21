@@ -1,10 +1,8 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { ClerkMiddlewareAuth } from "@clerk/nextjs/server";
+import { auth } from "@/app/auth";
 
-// Create a custom middleware that combines Clerk auth and CORS
-function customMiddleware(auth: ClerkMiddlewareAuth, request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   // Get the origin from the request headers
   const origin = request.headers.get('origin') || '*'
 
@@ -21,7 +19,25 @@ function customMiddleware(auth: ClerkMiddlewareAuth, request: NextRequest) {
     })
   }
 
-  // Continue to the next middleware (Clerk auth)
+  // Skip auth check if SKIP_AUTH is enabled
+  const skipAuth = process.env.SKIP_AUTH === 'true';
+  
+  if (!skipAuth) {
+    // Check authentication for protected routes
+    const session = await auth();
+    const isAuthPage = request.nextUrl.pathname.startsWith('/auth');
+    const isPublicPage = request.nextUrl.pathname === '/' || isAuthPage;
+
+    if (!session && !isPublicPage) {
+      return NextResponse.redirect(new URL('/auth/signin', request.url));
+    }
+
+    if (session && isAuthPage) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+  }
+
+  // Continue to the route
   const response = NextResponse.next()
 
   // Add CORS headers to the response
@@ -32,9 +48,6 @@ function customMiddleware(auth: ClerkMiddlewareAuth, request: NextRequest) {
 
   return response
 }
-
-// Combine our custom middleware with Clerk's middleware
-export default clerkMiddleware(customMiddleware);
 
 export const config = {
   matcher: [

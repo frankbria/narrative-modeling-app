@@ -861,6 +861,15 @@ This development plan outlines the implementation strategy for the Narrative Mod
   - Node-based visual pipeline editor
   - Export recipes to code functionality
 
+- **NextAuth Migration** (2025-06-21)
+  - Replaced Clerk authentication with NextAuth
+  - Added Google and GitHub OAuth providers
+  - Implemented development bypass mode (SKIP_AUTH=true)
+  - Created custom sign-in page and user menu
+  - Updated middleware for protected routes
+  - Backend JWT validation support
+  - Comprehensive migration documentation
+
 ### 🚧 Critical Gap Identified
 - **8-Stage Workflow Navigation Not Implemented**
   - All features exist as standalone pages
@@ -871,7 +880,8 @@ This development plan outlines the implementation strategy for the Narrative Mod
 ## Next Steps
 1. **PRIORITY: Implement 8-stage workflow navigation system**
 2. Integrate all existing features into proper workflow stages
-3. Complete Clerk authentication for API calls
-4. Address test suite issues (MongoDB/Redis fixtures)
-5. Add remaining ML algorithms (time series, clustering)
-6. Polish UX and documentation for production readiness
+3. Complete migration of remaining pages to NextAuth
+4. Remove Clerk dependencies completely
+5. Address test suite issues (MongoDB/Redis fixtures)
+6. Add remaining ML algorithms (time series, clustering)
+7. Polish UX and documentation for production readiness

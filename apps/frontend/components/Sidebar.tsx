@@ -1,12 +1,23 @@
 'use client'
 
-import { useUser, UserButton } from '@clerk/nextjs'
+import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, LogOut, User } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 export default function Sidebar() {
-  const { user } = useUser()
-  const userName = user?.fullName || 'Guest'
+  const { data: session } = useSession()
+  const userName = session?.user?.name || 'Guest'
+  const userEmail = session?.user?.email || ''
+  const userImage = session?.user?.image || ''
 
   const menuItems = [
     { name: 'Load Data', icon: <Upload size={20} />, href: '/load' },
@@ -37,11 +48,44 @@ export default function Sidebar() {
       </div>
       <div className="space-y-2 border-t border-gray-700 pt-4">
         <div className="p-2">
-          <p className="text-sm text-gray-400 mb-1">Signed in </p>
-          <p className="text-sm font-semibold truncate">{userName}</p>
-        </div>
-        <div className="flex items-center space-x-2 p-2">
-          <UserButton />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start text-left hover:bg-gray-800">
+                <div className="flex items-center space-x-3">
+                  {userImage ? (
+                    <img
+                      src={userImage}
+                      alt={userName}
+                      className="w-8 h-8 rounded-full"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                      <User size={16} />
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-sm font-semibold truncate">{userName}</p>
+                    <p className="text-xs text-gray-400 truncate">{userEmail}</p>
+                  </div>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => signOut()}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <Link href="/settings/api" className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
           <Key size={20} />
@@ -50,10 +94,6 @@ export default function Sidebar() {
         <Link href="/admin" className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
           <Shield size={20} />
           <span>Admin</span>
-        </Link>
-        <Link href="/settings" className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
-          <Settings size={20} />
-          <span>Settings</span>
         </Link>
       </div>
     </div>

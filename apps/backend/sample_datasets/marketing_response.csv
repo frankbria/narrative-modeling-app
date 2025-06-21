@@ -1,0 +1,16 @@
+customer_id,age,income,education,marital_status,kids_at_home,campaign_channel,previous_purchases,customer_segment,days_since_last_purchase,total_spent,recency_score,frequency_score,monetary_score,campaign_id,offer_type,discount_percent,contacted_date,responded
+M001,35,50000,Graduate,Single,0,email,12,Premium,30,2400,3,4,3,C001,discount,15,2024-01-15,1
+M002,42,75000,PhD,Married,2,phone,8,Standard,45,1800,2,3,2,C001,free_shipping,0,2024-01-15,0
+M003,28,45000,Graduation,Single,0,social,15,Premium,15,3200,4,5,4,C002,bundle,20,2024-01-16,1
+M004,55,90000,Master,Married,3,direct_mail,5,Standard,60,1200,2,2,2,C001,discount,10,2024-01-16,0
+M005,31,60000,Graduate,Married,1,email,20,Premium,20,4000,4,5,5,C002,free_trial,0,2024-01-17,1
+M006,38,55000,Basic,Single,0,phone,7,Standard,50,1400,2,3,2,C003,discount,25,2024-01-17,0
+M007,29,48000,Graduate,Single,0,social,18,Premium,10,3600,5,5,4,C002,bundle,15,2024-01-18,1
+M008,45,82000,Master,Married,2,email,10,Premium,35,2800,3,4,3,C001,free_shipping,0,2024-01-18,1
+M009,52,95000,PhD,Married,1,direct_mail,6,Standard,55,1600,2,2,2,C003,discount,20,2024-01-19,0
+M010,26,42000,Basic,Single,0,social,22,Premium,5,4400,5,5,5,C002,free_trial,0,2024-01-19,1
+M011,39,68000,Graduate,Married,2,email,14,Premium,25,3000,4,4,4,C001,bundle,18,2024-01-20,1
+M012,33,58000,Graduate,Single,0,phone,9,Standard,40,1900,3,3,3,C003,discount,12,2024-01-20,0
+M013,47,88000,Master,Married,3,direct_mail,4,Standard,65,1000,1,2,1,C001,free_shipping,0,2024-01-21,0
+M014,24,38000,Basic,Single,0,social,25,Premium,8,4800,5,5,5,C002,bundle,22,2024-01-21,1
+M015,41,72000,Graduate,Married,1,email,11,Premium,30,2600,3,4,3,C003,discount,15,2024-01-22,1

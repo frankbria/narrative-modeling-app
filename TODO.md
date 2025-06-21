@@ -221,6 +221,14 @@
   - Transformation library with categories
   - Before/after comparison views
   - NOT YET integrated into 8-stage workflow
+- ✅ **NextAuth Migration (2025-06-21)**
+  - Replaced Clerk with NextAuth
+  - Google and GitHub OAuth providers
+  - Development bypass mode (SKIP_AUTH)
+  - Custom sign-in page
+  - User dropdown menu in sidebar
+  - Backend JWT validation
+  - Migration documentation
 
 ### Next Sprint Priorities
 1. Implement 8-stage workflow navigation system (critical UX gap)
