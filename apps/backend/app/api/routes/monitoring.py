@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.models.ml_model import MLModel
 from app.models.api_key import APIKey
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.services.prediction_monitoring import PredictionMonitoringService
 from beanie import PydanticObjectId
 

@@ -265,3 +265,95 @@
 7. Complete accessibility compliance (legal requirement)
 8. **backend/app/api/deps.py: Implement get_current_user_id for NextAuth**
   - Replace the current mock implementation with real NextAuth token validation and user extraction.
+- [ ] **api/routes/ai_analysis.py: Implement caching for AI insights**
+  - Replace the placeholder and 'not implemented' message with real caching logic for AI insights.
+- [ ] **api/routes/ai_analysis.py: Implement chat functionality with MCP**
+  - Replace the placeholder response with real chat integration using MCP.
+- [ ] **api/routes/batch_prediction.py: Clean up S3 files in background**
+  - Implement background S3 file cleanup after batch prediction jobs.
+- [ ] **api/routes/column_stats.py: Replace placeholder stats with real calculations**
+  - Implement real column statistics and remove placeholder code.
+- [ ] **api/routes/data_processing.py: Implement actual export functionality**
+  - Replace the export metadata stub with real file export logic.
+- [ ] **api/routes/health.py: Add actual MongoDB and S3 health checks**
+  - Implement real checks for database and storage health.
+- [ ] **api/routes/secure_upload.py: Detect file type from extension**
+  - Replace the hardcoded file_type with detection logic.
+- [ ] **api/routes/transformations.py: Implement drop_missing transformation**
+  - Implement missing value dropping logic in transformation pipeline.
+- [ ] **services/data_processing/quality_assessment.py: Implement accuracy and timeliness metrics**
+  - Replace placeholder metrics with real domain logic.
+- [ ] **services/onboarding_service.py: Replace mock S3 URL and step count with real logic**
+  - Implement real S3 upload and onboarding progress tracking.
+- [ ] **services/prediction_monitoring.py: Implement real error rate and monitoring logic**
+  - Replace placeholder error rate and monitoring with real calculations.
+- [ ] **services/transformation_service/recipe_manager.py: Implement code generation for all supported languages**
+  - Replace NotImplementedError with real code generation for each language.
+
+## 🏆 Backend Implementation Priorities (Unimplemented/Stubs)
+
+### High Priority
+- [ ] **backend/app/api/deps.py: Implement get_current_user_id for NextAuth**
+  - Remove the current mock implementation for real NextAuth token validation and user extraction.
+- [ ] **api/routes/ai_analysis.py: Implement chat functionality with MCP**
+  - Replace the placeholder response with real chat integration using MCP.
+- [ ] **api/routes/ai_analysis.py: Implement caching for AI insights**
+  - Replace the placeholder and 'not implemented' message with real caching logic for AI insights.
+- [ ] **api/routes/transformations.py: Implement drop_missing transformation**
+  - Implement missing value dropping logic in transformation pipeline.
+- [ ] **api/routes/data_processing.py: Implement actual export functionality**
+  - Replace the export metadata stub with real file export logic.
+- [ ] **api/routes/health.py: Add actual MongoDB and S3 health checks**
+  - Implement real checks for database and storage health.
+- [ ] **api/routes/batch_prediction.py: Clean up S3 files in background**
+  - Implement background S3 file cleanup after batch prediction jobs.
+- [ ] **services/transformation_service/recipe_manager.py: Implement code generation for all supported languages**
+  - Replace NotImplementedError with real code generation for each language.
+
+### Medium Priority
+- [ ] **api/routes/column_stats.py: Replace placeholder stats with real calculations**
+  - Implement real column statistics and remove placeholder code.
+- [ ] **services/data_processing/quality_assessment.py: Implement accuracy and timeliness metrics**
+  - Replace placeholder metrics with real domain logic.
+- [ ] **services/onboarding_service.py: Replace mock S3 URL and step count with real logic**
+  - Implement real S3 upload and onboarding progress tracking.
+- [ ] **services/prediction_monitoring.py: Implement real error rate and monitoring logic**
+  - Replace placeholder error rate and monitoring with real calculations.
+
+### Low Priority
+- [ ] **api/routes/secure_upload.py: Detect file type from extension**
+  - Replace the hardcoded file_type with detection logic.
+- [ ] **Replace minor placeholder/for-now code in user_data.py, data_processing.py, ai_analysis.py, cache.py, transformations.py, onboarding_service.py, prediction_monitoring.py, etc.**
+  - Most are already covered by the above items or are minor stubs.
+
+## 🟡 MEDIUM - Frontend Feature Gaps
+
+- [ ] **Transformation Pipeline: Node Parameter Editing UI**
+  - Implement a UI for editing transformation node parameters directly in the pipeline (`components/transformation/TransformationNode.tsx`, `components/TransformationPipeline.tsx`).
+  - Ensure parameter changes update the pipeline state and trigger preview updates.
+
+- [ ] **Transformation Pipeline: Connect to Stage 3 of Workflow**
+  - Integrate the transformation pipeline page (`app/transform/page.tsx`) with the Stage 3 workflow navigation and state management.
+  - Ensure users can only access/modify transformations at the correct workflow stage.
+
+- [ ] **Transformation Pipeline: Transformation History**
+  - Implement the transformation history tab in the pipeline UI (`app/transform/page.tsx`).
+  - Show a list of previously applied transformation pipelines, allow users to restore or review them.
+
+- [ ] **Transformation Pipeline: Recipe Application**
+  - When a user applies a recipe in the RecipeBrowser (`components/RecipeBrowser.tsx`), load the recipe's transformations into the pipeline and update the UI accordingly.
+
+- [ ] **Transformation Pipeline: Advanced Transformations UI**
+  - Add UI components for advanced transformations (date/time, type conversions, encoding, formula builder, conditional logic, regex) in the sidebar and node editor (`components/TransformationSidebar.tsx`, `components/transformation/TransformationNode.tsx`).
+
+- [ ] **Transformation Pipeline: Error and Warning Display**
+  - Improve error and warning display in the preview panel (`components/TransformationPreview.tsx`) for failed transformations or backend errors.
+
+- [ ] **Transformation Pipeline: Loading and Empty States**
+  - Add user-friendly loading and empty states for all major pipeline UI components (sidebar, preview, history, recipes).
+
+- [ ] **AI Chat: Dataset Context Integration**
+  - Ensure the AI chat component (`components/AIChat.tsx`) loads and uses the correct dataset context for each workflow stage.
+
+- [ ] **Interactive Tutorial: Stage-Specific Guidance**
+  - Expand the interactive tutorial (`components/InteractiveTutorial.tsx`) to provide step-by-step guidance for each workflow stage, including transformation pipeline usage.
