@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
 import Link from 'next/link'
@@ -9,6 +9,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, ArrowLeft, BarChart3, Database, Brain, CheckCircle2, TrendingUp } from 'lucide-react'
+import { useWorkflow } from '@/lib/contexts/WorkflowContext'
+import { WorkflowStage } from '@/lib/types/workflow'
 
 // Import our new components
 import { DataPreviewTable } from '@/components/DataPreviewTable'
@@ -32,7 +34,9 @@ interface ProcessedDataset {
 
 export default function DatasetAnalysisPage() {
   const params = useParams()
+  const router = useRouter()
   const { data: session } = useSession()
+  const { state, completeStage, canAccessStage, loadWorkflow } = useWorkflow()
   const [dataset, setDataset] = useState<ProcessedDataset | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +45,12 @@ export default function DatasetAnalysisPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
   useEffect(() => {
+    // Check workflow access
+    if (!canAccessStage(WorkflowStage.DATA_PROFILING)) {
+      router.push('/upload')
+      return
+    }
+
     const fetchDataset = async () => {
       try {
         setIsLoading(true)
@@ -51,6 +61,9 @@ export default function DatasetAnalysisPage() {
           setError('No dataset ID provided')
           return
         }
+
+        // Load workflow state for this dataset
+        await loadWorkflow(datasetId)
 
         // Fetch dataset metadata
         const response = await fetch(`${apiUrl}/api/v1/user_data/${datasetId}`, {
@@ -203,25 +216,33 @@ export default function DatasetAnalysisPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {dataset.is_processed && (
-            <Link href={`/transform?datasetId=${dataset.id}`}>
-              <Button variant="outline">
-                Transform Data
-              </Button>
-            </Link>
-          )}
-          {dataset.is_processed && dataset.schema?.columns && (
-            <ModelTrainingButton 
-              datasetId={dataset.id}
-              columns={dataset.schema.columns.map((col: any) => col.name)}
-              onTrainingStarted={() => {
-                // Could show a toast notification here
-              }}
-            />
-          )}
           <Button onClick={handleExport} disabled={!dataset.is_processed}>
             Export Data
           </Button>
+          {dataset.is_processed && !state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
+            <Button 
+              onClick={() => {
+                completeStage(WorkflowStage.DATA_PROFILING, {
+                  datasetId: dataset.id,
+                  schema: dataset.schema,
+                  statistics: dataset.statistics,
+                  quality: dataset.quality_report,
+                  timestamp: new Date().toISOString()
+                })
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Complete & Continue to Data Preparation
+            </Button>
+          )}
+          {state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
+            <Button 
+              onClick={() => router.push('/prepare')}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Continue to Data Preparation
+            </Button>
+          )}
         </div>
       </div>
 

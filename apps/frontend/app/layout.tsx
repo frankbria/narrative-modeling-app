@@ -7,6 +7,8 @@ import { auth } from './auth'
 import SessionProvider from '@/components/SessionProvider'
 import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
+import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
+import { WorkflowBar } from '@/components/WorkflowBar'
 import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
@@ -34,13 +36,16 @@ export default async function RootLayout({
       <body className={`flex antialiased`}>
         <SessionProvider session={session}>
           {session ? (
-            <>
+            <WorkflowProvider>
               <SidebarWrapper />
-              <main className="flex flex-1 min-h-screen">
-                <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
-                <ConditionalAIChat />
+              <main className="flex flex-1 min-h-screen flex-col">
+                <WorkflowBar />
+                <div className="flex flex-1">
+                  <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
+                  <ConditionalAIChat />
+                </div>
               </main>
-            </>
+            </WorkflowProvider>
           ) : (
             <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">
               <p className="text-xl text-gray-900">
