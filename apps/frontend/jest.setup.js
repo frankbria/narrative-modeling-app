@@ -14,14 +14,25 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-// Mock @clerk/nextjs
-jest.mock('@clerk/nextjs', () => ({
-  useAuth: () => ({
-    getToken: jest.fn().mockResolvedValue('mock-token'),
-    isSignedIn: true,
-    userId: 'mock-user-id',
+// Mock next-auth
+jest.mock('next-auth/react', () => ({
+  useSession: () => ({
+    data: {
+      user: {
+        id: 'mock-user-id',
+        email: 'test@example.com',
+        name: 'Test User'
+      },
+      expires: '2024-12-31T23:59:59.999Z'
+    },
+    status: 'authenticated'
   }),
-  ClerkProvider: ({ children }) => children,
+  SessionProvider: ({ children }) => children,
+}))
+
+// Mock auth helpers
+jest.mock('@/lib/auth-helpers', () => ({
+  getAuthToken: jest.fn().mockResolvedValue('mock-token')
 }))
 
 // Mock react-markdown
