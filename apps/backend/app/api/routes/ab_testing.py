@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.models.ab_test import ABTest, ExperimentStatus
 from app.models.ml_model import MLModel
 from app.services.ab_testing import ABTestingService
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 
 router = APIRouter(prefix="/ab-testing", tags=["ab-testing"])

@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
 from app.services.api_documentation import APIDocumentationService
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 
 router = APIRouter(prefix="/docs", tags=["documentation"])

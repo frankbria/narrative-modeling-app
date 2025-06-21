@@ -14,7 +14,7 @@ from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.models.user_data import UserData
 from app.services.model_storage import ModelStorageService
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.config import settings
 router = APIRouter(prefix="/production", tags=["production"])
 

@@ -4,15 +4,15 @@ Tests for cache management API endpoints
 import pytest
 from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
-import app.api.deps
 import app.main
 
 
 @pytest.fixture(autouse=True, scope="module")
 def override_get_current_user_id():
-    app.main.app.dependency_overrides[app.api.deps.get_current_user_id] = lambda: "test_user_123"
+    import app.auth.nextauth_auth
+    app.main.app.dependency_overrides[app.auth.nextauth_auth.get_current_user_id] = lambda: "test_user_123"
     yield
-    app.main.app.dependency_overrides.pop(app.api.deps.get_current_user_id, None)
+    app.main.app.dependency_overrides.pop(app.auth.nextauth_auth.get_current_user_id, None)
 
 
 class TestCacheAPI:

@@ -3,12 +3,12 @@ Simple test to verify onboarding routes work
 """
 from fastapi.testclient import TestClient
 from app.main import app
+from app.auth.nextauth_auth import get_current_user_id
 
 # Override auth dependency for testing
 def fake_get_current_user_id():
     return "test_user_123"
 
-from app.api.deps import get_current_user_id
 app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
 
 client = TestClient(app)

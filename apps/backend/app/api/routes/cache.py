@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 import logging
 
 from app.services.redis_cache import cache_service
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 

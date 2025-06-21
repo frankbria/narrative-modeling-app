@@ -6,6 +6,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.auth.nextauth_auth import get_current_user_id
 
 
 @pytest.fixture
@@ -15,7 +16,6 @@ def client():
     def fake_get_current_user_id():
         return "test_user_123"
     
-    from app.api.deps import get_current_user_id
     app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
     
     # Use authorized_client fixture instead

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import io
 
 from app.services.model_export import ModelExportService
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 
 
 router = APIRouter(prefix="/models", tags=["model-export"])

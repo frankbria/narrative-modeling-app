@@ -10,7 +10,7 @@ import numpy as np
 from datetime import datetime, timezone
 import logging
 
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.models.ml_model import MLModel
 from app.services.s3_service import get_file_from_s3
