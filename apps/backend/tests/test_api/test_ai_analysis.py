@@ -88,7 +88,7 @@ class TestAIAnalysisAPI:
                     metadata={"execution_time": 1.5}
                 )
                 
-                response = authorized_client.post("/api/ai/analyze/test-file-123")
+                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -106,9 +106,9 @@ class TestAIAnalysisAPI:
         
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
             mock_find.return_value = mock_user_data
-            
-            response = authorized_client.post("/api/ai/analyze/test-file-123")
-            
+
+            response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
+
             assert response.status_code == 400
             assert "File must be processed" in response.json()["detail"]
     
@@ -124,7 +124,7 @@ class TestAIAnalysisAPI:
                 # Mock the save method
                 mock_user_data_with_analysis.save = AsyncMock()
                 
-                response = authorized_client.post("/api/ai/summarize/test-file-123")
+                response = authorized_client.post("/api/v1/ai/summarize/test-file-123")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -138,9 +138,9 @@ class TestAIAnalysisAPI:
         """Test summarizing non-existent dataset"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
             mock_find.return_value = None
-            
-            response = authorized_client.post("/api/ai/summarize/non-existent-123")
-            
+
+            response = authorized_client.post("/api/v1/ai/summarize/non-existent-123")
+
             assert response.status_code == 404
             assert "File not found" in response.json()["detail"]
     
@@ -164,7 +164,7 @@ class TestAIAnalysisAPI:
                 )
                 
                 response = authorized_client.post(
-                    "/api/ai/analyze/test-file-123",
+                    "/api/v1/ai/analyze/test-file-123",
                     json={
                         "file_id": "test-file-123",
                         "analysis_type": "comprehensive",
@@ -186,9 +186,9 @@ class TestAIAnalysisAPI:
             with patch('app.services.mcp_integration.mcp_service.analyze_dataset', new_callable=AsyncMock) as mock_analyze:
                 # Simulate MCP failure - should return fallback analysis
                 mock_analyze.side_effect = Exception("MCP service unavailable")
-                
-                response = authorized_client.post("/api/ai/analyze/test-file-123")
-                
+
+                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
+
                 # Should fail with 500 error
                 assert response.status_code == 500
                 assert "AI analysis failed" in response.json()["detail"]
@@ -206,11 +206,11 @@ class TestAIAnalysisAPI:
                 mock_user_data_with_analysis.save = AsyncMock()
                 
                 # First call
-                response1 = authorized_client.post("/api/ai/summarize/test-file-123")
+                response1 = authorized_client.post("/api/v1/ai/summarize/test-file-123")
                 assert response1.status_code == 200
                 
                 # Second call should use cache (mock should only be called once)
-                response2 = authorized_client.post("/api/ai/summarize/test-file-123")
+                response2 = authorized_client.post("/api/v1/ai/summarize/test-file-123")
                 assert response2.status_code == 200
                 
                 # Verify summarize was called twice (no caching implemented yet)

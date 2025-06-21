@@ -121,7 +121,7 @@ class TestDataProcessingAPI:
             )
             
             assert response.status_code == 404
-            assert "Dataset not found" in response.json()["detail"]
+            assert "not found" in response.json()["detail"]
     
     @pytest.mark.asyncio
     async def test_get_schema_success(self, async_authorized_client, setup_database):

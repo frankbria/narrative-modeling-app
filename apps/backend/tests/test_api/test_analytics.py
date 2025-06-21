@@ -45,7 +45,7 @@ def mock_dataset():
 def mock_plot(mock_dataset):
     return Plot(
         userId="test_user_123",
-        datasetId=Link(mock_dataset.id, document_class=UserData),
+        datasetId=Link(mock_dataset, document_class=UserData),
         type="scatter",
         imageUrl="https://example.com/plot.png",
         metadata={"title": "Test Plot", "description": "A test plot"},
@@ -54,41 +54,16 @@ def mock_plot(mock_dataset):
 
 @pytest.fixture
 def sample_analytics_result(mock_dataset, mock_plot):
+    # Use Link objects for datasetId and plotRefs as required by AnalyticsResult
     return AnalyticsResult(
         userId="test_user_123",
-        datasetId=mock_dataset.id,
+        datasetId=Link(mock_dataset, document_class=UserData),
         analysisType="EDA",
         config={"columns": ["column1", "column2"]},
         result={"summary": "Test analysis"},
-        plotRefs=[mock_plot.id],
-        summaryText="Test summary")
-
-
-@pytest.fixture
-def serializable_analytics_result(sample_analytics_result):
-    # Create a properly serializable dictionary
-    # Extract the actual ID from Link objects
-    dataset_id = sample_analytics_result.datasetId
-    if hasattr(dataset_id, "ref"):
-        dataset_id = dataset_id.ref.id
-
-    plot_refs = []
-    if sample_analytics_result.plotRefs:
-        for ref in sample_analytics_result.plotRefs:
-            if hasattr(ref, "ref"):
-                plot_refs.append(str(ref.ref.id))
-            else:
-                plot_refs.append(str(ref))
-
-    return {
-        "userId": "test_user_123",
-        "datasetId": str(dataset_id),
-        "analysisType": "EDA",
-        "config": {"columns": ["column1", "column2"]},
-        "result": {"summary": "Test analysis"},
-        "plotRefs": plot_refs,
-        "summaryText": "Test summary",
-    }
+        plotRefs=[Link(mock_plot, document_class=Plot)],
+        summaryText="Test summary"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -126,7 +101,7 @@ async def test_create_analytics_result(
     print(f"Serializable data: {json.dumps(serializable_analytics_result, indent=2)}")
 
     response = await async_authorized_client.post(
-        "/api/analytics/", json=serializable_analytics_result
+        "/api/v1/analytics/", json=serializable_analytics_result
     )
     print_debug_info(response, serializable_analytics_result)
     assert response.status_code == 200
@@ -140,8 +115,9 @@ async def test_get_analytics_results(
     async_authorized_client, mock_user_id, sample_analytics_result, setup_database
 ):
     await sample_analytics_result.insert()
-
+    response = await async_authorized_client.get("/api/v1/analytics/")
     print_debug_info(response)
+    data = response.json()
     assert response.status_code == 200
     assert isinstance(data, list)
     assert len(data) > 0
@@ -155,7 +131,7 @@ async def test_get_analytics_result(
     await sample_analytics_result.insert()
 
     response = await async_authorized_client.get(
-        f"/api/analytics/{sample_analytics_result.id}"
+        f"/api/v1/analytics/{sample_analytics_result.id}"
     )
     print_debug_info(response)
     assert response.status_code == 200
@@ -177,7 +153,7 @@ async def test_update_analytics_result(
     serializable_analytics_result["analysisType"] = "regression"
 
     response = await async_authorized_client.put(
-        f"/api/analytics/{sample_analytics_result.id}",
+        f"/api/v1/analytics/{sample_analytics_result.id}",
         json=serializable_analytics_result)
     print_debug_info(response, serializable_analytics_result)
     assert response.status_code == 200
@@ -192,7 +168,7 @@ async def test_delete_analytics_result(
     await sample_analytics_result.insert()
 
     response = await async_authorized_client.delete(
-        f"/api/analytics/{sample_analytics_result.id}"
+        f"/api/v1/analytics/{sample_analytics_result.id}"
     )
     print_debug_info(response)
     assert response.status_code == 200
@@ -203,7 +179,7 @@ async def test_delete_analytics_result(
 @pytest.mark.asyncio
 async def test_get_nonexistent_result(async_authorized_client, mock_user_id, setup_database):
     nonexistent_id = PydanticObjectId()
-    response = await async_authorized_client.get(f"/api/analytics/{nonexistent_id}")
+    response = await async_authorized_client.get(f"/api/v1/analytics/{nonexistent_id}")
     print_debug_info(response)
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
@@ -222,7 +198,7 @@ async def test_unauthorized_access(
 
     try:
         response = await async_authorized_client.get(
-            f"/api/analytics/{sample_analytics_result.id}"
+            f"/api/v1/analytics/{sample_analytics_result.id}"
         )
         print_debug_info(response)
         assert response.status_code == 403
@@ -233,3 +209,18 @@ async def test_unauthorized_access(
             app.dependency_overrides[get_current_user_id] = original_override
         else:
             app.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.fixture
+async def serializable_analytics_result(mock_dataset, mock_plot):
+    await mock_dataset.insert()
+    await mock_plot.insert()
+    return {
+        "userId": "test_user_123",
+        "datasetId": str(mock_dataset.id),
+        "analysisType": "EDA",
+        "config": {"columns": ["column1", "column2"]},
+        "result": {"summary": "Test analysis"},
+        "plotRefs": [str(mock_plot.id)],
+        "summaryText": "Test summary",
+    }
