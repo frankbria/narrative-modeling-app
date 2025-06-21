@@ -8,7 +8,7 @@ from app.models.analytics_result import AnalyticsResult
 from app.models.user_data import UserData, SchemaField
 from app.models.plot import Plot
 from app.config import settings
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.main import app
 
 
