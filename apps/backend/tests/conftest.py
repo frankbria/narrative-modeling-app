@@ -13,6 +13,10 @@ from app.models.visualization_cache import VisualizationCache
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
+from app.models.ab_test import ABTest
+from app.models.batch_job import BatchJob
+from app.models.ml_model import MLModel
+from app.models.revised_data import RevisedData
 from app.auth.nextauth_auth import get_current_user_id
 from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
@@ -20,15 +24,15 @@ from asgi_lifespan import LifespanManager
 
 # Use pytest-asyncio's event_loop fixture instead of defining our own
 # This avoids conflicts with pytest-asyncio's internal event loop management
-@pytest_asyncio.fixture(scope="function")
+@pytest_asyncio.fixture(autouse=True, scope="function")
 async def setup_database():
     """Set up test database before each test and clean up after."""
     # Create a test database client
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
+    client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
 
     # Initialize Beanie with test database
     await init_beanie(
-        database=client[settings.MONGODB_DB + "_test"],
+        database=client[settings.TEST_MONGODB_DB],
         document_models=[
             UserData,
             ColumnStats,
@@ -36,6 +40,10 @@ async def setup_database():
             AnalyticsResult,
             Plot,
             TrainedModel,
+            ABTest,
+            BatchJob,
+            MLModel,
+            RevisedData
         ],
     )
 
