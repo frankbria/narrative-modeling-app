@@ -16,7 +16,7 @@ class Settings(BaseModel):
     MONGODB_DB: str = os.getenv("MONGODB_DB", "narrative_modeling")
 
     # API settings
-    API_V1_STR: str = "/api"
+    API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Narrative Modeling API"
 
     # CORS settings

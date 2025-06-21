@@ -117,7 +117,7 @@ async def test_get_histogram(
     num_bins = 50
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/histogram/{dataset_id}/{column_name}"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name}"
     )
 
     # Instead of mocking everything, just directly mock the service function
@@ -130,7 +130,7 @@ async def test_get_histogram(
         )
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/histogram/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/histogram/{dataset_id}/{column_name}",
             params={"num_bins": num_bins},
             headers={"Authorization": "Bearer test_token"},
         )
@@ -157,7 +157,7 @@ async def test_get_histogram_error(
     num_bins = -1  # Invalid number of bins
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/histogram/{dataset_id}/{column_name} with invalid num_bins={num_bins}"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name} with invalid num_bins={num_bins}"
     )
 
     # Just mock the API function to raise a ValueError
@@ -168,7 +168,7 @@ async def test_get_histogram_error(
         print("DEBUG: Mocked generate_and_cache_histogram to raise ValueError")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/histogram/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/histogram/{dataset_id}/{column_name}",
             params={"num_bins": num_bins},
             headers={"Authorization": "Bearer test_token"},
         )
@@ -194,7 +194,7 @@ async def test_get_boxplot(
     column_name = "test_column"
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/boxplot/{dataset_id}/{column_name}"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name}"
     )
 
     # Just mock the API function
@@ -207,7 +207,7 @@ async def test_get_boxplot(
         )
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -235,7 +235,7 @@ async def test_get_boxplot_error(
     column_name = "test_column"
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/boxplot/{dataset_id}/{column_name} with error"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name} with error"
     )
 
     # Just mock the API function to raise a ValueError
@@ -246,7 +246,7 @@ async def test_get_boxplot_error(
         print("DEBUG: Mocked generate_and_cache_boxplot to raise ValueError")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -270,7 +270,7 @@ async def test_get_correlation_matrix(
     """Test getting correlation matrix data."""
     dataset_id = mock_dataset_id
 
-    print(f"DEBUG: Testing GET request to /api/visualizations/correlation/{dataset_id}")
+    print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
     # Just mock the API function
     with patch(
@@ -282,7 +282,7 @@ async def test_get_correlation_matrix(
         )
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/correlation/{dataset_id}",
+            f"/api/v1/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -304,7 +304,7 @@ async def test_get_correlation_matrix_error(
     """Test error handling for correlation matrix data."""
     dataset_id = mock_dataset_id
 
-    print(f"DEBUG: Testing GET request to /api/visualizations/correlation/{dataset_id}")
+    print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
     # Just mock the API function to raise a ValueError
     with patch(
@@ -314,7 +314,7 @@ async def test_get_correlation_matrix_error(
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise ValueError")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/correlation/{dataset_id}",
+            f"/api/v1/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -335,7 +335,7 @@ async def test_get_histogram_server_error(
     column_name = "test_column"
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/histogram/{dataset_id}/{column_name} with server error"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name} with server error"
     )
 
     # Just mock the API function to raise an Exception
@@ -346,7 +346,7 @@ async def test_get_histogram_server_error(
         print("DEBUG: Mocked generate_and_cache_histogram to raise Exception")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/histogram/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/histogram/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -367,7 +367,7 @@ async def test_get_boxplot_server_error(
     column_name = "test_column"
 
     print(
-        f"DEBUG: Testing GET request to /api/visualizations/boxplot/{dataset_id}/{column_name} with server error"
+        f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name} with server error"
     )
 
     # Just mock the API function to raise an Exception
@@ -378,7 +378,7 @@ async def test_get_boxplot_server_error(
         print("DEBUG: Mocked generate_and_cache_boxplot to raise Exception")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
+            f"/api/v1/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
 
@@ -397,7 +397,7 @@ async def test_get_correlation_matrix_server_error(
     """Test server error handling for correlation matrix data."""
     dataset_id = mock_dataset_id
 
-    print(f"DEBUG: Testing GET request to /api/visualizations/correlation/{dataset_id}")
+    print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
     # Just mock the API function to raise an Exception
     with patch(
@@ -407,7 +407,7 @@ async def test_get_correlation_matrix_server_error(
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise Exception")
 
         response = await async_authorized_client.get(
-            f"/api/visualizations/correlation/{dataset_id}",
+            f"/api/v1/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )
 

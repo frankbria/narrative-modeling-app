@@ -14,17 +14,17 @@ def test_analytics_result_creation():
 
     analytics_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](dataset_id),
+        datasetId=Link(dataset_id, document_class=UserData),
         createdAt=current_time,
         analysisType="EDA",
         config={"param1": "value1", "param2": "value2"},
         result={"summary": "Test analysis result", "metrics": {"accuracy": 0.95}},
-        plotRefs=[Link[Plot](plot_id)],
+        plotRefs=[Link(plot_id, document_class=Plot)],
         summaryText="This is a test analysis summary",
     )
 
     assert analytics_result.userId == "test_user_123"
-    assert analytics_result.datasetId == Link[UserData](dataset_id)
+    assert analytics_result.datasetId == Link(dataset_id, document_class=UserData)
     assert analytics_result.createdAt == current_time
     assert analytics_result.analysisType == "EDA"
     assert analytics_result.config == {"param1": "value1", "param2": "value2"}
@@ -33,7 +33,7 @@ def test_analytics_result_creation():
         "metrics": {"accuracy": 0.95},
     }
     assert len(analytics_result.plotRefs) == 1
-    assert analytics_result.plotRefs[0] == Link[Plot](plot_id)
+    assert analytics_result.plotRefs[0] == Link(plot_id, document_class=Plot)
     assert analytics_result.summaryText == "This is a test analysis summary"
 
 
@@ -41,7 +41,7 @@ def test_analytics_result_optional_fields():
     """Test creating an AnalyticsResult instance with optional fields."""
     analytics_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="EDA",
     )
 
@@ -56,7 +56,7 @@ def test_analytics_result_default_timestamp():
     """Test that AnalyticsResult automatically sets the createdAt timestamp."""
     analytics_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="EDA",
     )
 
@@ -80,7 +80,7 @@ def test_analytics_result_with_different_analysis_types():
     # Test with EDA analysis type
     eda_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="EDA",
         config={"visualization_type": "histogram"},
         result={"summary": "EDA analysis complete"},
@@ -90,7 +90,7 @@ def test_analytics_result_with_different_analysis_types():
     # Test with regression analysis type
     regression_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="regression",
         config={"target_column": "price", "features": ["size", "location"]},
         result={"r2_score": 0.85, "coefficients": {"size": 0.5, "location": 0.3}},
@@ -100,7 +100,7 @@ def test_analytics_result_with_different_analysis_types():
     # Test with clustering analysis type
     clustering_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="clustering",
         config={"n_clusters": 3, "algorithm": "kmeans"},
         result={"n_clusters": 3, "silhouette_score": 0.7},
@@ -111,11 +111,11 @@ def test_analytics_result_with_different_analysis_types():
 def test_analytics_result_with_multiple_plots():
     """Test AnalyticsResult with multiple plot references."""
     plot_ids = [PydanticObjectId() for _ in range(3)]
-    plot_refs = [Link[Plot](plot_id) for plot_id in plot_ids]
+    plot_refs = [Link(plot_id, document_class=Plot) for plot_id in plot_ids]
 
     analytics_result = AnalyticsResult(
         userId="test_user_123",
-        datasetId=Link[UserData](PydanticObjectId()),
+        datasetId=Link(PydanticObjectId(), document_class=UserData),
         analysisType="EDA",
         plotRefs=plot_refs,
     )
@@ -131,7 +131,7 @@ def test_analytics_result_validation():
     with pytest.raises(ValueError):
         AnalyticsResult(
             userId="",  # Empty user_id
-            datasetId=Link[UserData](PydanticObjectId()),
+            datasetId=Link(PydanticObjectId(), document_class=UserData),
             analysisType="EDA",
         )
 
@@ -139,7 +139,7 @@ def test_analytics_result_validation():
     with pytest.raises(ValueError):
         AnalyticsResult(
             userId="test_user_123",
-            datasetId=Link[UserData](PydanticObjectId()),
+            datasetId=Link(PydanticObjectId(), document_class=UserData),
             analysisType="invalid_type",  # Invalid analysis type
         )
 
@@ -147,7 +147,7 @@ def test_analytics_result_validation():
     with pytest.raises(ValueError):
         AnalyticsResult(
             userId="test_user_123",
-            datasetId=Link[UserData](PydanticObjectId()),
+            datasetId=Link(PydanticObjectId(), document_class=UserData),
             analysisType="EDA",
             config="invalid_config",  # Config should be a dict
         )

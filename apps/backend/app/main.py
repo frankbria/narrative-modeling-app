@@ -195,7 +195,7 @@ app.include_router(
 )
 app.include_router(
     cache.router,
-    prefix=f"{settings.API_V1_STR}",
+    prefix=f"{settings.API_V1_STR}/cache",
     tags=["cache"],
 )
 app.include_router(
