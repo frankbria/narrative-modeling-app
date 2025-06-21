@@ -1,0 +1,16 @@
+customer_id,tenure,monthly_charges,total_charges,contract_type,payment_method,internet_service,online_security,online_backup,device_protection,tech_support,streaming_tv,streaming_movies,gender,senior_citizen,partner,dependents,phone_service,multiple_lines,churn
+C001,12,50.05,600.60,Month-to-month,Electronic check,DSL,No,Yes,No,No,No,No,Female,0,Yes,No,No,No internet service,0
+C002,24,80.25,1926.00,One year,Mailed check,Fiber optic,No,No,Yes,No,No,No,Male,0,No,No,Yes,No,1
+C003,6,35.00,210.00,Month-to-month,Electronic check,DSL,Yes,No,No,No,No,No,Female,0,No,No,Yes,No,0
+C004,36,90.45,3256.20,Two year,Bank transfer,Fiber optic,Yes,Yes,Yes,Yes,Yes,Yes,Male,1,Yes,Yes,Yes,Yes,0
+C005,3,25.10,75.30,Month-to-month,Credit card,DSL,No,No,No,No,No,No,Female,0,Yes,Yes,No,No internet service,1
+C006,48,65.25,3133.20,Two year,Bank transfer,Fiber optic,Yes,Yes,No,Yes,No,Yes,Male,0,Yes,No,Yes,Yes,0
+C007,2,30.20,60.40,Month-to-month,Mailed check,DSL,No,No,No,No,No,No,Female,1,No,No,Yes,No,1
+C008,60,95.00,5700.00,Two year,Credit card,Fiber optic,Yes,Yes,Yes,Yes,Yes,Yes,Male,1,Yes,Yes,Yes,Yes,0
+C009,18,55.20,993.60,One year,Electronic check,DSL,Yes,No,Yes,No,Yes,No,Female,0,No,Yes,Yes,Yes,0
+C010,9,40.50,364.50,Month-to-month,Electronic check,Fiber optic,No,No,No,No,No,No,Male,0,No,No,No,No internet service,1
+C011,33,70.70,2333.10,One year,Bank transfer,Fiber optic,No,Yes,Yes,No,Yes,Yes,Female,0,Yes,No,Yes,Yes,0
+C012,15,45.00,675.00,Month-to-month,Credit card,DSL,Yes,Yes,No,Yes,No,No,Male,0,No,No,Yes,No,0
+C013,72,85.15,6130.80,Two year,Bank transfer,Fiber optic,Yes,Yes,Yes,Yes,Yes,Yes,Female,1,Yes,Yes,Yes,Yes,0
+C014,1,20.25,20.25,Month-to-month,Electronic check,DSL,No,No,No,No,No,No,Male,0,No,No,No,No internet service,1
+C015,27,75.50,2038.50,One year,Mailed check,Fiber optic,Yes,No,Yes,Yes,No,Yes,Female,0,Yes,Yes,Yes,Yes,0
