@@ -29,12 +29,12 @@ def mock_app():
     
     app.include_router(
         secure_upload.router,
-        prefix="/api/upload",
+        prefix="/api/v1/upload",
         tags=["secure_upload"],
     )
     app.include_router(
         health.router,
-        prefix="/api/health",
+        prefix="/api/v1/health",
         tags=["health"],
     )
     

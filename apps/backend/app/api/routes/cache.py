@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/cache/info")
+@router.get("/info")
 async def get_cache_info(
     current_user: str = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
@@ -33,7 +33,7 @@ async def get_cache_info(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/cache/user/{user_id}")
+@router.delete("/user/{user_id}")
 async def invalidate_user_cache(
     user_id: str,
     current_user: str = Depends(get_current_user_id)
@@ -58,7 +58,7 @@ async def invalidate_user_cache(
         raise HTTPException(status_code=500, detail="Failed to invalidate user cache")
 
 
-@router.delete("/cache/data/{data_id}")
+@router.delete("/data/{data_id}")
 async def invalidate_data_cache(
     data_id: str,
     current_user: str = Depends(get_current_user_id)
@@ -76,7 +76,7 @@ async def invalidate_data_cache(
         raise HTTPException(status_code=500, detail="Failed to invalidate data cache")
 
 
-@router.delete("/cache/key/{cache_key}")
+@router.delete("/key/{cache_key}")
 async def delete_cache_key(
     cache_key: str,
     current_user: str = Depends(get_current_user_id)
@@ -93,7 +93,7 @@ async def delete_cache_key(
         raise HTTPException(status_code=500, detail="Failed to delete cache key")
 
 
-@router.get("/cache/key/{cache_key}/exists")
+@router.get("/key/{cache_key}/exists")
 async def check_cache_key_exists(
     cache_key: str,
     current_user: str = Depends(get_current_user_id)
@@ -111,7 +111,7 @@ async def check_cache_key_exists(
         raise HTTPException(status_code=500, detail="Failed to check cache key")
 
 
-@router.post("/cache/warmup/user/{user_id}")
+@router.post("/warmup/user/{user_id}")
 async def warmup_user_cache(
     user_id: str,
     current_user: str = Depends(get_current_user_id)

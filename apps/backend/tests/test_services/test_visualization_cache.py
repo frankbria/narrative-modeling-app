@@ -160,6 +160,7 @@ class TestVisualizationCache:
         # Mock the database operations
         with patch(
             "app.services.visualization_cache.VisualizationCache.find_one",
+            new_callable=AsyncMock) as mock_find_one:
             mock_find_one.return_value = None
 
             with patch(
@@ -184,13 +185,16 @@ class TestVisualizationCache:
         # Mock the database operations
         with patch(
             "app.services.visualization_cache.VisualizationCache.find_one",
+            new_callable=AsyncMock) as mock_find_one:
             mock_find_one.return_value = None
 
             with patch(
                 "app.services.visualization_cache.VisualizationCache.insert",
+                new_callable=AsyncMock) as mock_insert:
                 mock_insert.return_value = None
 
                 # Execute
+                result = await cache_visualization(
                     dataset_id, visualization_type, column_name, sample_boxplot_data
                 )
 
@@ -208,13 +212,16 @@ class TestVisualizationCache:
         # Mock the database operations
         with patch(
             "app.services.visualization_cache.VisualizationCache.find_one",
+            new_callable=AsyncMock) as mock_find_one:
             mock_find_one.return_value = None
 
             with patch(
                 "app.services.visualization_cache.VisualizationCache.insert",
+                new_callable=AsyncMock) as mock_insert:
                 mock_insert.return_value = None
 
                 # Execute
+                result = await cache_visualization(
                     dataset_id, visualization_type, None, sample_correlation_matrix
                 )
 

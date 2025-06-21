@@ -153,7 +153,7 @@ async def generate_ai_summary(
             UserData.id == file_id,
             UserData.user_id == current_user_id
         )
-        
+
         if not user_data:
             raise HTTPException(status_code=404, detail="File not found")
         
@@ -162,7 +162,7 @@ async def generate_ai_summary(
                 status_code=400, 
                 detail="File must be processed before generating summary"
             )
-        
+
         # Create summary request
         summary_request = DatasetSummaryRequest(
             file_id=str(user_data.id),
@@ -172,10 +172,10 @@ async def generate_ai_summary(
             sample_data=user_data.data_preview[:20] if user_data.data_preview else None,
             focus_areas=focus_areas or ["patterns", "quality", "relationships", "recommendations"]
         )
-        
+
         # Generate summary
         summary = await dataset_summarization_service.generate_comprehensive_summary(summary_request)
-        
+
         # Optionally save to database
         user_data.aiSummary = summary
         await user_data.save()

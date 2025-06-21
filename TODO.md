@@ -263,3 +263,5 @@
 5. Add time series tools (user requested feature)
 6. Implement scheduling system (production requirement)
 7. Complete accessibility compliance (legal requirement)
+8. **backend/app/api/deps.py: Implement get_current_user_id for NextAuth**
+  - Replace the current mock implementation with real NextAuth token validation and user extraction.

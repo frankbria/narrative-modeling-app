@@ -24,5 +24,5 @@ class TestAIAnalysisAPI:
     async def test_summarize_endpoint_exists(self, mock_async_client: AsyncClient):
         """Test that AI summarization endpoint exists"""
         response = await mock_async_client.get("/api/v1/ai/summarize/test-123")
-        
+
         assert response.status_code in [404, 401, 403]
