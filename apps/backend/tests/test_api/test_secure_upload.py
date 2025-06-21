@@ -22,7 +22,7 @@ class TestSecureUploadAPI:
         files = {"file": ("test.csv", csv_file, "text/csv")}
         
         response = await mock_async_client.post(
-            "/api/upload/secure",
+            "/api/v1/upload/secure",
             files=files
         )
         
@@ -41,7 +41,7 @@ class TestSecureUploadAPI:
         files = {"file": ("test_pii.csv", csv_file, "text/csv")}
         
         response = await mock_async_client.post(
-            "/api/upload/secure",
+            "/api/v1/upload/secure",
             files=files
         )
         
@@ -60,7 +60,7 @@ class TestSecureUploadAPI:
         files = {"file": ("test.txt", text_file, "text/plain")}
         
         response = await mock_async_client.post(
-            "/api/upload/secure",
+            "/api/v1/upload/secure",
             files=files
         )
         
@@ -77,7 +77,7 @@ class TestSecureUploadAPI:
         }
         
         response = await mock_async_client.post(
-            "/api/upload/chunked/init",
+            "/api/v1/upload/chunked/init",
             params=payload
         )
         
@@ -98,7 +98,7 @@ class TestSecureUploadAPI:
         files = {"file": ("chunk0", io.BytesIO(chunk_data), "application/octet-stream")}
         
         response = await mock_async_client.post(
-            f"/api/upload/chunked/{session_id}/chunk/0",
+            f"/api/v1/upload/chunked/{session_id}/chunk/0",
             files=files
         )
         
@@ -114,7 +114,7 @@ class TestSecureUploadAPI:
         
         # Resume upload
         response = await mock_async_client.get(
-            f"/api/upload/chunked/{session_id}/resume"
+            f"/api/v1/upload/chunked/{session_id}/resume"
         )
         
         assert response.status_code == 200
@@ -131,7 +131,7 @@ class TestSecureUploadAPI:
         
         # Complete upload
         response = await mock_async_client.post(
-            f"/api/upload/chunked/{session_id}/complete"
+            f"/api/v1/upload/chunked/{session_id}/complete"
         )
         
         assert response.status_code == 200
@@ -149,7 +149,7 @@ class TestSecureUploadAPI:
         files = {"file": ("chunk0", io.BytesIO(chunk_data), "application/octet-stream")}
         
         response = await mock_async_client.post(
-            f"/api/upload/chunked/{invalid_session}/chunk/0",
+            f"/api/v1/upload/chunked/{invalid_session}/chunk/0",
             files=files
         )
         
@@ -166,7 +166,7 @@ class TestSecureUploadAPI:
         }
         
         response = await mock_async_client.post(
-            "/api/upload/chunked/init",
+            "/api/v1/upload/chunked/init",
             params=large_payload
         )
         
@@ -181,7 +181,7 @@ class TestSecureUploadAPI:
         files = {"file": ("metrics_test.csv", csv_file, "text/csv")}
         
         response = await mock_async_client.post(
-            "/api/upload/secure",
+            "/api/v1/upload/secure",
             files=files
         )
         
@@ -208,7 +208,7 @@ class TestSecureUploadAPI:
             }
             
             response = await mock_async_client.post(
-                "/api/upload/chunked/init",
+                "/api/v1/upload/chunked/init",
                 params=payload
             )
             assert response.status_code == 200

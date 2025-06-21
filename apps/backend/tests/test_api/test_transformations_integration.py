@@ -40,7 +40,7 @@ def mock_transformation_app():
     
     # Import and include transformation routes
     from app.api.routes import transformations
-    app.include_router(transformations.router, prefix="/api")
+    app.include_router(transformations.router, prefix="")
     
     return app
 
@@ -155,7 +155,7 @@ class TestTransformationPreview:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/preview",
+                "/api/v1/transformations/preview",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -181,7 +181,7 @@ class TestTransformationPreview:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/preview",
+                "/api/v1/transformations/preview",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -205,7 +205,7 @@ class TestTransformationPreview:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/preview",
+                "/api/v1/transformations/preview",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -226,7 +226,7 @@ class TestTransformationPreview:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/preview",
+                "/api/v1/transformations/preview",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -253,7 +253,7 @@ class TestTransformationApply:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/apply",
+                "/api/v1/transformations/apply",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -294,7 +294,7 @@ class TestTransformationApply:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/pipeline/apply",
+                "/api/v1/transformations/pipeline/apply",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -330,7 +330,7 @@ class TestTransformationApply:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/pipeline/apply",
+                "/api/v1/transformations/pipeline/apply",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -361,7 +361,7 @@ class TestTransformationValidation:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/validate",
+                "/api/v1/transformations/validate",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -386,7 +386,7 @@ class TestAutoClean:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/auto-clean",
+                "/api/v1/transformations/auto-clean",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -410,7 +410,7 @@ class TestAutoClean:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/auto-clean",
+                "/api/v1/transformations/auto-clean",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -428,7 +428,7 @@ class TestTransformationSuggestions:
         """Test getting transformation suggestions"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             response = await transformation_client.get(
-                f"/api/transformations/suggestions/{mock_user_data.id}",
+                f"/api/v1/transformations/suggestions/{mock_user_data.id}",
                 headers={"Authorization": "Bearer test-token"}
             )
             
@@ -476,7 +476,7 @@ class TestRecipeManagement:
             }
             
             response = await transformation_client.post(
-                "/api/transformations/recipes",
+                "/api/v1/transformations/recipes",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -509,7 +509,7 @@ class TestRecipeManagement:
             mock_get.return_value = mock_recipes
             
             response = await transformation_client.get(
-                "/api/transformations/recipes?page=1&per_page=10",
+                "/api/v1/transformations/recipes?page=1&per_page=10",
                 headers={"Authorization": "Bearer test-token"}
             )
             
@@ -538,7 +538,7 @@ class TestRecipeManagement:
             mock_get.return_value = [mock_recipe]
             
             response = await transformation_client.get(
-                "/api/transformations/recipes/popular?limit=5",
+                "/api/v1/transformations/recipes/popular?limit=5",
                 headers={"Authorization": "Bearer test-token"}
             )
             
@@ -567,7 +567,7 @@ class TestRecipeManagement:
             mock_get.return_value = mock_recipe
             
             response = await transformation_client.get(
-                f"/api/transformations/recipes/{recipe_id}",
+                f"/api/v1/transformations/recipes/{recipe_id}",
                 headers={"Authorization": "Bearer test-token"}
             )
             
@@ -604,7 +604,7 @@ class TestRecipeManagement:
             }
             
             response = await transformation_client.post(
-                f"/api/transformations/recipes/{recipe_id}/apply",
+                f"/api/v1/transformations/recipes/{recipe_id}/apply",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -638,7 +638,7 @@ class TestRecipeManagement:
             }
             
             response = await transformation_client.post(
-                f"/api/transformations/recipes/{recipe_id}/export",
+                f"/api/v1/transformations/recipes/{recipe_id}/export",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -657,7 +657,7 @@ class TestRecipeManagement:
             mock_delete.return_value = True
             
             response = await transformation_client.delete(
-                f"/api/transformations/recipes/{recipe_id}",
+                f"/api/v1/transformations/recipes/{recipe_id}",
                 headers={"Authorization": "Bearer test-token"}
             )
             
@@ -686,7 +686,7 @@ class TestAuthenticationBypass:
                 mock_find.return_value = None
                 
                 response = await client.get(
-                    "/api/transformations/suggestions/test_dataset",
+                    "/api/v1/transformations/suggestions/test_dataset",
                     headers={"Authorization": "Bearer dev-custom-user"}
                 )
                 
@@ -706,7 +706,7 @@ class TestAuthenticationBypass:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # This should fail with auth error
-            response = await client.get("/api/transformations/recipes")
+            response = await client.get("/api/v1/transformations/recipes")
             
             # FastAPI returns 403 when HTTPBearer dependency fails
             assert response.status_code in [401, 403]
@@ -731,7 +731,7 @@ class TestErrorHandling:
                 }
                 
                 response = await transformation_client.post(
-                    "/api/transformations/preview",
+                    "/api/v1/transformations/preview",
                     json=request,
                     headers={"Authorization": "Bearer test-token"}
                 )
@@ -754,7 +754,7 @@ class TestErrorHandling:
             
             # Should fail validation before reaching endpoint
             response = await transformation_client.post(
-                "/api/transformations/preview",
+                "/api/v1/transformations/preview",
                 json=request,
                 headers={"Authorization": "Bearer test-token"}
             )
@@ -772,7 +772,7 @@ class TestErrorHandling:
             mock_get.return_value = mock_recipe
             
             response = await transformation_client.get(
-                f"/api/transformations/recipes/{recipe_id}",
+                f"/api/v1/transformations/recipes/{recipe_id}",
                 headers={"Authorization": "Bearer test-token"}
             )
             

@@ -10,6 +10,7 @@ from io import BytesIO
 
 from app.main import app
 from app.services.model_export import ModelExportService
+from app.auth.nextauth_auth import get_current_user_id
 
 
 @pytest.fixture
@@ -61,15 +62,20 @@ def mock_export_formats():
     ]
 
 
+@pytest.fixture(autouse=True)
+def override_get_current_user_id():
+    app.dependency_overrides[get_current_user_id] = lambda: "test_user_123"
+    yield
+    app.dependency_overrides.pop(get_current_user_id, None)
+
+
 class TestModelExportRoutes:
     """Test cases for model export API routes"""
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_get_export_formats_success(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id, 
@@ -78,7 +84,6 @@ class TestModelExportRoutes:
         """Test successful retrieval of export formats"""
         
         # Setup mocks
-        mock_get_user.return_value = mock_user_id
         mock_export_service.get_export_formats = AsyncMock(return_value=mock_export_formats)
         
         # Make request
@@ -99,12 +104,10 @@ class TestModelExportRoutes:
         # Verify service was called
         mock_export_service.get_export_formats.assert_called_once()
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_python_code_success(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -112,7 +115,6 @@ class TestModelExportRoutes:
         """Test successful Python code export"""
         
         # Setup mocks
-        mock_get_user.return_value = mock_user_id
         python_code = "# Generated Python inference code\nclass ModelInference:\n    pass"
         filename = "test_model_v1.0_inference.py"
         mock_export_service.export_python_code = AsyncMock(return_value=(python_code, filename))
@@ -136,12 +138,10 @@ class TestModelExportRoutes:
             include_preprocessing=True
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_python_code_without_preprocessing(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -149,7 +149,6 @@ class TestModelExportRoutes:
         """Test Python code export without preprocessing"""
         
         # Setup mocks
-        mock_get_user.return_value = mock_user_id
         python_code = "# Generated Python inference code without preprocessing"
         filename = "test_model_v1.0_inference.py"
         mock_export_service.export_python_code = AsyncMock(return_value=(python_code, filename))
@@ -170,12 +169,10 @@ class TestModelExportRoutes:
             include_preprocessing=False
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_python_code_model_not_found(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -183,7 +180,6 @@ class TestModelExportRoutes:
         """Test Python code export when model is not found"""
         
         # Setup mocks
-        mock_get_user.return_value = mock_user_id
         mock_export_service.export_python_code = AsyncMock(
             side_effect=ValueError("Model not found")
         )
@@ -196,12 +192,10 @@ class TestModelExportRoutes:
         data = response.json()
         assert "Model not found" in data["detail"]
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_docker_container_success(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -238,12 +232,10 @@ class TestModelExportRoutes:
             user_id=mock_user_id
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_onnx_success(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -271,12 +263,10 @@ class TestModelExportRoutes:
             user_id=mock_user_id
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_onnx_not_available(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -297,12 +287,10 @@ class TestModelExportRoutes:
         data = response.json()
         assert "ONNX export requires" in data["detail"]
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_pmml_success(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -330,12 +318,10 @@ class TestModelExportRoutes:
             user_id=mock_user_id
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_model_custom_python(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -343,7 +329,6 @@ class TestModelExportRoutes:
         """Test custom export with Python format"""
         
         # Setup mocks
-        mock_get_user.return_value = mock_user_id
         python_code = "# Custom Python code"
         filename = "custom_model.py"
         mock_export_service.export_python_code = AsyncMock(return_value=(python_code, filename))
@@ -365,12 +350,10 @@ class TestModelExportRoutes:
             include_preprocessing=False
         )
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_model_custom_unsupported_format(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -388,14 +371,12 @@ class TestModelExportRoutes:
         data = response.json()
         assert "Unsupported export format" in data["detail"]
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.MLModel')
     @patch('app.api.routes.model_export.export_service')
     def test_get_model_export_info_success(
         self, 
         mock_export_service, 
         mock_ml_model, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id,
@@ -448,12 +429,10 @@ class TestModelExportRoutes:
         assert "curl_python" in data["usage_examples"]
         assert "curl_docker" in data["usage_examples"]
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.MLModel')
     def test_get_model_export_info_model_not_found(
         self, 
         mock_ml_model, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id
@@ -472,12 +451,10 @@ class TestModelExportRoutes:
         data = response.json()
         assert "Model not found" in data["detail"]
     
-    @patch('app.api.routes.model_export.get_current_user_id')
     @patch('app.api.routes.model_export.export_service')
     def test_export_service_internal_error(
         self, 
         mock_export_service, 
-        mock_get_user, 
         client, 
         mock_user_id, 
         mock_model_id

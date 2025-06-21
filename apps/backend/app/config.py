@@ -14,6 +14,8 @@ class Settings(BaseModel):
     # MongoDB settings
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "narrative_modeling")
+    TEST_MONGODB_DB: str = os.getenv("TEST_MONGODB_DB", "narrative_modeling_test")
+    TEST_MONGODB_URI: str = os.getenv("TEST_MONGODB_URI", "mongodb://localhost:27017/narrative_modeling_test")
 
     # API settings
     API_V1_STR: str = "/api/v1"

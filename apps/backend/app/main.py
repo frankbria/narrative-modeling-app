@@ -74,13 +74,23 @@ from app.services.redis_cache import init_cache, cleanup_cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: connect to DB
+    # Startup: connect to DB (single place, all models)
     mongo_uri = os.getenv("MONGODB_URI")
     db_name = os.getenv("MONGODB_DB")
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, AnalyticsResult, Plot, TrainedModel, ColumnStats, MLModel, APIKey, ABTest, BatchJob, TransformationRecipe, RecipeExecutionHistory],
+        document_models=[UserData, 
+                         AnalyticsResult, 
+                         Plot, 
+                         TrainedModel, 
+                         ColumnStats, 
+                         MLModel, 
+                         APIKey, 
+                         ABTest, 
+                         BatchJob, 
+                         TransformationRecipe, 
+                         RecipeExecutionHistory],
     )
 
     # Initialize OpenAI client
@@ -89,9 +99,10 @@ async def lifespan(app: FastAPI):
     # Initialize Redis cache
     await init_cache()
 
-    await connect_to_mongo()
     yield
-    await close_mongo_connection()
+
+    # Cleanup
+    client.close()
     await cleanup_cache()
 
 

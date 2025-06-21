@@ -1,24 +1,10 @@
-from motor.motor_asyncio import AsyncIOMotorClient
-from beanie import init_beanie
-from app.config import settings
-from app.models.user_data import UserData
-from app.models.column_stats import ColumnStats
-
+# Deprecated: All DB and Beanie initialization is now handled in main.py lifespan.
+# This module is kept for legacy imports only.
 
 async def connect_to_mongo():
-    """Connect to MongoDB and initialize Beanie"""
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
-    await init_beanie(
-        database=client[settings.MONGODB_DB],
-        document_models=[
-            UserData,
-            ColumnStats,
-            # Add other document models here as needed
-        ],
-    )
-
+    """No-op: DB connection is now handled in main.py lifespan."""
+    pass
 
 async def close_mongo_connection():
-    """Close MongoDB connection"""
-    # Beanie handles connection closing automatically
+    """No-op: DB connection is now handled in main.py lifespan."""
     pass
