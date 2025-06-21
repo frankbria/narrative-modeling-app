@@ -14,7 +14,7 @@ import traceback
 import os
 import boto3
 from app.models.user_data import UserData, SchemaField
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.utils.schema_inference import infer_schema, generate_s3_filename
 from app.utils.s3 import upload_file_to_s3
 from app.utils.ai_summary import generate_dataset_summary

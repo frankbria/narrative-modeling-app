@@ -10,7 +10,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Uses App Router pattern
 - TypeScript with strict typing
 - Tailwind CSS for styling
-- Clerk for authentication
+- NextAuth v5 for authentication (Google, GitHub providers)
 
 ### Backend (FastAPI)
 - Located in `apps/backend/`
@@ -46,14 +46,21 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Descriptive commit messages
 
 ## Testing Commands
-- Backend: `cd apps/backend && poetry run pytest`
+- Backend: `cd apps/backend && uv run pytest`
+- Backend (unit tests only): `cd apps/backend && uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -v`
 - Frontend: `cd apps/frontend && npm test`
-- MCP: `cd apps/mcp && poetry run pytest`
+- MCP: `cd apps/mcp && uv run pytest`
+
+## Test Suite Status
+- Backend: 132/151 unit tests passing (87.4%)
+- Integration tests require MongoDB connection
+- See `apps/backend/TEST_STATUS.md` for details
 
 ## Environment Variables
 - Frontend: `.env.local`
 - Backend: `.env`
-- Required: AWS credentials, MongoDB URI, OpenAI API key, Clerk keys
+- Required: AWS credentials, MongoDB URI, OpenAI API key, NextAuth secret
+- Development: Set `SKIP_AUTH=true` to bypass authentication
 
 ## Data Flow
 1. User uploads file → Backend processes → Stores in S3
@@ -62,7 +69,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-Sprint 0 - Foundation phase with data ingestion and exploration complete. Model building and prediction features pending implementation.
+Sprint 6+ - Advanced features phase with 8-stage workflow system complete. Data transformation pipeline fully integrated between frontend and backend. NextAuth migration complete. Focus shifting to workflow persistence and advanced ML tools.
 
 ## MCP Server Setup
 When using Claude Desktop with this project, install the Context7 MCP server for better context management:

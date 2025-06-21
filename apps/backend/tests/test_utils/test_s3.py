@@ -83,10 +83,11 @@ def test_upload_file_to_s3_success(mock_env_vars, mock_s3_client):
         mock_s3_client.upload_fileobj.assert_called_once()
 
         # Verify the upload_fileobj call arguments
-        call_args = mock_s3_client.upload_fileobj.call_args[1]
-        assert call_args["Bucket"] == "test_bucket"
-        assert call_args["Key"] == s3_filename
-        assert call_args["ExtraArgs"] == {"ContentType": content_type}
+        # upload_fileobj is called with positional args: (file_obj, bucket, key)
+        call_args = mock_s3_client.upload_fileobj.call_args
+        assert call_args[0][1] == "test_bucket"  # bucket name
+        assert call_args[0][2] == s3_filename    # key
+        assert call_args[1]["ExtraArgs"] == {"ContentType": content_type}
 
 
 def test_upload_file_to_s3_no_client(mock_env_vars):
