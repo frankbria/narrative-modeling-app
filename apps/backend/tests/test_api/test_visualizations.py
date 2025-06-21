@@ -8,10 +8,10 @@ from app.models.visualization_cache import (
     BoxplotData,
     CorrelationMatrixData,
 )
-from app.api.deps import get_current_user_id
 from app.main import app
 from beanie import PydanticObjectId, Link
 from app.models.user_data import UserData
+from app.auth.nextauth_auth import get_current_user_id
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from app.api.deps import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.services.onboarding_service import OnboardingService
 from app.schemas.onboarding import (
     OnboardingStatusResponse,
