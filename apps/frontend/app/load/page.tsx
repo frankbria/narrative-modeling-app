@@ -1,6 +1,7 @@
 'use client'
 
-import { useUser, useSession } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { CheckCircle, XCircle, UploadCloud, FileText, ArrowRight, AlertTriangle, Shield, Eye, EyeOff, HardDrive } from 'lucide-react'
@@ -59,8 +60,7 @@ interface PreviewData {
 }
 
 export default function LoadPage() {
-  const { isSignedIn } = useUser()
-  const { session } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const [file, setFile] = useState<File | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
@@ -186,7 +186,7 @@ export default function LoadPage() {
         method: 'POST',
         body: formData,
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       })
 
@@ -254,7 +254,7 @@ export default function LoadPage() {
         method: 'POST',
         body: formData,
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       })
 
@@ -309,7 +309,7 @@ export default function LoadPage() {
     multiple: false,
   })
 
-  if (!isSignedIn) return <p>Please log in to access this page.</p>
+  if (!session) return <p>Please log in to access this page.</p>
 
   return (
     <div className="p-6 ml-64">

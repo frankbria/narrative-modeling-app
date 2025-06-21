@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
-import { useUser } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { Send, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
@@ -12,14 +13,14 @@ interface Message {
 }
 
 export function AIChat() {
-  const { user } = useUser()
+  const { data: session } = useSession()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPageLoading, setIsPageLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
-  const { contextString, isLoading: isContextLoading, error: contextError, isAvailable } = useDatasetChatContext(user?.id ?? null)
+  const { contextString, isLoading: isContextLoading, error: contextError, isAvailable } = useDatasetChatContext(session?.user?.id ?? null)
   const initialMessageSetRef = useRef(false)
   const contextUpdatedRef = useRef(false)
 

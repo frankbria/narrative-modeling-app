@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@/app/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the current user
-    const { userId } = getAuth(request);
+    // Get the current user session
+    const session = await auth();
     
-    if (!userId) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userId}`,
+        'Authorization': `Bearer nextauth-${session.user.id}`,
       },
       body: JSON.stringify(data),
     });
@@ -47,4 +47,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
