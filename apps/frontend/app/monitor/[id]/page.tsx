@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { ProductionService, ModelMetrics } from '@/lib/services/production'
 import { ModelService, ModelInfo } from '@/lib/services/model'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -46,7 +47,7 @@ interface PredictionLog {
 
 export default function ModelMonitoringPage() {
   const params = useParams()
-  const { isSignedIn, getToken } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
   
   const modelId = params?.id as string
@@ -59,15 +60,15 @@ export default function ModelMonitoringPage() {
   const [timeWindow, setTimeWindow] = useState('24')
 
   useEffect(() => {
-    if (isSignedIn && modelId) {
+    if (session && modelId) {
       fetchModelData()
     }
-  }, [isSignedIn, modelId, timeWindow])
+  }, [session, modelId, timeWindow])
 
   const fetchModelData = async () => {
     try {
       setIsLoading(true)
-      const token = await getToken()
+      const token = await getAuthToken()
       
       const [modelData, metricsData, logsData, distData] = await Promise.all([
         ModelService.getModel(modelId, token),
@@ -100,7 +101,7 @@ export default function ModelMonitoringPage() {
     return String(prediction)
   }
 
-  if (!isSignedIn) {
+  if (!session) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">

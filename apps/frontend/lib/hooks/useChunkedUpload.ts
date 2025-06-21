@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { useSession } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 
 interface ChunkUploadProgress {
   sessionId: string
@@ -24,7 +25,7 @@ interface ChunkedUploadOptions {
 }
 
 export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
-  const { session } = useSession()
+  const { data: session } = useSession()
   const {
     chunkSize = 5 * 1024 * 1024, // 5MB default
     maxRetries = 3,
@@ -51,7 +52,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     const response = await fetch(`${backendUrl}/api/v1/upload/chunked/init`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${await session?.getToken()}`,
+        'Authorization': `Bearer ${await getAuthToken()}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({

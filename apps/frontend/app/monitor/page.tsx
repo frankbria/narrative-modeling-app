@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { ProductionService, UsageStats, APIKeyUsage } from '@/lib/services/production'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,7 +32,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 export default function MonitoringPage() {
-  const { isSignedIn, getToken } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
   const [usageStats, setUsageStats] = useState<UsageStats | null>(null)
   const [apiKeyUsage, setApiKeyUsage] = useState<APIKeyUsage[]>([])
@@ -40,15 +41,15 @@ export default function MonitoringPage() {
   const [activeTab, setActiveTab] = useState('overview')
 
   useEffect(() => {
-    if (isSignedIn) {
+    if (session) {
       fetchMonitoringData()
     }
-  }, [isSignedIn])
+  }, [session])
 
   const fetchMonitoringData = async () => {
     try {
       setIsLoading(true)
-      const token = await getToken()
+      const token = await getAuthToken()
       
       const [stats, keyUsage] = await Promise.all([
         ProductionService.getUsageOverview(token),
@@ -70,7 +71,7 @@ export default function MonitoringPage() {
     return `${(ms / 1000).toFixed(2)}s`
   }
 
-  if (!isSignedIn) {
+  if (!session) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">

@@ -25,7 +25,8 @@ import { Slider } from '@/components/ui/slider'
 import { Brain, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { ModelService, TrainModelRequest } from '@/lib/services/model'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface ModelTrainingButtonProps {
@@ -42,7 +43,7 @@ export function ModelTrainingButton({
   const [open, setOpen] = useState(false)
   const [isTraining, setIsTraining] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { getToken } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
 
   // Form state
@@ -73,7 +74,7 @@ export function ModelTrainingButton({
     setError(null)
 
     try {
-      const token = await getToken()
+      const token = await getAuthToken()
       
       const request: TrainModelRequest = {
         dataset_id: datasetId,
