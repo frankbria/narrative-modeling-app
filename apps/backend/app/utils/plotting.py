@@ -10,7 +10,13 @@ from app.models.visualization_cache import (
 
 def generate_histogram(data: pd.Series, num_bins: int = 50) -> HistogramData:
     """Generate histogram data for a numeric column"""
-    counts, bin_edges = np.histogram(data.dropna(), bins=num_bins)
+    clean_data = data.dropna()
+    
+    # Handle empty data
+    if len(clean_data) == 0:
+        return HistogramData(bins=[], counts=[], bin_edges=[])
+    
+    counts, bin_edges = np.histogram(clean_data, bins=num_bins)
     bins = [(bin_edges[i] + bin_edges[i + 1]) / 2 for i in range(len(bin_edges) - 1)]
 
     return HistogramData(

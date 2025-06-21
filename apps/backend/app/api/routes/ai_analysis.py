@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.mcp_integration import mcp_service, MCPAnalysisRequest, MCPAnalysisResponse
 from app.services.s3_service import s3_service

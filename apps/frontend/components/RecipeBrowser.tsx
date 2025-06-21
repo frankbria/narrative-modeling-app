@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -15,28 +16,9 @@ import {
   Code,
   ChevronRight,
 } from 'lucide-react';
-import axios from 'axios';
-import { API_BASE_URL } from '@/lib/config';
+import { TransformationService, Recipe } from '@/lib/services/transformation';
+import { getAuthToken } from '@/lib/auth-helpers';
 
-interface Recipe {
-  id: string;
-  name: string;
-  description?: string;
-  user_id: string;
-  steps: Array<{
-    step_id: string;
-    type: string;
-    parameters: any;
-    description?: string;
-    order: number;
-  }>;
-  created_at: string;
-  updated_at: string;
-  is_public: boolean;
-  tags: string[];
-  usage_count: number;
-  rating?: number;
-}
 
 interface RecipeBrowserProps {
   datasetId: string;
@@ -44,6 +26,7 @@ interface RecipeBrowserProps {
 }
 
 export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) {
+  const { data: session } = useSession();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,18 +35,19 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
   const [activeTab, setActiveTab] = useState('my-recipes');
 
   useEffect(() => {
-    fetchRecipes();
-    fetchPopularRecipes();
-  }, []);
+    if (session) {
+      fetchRecipes();
+      fetchPopularRecipes();
+    }
+  }, [session]);
 
   const fetchRecipes = async () => {
+    if (!session) return;
+    
     try {
-      const response = await axios.get(`${API_BASE_URL}/transformations/recipes`, {
-        headers: {
-          'Authorization': `Bearer ${await getAuthToken()}`
-        }
-      });
-      setRecipes(response.data.recipes);
+      const token = await getAuthToken();
+      const response = await TransformationService.listRecipes(token);
+      setRecipes(response.recipes);
     } catch (error) {
       console.error('Failed to fetch recipes:', error);
     } finally {
@@ -72,29 +56,25 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
   };
 
   const fetchPopularRecipes = async () => {
+    if (!session) return;
+    
     try {
-      const response = await axios.get(`${API_BASE_URL}/transformations/recipes/popular`, {
-        params: { limit: 10 }
-      });
-      setPopularRecipes(response.data.recipes);
+      const token = await getAuthToken();
+      const response = await TransformationService.getPopularRecipes(token, 10);
+      setPopularRecipes(response.recipes);
     } catch (error) {
       console.error('Failed to fetch popular recipes:', error);
     }
   };
 
   const handleApplyRecipe = async (recipe: Recipe) => {
+    if (!session) return;
+    
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/transformations/recipes/${recipe.id}/apply`,
-        { dataset_id: datasetId },
-        {
-          headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`
-          }
-        }
-      );
+      const token = await getAuthToken();
+      const response = await TransformationService.applyRecipe(recipe.id, datasetId, token);
       
-      if (response.data.success) {
+      if (response.success) {
         onApplyRecipe(recipe);
       }
     } catch (error) {
@@ -103,19 +83,30 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
   };
 
   const handleExportRecipe = async (recipe: Recipe, language: string = 'python') => {
+    if (!session) return;
+    
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/transformations/recipes/${recipe.id}/export`,
-        { language },
+      const token = await getAuthToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/transformations/recipes/${recipe.id}/export`,
         {
+          method: 'POST',
           headers: {
-            'Authorization': `Bearer ${await getAuthToken()}`
-          }
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ language })
         }
       );
       
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+      
+      const data = await response.json();
+      
       // Download the code
-      const blob = new Blob([response.data.code], { type: 'text/plain' });
+      const blob = new Blob([data.code], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -127,11 +118,6 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
     } catch (error) {
       console.error('Failed to export recipe:', error);
     }
-  };
-
-  const getAuthToken = async () => {
-    // Get auth token from Clerk
-    return 'mock-token'; // Replace with actual Clerk integration
   };
 
   const filteredRecipes = recipes.filter(

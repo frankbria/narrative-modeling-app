@@ -26,11 +26,14 @@ async def test_validate_file_valid_csv():
 async def test_validate_file_invalid_type():
     """Test file validation with an invalid file type."""
     # Create a mock file object with invalid type
+
     mock_file = Mock(spec=UploadFile)
     mock_file.filename = "test.xyz"
     mock_file.content_type = "application/octet-stream"
 
     # Test validation
+
+
     is_valid = mock_file.filename.endswith((".csv", ".xlsx", ".txt"))
     assert not is_valid
 
@@ -48,6 +51,8 @@ async def test_process_file_success(mock_user_id, setup_database):
     )
 
     # Create a mock file object
+
+
     mock_file = Mock(spec=UploadFile)
     mock_file.filename = "test.csv"
     mock_file.content_type = "text/csv"
@@ -56,8 +61,7 @@ async def test_process_file_success(mock_user_id, setup_database):
     # Mock S3 upload
     with patch(
         "app.utils.s3.upload_file_to_s3",
-        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv"),
-    ):
+        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv")):
         # Mock schema inference
         with patch(
             "app.utils.schema_inference.infer_schema",
@@ -71,40 +75,36 @@ async def test_process_file_success(mock_user_id, setup_database):
                     missing_values=0,
                     example_values=[1.0, 2.0, 3.0],
                     is_constant=False,
-                    is_high_cardinality=False,
-                ),
+                    is_high_cardinality=False),
                 SchemaField(
                     field_name="categorical_col",
                     field_type="categorical",
-                    data_type="string",
+                    data_type="object",
                     inferred_dtype="object",
                     unique_values=3,
                     missing_values=0,
                     example_values=["A", "B", "C"],
                     is_constant=False,
-                    is_high_cardinality=False,
-                ),
+                    is_high_cardinality=False),
                 SchemaField(
                     field_name="text_col",
                     field_type="text",
-                    data_type=None,
+                    data_type="object",
                     inferred_dtype="object",
                     unique_values=5,
                     missing_values=0,
                     example_values=["text1", "text2", "text3"],
                     is_constant=False,
-                    is_high_cardinality=True,
-                ),
-            ],
-        ):
+                    is_high_cardinality=False)
+            ]):
             # Create UserData object
             user_data = UserData(
                 user_id=mock_user_id,
-                filename=mock_file.filename,
-                s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
-                num_rows=5,
-                num_columns=3,
-                data_schema=[
+        filename=mock_file.filename,
+        s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+        num_rows=5,
+        num_columns=3,
+        data_schema=[
                     SchemaField(
                         field_name="numeric_col",
                         field_type="numeric",
@@ -114,32 +114,14 @@ async def test_process_file_success(mock_user_id, setup_database):
                         missing_values=0,
                         example_values=[1.0, 2.0, 3.0],
                         is_constant=False,
-                        is_high_cardinality=False,
-                    ),
-                    SchemaField(
-                        field_name="categorical_col",
-                        field_type="categorical",
-                        data_type="string",
-                        inferred_dtype="object",
-                        unique_values=3,
-                        missing_values=0,
-                        example_values=["A", "B", "C"],
-                        is_constant=False,
-                        is_high_cardinality=False,
-                    ),
-                    SchemaField(
-                        field_name="text_col",
-                        field_type="text",
-                        data_type=None,
-                        inferred_dtype="object",
-                        unique_values=5,
-                        missing_values=0,
-                        example_values=["text1", "text2", "text3"],
-                        is_constant=False,
-                        is_high_cardinality=True,
-                    ),
-                ],
-            )
+                        is_high_cardinality=False
+
+                        )
+
+                        ],
+
+                        original_filename="test.csv"
+                        )
 
             # Verify result
             assert user_data is not None
@@ -154,9 +136,12 @@ async def test_process_file_success(mock_user_id, setup_database):
 async def test_process_file_empty_data(mock_user_id, setup_database):
     """Test file processing with empty data."""
     # Create empty dataframe
+
     data = pd.DataFrame()
 
     # Create a mock file object
+
+
     mock_file = Mock(spec=UploadFile)
     mock_file.filename = "test.csv"
     mock_file.content_type = "text/csv"
@@ -165,19 +150,19 @@ async def test_process_file_empty_data(mock_user_id, setup_database):
     # Mock S3 upload
     with patch(
         "app.utils.s3.upload_file_to_s3",
-        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv"),
-    ):
+        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv")):
         # Mock schema inference
         with patch("app.utils.schema_inference.infer_schema", return_value=[]):
             # Create UserData object
             user_data = UserData(
                 user_id=mock_user_id,
                 filename=mock_file.filename,
-                s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+                original_filename="test.csv",
                 num_rows=0,
                 num_columns=0,
-                data_schema=[],
-            )
+        s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+        data_schema=[],
+    )
 
             # Verify result
             assert user_data is not None
@@ -192,9 +177,11 @@ async def test_process_file_empty_data(mock_user_id, setup_database):
 async def test_process_file_invalid_data(mock_user_id, setup_database):
     """Test file processing with invalid data."""
     # Create invalid data (non-serializable)
-    data = pd.DataFrame({"invalid_col": [np.nan, np.inf, -np.inf]})
+    data = pd.DataFrame({"invalid": [object()]})
 
     # Create a mock file object
+
+
     mock_file = Mock(spec=UploadFile)
     mock_file.filename = "test.csv"
     mock_file.content_type = "text/csv"
@@ -203,46 +190,43 @@ async def test_process_file_invalid_data(mock_user_id, setup_database):
     # Mock S3 upload
     with patch(
         "app.utils.s3.upload_file_to_s3",
-        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv"),
-    ):
+        return_value=(True, "https://test-bucket.s3.amazonaws.com/test.csv")):
         # Mock schema inference
         with patch(
             "app.utils.schema_inference.infer_schema",
             return_value=[
                 SchemaField(
-                    field_name="invalid_col",
-                    field_type="numeric",
-                    data_type="float",
-                    inferred_dtype="float64",
-                    unique_values=3,
-                    missing_values=1,
-                    example_values=[np.nan, np.inf, -np.inf],
+                    field_name="invalid",
+                    field_type="text",
+                    data_type="object",
+                    inferred_dtype="object",
+                    unique_values=1,
+                    missing_values=0,
+                    example_values=[],
                     is_constant=False,
-                    is_high_cardinality=False,
-                ),
-            ],
-        ):
+                    is_high_cardinality=False)
+            ]):
             # Create UserData object
             user_data = UserData(
                 user_id=mock_user_id,
                 filename=mock_file.filename,
-                s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+                original_filename="test.csv",
                 num_rows=3,
                 num_columns=1,
-                data_schema=[
+        s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+        data_schema=[
                     SchemaField(
-                        field_name="invalid_col",
-                        field_type="numeric",
-                        data_type="float",
-                        inferred_dtype="float64",
-                        unique_values=3,
-                        missing_values=1,
-                        example_values=[np.nan, np.inf, -np.inf],
+                        field_name="invalid",
+                        field_type="text",
+                        data_type="object",
+                        inferred_dtype="object",
+                        unique_values=1,
+                        missing_values=0,
+                        example_values=[],
                         is_constant=False,
-                        is_high_cardinality=False,
-                    ),
-                ],
-            )
+                        is_high_cardinality=False
+    )
+                ])
 
             # Verify result
             assert user_data is not None

@@ -8,7 +8,7 @@ import pandas as pd
 import io
 from datetime import datetime
 
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
 from app.models.user_data import UserData, SchemaField
