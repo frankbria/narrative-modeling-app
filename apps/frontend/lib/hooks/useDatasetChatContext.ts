@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useSession } from '@clerk/nextjs';
+import { useSession } from 'next-auth/react';
+import { getAuthToken } from '@/lib/auth-helpers';
 
 interface AISummary {
   overview: string;
@@ -28,7 +29,8 @@ const summaryCache: SummaryCache = {};
  * @returns Object containing the context string, raw markdown, and loading/error states
  */
 export function useDatasetChatContext(datasetId: string | null) {
-  const { session, isLoaded: isSessionLoaded } = useSession();
+  const { data: session, status } = useSession();
+  const isSessionLoaded = status !== 'loading';
   const [contextString, setContextString] = useState<string | null>(null);
   const [rawMarkdown, setRawMarkdown] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -85,7 +87,7 @@ export function useDatasetChatContext(datasetId: string | null) {
           
           try {
             // Get the token first to check if authentication is available
-            const token = await session.getToken();
+            const token = await getAuthToken();
             if (!token) {
               console.warn('No authentication token available');
               setError('Authentication token not available. Please sign in again.');
@@ -147,7 +149,7 @@ export function useDatasetChatContext(datasetId: string | null) {
         // Remove trailing /api if present
         backendUrl = backendUrl.replace(/\/api$/, '');
         
-        const token = await session.getToken();
+        const token = await getAuthToken();
         const response = await fetch(`${backendUrl}/api/user_data/${actualDatasetId}/ai-summary`, {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -202,7 +204,7 @@ export function useDatasetChatContext(datasetId: string | null) {
  * @param datasetId The ID of the dataset or user ID
  * @returns A promise that resolves to the system prompt
  */
-export async function getDatasetSystemPrompt(datasetId: string, session: { getToken: () => Promise<string | null> }): Promise<string> {
+export async function getDatasetSystemPrompt(datasetId: string): Promise<string> {
   try {
     // Check cache first
     const now = Date.now();
@@ -227,7 +229,7 @@ export async function getDatasetSystemPrompt(datasetId: string, session: { getTo
       
       try {
         // Get the token first to check if authentication is available
-        const token = await session.getToken();
+        const token = await getAuthToken();
         if (!token) {
           console.warn('No authentication token available');
           return "I don't have access to your dataset information. Please sign in to access this feature.";
@@ -275,7 +277,7 @@ export async function getDatasetSystemPrompt(datasetId: string, session: { getTo
     // Remove trailing /api if present
     backendUrl = backendUrl.replace(/\/api$/, '');
     
-    const token = await session.getToken();
+    const token = await getAuthToken();
     const response = await fetch(`${backendUrl}/api/user_data/${actualDatasetId}/ai-summary`, {
       headers: {
         'Authorization': `Bearer ${token}`

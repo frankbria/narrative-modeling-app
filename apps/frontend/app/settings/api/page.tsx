@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { ProductionService, APIKeyInfo, CreateAPIKeyRequest } from '@/lib/services/production'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -53,7 +54,7 @@ import {
 import { useRouter } from 'next/navigation'
 
 export default function APIKeysPage() {
-  const { isSignedIn, getToken } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
   const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -74,15 +75,15 @@ export default function APIKeysPage() {
   const [expiryDays, setExpiryDays] = useState([30])
 
   useEffect(() => {
-    if (isSignedIn) {
+    if (session) {
       fetchAPIKeys()
     }
-  }, [isSignedIn])
+  }, [session])
 
   const fetchAPIKeys = async () => {
     try {
       setIsLoading(true)
-      const token = await getToken()
+      const token = await getAuthToken()
       const keys = await ProductionService.listAPIKeys(token)
       setApiKeys(keys)
     } catch (err) {
@@ -102,7 +103,7 @@ export default function APIKeysPage() {
     setError(null)
 
     try {
-      const token = await getToken()
+      const token = await getAuthToken()
       
       const request: CreateAPIKeyRequest = {
         name: keyName,
@@ -125,7 +126,7 @@ export default function APIKeysPage() {
 
   const handleDeleteKey = async (keyId: string) => {
     try {
-      const token = await getToken()
+      const token = await getAuthToken()
       await ProductionService.revokeAPIKey(keyId, token)
       await fetchAPIKeys()
     } catch (err) {
@@ -154,7 +155,7 @@ export default function APIKeysPage() {
     setCopiedKey(false)
   }
 
-  if (!isSignedIn) {
+  if (!session) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">
