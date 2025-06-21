@@ -104,7 +104,7 @@ def mock_dataframe():
 
 @pytest.mark.asyncio
 async def test_get_histogram(
-    async_test_client,
+    async_authorized_client,
     mock_histogram_data,
     setup_database,
     mock_auth,
@@ -129,7 +129,7 @@ async def test_get_histogram(
             f"DEBUG: Mocked generate_and_cache_histogram to return: {json.dumps(mock_histogram_data.model_dump(), indent=2)}"
         )
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/histogram/{dataset_id}/{column_name}",
             params={"num_bins": num_bins},
             headers={"Authorization": "Bearer test_token"},
@@ -149,7 +149,7 @@ async def test_get_histogram(
 
 @pytest.mark.asyncio
 async def test_get_histogram_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test getting histogram data with invalid parameters."""
     dataset_id = mock_dataset_id
@@ -167,7 +167,7 @@ async def test_get_histogram_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_histogram to raise ValueError")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/histogram/{dataset_id}/{column_name}",
             params={"num_bins": num_bins},
             headers={"Authorization": "Bearer test_token"},
@@ -182,7 +182,7 @@ async def test_get_histogram_error(
 
 @pytest.mark.asyncio
 async def test_get_boxplot(
-    async_test_client,
+    async_authorized_client,
     mock_boxplot_data,
     setup_database,
     mock_auth,
@@ -206,7 +206,7 @@ async def test_get_boxplot(
             f"DEBUG: Mocked generate_and_cache_boxplot to return: {json.dumps(mock_boxplot_data.model_dump(), indent=2)}"
         )
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -228,7 +228,7 @@ async def test_get_boxplot(
 
 @pytest.mark.asyncio
 async def test_get_boxplot_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test getting boxplot data with invalid parameters."""
     dataset_id = mock_dataset_id
@@ -245,7 +245,7 @@ async def test_get_boxplot_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_boxplot to raise ValueError")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -260,7 +260,7 @@ async def test_get_boxplot_error(
 
 @pytest.mark.asyncio
 async def test_get_correlation_matrix(
-    async_test_client,
+    async_authorized_client,
     mock_correlation_data,
     setup_database,
     mock_auth,
@@ -281,7 +281,7 @@ async def test_get_correlation_matrix(
             f"DEBUG: Mocked generate_and_cache_correlation_matrix to return: {json.dumps(mock_correlation_data.model_dump(), indent=2)}"
         )
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -299,7 +299,7 @@ async def test_get_correlation_matrix(
 
 @pytest.mark.asyncio
 async def test_get_correlation_matrix_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test error handling for correlation matrix data."""
     dataset_id = mock_dataset_id
@@ -313,7 +313,7 @@ async def test_get_correlation_matrix_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise ValueError")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -328,7 +328,7 @@ async def test_get_correlation_matrix_error(
 
 @pytest.mark.asyncio
 async def test_get_histogram_server_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test server error when getting histogram data."""
     dataset_id = mock_dataset_id
@@ -345,7 +345,7 @@ async def test_get_histogram_server_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_histogram to raise Exception")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/histogram/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -360,7 +360,7 @@ async def test_get_histogram_server_error(
 
 @pytest.mark.asyncio
 async def test_get_boxplot_server_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test server error when getting boxplot data."""
     dataset_id = mock_dataset_id
@@ -377,7 +377,7 @@ async def test_get_boxplot_server_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_boxplot to raise Exception")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/boxplot/{dataset_id}/{column_name}",
             headers={"Authorization": "Bearer test_token"},
         )
@@ -392,7 +392,7 @@ async def test_get_boxplot_server_error(
 
 @pytest.mark.asyncio
 async def test_get_correlation_matrix_server_error(
-    async_test_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
 ):
     """Test server error handling for correlation matrix data."""
     dataset_id = mock_dataset_id
@@ -406,7 +406,7 @@ async def test_get_correlation_matrix_server_error(
     ) as mock_generate:
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise Exception")
 
-        response = await async_test_client.get(
+        response = await async_authorized_client.get(
             f"/api/visualizations/correlation/{dataset_id}",
             headers={"Authorization": "Bearer test_token"},
         )

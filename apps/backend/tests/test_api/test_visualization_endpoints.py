@@ -12,19 +12,21 @@ from datetime import datetime
 
 from app.main import app
 from app.models.user_data import UserData
+from beanie import PydanticObjectId
 
 
 @pytest.fixture
 def mock_user_data():
     """Mock user data object"""
     return UserData(
-        id="test-file-123",
+        id=PydanticObjectId(),
         user_id="test-user-123",
         filename="test_data.csv",
-        file_path="s3://test-bucket/test-file-123.csv",
-        file_size=1024,
-        file_type="csv",
-        upload_date=datetime.utcnow(),
+        original_filename="test-file-123.csv",
+        s3_url="s3://test-bucket/test-file.csv",
+        num_rows=100,
+        num_columns=5,
+        data_schema=[],
         is_processed=True
     )
 
@@ -61,7 +63,7 @@ class TestVisualizationAPI:
                     "max": 89.3
                 }
                 
-                response = authorized_client.get("/api/v1/visualizations/histogram/test-file-123/value?bins=10")
+                response = authorized_client.get(f"/api/v1/visualizations/histogram/{mock_user_data.id}/value?bins=10")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -86,7 +88,7 @@ class TestVisualizationAPI:
                     "outliers": [5.1, 95.3, 98.7]
                 }
                 
-                response = authorized_client.get("/api/v1/visualizations/boxplot/test-file-123/value")
+                response = authorized_client.get(f"/api/v1/visualizations/boxplot/{mock_user_data.id}/value")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -110,7 +112,7 @@ class TestVisualizationAPI:
                     ]
                 }
                 
-                response = authorized_client.get("/api/v1/visualizations/correlation/test-file-123")
+                response = authorized_client.get(f"/api/v1/visualizations/correlation/{mock_user_data.id}")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -127,11 +129,12 @@ class TestVisualizationAPI:
             
             with patch('app.utils.s3.get_file_from_s3') as mock_s3:
                 csv_buffer = io.BytesIO()
+
                 sample_dataframe.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
                 mock_s3.return_value = csv_buffer
                 
-                response = authorized_client.get("/api/v1/visualizations/scatter/test-file-123/price/quantity")
+                response = authorized_client.get(f"/api/v1/visualizations/scatter/{mock_user_data.id}/price/quantity")
                 
                 assert response.status_code == 200
                 data = response.json()
@@ -149,13 +152,14 @@ class TestVisualizationAPI:
             
             with patch('app.utils.s3.get_file_from_s3') as mock_s3:
                 csv_buffer = io.BytesIO()
+
                 sample_dataframe.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
                 mock_s3.return_value = csv_buffer
                 
                 filters = '[{"column": "category", "operator": "equals", "value": "A"}]'
                 response = authorized_client.get(
-                    f"/api/v1/visualizations/scatter/test-file-123/price/quantity?filters={filters}"
+                    f"/api/v1/visualizations/scatter/{mock_user_data.id}/price/quantity?filters={filters}"
                 )
                 
                 assert response.status_code == 200
@@ -171,12 +175,13 @@ class TestVisualizationAPI:
             
             with patch('app.utils.s3.get_file_from_s3') as mock_s3:
                 csv_buffer = io.BytesIO()
+
                 sample_dataframe.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
                 mock_s3.return_value = csv_buffer
                 
                 response = authorized_client.get(
-                    "/api/v1/visualizations/line/test-file-123/date?y_columns=value,price"
+                    f"/api/v1/visualizations/line/{mock_user_data.id}/date?y_columns=value,price"
                 )
                 
                 assert response.status_code == 200
@@ -195,12 +200,13 @@ class TestVisualizationAPI:
             
             with patch('app.utils.s3.get_file_from_s3') as mock_s3:
                 csv_buffer = io.BytesIO()
+
                 sample_dataframe.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
                 mock_s3.return_value = csv_buffer
                 
                 response = authorized_client.get(
-                    "/api/v1/visualizations/timeseries/test-file-123/date/value"
+                    f"/api/v1/visualizations/timeseries/{mock_user_data.id}/date/value"
                 )
                 
                 assert response.status_code == 200
@@ -219,19 +225,21 @@ class TestVisualizationAPI:
             
             with patch('app.utils.s3.get_file_from_s3') as mock_s3:
                 csv_buffer = io.BytesIO()
+
                 sample_dataframe.to_csv(csv_buffer, index=False)
                 csv_buffer.seek(0)
                 mock_s3.return_value = csv_buffer
                 
                 response = authorized_client.get(
-                    "/api/v1/visualizations/scatter/test-file-123/nonexistent/value"
+                    f"/api/v1/visualizations/scatter/{mock_user_data.id}/nonexistent/value"
                 )
                 
                 assert response.status_code == 500
                 assert "Error generating scatter plot" in response.json()["detail"]
     
     @pytest.mark.asyncio
-    async def test_visualization_unauthorized(self, client, mock_user_data):
+    async def test_visualization_unauthorized(self, async_test_client, mock_user_data):
         """Test visualization without authorization"""
-        response = client.get("/api/v1/visualizations/histogram/test-file-123/value")
+        # Use async_test_client without auth override to test unauthorized access
+        response = await async_test_client.get(f"/api/v1/visualizations/histogram/{mock_user_data.id}/value")
         assert response.status_code == 401

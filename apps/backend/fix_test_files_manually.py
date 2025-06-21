@@ -1,4 +1,12 @@
-import pytest
+#!/usr/bin/env python3
+"""
+Manual fixes for specific test files
+"""
+import os
+
+# Define manual fixes for each file
+fixes = {
+    "tests/test_api/test_analytics.py": """import pytest
 import json
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -37,19 +45,23 @@ def mock_dataset():
                 missing_values=0,
                 example_values=[1.0, 2.0, 3.0],
                 is_constant=False,
-                is_high_cardinality=False)
-        ])
+                is_high_cardinality=False,
+            )
+        ],
+    )
 
 
 @pytest.fixture
 def mock_plot(mock_dataset):
     return Plot(
+        id=PydanticObjectId(),
         userId="test_user_123",
         datasetId=Link(mock_dataset.id, document_class=UserData),
         type="scatter",
         imageUrl="https://example.com/plot.png",
         metadata={"title": "Test Plot", "description": "A test plot"},
-        generatedAt=datetime.now(timezone.utc))
+        generatedAt=datetime.now(timezone.utc),
+    )
 
 
 @pytest.fixture
@@ -61,7 +73,8 @@ def sample_analytics_result(mock_dataset, mock_plot):
         config={"columns": ["column1", "column2"]},
         result={"summary": "Test analysis"},
         plotRefs=[mock_plot.id],
-        summaryText="Test summary")
+        summaryText="Test summary",
+    )
 
 
 @pytest.fixture
@@ -93,31 +106,32 @@ def serializable_analytics_result(sample_analytics_result):
 
 @pytest.fixture(autouse=True)
 def mock_auth():
-    """Mock the authentication dependency."""
+    \"\"\"Mock the authentication dependency.\"\"\"
     with patch("app.api.routes.analytics_result.get_current_user_id") as mock:
         mock.return_value = "test_user_123"
         yield mock
 
 
 def print_debug_info(response, request_data=None):
-    """Print debug information for API calls"""
-    print("\n===== DEBUG INFO =====")
+    \"\"\"Print debug information for API calls\"\"\"
+    print("\\n===== DEBUG INFO =====")
     print(f"Status Code: {response.status_code}")
     print(f"Response Headers: {dict(response.headers)}")
     print(f"Response Body: {response.text}")
     if request_data:
         print(f"Request Data: {json.dumps(request_data, indent=2)}")
-    print("=====================\n")
+    print("=====================\\n")
 
 
 @pytest.mark.asyncio
 async def test_create_analytics_result(
-    async_authorized_client,
+    async_test_client,
     mock_user_id,
     mock_dataset,
     mock_plot,
     serializable_analytics_result,
-    setup_database):
+    setup_database,
+):
     # Create required objects first
     await mock_dataset.insert()
     await mock_plot.insert()
@@ -125,7 +139,7 @@ async def test_create_analytics_result(
     # Print the serializable data for debugging
     print(f"Serializable data: {json.dumps(serializable_analytics_result, indent=2)}")
 
-    response = await async_authorized_client.post(
+    response = await async_test_client.post(
         "/api/analytics/", json=serializable_analytics_result
     )
     print_debug_info(response, serializable_analytics_result)
@@ -137,12 +151,14 @@ async def test_create_analytics_result(
 
 @pytest.mark.asyncio
 async def test_get_analytics_results(
-    async_authorized_client, mock_user_id, sample_analytics_result, setup_database
+    async_test_client, mock_user_id, sample_analytics_result, setup_database
 ):
     await sample_analytics_result.insert()
 
+    response = await async_test_client.get("/api/analytics/")
     print_debug_info(response)
     assert response.status_code == 200
+    data = response.json()
     assert isinstance(data, list)
     assert len(data) > 0
     assert data[0]["userId"] == mock_user_id
@@ -150,11 +166,11 @@ async def test_get_analytics_results(
 
 @pytest.mark.asyncio
 async def test_get_analytics_result(
-    async_authorized_client, mock_user_id, sample_analytics_result, setup_database
+    async_test_client, mock_user_id, sample_analytics_result, setup_database
 ):
     await sample_analytics_result.insert()
 
-    response = await async_authorized_client.get(
+    response = await async_test_client.get(
         f"/api/analytics/{sample_analytics_result.id}"
     )
     print_debug_info(response)
@@ -166,19 +182,21 @@ async def test_get_analytics_result(
 
 @pytest.mark.asyncio
 async def test_update_analytics_result(
-    async_authorized_client,
+    async_test_client,
     mock_user_id,
     sample_analytics_result,
     serializable_analytics_result,
-    setup_database):
+    setup_database,
+):
     await sample_analytics_result.insert()
 
     # Update the analysis type
     serializable_analytics_result["analysisType"] = "regression"
 
-    response = await async_authorized_client.put(
+    response = await async_test_client.put(
         f"/api/analytics/{sample_analytics_result.id}",
-        json=serializable_analytics_result)
+        json=serializable_analytics_result,
+    )
     print_debug_info(response, serializable_analytics_result)
     assert response.status_code == 200
     data = response.json()
@@ -187,11 +205,11 @@ async def test_update_analytics_result(
 
 @pytest.mark.asyncio
 async def test_delete_analytics_result(
-    async_authorized_client, mock_user_id, sample_analytics_result, setup_database
+    async_test_client, mock_user_id, sample_analytics_result, setup_database
 ):
     await sample_analytics_result.insert()
 
-    response = await async_authorized_client.delete(
+    response = await async_test_client.delete(
         f"/api/analytics/{sample_analytics_result.id}"
     )
     print_debug_info(response)
@@ -201,9 +219,9 @@ async def test_delete_analytics_result(
 
 
 @pytest.mark.asyncio
-async def test_get_nonexistent_result(async_authorized_client, mock_user_id, setup_database):
+async def test_get_nonexistent_result(async_test_client, mock_user_id, setup_database):
     nonexistent_id = PydanticObjectId()
-    response = await async_authorized_client.get(f"/api/analytics/{nonexistent_id}")
+    response = await async_test_client.get(f"/api/analytics/{nonexistent_id}")
     print_debug_info(response)
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
@@ -211,7 +229,7 @@ async def test_get_nonexistent_result(async_authorized_client, mock_user_id, set
 
 @pytest.mark.asyncio
 async def test_unauthorized_access(
-    async_authorized_client, sample_analytics_result, setup_database
+    async_test_client, sample_analytics_result, setup_database
 ):
     # Insert with one user ID
     await sample_analytics_result.insert()
@@ -221,7 +239,7 @@ async def test_unauthorized_access(
     app.dependency_overrides[get_current_user_id] = lambda: "different_user_123"
 
     try:
-        response = await async_authorized_client.get(
+        response = await async_test_client.get(
             f"/api/analytics/{sample_analytics_result.id}"
         )
         print_debug_info(response)
@@ -233,3 +251,15 @@ async def test_unauthorized_access(
             app.dependency_overrides[get_current_user_id] = original_override
         else:
             app.dependency_overrides.pop(get_current_user_id, None)
+""",
+}
+
+def main():
+    for file_path, content in fixes.items():
+        print(f"Fixing {file_path}")
+        with open(file_path, 'w') as f:
+            f.write(content)
+        print(f"✅ Fixed {file_path}")
+
+if __name__ == "__main__":
+    main()
