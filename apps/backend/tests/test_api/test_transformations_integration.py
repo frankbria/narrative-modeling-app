@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 from bson import ObjectId
+from app.main import app
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
@@ -26,31 +27,6 @@ from app.schemas.transformation import (
     ValidationRequest
 )
 
-
-@pytest.fixture
-def mock_transformation_app():
-    """Create a mock FastAPI app for transformation testing"""
-    app = FastAPI()
-    
-    # Mock auth dependency
-    async def fake_get_current_user_id() -> str:
-        return "test_user_123"
-    
-    app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
-    
-    # Import and include transformation routes
-    from app.api.routes import transformations
-    app.include_router(transformations.router, prefix="")
-    
-    return app
-
-
-@pytest_asyncio.fixture
-async def transformation_client(mock_transformation_app) -> AsyncClient:
-    """Create async test client for transformation tests"""
-    transport = ASGITransport(app=mock_transformation_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
 
 
 @pytest.fixture
@@ -141,7 +117,7 @@ class TestTransformationPreview:
     """Test transformation preview functionality"""
     
     @pytest.mark.asyncio
-    async def test_preview_remove_duplicates(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_preview_remove_duplicates(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test preview of duplicate removal transformation"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -153,11 +129,10 @@ class TestTransformationPreview:
                 },
                 "preview_rows": 50
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/preview",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -168,7 +143,7 @@ class TestTransformationPreview:
             assert "affected_columns" in data
     
     @pytest.mark.asyncio
-    async def test_preview_fill_missing(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_preview_fill_missing(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test preview of missing value imputation"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -179,11 +154,10 @@ class TestTransformationPreview:
                     "method": "mean"
                 }
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/preview",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -193,7 +167,7 @@ class TestTransformationPreview:
             assert "stats_after" in data
     
     @pytest.mark.asyncio
-    async def test_preview_trim_whitespace(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_preview_trim_whitespace(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test preview of whitespace trimming"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -203,11 +177,10 @@ class TestTransformationPreview:
                     "columns": ["name"]
                 }
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/preview",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -216,7 +189,7 @@ class TestTransformationPreview:
             assert data["affected_columns"] == ["name"]
     
     @pytest.mark.asyncio
-    async def test_preview_invalid_dataset(self, transformation_client):
+    async def test_preview_invalid_dataset(self, authorized_client):
         """Test preview with invalid dataset ID"""
         with patch('app.models.user_data.UserData.find_one', return_value=None):
             request = {
@@ -224,11 +197,10 @@ class TestTransformationPreview:
                 "transformation_type": "remove_duplicates",
                 "parameters": {}
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/preview",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -241,7 +213,7 @@ class TestTransformationApply:
     """Test transformation apply functionality"""
     
     @pytest.mark.asyncio
-    async def test_apply_single_transformation(self, transformation_client, mock_user_data, mock_s3_operations, mock_cache_service):
+    async def test_apply_single_transformation(self, authorized_client, mock_user_data, mock_s3_operations, mock_cache_service):
         """Test applying a single transformation"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -251,11 +223,10 @@ class TestTransformationApply:
                     "columns": ["name"]
                 }
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/apply",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -269,7 +240,7 @@ class TestTransformationApply:
             mock_cache_service.delete_pattern.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_apply_transformation_pipeline(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_apply_transformation_pipeline(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test applying multiple transformations in sequence"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -292,11 +263,10 @@ class TestTransformationApply:
                     }
                 ]
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/pipeline/apply",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -306,7 +276,7 @@ class TestTransformationApply:
             assert "pipeline" in data["transformation_id"]
     
     @pytest.mark.asyncio
-    async def test_apply_pipeline_with_recipe_save(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_apply_pipeline_with_recipe_save(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test applying pipeline and saving as recipe"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data), \
              patch('app.services.transformation_service.recipe_manager.RecipeManager.create_recipe', new_callable=AsyncMock) as mock_create:
@@ -328,11 +298,10 @@ class TestTransformationApply:
                 "recipe_name": "Data Cleaning Pipeline",
                 "recipe_description": "Basic data cleaning steps"
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/pipeline/apply",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -343,7 +312,7 @@ class TestTransformationValidation:
     """Test transformation validation"""
     
     @pytest.mark.asyncio
-    async def test_validate_transformations(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_validate_transformations(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test transformation validation before applying"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -359,11 +328,10 @@ class TestTransformationValidation:
                     }
                 ]
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/validate",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -378,17 +346,16 @@ class TestAutoClean:
     """Test auto-clean functionality"""
     
     @pytest.mark.asyncio
-    async def test_auto_clean_default_options(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_auto_clean_default_options(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test auto-clean with default options"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
                 "dataset_id": str(mock_user_data.id)
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/auto-clean",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -396,7 +363,7 @@ class TestAutoClean:
             assert data["success"] is True
     
     @pytest.mark.asyncio
-    async def test_auto_clean_custom_options(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_auto_clean_custom_options(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test auto-clean with custom options"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -408,11 +375,10 @@ class TestAutoClean:
                     "fix_casing": False
                 }
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/auto-clean",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -424,12 +390,11 @@ class TestTransformationSuggestions:
     """Test AI-powered transformation suggestions"""
     
     @pytest.mark.asyncio
-    async def test_get_suggestions(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_get_suggestions(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test getting transformation suggestions"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            response = await transformation_client.get(
-                f"/api/v1/transformations/suggestions/{mock_user_data.id}",
-                headers={"Authorization": "Bearer test-token"}
+            response = authorized_client.get(
+                f"/api/v1/transformations/suggestions/{mock_user_data.id}"
             )
             
             assert response.status_code == 200
@@ -444,7 +409,7 @@ class TestRecipeManagement:
     """Test recipe CRUD operations"""
     
     @pytest.mark.asyncio
-    async def test_create_recipe(self, transformation_client):
+    async def test_create_recipe(self, authorized_client):
         """Test creating a transformation recipe"""
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.create_recipe') as mock_create:
             mock_recipe = MagicMock(spec=TransformationRecipe)
@@ -474,11 +439,10 @@ class TestRecipeManagement:
                 "is_public": False,
                 "tags": ["test"]
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 "/api/v1/transformations/recipes",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -487,7 +451,7 @@ class TestRecipeManagement:
             assert data["user_id"] == "test_user_123"
     
     @pytest.mark.asyncio
-    async def test_list_recipes(self, transformation_client):
+    async def test_list_recipes(self, authorized_client):
         """Test listing user recipes"""
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_user_recipes') as mock_get:
             mock_recipes = []
@@ -507,10 +471,9 @@ class TestRecipeManagement:
                 mock_recipes.append(recipe)
             
             mock_get.return_value = mock_recipes
-            
-            response = await transformation_client.get(
-                "/api/v1/transformations/recipes?page=1&per_page=10",
-                headers={"Authorization": "Bearer test-token"}
+
+            response = authorized_client.get(
+                "/api/v1/transformations/recipes?page=1&per_page=10"
             )
             
             assert response.status_code == 200
@@ -520,7 +483,7 @@ class TestRecipeManagement:
             assert data["page"] == 1
     
     @pytest.mark.asyncio
-    async def test_get_popular_recipes(self, transformation_client):
+    async def test_get_popular_recipes(self, authorized_client):
         """Test getting popular public recipes"""
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_popular_recipes') as mock_get:
             mock_recipe = MagicMock(spec=TransformationRecipe)
@@ -536,10 +499,9 @@ class TestRecipeManagement:
             mock_recipe.usage_count = 100
             mock_recipe.rating = 4.8
             mock_get.return_value = [mock_recipe]
-            
-            response = await transformation_client.get(
-                "/api/v1/transformations/recipes/popular?limit=5",
-                headers={"Authorization": "Bearer test-token"}
+
+            response = authorized_client.get(
+                "/api/v1/transformations/recipes/popular?limit=5"
             )
             
             assert response.status_code == 200
@@ -548,7 +510,7 @@ class TestRecipeManagement:
             assert data["recipes"][0]["usage_count"] == 100
     
     @pytest.mark.asyncio
-    async def test_get_single_recipe(self, transformation_client):
+    async def test_get_single_recipe(self, authorized_client):
         """Test getting a specific recipe"""
         recipe_id = str(ObjectId())
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe') as mock_get:
@@ -565,10 +527,9 @@ class TestRecipeManagement:
             mock_recipe.usage_count = 5
             mock_recipe.rating = 4.0
             mock_get.return_value = mock_recipe
-            
-            response = await transformation_client.get(
-                f"/api/v1/transformations/recipes/{recipe_id}",
-                headers={"Authorization": "Bearer test-token"}
+
+            response = authorized_client.get(
+                f"/api/v1/transformations/recipes/{recipe_id}"
             )
             
             assert response.status_code == 200
@@ -577,7 +538,7 @@ class TestRecipeManagement:
             assert data["name"] == "My Recipe"
     
     @pytest.mark.asyncio
-    async def test_apply_recipe(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_apply_recipe(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test applying a saved recipe"""
         recipe_id = str(ObjectId())
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get_recipe, \
@@ -602,11 +563,10 @@ class TestRecipeManagement:
                 "recipe_id": recipe_id,
                 "dataset_id": str(mock_user_data.id)
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 f"/api/v1/transformations/recipes/{recipe_id}/apply",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -617,7 +577,7 @@ class TestRecipeManagement:
             mock_record.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_export_recipe(self, transformation_client):
+    async def test_export_recipe(self, authorized_client):
         """Test exporting recipe as code"""
         recipe_id = str(ObjectId())
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get, \
@@ -636,11 +596,10 @@ class TestRecipeManagement:
                 "recipe_id": recipe_id,
                 "language": "python"
             }
-            
-            response = await transformation_client.post(
+
+            response = authorized_client.post(
                 f"/api/v1/transformations/recipes/{recipe_id}/export",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 200
@@ -650,15 +609,14 @@ class TestRecipeManagement:
             assert "import pandas" in data["code"]
     
     @pytest.mark.asyncio
-    async def test_delete_recipe(self, transformation_client):
+    async def test_delete_recipe(self, authorized_client):
         """Test deleting a recipe"""
         recipe_id = str(ObjectId())
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.delete_recipe') as mock_delete:
             mock_delete.return_value = True
-            
-            response = await transformation_client.delete(
-                f"/api/v1/transformations/recipes/{recipe_id}",
-                headers={"Authorization": "Bearer test-token"}
+
+            response = authorized_client.delete(
+                f"/api/v1/transformations/recipes/{recipe_id}"
             )
             
             assert response.status_code == 200
@@ -672,32 +630,27 @@ class TestAuthenticationBypass:
     """Test authentication bypass in development mode"""
     
     @pytest.mark.asyncio
-    async def test_skip_auth_with_dev_token(self, mock_transformation_app):
+    async def test_skip_auth_with_dev_token(self, async_test_client):
         """Test SKIP_AUTH mode with dev token"""
         # Override auth to use SKIP_AUTH mode
         async def dev_get_current_user_id() -> str:
             return "dev-custom-user"
+
+        app.dependency_overrides[get_current_user_id] = dev_get_current_user_id
+
+        response = await async_test_client.get(
+            "/api/v1/transformations/suggestions/test_dataset",
+            headers={"Authorization": "Bearer dev-custom-user"}
+        )
         
-        mock_transformation_app.dependency_overrides[get_current_user_id] = dev_get_current_user_id
-        
-        transport = ASGITransport(app=mock_transformation_app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-                mock_find.return_value = None
-                
-                response = await client.get(
-                    "/api/v1/transformations/suggestions/test_dataset",
-                    headers={"Authorization": "Bearer dev-custom-user"}
-                )
-                
-                # Should fail with 500 (since the error is caught and logged as internal error)
-                # The important thing is that it's not 401/403 (unauthorized)
-                assert response.status_code == 500
-                # Check that we got past auth and hit the actual endpoint logic
-                assert mock_find.called
+        # Should fail with 500 (since the error is caught and logged as internal error)
+        # The important thing is that it's not 401/403 (unauthorized)
+        assert response.status_code == 500
+        # Check that we got past auth and hit the actual endpoint logic
+        assert mock_find.called
     
     @pytest.mark.asyncio
-    async def test_auth_required_without_token(self, transformation_client):
+    async def test_auth_required_without_token(self, authorized_client):
         """Test that auth is required when no token provided"""
         # Reset auth override to test actual auth
         from app.main import app
@@ -716,7 +669,7 @@ class TestErrorHandling:
     """Test error handling in transformation endpoints"""
     
     @pytest.mark.asyncio
-    async def test_handle_transformation_engine_error(self, transformation_client, mock_user_data):
+    async def test_handle_transformation_engine_error(self, authorized_client, mock_user_data):
         """Test handling of transformation engine errors"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             # Mock S3 to fail with a specific error
@@ -729,11 +682,10 @@ class TestErrorHandling:
                     "transformation_type": "trim_whitespace",
                     "parameters": {}
                 }
-                
-                response = await transformation_client.post(
+
+                response = authorized_client.post(
                     "/api/v1/transformations/preview",
-                    json=request,
-                    headers={"Authorization": "Bearer test-token"}
+                    json=request
                 )
                 
                 assert response.status_code == 200
@@ -743,7 +695,7 @@ class TestErrorHandling:
                 assert any(err in data["error"] for err in ["S3 connection failed", "403", "Forbidden"])
     
     @pytest.mark.asyncio
-    async def test_handle_invalid_transformation_type(self, transformation_client, mock_user_data, mock_s3_operations):
+    async def test_handle_invalid_transformation_type(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test handling of invalid transformation types"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
             request = {
@@ -753,16 +705,15 @@ class TestErrorHandling:
             }
             
             # Should fail validation before reaching endpoint
-            response = await transformation_client.post(
+            response = authorized_client.post(
                 "/api/v1/transformations/preview",
-                json=request,
-                headers={"Authorization": "Bearer test-token"}
+                json=request
             )
             
             assert response.status_code == 422  # Validation error
     
     @pytest.mark.asyncio
-    async def test_handle_recipe_access_denied(self, transformation_client):
+    async def test_handle_recipe_access_denied(self, authorized_client):
         """Test access denied for private recipes"""
         recipe_id = str(ObjectId())
         with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe') as mock_get:
@@ -770,10 +721,9 @@ class TestErrorHandling:
             mock_recipe.is_public = False
             mock_recipe.user_id = "other_user"
             mock_get.return_value = mock_recipe
-            
-            response = await transformation_client.get(
-                f"/api/v1/transformations/recipes/{recipe_id}",
-                headers={"Authorization": "Bearer test-token"}
+
+            response = authorized_client.get(
+                f"/api/v1/transformations/recipes/{recipe_id}"
             )
             
             assert response.status_code == 403
