@@ -13,7 +13,7 @@ from app.models.visualization_cache import VisualizationCache
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot
 from app.models.trained_model import TrainedModel
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
 

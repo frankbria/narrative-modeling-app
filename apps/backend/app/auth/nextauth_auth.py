@@ -2,7 +2,7 @@
 
 import os
 import httpx
-import jwt
+from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -76,7 +76,7 @@ async def get_current_user_id(
     except jwt.ExpiredSignatureError:
         logger.error("Token has expired")
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError as e:
+    except JWTError as e:
         logger.error(f"JWT validation error: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     except Exception as e:

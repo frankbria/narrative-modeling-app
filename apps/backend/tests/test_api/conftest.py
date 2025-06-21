@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
 
-from app.auth.clerk_auth import get_current_user_id
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 
 
