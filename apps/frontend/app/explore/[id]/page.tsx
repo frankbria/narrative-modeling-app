@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,7 +32,7 @@ interface ProcessedDataset {
 
 export default function DatasetAnalysisPage() {
   const params = useParams()
-  const { getToken } = useAuth()
+  const { data: session } = useSession()
   const [dataset, setDataset] = useState<ProcessedDataset | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +44,7 @@ export default function DatasetAnalysisPage() {
     const fetchDataset = async () => {
       try {
         setIsLoading(true)
-        const token = await getToken()
+        const token = await getAuthToken()
         const datasetId = params?.id as string
 
         if (!datasetId) {
@@ -79,7 +80,7 @@ export default function DatasetAnalysisPage() {
     }
 
     fetchDataset()
-  }, [params?.id, getToken, apiUrl])
+  }, [params?.id, apiUrl])
 
   const processDataset = async (datasetId: string, token: string) => {
     try {
@@ -103,7 +104,7 @@ export default function DatasetAnalysisPage() {
 
   const handleExport = async () => {
     try {
-      const token = await getToken()
+      const token = await getAuthToken()
       const response = await fetch(`${apiUrl}/api/v1/data/${dataset?.id}/export`, {
         method: 'POST',
         headers: {
