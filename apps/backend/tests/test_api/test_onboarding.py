@@ -230,7 +230,7 @@ class TestOnboardingRoutes:
         
         # Make request
         response = authorized_client.post(
-            "/api/onboarding/steps/upload_data/complete",
+            "/api/v1/onboarding/steps/upload_data/complete",
             json={"completion_data": {"file_uploaded": True}}
         )
         
