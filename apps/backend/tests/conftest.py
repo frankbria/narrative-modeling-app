@@ -124,6 +124,11 @@ async def async_authorized_client() -> AsyncGenerator[AsyncClient, None]:
     
     # Clean up
     app.dependency_overrides.clear()
+    
+@pytest_asyncio.fixture
+async def async_test_client(async_authorized_client) -> AsyncGenerator[AsyncClient, None]:
+    """Create an async test client for the FastAPI application."""
+    return async_authorized_client
 
 
 @pytest.fixture

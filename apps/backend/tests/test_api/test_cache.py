@@ -4,13 +4,22 @@ Tests for cache management API endpoints
 import pytest
 from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
+import app.api.deps
+import app.main
+
+
+@pytest.fixture(autouse=True, scope="module")
+def override_get_current_user_id():
+    app.main.app.dependency_overrides[app.api.deps.get_current_user_id] = lambda: "test_user_123"
+    yield
+    app.main.app.dependency_overrides.pop(app.api.deps.get_current_user_id, None)
 
 
 class TestCacheAPI:
     """Test cases for cache management API endpoints"""
 
     @pytest.mark.asyncio
-    async def test_get_cache_info(self, async_test_client: AsyncClient):
+    async def test_get_cache_info(self, async_authorized_client: AsyncClient):
         """Test GET /api/v1/cache/info endpoint"""
         mock_cache_info = {
             "used_memory": 1024000,
@@ -24,9 +33,9 @@ class TestCacheAPI:
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.get_cache_info = AsyncMock(return_value=mock_cache_info)
-            
-            response = await async_test_client.get("/api/v1/cache/info")
-            
+
+            response = await async_authorized_client.get("/api/v1/cache/info")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -37,27 +46,27 @@ class TestCacheAPI:
             assert data["cache_info"]["keyspace_misses"] == 100
 
     @pytest.mark.asyncio
-    async def test_get_cache_info_redis_unavailable(self, async_test_client: AsyncClient):
+    async def test_get_cache_info_redis_unavailable(self, async_authorized_client: AsyncClient):
         """Test cache info when Redis is unavailable"""
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.get_cache_info = AsyncMock(return_value=None)
-            
-            response = await async_test_client.get("/api/v1/cache/info")
-            
+
+            response = await async_authorized_client.get("/api/v1/cache/info")
+
             assert response.status_code == 503
             data = response.json()
             assert "Cache service unavailable" in data["detail"]
 
     @pytest.mark.asyncio
-    async def test_invalidate_user_cache(self, async_test_client: AsyncClient):
+    async def test_invalidate_user_cache(self, async_authorized_client: AsyncClient):
         """Test DELETE /api/v1/cache/user/{user_id} endpoint"""
         user_id = "test_user_123"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.invalidate_user_cache = AsyncMock(return_value=5)
-            
-            response = await async_test_client.delete(f"/api/v1/cache/user/{user_id}")
-            
+
+            response = await async_authorized_client.delete(f"/api/v1/cache/user/{user_id}")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -66,42 +75,42 @@ class TestCacheAPI:
             mock_cache.invalidate_user_cache.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
-    async def test_invalidate_user_cache_unauthorized(self, async_test_client: AsyncClient):
+    async def test_invalidate_user_cache_unauthorized(self, async_authorized_client: AsyncClient):
         """Test user cache invalidation with different user ID"""
         user_id = "different_user_456"
         
         # The auth dependency override returns "test_user_123"
-        response = await async_test_client.delete(f"/api/v1/cache/user/{user_id}")
-        
+        response = await async_authorized_client.delete(f"/api/v1/cache/user/{user_id}")
+
         assert response.status_code == 403
         data = response.json()
         assert "Can only invalidate your own cache" in data["detail"]
 
     @pytest.mark.asyncio
-    async def test_invalidate_user_cache_same_user(self, async_test_client: AsyncClient):
+    async def test_invalidate_user_cache_same_user(self, async_authorized_client: AsyncClient):
         """Test user cache invalidation for same user"""
         user_id = "test_user_123"  # Same as auth override
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.invalidate_user_cache = AsyncMock(return_value=3)
-            
-            response = await async_test_client.delete(f"/api/v1/cache/user/{user_id}")
-            
+
+            response = await async_authorized_client.delete(f"/api/v1/cache/user/{user_id}")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
             assert data["deleted_entries"] == 3
 
     @pytest.mark.asyncio
-    async def test_invalidate_data_cache(self, async_test_client: AsyncClient):
+    async def test_invalidate_data_cache(self, async_authorized_client: AsyncClient):
         """Test DELETE /api/v1/cache/data/{data_id} endpoint"""
         data_id = "test_dataset_123"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.invalidate_data_cache = AsyncMock(return_value=7)
-            
-            response = await async_test_client.delete(f"/api/v1/cache/data/{data_id}")
-            
+
+            response = await async_authorized_client.delete(f"/api/v1/cache/data/{data_id}")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -110,15 +119,15 @@ class TestCacheAPI:
             mock_cache.invalidate_data_cache.assert_called_once_with(data_id)
 
     @pytest.mark.asyncio
-    async def test_delete_cache_key(self, async_test_client: AsyncClient):
+    async def test_delete_cache_key(self, async_authorized_client: AsyncClient):
         """Test DELETE /api/v1/cache/key/{cache_key} endpoint"""
         cache_key = "test_key_123"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.delete = AsyncMock(return_value=True)
-            
-            response = await async_test_client.delete(f"/api/v1/cache/key/{cache_key}")
-            
+
+            response = await async_authorized_client.delete(f"/api/v1/cache/key/{cache_key}")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -126,30 +135,30 @@ class TestCacheAPI:
             mock_cache.delete.assert_called_once_with(cache_key)
 
     @pytest.mark.asyncio
-    async def test_delete_cache_key_not_found(self, async_test_client: AsyncClient):
+    async def test_delete_cache_key_not_found(self, async_authorized_client: AsyncClient):
         """Test deleting a non-existent cache key"""
         cache_key = "nonexistent_key"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.delete = AsyncMock(return_value=False)
-            
-            response = await async_test_client.delete(f"/api/v1/cache/key/{cache_key}")
-            
+
+            response = await async_authorized_client.delete(f"/api/v1/cache/key/{cache_key}")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is False
             assert "not found" in data["message"]
 
     @pytest.mark.asyncio
-    async def test_check_cache_key_exists(self, async_test_client: AsyncClient):
+    async def test_check_cache_key_exists(self, async_authorized_client: AsyncClient):
         """Test GET /api/v1/cache/key/{cache_key}/exists endpoint"""
         cache_key = "existing_key"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.exists = AsyncMock(return_value=True)
-            
-            response = await async_test_client.get(f"/api/v1/cache/key/{cache_key}/exists")
-            
+
+            response = await async_authorized_client.get(f"/api/v1/cache/key/{cache_key}/exists")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -158,15 +167,15 @@ class TestCacheAPI:
             mock_cache.exists.assert_called_once_with(cache_key)
 
     @pytest.mark.asyncio
-    async def test_check_cache_key_not_exists(self, async_test_client: AsyncClient):
+    async def test_check_cache_key_not_exists(self, async_authorized_client: AsyncClient):
         """Test checking existence of non-existent cache key"""
         cache_key = "nonexistent_key"
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.exists = AsyncMock(return_value=False)
-            
-            response = await async_test_client.get(f"/api/v1/cache/key/{cache_key}/exists")
-            
+
+            response = await async_authorized_client.get(f"/api/v1/cache/key/{cache_key}/exists")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -174,19 +183,19 @@ class TestCacheAPI:
             assert data["key"] == cache_key
 
     @pytest.mark.asyncio
-    async def test_cache_operations_redis_error(self, async_test_client: AsyncClient):
+    async def test_cache_operations_redis_error(self, async_authorized_client: AsyncClient):
         """Test cache operations when Redis throws an error"""
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.invalidate_user_cache = AsyncMock(side_effect=Exception("Redis connection error"))
-            
-            response = await async_test_client.delete("/api/v1/cache/user/test_user_123")
-            
+
+            response = await async_authorized_client.delete("/api/v1/cache/user/test_user_123")
+
             assert response.status_code == 500
             data = response.json()
             assert "Internal server error" in data["detail"]
 
     @pytest.mark.asyncio
-    async def test_cache_statistics_calculation(self, async_test_client: AsyncClient):
+    async def test_cache_statistics_calculation(self, async_authorized_client: AsyncClient):
         """Test cache hit ratio calculation in info endpoint"""
         mock_cache_info = {
             "keyspace_hits": 850,
@@ -198,9 +207,9 @@ class TestCacheAPI:
         
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             mock_cache.get_cache_info = AsyncMock(return_value=mock_cache_info)
-            
-            response = await async_test_client.get("/api/v1/cache/info")
-            
+
+            response = await async_authorized_client.get("/api/v1/cache/info")
+
             assert response.status_code == 200
             data = response.json()
             
@@ -210,14 +219,14 @@ class TestCacheAPI:
             assert data["cache_info"]["keyspace_misses"] == 150
 
     @pytest.mark.asyncio
-    async def test_cache_pattern_operations(self, async_test_client: AsyncClient):
+    async def test_cache_pattern_operations(self, async_authorized_client: AsyncClient):
         """Test cache operations with pattern matching"""
         with patch('app.api.routes.cache.cache_service') as mock_cache:
             # Test user cache invalidation (uses pattern matching internally)
             mock_cache.invalidate_user_cache = AsyncMock(return_value=4)
-            
-            response = await async_test_client.delete("/api/v1/cache/user/test_user_123")
-            
+
+            response = await async_authorized_client.delete("/api/v1/cache/user/test_user_123")
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -225,8 +234,8 @@ class TestCacheAPI:
             
             # Test data cache invalidation (uses multiple patterns)
             mock_cache.invalidate_data_cache = AsyncMock(return_value=6)
-            
-            response = await async_test_client.delete("/api/v1/cache/data/dataset_456")
+
+            response = await async_authorized_client.delete("/api/v1/cache/data/dataset_456")
             
             assert response.status_code == 200
             data = response.json()
@@ -234,7 +243,7 @@ class TestCacheAPI:
             assert data["deleted_entries"] == 6
 
     @pytest.mark.asyncio
-    async def test_cache_key_validation(self, async_test_client: AsyncClient):
+    async def test_cache_key_validation(self, async_authorized_client: AsyncClient):
         """Test cache key validation for special characters"""
         # Test with special characters that might cause issues
         special_keys = [
@@ -251,15 +260,15 @@ class TestCacheAPI:
             
             for key in special_keys:
                 # Test exists endpoint
-                response = await async_test_client.get(f"/api/v1/cache/key/{key}/exists")
+                response = await async_authorized_client.get(f"/api/v1/cache/key/{key}/exists")
                 assert response.status_code == 200
                 
                 # Test delete endpoint
-                response = await async_test_client.delete(f"/api/v1/cache/key/{key}")
+                response = await async_authorized_client.delete(f"/api/v1/cache/key/{key}")
                 assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_concurrent_cache_operations(self, async_test_client: AsyncClient):
+    async def test_concurrent_cache_operations(self, async_authorized_client: AsyncClient):
         """Test concurrent cache operations"""
         import asyncio
         
@@ -270,9 +279,9 @@ class TestCacheAPI:
             
             # Run multiple operations concurrently
             tasks = [
-                async_test_client.delete("/api/v1/cache/user/test_user_123"),
-                async_test_client.delete("/api/v1/cache/data/dataset_123"),
-                async_test_client.get("/api/v1/cache/info"),
+                async_authorized_client.delete("/api/v1/cache/user/test_user_123"),
+                async_authorized_client.delete("/api/v1/cache/data/dataset_123"),
+                async_authorized_client.get("/api/v1/cache/info"),
             ]
             
             responses = await asyncio.gather(*tasks)
