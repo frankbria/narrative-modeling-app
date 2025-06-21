@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
+import { useSession } from 'next-auth/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { ModelService, ModelInfo } from '@/lib/services/model'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,7 +31,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function ModelDetailPage() {
   const params = useParams()
-  const { isSignedIn, getToken } = useAuth()
+  const { data: session } = useSession()
   const router = useRouter()
   
   const modelId = params?.id as string
@@ -39,16 +40,16 @@ export default function ModelDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isSignedIn && modelId) {
+    if (session && modelId) {
       fetchModel()
     }
-  }, [isSignedIn, modelId])
+  }, [session, modelId])
 
   const fetchModel = async () => {
     try {
       setIsLoading(true)
-      const token = await getToken()
-      const modelData = await ModelService.getModel(modelId, token)
+      const token = await getAuthToken()
+      const modelData = await ModelService.getModel(modelId, token || '')
       setModel(modelData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load model')
@@ -57,7 +58,7 @@ export default function ModelDetailPage() {
     }
   }
 
-  if (!isSignedIn) {
+  if (!session) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">

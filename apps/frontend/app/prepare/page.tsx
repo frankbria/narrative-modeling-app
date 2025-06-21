@@ -3,7 +3,7 @@
 import React, { useEffect } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import TransformationPipeline from '@/components/TransformationPipeline';
+import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 import { useRouter } from 'next/navigation';
 
 export default function PreparePage() {
