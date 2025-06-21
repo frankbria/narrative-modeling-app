@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@auth/mongodb-adapter": "^3.9.1",
-    "mongodb": "^6.17.0",
-    "next-auth": "^5.0.0-beta.28"
-  }
-}
