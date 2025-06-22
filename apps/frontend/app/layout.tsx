@@ -3,7 +3,7 @@
 import './globals.css'
 import './animations.css'
 import { type Metadata } from 'next'
-import { auth } from './auth'
+import { auth } from '../auth'
 import SessionProvider from '@/components/SessionProvider'
 import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
