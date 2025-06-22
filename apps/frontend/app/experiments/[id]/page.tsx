@@ -134,16 +134,15 @@ export default function ExperimentDetailsPage() {
   }
 
   const getStatusBadge = (status: string) => {
+    // Only use allowed variants: default, secondary, destructive, outline
     const statusConfig = {
-      draft: { variant: "secondary" as const, color: "#6b7280" },
-      running: { variant: "default" as const, color: "#3b82f6" },
-      paused: { variant: "warning" as const, color: "#f59e0b" },
-      completed: { variant: "success" as const, color: "#10b981" },
-      archived: { variant: "outline" as const, color: "#6b7280" },
+      draft: { variant: "secondary" as const },
+      running: { variant: "default" as const },
+      paused: { variant: "outline" as const },
+      completed: { variant: "default" as const },
+      archived: { variant: "outline" as const },
     };
-
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft;
-    
     return (
       <Badge variant={config.variant}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -177,7 +176,7 @@ export default function ExperimentDetailsPage() {
               <h1 className="text-3xl font-bold">{experiment.name}</h1>
               {getStatusBadge(experiment.status)}
               {experiment.winner_variant_id && (
-                <Badge variant="success">Winner Found</Badge>
+                <Badge variant="default">Winner Found</Badge>
               )}
             </div>
             {experiment.description && (
@@ -374,7 +373,7 @@ export default function ExperimentDetailsPage() {
                     <CardTitle className="flex items-center gap-2">
                       {variant.name}
                       {variant.variant_id === experiment.winner_variant_id && (
-                        <Badge variant="success">Winner</Badge>
+                        <Badge variant="default">Winner</Badge>
                       )}
                     </CardTitle>
                     <Badge variant="outline">{variant.traffic_percentage}% traffic</Badge>
