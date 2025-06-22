@@ -20,6 +20,8 @@ export default function SignInPage() {
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
             Choose your preferred sign-in method to access the Narrative Modeling App
+            {`isDevelopment Mode: ${isDevelopment ? 'Enabled' : 'Disabled'}`}<br />
+            {`skipAuth: ${skipAuth ? 'Enabled' : 'Disabled'}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

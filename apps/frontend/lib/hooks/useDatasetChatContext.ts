@@ -74,7 +74,7 @@ export function useDatasetChatContext(datasetId: string | null) {
         // First, check if this is a user ID and get the latest dataset for this user
         let actualDatasetId = datasetId;
         
-        // If the ID looks like a Clerk user ID (starts with 'user_'), we need to fetch the latest dataset
+        // If the ID looks like a user ID (starts with 'user_'), we need to fetch the latest dataset
         if (datasetId.startsWith('user_')) {
           // Ensure the URL has a protocol
           let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -215,7 +215,7 @@ export async function getDatasetSystemPrompt(datasetId: string): Promise<string>
       return cachedData.data.rawMarkdown;
     }
     
-    // If the ID looks like a Clerk user ID (starts with 'user_'), we need to fetch the latest dataset
+    // If the ID looks like a user ID (starts with 'user_'), we need to fetch the latest dataset
     let actualDatasetId = datasetId;
     if (datasetId.startsWith('user_')) {
       // Ensure the URL has a protocol
