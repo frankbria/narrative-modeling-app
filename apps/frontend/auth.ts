@@ -1,11 +1,11 @@
-// frontend/app/auth.ts
+// frontend/auth.ts
 
 import NextAuth from "next-auth"
 import { MongoDBAdapter } from "@auth/mongodb-adapter"
 import GoogleProvider from "next-auth/providers/google"
 import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
-import client from "./lib/db"
+import client from "./app/lib/db"
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'

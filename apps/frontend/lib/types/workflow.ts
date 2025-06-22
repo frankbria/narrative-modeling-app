@@ -32,6 +32,7 @@ export interface WorkflowContextType {
   canAccessStage: (stage: WorkflowStage) => boolean;
   completeStage: (stage: WorkflowStage, data?: any) => void;
   setCurrentStage: (stage: WorkflowStage) => void;
+  setDatasetId: (datasetId: string) => void;
   resetWorkflow: () => void;
   loadWorkflow: (datasetId: string) => Promise<void>;
   saveWorkflow: () => Promise<void>;

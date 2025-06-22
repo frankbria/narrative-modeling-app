@@ -1,9 +1,11 @@
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/app/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the current user session
+    // Dynamically import auth only in the server runtime
+    const { auth } = await import('@/auth');
     const session = await auth();
     
     if (!session?.user?.id) {
