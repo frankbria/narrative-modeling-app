@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { auth } from "@/app/auth";
 
-export default async function middleware(request: NextRequest) {
+export default function middleware(request: NextRequest) {
   // Get the origin from the request headers
   const origin = request.headers.get('origin') || '*'
 
@@ -17,24 +16,6 @@ export default async function middleware(request: NextRequest) {
         'Access-Control-Max-Age': '86400',
       },
     })
-  }
-
-  // Skip auth check if SKIP_AUTH is enabled
-  const skipAuth = process.env.SKIP_AUTH === 'true';
-  
-  if (!skipAuth) {
-    // Check authentication for protected routes
-    const session = await auth();
-    const isAuthPage = request.nextUrl.pathname.startsWith('/auth');
-    const isPublicPage = request.nextUrl.pathname === '/' || isAuthPage;
-
-    if (!session && !isPublicPage) {
-      return NextResponse.redirect(new URL('/auth/signin', request.url));
-    }
-
-    if (session && isAuthPage) {
-      return NextResponse.redirect(new URL('/', request.url));
-    }
   }
 
   // Continue to the route

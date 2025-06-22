@@ -4,15 +4,15 @@
 
 ### Testing & CI/CD
 - [x] **Fix backend test suite** - Tests can now run with `uv run pytest` ✅
-- [ ] **Complete GitHub Actions CI/CD pipeline** - Partial configuration exists
+- [O] **Complete GitHub Actions CI/CD pipeline** - Partial configuration exists (Note: Hold off on this until after the development is finished)
 - [ ] **Implement E2E testing with Playwright** - No E2E tests exist
 
 ### Test Suite Completion
 - [ ] **Properly fix backend test suite**
-  - [ ] Fix 19 failing unit tests (mostly threshold and edge case issues)
-  - [ ] Create MongoDB fixtures for integration tests
+  - [ ] Fix failing unit tests (mostly threshold and edge case issues)
+  - [X] Create MongoDB fixtures for integration tests
   - [ ] Create Redis fixtures for cache tests
-  - [ ] Mock AWS S3 for upload tests
+  - [X] Mock AWS S3 for upload tests
   - [ ] Enable and fix all integration tests
   - [ ] Add missing test coverage for API endpoints
 
@@ -28,7 +28,7 @@
 - [x] **Integrate existing features into workflow stages** ✅
   - [x] Stage 1: Data Loading (upload page with drag & drop)
   - [x] Stage 2: Data Profiling (explore page with workflow integration)
-  - [x] Stage 3: Data Preparation (prepare page ready for transformation UI)
+  - [x] Stage 3: Data Preparation (prepare page with full transformation pipeline) ✅ (2025-06-21)
   - [x] Stage 4: Feature Engineering (features page with AI suggestions)
   - [x] Stage 5: Model Training (model page with AutoML)
   - [x] Stage 6: Model Evaluation (evaluate page with metrics)
@@ -39,13 +39,14 @@
   - [x] Allow jumping to completed stages
   - [x] Enforce dependencies between stages
   - [x] Clear visual indicators of stage status
-- [ ] **Remaining Integration Tasks**
-  - [ ] Connect transformation pipeline UI to prepare page
+- [x] **Remaining Integration Tasks** ✅ (Core transformation integration complete 2025-06-21)
+  - [x] Connect transformation pipeline UI to prepare page ✅ (2025-06-21)
   - [x] Transformation pipeline backend-frontend integration ✅ (2025-06-21)
   - [ ] Add backend workflow persistence API
   - [ ] Test end-to-end workflow with real data
 
 ### Data Transformation UI ✅ (Completed 2025-06-21)
+**Status: Fully integrated into Stage 3 (Data Preparation) of workflow**
 - [x] **Backend transformation engine** ✅
   - [x] Core transformation framework with extensible design
   - [x] Remove duplicates, trim whitespace, fill missing transformations
@@ -64,7 +65,8 @@
   - [x] NextAuth authentication integration ✅ (2025-06-21)
   - [x] TypeScript transformation service layer ✅ (2025-06-21)
   - [ ] Node parameter editing UI
-  - [ ] Connect to Stage 3 of workflow
+  - [x] Connect to Stage 3 of workflow ✅ (2025-06-21)
+  - [x] Remove duplicate/old transformation components ✅ (2025-06-21)
 - [ ] **Add advanced transformations**
   - [ ] Date/time transformations (extract parts, calculate age)
   - [ ] Type conversions (numeric, string, datetime, boolean)

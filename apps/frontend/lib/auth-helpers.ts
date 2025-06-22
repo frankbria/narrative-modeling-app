@@ -1,5 +1,4 @@
 import { getSession } from 'next-auth/react';
-import { auth } from '@/app/auth';
 
 const skipAuth = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
 
@@ -19,21 +18,6 @@ export async function getAuthToken() {
   if (session?.user?.id) {
     // Create a simple token that the backend can validate
     // This is temporary - in production you'd want proper JWT signing
-    return `nextauth-${session.user.id}`;
-  }
-  
-  return null;
-}
-
-// Server-side version for use in server components
-export async function getAuthTokenServer() {
-  if (skipAuth) {
-    return 'dev-user-default';
-  }
-  
-  const session = await auth();
-  
-  if (session?.user?.id) {
     return `nextauth-${session.user.id}`;
   }
   

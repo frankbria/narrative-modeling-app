@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { useRouter, usePathname } from 'next/navigation';
 import { WorkflowState, WorkflowStage, WorkflowContextType, WORKFLOW_STAGES } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
-import { getAuthTokenServer } from '@/lib/auth-helpers';
+import { getAuthToken } from '@/lib/auth-helpers';
 
 const initialState: WorkflowState = {
   currentStage: WorkflowStage.DATA_LOADING,
@@ -137,13 +137,13 @@ export function WorkflowProvider({
 
   const loadWorkflow = useCallback(async (datasetId: string) => {
     try {
-      const token = await getAuthTokenServer();
+      // Use client-side token helper
+      const token = await getAuthToken();
       const response = await fetch(`${API_URL}/workflow/${datasetId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
       if (response.ok) {
         const data = await response.json();
         setState({
@@ -157,16 +157,20 @@ export function WorkflowProvider({
     }
   }, []);
 
+  const setDatasetId = useCallback((datasetId: string) => {
+    setState(prev => ({ ...prev, datasetId }));
+    // Load workflow for this dataset
+    loadWorkflow(datasetId);
+  }, [loadWorkflow]);
+
   const saveWorkflow = useCallback(async () => {
     if (!state.datasetId) return;
-
     try {
-      const token = await getAuthTokenServer();
+      const token = await getAuthToken();
       const dataToSave = {
         ...state,
         completedStages: Array.from(state.completedStages)
       };
-
       await fetch(`${API_URL}/workflow/${state.datasetId}`, {
         method: 'POST',
         headers: {
@@ -185,6 +189,7 @@ export function WorkflowProvider({
     canAccessStage,
     completeStage,
     setCurrentStage,
+    setDatasetId,
     resetWorkflow,
     loadWorkflow,
     saveWorkflow
