@@ -62,11 +62,11 @@ export interface ChartFilter {
 }
 
 export async function getCorrelationMatrix(datasetId: string, token?: string): Promise<CorrelationMatrix> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
-  const response = await fetch(`${apiUrl}/api/v1/visualizations/correlation/${datasetId}`, {
+  const response = await fetch(`${apiUrl}/visualizations/correlation/${datasetId}`, {
     headers
   });
   if (!response.ok) {
@@ -76,11 +76,11 @@ export async function getCorrelationMatrix(datasetId: string, token?: string): P
 }
 
 export async function getHistogram(datasetId: string, column: string, bins: number = 50, token?: string): Promise<HistogramData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
-  const response = await fetch(`${apiUrl}/api/v1/visualizations/histogram/${datasetId}/${column}?bins=${bins}`, {
+  const response = await fetch(`${apiUrl}/visualizations/histogram/${datasetId}/${column}?bins=${bins}`, {
     headers
   });
   if (!response.ok) {
@@ -90,11 +90,11 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
 }
 
 export async function getBoxPlot(datasetId: string, column: string, token?: string): Promise<BoxPlotData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
-  const response = await fetch(`${apiUrl}/api/v1/visualizations/boxplot/${datasetId}/${column}`, {
+  const response = await fetch(`${apiUrl}/visualizations/boxplot/${datasetId}/${column}`, {
     headers
   });
   if (!response.ok) {
@@ -110,7 +110,7 @@ export async function getScatterPlot(
   filters?: ChartFilter[],
   token?: string
 ): Promise<ScatterPlotData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -120,7 +120,7 @@ export async function getScatterPlot(
   }
   
   const response = await fetch(
-    `${apiUrl}/api/v1/visualizations/scatter/${datasetId}/${xColumn}/${yColumn}?${queryParams}`,
+    `${apiUrl}/visualizations/scatter/${datasetId}/${xColumn}/${yColumn}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {
@@ -136,7 +136,7 @@ export async function getLineChart(
   filters?: ChartFilter[],
   token?: string
 ): Promise<LineChartData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -147,7 +147,7 @@ export async function getLineChart(
   }
   
   const response = await fetch(
-    `${apiUrl}/api/v1/visualizations/line/${datasetId}/${xColumn}?${queryParams}`,
+    `${apiUrl}/visualizations/line/${datasetId}/${xColumn}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {
@@ -163,7 +163,7 @@ export async function getTimeSeries(
   filters?: ChartFilter[],
   token?: string
 ): Promise<TimeSeriesData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -173,7 +173,7 @@ export async function getTimeSeries(
   }
   
   const response = await fetch(
-    `${apiUrl}/api/v1/visualizations/timeseries/${datasetId}/${timeColumn}/${valueColumn}?${queryParams}`,
+    `${apiUrl}/visualizations/timeseries/${datasetId}/${timeColumn}/${valueColumn}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {
@@ -188,7 +188,7 @@ export async function getFilteredData(
   columns?: string[],
   token?: string
 ): Promise<any[]> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -199,7 +199,7 @@ export async function getFilteredData(
   }
   
   const response = await fetch(
-    `${apiUrl}/api/v1/visualizations/filtered/${datasetId}?${queryParams}`,
+    `${apiUrl}/visualizations/filtered/${datasetId}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {

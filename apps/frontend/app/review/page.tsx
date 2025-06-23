@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { API_URL } from '@/lib/constants';
 
 interface UserData {
   id: string;
@@ -66,16 +67,7 @@ export default function ReviewPage() {
     if (!session?.user?.id) return
 
     try {
-      // Ensure the URL has a protocol
-      let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-        backendUrl = `http://${backendUrl}`
-      }
-      
-      // Remove trailing /api if present
-      backendUrl = backendUrl.replace(/\/api$/, '')
-      
-      const response = await fetch(`${backendUrl}/api/user_data`, {
+      const response = await fetch(`${API_URL}/user_data`, {
         headers: {
           'Authorization': `Bearer ${await getAuthToken()}`
         }
@@ -100,16 +92,7 @@ export default function ReviewPage() {
       setIsLoading(true)
       setError(null)
       
-      // Ensure the URL has a protocol
-      let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-        backendUrl = `http://${backendUrl}`
-      }
-      
-      // Remove trailing /api if present
-      backendUrl = backendUrl.replace(/\/api$/, '')
-      
-      const response = await fetch(`${backendUrl}/api/user_data/preview/${selectedDatasetId}`, {
+      const response = await fetch(`${API_URL}/user_data/preview/${selectedDatasetId}`, {
         headers: {
           'Authorization': `Bearer ${await getAuthToken()}`
         }
@@ -173,16 +156,7 @@ export default function ReviewPage() {
       if (!data?.id) return;
 
       try {
-        // Ensure the URL has a protocol
-        let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-          backendUrl = `http://${backendUrl}`;
-        }
-        
-        // Remove trailing /api if present
-        backendUrl = backendUrl.replace(/\/api$/, '');
-        
-        const response = await fetch(`${backendUrl}/api/user_data/${data.id}/ai-summary`, {
+        const response = await fetch(`${API_URL}/user_data/${data.id}/ai-summary`, {
           headers: {
             'Authorization': `Bearer ${await getAuthToken()}`
           }
