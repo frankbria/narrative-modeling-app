@@ -48,15 +48,7 @@ export default async function RootLayout({
             </WorkflowProvider>
           ) : (
             <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">
-              <p className="text-xl text-gray-900">
-                Please sign in below in order to access the application.
-              </p>
-              <a
-                href="/auth/signin"
-                className="px-6 py-3 text-white text-lg font-semibold rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 inline-block"
-              >
-                Sign In
-              </a>
+              {children}
             </main>
           )}
         </SessionProvider>
