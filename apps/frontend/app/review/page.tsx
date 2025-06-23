@@ -247,7 +247,7 @@ export default function ReviewPage() {
                   {datasets.length === 0 ? (
                     <div className="text-center">
                       <p className="text-gray-500 mb-4">No datasets available</p>
-                      <Link href="/load">
+                      <Link href="/upload">
                         <Button className="w-full">Upload Dataset</Button>
                       </Link>
                     </div>

@@ -103,7 +103,13 @@ async def secure_upload(
         schema = infer_schema(df)
         
         # Upload to S3
-        s3_url = upload_file_to_s3(content, file.filename, current_user_id)
+        success, s3_url = upload_file_to_s3(content, file.filename, content_type=file.content_type)
+        
+        if not success or not s3_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to upload file to S3"
+            )
         
         # Create UserData record
         user_data = UserData(
@@ -177,19 +183,27 @@ async def confirm_pii_upload(
         df_processed = pii_detector.mask_pii(df, pii_detections)
         # Upload masked version
         processed_content = df_processed.to_csv(index=False).encode()
-        s3_url = upload_file_to_s3(processed_content, f"masked_{file.filename}", current_user_id)
+        success, s3_url = upload_file_to_s3(processed_content, f"masked_{file.filename}", content_type="text/csv")
     else:
         # Upload original
-        s3_url = upload_file_to_s3(content, file.filename, current_user_id)
+        success, s3_url = upload_file_to_s3(content, file.filename, content_type=file.content_type)
         df_processed = df
     
     # Infer schema
     schema = infer_schema(df_processed)
     
+    # Check upload success
+    if not success or not s3_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload file to S3"
+        )
+    
     # Create UserData record
     user_data = UserData(
         user_id=current_user_id,
         filename=file.filename,
+        original_filename=file.filename,
         s3_url=s3_url,
         num_rows=len(df_processed),
         num_columns=len(df_processed.columns),

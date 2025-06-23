@@ -87,7 +87,7 @@ export default function ExploreDataPage() {
         <div className="border rounded-lg shadow-sm p-6">
           <p className="text-center mb-4">No datasets available. Please upload a dataset first.</p>
           <div className="flex justify-center">
-            <Link href="/load">
+            <Link href="/upload">
               <Button>Upload Dataset</Button>
             </Link>
           </div>
