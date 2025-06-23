@@ -12,7 +12,8 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@auth/mongodb-adapter": "^3.9.1",
+    "@auth/mongodb-adapter": "^3.10.0",
+    "@icons-pack/react-simple-icons": "^13.1.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.7",

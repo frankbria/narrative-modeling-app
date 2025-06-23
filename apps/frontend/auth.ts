@@ -5,7 +5,7 @@ import { MongoDBAdapter } from "@auth/mongodb-adapter"
 import GoogleProvider from "next-auth/providers/google"
 import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
-import client from "./app/lib/db"
+import client from "./lib/db"
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
