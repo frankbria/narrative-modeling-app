@@ -2,8 +2,7 @@
  * Transformation service for data pipeline operations
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_VERSION = 'api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface TransformationStep {
   type: string
@@ -101,7 +100,7 @@ export class TransformationService {
     request: TransformationRequest,
     token: string | null
   ): Promise<TransformationPreviewResponse> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/transformations/preview`, {
+    const response = await fetch(`${API_BASE_URL}/transformations/preview`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -119,7 +118,7 @@ export class TransformationService {
     request: TransformationRequest,
     token: string | null
   ): Promise<TransformationApplyResponse> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/transformations/apply`, {
+    const response = await fetch(`${API_BASE_URL}/transformations/apply`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -137,7 +136,7 @@ export class TransformationService {
     request: TransformationPipelineRequest,
     token: string | null
   ): Promise<TransformationApplyResponse> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/transformations/pipeline/apply`, {
+    const response = await fetch(`${API_BASE_URL}/transformations/pipeline/apply`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -155,7 +154,7 @@ export class TransformationService {
     request: AutoCleanRequest,
     token: string | null
   ): Promise<TransformationApplyResponse> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/transformations/auto-clean`, {
+    const response = await fetch(`${API_BASE_URL}/transformations/auto-clean`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -174,7 +173,7 @@ export class TransformationService {
     token: string | null
   ): Promise<TransformationSuggestionResponse> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/suggestions/${datasetId}`,
+      `${API_BASE_URL}/transformations/suggestions/${datasetId}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -206,7 +205,7 @@ export class TransformationService {
     }
 
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/recipes?${params}`,
+      `${API_BASE_URL}/transformations/recipes?${params}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -225,7 +224,7 @@ export class TransformationService {
     limit: number = 10
   ): Promise<RecipeListResponse> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/recipes/popular?limit=${limit}`,
+      `${API_BASE_URL}/transformations/recipes/popular?limit=${limit}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -244,7 +243,7 @@ export class TransformationService {
     token: string | null
   ): Promise<Recipe> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/recipes/${recipeId}`,
+      `${API_BASE_URL}/transformations/recipes/${recipeId}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -264,7 +263,7 @@ export class TransformationService {
     token: string | null
   ): Promise<TransformationApplyResponse> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/recipes/${recipeId}/apply`,
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/apply`,
       {
         method: 'POST',
         headers: await this.getHeaders(token),
@@ -291,7 +290,7 @@ export class TransformationService {
     },
     token: string | null
   ): Promise<Recipe> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/transformations/recipes`, {
+    const response = await fetch(`${API_BASE_URL}/transformations/recipes`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(recipe)
@@ -310,7 +309,7 @@ export class TransformationService {
     token: string | null
   ): Promise<void> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/transformations/recipes/${recipeId}`,
+      `${API_BASE_URL}/transformations/recipes/${recipeId}`,
       {
         method: 'DELETE',
         headers: await this.getHeaders(token)

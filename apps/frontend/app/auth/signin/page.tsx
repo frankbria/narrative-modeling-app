@@ -2,19 +2,57 @@
 
 'use client';
 
-import { signIn } from "next-auth/react";
-import { useState } from "react";
+import { signIn, useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail } from "lucide-react";
+import { Mail, Loader2 } from "lucide-react";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 
 export default function SignInPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('dev@example.com');
   const isDevelopment = process.env.NODE_ENV === 'development';
   const skipAuth = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
+  
+  // Get callback URL from search params or default to /upload
+  const callbackUrl = searchParams.get('callbackUrl') || '/upload';
+  
+  useEffect(() => {
+    // If already authenticated, redirect to callback URL
+    if (status === 'authenticated') {
+      router.push(callbackUrl);
+    }
+  }, [status, router, callbackUrl]);
+  
+  // Show loading while checking auth status
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Checking authentication...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  // If authenticated, show loading while redirecting
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Redirecting to application...</span>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -54,7 +92,7 @@ export default function SignInPage() {
               <Button
                 onClick={() => signIn('credentials', { 
                   email, 
-                  callbackUrl: '/upload' 
+                  callbackUrl 
                 })}
                 className="w-full flex items-center justify-center gap-2"
                 variant="default"
@@ -75,7 +113,7 @@ export default function SignInPage() {
           )}
           
           <Button
-            onClick={() => signIn('google', { callbackUrl: '/upload' })}
+            onClick={() => signIn('google', { callbackUrl })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
@@ -84,7 +122,7 @@ export default function SignInPage() {
           </Button>
           
           <Button
-            onClick={() => signIn('github', { callbackUrl: '/upload' })}
+            onClick={() => signIn('github', { callbackUrl })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >

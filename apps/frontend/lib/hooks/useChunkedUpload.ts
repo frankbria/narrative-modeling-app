@@ -46,10 +46,10 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const initializeUpload = async (file: File): Promise<string> => {
-    const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
     const fileHash = await calculateHash(file)
     
-    const response = await fetch(`${backendUrl}/api/v1/upload/chunked/init`, {
+    const response = await fetch(`${backendUrl}/upload/chunked/init`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${await getAuthToken()}`,
@@ -77,11 +77,11 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     retryCount = 0
   ): Promise<boolean> => {
     try {
-      const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
       const formData = new FormData()
       formData.append('file', chunkData, `chunk_${chunkNumber}`)
 
-      const response = await fetch(`${backendUrl}/api/v1/upload/chunked/${sessionId}/chunk/${chunkNumber}`, {
+      const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/chunk/${chunkNumber}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${await session?.getToken()}`
@@ -106,9 +106,9 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const completeUpload = async (sessionId: string): Promise<any> => {
-    const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
     
-    const response = await fetch(`${backendUrl}/api/v1/upload/chunked/${sessionId}/complete`, {
+    const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/complete`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${await session?.getToken()}`

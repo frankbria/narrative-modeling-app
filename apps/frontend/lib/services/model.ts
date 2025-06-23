@@ -2,8 +2,7 @@
  * Model training and management service
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_VERSION = 'api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface TrainModelRequest {
   dataset_id: string
@@ -71,7 +70,7 @@ export class ModelService {
     request: TrainModelRequest,
     token: string | null
   ): Promise<{ model_id: string; status: string; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/ml/train`, {
+    const response = await fetch(`${API_BASE_URL}/ml/train`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -93,7 +92,7 @@ export class ModelService {
     if (datasetId) params.append('dataset_id', datasetId)
 
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/ml/?${params}`,
+      `${API_BASE_URL}/ml/?${params}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -111,7 +110,7 @@ export class ModelService {
     token: string | null
   ): Promise<ModelInfo> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/ml/${modelId}`,
+      `${API_BASE_URL}/ml/${modelId}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -130,7 +129,7 @@ export class ModelService {
     token: string | null
   ): Promise<PredictResponse> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/ml/${modelId}/predict`,
+      `${API_BASE_URL}/ml/${modelId}/predict`,
       {
         method: 'POST',
         headers: await this.getHeaders(token),
@@ -151,7 +150,7 @@ export class ModelService {
     token: string | null
   ): Promise<void> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/ml/${modelId}`,
+      `${API_BASE_URL}/ml/${modelId}`,
       {
         method: 'DELETE',
         headers: await this.getHeaders(token)
@@ -168,7 +167,7 @@ export class ModelService {
     token: string | null
   ): Promise<void> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/ml/${modelId}/deactivate`,
+      `${API_BASE_URL}/ml/${modelId}/deactivate`,
       {
         method: 'PUT',
         headers: await this.getHeaders(token)

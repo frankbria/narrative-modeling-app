@@ -1,0 +1,954 @@
+INFO:     Will watch for changes in these directories: ['/home/frankbria/projects/narrative-modeling-app/apps/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [1316968] using StatReload
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:48:25,467 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:48:26,114 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:48:26,558 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1316970]
+INFO:     Waiting for application startup.
+2025-06-23 15:48:29,642 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:48:29,643 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:48:34,700 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 0d4036ac-3deb-4835-a7d5-b11d5ba2d8bb.csv
+2025-06-23 15:48:34,703 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:48:34,703 - app.utils.s3 - INFO - Attempting to upload file to S3: 0d4036ac-3deb-4835-a7d5-b11d5ba2d8bb.csv to bucket: narrative-modeling-storage
+2025-06-23 15:48:34,703 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:48:35,200 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/0d4036ac-3deb-4835-a7d5-b11d5ba2d8bb.csv
+2025-06-23 15:48:35,200 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/0d4036ac-3deb-4835-a7d5-b11d5ba2d8bb.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:48436 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:48:52,797 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-23 15:48:53,148 - app.services.s3_service - ERROR - Error downloading file from S3: An error occurred (NoSuchKey) when calling the GetObject operation: The specified key does not exist.
+INFO:     127.0.0.1:48436 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+2025-06-23 15:48:53,150 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859d9c3cad19faa9e7e0257
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1316970]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:49:28,497 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:49:29,133 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:49:29,546 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1317879]
+INFO:     Waiting for application startup.
+2025-06-23 15:49:32,740 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:49:32,742 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:49:33,162 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as b621afd1-050f-4128-8d2f-2d05741152a6.csv
+2025-06-23 15:49:33,164 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:49:33,164 - app.utils.s3 - INFO - Attempting to upload file to S3: b621afd1-050f-4128-8d2f-2d05741152a6.csv to bucket: narrative-modeling-storage
+2025-06-23 15:49:33,164 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:49:33,625 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/b621afd1-050f-4128-8d2f-2d05741152a6.csv
+2025-06-23 15:49:33,625 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/b621afd1-050f-4128-8d2f-2d05741152a6.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:49106 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:49:48,098 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:327: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:327: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:49:48,474 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859d9fd09b4f278e67372ca
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:49106 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1317879]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:50:16,570 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:50:17,151 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:50:17,565 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1318522]
+INFO:     Waiting for application startup.
+2025-06-23 15:50:20,694 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:50:20,695 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1318522]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:50:57,903 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:50:58,483 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:50:58,899 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1319059]
+INFO:     Waiting for application startup.
+2025-06-23 15:51:02,009 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:51:02,010 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1319059]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:03,725 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:51:04,342 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:04,753 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1319208]
+INFO:     Waiting for application startup.
+2025-06-23 15:51:07,890 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:51:07,892 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1319208]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:09,124 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:51:09,737 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:10,144 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1319357]
+INFO:     Waiting for application startup.
+2025-06-23 15:51:13,076 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:51:13,078 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:51:14,247 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as c7a33e63-13b6-4920-8e0c-66cdff2c5d6d.csv
+2025-06-23 15:51:14,250 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:51:14,250 - app.utils.s3 - INFO - Attempting to upload file to S3: c7a33e63-13b6-4920-8e0c-66cdff2c5d6d.csv to bucket: narrative-modeling-storage
+2025-06-23 15:51:14,250 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:51:14,711 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/c7a33e63-13b6-4920-8e0c-66cdff2c5d6d.csv
+2025-06-23 15:51:14,711 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/c7a33e63-13b6-4920-8e0c-66cdff2c5d6d.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:44536 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:51:27,556 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:340: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:340: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:51:27,946 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859da627993ac4454f2b1d5
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:44536 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/services/data_processing/statistics_engine.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1319357]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:57,569 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:51:58,198 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:51:58,642 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1320001]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:01,716 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:01,718 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/statistics_engine.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1320001]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:05,239 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:05,836 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:06,278 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1320172]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:09,287 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:09,288 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/statistics_engine.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1320172]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:14,330 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:14,954 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:15,368 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1320385]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:18,441 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:18,443 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1320385]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:21,987 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:22,612 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:23,028 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1320582]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:27,396 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:27,398 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/schema_inference.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1320582]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:31,955 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:32,547 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:32,949 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1320770]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:36,201 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:36,203 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/quality_assessment.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1320770]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:43,336 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:43,942 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:44,337 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1321014]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:47,410 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:47,411 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/quality_assessment.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1321014]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:51,062 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:52:51,699 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:52:52,136 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1321185]
+INFO:     Waiting for application startup.
+2025-06-23 15:52:55,378 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:52:55,380 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:52:55,388 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 2d473820-c6fc-40ea-9209-4c616e589cbc.csv
+2025-06-23 15:52:55,391 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:52:55,391 - app.utils.s3 - INFO - Attempting to upload file to S3: 2d473820-c6fc-40ea-9209-4c616e589cbc.csv to bucket: narrative-modeling-storage
+2025-06-23 15:52:55,391 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:52:55,870 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/2d473820-c6fc-40ea-9209-4c616e589cbc.csv
+2025-06-23 15:52:55,870 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/2d473820-c6fc-40ea-9209-4c616e589cbc.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:52670 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:53:12,645 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:53:13,020 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859dac74257bdc9a0bdc4db
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:52670 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/services/data_processing/statistics_engine.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1321185]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:53:40,516 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:53:41,097 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:53:41,504 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1321886]
+INFO:     Waiting for application startup.
+2025-06-23 15:53:44,727 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:53:44,728 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/statistics_engine.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1321886]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:53:51,459 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:53:52,130 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:53:52,589 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1322105]
+INFO:     Waiting for application startup.
+2025-06-23 15:53:56,092 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:53:56,094 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:53:56,503 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as c9a6f428-8c60-476a-924d-777f9c8c7951.csv
+2025-06-23 15:53:56,505 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:53:56,505 - app.utils.s3 - INFO - Attempting to upload file to S3: c9a6f428-8c60-476a-924d-777f9c8c7951.csv to bucket: narrative-modeling-storage
+2025-06-23 15:53:56,505 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:53:56,973 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/c9a6f428-8c60-476a-924d-777f9c8c7951.csv
+2025-06-23 15:53:56,973 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/c9a6f428-8c60-476a-924d-777f9c8c7951.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:52868 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:54:50,700 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:54:51,116 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859db047eef95fa0781d5d7
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:52868 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1322105]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:55:24,352 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:55:24,969 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:55:25,393 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1323282]
+INFO:     Waiting for application startup.
+2025-06-23 15:55:28,837 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:55:28,842 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:55:35,122 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 76815c18-1286-41a5-9677-ad6b69a26804.csv
+2025-06-23 15:55:35,125 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:55:35,125 - app.utils.s3 - INFO - Attempting to upload file to S3: 76815c18-1286-41a5-9677-ad6b69a26804.csv to bucket: narrative-modeling-storage
+2025-06-23 15:55:35,125 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:55:35,586 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/76815c18-1286-41a5-9677-ad6b69a26804.csv
+2025-06-23 15:55:35,586 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/76815c18-1286-41a5-9677-ad6b69a26804.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:44664 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:55:47,689 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:55:48,077 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859db6763b29f2eb820f3f2
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:44664 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/services/data_processing/data_processor.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1323282]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:56:16,262 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:56:16,837 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:56:17,248 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1324053]
+INFO:     Waiting for application startup.
+2025-06-23 15:56:21,744 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:56:21,746 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:56:22,303 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 7e7c4300-c2f5-4c3b-9c88-dc012d1eb61e.csv
+2025-06-23 15:56:22,306 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:56:22,306 - app.utils.s3 - INFO - Attempting to upload file to S3: 7e7c4300-c2f5-4c3b-9c88-dc012d1eb61e.csv to bucket: narrative-modeling-storage
+2025-06-23 15:56:22,306 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:56:22,792 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/7e7c4300-c2f5-4c3b-9c88-dc012d1eb61e.csv
+2025-06-23 15:56:22,792 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/7e7c4300-c2f5-4c3b-9c88-dc012d1eb61e.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:52498 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:56:35,062 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:56:35,423 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859db96fb06fe5f0ab896da
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:52498 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1324053]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:57:20,177 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:57:20,812 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:57:21,257 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1324965]
+INFO:     Waiting for application startup.
+2025-06-23 15:57:24,439 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:57:24,440 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1324965]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:57:29,506 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:57:30,148 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:57:30,573 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1325178]
+INFO:     Waiting for application startup.
+2025-06-23 15:57:33,625 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:57:33,627 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:57:35,215 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 9c063491-b80e-4008-813b-e5dd6e6ad88c.csv
+2025-06-23 15:57:35,218 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:57:35,218 - app.utils.s3 - INFO - Attempting to upload file to S3: 9c063491-b80e-4008-813b-e5dd6e6ad88c.csv to bucket: narrative-modeling-storage
+2025-06-23 15:57:35,218 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:57:35,691 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/9c063491-b80e-4008-813b-e5dd6e6ad88c.csv
+2025-06-23 15:57:35,691 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/9c063491-b80e-4008-813b-e5dd6e6ad88c.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:50780 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:57:46,339 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:57:46,712 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859dbdf6e6b24db4b1a71f1
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:50780 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/utils/json_encoder.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1325178]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:57:59,890 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:58:01,804 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:02,211 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1325651]
+INFO:     Waiting for application startup.
+2025-06-23 15:58:05,312 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:58:05,314 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/utils/json_encoder.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1325651]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:07,042 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:58:07,642 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:08,068 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1325800]
+INFO:     Waiting for application startup.
+2025-06-23 15:58:11,392 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:58:11,394 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1325800]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:17,432 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:58:18,051 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:18,471 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1326019]
+INFO:     Waiting for application startup.
+2025-06-23 15:58:21,558 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:58:21,559 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1326019]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:28,292 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:58:28,925 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:58:29,361 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1326238]
+INFO:     Waiting for application startup.
+2025-06-23 15:58:32,474 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:58:32,477 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+2025-06-23 15:58:35,634 - app.api.routes.secure_upload - INFO - Uploading file test_data.csv to S3 as 562cf6bd-d76b-40b7-81fe-7783f757c09f.csv
+2025-06-23 15:58:35,636 - app.utils.s3 - INFO - S3 client initialized successfully
+2025-06-23 15:58:35,637 - app.utils.s3 - INFO - Attempting to upload file to S3: 562cf6bd-d76b-40b7-81fe-7783f757c09f.csv to bucket: narrative-modeling-storage
+2025-06-23 15:58:35,637 - app.utils.s3 - INFO - File size: 65 bytes
+2025-06-23 15:58:36,086 - app.utils.s3 - INFO - File uploaded successfully to https://narrative-modeling-storage.s3.amazonaws.com/562cf6bd-d76b-40b7-81fe-7783f757c09f.csv
+2025-06-23 15:58:36,087 - app.api.routes.secure_upload - INFO - S3 upload successful: https://narrative-modeling-storage.s3.amazonaws.com/562cf6bd-d76b-40b7-81fe-7783f757c09f.csv
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:59528 - "POST /api/v1/upload/secure HTTP/1.1" 200 OK
+2025-06-23 15:58:49,006 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+2025-06-23 15:58:49,390 - app.utils.ai_summary - INFO - AI summary generated and saved for dataset 6859dc1c6055bd941c59ae8c
+Inferring schema...
+Calculating statistics...
+Assessing data quality...
+INFO:     127.0.0.1:59528 - "POST /api/v1/data/process HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1326238]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:59:03,879 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 15:59:04,466 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 15:59:04,927 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1326783]
+INFO:     Waiting for application startup.
+2025-06-23 15:59:09,336 - root - INFO - OpenAI client initialized successfully
+2025-06-23 15:59:09,338 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1326783]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:00:30,996 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 16:00:31,614 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:00:32,075 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1327770]
+INFO:     Waiting for application startup.
+2025-06-23 16:00:35,339 - root - INFO - OpenAI client initialized successfully
+2025-06-23 16:00:35,341 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1327770]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:03:01,201 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 16:03:01,846 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:03:02,294 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1329285]
+INFO:     Waiting for application startup.
+2025-06-23 16:03:05,530 - root - INFO - OpenAI client initialized successfully
+2025-06-23 16:03:05,531 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/api/routes/data_processing.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1329285]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:03:13,472 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 16:03:14,081 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:03:14,472 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1329526]
+INFO:     Waiting for application startup.
+2025-06-23 16:03:17,645 - root - INFO - OpenAI client initialized successfully
+2025-06-23 16:03:17,647 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/services/data_processing/data_processor.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1329526]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:03:59,570 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 16:04:00,222 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:04:00,687 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1330083]
+INFO:     Waiting for application startup.
+2025-06-23 16:04:03,914 - root - INFO - OpenAI client initialized successfully
+2025-06-23 16:04:03,916 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/utils/json_encoder.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1330083]
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:04:12,872 - app.auth.nextauth_auth - WARNING - ⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+2025-06-23 16:04:13,494 - app.utils.ai_summary - INFO - Using OpenAI model: gpt-4-turbo
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+2025-06-23 16:04:13,916 - app.services.dataset_summarization - INFO - Using OpenAI model: gpt-4-turbo
+INFO:     Started server process [1330341]
+INFO:     Waiting for application startup.
+2025-06-23 16:04:16,990 - root - INFO - OpenAI client initialized successfully
+2025-06-23 16:04:16,991 - app.services.redis_cache - INFO - Successfully connected to Redis
+INFO:     Application startup complete.
+Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+INFO:     127.0.0.1:38698 - "OPTIONS /api/v1/user_data/6859d06b2869a4a3573f827a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38698 - "GET /api/v1/user_data/6859d06b2869a4a3573f827a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38706 - "OPTIONS /api/v1/data/process HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38698 - "GET /api/v1/user_data/6859d06b2869a4a3573f827a HTTP/1.1" 200 OK
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+/home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  parsed = pd.to_datetime(str_sample, errors='coerce')
+Inferring schema...
+Calculating statistics...
+Inferring schema...
+Calculating statistics...
+Error calculating datetime statistics for JoinDate: could not convert string to float: '2020-03-28T19:12:00'
+Error calculating datetime statistics for JoinDate: could not convert string to float: '2020-03-28T19:12:00'
+Assessing data quality...
+About to save user_data...
+Assessing data quality...
+About to save user_data...
+user_data saved successfully
+INFO:     127.0.0.1:38706 - "POST /api/v1/data/process HTTP/1.1" 200 OK
+user_data saved successfully
+INFO:     127.0.0.1:38698 - "POST /api/v1/data/process HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1330341]
+INFO:     Stopping reloader process [1316968]

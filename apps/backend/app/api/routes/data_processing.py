@@ -4,12 +4,16 @@ API routes for data processing functionality
 
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, ConfigDict
+import numpy as np
+import json
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.s3_service import s3_service
+from app.utils.json_encoder import convert_numpy_types, NumpyJSONEncoder
 
 
 router = APIRouter()
@@ -24,6 +28,16 @@ class ProcessingRequest(BaseModel):
 
 class ProcessingResponse(BaseModel):
     """Response model for data processing"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     status: str
     file_id: str
     processing_id: str
@@ -43,16 +57,41 @@ async def process_uploaded_file(
     """
     try:
         # Get file metadata from database
-        user_data = await UserData.find_one(
-            UserData.id == request.file_id,
-            UserData.user_id == current_user_id
-        )
+        # Try to convert string ID to PydanticObjectId
+        from beanie import PydanticObjectId
+        
+        try:
+            file_obj_id = PydanticObjectId(request.file_id)
+            user_data = await UserData.find_one(
+                UserData.id == file_obj_id,
+                UserData.user_id == current_user_id
+            )
+        except Exception:
+            # If conversion fails, try as string
+            user_data = await UserData.find_one(
+                UserData.id == request.file_id,
+                UserData.user_id == current_user_id
+            )
         
         if not user_data:
             raise HTTPException(status_code=404, detail="File not found")
         
         # Download file from S3
-        file_key = user_data.s3_url.replace(f"s3://{s3_service.bucket_name}/", "")
+        # Extract file key from S3 URL (handle both s3:// and https:// formats)
+        s3_url = user_data.s3_url
+        if s3_url.startswith(f"s3://{s3_service.bucket_name}/"):
+            file_key = s3_url.replace(f"s3://{s3_service.bucket_name}/", "")
+        elif s3_url.startswith(f"https://{s3_service.bucket_name}.s3.amazonaws.com/"):
+            file_key = s3_url.replace(f"https://{s3_service.bucket_name}.s3.amazonaws.com/", "")
+        else:
+            # Try to extract key from any S3 URL format
+            import re
+            match = re.search(r'/([^/]+)$', s3_url)
+            if match:
+                file_key = match.group(1)
+            else:
+                raise ValueError(f"Could not extract file key from S3 URL: {s3_url}")
+        
         file_bytes = await s3_service.download_file_bytes(file_key)
         
         # Process the file
@@ -63,26 +102,56 @@ async def process_uploaded_file(
         )
         
         # Store processing results in database
-        user_data.schema = processed_data.schema.model_dump()
-        user_data.statistics = processed_data.statistics.model_dump()
-        user_data.quality_report = processed_data.quality_report.model_dump()
+        try:
+            user_data.schema = convert_numpy_types(processed_data.schema.model_dump())
+        except Exception as e:
+            print(f"Error dumping schema: {e}")
+            raise
+            
+        try:
+            user_data.statistics = convert_numpy_types(processed_data.statistics.model_dump())
+        except Exception as e:
+            print(f"Error dumping statistics: {e}")
+            raise
+            
+        try:
+            user_data.quality_report = convert_numpy_types(processed_data.quality_report.model_dump())
+        except Exception as e:
+            print(f"Error dumping quality_report: {e}")
+            raise
         user_data.processed_at = processed_data.processed_at
         user_data.is_processed = True
         
-        await user_data.save()
+        print("About to save user_data...")
+        try:
+            await user_data.save()
+            print("user_data saved successfully")
+        except Exception as e:
+            print(f"Error saving user_data: {e}")
+            raise
         
         # Return processing results
-        return ProcessingResponse(
-            status="success",
-            file_id=str(user_data.id),
-            processing_id=str(user_data.id),  # Using same ID for now
-            schema=processed_data.schema.model_dump(),
-            statistics=processed_data.statistics.model_dump(),
-            quality_report=processed_data.quality_report.model_dump(),
-            preview=processed_data.get_preview()
+        # Convert all numpy types to Python types before returning
+        response_data = {
+            "status": "success",
+            "file_id": str(user_data.id),
+            "processing_id": str(user_data.id),  # Using same ID for now
+            "schema": convert_numpy_types(processed_data.schema.model_dump()),
+            "statistics": convert_numpy_types(processed_data.statistics.model_dump()),
+            "quality_report": convert_numpy_types(processed_data.quality_report.model_dump()),
+            "preview": convert_numpy_types(processed_data.get_preview())
+        }
+        
+        # Use custom JSON encoder to handle any remaining numpy types
+        return JSONResponse(
+            content=json.loads(json.dumps(response_data, cls=NumpyJSONEncoder)),
+            status_code=200
         )
         
     except Exception as e:
+        import traceback
+        print(f"ERROR in process_data: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
@@ -166,6 +235,9 @@ async def get_data_preview(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Get preview of processed data"""
+    import pandas as pd
+    import io
+    
     user_data = await UserData.find_one(
         UserData.id == file_id,
         UserData.user_id == current_user_id
@@ -177,22 +249,60 @@ async def get_data_preview(
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
     
-    # For now, return preview from stored data
-    # In production, might want to re-read from S3 for pagination
-    preview_data = user_data.data_preview or []
-    
-    # Apply pagination
-    paginated_data = preview_data[offset:offset + rows]
-    
-    return {
-        "file_id": str(user_data.id),
-        "filename": user_data.original_filename,
-        "columns": user_data.columns or [],
-        "data": paginated_data,
-        "total_rows": user_data.row_count or len(preview_data),
-        "offset": offset,
-        "rows": len(paginated_data)
-    }
+    try:
+        # Download file from S3 to get actual data
+        file_key = user_data.s3_url.replace(f"s3://{s3_service.bucket_name}/", "")
+        file_bytes = await s3_service.download_file_bytes(file_key)
+        
+        # Read the file based on type
+        if user_data.file_type == "csv" or user_data.original_filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        elif user_data.file_type == "excel" or user_data.original_filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(io.BytesIO(file_bytes))
+        else:
+            # Fall back to cached preview if file type unknown
+            preview_data = user_data.data_preview or []
+            paginated_data = preview_data[offset:offset + rows]
+            return {
+                "file_id": str(user_data.id),
+                "filename": user_data.original_filename,
+                "columns": user_data.columns or [],
+                "data": paginated_data,
+                "total_rows": user_data.row_count or len(preview_data),
+                "offset": offset,
+                "rows": len(paginated_data)
+            }
+        
+        # Apply pagination to the actual data
+        total_rows = len(df)
+        paginated_df = df.iloc[offset:offset + rows]
+        
+        return {
+            "file_id": str(user_data.id),
+            "filename": user_data.original_filename,
+            "columns": df.columns.tolist(),
+            "data": paginated_df.to_dict('records'),
+            "total_rows": total_rows,
+            "offset": offset,
+            "rows": len(paginated_df)
+        }
+        
+    except Exception as e:
+        # If S3 read fails, fall back to cached preview
+        print(f"Error reading from S3: {e}")
+        preview_data = user_data.data_preview or []
+        paginated_data = preview_data[offset:offset + rows]
+        
+        return {
+            "file_id": str(user_data.id),
+            "filename": user_data.original_filename,
+            "columns": user_data.columns or [],
+            "data": paginated_data,
+            "total_rows": user_data.row_count or len(preview_data),
+            "offset": offset,
+            "rows": len(paginated_data),
+            "warning": "Using cached preview data"
+        }
 
 
 @router.post("/{file_id}/export")

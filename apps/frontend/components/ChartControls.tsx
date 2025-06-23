@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
-import { X, Download, Refresh } from 'lucide-react'
+import { X, Download, RefreshCw } from 'lucide-react'
 
 export interface ChartFilter {
   column: string
@@ -96,7 +96,7 @@ export function ChartControls({
           <div className="flex gap-2">
             {onRefresh && (
               <Button variant="outline" size="sm" onClick={onRefresh}>
-                <Refresh className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4" />
               </Button>
             )}
             {onExport && (

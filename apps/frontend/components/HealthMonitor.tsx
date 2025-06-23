@@ -39,7 +39,7 @@ interface HealthMonitorProps {
 }
 
 export function HealthMonitor({ 
-  backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
   refreshInterval = 30000 // 30 seconds
 }: HealthMonitorProps) {
   const [status, setStatus] = useState<HealthStatus | null>(null)
@@ -53,13 +53,13 @@ export function HealthMonitor({
       setError(null)
       
       // Fetch health status
-      const statusResponse = await fetch(`${backendUrl}/api/v1/health/status`)
+      const statusResponse = await fetch(`${backendUrl}/health/status`)
       if (!statusResponse.ok) throw new Error('Failed to fetch health status')
       const statusData = await statusResponse.json()
       setStatus(statusData)
 
       // Fetch health metrics
-      const metricsResponse = await fetch(`${backendUrl}/api/v1/health/metrics`)
+      const metricsResponse = await fetch(`${backendUrl}/health/metrics`)
       if (!metricsResponse.ok) throw new Error('Failed to fetch health metrics')
       const metricsData = await metricsResponse.json()
       setMetrics(metricsData)

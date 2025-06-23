@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from beanie import PydanticObjectId
 from typing import List, Dict, Any
 from app.models.user_data import UserData
+from app.schemas.user_data import UserDataResponse
 from app.auth.nextauth_auth import get_current_user_id
 from app.services.eda_summary import generate_eda_summary
 import pandas as pd
@@ -27,9 +28,11 @@ async def create_user_data(
     return user_data
 
 
-@router.get("/", response_model=List[UserData])
+@router.get("/", response_model=List[UserDataResponse])
 async def get_user_data_for_user(user_id: str = Depends(get_current_user_id)):
-    return await UserData.find(UserData.user_id == user_id).to_list()
+    user_data_list = await UserData.find(UserData.user_id == user_id).to_list()
+    # Convert to response models with proper ID handling
+    return [UserDataResponse.model_validate(doc.model_dump(by_alias=True)) for doc in user_data_list]
 
 
 @router.get("/latest", response_model=UserData)

@@ -83,6 +83,10 @@ def upload_file_to_s3(
         return False, None
 
     try:
+        # Log upload attempt
+        logger.info(f"Attempting to upload file to S3: {s3_filename} to bucket: {bucket_name}")
+        logger.info(f"File size: {len(file_content)} bytes")
+        
         # Upload the file without public access
         extra_args = {}
         if content_type:

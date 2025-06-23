@@ -88,7 +88,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/transformations/recipes/${recipe.id}/export`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/transformations/recipes/${recipe.id}/export`,
         {
           method: 'POST',
           headers: {

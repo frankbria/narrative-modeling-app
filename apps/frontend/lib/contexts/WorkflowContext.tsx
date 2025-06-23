@@ -137,6 +137,14 @@ export function WorkflowProvider({
 
   const loadWorkflow = useCallback(async (datasetId: string) => {
     try {
+      // For now, just set the datasetId without loading from backend
+      // TODO: Implement workflow persistence endpoint
+      setState(prev => ({
+        ...prev,
+        datasetId
+      }));
+      return;
+      
       // Use client-side token helper
       const token = await getAuthToken();
       const response = await fetch(`${API_URL}/workflow/${datasetId}`, {

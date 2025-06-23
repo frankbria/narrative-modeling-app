@@ -7,7 +7,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 from scipy import stats
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 import hashlib
 import json
 
@@ -16,6 +16,16 @@ from app.services.redis_cache import cache_service, cache_result
 
 class ColumnStatistics(BaseModel):
     """Comprehensive statistics for a single column"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     column_name: str
     data_type: str
     
@@ -67,6 +77,16 @@ class ColumnStatistics(BaseModel):
 
 class DatasetStatistics(BaseModel):
     """Statistics for entire dataset"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     row_count: int
     column_count: int
     memory_usage_mb: float
@@ -89,6 +109,19 @@ class StatisticsEngine:
         """
         self.outlier_method = outlier_method
         self.correlation_threshold = correlation_threshold
+    
+    @staticmethod
+    def _convert_numpy_type(value: Any) -> Any:
+        """Convert numpy types to Python native types"""
+        if isinstance(value, np.integer):
+            return int(value)
+        elif isinstance(value, np.floating):
+            return float(value)
+        elif isinstance(value, np.ndarray):
+            return value.tolist()
+        elif isinstance(value, np.bool_):
+            return bool(value)
+        return value
 
     def _generate_cache_key(self, df: pd.DataFrame, column_types: Dict[str, str]) -> str:
         """Generate a unique cache key for the dataset and column types"""
@@ -190,14 +223,18 @@ class StatisticsEngine:
         # Most frequent values for all types
         value_counts = non_null.value_counts().head(10)
         stats.most_frequent_values = [
-            {"value": str(value), "count": int(count), "percentage": float(count / len(non_null) * 100)}
+            {
+                "value": self._convert_numpy_type(value), 
+                "count": int(count), 
+                "percentage": float(count / len(non_null) * 100)
+            }
             for value, count in value_counts.items()
         ]
         
         # Mode (most common value)
         mode_values = non_null.mode()
         if len(mode_values) > 0:
-            stats.mode = mode_values.iloc[0]
+            stats.mode = self._convert_numpy_type(mode_values.iloc[0])
         
         return stats
 

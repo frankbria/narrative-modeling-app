@@ -46,9 +46,32 @@ class ProcessedData:
     def get_preview(self, rows: int = 100) -> Dict[str, Any]:
         """Get preview of the data"""
         preview_df = self.dataframe.head(rows)
+        
+        # Convert numpy types to Python types in the preview data
+        preview_data = []
+        for record in preview_df.to_dict(orient="records"):
+            converted_record = {}
+            for key, value in record.items():
+                # Handle pandas NaN/None values
+                if pd.isna(value):
+                    converted_record[key] = None
+                elif isinstance(value, np.integer):
+                    converted_record[key] = int(value)
+                elif isinstance(value, np.floating):
+                    converted_record[key] = float(value)
+                elif isinstance(value, np.ndarray):
+                    converted_record[key] = value.tolist()
+                elif isinstance(value, np.bool_):
+                    converted_record[key] = bool(value)
+                elif hasattr(value, 'item'):  # Handle numpy scalars
+                    converted_record[key] = value.item()
+                else:
+                    converted_record[key] = value
+            preview_data.append(converted_record)
+        
         return {
-            "columns": list(preview_df.columns),
-            "data": preview_df.to_dict(orient="records"),
+            "columns": [str(col) for col in preview_df.columns],  # Ensure column names are strings
+            "data": preview_data,
             "total_rows": len(self.dataframe),
             "preview_rows": len(preview_df)
         }
