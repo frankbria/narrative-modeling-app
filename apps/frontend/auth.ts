@@ -56,13 +56,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, isNewUser }) {
       // Initial sign in
       if (account && user) {
         return {
           ...token,
           id: user.id,
           accessToken: account.access_token,
+          isNewUser: isNewUser, // Track if this is a new user
         }
       }
       
@@ -77,10 +78,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.accessToken = token.accessToken
       return session
     },
+    async signIn({ user, account, profile, isNewUser }) {
+      // You can add custom logic here if needed
+      // Return true to allow sign in
+      return true
+    },
   },
   secret: process.env.NEXTAUTH_SECRET,
   pages: {
     signIn: '/auth/signin',
+    signOut: '/auth/signout',
+    verifyRequest: '/auth/verify-request',
+    newUser: '/auth/new-user', // New users will be directed here after signing in
     error: '/auth/error',
   },
 })
