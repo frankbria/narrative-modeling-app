@@ -4,6 +4,7 @@ from beanie import Document, Indexed
 from pydantic import BaseModel, HttpUrl, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
+from beanie import PydanticObjectId
 
 
 def get_current_time() -> datetime:
@@ -78,4 +79,7 @@ class UserData(Document):
     model_config = {
         "populate_by_name": True,
         "arbitrary_types_allowed": True,
+        "json_encoders": {
+            PydanticObjectId: str
+        }
     }

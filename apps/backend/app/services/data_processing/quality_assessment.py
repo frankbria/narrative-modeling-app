@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 import pandas as pd
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class QualityDimension(str, Enum):
@@ -44,6 +44,16 @@ class ColumnQualityScore(BaseModel):
 
 class QualityReport(BaseModel):
     """Comprehensive data quality report"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     overall_quality_score: float
     dimension_scores: Dict[QualityDimension, float]
     column_scores: List[ColumnQualityScore]

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 import pandas as pd
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class DataType(str, Enum):
@@ -33,6 +33,16 @@ class DataType(str, Enum):
 
 class ColumnSchema(BaseModel):
     """Schema definition for a single column"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     name: str
     data_type: DataType
     nullable: bool = True
@@ -50,6 +60,16 @@ class ColumnSchema(BaseModel):
 
 class SchemaDefinition(BaseModel):
     """Complete schema definition for a dataset"""
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            np.integer: lambda v: int(v),
+            np.floating: lambda v: float(v),
+            np.ndarray: lambda v: v.tolist(),
+            np.bool_: lambda v: bool(v)
+        }
+    )
+    
     columns: List[ColumnSchema]
     row_count: int
     column_count: int
@@ -84,6 +104,19 @@ class SchemaInferenceService:
     TIME_FORMATS = [
         '%H:%M:%S', '%H:%M', '%I:%M:%S %p', '%I:%M %p'
     ]
+    
+    @staticmethod
+    def _convert_numpy_type(value: Any) -> Any:
+        """Convert numpy types to Python native types"""
+        if isinstance(value, np.integer):
+            return int(value)
+        elif isinstance(value, np.floating):
+            return float(value)
+        elif isinstance(value, np.ndarray):
+            return value.tolist()
+        elif isinstance(value, np.bool_):
+            return bool(value)
+        return value
 
     def __init__(self, sample_size: int = 1000):
         """
@@ -147,7 +180,7 @@ class SchemaInferenceService:
         is_unique = unique_count == len(non_null_series)
         
         # Get sample values
-        sample_values = non_null_series.value_counts().head(5).index.tolist()
+        sample_values = [self._convert_numpy_type(val) for val in non_null_series.value_counts().head(5).index.tolist()]
         
         # Get min/max for numeric/date types
         min_value = None
@@ -168,7 +201,7 @@ class SchemaInferenceService:
         
         # Most common value
         most_common = non_null_series.mode()
-        most_common_value = most_common.iloc[0] if len(most_common) > 0 else None
+        most_common_value = self._convert_numpy_type(most_common.iloc[0]) if len(most_common) > 0 else None
         
         return ColumnSchema(
             name=col_name,

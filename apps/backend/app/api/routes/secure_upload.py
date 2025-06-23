@@ -12,7 +12,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
 from app.models.user_data import UserData, SchemaField
-from app.utils.schema_inference import infer_schema
+from app.utils.schema_inference import infer_schema, generate_s3_filename
 from app.utils.s3 import upload_file_to_s3
 import logging
 
@@ -102,14 +102,21 @@ async def secure_upload(
         # Infer schema
         schema = infer_schema(df)
         
+        # Generate unique S3 filename
+        s3_filename = generate_s3_filename(file.filename)
+        
         # Upload to S3
-        success, s3_url = upload_file_to_s3(content, file.filename, content_type=file.content_type)
+        logger.info(f"Uploading file {file.filename} to S3 as {s3_filename}")
+        success, s3_url = upload_file_to_s3(content, s3_filename, content_type=file.content_type)
         
         if not success or not s3_url:
+            logger.error(f"S3 upload failed for file {file.filename}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to upload file to S3"
+                detail="Failed to upload file to S3. Please check AWS credentials and bucket configuration."
             )
+        
+        logger.info(f"S3 upload successful: {s3_url}")
         
         # Create UserData record
         user_data = UserData(
@@ -133,13 +140,9 @@ async def secure_upload(
         
         await user_data.insert()
         
-        # Schedule background AI summary (without PII data)
-        if pii_report["has_pii"]:
-            # Use masked data for AI analysis
-            masked_df = pii_detector.mask_pii(df, pii_detections)
-            background_tasks.add_task(generate_ai_summary_safe, user_data.id, masked_df)
-        else:
-            background_tasks.add_task(generate_ai_summary_safe, user_data.id, df)
+        # Schedule background AI summary
+        from app.utils.ai_summary import generate_dataset_summary
+        background_tasks.add_task(generate_dataset_summary, str(user_data.id))
         
         return {
             "status": "success",
@@ -178,15 +181,19 @@ async def confirm_pii_upload(
     pii_detections = pii_detector.detect_pii_in_dataframe(df)
     pii_report = pii_detector.generate_pii_report(pii_detections)
     
+    # Generate unique S3 filename
+    s3_filename = generate_s3_filename(file.filename)
+    
     # Mask PII if requested
     if mask_pii and pii_detections:
         df_processed = pii_detector.mask_pii(df, pii_detections)
         # Upload masked version
         processed_content = df_processed.to_csv(index=False).encode()
-        success, s3_url = upload_file_to_s3(processed_content, f"masked_{file.filename}", content_type="text/csv")
+        masked_filename = f"masked_{s3_filename}"
+        success, s3_url = upload_file_to_s3(processed_content, masked_filename, content_type="text/csv")
     else:
         # Upload original
-        success, s3_url = upload_file_to_s3(content, file.filename, content_type=file.content_type)
+        success, s3_url = upload_file_to_s3(content, s3_filename, content_type=file.content_type)
         df_processed = df
     
     # Infer schema
