@@ -20,7 +20,7 @@ export default function Sidebar() {
   const userImage = session?.user?.image || ''
 
   const menuItems = [
-    { name: 'Load Data', icon: <Upload size={20} />, href: '/load' },
+    { name: 'Load Data', icon: <Upload size={20} />, href: '/upload' },
     { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
     { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
     { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },

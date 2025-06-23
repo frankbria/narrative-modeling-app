@@ -139,7 +139,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                 <CardContent>
                   <Button className="w-full" onClick={() => {
                     // Navigate to upload page
-                    window.location.href = '/load';
+                    window.location.href = '/upload';
                   }}>
                     <FileText className="mr-2 h-4 w-4" />
                     Upload CSV File
