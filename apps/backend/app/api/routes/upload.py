@@ -143,6 +143,7 @@ async def upload_file(
         user_data = UserData(
             user_id=current_user_id,
             filename=file.filename,
+            original_filename=file.filename,
             s3_url=s3_url,
             num_rows=num_rows,
             num_columns=num_columns,
@@ -164,6 +165,19 @@ async def upload_file(
         headers = df.columns.tolist()
 
         return {
+            "status": "success",
+            "file_id": str(user_data.id),
+            "filename": file.filename,
+            "num_rows": num_rows,
+            "num_columns": num_columns,
+            "preview": df.head(5).to_dict('records'),
+            "pii_report": {
+                "has_pii": False,
+                "detections": [],
+                "risk_level": "none",
+                "total_detections": 0,
+                "affected_columns": []
+            },
             "headers": headers,
             "previewData": preview_data,
             "fileName": file.filename,
