@@ -2,8 +2,7 @@
  * Production API service for model deployment and API key management
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_VERSION = 'api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface CreateAPIKeyRequest {
   name: string
@@ -86,7 +85,7 @@ export class ProductionService {
     request: CreateAPIKeyRequest,
     token: string | null
   ): Promise<APIKeyResponse> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/production/api-keys`, {
+    const response = await fetch(`${API_BASE_URL}/production/api-keys`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(request)
@@ -101,7 +100,7 @@ export class ProductionService {
   }
 
   static async listAPIKeys(token: string | null): Promise<APIKeyInfo[]> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/production/api-keys`, {
+    const response = await fetch(`${API_BASE_URL}/production/api-keys`, {
       headers: await this.getHeaders(token)
     })
 
@@ -113,7 +112,7 @@ export class ProductionService {
   }
 
   static async revokeAPIKey(keyId: string, token: string | null): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/production/api-keys/${keyId}`, {
+    const response = await fetch(`${API_BASE_URL}/production/api-keys/${keyId}`, {
       method: 'DELETE',
       headers: await this.getHeaders(token)
     })
@@ -130,7 +129,7 @@ export class ProductionService {
     token: string | null
   ): Promise<ModelMetrics> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/monitoring/models/${modelId}/metrics?hours=${hours}`,
+      `${API_BASE_URL}/monitoring/models/${modelId}/metrics?hours=${hours}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -144,7 +143,7 @@ export class ProductionService {
   }
 
   static async getUsageOverview(token: string | null): Promise<UsageStats> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/monitoring/overview`, {
+    const response = await fetch(`${API_BASE_URL}/monitoring/overview`, {
       headers: await this.getHeaders(token)
     })
 
@@ -156,7 +155,7 @@ export class ProductionService {
   }
 
   static async getAPIKeyUsage(token: string | null): Promise<APIKeyUsage[]> {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/monitoring/api-keys/usage`, {
+    const response = await fetch(`${API_BASE_URL}/monitoring/api-keys/usage`, {
       headers: await this.getHeaders(token)
     })
 
@@ -185,7 +184,7 @@ export class ProductionService {
     limit: number
   }> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/monitoring/models/${modelId}/logs?limit=${limit}`,
+      `${API_BASE_URL}/monitoring/models/${modelId}/logs?limit=${limit}`,
       {
         headers: await this.getHeaders(token)
       }
@@ -211,7 +210,7 @@ export class ProductionService {
     least_common?: string
   }> {
     const response = await fetch(
-      `${API_BASE_URL}/${API_VERSION}/monitoring/models/${modelId}/distribution?hours=${hours}`,
+      `${API_BASE_URL}/monitoring/models/${modelId}/distribution?hours=${hours}`,
       {
         headers: await this.getHeaders(token)
       }

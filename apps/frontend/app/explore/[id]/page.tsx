@@ -42,7 +42,7 @@ export default function DatasetAnalysisPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
   useEffect(() => {
     // Check workflow access
@@ -66,7 +66,7 @@ export default function DatasetAnalysisPage() {
         await loadWorkflow(datasetId)
 
         // Fetch dataset metadata
-        const response = await fetch(`${apiUrl}/api/v1/user_data/${datasetId}`, {
+        const response = await fetch(`${apiUrl}/user_data/${datasetId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -97,7 +97,7 @@ export default function DatasetAnalysisPage() {
 
   const processDataset = async (datasetId: string, token: string) => {
     try {
-      const response = await fetch(`${apiUrl}/api/v1/data/process`, {
+      const response = await fetch(`${apiUrl}/data/process`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -118,7 +118,7 @@ export default function DatasetAnalysisPage() {
   const handleExport = async () => {
     try {
       const token = await getAuthToken()
-      const response = await fetch(`${apiUrl}/api/v1/data/${dataset?.id}/export`, {
+      const response = await fetch(`${apiUrl}/data/${dataset?.id}/export`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

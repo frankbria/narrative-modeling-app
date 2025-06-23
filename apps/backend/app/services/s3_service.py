@@ -65,7 +65,7 @@ class S3Service:
     """Service for S3 operations"""
     
     def __init__(self):
-        self.bucket_name = os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
+        self.bucket_name = os.getenv("AWS_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
         self.s3_client = boto3.client(
             "s3",
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
