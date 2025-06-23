@@ -22,14 +22,17 @@ class Settings(BaseModel):
     PROJECT_NAME: str = "Narrative Modeling API"
 
     # CORS settings
-    BACKEND_CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://narrative-modeling.vercel.app",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "*",  # Fallback to allow all origins
-    ]
+    @property 
+    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+        cors_origins = os.getenv("BACKEND_CORS_ORIGINS", '["*"]')
+        if cors_origins:
+            import json
+            try:
+                return json.loads(cors_origins)
+            except:
+                pass
+        # Default to allow all origins in development
+        return ["*"]
 
 
 settings = Settings()

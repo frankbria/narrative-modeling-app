@@ -54,7 +54,7 @@ export default function SignInPage() {
               <Button
                 onClick={() => signIn('credentials', { 
                   email, 
-                  callbackUrl: '/load' 
+                  callbackUrl: '/upload' 
                 })}
                 className="w-full flex items-center justify-center gap-2"
                 variant="default"
@@ -75,7 +75,7 @@ export default function SignInPage() {
           )}
           
           <Button
-            onClick={() => signIn('google', { callbackUrl: '/load' })}
+            onClick={() => signIn('google', { callbackUrl: '/upload' })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
@@ -84,7 +84,7 @@ export default function SignInPage() {
           </Button>
           
           <Button
-            onClick={() => signIn('github', { callbackUrl: '/load' })}
+            onClick={() => signIn('github', { callbackUrl: '/upload' })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >

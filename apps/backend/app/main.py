@@ -39,6 +39,7 @@ from app.api.routes import (
     plot,
     trained_model,
     upload,
+    secure_upload,
     store,
     visualizations,
     column_stats,
@@ -51,7 +52,6 @@ from app.api.routes import (
     ab_testing,
     batch_prediction,
     model_export,
-    documentation,
     onboarding,
     cache,
     transformations,
@@ -126,6 +126,9 @@ app.add_middleware(
 app.include_router(
     upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
 )
+app.include_router(
+    secure_upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
+)
 app.include_router(store.router, prefix=settings.API_V1_STR, tags=["store"])
 app.include_router(
     user_data.router, prefix=f"{settings.API_V1_STR}/user_data", tags=["user_data"]
@@ -193,11 +196,6 @@ app.include_router(
     model_export.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["model-export"],
-)
-app.include_router(
-    documentation.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["documentation"],
 )
 app.include_router(
     onboarding.router,
