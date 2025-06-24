@@ -38,12 +38,23 @@ export function WorkflowProvider({
       if (savedState) {
         try {
           const parsed = JSON.parse(savedState);
-          setState({
-            ...parsed,
-            completedStages: new Set(parsed.completedStages)
-          });
+          // Check if the saved state is recent (within 24 hours)
+          const stateAge = parsed.lastUpdated ? Date.now() - new Date(parsed.lastUpdated).getTime() : Infinity;
+          const oneDayMs = 24 * 60 * 60 * 1000;
+          
+          if (stateAge < oneDayMs) {
+            setState({
+              ...parsed,
+              completedStages: new Set(parsed.completedStages)
+            });
+          } else {
+            // Clear old state
+            console.log('Clearing old workflow state');
+            localStorage.removeItem('workflowState');
+          }
         } catch (e) {
           console.error('Failed to load workflow state:', e);
+          localStorage.removeItem('workflowState');
         }
       }
     }
@@ -54,7 +65,8 @@ export function WorkflowProvider({
     if (state.datasetId) {
       const stateToSave = {
         ...state,
-        completedStages: Array.from(state.completedStages)
+        completedStages: Array.from(state.completedStages),
+        lastUpdated: new Date().toISOString()
       };
       localStorage.setItem('workflowState', JSON.stringify(stateToSave));
     }

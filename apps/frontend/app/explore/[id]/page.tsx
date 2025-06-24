@@ -216,7 +216,12 @@ export default function DatasetAnalysisPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleExport} disabled={!dataset.is_processed}>
+          <Button 
+            onClick={handleExport} 
+            disabled={!dataset.is_processed}
+            variant="outline"
+            className="bg-white hover:bg-gray-50 border-gray-300"
+          >
             Export Data
           </Button>
           {dataset.is_processed && !state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
@@ -230,7 +235,7 @@ export default function DatasetAnalysisPage() {
                   timestamp: new Date().toISOString()
                 })
               }}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
               Complete & Continue to Data Preparation
             </Button>
@@ -238,7 +243,7 @@ export default function DatasetAnalysisPage() {
           {state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
             <Button 
               onClick={() => router.push('/prepare')}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               Continue to Data Preparation
             </Button>
@@ -260,28 +265,28 @@ export default function DatasetAnalysisPage() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-6 bg-white shadow-sm border">
+            <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Database className="h-4 w-4" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="schema" className="flex items-center gap-2">
+            <TabsTrigger value="schema" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <BarChart3 className="h-4 w-4" />
               Schema
             </TabsTrigger>
-            <TabsTrigger value="statistics" className="flex items-center gap-2">
+            <TabsTrigger value="statistics" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <BarChart3 className="h-4 w-4" />
               Statistics
             </TabsTrigger>
-            <TabsTrigger value="visualizations" className="flex items-center gap-2">
+            <TabsTrigger value="visualizations" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <TrendingUp className="h-4 w-4" />
               Visualizations
             </TabsTrigger>
-            <TabsTrigger value="quality" className="flex items-center gap-2">
+            <TabsTrigger value="quality" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <CheckCircle2 className="h-4 w-4" />
               Quality
             </TabsTrigger>
-            <TabsTrigger value="insights" className="flex items-center gap-2">
+            <TabsTrigger value="insights" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Brain className="h-4 w-4" />
               AI Insights
             </TabsTrigger>
