@@ -35,10 +35,21 @@ export function DataPreviewTable({ datasetId, onExport }: DataPreviewTableProps)
   const rowsPerPage = 50
 
   useEffect(() => {
-    fetchPreviewData()
+    if (datasetId && datasetId !== 'undefined') {
+      fetchPreviewData()
+    } else {
+      setError('Invalid dataset ID')
+      setLoading(false)
+    }
   }, [datasetId, currentPage])
 
   const fetchPreviewData = async () => {
+    if (!datasetId || datasetId === 'undefined') {
+      setError('Invalid dataset ID')
+      setLoading(false)
+      return
+    }
+    
     try {
       setLoading(true)
       const response = await fetch(
