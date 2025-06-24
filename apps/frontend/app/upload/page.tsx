@@ -62,7 +62,7 @@ interface PreviewData {
 }
 
 export default function UploadPage() {
-  const { completeStage } = useWorkflow();
+  const { completeStage, resetWorkflow, state } = useWorkflow();
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -140,6 +140,12 @@ export default function UploadPage() {
     const selectedFile = acceptedFiles[0];
     const isLarge = selectedFile.size > CHUNKED_UPLOAD_THRESHOLD;
     
+    // Reset workflow state when starting a new upload
+    if (state.datasetId) {
+      console.log('Resetting workflow for new upload');
+      resetWorkflow();
+    }
+    
     setFile(selectedFile);
     setIsLargeFile(isLarge);
     setUploadStatus('idle');
@@ -152,7 +158,7 @@ export default function UploadPage() {
     setPiiData(null);
     setUseChunkedUploadMode(false);
     resetChunkUpload();
-  }, [CHUNKED_UPLOAD_THRESHOLD, resetChunkUpload]);
+  }, [CHUNKED_UPLOAD_THRESHOLD, resetChunkUpload, state.datasetId, resetWorkflow]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';

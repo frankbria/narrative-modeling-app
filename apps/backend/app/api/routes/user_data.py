@@ -19,23 +19,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/", response_model=UserData)
+@router.post("/", response_model=UserDataResponse)
 async def create_user_data(
     user_data: UserData, user_id: str = Depends(get_current_user_id)
 ):
     user_data.user_id = user_id
     await user_data.insert()
-    return user_data
+    # Convert to response model with proper ID handling
+    doc_dict = user_data.model_dump(by_alias=True)
+    if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+        doc_dict['_id'] = str(doc_dict['_id'])
+    return UserDataResponse.model_validate(doc_dict)
 
 
 @router.get("/", response_model=List[UserDataResponse])
 async def get_user_data_for_user(user_id: str = Depends(get_current_user_id)):
     user_data_list = await UserData.find(UserData.user_id == user_id).to_list()
     # Convert to response models with proper ID handling
-    return [UserDataResponse.model_validate(doc.model_dump(by_alias=True)) for doc in user_data_list]
+    response_list = []
+    for doc in user_data_list:
+        doc_dict = doc.model_dump(by_alias=True)
+        if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+            doc_dict['_id'] = str(doc_dict['_id'])
+        response_list.append(UserDataResponse.model_validate(doc_dict))
+    return response_list
 
 
-@router.get("/latest", response_model=UserData)
+@router.get("/latest", response_model=UserDataResponse)
 async def get_latest_user_data(user_id: str = Depends(get_current_user_id)):
     """
     Get the most recent dataset for the current user.
@@ -51,7 +61,11 @@ async def get_latest_user_data(user_id: str = Depends(get_current_user_id)):
         if not user_data:
             raise HTTPException(status_code=404, detail="No data found for user")
 
-        return user_data
+        # Convert to response model with proper ID handling
+        doc_dict = user_data.model_dump(by_alias=True)
+        if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+            doc_dict['_id'] = str(doc_dict['_id'])
+        return UserDataResponse.model_validate(doc_dict)
     except HTTPException:
         raise
     except Exception as e:
@@ -61,14 +75,42 @@ async def get_latest_user_data(user_id: str = Depends(get_current_user_id)):
         )
 
 
-@router.get("/{id}", response_model=UserData)
+@router.get("/{id}", response_model=UserDataResponse)
 async def get_user_data(
-    id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
+    id: str, user_id: str = Depends(get_current_user_id)
 ):
-    doc = await UserData.get(id)
-    if not doc or doc.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return doc
+    try:
+        logger.info(f"Fetching user data - ID: {id}, User: {user_id}")
+        
+        # Convert string ID to PydanticObjectId
+        try:
+            object_id = PydanticObjectId(id)
+        except Exception as e:
+            logger.error(f"Invalid ObjectId format: {id} - {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid dataset ID format: {id}")
+            
+        doc = await UserData.get(object_id)
+        
+        if not doc:
+            logger.error(f"Document not found for ID: {id}")
+            raise HTTPException(status_code=404, detail="Dataset not found")
+            
+        if doc.user_id != user_id:
+            logger.error(f"Access denied - Doc user: {doc.user_id}, Request user: {user_id}")
+            raise HTTPException(status_code=403, detail="Access denied")
+            
+        # Convert to response model with proper ID handling
+        doc_dict = doc.model_dump(by_alias=True)
+        # Ensure _id is converted to string
+        if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+            doc_dict['_id'] = str(doc_dict['_id'])
+        return UserDataResponse.model_validate(doc_dict)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error getting user data: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving dataset: {str(e)}")
 
 
 @router.get("/preview/{user_id}", response_model=Dict[str, Any])

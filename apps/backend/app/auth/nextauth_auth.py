@@ -36,7 +36,10 @@ async def get_current_user_id(
     """
     # Skip authentication in development if SKIP_AUTH is true
     if SKIP_AUTH:
-        # Extract a dev user ID from the token or use a default
+        # Development mode user mapping:
+        # - Tokens starting with "dev-" return the token itself as user ID
+        # - All other tokens return "dev-user-default" as user ID
+        # This ensures consistent data access in development
         token = credentials.credentials
         if token.startswith("dev-"):
             return token

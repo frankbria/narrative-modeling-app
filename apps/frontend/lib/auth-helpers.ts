@@ -3,9 +3,9 @@ import { getSession } from 'next-auth/react';
 const skipAuth = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
 
 export async function getAuthToken() {
-  // In skip auth mode, return a dev token
+  // In skip auth mode, return a token that maps to dev-user-default
   if (skipAuth) {
-    return 'dev-user-default';
+    return 'default';  // This will map to 'dev-user-default' in the backend
   }
   
   const session = await getSession();
