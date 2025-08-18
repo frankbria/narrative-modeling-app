@@ -33,7 +33,7 @@
     "clsx": "^2.1.1",
     "csv-parse": "^5.6.0",
     "date-fns": "^4.1.0",
-    "lucide-react": "^0.525.0",
+    "lucide-react": "^0.532.0",
     "framer-motion": "^12.23.5",
     "mongodb": "6.17",
     "next": "15.4.1",
