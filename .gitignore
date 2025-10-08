@@ -65,3 +65,6 @@ infrastructure/secrets/
 
 # Large binary files
 scripts/awscliv2.zip
+
+# Serena MCP server data
+.serena/
