@@ -284,9 +284,10 @@ def s3_client(request):
     from botocore.config import Config
 
     # Use LocalStack by default for testing
+    # Note: LocalStack accepts any credentials - these are local-only placeholders
     endpoint_url = os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test_access_key")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test_secret_key")
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
     region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
     try:
