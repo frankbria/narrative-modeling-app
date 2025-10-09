@@ -32,8 +32,11 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.middleware.api_version import APIVersionMiddleware
+from app.middleware.metrics import MetricsMiddleware, get_metrics
+from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
     health,
     user_data,
@@ -126,6 +129,9 @@ app.add_middleware(
 
 # ✅ Apply API versioning middleware
 app.add_middleware(APIVersionMiddleware)
+
+# ✅ Apply Prometheus metrics middleware
+app.add_middleware(MetricsMiddleware)
 
 # ✅ Include routers
 # Health check routes at root level (no version prefix)
@@ -225,3 +231,13 @@ app.include_router(
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Narrative Modeling API"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+
+    Returns metrics in Prometheus text exposition format for scraping.
+    """
+    return Response(content=get_metrics(), media_type=CONTENT_TYPE_LATEST)
