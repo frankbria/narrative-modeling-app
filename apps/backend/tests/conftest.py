@@ -2,31 +2,39 @@ import pytest
 import asyncio
 import pytest_asyncio
 from typing import AsyncGenerator, Generator
-from fastapi.testclient import TestClient
-from motor.motor_asyncio import AsyncIOMotorClient
-from beanie import init_beanie
-from app.main import app
-from app.config import settings
-from app.models.user_data import UserData
-from app.models.column_stats import ColumnStats
-from app.models.visualization_cache import VisualizationCache
-from app.models.analytics_result import AnalyticsResult
-from app.models.plot import Plot
-from app.models.trained_model import TrainedModel
-from app.models.ab_test import ABTest
-from app.models.batch_job import BatchJob
-from app.models.ml_model import MLModel
-from app.models.revised_data import RevisedData
-from app.auth.nextauth_auth import get_current_user_id
-from httpx import AsyncClient, ASGITransport
-from asgi_lifespan import LifespanManager
+
+# Lazy imports to avoid app initialization for unit tests
+# Only import these when fixtures are actually used
 
 
 # Use pytest-asyncio's event_loop fixture instead of defining our own
 # This avoids conflicts with pytest-asyncio's internal event loop management
-@pytest_asyncio.fixture(autouse=True, scope="function")
-async def setup_database():
-    """Set up test database before each test and clean up after."""
+@pytest_asyncio.fixture(scope="function")
+async def setup_database(request):
+    """Set up test database before each test and clean up after.
+
+    Only runs for tests marked with @pytest.mark.integration
+    """
+    # Skip for unit tests
+    if "unit" in request.keywords:
+        yield
+        return
+
+    # Lazy imports for integration tests
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from beanie import init_beanie
+    from app.config import settings
+    from app.models.user_data import UserData
+    from app.models.column_stats import ColumnStats
+    from app.models.visualization_cache import VisualizationCache
+    from app.models.analytics_result import AnalyticsResult
+    from app.models.plot import Plot
+    from app.models.trained_model import TrainedModel
+    from app.models.ab_test import ABTest
+    from app.models.batch_job import BatchJob
+    from app.models.ml_model import MLModel
+    from app.models.revised_data import RevisedData
+
     # Create a test database client
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
 
@@ -65,8 +73,12 @@ async def setup_database():
 
 
 @pytest_asyncio.fixture
-async def async_test_client() -> AsyncGenerator[AsyncClient, None]:
+async def async_test_client() -> AsyncGenerator:
     """Create a test client for the FastAPI application."""
+    from httpx import AsyncClient, ASGITransport
+    from asgi_lifespan import LifespanManager
+    from app.main import app
+
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -97,46 +109,50 @@ def mock_dataset_id() -> str:
 
 
 @pytest.fixture
-def authorized_client() -> TestClient:
+def authorized_client():
     """Create an authorized test client for the FastAPI application."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.auth.nextauth_auth import get_current_user_id
+
     # Override the auth dependency to return a test user
     async def override_get_current_user_id() -> str:
         return "test_user_123"
-    
+
     # Clear any existing overrides first
     app.dependency_overrides.clear()
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
-    
+
     with TestClient(app) as client:
         yield client
-    
+
     # Clean up
     app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
-async def async_authorized_client() -> AsyncGenerator[AsyncClient, None]:
+async def async_authorized_client() -> AsyncGenerator:
     """Create an async authorized test client for the FastAPI application."""
+    from httpx import AsyncClient, ASGITransport
+    from asgi_lifespan import LifespanManager
+    from app.main import app
+    from app.auth.nextauth_auth import get_current_user_id
+
     # Override the auth dependency to return a test user
     async def override_get_current_user_id() -> str:
         return "test_user_123"
-    
+
     # Clear any existing overrides first
     app.dependency_overrides.clear()
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
-    
+
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
-    
+
     # Clean up
     app.dependency_overrides.clear()
-    
-@pytest_asyncio.fixture
-async def async_test_client(async_authorized_client) -> AsyncGenerator[AsyncClient, None]:
-    """Create an async test client for the FastAPI application."""
-    return async_authorized_client
 
 
 @pytest.fixture
