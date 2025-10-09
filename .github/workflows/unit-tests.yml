@@ -37,6 +37,7 @@ jobs:
             tests/test_utils/ \
             tests/test_model_training/test_problem_detector.py \
             tests/test_model_training/test_feature_engineer.py \
+            -m "not integration" \
             --cov=app \
             --cov-report=xml \
             --cov-report=term-missing \
