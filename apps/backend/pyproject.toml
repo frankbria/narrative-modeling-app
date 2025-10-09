@@ -27,6 +27,7 @@ dependencies = [
     "scikit-learn>=1.7.0",
     "sqlalchemy>=2.0.41",
     "sqlalchemy-utils>=0.41.2",
+    "tenacity>=8.2.3",
     "uvicorn>=0.34.3",
     "aiofiles>=24.1.0",
     "scipy>=1.11.0",
