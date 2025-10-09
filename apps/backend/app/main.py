@@ -33,7 +33,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.middleware.api_version import APIVersionMiddleware
 from app.api.routes import (
+    health,
     user_data,
     analytics_result,
     plot,
@@ -122,7 +124,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Apply API versioning middleware
+app.add_middleware(APIVersionMiddleware)
+
 # ✅ Include routers
+# Health check routes at root level (no version prefix)
+app.include_router(health.router, tags=["health"])
+
 app.include_router(
     upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
 )

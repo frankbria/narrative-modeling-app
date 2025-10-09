@@ -8,12 +8,13 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
 from app.services.data_processing.quality_assessment import QualityReport
 from app.models.user_data import AISummary
+from app.utils.circuit_breaker import with_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -180,10 +181,18 @@ class DatasetSummarizationService:
                 })
         
         return highlights
-    
+
+    @with_circuit_breaker(
+        "openai",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(OpenAIError, Exception),
+        fallback_value=None
+    )
     async def _generate_openai_summary(
-        self, 
-        context: Dict[str, Any], 
+        self,
+        context: Dict[str, Any],
         request: DatasetSummaryRequest
     ) -> EnhancedAISummary:
         """Generate summary using OpenAI"""
