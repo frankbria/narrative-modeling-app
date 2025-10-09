@@ -128,36 +128,37 @@ See interactive API documentation at `/docs` for complete details.
 
 ## 🧪 Testing
 
-### Run All Tests
+> **📚 For comprehensive testing documentation, see [Testing Guide](/docs/testing/guide.md)**
+
+### Quick Start
 
 ```bash
 # All tests
-uv run pytest
+PYTHONPATH=. uv run pytest -v
+
+# Unit tests only (fast, no database required)
+PYTHONPATH=. uv run pytest -m "not integration" -v
+
+# Integration tests (requires Docker services)
+docker-compose -f docker-compose.test.yml up -d
+PYTHONPATH=. uv run pytest -m integration -v
+docker-compose -f docker-compose.test.yml down -v
 
 # With coverage
-uv run pytest --cov=app --cov-report=term-missing
-
-# Specific test directory
-uv run pytest tests/test_security/
-uv run pytest tests/test_processing/
-uv run pytest tests/test_model_training/
-```
-
-### Unit Tests Only (No Database Required)
-
-```bash
-uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ \
-  tests/test_model_training/test_problem_detector.py \
-  tests/test_model_training/test_feature_engineer.py -v
+PYTHONPATH=. uv run pytest --cov=app --cov-report=term-missing -v
 ```
 
 ### Test Coverage Status
 
-- **Current**: 132/151 tests passing (87.4%)
-- **Unit Tests**: Fully passing
-- **Integration Tests**: Require MongoDB connection
+- **Unit Tests**: 190 tests passing (>85% coverage)
+- **Integration Tests**: 42 tests passing (~90% coverage)
+- **Total Coverage**: >85% overall backend coverage
 
-See `TEST_STATUS.md` for detailed test information.
+### Documentation
+
+- **[Testing Guide](/docs/testing/guide.md)** - Comprehensive guide for all test types
+- **[Integration Tests](/tests/integration/README.md)** - Integration test setup and usage
+- **[Test Infrastructure](/docs/TEST_INFRASTRUCTURE.md)** - Test architecture and patterns
 
 ## 🏗️ Project Structure
 

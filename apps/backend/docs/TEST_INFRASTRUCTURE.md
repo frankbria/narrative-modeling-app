@@ -4,6 +4,8 @@
 
 This document describes the test infrastructure setup for the backend application, including test organization, fixtures, and best practices.
 
+> **📚 For a comprehensive testing guide covering all test types (unit, integration, E2E) and CI/CD workflows, see [Testing Guide](/docs/testing/guide.md).**
+
 ## Test Organization
 
 ### Test Markers
@@ -294,3 +296,13 @@ assert isinstance(exc_info.value.__cause__, CircuitBreakerOpen)
 3. Add coverage reporting with pytest-cov
 4. Create test data factories for common test objects
 5. Add performance benchmarking for critical paths
+
+---
+
+## Related Documentation
+
+- **[Comprehensive Testing Guide](/docs/testing/guide.md)** - Complete guide for all test types
+- **[Integration Tests README](/apps/backend/tests/integration/README.md)** - Integration test setup and usage
+- **[E2E Tests README](/apps/frontend/e2e/README.md)** - End-to-end testing with Playwright
+- **[CI/CD Workflows](/.github/workflows/)** - Automated testing pipelines
+- **[Sprint 9 Implementation](/apps/backend/tests/integration/)** - Sprint 9 story implementation docs

@@ -2,6 +2,8 @@
 
 This directory contains integration tests that require real service dependencies (MongoDB, Redis, S3, OpenAI).
 
+> **📚 For comprehensive testing documentation covering all test types, CI/CD workflows, and best practices, see [Testing Guide](/docs/testing/guide.md)**
+
 ## Prerequisites
 
 ### Using Docker Compose (Recommended)
