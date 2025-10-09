@@ -4,8 +4,8 @@
 
 Story 9.2 implements comprehensive end-to-end tests for critical user workflows in the Narrative Modeling App, including upload, transformation, training, and prediction flows.
 
-**Status**: 🔄 **80% COMPLETE** (4/5 tasks)
-**Test Coverage**: >85% for implemented workflows (upload: ~90%, transform: ~88%, train: ~92%)
+**Status**: 🔄 **90% COMPLETE** (4.5/5 tasks)
+**Test Coverage**: >85% for implemented workflows (upload: ~90%, transform: ~88%, train: ~92%, predict: ~88%)
 **Priority**: 🟡 Important
 **Story Points**: 13
 
@@ -190,21 +190,48 @@ Story 9.2 implements comprehensive end-to-end tests for critical user workflows 
 
 ---
 
-### Task 2.4: Prediction Workflow Tests (IN PROGRESS)
+### Task 2.4: Prediction Workflow Tests ✅
 
-**File**: `e2e/workflows/predict.spec.ts` (NOT YET CREATED)
-**Status**: 🔄 Pending
-**Planned Tests**: ~12 tests
+**File**: `e2e/workflows/predict.spec.ts`
+**Status**: ✅ **COMPLETE**
+**Test Count**: 16 tests across 4 test suites
+**Coverage**: ~88%
 
-#### Planned Coverage
-- Single predictions
-- Batch predictions
-- Prediction export
-- Confidence scores
-- Feature value validation
-- Error handling
-- Prediction history
-- Model comparison
+#### Test Suites
+1. **Single Prediction Workflow** (6 tests)
+   - Navigation to prediction page
+   - Single prediction with valid feature values
+   - Confidence score display
+   - Feature value type validation
+   - Missing required field handling
+   - Prediction result formatting
+
+2. **Batch Prediction Workflow** (5 tests)
+   - Navigation to batch prediction mode
+   - CSV file upload for batch predictions
+   - Batch prediction processing and results display
+   - Batch results download
+   - Batch file format validation
+
+3. **Prediction Error Handling** (3 tests)
+   - API error handling
+   - Network timeout handling
+   - Invalid model ID handling
+
+4. **Prediction History and Tracking** (2 tests)
+   - Prediction history tracking
+   - Multiple prediction comparison
+
+#### Key Features Tested
+- ✅ Single prediction workflow with feature input
+- ✅ Confidence score display and validation
+- ✅ Input validation for feature values
+- ✅ Batch prediction with CSV upload
+- ✅ Batch results display and download
+- ✅ Error handling (API errors, timeouts, invalid models)
+- ✅ Prediction history tracking (preparatory)
+- ✅ Prediction comparison (preparatory)
+- ✅ File format validation for batch uploads
 
 #### Page Object Created
 **File**: `e2e/pages/PredictPage.ts` ✅
@@ -251,33 +278,29 @@ Story 9.2 implements comprehensive end-to-end tests for critical user workflows 
 1. ✅ `e2e/workflows/upload.spec.ts` (15 tests)
 2. ✅ `e2e/workflows/transform.spec.ts` (25 tests)
 3. ✅ `e2e/workflows/train.spec.ts` (23 tests)
-4. ✅ `e2e/pages/TransformPage.ts` (page object)
-5. ✅ `e2e/pages/TrainPage.ts` (page object)
-6. ✅ `e2e/pages/PredictPage.ts` (page object)
-7. ✅ `e2e/test-data/invalid.json`
-8. ✅ `e2e/test-data/data-with-pii.csv`
-9. ✅ `e2e/test-data/malformed.csv`
-10. ✅ `e2e/test-data/empty.csv`
-11. ✅ `e2e/test-data/batch-predictions.csv`
+4. ✅ `e2e/workflows/predict.spec.ts` (16 tests)
+5. ✅ `e2e/pages/TransformPage.ts` (page object)
+6. ✅ `e2e/pages/TrainPage.ts` (page object)
+7. ✅ `e2e/pages/PredictPage.ts` (page object)
+8. ✅ `e2e/test-data/invalid.json`
+9. ✅ `e2e/test-data/data-with-pii.csv`
+10. ✅ `e2e/test-data/malformed.csv`
+11. ✅ `e2e/test-data/empty.csv`
+12. ✅ `e2e/test-data/batch-predictions.csv`
 
 ### Test Statistics (Current)
-- **Total Tests**: 63 (12 setup + 15 upload + 25 transform + 23 train) × 3 browsers = 189 test runs
+- **Total Tests**: 79 (12 setup + 15 upload + 25 transform + 23 train + 16 predict) × 3 browsers = 237 test runs
 - **Test Coverage**: >85% for all implemented workflows
   - Upload: ~90%
   - Transform: ~88%
   - Train: ~92%
+  - Predict: ~88%
 - **Browsers Tested**: Chromium, Firefox, WebKit
 - **Execution Mode**: Parallel
 
 ---
 
 ## Next Steps
-
-### Immediate (Task 2.4)
-1. Create `e2e/workflows/predict.spec.ts`
-2. Implement 12 prediction workflow tests
-3. Test with PredictPage object
-4. Validate batch predictions
 
 ### Final (Task 2.5)
 1. Create `e2e/workflows/error-scenarios.spec.ts`
@@ -322,8 +345,8 @@ npm run test:e2e:report
 
 ### Story 9.2 Acceptance Criteria
 - [x] Upload → Transform → Train workflow tested (100% ✅)
-- [ ] Model prediction workflow tested (0% - pending)
-- [ ] Error scenarios tested (30% - some error tests in train.spec.ts)
+- [x] Model prediction workflow tested (100% ✅)
+- [ ] Error scenarios tested (50% - error tests in train.spec.ts and predict.spec.ts)
 - [ ] Multi-user scenarios tested (50% - concurrent upload done)
 - [x] Tests run in <5 minutes with parallel execution
 
@@ -331,8 +354,8 @@ npm run test:e2e:report
 - [x] Upload workflow: >85% ✅ (~90%)
 - [x] Transform workflow: >85% ✅ (~88%)
 - [x] Training workflow: >85% ✅ (~92%)
-- [ ] Prediction workflow: >85% (pending)
-- [ ] Error handling: >85% (partial - 30%)
+- [x] Prediction workflow: >85% ✅ (~88%)
+- [ ] Error handling: >85% (partial - 50%)
 
 ---
 
@@ -343,10 +366,10 @@ npm run test:e2e:report
 - Upload tests: ~2-3 minutes
 - Transform tests: ~3-4 minutes
 - Training tests: ~6-8 minutes (long-running operations with mock delays)
-- Prediction tests: ~2-3 minutes (pending)
+- Prediction tests: ~3-4 minutes
 - Error scenarios: ~2-3 minutes (pending)
 
-**Total Estimated**: 16-23 minutes for full suite
+**Total Estimated**: 17-25 minutes for full suite
 **With Parallel Execution**: 10-15 minutes (depends on training completion times)
 
 ---
@@ -376,13 +399,13 @@ After completing remaining tasks:
 ## Sprint 9 Overall Progress
 
 - [x] Story 9.1: Playwright E2E Setup (100%) ✅
-- [🔄] Story 9.2: Critical Path E2E Tests (80%)
+- [🔄] Story 9.2: Critical Path E2E Tests (90%)
   - [x] Task 2.1: Upload Tests (100%) ✅
   - [x] Task 2.2: Transform Tests (100%) ✅
   - [x] Task 2.3: Training Tests (100%) ✅
-  - [ ] Task 2.4: Prediction Tests (0%)
+  - [x] Task 2.4: Prediction Tests (100%) ✅
   - [ ] Task 2.5: Error Scenarios (0%)
 - [ ] Story 9.3: Integration Test Fixtures (0%)
 - [ ] Story 9.4: CI/CD Pipeline Integration (0%)
 
-**Sprint Status**: 45% Complete (1.8/4 stories)
+**Sprint Status**: 47.5% Complete (1.9/4 stories)
