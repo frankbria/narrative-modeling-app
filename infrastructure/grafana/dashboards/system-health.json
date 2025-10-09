@@ -1,0 +1,195 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "system-health",
+    "title": "System Health - Narrative Modeling App",
+    "tags": ["system", "health", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+    },
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 0},
+        "type": "row",
+        "title": "Request Metrics"
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 2},
+        "type": "graph",
+        "title": "Request Latency (p50, p95, p99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "list", "placement": "bottom"},
+          "tooltip": {"mode": "multi", "sort": "none"}
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 2},
+        "type": "graph",
+        "title": "Request Throughput (req/s)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (endpoint)",
+            "legendFormat": "{{endpoint}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 10},
+        "type": "graph",
+        "title": "Error Rate (5xx)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) by (endpoint)",
+            "legendFormat": "{{endpoint}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Errors/sec"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "High 5xx Error Rate",
+          "conditions": [
+            {
+              "evaluator": {"params": [5], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "message": "5xx error rate is above threshold",
+          "noDataState": "no_data"
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 10},
+        "type": "graph",
+        "title": "Client Errors (4xx)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status_code=~\"4..\"}[5m])) by (status_code)",
+            "legendFormat": "{{status_code}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Errors/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 10},
+        "type": "stat",
+        "title": "Active Requests",
+        "targets": [
+          {
+            "expr": "sum(http_requests_active)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 20, "valueSize": 50},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 50, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 18},
+        "type": "row",
+        "title": "Request Status Distribution"
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+        "type": "graph",
+        "title": "HTTP Status Codes",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (status_code)",
+            "legendFormat": "{{status_code}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      }
+    ]
+  }
+}
