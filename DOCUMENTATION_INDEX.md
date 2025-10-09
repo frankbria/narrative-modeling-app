@@ -1,179 +1,185 @@
 # Documentation Index
 
-This document provides an overview of all project documentation and how to use it.
+Quick reference guide to all project documentation with clear purposes and target audiences.
 
-## Essential Documentation (Start Here)
+---
 
-### 🚀 Getting Started
-1. **[README.md](README.md)** - Project overview, tech stack, current status
-   - Use: Understand what the project is and how to get started
-   - Audience: Everyone (new developers, stakeholders, contributors)
+## 🚀 Getting Started (Start Here)
 
-2. **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Local development setup
-   - Use: Set up your local development environment
-   - Audience: Developers setting up the project for the first time
-   - **Updated**: Includes NextAuth authentication setup (2025-10-08)
+### Essential Reading
+1. **[README.md](README.md)** - Project overview and quick start
+   - **Purpose**: High-level introduction to the Narrative Modeling App
+   - **Audience**: Everyone (new developers, stakeholders, users)
+   - **When**: First document to read
 
-3. **[CLAUDE.md](CLAUDE.md)** - Project conventions for Claude Code
-   - Use: AI pair programming guidelines and project standards
-   - Audience: Claude Code, developers using AI assistance
+2. **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Development environment setup
+   - **Purpose**: Complete local setup instructions for all components
+   - **Audience**: Developers setting up the project locally
+   - **When**: After reading README, before coding
 
-## Current Work Tracking
+3. **[CLAUDE.md](CLAUDE.md)** - AI pair programming conventions
+   - **Purpose**: Project-specific guidelines for Claude Code assistant
+   - **Audience**: Claude Code, developers using AI assistance
+   - **When**: Reference during development
 
-### 📋 Active Sprint Documentation
-4. **[WORK_LOG.md](WORK_LOG.md)** - Centralized work tracking
-   - Use: Session handoffs, technical implementation details
-   - Audience: All developers, especially for session continuity
-   - **Created**: 2025-10-07
-   - **Updates**: After every significant development session
+---
 
-5. **[SPRINT_7_PROGRESS.md](SPRINT_7_PROGRESS.md)** - Sprint 7 progress tracking
-   - Use: Current sprint status, completed/pending stories
-   - Audience: Project managers, developers working on Sprint 7
-   - **Created**: 2025-10-07
-   - **Status**: 13/30 points complete (43%)
+## 📋 Product & Requirements
 
-6. **[SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap
-   - Use: Comprehensive implementation plan (Sprints 7-14, 16 weeks)
-   - Audience: Product managers, technical leads, developers
-   - **Created**: 2025-10-07
-   - **Scope**: Production readiness, advanced features, deployment
+### Product Documentation
+4. **[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)** - Product vision and requirements
+   - **Purpose**: Comprehensive product specification and user stories
+   - **Audience**: Product managers, developers, stakeholders
+   - **When**: Understanding product goals and features
 
-## Architecture & Design
+5. **[USER_STORIES.md](USER_STORIES.md)** - Detailed user scenarios
+   - **Purpose**: User-centric feature descriptions with acceptance criteria
+   - **Audience**: Product owners, QA, developers
+   - **When**: Implementing or testing features
 
-### 🏗️ System Design
-7. **[SPECIFICATION_REVIEW.md](SPECIFICATION_REVIEW.md)** - Expert panel review
-   - Use: Architectural findings, prioritized recommendations
-   - Audience: Technical leads, architects
-   - **Created**: 2025-10-07
-   - **Experts**: Fowler, Newman, Wiegers, Adzic, Crispin, Gregory, Nygard, Hightower
+---
 
-8. **[USER_STORIES.md](USER_STORIES.md)** - Comprehensive user stories
-   - Use: Understand user needs, acceptance criteria
-   - Audience: Product managers, UX designers, developers
-   - **Scope**: All 8 workflow stages + cross-cutting concerns
+## 🏃 Sprint Planning & Execution
 
-## Production Documentation
+### Current Sprint
+6. **[SPRINT_8.md](SPRINT_8.md)** - Active sprint work (Resilience & API Versioning)
+   - **Purpose**: Current sprint goals, stories, and progress tracking
+   - **Audience**: Development team, project managers
+   - **When**: Daily during Sprint 8 (Weeks 3-4)
+   - **Status**: Active sprint
 
-### 🚀 Deployment & Operations
-9. **[PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)** - API production guide
-   - Use: API endpoints, authentication, rate limiting
-   - Audience: Backend developers, DevOps, API consumers
+### Implementation Roadmap
+7. **[SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap
+   - **Purpose**: Comprehensive 16-week implementation plan (Sprints 7-14)
+   - **Audience**: Technical leads, project managers, developers
+   - **When**: Sprint planning, long-term roadmap review
+   - **Scope**: Production readiness → Advanced features → Deployment
 
-10. **[PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)** - Deployment guide
-    - Use: Production deployment procedures
-    - Audience: DevOps engineers, deployment teams
+---
 
-11. **[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)** - Product vision
-    - Use: Product strategy, feature requirements
-    - Audience: Product managers, stakeholders
+## 🏗️ Component Documentation
 
-## Additional Resources
+### Backend (FastAPI)
+8. **[apps/backend/README.md](apps/backend/README.md)** - Backend API documentation
+   - **Purpose**: FastAPI backend setup, API endpoints, testing
+   - **Audience**: Backend developers, API consumers
+   - **When**: Working with backend code or API
 
-### 📚 Reference Documentation
-- **[claudedocs/](claudedocs/)** - Claude-specific documentation
-  - `ux_motivation_recommendations.md` - UX design philosophy
+### Frontend (Next.js)
+9. **[apps/frontend/README.md](apps/frontend/README.md)** - Frontend application guide
+   - **Purpose**: Next.js frontend setup, components, styling
+   - **Audience**: Frontend developers, UI/UX designers
+   - **When**: Working with frontend code
 
-- **[claudedocs/archived_docs/](claudedocs/archived_docs/)** - Historical documentation
-  - See `claudedocs/archived_docs/README.md` for contents
-  - Includes: Migration docs, superseded plans, completed validations
+### MCP Server
+10. **[apps/mcp/README.md](apps/mcp/README.md)** - MCP server tools and integration
+    - **Purpose**: Advanced data processing and ML tools via MCP protocol
+    - **Audience**: ML engineers, developers using Claude Desktop
+    - **When**: Using MCP tools or setting up Claude Desktop integration
 
-## Documentation Organization
+---
 
-### By Audience
+## 🚀 Deployment & Operations
 
-**New Team Members:**
-1. README.md
-2. LOCAL_DEVELOPMENT.md
-3. CLAUDE.md
-4. USER_STORIES.md
+### Production Deployment
+11. **[PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)** - Production deployment guide
+    - **Purpose**: Docker deployment, infrastructure, monitoring setup
+    - **Audience**: DevOps engineers, SREs, deployment teams
+    - **When**: Deploying to production environments
 
-**Active Developers:**
-1. WORK_LOG.md
-2. SPRINT_7_PROGRESS.md
-3. SPRINT_IMPLEMENTATION_PLAN.md
-4. LOCAL_DEVELOPMENT.md
+12. **[PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)** - Production API usage
+    - **Purpose**: API key management, prediction endpoints, monitoring
+    - **Audience**: API consumers, ML engineers, integration teams
+    - **When**: Using production APIs or integrating services
 
-**Technical Leads:**
-1. SPECIFICATION_REVIEW.md
-2. SPRINT_IMPLEMENTATION_PLAN.md
-3. WORK_LOG.md
-4. USER_STORIES.md
+---
 
-**Product/Business:**
-1. README.md
-2. PRODUCT_REQUIREMENTS.md
-3. USER_STORIES.md
-4. SPRINT_7_PROGRESS.md
+## 📚 Historical Reference
 
-**DevOps/Operations:**
-1. PRODUCTION_DEPLOYMENT.md
-2. PRODUCTION_API_GUIDE.md
-3. LOCAL_DEVELOPMENT.md
+### Archived Documentation
+Located in `claudedocs/historical/`:
 
-### By Purpose
+13. **[SPECIFICATION_REVIEW.md](claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
+    - **Purpose**: Multi-domain architectural analysis and recommendations
+    - **Historical context**: Initial system assessment
 
-**Understanding the Project:**
-- README.md
-- PRODUCT_REQUIREMENTS.md
-- USER_STORIES.md
+14. **[WORK_LOG.md](claudedocs/historical/WORK_LOG.md)** - Historical development log
+    - **Purpose**: Session-by-session implementation tracking
+    - **Historical context**: Sprint 7 development details
 
-**Setting Up Development:**
-- LOCAL_DEVELOPMENT.md
-- CLAUDE.md
+---
 
-**Current Development Work:**
-- WORK_LOG.md
-- SPRINT_7_PROGRESS.md
-- SPRINT_IMPLEMENTATION_PLAN.md
+## 📂 Documentation Structure
 
-**Architecture & Design:**
-- SPECIFICATION_REVIEW.md
-- USER_STORIES.md
+```
+narrative-modeling-app/
+├── README.md                      # Project overview
+├── CLAUDE.md                      # AI assistant conventions
+├── LOCAL_DEVELOPMENT.md           # Local setup guide
+├── DOCUMENTATION_INDEX.md         # This file
+│
+├── PRODUCT_REQUIREMENTS.md        # Product specification
+├── USER_STORIES.md                # User scenarios
+│
+├── SPRINT_8.md                    # Current sprint (active)
+├── SPRINT_IMPLEMENTATION_PLAN.md  # 8-sprint roadmap
+│
+├── PRODUCTION_DEPLOYMENT.md       # Deployment guide
+├── PRODUCTION_API_GUIDE.md        # Production API docs
+│
+├── apps/
+│   ├── backend/README.md          # Backend documentation
+│   ├── frontend/README.md         # Frontend documentation
+│   └── mcp/README.md              # MCP server documentation
+│
+└── claudedocs/
+    ├── historical/                # Archived documents
+    │   ├── SPECIFICATION_REVIEW.md
+    │   └── WORK_LOG.md
+    └── archived_docs/             # Deprecated planning docs
+```
 
-**Production & Deployment:**
-- PRODUCTION_DEPLOYMENT.md
-- PRODUCTION_API_GUIDE.md
+---
 
-## Maintenance Guidelines
+## 🔄 Documentation Maintenance
 
-### When to Update Documentation
+### Update Frequency
+- **README.md**: When major features change
+- **SPRINT_X.md**: Daily during active sprint
+- **SPRINT_IMPLEMENTATION_PLAN.md**: Weekly or at sprint boundaries
+- **Component READMEs**: When APIs or setup changes
+- **DOCUMENTATION_INDEX.md**: When docs are added/removed
 
-**WORK_LOG.md**: After every development session
-**SPRINT_7_PROGRESS.md**: After completing/starting any story
-**README.md**: When major features are completed or status changes
-**SPRINT_IMPLEMENTATION_PLAN.md**: When sprint completion status changes
+### Quality Standards
+- ✅ Every document has clear purpose statement
+- ✅ Target audience explicitly identified
+- ✅ "When to use" guidance provided
+- ✅ Documents cross-reference related content
+- ✅ No duplicate or conflicting information
+- ✅ Historical docs moved to archive (not deleted)
 
-### Documentation Lifecycle
+### Document Lifecycle
+1. **Active**: Current sprint docs, implementation plans, component READMEs
+2. **Reference**: Product requirements, deployment guides, API docs
+3. **Historical**: Completed sprint docs, reviews, work logs → move to `claudedocs/historical/`
+4. **Deprecated**: Outdated plans, old implementations → move to `claudedocs/archived_docs/`
 
-1. **Active** - In base directory, frequently updated
-2. **Stable** - In base directory, reference only
-3. **Archived** - In `claudedocs/archived_docs/`, historical reference
-4. **Removed** - Completely outdated, no longer needed
+---
 
-## Recent Cleanup (2025-10-08)
+## 🆘 Quick Help
 
-### Documents Archived
-- CLERK_TO_NEXTAUTH_MIGRATION.md (migration complete)
-- NEXTAUTH_DEV_SETUP.md (consolidated into LOCAL_DEVELOPMENT.md)
-- TODO.md (superseded by SPRINT_IMPLEMENTATION_PLAN.md + WORK_LOG.md)
-- DEVELOPMENT_PLAN.md (superseded by SPRINT_IMPLEMENTATION_PLAN.md)
-- CODEBASE_ASSESSMENT.md (historical, no longer relevant)
-- VISUAL_TRANSFORMATION_PIPELINE_PLAN.md (completed 2025-06-20/21)
-- INTEGRATION_VALIDATION.md (tests now cover this)
-
-### Documents Created
-- WORK_LOG.md (2025-10-07)
-- SPRINT_7_PROGRESS.md (2025-10-07)
-- SPRINT_IMPLEMENTATION_PLAN.md (2025-10-07)
-- SPECIFICATION_REVIEW.md (2025-10-07)
-- DOCUMENTATION_INDEX.md (this file, 2025-10-08)
-
-### Documents Updated
-- LOCAL_DEVELOPMENT.md (added NextAuth setup, 2025-10-08)
+**I want to...**
+- **Set up the project locally** → [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
+- **Understand what we're building** → [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)
+- **Work on current sprint** → [SPRINT_8.md](SPRINT_8.md)
+- **Deploy to production** → [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)
+- **Use the API** → [PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)
+- **Set up backend** → [apps/backend/README.md](apps/backend/README.md)
+- **Set up frontend** → [apps/frontend/README.md](apps/frontend/README.md)
+- **Configure Claude Code** → [CLAUDE.md](CLAUDE.md)
 
 ---
 
 **Last Updated**: 2025-10-08
-**Maintained By**: Development Team
-**Questions**: See CLAUDE.md for contribution guidelines
+**Maintained By**: Development team
+**Version**: 2.0 (Cleaned up, single source of truth per topic)
