@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # MongoDB for integration testing
+  mongodb-test:
+    image: mongo:7.0
+    container_name: narrative-mongodb-test
+    ports:
+      - "27018:27017"  # Different port to avoid conflicts with dev MongoDB
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: test_admin
+      MONGO_INITDB_ROOT_PASSWORD: test_password
+      MONGO_INITDB_DATABASE: narrative_test
+    volumes:
+      - mongodb_test_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Redis for background job testing
+  redis-test:
+    image: redis:7-alpine
+    container_name: narrative-redis-test
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts with dev Redis
+    command: redis-server --appendonly yes --requirepass test_redis_password
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # LocalStack for S3 testing (MinIO as alternative)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: narrative-localstack-test
+    ports:
+      - "4566:4566"  # LocalStack edge port
+      - "4571:4571"  # S3 specific port
+    environment:
+      SERVICES: s3
+      DEBUG: 1
+      DATA_DIR: /tmp/localstack/data
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test_access_key
+      AWS_SECRET_ACCESS_KEY: test_secret_key
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+volumes:
+  mongodb_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+  localstack_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
