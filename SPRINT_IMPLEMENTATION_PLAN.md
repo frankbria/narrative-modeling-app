@@ -839,11 +839,11 @@ Implement comprehensive monitoring with Prometheus and Grafana, complete API doc
 **So that** I can monitor performance and identify issues proactively
 
 **Acceptance Criteria:**
-- [x] System metrics exposed: request latency, error rates, throughput
-- [x] ML metrics exposed: training duration, prediction latency, model accuracy
-- [x] Business metrics exposed: active users, datasets created, models trained
-- [x] Metrics endpoint `/metrics` accessible
-- [x] Metrics follow Prometheus naming conventions
+- [ ] System metrics exposed: request latency, error rates, throughput
+- [ ] ML metrics exposed: training duration, prediction latency, model accuracy
+- [ ] Business metrics exposed: active users, datasets created, models trained
+- [ ] Metrics endpoint `/metrics` accessible
+- [ ] Metrics follow Prometheus naming conventions
 
 **Technical Tasks:**
 1. Install and configure Prometheus client - 1.5h
@@ -891,11 +891,11 @@ Implement comprehensive monitoring with Prometheus and Grafana, complete API doc
 **So that** I can understand system health at a glance
 
 **Acceptance Criteria:**
-- [x] System health dashboard: latency, errors, throughput
-- [x] ML operations dashboard: training metrics, model performance
-- [x] Business metrics dashboard: user activity, usage trends
-- [x] Dashboards auto-refresh every 30s
-- [x] Alerts configured for critical thresholds
+- [ ] System health dashboard: latency, errors, throughput
+- [ ] ML operations dashboard: training metrics, model performance
+- [ ] Business metrics dashboard: user activity, usage trends
+- [ ] Dashboards auto-refresh every 30s
+- [ ] Alerts configured for critical thresholds
 
 **Technical Tasks:**
 1. Set up Grafana configuration - 1h
@@ -941,11 +941,11 @@ Implement comprehensive monitoring with Prometheus and Grafana, complete API doc
 **So that** I can integrate with the API easily
 
 **Acceptance Criteria:**
-- [x] All endpoints documented with request/response schemas
-- [x] Authentication documented (JWT bearer token)
-- [x] Error responses documented with examples
-- [x] Interactive API docs at `/docs` endpoint
-- [x] OpenAPI spec downloadable as JSON/YAML
+- [ ] All endpoints documented with request/response schemas
+- [ ] Authentication documented (JWT bearer token)
+- [ ] Error responses documented with examples
+- [ ] Interactive API docs at `/docs` endpoint
+- [ ] OpenAPI spec downloadable as JSON/YAML
 
 **Technical Tasks:**
 1. Document authentication endpoints - 2h
@@ -992,11 +992,11 @@ Implement comprehensive monitoring with Prometheus and Grafana, complete API doc
 **So that** service interactions are validated
 
 **Acceptance Criteria:**
-- [x] S3 integration tests cover upload/download/delete
-- [x] MongoDB integration tests cover CRUD operations
-- [x] OpenAI integration tests cover analysis workflows
-- [x] End-to-end workflow integration tests pass
-- [x] Integration test coverage >80%
+- [ ] S3 integration tests cover upload/download/delete
+- [ ] MongoDB integration tests cover CRUD operations
+- [ ] OpenAI integration tests cover analysis workflows
+- [ ] End-to-end workflow integration tests pass
+- [ ] Integration test coverage >80%
 
 **Technical Tasks:**
 1. Implement S3 integration tests - 1.5h
@@ -1043,10 +1043,10 @@ Implement comprehensive monitoring with Prometheus and Grafana, complete API doc
 **So that** I can respond to incidents effectively
 
 **Acceptance Criteria:**
-- [x] Alert response procedures documented
-- [x] Common issue troubleshooting guide
-- [x] Metric interpretation guide
-- [x] Escalation procedures defined
+- [ ] Alert response procedures documented
+- [ ] Common issue troubleshooting guide
+- [ ] Metric interpretation guide
+- [ ] Escalation procedures defined
 
 **Technical Tasks:**
 1. Create monitoring runbook - 1h
@@ -1108,11 +1108,11 @@ Refactor data models for better separation of concerns, implement missing transf
 **So that** each model has a single responsibility
 
 **Acceptance Criteria:**
-- [x] UserData split into DatasetMetadata, TransformationConfig, ModelConfig
-- [x] Database migration preserves all existing data
-- [x] All services updated to use new models
-- [x] Backward compatibility maintained during transition
-- [x] >95% test coverage for new models
+- [ ] UserData split into DatasetMetadata, TransformationConfig, ModelConfig
+- [ ] Database migration preserves all existing data
+- [ ] All services updated to use new models
+- [ ] Backward compatibility maintained during transition
+- [ ] >95% test coverage for new models
 
 **Technical Tasks:**
 1. Design new model structure - 2h
@@ -1159,11 +1159,11 @@ Refactor data models for better separation of concerns, implement missing transf
 **So that** all transformation types work correctly
 
 **Acceptance Criteria:**
-- [x] drop_missing transformation implemented and tested
-- [x] All transformation types validated before application
-- [x] Invalid transformation configurations rejected with clear errors
-- [x] Transformation preview accurately reflects applied changes
-- [x] Edge cases handled (empty data, all missing values)
+- [ ] drop_missing transformation implemented and tested
+- [ ] All transformation types validated before application
+- [ ] Invalid transformation configurations rejected with clear errors
+- [ ] Transformation preview accurately reflects applied changes
+- [ ] Edge cases handled (empty data, all missing values)
 
 **Technical Tasks:**
 1. Implement drop_missing transformation - 2h
@@ -1203,11 +1203,11 @@ Refactor data models for better separation of concerns, implement missing transf
 **So that** I can identify and fix bottlenecks
 
 **Acceptance Criteria:**
-- [x] Transformation preview completes in <2s for 10K rows
-- [x] Transformation application completes in <30s for 100K rows
-- [x] Model training completes in <5min for 50K rows
-- [x] Prediction latency <100ms for single prediction
-- [x] Batch prediction processes 1000 rows/sec
+- [ ] Transformation preview completes in <2s for 10K rows
+- [ ] Transformation application completes in <30s for 100K rows
+- [ ] Model training completes in <5min for 50K rows
+- [ ] Prediction latency <100ms for single prediction
+- [ ] Batch prediction processes 1000 rows/sec
 
 **Technical Tasks:**
 1. Create benchmark suite - 2h
@@ -1253,11 +1253,11 @@ Refactor data models for better separation of concerns, implement missing transf
 **So that** I can reproduce model training results
 
 **Acceptance Criteria:**
-- [x] Dataset versions tracked with unique identifiers
-- [x] Transformation lineage recorded (original → transformed)
-- [x] Model training linked to specific dataset version
-- [x] Version metadata includes timestamps and user info
-- [x] Can retrieve any historical dataset version
+- [ ] Dataset versions tracked with unique identifiers
+- [ ] Transformation lineage recorded (original → transformed)
+- [ ] Model training linked to specific dataset version
+- [ ] Version metadata includes timestamps and user info
+- [ ] Can retrieve any historical dataset version
 
 **Technical Tasks:**
 1. Design versioning schema - 1.5h
@@ -1304,11 +1304,11 @@ Refactor data models for better separation of concerns, implement missing transf
 **So that** data model refactoring is safe
 
 **Acceptance Criteria:**
-- [x] Migration tested on production-like data volumes
-- [x] Rollback procedure tested and validated
-- [x] Performance impact measured (<10% degradation)
-- [x] Data integrity verified (no data loss)
-- [x] Migration runbook created
+- [ ] Migration tested on production-like data volumes
+- [ ] Rollback procedure tested and validated
+- [ ] Performance impact measured (<10% degradation)
+- [ ] Data integrity verified (no data loss)
+- [ ] Migration runbook created
 
 **Technical Tasks:**
 1. Create migration test suite - 1.5h
@@ -1380,11 +1380,11 @@ Establish architecture decision record (ADR) system, implement transformation li
 **So that** architectural decisions are documented with context and rationale
 
 **Acceptance Criteria:**
-- [x] ADR template created (MADR format)
-- [x] 5 initial ADRs for key architectural decisions
-- [x] ADR index with decision log
-- [x] ADR process documented for future decisions
-- [x] ADRs reviewed and approved
+- [ ] ADR template created (MADR format)
+- [ ] 5 initial ADRs for key architectural decisions
+- [ ] ADR index with decision log
+- [ ] ADR process documented for future decisions
+- [ ] ADRs reviewed and approved
 
 **Technical Tasks:**
 1. Create ADR template and structure - 1h
@@ -1423,11 +1423,11 @@ Establish architecture decision record (ADR) system, implement transformation li
 **So that** I can understand how data was transformed and reproduce results
 
 **Acceptance Criteria:**
-- [x] Full transformation history tracked for each dataset
-- [x] Lineage graph shows transformation flow visually
-- [x] Can reproduce any dataset from original + lineage
-- [x] Lineage includes timestamps, user, and parameters
-- [x] API endpoints for lineage retrieval
+- [ ] Full transformation history tracked for each dataset
+- [ ] Lineage graph shows transformation flow visually
+- [ ] Can reproduce any dataset from original + lineage
+- [ ] Lineage includes timestamps, user, and parameters
+- [ ] API endpoints for lineage retrieval
 
 **Technical Tasks:**
 1. Implement lineage data model - 2h
@@ -1474,11 +1474,11 @@ Establish architecture decision record (ADR) system, implement transformation li
 **So that** system meets performance targets
 
 **Acceptance Criteria:**
-- [x] Transformation preview <2s for 10K rows (currently ~3-4s)
-- [x] Transformation application <30s for 100K rows (currently ~45s)
-- [x] Prediction latency <100ms (currently ~150ms)
-- [x] Memory usage reduced by 20%
-- [x] Performance improvements validated with benchmarks
+- [ ] Transformation preview <2s for 10K rows (currently ~3-4s)
+- [ ] Transformation application <30s for 100K rows (currently ~45s)
+- [ ] Prediction latency <100ms (currently ~150ms)
+- [ ] Memory usage reduced by 20%
+- [ ] Performance improvements validated with benchmarks
 
 **Technical Tasks:**
 1. Optimize transformation preview - 2h
@@ -1524,11 +1524,11 @@ Establish architecture decision record (ADR) system, implement transformation li
 **So that** system resilience is optimal
 
 **Acceptance Criteria:**
-- [x] Circuit breaker thresholds tuned for each service (S3, OpenAI, MongoDB)
-- [x] Failure rate and recovery time optimized
-- [x] Fallback strategies validated
-- [x] Circuit breaker metrics show improved recovery
-- [x] Configuration documented
+- [ ] Circuit breaker thresholds tuned for each service (S3, OpenAI, MongoDB)
+- [ ] Failure rate and recovery time optimized
+- [ ] Fallback strategies validated
+- [ ] Circuit breaker metrics show improved recovery
+- [ ] Configuration documented
 
 **Technical Tasks:**
 1. Analyze circuit breaker metrics - 1h
@@ -1567,11 +1567,11 @@ Establish architecture decision record (ADR) system, implement transformation li
 **So that** codebase is more maintainable
 
 **Acceptance Criteria:**
-- [x] TODO comments resolved or tracked
-- [x] Dead code removed
-- [x] Code duplication reduced
-- [x] Type hints added to untyped functions
-- [x] Linting issues resolved
+- [ ] TODO comments resolved or tracked
+- [ ] Dead code removed
+- [ ] Code duplication reduced
+- [ ] Type hints added to untyped functions
+- [ ] Linting issues resolved
 
 **Technical Tasks:**
 1. Resolve TODO comments - 1h
@@ -1641,11 +1641,11 @@ Implement advanced machine learning capabilities including enhanced drift detect
 **So that** I can monitor model and data drift accurately
 
 **Acceptance Criteria:**
-- [x] PSI (Population Stability Index) implemented for numeric features
-- [x] KL divergence implemented for distribution comparison
-- [x] Wasserstein distance implemented for feature drift
-- [x] Configurable drift thresholds per algorithm
-- [x] Drift alerts trigger when thresholds exceeded
+- [ ] PSI (Population Stability Index) implemented for numeric features
+- [ ] KL divergence implemented for distribution comparison
+- [ ] Wasserstein distance implemented for feature drift
+- [ ] Configurable drift thresholds per algorithm
+- [ ] Drift alerts trigger when thresholds exceeded
 
 **Technical Tasks:**
 1. Implement PSI drift detection - 2h
@@ -1692,11 +1692,11 @@ Implement advanced machine learning capabilities including enhanced drift detect
 **So that** I can handle severe class imbalance (1:100+)
 
 **Acceptance Criteria:**
-- [x] SMOTE (Synthetic Minority Over-sampling) implemented
-- [x] ADASYN (Adaptive Synthetic Sampling) implemented
-- [x] BorderlineSMOTE implemented for boundary cases
-- [x] Resampling integrated into training pipeline
-- [x] Handles severe imbalance ratios (1:100+)
+- [ ] SMOTE (Synthetic Minority Over-sampling) implemented
+- [ ] ADASYN (Adaptive Synthetic Sampling) implemented
+- [ ] BorderlineSMOTE implemented for boundary cases
+- [ ] Resampling integrated into training pipeline
+- [ ] Handles severe imbalance ratios (1:100+)
 
 **Technical Tasks:**
 1. Implement SMOTE resampling - 2h
@@ -1742,11 +1742,11 @@ Implement advanced machine learning capabilities including enhanced drift detect
 **So that** I can combine multiple models for better accuracy
 
 **Acceptance Criteria:**
-- [x] Stacking ensemble implemented (meta-learner)
-- [x] Blending ensemble implemented (holdout validation)
-- [x] Voting ensemble implemented (majority/average)
-- [x] Ensemble configuration UI for model selection
-- [x] Ensemble performance compared to base models
+- [ ] Stacking ensemble implemented (meta-learner)
+- [ ] Blending ensemble implemented (holdout validation)
+- [ ] Voting ensemble implemented (majority/average)
+- [ ] Ensemble configuration UI for model selection
+- [ ] Ensemble performance compared to base models
 
 **Technical Tasks:**
 1. Implement stacking ensemble - 2.5h
@@ -1792,11 +1792,11 @@ Implement advanced machine learning capabilities including enhanced drift detect
 **So that** irrelevant features are removed automatically
 
 **Acceptance Criteria:**
-- [x] Correlation-based feature removal implemented
-- [x] Mutual information feature selection implemented
-- [x] Recursive feature elimination (RFE) implemented
-- [x] Feature importance visualization
-- [x] Selected features used in training
+- [ ] Correlation-based feature removal implemented
+- [ ] Mutual information feature selection implemented
+- [ ] Recursive feature elimination (RFE) implemented
+- [ ] Feature importance visualization
+- [ ] Selected features used in training
 
 **Technical Tasks:**
 1. Implement correlation-based selection - 1h
@@ -1835,11 +1835,11 @@ Implement advanced machine learning capabilities including enhanced drift detect
 **So that** algorithms work correctly
 
 **Acceptance Criteria:**
-- [x] Unit tests for all drift detection algorithms
-- [x] Unit tests for all resampling methods
-- [x] Unit tests for all ensemble methods
-- [x] Unit tests for feature selection
-- [x] >90% test coverage for new code
+- [ ] Unit tests for all drift detection algorithms
+- [ ] Unit tests for all resampling methods
+- [ ] Unit tests for all ensemble methods
+- [ ] Unit tests for feature selection
+- [ ] >90% test coverage for new code
 
 **Technical Tasks:**
 1. Write comprehensive tests - 1h
@@ -1902,11 +1902,11 @@ Implement operational infrastructure for production ML systems including batch p
 **So that** predictions run automatically at specified intervals
 
 **Acceptance Criteria:**
-- [x] Cron-like scheduling for batch predictions
-- [x] Job management (create, list, update, delete, pause/resume)
-- [x] Job execution history and logs
-- [x] Configurable retry logic for failed jobs
-- [x] Email notifications on completion/failure
+- [ ] Cron-like scheduling for batch predictions
+- [ ] Job management (create, list, update, delete, pause/resume)
+- [ ] Job execution history and logs
+- [ ] Configurable retry logic for failed jobs
+- [ ] Email notifications on completion/failure
 
 **Technical Tasks:**
 1. Set up job scheduler - 2h
@@ -1954,11 +1954,11 @@ Implement operational infrastructure for production ML systems including batch p
 **So that** I'm notified when model/data drift exceeds thresholds
 
 **Acceptance Criteria:**
-- [x] Drift detection runs automatically on new predictions
-- [x] Alerts triggered when drift exceeds configured thresholds
-- [x] Email notifications sent to configured recipients
-- [x] Alert history tracked in database
-- [x] Alert configuration per model/dataset
+- [ ] Drift detection runs automatically on new predictions
+- [ ] Alerts triggered when drift exceeds configured thresholds
+- [ ] Email notifications sent to configured recipients
+- [ ] Alert history tracked in database
+- [ ] Alert configuration per model/dataset
 
 **Technical Tasks:**
 1. Implement drift monitoring - 1.5h
@@ -1998,11 +1998,11 @@ Implement operational infrastructure for production ML systems including batch p
 **So that** I can track model degradation over time
 
 **Acceptance Criteria:**
-- [x] Model metrics tracked continuously (accuracy, precision, recall, F1)
-- [x] Performance trends visualized over time
-- [x] Performance degradation detected automatically
-- [x] Ground truth integration for actual outcomes
-- [x] Performance alerts when metrics drop below thresholds
+- [ ] Model metrics tracked continuously (accuracy, precision, recall, F1)
+- [ ] Performance trends visualized over time
+- [ ] Performance degradation detected automatically
+- [ ] Ground truth integration for actual outcomes
+- [ ] Performance alerts when metrics drop below thresholds
 
 **Technical Tasks:**
 1. Implement ground truth integration - 2h
@@ -2049,11 +2049,11 @@ Implement operational infrastructure for production ML systems including batch p
 **So that** models stay current without manual intervention
 
 **Acceptance Criteria:**
-- [x] Retraining triggered by drift detection
-- [x] Retraining triggered by performance degradation
-- [x] Retraining triggered by scheduled interval
-- [x] Retraining job tracked with status and logs
-- [x] Model version management for retraining
+- [ ] Retraining triggered by drift detection
+- [ ] Retraining triggered by performance degradation
+- [ ] Retraining triggered by scheduled interval
+- [ ] Retraining job tracked with status and logs
+- [ ] Model version management for retraining
 
 **Technical Tasks:**
 1. Implement retraining triggers - 2h
@@ -2094,11 +2094,11 @@ Implement operational infrastructure for production ML systems including batch p
 **So that** I can monitor all ML operations in one place
 
 **Acceptance Criteria:**
-- [x] Dashboard shows scheduled jobs status
-- [x] Dashboard shows active alerts
-- [x] Dashboard shows model performance trends
-- [x] Dashboard shows system health
-- [x] Dashboard refreshes automatically
+- [ ] Dashboard shows scheduled jobs status
+- [ ] Dashboard shows active alerts
+- [ ] Dashboard shows model performance trends
+- [ ] Dashboard shows system health
+- [ ] Dashboard refreshes automatically
 
 **Technical Tasks:**
 1. Create operations dashboard - 1h
