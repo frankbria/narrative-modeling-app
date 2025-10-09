@@ -14,6 +14,7 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
+from tenacity import RetryError
 
 from app.utils.circuit_breaker import (
     CircuitBreaker,
@@ -41,15 +42,29 @@ class TestCircuitBreakerWithMongoDB:
 
     async def test_successful_mongodb_operation(self):
         """Test circuit breaker allows successful MongoDB operations."""
+        from app.models.user_data import SchemaField
 
         @with_circuit_breaker("test_mongo_success", max_attempts=1, failure_threshold=5)
         async def create_user_data():
             user_data = UserData(
                 user_id="test_user",
                 filename="test.csv",
+                original_filename="test.csv",
                 s3_url="s3://test/file.csv",
                 num_rows=100,
                 num_columns=5,
+                data_schema=[
+                    SchemaField(
+                        field_name="col1",
+                        field_type="numeric",
+                        inferred_dtype="int64",
+                        unique_values=100,
+                        missing_values=0,
+                        example_values=[1, 2, 3],
+                        is_constant=False,
+                        is_high_cardinality=False
+                    )
+                ]
             )
             await user_data.insert()
             return user_data
@@ -91,14 +106,18 @@ class TestCircuitBreakerWithMongoDB:
             pass
 
         # Third call should fail fast
-        with pytest.raises(CircuitBreakerOpen):
+        with pytest.raises(RetryError) as exc_info:
             await failing_mongodb_operation()
+
+        # Verify the cause is CircuitBreakerOpen
+        assert isinstance(exc_info.value.__cause__, CircuitBreakerOpen)
 
         breaker = get_circuit_breaker("test_mongo_fail")
         assert breaker.state == CircuitState.OPEN
 
     async def test_mongodb_recovery_after_circuit_open(self):
         """Test circuit recovers after MongoDB service recovers."""
+        from app.models.user_data import SchemaField
         failure_mode = True
 
         @with_circuit_breaker(
@@ -114,9 +133,22 @@ class TestCircuitBreakerWithMongoDB:
             user_data = UserData(
                 user_id="recovery_test",
                 filename="test.csv",
+                original_filename="test.csv",
                 s3_url="s3://test/file.csv",
                 num_rows=10,
                 num_columns=2,
+                data_schema=[
+                    SchemaField(
+                        field_name="col1",
+                        field_type="numeric",
+                        inferred_dtype="int64",
+                        unique_values=10,
+                        missing_values=0,
+                        example_values=[1, 2],
+                        is_constant=False,
+                        is_high_cardinality=False
+                    )
+                ]
             )
             await user_data.insert()
             return user_data
@@ -240,8 +272,11 @@ class TestCircuitBreakerWithOpenAI:
             pass
 
         # Third call fails fast
-        with pytest.raises(CircuitBreakerOpen):
+        with pytest.raises(RetryError) as exc_info:
             await failing_openai_call()
+
+        # Verify the cause is CircuitBreakerOpen
+        assert isinstance(exc_info.value.__cause__, CircuitBreakerOpen)
 
 
 @pytest.mark.integration
