@@ -33,25 +33,29 @@ If you prefer not to use Docker, ensure you have:
 
 ## Environment Variables
 
-Configure in `.env` file:
+Configure in `.env` file (or use defaults):
 
 ```bash
-# MongoDB Test Configuration
-TEST_MONGODB_URI=mongodb://test_admin:test_password@localhost:27018
+# MongoDB Test Configuration (no authentication for local testing)
+TEST_MONGODB_URI=mongodb://localhost:27018
 TEST_MONGODB_DB=narrative_test
 
-# Redis Test Configuration
-TEST_REDIS_URL=redis://:test_redis_password@localhost:6380/0
+# Redis Test Configuration (no authentication for local testing)
+TEST_REDIS_URL=redis://localhost:6380/0
 
-# S3 Test Configuration (LocalStack)
-AWS_ACCESS_KEY_ID=test_access_key
-AWS_SECRET_ACCESS_KEY=test_secret_key
+# S3 Test Configuration (LocalStack with placeholder credentials)
+# Note: LocalStack accepts any credentials - these never touch real AWS
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
 AWS_DEFAULT_REGION=us-east-1
 S3_ENDPOINT_URL=http://localhost:4566
 
-# OpenAI Test Configuration
+# OpenAI Test Configuration (mocked, not used)
 OPENAI_API_KEY=sk-test-key-for-mocking
 ```
+
+**Security Note**: The test services run WITHOUT authentication for local testing only.
+DO NOT use these configurations in production environments.
 
 ## Running Tests
 
@@ -183,8 +187,8 @@ docker logs narrative-mongodb-test
 # Check if Redis is running
 docker ps | grep redis
 
-# Test Redis connection
-redis-cli -p 6380 -a test_redis_password ping
+# Test Redis connection (no password required for test instance)
+redis-cli -p 6380 ping
 ```
 
 ### LocalStack/S3 Issues
