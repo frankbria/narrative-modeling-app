@@ -3,8 +3,9 @@ import json
 import logging
 import pandas as pd
 from typing import Dict, Any, List, Optional
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from app.models.user_data import UserData, AISummary
+from app.utils.circuit_breaker import with_circuit_breaker
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -108,6 +109,14 @@ def prepare_dataset_summary(user_data: UserData) -> Dict[str, Any]:
     return summary
 
 
+@with_circuit_breaker(
+    "openai",
+    max_attempts=3,
+    failure_threshold=5,
+    recovery_timeout=60.0,
+    exceptions=(OpenAIError, Exception),
+    fallback_value=None
+)
 async def call_openai_api(dataset_summary: Dict[str, Any]) -> Optional[AISummary]:
     """
     Call the OpenAI API to generate an AI summary of the dataset.
