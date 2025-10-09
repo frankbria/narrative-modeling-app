@@ -52,12 +52,13 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - MCP: `cd apps/mcp && uv run pytest`
 
 ## Test Suite Status
-- Backend: 132/151 tests passing (87.4%)
-  - Unit tests: Fully passing (no database required)
-  - Integration tests: Require MongoDB connection
+- Backend: 201/201 tests passing (100%) ✅
+  - Unit tests: 190 passing (no database required)
+  - Integration tests: 11 passing (require MongoDB)
 - Frontend: Jest tests configured
 - MCP: Pytest suite available
-- See `apps/backend/TEST_STATUS.md` for details
+- See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for testing guide
+- See `apps/backend/docs/SPRINT_8_COMPLETION.md` for Sprint 8 details
 
 ## Environment Variables
 - Frontend: `.env.local`
@@ -72,7 +73,9 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-Sprint 7 Complete - Production readiness achieved with JWT authentication and comprehensive health checks. Sprint 8 in planning - focus on resilience patterns and API versioning. 8-stage workflow system operational. Data transformation pipeline integrated. NextAuth v5 authentication active.
+**Sprint 8 Complete** ✅ - Resilience patterns and API versioning fully implemented. Circuit breakers protect critical services. Versioned API (v1) with backward compatibility. Test infrastructure overhauled with 100% passing tests. Production-ready with fault tolerance.
+
+Previous: Sprint 7 - JWT authentication, health checks, 8-stage workflow, data transformation pipeline, NextAuth v5.
 
 ## MCP Server Setup
 This project includes a custom MCP server for advanced data processing. To use it with Claude Desktop:
