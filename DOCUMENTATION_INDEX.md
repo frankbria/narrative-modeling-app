@@ -42,11 +42,12 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🏃 Sprint Planning & Execution
 
 ### Current Sprint
-6. **[SPRINT_8.md](SPRINT_8.md)** - Active sprint work (Resilience & API Versioning)
-   - **Purpose**: Current sprint goals, stories, and progress tracking
+6. **Sprint 10** - Next sprint (Monitoring & Documentation)
+   - **Purpose**: Next sprint goals (monitoring, API docs, integration tests)
    - **Audience**: Development team, project managers
-   - **When**: Daily during Sprint 8 (Weeks 3-4)
-   - **Status**: Active sprint
+   - **When**: Sprint planning for Sprint 10 (Weeks 7-8)
+   - **Status**: Planning phase
+   - **Note**: No active sprint document yet - see SPRINT_IMPLEMENTATION_PLAN.md
 
 ### Implementation Roadmap
 7. **[SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap
@@ -107,6 +108,16 @@ Located in `claudedocs/historical/`:
     - **Purpose**: Session-by-session implementation tracking
     - **Historical context**: Sprint 7 development details
 
+15. **[Sprint 8 (claudedocs/historical/sprint-8/)](claudedocs/historical/sprint-8/)** - Completed sprint (2025-10-08)
+    - **Purpose**: Resilience & API versioning implementation
+    - **Historical context**: Circuit breakers, API v1, test infrastructure fixes
+    - **Outcome**: 28/28 points (100%), production-ready resilience
+
+16. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
+    - **Purpose**: E2E testing infrastructure with Playwright
+    - **Historical context**: 101 E2E tests, 42 integration tests, CI/CD pipeline
+    - **Outcome**: 30/30 points (100%), comprehensive test coverage
+
 ---
 
 ## 📂 Documentation Structure
@@ -121,8 +132,7 @@ narrative-modeling-app/
 ├── PRODUCT_REQUIREMENTS.md        # Product specification
 ├── USER_STORIES.md                # User scenarios
 │
-├── SPRINT_8.md                    # Current sprint (active)
-├── SPRINT_IMPLEMENTATION_PLAN.md  # 8-sprint roadmap
+├── SPRINT_IMPLEMENTATION_PLAN.md  # 8-sprint roadmap (Sprints 7-14)
 │
 ├── PRODUCTION_DEPLOYMENT.md       # Deployment guide
 ├── PRODUCTION_API_GUIDE.md        # Production API docs
@@ -132,10 +142,19 @@ narrative-modeling-app/
 │   ├── frontend/README.md         # Frontend documentation
 │   └── mcp/README.md              # MCP server documentation
 │
+├── docs/
+│   └── testing/
+│       └── guide.md               # Comprehensive testing guide
+│
 └── claudedocs/
     ├── historical/                # Archived documents
     │   ├── SPECIFICATION_REVIEW.md
-    │   └── WORK_LOG.md
+    │   ├── WORK_LOG.md
+    │   ├── sprint-8/              # Sprint 8 archive
+    │   │   └── SPRINT_8.md
+    │   └── sprint-9/              # Sprint 9 archive
+    │       ├── SPRINT_9.md
+    │       └── SPRINT_9_STORY_1_IMPLEMENTATION.md
     └── archived_docs/             # Deprecated planning docs
 ```
 
@@ -171,7 +190,8 @@ narrative-modeling-app/
 **I want to...**
 - **Set up the project locally** → [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
 - **Understand what we're building** → [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)
-- **Work on current sprint** → [SPRINT_8.md](SPRINT_8.md)
+- **Plan next sprint** → [SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)
+- **Run tests** → [docs/testing/guide.md](docs/testing/guide.md)
 - **Deploy to production** → [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)
 - **Use the API** → [PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)
 - **Set up backend** → [apps/backend/README.md](apps/backend/README.md)
@@ -180,6 +200,6 @@ narrative-modeling-app/
 
 ---
 
-**Last Updated**: 2025-10-08
+**Last Updated**: 2025-10-09
 **Maintained By**: Development team
-**Version**: 2.0 (Cleaned up, single source of truth per topic)
+**Version**: 2.1 (Sprint 9 complete, documentation archived)
