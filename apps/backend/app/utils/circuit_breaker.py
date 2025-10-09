@@ -213,6 +213,8 @@ class CircuitBreaker:
                         f"Attempting recovery after {self.recovery_timeout}s"
                     )
                     self._transition_state(CircuitState.HALF_OPEN)
+                    # Increment counter since we're allowing this call
+                    self.half_open_calls += 1
                     return True
                 return False
 
