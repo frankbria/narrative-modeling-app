@@ -1,0 +1,94 @@
+name: Integration Tests
+
+on:
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: uv sync
+
+      - name: Start test services
+        working-directory: apps/backend
+        run: docker-compose -f docker-compose.test.yml up -d
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for MongoDB..."
+          timeout 60 bash -c 'until docker exec narrative-mongodb-test mongosh --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 2; done'
+          echo "Waiting for Redis..."
+          timeout 60 bash -c 'until docker exec narrative-redis-test redis-cli ping > /dev/null 2>&1; do sleep 2; done'
+          echo "Waiting for LocalStack..."
+          timeout 60 bash -c 'until curl -f http://localhost:4566/_localstack/health > /dev/null 2>&1; do sleep 2; done'
+          echo "All services ready!"
+
+      - name: Run integration tests with coverage
+        working-directory: apps/backend
+        run: |
+          PYTHONPATH=. uv run pytest \
+            tests/integration/ \
+            -v \
+            -m integration \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing
+        env:
+          TEST_MONGODB_URI: mongodb://localhost:27018
+          TEST_MONGODB_DB: narrative_test
+          TEST_REDIS_URL: redis://localhost:6380/0
+          S3_ENDPOINT_URL: http://localhost:4566
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          OPENAI_API_KEY: sk-test-key-for-mocking
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/backend/coverage.xml
+          flags: backend-integration
+          name: integration-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage
+          path: apps/backend/coverage.xml
+          retention-days: 30
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: apps/backend/test-results/
+          retention-days: 30
+
+      - name: Stop test services
+        if: always()
+        working-directory: apps/backend
+        run: docker-compose -f docker-compose.test.yml down -v
