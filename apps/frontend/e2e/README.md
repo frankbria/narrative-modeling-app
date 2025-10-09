@@ -2,6 +2,8 @@
 
 This directory contains end-to-end tests for the Narrative Modeling App using Playwright.
 
+> **📚 For comprehensive testing documentation covering all test types, CI/CD workflows, and best practices, see [Testing Guide](/docs/testing/guide.md)**
+
 ## Structure
 
 ```
