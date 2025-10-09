@@ -45,7 +45,9 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         requested_version = self._parse_version_from_header(request)
 
         # Extract version from URL path
-        path_version = self._parse_version_from_path(request.path)
+        # Handle both request.path (direct) and request.url.path (starlette)
+        path = request.url.path if hasattr(request, 'url') else request.path
+        path_version = self._parse_version_from_path(path)
 
         # Determine which version to use
         version = path_version or requested_version or DEFAULT_VERSION
