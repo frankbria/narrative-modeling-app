@@ -3,12 +3,36 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import DatasetAnalysisPage from '@/app/explore/[id]/page'
 
 // Mock Next.js navigation
+const mockPush = jest.fn()
+const mockBack = jest.fn()
+
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-dataset-id' }),
   useRouter: () => ({
-    push: jest.fn(),
-    back: jest.fn(),
+    push: mockPush,
+    back: mockBack,
   }),
+  usePathname: () => '/explore/test-dataset-id',
+}))
+
+// Mock WorkflowContext with proper state
+jest.mock('@/lib/contexts/WorkflowContext', () => ({
+  WorkflowProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useWorkflow: () => ({
+    state: {
+      currentStage: 'DATA_PROFILING',
+      completedStages: new Set(['DATA_LOADING']),
+      stageData: {},
+      datasetId: 'test-dataset-id'
+    },
+    canAccessStage: () => true,
+    completeStage: jest.fn(),
+    setCurrentStage: jest.fn(),
+    setDatasetId: jest.fn(),
+    resetWorkflow: jest.fn(),
+    loadWorkflow: jest.fn(),
+    saveWorkflow: jest.fn()
+  })
 }))
 
 // Mock components
@@ -91,8 +115,22 @@ const mockUnprocessedDataset = {
   processed_at: null
 }
 
+// Helper to render component (WorkflowProvider is mocked above)
+const renderWithWorkflow = (component: React.ReactElement, datasetId?: string) => {
+  return render(component)
+}
+
 describe('DatasetAnalysisPage', () => {
   beforeEach(() => {
+    // Mock localStorage
+    const localStorageMock = {
+      getItem: jest.fn(),
+      setItem: jest.fn(),
+      removeItem: jest.fn(),
+      clear: jest.fn(),
+    }
+    global.localStorage = localStorageMock as any
+
     // Reset fetch mock
     fetch.mockReset()
     fetch.mockResolvedValue({
@@ -106,13 +144,13 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('renders loading state initially', () => {
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     expect(screen.getByText('Loading dataset...')).toBeInTheDocument()
   })
 
   it('renders processed dataset correctly', async () => {
-    render(<DatasetAnalysisPage />)
-    
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -130,8 +168,8 @@ describe('DatasetAnalysisPage', () => {
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
 
-    render(<DatasetAnalysisPage />)
-    
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -142,8 +180,8 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('renders all tab sections for processed datasets', async () => {
-    render(<DatasetAnalysisPage />)
-    
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -157,7 +195,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('switches between tabs correctly', async () => {
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
@@ -198,8 +236,8 @@ describe('DatasetAnalysisPage', () => {
         json: jest.fn().mockResolvedValue(exportResponse),
       })
 
-    render(<DatasetAnalysisPage />)
-    
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
     await waitFor(() => {
       expect(screen.getByText('Export Data')).toBeInTheDocument()
     })
@@ -234,7 +272,7 @@ describe('DatasetAnalysisPage', () => {
         json: jest.fn().mockResolvedValue(mockProcessedDataset),
       })
 
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('Processing...')).toBeInTheDocument()
@@ -259,7 +297,7 @@ describe('DatasetAnalysisPage', () => {
   it('handles API errors gracefully', async () => {
     fetch.mockRejectedValueOnce(new Error('API Error'))
     
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('API Error')).toBeInTheDocument()
@@ -274,7 +312,7 @@ describe('DatasetAnalysisPage', () => {
       status: 404,
     })
     
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('Failed to fetch dataset')).toBeInTheDocument()
@@ -282,7 +320,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('displays back navigation', async () => {
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('Back')).toBeInTheDocument()
@@ -293,7 +331,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('shows processing timestamp when available', async () => {
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
@@ -308,7 +346,7 @@ describe('DatasetAnalysisPage', () => {
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
 
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('Export Data')).toBeInTheDocument()
@@ -329,7 +367,7 @@ describe('DatasetAnalysisPage', () => {
       json: jest.fn().mockResolvedValue(datasetWithoutSchema),
     })
 
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
@@ -350,7 +388,7 @@ describe('DatasetAnalysisPage', () => {
       json: jest.fn().mockResolvedValue(datasetWithoutStats),
     })
 
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
@@ -371,7 +409,7 @@ describe('DatasetAnalysisPage', () => {
       json: jest.fn().mockResolvedValue(datasetWithoutQuality),
     })
 
-    render(<DatasetAnalysisPage />)
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
