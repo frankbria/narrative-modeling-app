@@ -1,0 +1,371 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "business-metrics",
+    "title": "Business Metrics - Narrative Modeling App",
+    "tags": ["business", "users", "growth", "kpis"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "time": {
+      "from": "now-7d",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["1m", "5m", "15m", "30m", "1h", "2h"],
+      "time_options": ["6h", "12h", "24h", "2d", "7d", "30d", "90d"]
+    },
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 0},
+        "type": "row",
+        "title": "User Activity"
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 2},
+        "type": "stat",
+        "title": "Active Users (Day)",
+        "targets": [
+          {
+            "expr": "business_active_users{time_window=\"day\"}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 20, "valueSize": 60},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "blue"},
+                {"value": 10, "color": "green"},
+                {"value": 50, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 2},
+        "type": "stat",
+        "title": "Active Users (Week)",
+        "targets": [
+          {
+            "expr": "business_active_users{time_window=\"week\"}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 20, "valueSize": 60},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "blue"},
+                {"value": 50, "color": "green"},
+                {"value": 200, "color": "yellow"},
+                {"value": 500, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 2},
+        "type": "stat",
+        "title": "Active Users (Month)",
+        "targets": [
+          {
+            "expr": "business_active_users{time_window=\"month\"}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 20, "valueSize": 60},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "blue"},
+                {"value": 100, "color": "green"},
+                {"value": 500, "color": "yellow"},
+                {"value": 1000, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 10},
+        "type": "row",
+        "title": "Dataset Activity"
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "type": "graph",
+        "title": "Datasets Created Over Time",
+        "targets": [
+          {
+            "expr": "sum(rate(business_datasets_created_total[1h]))",
+            "legendFormat": "Rate (datasets/hour)",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(increase(business_datasets_created_total[24h]))",
+            "legendFormat": "Total (last 24h)",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Datasets"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "list", "placement": "bottom"},
+          "tooltip": {"mode": "multi", "sort": "none"}
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "type": "graph",
+        "title": "Top Dataset Creators",
+        "targets": [
+          {
+            "expr": "topk(10, sum by (user_id) (increase(business_datasets_created_total[24h])))",
+            "legendFormat": "{{user_id}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Datasets Created"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 20},
+        "type": "row",
+        "title": "Model Training Activity"
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+        "type": "graph",
+        "title": "Models Trained Over Time",
+        "targets": [
+          {
+            "expr": "sum(rate(business_models_trained_total[1h])) by (model_type)",
+            "legendFormat": "{{model_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Models/hour"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+        "type": "piechart",
+        "title": "Model Type Distribution (7d)",
+        "targets": [
+          {
+            "expr": "sum by (model_type) (increase(business_models_trained_total[7d]))",
+            "legendFormat": "{{model_type}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]},
+          "pieType": "pie",
+          "tooltip": {"mode": "single"}
+        }
+      },
+      {
+        "id": 11,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 30},
+        "type": "row",
+        "title": "Prediction Volume"
+      },
+      {
+        "id": 12,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "type": "graph",
+        "title": "Predictions Made Over Time",
+        "targets": [
+          {
+            "expr": "sum(rate(business_predictions_made_total[1h]))",
+            "legendFormat": "Rate (predictions/hour)",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Predictions/hour"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "list", "placement": "bottom"},
+          "tooltip": {"mode": "multi", "sort": "none"}
+        }
+      },
+      {
+        "id": 13,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "type": "graph",
+        "title": "Top Models by Predictions",
+        "targets": [
+          {
+            "expr": "topk(10, sum by (model_id) (increase(business_predictions_made_total[24h])))",
+            "legendFormat": "{{model_id}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Predictions"},
+          {"format": "short"}
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 14,
+        "gridPos": {"h": 2, "w": 24, "x": 0, "y": 40},
+        "type": "row",
+        "title": "Summary KPIs"
+      },
+      {
+        "id": 15,
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 42},
+        "type": "stat",
+        "title": "Total Datasets (7d)",
+        "targets": [
+          {
+            "expr": "sum(increase(business_datasets_created_total[7d]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 16, "valueSize": 40},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        }
+      },
+      {
+        "id": 16,
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 42},
+        "type": "stat",
+        "title": "Total Models (7d)",
+        "targets": [
+          {
+            "expr": "sum(increase(business_models_trained_total[7d]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 16, "valueSize": 40},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        }
+      },
+      {
+        "id": 17,
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 42},
+        "type": "stat",
+        "title": "Total Predictions (7d)",
+        "targets": [
+          {
+            "expr": "sum(increase(business_predictions_made_total[7d]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 16, "valueSize": 40},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        }
+      },
+      {
+        "id": 18,
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 42},
+        "type": "stat",
+        "title": "Growth Rate (7d vs prev 7d)",
+        "targets": [
+          {
+            "expr": "((sum(increase(business_datasets_created_total[7d])) - sum(increase(business_datasets_created_total[7d] offset 7d))) / sum(increase(business_datasets_created_total[7d] offset 7d))) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {"values": false, "fields": "", "calcs": ["lastNotNull"]},
+          "text": {"titleSize": 16, "valueSize": 40},
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 0, "color": "yellow"},
+                {"value": 10, "color": "green"}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

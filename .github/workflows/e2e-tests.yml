@@ -1,0 +1,58 @@
+name: E2E Full Suite
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  e2e-full-suite:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-full, firefox-full, webkit-full]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run E2E Full Suite
+        working-directory: apps/frontend
+        run: npm run test:e2e:full -- --project=${{ matrix.project }}
+        env:
+          CI: true
+          SKIP_AUTH: true  # Use auth bypass in CI for now
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.project }}
+          path: apps/frontend/test-results/
+          retention-days: 30
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: apps/frontend/playwright-report/
+          retention-days: 30

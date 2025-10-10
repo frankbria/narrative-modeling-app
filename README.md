@@ -94,9 +94,20 @@ npm run dev
 
 ---
 
+## 📚 Documentation
+
+For comprehensive documentation, see **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)**
+
+Quick links:
+- [Local Development Setup](LOCAL_DEVELOPMENT.md)
+- [Current Sprint Progress](SPRINT_7_PROGRESS.md)
+- [Implementation Roadmap](SPRINT_IMPLEMENTATION_PLAN.md)
+- [User Stories](USER_STORIES.md)
+- [Production Deployment](PRODUCTION_DEPLOYMENT.md)
+
 ## 📚 License
 
-Copyright © Frank Bria  
+Copyright © Frank Bria
 Future deployment engine intended for release under an open-source license (MIT or Apache 2.0 TBD)
 
 ---

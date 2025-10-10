@@ -1,0 +1,7 @@
+{
+  "error": "This is not a CSV file",
+  "data": [
+    {"id": 1, "name": "Test"},
+    {"id": 2, "name": "Data"}
+  ]
+}

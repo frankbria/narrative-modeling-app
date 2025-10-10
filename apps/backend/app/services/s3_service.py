@@ -7,9 +7,18 @@ from urllib.parse import urlparse, unquote
 from typing import Optional
 from botocore.exceptions import ClientError
 
+from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
+
 logger = logging.getLogger(__name__)
 
 
+@with_sync_circuit_breaker(
+    "s3",
+    max_attempts=3,
+    failure_threshold=5,
+    recovery_timeout=60.0,
+    exceptions=(ClientError, ValueError)
+)
 def download_file_from_s3(s3_url: str) -> str:
     """
     Download a file from S3 and save it to a temporary location.
@@ -73,6 +82,13 @@ class S3Service:
             region_name=os.getenv("AWS_REGION", "us-east-1"),
         )
     
+    @with_circuit_breaker(
+        "s3",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(ClientError,)
+    )
     async def download_file_bytes(self, file_key: str) -> bytes:
         """Download file from S3 and return as bytes"""
         try:
@@ -86,6 +102,13 @@ class S3Service:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
     
+    @with_circuit_breaker(
+        "s3",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(ClientError,)
+    )
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
         try:
@@ -100,6 +123,13 @@ class S3Service:
         """Download file from S3 and return as bytes"""
         return await self.download_file_bytes(file_key)
     
+    @with_circuit_breaker(
+        "s3",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(ClientError,)
+    )
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
         try:
