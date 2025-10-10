@@ -93,7 +93,7 @@ test.describe('Model Training Workflow', () => {
     }
   });
 
-  test('should train model with selected target column', async ({ authenticatedPage }) => {
+  test('should train model with selected target column @smoke', async ({ authenticatedPage }) => {
     const trainPage = new TrainPage(authenticatedPage);
     await trainPage.goto(`/datasets/${datasetId}/train`);
 
@@ -121,7 +121,7 @@ test.describe('Model Training Workflow', () => {
     ).toBeVisible({ timeout: 5000 });
   });
 
-  test('should display training progress updates', async ({ authenticatedPage }) => {
+  test('should display training progress updates @smoke', async ({ authenticatedPage }) => {
     const trainPage = new TrainPage(authenticatedPage);
     await trainPage.goto(`/datasets/${datasetId}/train`);
 
@@ -156,7 +156,7 @@ test.describe('Model Training Workflow', () => {
     }
   });
 
-  test('should wait for training completion and show success', async ({ authenticatedPage }) => {
+  test('should wait for training completion and show success @smoke', async ({ authenticatedPage }) => {
     const trainPage = new TrainPage(authenticatedPage);
     await trainPage.goto(`/datasets/${datasetId}/train`);
 
@@ -180,7 +180,7 @@ test.describe('Model Training Workflow', () => {
     }
   });
 
-  test('should display model metrics after training', async ({ authenticatedPage }) => {
+  test('should display model metrics after training @smoke', async ({ authenticatedPage }) => {
     const trainPage = new TrainPage(authenticatedPage);
     await trainPage.goto(`/datasets/${datasetId}/train`);
 

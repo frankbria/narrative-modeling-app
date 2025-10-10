@@ -6,7 +6,7 @@ import { test, expect } from '../fixtures';
  */
 
 test.describe('E2E Testing Setup', () => {
-  test('should load the home page', async ({ page }) => {
+  test('should load the home page @smoke', async ({ page }) => {
     await page.goto('/');
 
     // Wait for page to load
@@ -26,7 +26,7 @@ test.describe('E2E Testing Setup', () => {
     expect(page.url()).toContain('/auth/signin');
   });
 
-  test('should have working authenticated page fixture', async ({ authenticatedPage }) => {
+  test('should have working authenticated page fixture @smoke', async ({ authenticatedPage }) => {
     // The authenticatedPage fixture should handle login automatically
     expect(authenticatedPage.url()).toMatch(/dashboard/);
 

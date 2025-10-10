@@ -72,7 +72,7 @@ test.describe('Single Prediction Workflow', () => {
     ).toBeVisible({ timeout: 5000 });
   });
 
-  test('should make single prediction with valid feature values', async ({ authenticatedPage }) => {
+  test('should make single prediction with valid feature values @smoke', async ({ authenticatedPage }) => {
     const predictPage = new PredictPage(authenticatedPage);
 
     await predictPage.goto(`/models/${modelId}/predict`);
@@ -97,7 +97,7 @@ test.describe('Single Prediction Workflow', () => {
     }
   });
 
-  test('should display confidence score with prediction', async ({ authenticatedPage }) => {
+  test('should display confidence score with prediction @smoke', async ({ authenticatedPage }) => {
     const predictPage = new PredictPage(authenticatedPage);
 
     await predictPage.goto(`/models/${modelId}/predict`);

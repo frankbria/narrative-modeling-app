@@ -39,19 +39,33 @@ export default defineConfig({
 
   /* Configure projects for major browsers */
   projects: [
+    // Smoke tests: Quick validation on Chromium only
     {
-      name: 'chromium',
+      name: 'chromium-smoke',
       use: { ...devices['Desktop Chrome'] },
+      grep: /@smoke/,
+      testMatch: /.*\.spec\.ts/,
     },
 
+    // Full suite: All tests on Chromium (default for CI)
     {
-      name: 'firefox',
+      name: 'chromium-full',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /.*\.spec\.ts/,
+    },
+
+    // Full suite: Firefox (optional, run on demand)
+    {
+      name: 'firefox-full',
       use: { ...devices['Desktop Firefox'] },
+      testMatch: /.*\.spec\.ts/,
     },
 
+    // Full suite: WebKit (optional, run on demand)
     {
-      name: 'webkit',
+      name: 'webkit-full',
       use: { ...devices['Desktop Safari'] },
+      testMatch: /.*\.spec\.ts/,
     },
 
     /* Test against mobile viewports. */

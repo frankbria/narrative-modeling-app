@@ -24,7 +24,25 @@ e2e/
 
 ## Running Tests
 
-### All Tests
+### Smoke Tests (Fast - ~5-7 minutes)
+Quick validation of critical paths:
+```bash
+npm run test:e2e:smoke
+```
+
+### Full Suite Tests (~20-30 minutes)
+Comprehensive testing on Chromium:
+```bash
+npm run test:e2e:full
+```
+
+All browsers (Chromium, Firefox, WebKit):
+```bash
+npm run test:e2e:all
+```
+
+### Legacy Commands
+All tests (default):
 ```bash
 npm run test:e2e
 ```
@@ -39,17 +57,43 @@ npm run test:e2e:ui
 npm run test:e2e:debug
 ```
 
-### Specific Browser
-```bash
-npm run test:e2e -- --project=chromium
-npm run test:e2e -- --project=firefox
-npm run test:e2e -- --project=webkit
-```
-
 ### View Test Report
 ```bash
 npm run test:e2e:report
 ```
+
+## Test Strategy
+
+### Smoke Tests (@smoke) - 13 tests
+Fast, critical-path tests that run on every PR:
+
+- **Setup**: Infrastructure validation (2 tests)
+- **Upload**: CSV upload workflow (3 tests)
+- **Transform**: Basic transformations (2 tests)
+- **Train**: Model training flow (4 tests)
+- **Predict**: Predictions (2 tests)
+
+### Full Suite - 129 tests
+Comprehensive E2E testing that runs on main branch:
+
+- All smoke tests
+- Edge cases and error scenarios
+- All transformation types
+- All ML algorithms
+- Security validation
+- Performance testing
+
+## CI/CD Integration
+
+**Pull Requests** → Smoke tests only
+- Workflow: `.github/workflows/smoke-tests.yml`
+- Duration: ~5-7 minutes
+- Browser: Chromium only
+
+**Main Branch** → Full suite
+- Workflow: `.github/workflows/e2e-tests.yml`
+- Duration: ~20-30 minutes per browser
+- Browsers: Chromium, Firefox, WebKit
 
 ## Test Fixtures
 
