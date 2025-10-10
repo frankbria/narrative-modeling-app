@@ -1,0 +1,87 @@
+version: '3.8'
+
+# ⚠️ SECURITY NOTICE ⚠️
+# This Docker Compose file is for LOCAL TESTING ONLY
+# All services run WITHOUT authentication for convenience
+# DO NOT use these configurations in production or cloud environments
+# DO NOT expose these ports to the internet
+
+services:
+  # MongoDB for integration testing
+  # Note: Running without authentication for local testing only
+  # DO NOT use this configuration in production
+  mongodb-test:
+    image: mongo:7.0
+    container_name: narrative-mongodb-test
+    ports:
+      - "27018:27017"  # Different port to avoid conflicts with dev MongoDB
+    environment:
+      MONGO_INITDB_DATABASE: narrative_test
+    volumes:
+      - mongodb_test_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Redis for background job testing
+  # Note: Running without authentication for local testing only
+  # DO NOT use this configuration in production
+  redis-test:
+    image: redis:7-alpine
+    container_name: narrative-redis-test
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts with dev Redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # LocalStack for S3 testing
+  # Note: LocalStack uses fake AWS credentials for local testing only
+  # These credentials never touch real AWS services
+  localstack:
+    image: localstack/localstack:latest
+    container_name: narrative-localstack-test
+    ports:
+      - "4566:4566"  # LocalStack edge port
+      - "4571:4571"  # S3 specific port
+    environment:
+      SERVICES: s3
+      DEBUG: 1
+      DATA_DIR: /tmp/localstack/data
+      AWS_DEFAULT_REGION: us-east-1
+      # LocalStack accepts any credentials - these are placeholders for local testing
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+volumes:
+  mongodb_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+  localstack_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
