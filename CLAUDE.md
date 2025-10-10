@@ -52,9 +52,13 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - MCP: `cd apps/mcp && uv run pytest`
 
 ## Test Suite Status
-- Backend: 132/151 unit tests passing (87.4%)
-- Integration tests require MongoDB connection
-- See `apps/backend/TEST_STATUS.md` for details
+- Backend: 201/201 tests passing (100%) ✅
+  - Unit tests: 190 passing (no database required)
+  - Integration tests: 11 passing (require MongoDB)
+- Frontend: Jest tests configured
+- MCP: Pytest suite available
+- See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for testing guide
+- See `apps/backend/docs/SPRINT_8_COMPLETION.md` for Sprint 8 details
 
 ## Environment Variables
 - Frontend: `.env.local`
@@ -69,21 +73,36 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-Sprint 6+ - Advanced features phase with 8-stage workflow system complete. Data transformation pipeline fully integrated between frontend and backend. NextAuth migration complete. Focus shifting to workflow persistence and advanced ML tools.
+**Sprint 8 Complete** ✅ - Resilience patterns and API versioning fully implemented. Circuit breakers protect critical services. Versioned API (v1) with backward compatibility. Test infrastructure overhauled with 100% passing tests. Production-ready with fault tolerance.
+
+Previous: Sprint 7 - JWT authentication, health checks, 8-stage workflow, data transformation pipeline, NextAuth v5.
 
 ## MCP Server Setup
-When using Claude Desktop with this project, install the Context7 MCP server for better context management:
+This project includes a custom MCP server for advanced data processing. To use it with Claude Desktop:
+
 ```json
 {
   "mcpServers": {
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+    "narrative-modeling": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/narrative-modeling-app/apps/mcp",
+        "run",
+        "mcp",
+        "dev",
+        "server.py"
+      ]
     }
   }
 }
 ```
-Add this to `~/.config/claude/claude_desktop_config.json` and restart Claude Desktop.
+
+Add this to `~/.config/claude/claude_desktop_config.json` and restart Claude Desktop. Replace `/path/to/narrative-modeling-app` with your actual project path.
+
+Additional recommended MCP servers:
+- **Context7** - For library documentation lookup
+- **Serena** - For project memory and session management
 
 ## Feature Development Quality Standards
 
