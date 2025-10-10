@@ -18,7 +18,7 @@ import { UploadPage } from '../pages/UploadPage';
 import { join } from 'path';
 
 test.describe('Dataset Upload Workflow', () => {
-  test('should upload valid CSV file successfully', async ({ authenticatedPage }) => {
+  test('should upload valid CSV file successfully @smoke', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     // Navigate to upload page
@@ -82,7 +82,7 @@ test.describe('Dataset Upload Workflow', () => {
     }
   });
 
-  test('should verify metadata storage after upload', async ({ authenticatedPage, request }) => {
+  test('should verify metadata storage after upload @smoke', async ({ authenticatedPage, request }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     await uploadPage.goto('/datasets/upload');
@@ -165,7 +165,7 @@ test.describe('Dataset Upload Workflow', () => {
     }
   });
 
-  test('should display upload progress indicator', async ({ authenticatedPage }) => {
+  test('should display upload progress indicator @smoke', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     await uploadPage.goto('/datasets/upload');

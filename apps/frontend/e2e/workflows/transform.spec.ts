@@ -50,7 +50,7 @@ test.describe('Data Transformation Workflow', () => {
     expect(rowCount).toBeGreaterThanOrEqual(3); // At least 3 rows from sample data
   });
 
-  test('should apply one-hot encoding transformation', async ({ authenticatedPage }) => {
+  test('should apply one-hot encoding transformation @smoke', async ({ authenticatedPage }) => {
     const transformPage = new TransformPage(authenticatedPage);
 
     await transformPage.goto(`/datasets/${datasetId}/transform`);
@@ -92,7 +92,7 @@ test.describe('Data Transformation Workflow', () => {
     await expect(authenticatedPage.locator('text=/Success|Complete/')).toBeVisible({ timeout: 10000 });
   });
 
-  test('should apply standard scaling transformation', async ({ authenticatedPage }) => {
+  test('should apply standard scaling transformation @smoke', async ({ authenticatedPage }) => {
     const transformPage = new TransformPage(authenticatedPage);
 
     await transformPage.goto(`/datasets/${datasetId}/transform`);
