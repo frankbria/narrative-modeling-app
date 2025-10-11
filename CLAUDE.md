@@ -73,9 +73,14 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-**Sprint 8 Complete** ✅ - Resilience patterns and API versioning fully implemented. Circuit breakers protect critical services. Versioned API (v1) with backward compatibility. Test infrastructure overhauled with 100% passing tests. Production-ready with fault tolerance.
+**Sprint 11 Complete** ✅ - Data model refactoring and performance benchmarking fully implemented. UserData split into focused domain models (DatasetMetadata, TransformationConfig, ModelConfig). Data versioning foundation with lineage tracking. Comprehensive migration testing infrastructure. Performance benchmarks established for all operations. All 29 story points delivered with 100% test pass rate.
 
-Previous: Sprint 7 - JWT authentication, health checks, 8-stage workflow, data transformation pipeline, NextAuth v5.
+**Sprint 12 Planned** 🟡 - API integration for new models, data versioning API, service layer refactoring, and performance optimization.
+
+Previous Sprints:
+- Sprint 10: Monitoring, metrics, and production deployment docs
+- Sprint 9: E2E testing infrastructure
+- Sprint 8: Resilience patterns, circuit breakers, and API versioning
 
 ## MCP Server Setup
 This project includes a custom MCP server for advanced data processing. To use it with Claude Desktop:
