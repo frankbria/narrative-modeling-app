@@ -42,19 +42,25 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🏃 Sprint Planning & Execution
 
 ### Current Sprint
-6. **Sprint 10** - Next sprint (Monitoring & Documentation)
-   - **Purpose**: Next sprint goals (monitoring, API docs, integration tests)
+6. **[SPRINT_12.md](SPRINT_12.md)** - Current sprint (API Integration & Production Readiness)
+   - **Purpose**: API integration for new models, versioning API, service layer refactoring
    - **Audience**: Development team, project managers
-   - **When**: Sprint planning for Sprint 10 (Weeks 7-8)
-   - **Status**: Planning phase
-   - **Note**: No active sprint document yet - see SPRINT_IMPLEMENTATION_PLAN.md
+   - **When**: Sprint 12 (Oct 15-21, 2025)
+   - **Status**: 🟡 Planned (0/30 points)
+   - **Focus**: Integrate Sprint 11 models with API layer and prepare for production
 
-### Implementation Roadmap
-7. **[SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap
-   - **Purpose**: Comprehensive 16-week implementation plan (Sprints 7-14)
-   - **Audience**: Technical leads, project managers, developers
-   - **When**: Sprint planning, long-term roadmap review
-   - **Scope**: Production readiness → Advanced features → Deployment
+### Completed Sprints
+7. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (Oct 10-14, 2025)
+   - **Purpose**: Data model refactoring and performance benchmarking
+   - **Historical context**: UserData split into focused domain models, versioning foundation
+   - **Outcome**: 29/29 points (100%), production-ready architecture
+
+### Implementation Archive
+8. **[docs/sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md](docs/sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap archive
+   - **Purpose**: Historical planning document for Sprints 7-14
+   - **Audience**: Reference for historical planning decisions
+   - **When**: Understanding past sprint planning
+   - **Status**: Archived (Sprint 11 complete)
 
 ---
 
@@ -98,7 +104,7 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 📚 Historical Reference
 
 ### Archived Documentation
-Located in `claudedocs/historical/`:
+Located in `claudedocs/historical/` and `docs/sprints/`:
 
 13. **[SPECIFICATION_REVIEW.md](claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
     - **Purpose**: Multi-domain architectural analysis and recommendations
@@ -108,15 +114,20 @@ Located in `claudedocs/historical/`:
     - **Purpose**: Session-by-session implementation tracking
     - **Historical context**: Sprint 7 development details
 
-15. **[Sprint 8 (claudedocs/historical/sprint-8/)](claudedocs/historical/sprint-8/)** - Completed sprint (2025-10-08)
-    - **Purpose**: Resilience & API versioning implementation
-    - **Historical context**: Circuit breakers, API v1, test infrastructure fixes
-    - **Outcome**: 28/28 points (100%), production-ready resilience
-
-16. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
+15. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
     - **Purpose**: E2E testing infrastructure with Playwright
     - **Historical context**: 101 E2E tests, 42 integration tests, CI/CD pipeline
     - **Outcome**: 30/30 points (100%), comprehensive test coverage
+
+16. **[Sprint 10 (claudedocs/historical/sprint-10/)](claudedocs/historical/sprint-10/)** - Completed sprint
+    - **Purpose**: Monitoring, metrics, and production deployment documentation
+    - **Historical context**: Production readiness features
+    - **Outcome**: Production deployment capabilities established
+
+17. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (2025-10-10 to 10-14)
+    - **Purpose**: Data model refactoring and performance benchmarking
+    - **Historical context**: UserData split into domain models, versioning foundation
+    - **Outcome**: 29/29 points (100%), production-ready architecture
 
 ---
 
@@ -132,7 +143,7 @@ narrative-modeling-app/
 ├── PRODUCT_REQUIREMENTS.md        # Product specification
 ├── USER_STORIES.md                # User scenarios
 │
-├── SPRINT_IMPLEMENTATION_PLAN.md  # 8-sprint roadmap (Sprints 7-14)
+├── SPRINT_12.md                   # Current sprint (Oct 15-21, 2025)
 │
 ├── PRODUCTION_DEPLOYMENT.md       # Deployment guide
 ├── PRODUCTION_API_GUIDE.md        # Production API docs
@@ -143,18 +154,23 @@ narrative-modeling-app/
 │   └── mcp/README.md              # MCP server documentation
 │
 ├── docs/
-│   └── testing/
-│       └── guide.md               # Comprehensive testing guide
+│   ├── testing/
+│   │   └── guide.md               # Comprehensive testing guide
+│   └── sprints/
+│       ├── sprint-10/             # Sprint 10 archive
+│       └── sprint-11/             # Sprint 11 archive
+│           ├── SPRINT_11.md
+│           └── SPRINT_IMPLEMENTATION_PLAN.md
 │
 └── claudedocs/
     ├── historical/                # Archived documents
     │   ├── SPECIFICATION_REVIEW.md
     │   ├── WORK_LOG.md
-    │   ├── sprint-8/              # Sprint 8 archive
-    │   │   └── SPRINT_8.md
-    │   └── sprint-9/              # Sprint 9 archive
-    │       ├── SPRINT_9.md
-    │       └── SPRINT_9_STORY_1_IMPLEMENTATION.md
+    │   ├── sprint-9/              # Sprint 9 archive
+    │   │   ├── SPRINT_9.md
+    │   │   └── SPRINT_9_STORY_1_IMPLEMENTATION.md
+    │   └── sprint-10/             # Sprint 10 archive
+    │       └── README.md
     └── archived_docs/             # Deprecated planning docs
 ```
 
@@ -190,7 +206,8 @@ narrative-modeling-app/
 **I want to...**
 - **Set up the project locally** → [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
 - **Understand what we're building** → [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)
-- **Plan next sprint** → [SPRINT_IMPLEMENTATION_PLAN.md](SPRINT_IMPLEMENTATION_PLAN.md)
+- **View current sprint** → [SPRINT_12.md](SPRINT_12.md)
+- **Review sprint history** → [docs/sprints/sprint-11/](docs/sprints/sprint-11/)
 - **Run tests** → [docs/testing/guide.md](docs/testing/guide.md)
 - **Deploy to production** → [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)
 - **Use the API** → [PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)
@@ -200,6 +217,6 @@ narrative-modeling-app/
 
 ---
 
-**Last Updated**: 2025-10-09
+**Last Updated**: 2025-10-14
 **Maintained By**: Development team
-**Version**: 2.1 (Sprint 9 complete, documentation archived)
+**Version**: 3.0 (Sprint 11 complete, Sprint 12 planned, documentation reorganized)
