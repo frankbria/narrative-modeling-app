@@ -21,6 +21,12 @@ class Settings(BaseModel):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Narrative Modeling API"
 
+    # AWS/S3 settings
+    AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "narrative-modeling-uploads")
+
     # CORS settings
     @property 
     def BACKEND_CORS_ORIGINS(self) -> List[str]:
