@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import logging
 from pydantic import BaseModel, Field
@@ -145,29 +145,100 @@ class TrimWhitespaceTransformation(BaseTransformation):
         return [col for col in self.columns if col in df.columns]
 
 
+class DropMissingTransformation(BaseTransformation):
+    """Drop rows with missing values"""
+
+    def validate_parameters(self) -> None:
+        self.columns = self.parameters.get('columns', None)
+        self.threshold = self.parameters.get('threshold', None)
+        self.how = self.parameters.get('how', 'any')
+
+        if self.threshold is not None:
+            if not isinstance(self.threshold, (int, float)):
+                raise ValueError("threshold must be numeric")
+            if self.threshold < 0 or self.threshold > 100:
+                raise ValueError("threshold must be between 0 and 100")
+
+        if self.how not in ['any', 'all']:
+            raise ValueError("how must be 'any' or 'all'")
+
+    def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        # If threshold specified, drop rows with missing percentage exceeding threshold
+        if self.threshold is not None:
+            cols_to_check = self.columns if self.columns else df.columns.tolist()
+
+            # Calculate percentage of missing values per row
+            missing_pct = (df[cols_to_check].isnull().sum(axis=1) / len(cols_to_check)) * 100
+
+            # Keep rows where missing percentage is below threshold
+            return df[missing_pct < self.threshold].copy()
+
+        # Otherwise use standard dropna with 'any' or 'all' strategy
+        return df.dropna(subset=self.columns, how=self.how)
+
+    def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
+        preview_df = df.head(n_rows).copy()
+        return self.apply(preview_df)
+
+    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+        if not self.columns:
+            return [col for col in df.columns if df[col].isnull().any()]
+        return [col for col in self.columns if col in df.columns and df[col].isnull().any()]
+
+    def validate_data(self, df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
+        """Validate if transformation can be applied to data"""
+        if df.empty:
+            return False, "Cannot drop missing values from empty dataset"
+
+        # Calculate how many rows would be dropped
+        if self.threshold is not None:
+            cols_to_check = self.columns if self.columns else df.columns.tolist()
+            missing_pct = (df[cols_to_check].isnull().sum(axis=1) / len(cols_to_check)) * 100
+            rows_to_drop = (missing_pct >= self.threshold).sum()
+        else:
+            if self.how == 'any':
+                rows_to_drop = df[self.columns if self.columns else df.columns].isnull().any(axis=1).sum()
+            else:  # 'all'
+                rows_to_drop = df[self.columns if self.columns else df.columns].isnull().all(axis=1).sum()
+
+        data_loss_pct = (rows_to_drop / len(df)) * 100
+
+        # Warn if data loss is significant
+        if data_loss_pct > 50:
+            return False, f"Dropping missing values would result in {data_loss_pct:.1f}% data loss ({rows_to_drop}/{len(df)} rows). This exceeds the 50% safety threshold."
+
+        if rows_to_drop == len(df):
+            return False, "Dropping missing values would remove all rows from the dataset"
+
+        return True, None
+
+
 class FillMissingTransformation(BaseTransformation):
     """Fill missing values with specified value or strategy"""
-    
+
     def validate_parameters(self) -> None:
         self.columns = self.parameters.get('columns', [])
         self.value = self.parameters.get('value', None)
         self.method = self.parameters.get('method', None)
-        
+
         if self.value is None and self.method is None:
             raise ValueError("Either 'value' or 'method' must be specified")
-        
+
         if self.method and self.method not in ['mean', 'median', 'mode', 'ffill', 'bfill']:
             raise ValueError(f"Invalid method: {self.method}")
-    
+
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
         df_copy = df.copy()
-        
+
         cols_to_fill = self.columns if self.columns else df.columns.tolist()
-        
+
         for col in cols_to_fill:
             if col not in df.columns:
                 continue
-                
+
             if self.value is not None:
                 df_copy[col] = df_copy[col].fillna(self.value)
             elif self.method == 'mean':
@@ -184,12 +255,12 @@ class FillMissingTransformation(BaseTransformation):
                 df_copy[col] = df_copy[col].fillna(method='ffill')
             elif self.method == 'bfill':
                 df_copy[col] = df_copy[col].fillna(method='bfill')
-        
+
         return df_copy
-    
+
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         return self.apply(df.head(n_rows).copy())
-    
+
     def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
         if not self.columns:
             return [col for col in df.columns if df[col].isnull().any()]
@@ -198,10 +269,11 @@ class FillMissingTransformation(BaseTransformation):
 
 class TransformationEngine:
     """Main engine for executing transformations"""
-    
+
     TRANSFORMATION_CLASSES = {
         TransformationType.REMOVE_DUPLICATES: RemoveDuplicatesTransformation,
         TransformationType.TRIM_WHITESPACE: TrimWhitespaceTransformation,
+        TransformationType.DROP_MISSING: DropMissingTransformation,
         TransformationType.FILL_MISSING: FillMissingTransformation,
     }
     
@@ -220,6 +292,92 @@ class TransformationEngine:
         transformation_class = self.TRANSFORMATION_CLASSES[transformation_type]
         return transformation_class(parameters)
     
+    def validate_transformation(
+        self,
+        df: pd.DataFrame,
+        transformation_type: TransformationType,
+        parameters: Dict[str, Any]
+    ) -> TransformationResult:
+        """
+        Validate transformation configuration before application.
+
+        Validates:
+        - Parameter correctness
+        - Data type compatibility
+        - Column existence
+        - Data loss implications
+        """
+        try:
+            # Create transformation to validate parameters
+            transformation = self.create_transformation(transformation_type, parameters)
+
+            # Validate data compatibility
+            is_valid, error = transformation.validate_data(df)
+            if not is_valid:
+                return TransformationResult(
+                    success=False,
+                    error=error
+                )
+
+            warnings = []
+
+            # Validate column existence
+            affected_columns = transformation.get_affected_columns(df)
+            missing_columns = [col for col in affected_columns if col not in df.columns]
+            if missing_columns:
+                return TransformationResult(
+                    success=False,
+                    error=f"Columns not found in dataset: {', '.join(missing_columns)}"
+                )
+
+            # Check data types for type-specific transformations
+            if transformation_type in [TransformationType.IMPUTE_MEAN, TransformationType.IMPUTE_MEDIAN]:
+                columns_param = parameters.get('columns', [])
+                for col in columns_param:
+                    if col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
+                        return TransformationResult(
+                            success=False,
+                            error=f"Column '{col}' must be numeric for {transformation_type.value}"
+                        )
+
+            # Estimate data loss for drop operations
+            if transformation_type == TransformationType.DROP_MISSING:
+                threshold = parameters.get('threshold')
+                how = parameters.get('how', 'any')
+                columns = parameters.get('columns')
+
+                if threshold is not None:
+                    cols_to_check = columns if columns else df.columns.tolist()
+                    missing_pct = (df[cols_to_check].isnull().sum(axis=1) / len(cols_to_check)) * 100
+                    rows_to_drop = (missing_pct >= threshold).sum()
+                else:
+                    if how == 'any':
+                        rows_to_drop = df[columns if columns else df.columns].isnull().any(axis=1).sum()
+                    else:
+                        rows_to_drop = df[columns if columns else df.columns].isnull().all(axis=1).sum()
+
+                data_loss_pct = (rows_to_drop / len(df)) * 100 if len(df) > 0 else 0
+                if data_loss_pct > 25:
+                    warnings.append(f"Warning: This operation will drop {data_loss_pct:.1f}% of rows ({rows_to_drop}/{len(df)})")
+
+            return TransformationResult(
+                success=True,
+                affected_columns=affected_columns,
+                warnings=warnings
+            )
+
+        except ValueError as e:
+            return TransformationResult(
+                success=False,
+                error=f"Invalid parameters: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Transformation validation failed: {str(e)}")
+            return TransformationResult(
+                success=False,
+                error=f"Validation error: {str(e)}"
+            )
+
     def preview_transformation(
         self,
         df: pd.DataFrame,
@@ -229,9 +387,14 @@ class TransformationEngine:
     ) -> TransformationResult:
         """Preview a transformation on subset of data"""
         try:
+            # Validate transformation first
+            validation_result = self.validate_transformation(df, transformation_type, parameters)
+            if not validation_result.success:
+                return validation_result
+
             # Create transformation
             transformation = self.create_transformation(transformation_type, parameters)
-            
+
             # Validate data
             is_valid, error = transformation.validate_data(df)
             if not is_valid:
@@ -239,28 +402,29 @@ class TransformationEngine:
                     success=False,
                     error=error
                 )
-            
+
             # Get stats before
             stats_before = self._calculate_stats(df.head(n_rows))
-            
+
             # Apply transformation to preview
             preview_df = transformation.preview(df, n_rows)
-            
+
             # Get stats after
             stats_after = self._calculate_stats(preview_df)
-            
+
             # Calculate affected rows
-            affected_rows = len(preview_df[preview_df.index != df.head(n_rows).index])
-            
+            affected_rows = abs(len(df.head(n_rows)) - len(preview_df))
+
             return TransformationResult(
                 success=True,
                 preview_data=preview_df.to_dict('records'),
                 affected_rows=affected_rows,
                 affected_columns=transformation.get_affected_columns(df),
                 stats_before=stats_before,
-                stats_after=stats_after
+                stats_after=stats_after,
+                warnings=validation_result.warnings
             )
-            
+
         except Exception as e:
             logger.error(f"Preview transformation failed: {str(e)}")
             return TransformationResult(
@@ -276,9 +440,25 @@ class TransformationEngine:
     ) -> TransformationResult:
         """Apply transformation to full dataset"""
         try:
+            # Edge case: Empty dataset
+            if df.empty:
+                return TransformationResult(
+                    success=False,
+                    error="Cannot apply transformation to empty dataset"
+                )
+
+            # Edge case: Single row dataset
+            if len(df) == 1:
+                logger.warning("Applying transformation to single-row dataset")
+
+            # Validate transformation configuration first
+            validation_result = self.validate_transformation(df, transformation_type, parameters)
+            if not validation_result.success:
+                return validation_result
+
             # Create transformation
             transformation = self.create_transformation(transformation_type, parameters)
-            
+
             # Validate data
             is_valid, error = transformation.validate_data(df)
             if not is_valid:
@@ -286,33 +466,44 @@ class TransformationEngine:
                     success=False,
                     error=error
                 )
-            
+
             # Store original shape
             original_shape = df.shape
-            
+
             # Apply transformation
             transformed_df = transformation.apply(df)
-            
+
+            # Edge case: Check if transformation resulted in empty dataset
+            if transformed_df.empty and not df.empty:
+                return TransformationResult(
+                    success=False,
+                    error="Transformation removed all rows from dataset. Operation aborted."
+                )
+
             # Calculate changes
             affected_rows = abs(original_shape[0] - transformed_df.shape[0])
             affected_columns = transformation.get_affected_columns(df)
-            
+
+            # Collect warnings from validation
+            warnings = validation_result.warnings.copy() if validation_result.warnings else []
+
             # Add to history
             self.history.append({
-                'timestamp': datetime.utcnow(),
+                'timestamp': datetime.now(timezone.utc),
                 'type': transformation_type,
                 'parameters': parameters,
                 'affected_rows': affected_rows,
                 'affected_columns': affected_columns
             })
-            
+
             return TransformationResult(
                 success=True,
                 transformed_data=transformed_df.to_dict('records'),
                 affected_rows=affected_rows,
-                affected_columns=affected_columns
+                affected_columns=affected_columns,
+                warnings=warnings
             )
-            
+
         except Exception as e:
             logger.error(f"Apply transformation failed: {str(e)}")
             return TransformationResult(
