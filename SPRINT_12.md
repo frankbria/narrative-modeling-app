@@ -1,9 +1,9 @@
 # Sprint 12: API Integration & Production Readiness
 
 **Sprint Duration**: Oct 15-21, 2025 (7 days)
-**Sprint Goal**: Integrate Sprint 11 models with API layer, implement production deployment features, and prepare for production rollout
-**Velocity Target**: 30 story points
-**Points Completed**: 0/30 (0%)
+**Sprint Goal**: Integrate Sprint 11 models with API layer, implement production deployment features, and prepare for production rollout with comprehensive E2E testing
+**Velocity Target**: 38 story points
+**Points Completed**: 0/38 (0%)
 **Risk Level**: Medium (production deployment and API integration)
 **Status**: 🟡 **PLANNED - Ready to begin**
 
@@ -13,8 +13,8 @@
 
 ### Capacity Planning
 - **Team Size**: 1 developer
-- **Velocity Target**: 30 story points
-- **Focus**: API Integration & Production Features
+- **Velocity Target**: 38 story points
+- **Focus**: API Integration, Production Features & E2E Testing
 - **Risk Level**: Medium (production deployment with new models)
 
 ### Sprint Goals
@@ -23,6 +23,7 @@
 3. 🚀 Production deployment features and monitoring
 4. ⚡ Performance optimization based on Sprint 11 benchmarks
 5. 🔄 Service layer refactoring to use new models
+6. 🧪 **End-to-End integration testing with live AI recommendations**
 
 ---
 
@@ -275,14 +276,96 @@
 
 ---
 
+### Story 12.5: End-to-End Integration Testing (Priority: 🔴, Points: 8)
+
+**Status**: 🟡 **PLANNED**
+
+**As a** QA engineer and developer
+**I want** comprehensive E2E tests for new model architecture
+**So that** we can validate complete user workflows with live AI recommendations
+
+**Acceptance Criteria:**
+- [ ] Backend API integration tests passing (>95% coverage)
+- [ ] Frontend E2E workflow tests passing (Chromium)
+- [ ] AI recommendations validated on sample data
+- [ ] Complete workflow tests: upload → transform → train → predict
+- [ ] Data versioning UI tests passing
+- [ ] Performance targets met (<5s page loads, <100ms predictions)
+- [ ] No console errors in production readiness tests
+
+**Technical Tasks:**
+
+1. Backend API Integration Tests - 3h
+   - Files:
+     - `apps/backend/tests/integration/test_dataset_api_integration.py` (new)
+     - `apps/backend/tests/integration/test_transformation_api_integration.py` (new)
+     - `apps/backend/tests/integration/test_model_api_integration.py` (new)
+     - `apps/backend/tests/integration/test_versioning_api_integration.py` (new)
+   - Test complete API flows with real HTTP requests
+   - Test DatasetMetadata, TransformationConfig, ModelConfig endpoints
+   - Test versioning API (create, compare, lineage)
+   - Achieve >95% integration test coverage
+
+2. Frontend E2E Workflow Tests - 3h
+   - Files:
+     - `apps/frontend/e2e/workflows/dataset-metadata.spec.ts` (new)
+     - `apps/frontend/e2e/workflows/transformation-config.spec.ts` (new)
+     - `apps/frontend/e2e/workflows/model-config.spec.ts` (new)
+     - `apps/frontend/e2e/workflows/data-versioning.spec.ts` (new)
+     - `apps/frontend/e2e/workflows/complete-ai-workflow.spec.ts` (new)
+   - Test upload workflow with DatasetMetadata
+   - Test transformation workflow with AI recommendations
+   - Test model training with ModelConfig
+   - Test data versioning UI (create, compare, lineage)
+   - Test complete AI-guided workflow
+
+3. AI Recommendation Validation Tests - 1.5h
+   - Files:
+     - `apps/frontend/e2e/workflows/ai-recommendations.spec.ts` (new)
+     - `apps/frontend/e2e/test-data/ai-test-datasets/` (new directory)
+   - Test AI problem type detection
+   - Test AI transformation recommendations
+   - Test AI model suggestions
+   - Validate on 5 different dataset types
+
+4. Performance and Production Validation - 0.5h
+   - Files:
+     - `apps/frontend/e2e/workflows/performance.spec.ts` (new)
+     - `apps/frontend/e2e/workflows/production-readiness.spec.ts` (new)
+   - Validate page load times <5s
+   - Validate prediction latency <100ms
+   - Check for console errors
+   - Validate accessibility
+
+**Dependencies:**
+- Story 12.1 (API Integration) - Must be complete ✅
+- Story 12.2 (Data Versioning API) - Must be complete ✅
+- Story 12.3 (Service Layer Refactoring) - Must be complete ✅
+
+**Risks:**
+- E2E tests may be flaky (use Playwright auto-waiting)
+- AI recommendations may timeout (set 60-120s timeouts)
+- Tests may take too long (run smoke tests in CI)
+
+**Progress:**
+- ⏳ Not started
+
+**See Also:** [Story 12.5 Detailed Plan](./STORY_12.5_E2E_TESTING.md)
+
+---
+
 ## Sprint Validation Gates
 
 - [ ] All API endpoints use new models
 - [ ] Backward compatibility maintained
-- [ ] All tests passing (>95% coverage)
+- [ ] All unit tests passing (>95% coverage)
+- [ ] **All backend integration tests passing (>95% coverage)**
+- [ ] **All frontend E2E tests passing (Chromium)**
+- [ ] **Complete AI-guided workflows validated**
 - [ ] Performance within 10% of baseline
 - [ ] API documentation updated
 - [ ] No regressions in existing functionality
+- [ ] **Production readiness validated (no console errors, <5s loads)**
 
 ## Prerequisites
 
