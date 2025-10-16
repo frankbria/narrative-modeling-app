@@ -24,6 +24,8 @@ class DatasetUploadResponse(BaseModel):
     headers: List[str] = Field(default_factory=list, description="Column headers")
     data_schema_fields: List[Dict[str, Any]] = Field(default_factory=list, description="Data schema", alias="schema")
     s3_url: str = Field(..., description="S3 URL for file access")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    file_type: Optional[str] = Field(None, description="File type")
 
     model_config = {
         "populate_by_name": True
@@ -67,7 +69,6 @@ class DatasetDetailResponse(BaseModel):
     """Response schema for dataset detail endpoint."""
 
     dataset_id: str = Field(..., description="Unique dataset identifier")
-    user_id: str = Field(..., description="User who owns the dataset")
     filename: str = Field(..., description="Storage filename")
     original_filename: str = Field(..., description="Original filename")
     file_type: str = Field(..., description="File type")
@@ -137,3 +138,22 @@ class DatasetProcessingResponse(BaseModel):
     dataset_id: str = Field(..., description="Dataset ID")
     is_processed: bool = Field(..., description="Processing status")
     processed_at: datetime = Field(..., description="Processing timestamp")
+    statistics: Optional[Dict[str, Any]] = None
+    quality_report: Optional[Dict[str, Any]] = None
+
+
+class DatasetSchemaResponse(BaseModel):
+    """Response schema for dataset schema endpoint."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    schema: List[Dict[str, Any]] = Field(..., description="Field-level schema")
+    num_fields: int = Field(..., ge=0, description="Number of fields in schema")
+
+
+class DatasetPreviewResponse(BaseModel):
+    """Response schema for dataset preview endpoint."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    preview: List[Dict[str, Any]] = Field(..., description="Preview rows")
+    total_rows: int = Field(..., ge=0, description="Total number of rows in dataset")
+    preview_rows: int = Field(..., ge=0, description="Number of preview rows returned")
