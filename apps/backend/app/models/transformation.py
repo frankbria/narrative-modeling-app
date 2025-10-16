@@ -133,12 +133,17 @@ class TransformationConfig(Document):
     class Settings:
         name = "transformation_configs"
         indexes = [
+            # Single field indexes for basic queries
             "user_id",
             "dataset_id",
             "config_id",
             "created_at",
-            [("user_id", 1), ("created_at", -1)],
-            [("dataset_id", 1), ("is_applied", 1)]
+            "is_applied",
+            # Compound indexes for common query patterns
+            [("user_id", 1), ("created_at", -1)],  # List user configs chronologically
+            [("dataset_id", 1), ("is_applied", 1)],  # Filter applied/pending transformations
+            [("dataset_id", 1), ("is_applied", 1), ("created_at", -1)],  # Applied configs chronologically
+            [("dataset_id", 1), ("created_at", -1)],  # All dataset configs chronologically
         ]
 
     model_config = {
