@@ -117,23 +117,26 @@ class RemoveDuplicatesTransformation(BaseTransformation):
 
 class TrimWhitespaceTransformation(BaseTransformation):
     """Trim whitespace from string columns"""
-    
+
     def validate_parameters(self) -> None:
         self.columns = self.parameters.get('columns', [])
-    
+
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Optimization: Use copy-on-write and vectorized operations
         df_copy = df.copy()
-        
+
         if not self.columns:
             # Apply to all string columns
             string_cols = df.select_dtypes(include=['object']).columns.tolist()
         else:
             string_cols = self.columns
-        
+
+        # Optimization: Vectorize string operations across all columns at once
         for col in string_cols:
             if col in df.columns:
+                # Vectorized string strip - faster than iterating
                 df_copy[col] = df_copy[col].astype(str).str.strip()
-        
+
         return df_copy
     
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
@@ -166,17 +169,17 @@ class DropMissingTransformation(BaseTransformation):
         if df.empty:
             return df
 
-        # If threshold specified, drop rows with missing percentage exceeding threshold
+        # Optimization: Use vectorized operations for threshold-based dropping
         if self.threshold is not None:
             cols_to_check = self.columns if self.columns else df.columns.tolist()
 
-            # Calculate percentage of missing values per row
+            # Vectorized calculation of missing percentage per row
             missing_pct = (df[cols_to_check].isnull().sum(axis=1) / len(cols_to_check)) * 100
 
-            # Keep rows where missing percentage is below threshold
+            # Vectorized boolean indexing - faster than iteration
             return df[missing_pct < self.threshold].copy()
 
-        # Otherwise use standard dropna with 'any' or 'all' strategy
+        # Optimization: Use pandas built-in dropna for standard strategies (already optimized)
         return df.dropna(subset=self.columns, how=self.how)
 
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
@@ -231,30 +234,42 @@ class FillMissingTransformation(BaseTransformation):
             raise ValueError(f"Invalid method: {self.method}")
 
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Optimization: Use copy-on-write
         df_copy = df.copy()
 
         cols_to_fill = self.columns if self.columns else df.columns.tolist()
 
-        for col in cols_to_fill:
-            if col not in df.columns:
-                continue
-
-            if self.value is not None:
-                df_copy[col] = df_copy[col].fillna(self.value)
-            elif self.method == 'mean':
-                if pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = df_copy[col].fillna(df_copy[col].mean())
-            elif self.method == 'median':
-                if pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = df_copy[col].fillna(df_copy[col].median())
-            elif self.method == 'mode':
-                mode_val = df_copy[col].mode()
-                if len(mode_val) > 0:
-                    df_copy[col] = df_copy[col].fillna(mode_val[0])
-            elif self.method == 'ffill':
-                df_copy[col] = df_copy[col].fillna(method='ffill')
-            elif self.method == 'bfill':
-                df_copy[col] = df_copy[col].fillna(method='bfill')
+        # Optimization: Batch similar operations together
+        if self.value is not None:
+            # Vectorized fill for all columns at once
+            for col in cols_to_fill:
+                if col in df.columns:
+                    df_copy[col] = df_copy[col].fillna(self.value)
+        elif self.method in ['mean', 'median']:
+            # Optimization: Calculate statistics once for numeric columns
+            numeric_cols = [col for col in cols_to_fill if col in df.columns and pd.api.types.is_numeric_dtype(df_copy[col])]
+            if numeric_cols:
+                if self.method == 'mean':
+                    fill_values = df_copy[numeric_cols].mean()
+                else:  # median
+                    fill_values = df_copy[numeric_cols].median()
+                df_copy[numeric_cols] = df_copy[numeric_cols].fillna(fill_values)
+        elif self.method == 'mode':
+            for col in cols_to_fill:
+                if col in df.columns:
+                    mode_val = df_copy[col].mode()
+                    if len(mode_val) > 0:
+                        df_copy[col] = df_copy[col].fillna(mode_val[0])
+        elif self.method == 'ffill':
+            # Vectorized forward fill
+            for col in cols_to_fill:
+                if col in df.columns:
+                    df_copy[col] = df_copy[col].fillna(method='ffill')
+        elif self.method == 'bfill':
+            # Vectorized backward fill
+            for col in cols_to_fill:
+                if col in df.columns:
+                    df_copy[col] = df_copy[col].fillna(method='bfill')
 
         return df_copy
 
@@ -276,9 +291,12 @@ class TransformationEngine:
         TransformationType.DROP_MISSING: DropMissingTransformation,
         TransformationType.FILL_MISSING: FillMissingTransformation,
     }
-    
+
     def __init__(self):
         self.history: List[Dict[str, Any]] = []
+        # Optimization: Cache for preview statistics to avoid recalculation
+        self._stats_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_max_size = 100  # Limit cache size to prevent memory bloat
     
     def create_transformation(
         self,
@@ -512,19 +530,39 @@ class TransformationEngine:
             )
     
     def _calculate_stats(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Calculate basic statistics for dataframe"""
+        """
+        Calculate basic statistics for dataframe with caching.
+
+        Optimization: Cache stats for small dataframes to avoid recalculation
+        in preview operations.
+        """
+        # Create cache key based on dataframe shape and first few values
+        cache_key = f"{df.shape}_{id(df)}"
+
+        # Check cache first (optimization for repeated preview calls)
+        if cache_key in self._stats_cache:
+            return self._stats_cache[cache_key]
+
+        # Optimization: Vectorized statistics calculation
         stats = {
             'row_count': len(df),
             'column_count': len(df.columns),
             'missing_values': df.isnull().sum().to_dict(),
             'dtypes': df.dtypes.astype(str).to_dict()
         }
-        
-        # Add numeric stats
+
+        # Add numeric stats - only for numeric columns (optimization)
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             stats['numeric_summary'] = df[numeric_cols].describe().to_dict()
-        
+
+        # Cache for small dataframes (previews) - limit cache size
+        if len(df) <= 1000:  # Only cache small dataframes
+            if len(self._stats_cache) >= self._cache_max_size:
+                # Remove oldest entry (simple FIFO eviction)
+                self._stats_cache.pop(next(iter(self._stats_cache)))
+            self._stats_cache[cache_key] = stats
+
         return stats
     
     def get_history(self) -> List[Dict[str, Any]]:

@@ -6,8 +6,28 @@ using TransformationConfig model.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
+from enum import Enum
+
+
+# Transformation types enum
+class TransformationType(str, Enum):
+    """Supported transformation types."""
+    ENCODE = "encode"
+    SCALE = "scale"
+    IMPUTE = "impute"
+    DROP_MISSING = "drop_missing"
+    FILTER = "filter"
+    AGGREGATE = "aggregate"
+    DERIVE = "derive"
+    NORMALIZE = "normalize"
+    STANDARDIZE = "standardize"
+    ONE_HOT_ENCODE = "one_hot_encode"
+    LABEL_ENCODE = "label_encode"
+    FILL_MISSING = "fill_missing"
+    DROP_DUPLICATES = "drop_duplicates"
+    OUTLIER_REMOVAL = "outlier_removal"
 
 
 # Request Schemas
@@ -24,12 +44,7 @@ class TransformationStepRequest(BaseModel):
     @classmethod
     def validate_transformation_type(cls, v: str) -> str:
         """Validate transformation_type is one of supported types."""
-        allowed_types = {
-            'encode', 'scale', 'impute', 'drop_missing',
-            'filter', 'aggregate', 'derive', 'normalize',
-            'standardize', 'one_hot_encode', 'label_encode',
-            'fill_missing', 'drop_duplicates', 'outlier_removal'
-        }
+        allowed_types = {t.value for t in TransformationType}
         if v not in allowed_types:
             raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")
         return v
@@ -143,3 +158,111 @@ class TransformationDeleteResponse(BaseModel):
     status: str = Field(..., description="Delete status")
     config_id: str = Field(..., description="Deleted configuration ID")
     message: str = Field(..., description="Success message")
+
+
+# Additional schemas for transformation pipeline
+
+class TransformationPipelineRequest(BaseModel):
+    """Request schema for transformation pipeline."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    transformations: List[TransformationStepRequest] = Field(..., description="Transformation steps")
+    save_as_recipe: bool = Field(default=False, description="Save as recipe")
+    recipe_name: Optional[str] = Field(None, description="Recipe name")
+    recipe_description: Optional[str] = Field(None, description="Recipe description")
+
+
+class RecipeStepRequest(BaseModel):
+    """Request schema for recipe step."""
+
+    type: str = Field(..., description="Transformation type")
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    description: Optional[str] = None
+
+
+class RecipeCreateRequest(BaseModel):
+    """Request schema for creating recipe."""
+
+    name: str = Field(..., description="Recipe name")
+    description: Optional[str] = None
+    steps: List[RecipeStepRequest] = Field(..., description="Recipe steps")
+    dataset_id: Optional[str] = None
+    is_public: bool = Field(default=False)
+    tags: List[str] = Field(default_factory=list)
+
+
+class RecipeResponse(BaseModel):
+    """Response schema for recipe."""
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    user_id: str
+    steps: List[Dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    is_public: bool = False
+    tags: List[str] = Field(default_factory=list)
+    usage_count: int = 0
+    rating: float = 0.0
+
+
+class RecipeListResponse(BaseModel):
+    """Response schema for recipe list."""
+
+    recipes: List[RecipeResponse] = Field(default_factory=list)
+    total: int
+    page: int
+    per_page: int
+
+
+class RecipeApplyRequest(BaseModel):
+    """Request schema for applying recipe."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+
+
+class RecipeExportRequest(BaseModel):
+    """Request schema for exporting recipe."""
+
+    language: str = Field(default="python", description="Export language")
+
+
+class RecipeExportResponse(BaseModel):
+    """Response schema for recipe export."""
+
+    recipe_name: str
+    language: str
+    code: str
+
+
+class AutoCleanRequest(BaseModel):
+    """Request schema for auto-clean operation."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    options: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TransformationSuggestionResponse(BaseModel):
+    """Response schema for transformation suggestions."""
+
+    suggestions: List[Dict[str, Any]] = Field(default_factory=list)
+    data_quality_score: float
+    critical_issues: List[str] = Field(default_factory=list)
+
+
+class ValidationRequest(BaseModel):
+    """Request schema for validation."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    transformations: List[TransformationStepRequest] = Field(..., description="Transformations to validate")
+
+
+class ValidationResponse(BaseModel):
+    """Response schema for validation."""
+
+    is_valid: bool
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    info: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
