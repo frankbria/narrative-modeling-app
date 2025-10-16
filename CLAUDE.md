@@ -52,12 +52,14 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - MCP: `cd apps/mcp && uv run pytest`
 
 ## Test Suite Status
-- Backend: 201/201 tests passing (100%) ✅
-  - Unit tests: 190 passing (no database required)
+- Backend: 214/214 tests passing (100%) ✅
+  - Unit tests: 203 passing (no database required)
+    - Service layer tests: 13 tests (DatasetService)
   - Integration tests: 11 passing (require MongoDB)
 - Frontend: Jest tests configured
 - MCP: Pytest suite available
 - See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for testing guide
+- See `apps/backend/docs/TDD_GUIDE.md` for TDD methodology
 - See `apps/backend/docs/SPRINT_8_COMPLETION.md` for Sprint 8 details
 
 ## Environment Variables
@@ -73,9 +75,9 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-**Sprint 11 Complete** ✅ - Data model refactoring and performance benchmarking fully implemented. UserData split into focused domain models (DatasetMetadata, TransformationConfig, ModelConfig). Data versioning foundation with lineage tracking. Comprehensive migration testing infrastructure. Performance benchmarks established for all operations. All 29 story points delivered with 100% test pass rate.
+**Sprint 11 Complete** ✅ - Data model refactoring and performance benchmarking fully implemented. UserData split into focused domain models (DatasetMetadata, TransformationConfig, ModelConfig). Service layer integration completed (Story 11.1B) with DatasetService, TransformationService, and ModelService. Data versioning foundation with lineage tracking. Comprehensive migration testing infrastructure. Performance benchmarks established for all operations. All 37 story points delivered with 100% test pass rate (214 tests passing).
 
-**Sprint 12 Planned** 🟡 - API integration for new models, data versioning API, service layer refactoring, and performance optimization.
+**Sprint 12 Ready** 🟢 - Service layer complete, Sprint 12 unblocked. Ready for API integration, data versioning API, and performance optimization.
 
 Previous Sprints:
 - Sprint 10: Monitoring, metrics, and production deployment docs
