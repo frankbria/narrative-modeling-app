@@ -228,15 +228,19 @@ class DatasetService:
 
     async def list_datasets(self, user_id: str) -> List[DatasetMetadata]:
         """
-        List all datasets for a user.
+        List all datasets for a user, sorted chronologically (newest first).
+
+        Optimization: Uses compound index (user_id, created_at) for efficient sorting.
 
         Args:
             user_id: User identifier
 
         Returns:
-            List of DatasetMetadata instances
+            List of DatasetMetadata instances sorted by created_at descending
         """
-        return await DatasetMetadata.find(DatasetMetadata.user_id == user_id).to_list()
+        return await DatasetMetadata.find(
+            DatasetMetadata.user_id == user_id
+        ).sort(-DatasetMetadata.created_at).to_list()
 
     async def update_dataset(
         self,
@@ -340,15 +344,17 @@ class DatasetService:
 
     async def get_unprocessed_datasets(self, user_id: str) -> List[DatasetMetadata]:
         """
-        Get all unprocessed datasets for a user.
+        Get all unprocessed datasets for a user, sorted chronologically.
+
+        Optimization: Uses compound index (user_id, is_processed, created_at).
 
         Args:
             user_id: User identifier
 
         Returns:
-            List of unprocessed DatasetMetadata instances
+            List of unprocessed DatasetMetadata instances sorted by created_at descending
         """
         return await DatasetMetadata.find(
             DatasetMetadata.user_id == user_id,
             DatasetMetadata.is_processed == False
-        ).to_list()
+        ).sort(-DatasetMetadata.created_at).to_list()

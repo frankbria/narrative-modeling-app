@@ -197,15 +197,21 @@ class ModelConfig(Document):
     class Settings:
         name = "model_configs"
         indexes = [
+            # Single field indexes for basic queries
             "user_id",
             "dataset_id",
             "model_id",
             "status",
             "created_at",
-            [("user_id", 1), ("created_at", -1)],
-            [("user_id", 1), ("is_active", 1)],
-            [("dataset_id", 1), ("is_active", 1)],
-            [("user_id", 1), ("status", 1)]
+            "is_active",
+            # Compound indexes for common query patterns
+            [("user_id", 1), ("created_at", -1)],  # List user models chronologically
+            [("user_id", 1), ("is_active", 1)],  # Filter active models
+            [("user_id", 1), ("is_active", 1), ("created_at", -1)],  # Active models chronologically
+            [("dataset_id", 1), ("is_active", 1)],  # Dataset's active models
+            [("user_id", 1), ("status", 1)],  # Filter by status
+            [("user_id", 1), ("status", 1), ("created_at", -1)],  # Status filtered chronologically
+            [("dataset_id", 1), ("created_at", -1)],  # Dataset models chronologically
         ]
 
     model_config = {

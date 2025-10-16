@@ -17,6 +17,7 @@ from app.api.routes import (
     visualizations,
     transformations,
     versions,
+    datasets,
 )
 
 # Create v1 API router
@@ -24,6 +25,7 @@ api_v1_router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 # Include all route modules
 api_v1_router.include_router(health.router, prefix="/health", tags=["health"])
+api_v1_router.include_router(datasets.router, tags=["datasets"])  # New dataset routes
 api_v1_router.include_router(secure_upload.router, prefix="/datasets", tags=["datasets"])
 api_v1_router.include_router(data_processing.router, prefix="/datasets", tags=["data-processing"])
 api_v1_router.include_router(ai_analysis.router, prefix="/ai", tags=["ai-analysis"])

@@ -148,11 +148,16 @@ class DatasetMetadata(Document):
     class Settings:
         name = "dataset_metadata"
         indexes = [
+            # Single field indexes for basic queries
             "user_id",
             "dataset_id",
             "created_at",
-            [("user_id", 1), ("created_at", -1)],
-            [("user_id", 1), ("dataset_id", 1)]
+            "is_processed",
+            # Compound indexes for common query patterns
+            [("user_id", 1), ("created_at", -1)],  # List user datasets chronologically
+            [("user_id", 1), ("dataset_id", 1)],  # Unique lookup
+            [("user_id", 1), ("is_processed", 1)],  # Filter unprocessed datasets
+            [("user_id", 1), ("is_processed", 1), ("created_at", -1)],  # Processed datasets chronologically
         ]
 
     model_config = {

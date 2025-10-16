@@ -234,14 +234,19 @@ class TestDatasetService:
 
         # ACT & ASSERT
         with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
+            # Mock the chain: find().sort().to_list()
+            mock_sort = MagicMock()
+            mock_sort.to_list = AsyncMock(return_value=mock_datasets)
             mock_find = MagicMock()
-            mock_find.to_list = AsyncMock(return_value=mock_datasets)
+            mock_find.sort = MagicMock(return_value=mock_sort)
             MockDatasetClass.find = MagicMock(return_value=mock_find)
 
             result = await self.service.list_datasets(user_id)
 
             # Verify find was called
             MockDatasetClass.find.assert_called_once()
+            # Verify sort was called
+            mock_find.sort.assert_called_once()
             assert result == mock_datasets
             assert len(result) == 3
 
@@ -253,8 +258,11 @@ class TestDatasetService:
 
         # ACT & ASSERT
         with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
+            # Mock the chain: find().sort().to_list()
+            mock_sort = MagicMock()
+            mock_sort.to_list = AsyncMock(return_value=[])
             mock_find = MagicMock()
-            mock_find.to_list = AsyncMock(return_value=[])
+            mock_find.sort = MagicMock(return_value=mock_sort)
             MockDatasetClass.find = MagicMock(return_value=mock_find)
 
             result = await self.service.list_datasets(user_id)

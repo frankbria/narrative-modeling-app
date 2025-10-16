@@ -108,32 +108,38 @@ class ModelService:
         user_id: str
     ) -> List[ModelConfig]:
         """
-        List all model configurations for a user.
+        List all model configurations for a user, sorted chronologically.
+
+        Optimization: Uses compound index (user_id, created_at).
 
         Args:
             user_id: User identifier
 
         Returns:
-            List of ModelConfig instances
+            List of ModelConfig instances sorted by created_at descending
         """
-        return await ModelConfig.find(ModelConfig.user_id == user_id).to_list()
+        return await ModelConfig.find(
+            ModelConfig.user_id == user_id
+        ).sort(-ModelConfig.created_at).to_list()
 
     async def list_models_by_dataset(
         self,
         dataset_id: str
     ) -> List[ModelConfig]:
         """
-        List all model configurations for a dataset.
+        List all model configurations for a dataset, sorted chronologically.
+
+        Optimization: Uses compound index (dataset_id, created_at).
 
         Args:
             dataset_id: Dataset identifier
 
         Returns:
-            List of ModelConfig instances
+            List of ModelConfig instances sorted by created_at descending
         """
         return await ModelConfig.find(
             ModelConfig.dataset_id == dataset_id
-        ).to_list()
+        ).sort(-ModelConfig.created_at).to_list()
 
     async def update_training_status(
         self,
@@ -285,36 +291,40 @@ class ModelService:
         user_id: str
     ) -> List[ModelConfig]:
         """
-        Get all active model configurations for a user.
+        Get all active model configurations for a user, sorted chronologically.
+
+        Optimization: Uses compound index (user_id, is_active, created_at).
 
         Args:
             user_id: User identifier
 
         Returns:
-            List of active ModelConfig instances
+            List of active ModelConfig instances sorted by created_at descending
         """
         return await ModelConfig.find(
             ModelConfig.user_id == user_id,
             ModelConfig.is_active == True
-        ).to_list()
+        ).sort(-ModelConfig.created_at).to_list()
 
     async def get_deployed_models(
         self,
         user_id: str
     ) -> List[ModelConfig]:
         """
-        Get all deployed model configurations for a user.
+        Get all deployed model configurations for a user, sorted chronologically.
+
+        Optimization: Uses compound index (user_id, status, created_at).
 
         Args:
             user_id: User identifier
 
         Returns:
-            List of deployed ModelConfig instances
+            List of deployed ModelConfig instances sorted by created_at descending
         """
         return await ModelConfig.find(
             ModelConfig.user_id == user_id,
             ModelConfig.status == ModelStatus.DEPLOYED
-        ).to_list()
+        ).sort(-ModelConfig.created_at).to_list()
 
     async def delete_model_config(
         self,
