@@ -60,6 +60,7 @@ from app.api.routes import (
     onboarding,
     cache,
     transformations,
+    versions,
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
@@ -73,6 +74,8 @@ from app.models.ml_model import MLModel
 from app.models.api_key import APIKey
 from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
+from app.models.dataset import DatasetMetadata
+from app.models.version import DatasetVersion, TransformationLineage
 from app.services.transformation_service.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -86,16 +89,19 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, 
-                         AnalyticsResult, 
-                         Plot, 
-                         TrainedModel, 
-                         ColumnStats, 
-                         MLModel, 
-                         APIKey, 
-                         ABTest, 
-                         BatchJob, 
-                         TransformationRecipe, 
+        document_models=[UserData,
+                         AnalyticsResult,
+                         Plot,
+                         TrainedModel,
+                         ColumnStats,
+                         MLModel,
+                         APIKey,
+                         ABTest,
+                         BatchJob,
+                         DatasetMetadata,
+                         DatasetVersion,
+                         TransformationLineage,
+                         TransformationRecipe,
                          RecipeExecutionHistory],
     )
 
@@ -231,6 +237,11 @@ app.include_router(
     transformations.router,
     prefix=f"{settings.API_V1_STR}/transformations",
     tags=["transformations"],
+)
+app.include_router(
+    versions.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["versioning"],
 )
 
 

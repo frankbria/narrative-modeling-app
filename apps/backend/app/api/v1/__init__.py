@@ -16,6 +16,7 @@ from app.api.routes import (
     monitoring,
     visualizations,
     transformations,
+    versions,
 )
 
 # Create v1 API router
@@ -31,5 +32,6 @@ api_v1_router.include_router(production.router, prefix="/predict", tags=["predic
 api_v1_router.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
 api_v1_router.include_router(visualizations.router, prefix="/visualizations", tags=["visualizations"])
 api_v1_router.include_router(transformations.router, prefix="/transformations", tags=["transformations"])
+api_v1_router.include_router(versions.router, tags=["versioning"])
 
 __all__ = ["api_v1_router"]
