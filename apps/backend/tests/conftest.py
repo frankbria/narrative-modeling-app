@@ -35,6 +35,8 @@ async def setup_database(request):
     from app.models.batch_job import BatchJob
     from app.models.ml_model import MLModel
     from app.models.revised_data import RevisedData
+    from app.models.dataset import DatasetMetadata
+    from app.models.version import DatasetVersion, TransformationLineage
 
     # Create a test database client
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
@@ -52,7 +54,10 @@ async def setup_database(request):
             ABTest,
             BatchJob,
             MLModel,
-            RevisedData
+            RevisedData,
+            DatasetMetadata,
+            DatasetVersion,
+            TransformationLineage
         ],
     )
 
@@ -71,6 +76,9 @@ async def setup_database(request):
         await BatchJob.find().delete()
         await MLModel.find().delete()
         await RevisedData.find().delete()
+        await DatasetMetadata.find().delete()
+        await DatasetVersion.find().delete()
+        await TransformationLineage.find().delete()
     except Exception as e:
         print(f"Error during cleanup: {e}")
     finally:
