@@ -82,17 +82,19 @@ class TransformationService:
         dataset_id: str
     ) -> List[TransformationConfig]:
         """
-        List all transformation configurations for a dataset.
+        List all transformation configurations for a dataset, sorted chronologically.
+
+        Optimization: Uses compound index (dataset_id, created_at).
 
         Args:
             dataset_id: Dataset identifier
 
         Returns:
-            List of TransformationConfig instances
+            List of TransformationConfig instances sorted by created_at descending
         """
         return await TransformationConfig.find(
             TransformationConfig.dataset_id == dataset_id
-        ).to_list()
+        ).sort(-TransformationConfig.created_at).to_list()
 
     async def add_transformation_step(
         self,
@@ -222,15 +224,17 @@ class TransformationService:
         dataset_id: str
     ) -> List[TransformationConfig]:
         """
-        Get all applied transformation configurations for a dataset.
+        Get all applied transformation configurations for a dataset, sorted chronologically.
+
+        Optimization: Uses compound index (dataset_id, is_applied, created_at).
 
         Args:
             dataset_id: Dataset identifier
 
         Returns:
-            List of applied TransformationConfig instances
+            List of applied TransformationConfig instances sorted by created_at descending
         """
         return await TransformationConfig.find(
             TransformationConfig.dataset_id == dataset_id,
             TransformationConfig.is_applied == True
-        ).to_list()
+        ).sort(-TransformationConfig.created_at).to_list()
