@@ -61,6 +61,7 @@ from app.api.routes import (
     cache,
     transformations,
     versions,
+    datasets,
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
@@ -242,6 +243,11 @@ app.include_router(
     versions.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["versioning"],
+)
+app.include_router(
+    datasets.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["datasets"],
 )
 
 
