@@ -11,7 +11,8 @@ import time
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.schemas.transformation import (
-    TransformationRequest,
+    TransformationPreviewRequest,
+    TransformationApplyRequest,
     TransformationPreviewResponse,
     TransformationApplyResponse,
     TransformationPipelineRequest,
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 @router.post("/preview", response_model=TransformationPreviewResponse)
 async def preview_transformation(
-    request: TransformationRequest,
+    request: TransformationPreviewRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Preview a transformation on a subset of data"""
@@ -93,7 +94,7 @@ async def preview_transformation(
 
 @router.post("/apply", response_model=TransformationApplyResponse)
 async def apply_transformation(
-    request: TransformationRequest,
+    request: TransformationApplyRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Apply a transformation to the full dataset"""

@@ -134,18 +134,69 @@ docker compose up
 
 ### Backend (.env or apps/backend/.env)
 ```env
+# Database & Storage
 MONGODB_URI=mongodb://admin:localpassword@localhost:27017/narrative_modeling?authSource=admin
 AWS_ENDPOINT_URL=http://localhost:4566
 S3_BUCKET_NAME=narrative-modeling-local
+
+# AI Services
 OPENAI_API_KEY=your-key
-CLERK_SECRET_KEY=your-key
+
+# Authentication (NextAuth)
+NEXTAUTH_SECRET=any-32-character-string-for-dev  # Generate with: openssl rand -base64 32
+SKIP_AUTH=true  # Development mode - bypasses OAuth
 ```
 
 ### Frontend (apps/frontend/.env.local)
 ```env
+# API Configuration
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-key
+
+# NextAuth Configuration
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=any-32-character-string-for-dev
+SKIP_AUTH=true  # Development mode - bypasses OAuth
+NEXT_PUBLIC_SKIP_AUTH=true
+
+# OAuth Providers (use dummy values in skip auth mode)
+GOOGLE_CLIENT_ID=dummy-google-client-id
+GOOGLE_CLIENT_SECRET=dummy-google-client-secret
+GITHUB_ID=dummy-github-id
+GITHUB_SECRET=dummy-github-secret
+
+# MongoDB (optional in skip auth mode)
+MONGODB_URI=mongodb://localhost:27017/narrative-modeling
 ```
+
+## Authentication Setup
+
+### Development Mode (SKIP_AUTH)
+For local development without OAuth setup, use `SKIP_AUTH=true` as shown above. You can sign in with any email (e.g., dev@example.com) and all API calls will use "dev-user-default" as the user ID.
+
+### Production Mode (Real OAuth)
+When ready for production authentication:
+
+1. **Set up OAuth Apps**:
+   - **Google**: [Google Cloud Console](https://console.cloud.google.com) → Create OAuth 2.0 credentials
+     - Redirect URI: `http://localhost:3000/api/auth/callback/google` (dev)
+   - **GitHub**: [GitHub Settings](https://github.com/settings/developers) → New OAuth App
+     - Callback URL: `http://localhost:3000/api/auth/callback/github` (dev)
+
+2. **Update Environment Variables**:
+   ```env
+   SKIP_AUTH=false  # or remove entirely
+   GOOGLE_CLIENT_ID=your-real-google-client-id
+   GOOGLE_CLIENT_SECRET=your-real-google-client-secret
+   GITHUB_ID=your-real-github-id
+   GITHUB_SECRET=your-real-github-secret
+   ```
+
+3. **Generate Secure Secret**:
+   ```bash
+   openssl rand -base64 32
+   ```
+
+⚠️ **NEVER use SKIP_AUTH in production!**
 
 ## VS Code Setup
 

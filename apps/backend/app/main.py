@@ -32,8 +32,13 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
+from app.middleware.api_version import APIVersionMiddleware
+from app.middleware.metrics import MetricsMiddleware, get_metrics
+from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
+    health,
     user_data,
     analytics_result,
     plot,
@@ -55,7 +60,10 @@ from app.api.routes import (
     onboarding,
     cache,
     transformations,
+    versions,
+    datasets,
 )
+from app.services.api_documentation import APIDocumentationService
 from app.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.models.user_data import UserData
@@ -67,6 +75,8 @@ from app.models.ml_model import MLModel
 from app.models.api_key import APIKey
 from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
+from app.models.dataset import DatasetMetadata
+from app.models.version import DatasetVersion, TransformationLineage
 from app.services.transformation_service.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -80,16 +90,19 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData, 
-                         AnalyticsResult, 
-                         Plot, 
-                         TrainedModel, 
-                         ColumnStats, 
-                         MLModel, 
-                         APIKey, 
-                         ABTest, 
-                         BatchJob, 
-                         TransformationRecipe, 
+        document_models=[UserData,
+                         AnalyticsResult,
+                         Plot,
+                         TrainedModel,
+                         ColumnStats,
+                         MLModel,
+                         APIKey,
+                         ABTest,
+                         BatchJob,
+                         DatasetMetadata,
+                         DatasetVersion,
+                         TransformationLineage,
+                         TransformationRecipe,
                          RecipeExecutionHistory],
     )
 
@@ -113,6 +126,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Initialize API documentation service
+# Note: Don't override app.openapi() as it causes recursion.
+# The enhanced spec is available at /api/v1/docs/openapi.json
+doc_service = APIDocumentationService(app)
+
 # ✅ Apply CORS to the correct app instance
 app.add_middleware(
     CORSMiddleware,
@@ -122,7 +140,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Apply API versioning middleware
+app.add_middleware(APIVersionMiddleware)
+
+# ✅ Apply Prometheus metrics middleware
+app.add_middleware(MetricsMiddleware)
+
 # ✅ Include routers
+# Health check routes at root level (no version prefix)
+app.include_router(health.router, tags=["health"])
+
 app.include_router(
     upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
 )
@@ -212,8 +239,134 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}/transformations",
     tags=["transformations"],
 )
+app.include_router(
+    versions.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["versioning"],
+)
+app.include_router(
+    datasets.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["datasets"],
+)
 
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Narrative Modeling API"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+
+    Returns metrics in Prometheus text exposition format for scraping.
+    """
+    return Response(content=get_metrics(), media_type=CONTENT_TYPE_LATEST)
+
+
+# API Documentation endpoints
+@app.get(f"{settings.API_V1_STR}/docs/openapi.json", tags=["documentation"])
+async def get_enhanced_openapi():
+    """
+    Get enhanced OpenAPI specification with security schemes and examples.
+
+    Returns the complete API specification including:
+    - All endpoints with request/response schemas
+    - Authentication schemes (JWT Bearer, API Key)
+    - Error response examples
+    - Comprehensive descriptions and metadata
+    """
+    return doc_service.generate_openapi_spec()
+
+
+@app.get(f"{settings.API_V1_STR}/docs/openapi.yaml", tags=["documentation"])
+async def get_enhanced_openapi_yaml():
+    """
+    Get enhanced OpenAPI specification in YAML format.
+
+    Returns the same specification as the JSON endpoint but in YAML format
+    for better readability and certain tooling compatibility.
+    """
+    import yaml
+    spec = doc_service.generate_openapi_spec()
+    yaml_content = yaml.dump(spec, default_flow_style=False, sort_keys=False)
+    return Response(content=yaml_content, media_type="application/x-yaml")
+
+
+@app.get(f"{settings.API_V1_STR}/docs/clients/{{language}}", tags=["documentation"])
+async def get_client_library(language: str):
+    """
+    Get client library code for the specified language.
+
+    Supported languages:
+    - python: Complete Python client with authentication and error handling
+    - javascript: JavaScript/TypeScript client for Node.js and browsers
+    - curl: cURL examples for all major endpoints
+
+    Args:
+        language: Programming language for the client library
+
+    Returns:
+        Source code for the client library
+
+    Raises:
+        404: If the language is not supported
+    """
+    from fastapi import HTTPException
+
+    libraries = doc_service.generate_client_libraries()
+    if language not in libraries:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Language '{language}' not supported. Available: {', '.join(libraries.keys())}"
+        )
+    return Response(content=libraries[language], media_type="text/plain")
+
+
+@app.get(f"{settings.API_V1_STR}/docs/integrations/{{framework}}", tags=["documentation"])
+async def get_integration_example(framework: str):
+    """
+    Get integration example for the specified framework.
+
+    Supported frameworks:
+    - jupyter: Jupyter notebook integration example
+    - colab: Google Colab integration example
+    - streamlit: Streamlit app integration example
+    - flask: Flask application integration example
+
+    Args:
+        framework: Framework for the integration example
+
+    Returns:
+        Source code for the integration example
+
+    Raises:
+        404: If the framework is not supported
+    """
+    from fastapi import HTTPException
+
+    examples = doc_service.generate_integration_examples()
+    if framework not in examples:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Framework '{framework}' not supported. Available: {', '.join(examples.keys())}"
+        )
+    return Response(content=examples[framework], media_type="text/plain")
+
+
+@app.get(f"{settings.API_V1_STR}/docs/postman", tags=["documentation"])
+async def get_postman_collection():
+    """
+    Get Postman collection for API testing.
+
+    Returns a complete Postman collection including:
+    - All API endpoints with examples
+    - Authentication configuration
+    - Environment variables
+    - Pre-request scripts for token management
+
+    The collection can be imported directly into Postman for interactive testing.
+    """
+    return doc_service.generate_postman_collection()
