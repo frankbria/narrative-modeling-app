@@ -9,6 +9,7 @@ from app.models.user_data import UserData
 from tests.conftest import setup_database
 
 
+@pytest.mark.integration
 class TestChunkedUploadHandler:
     """Test cases for chunked upload functionality"""
     
