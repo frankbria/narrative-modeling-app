@@ -28,18 +28,30 @@ jobs:
         working-directory: apps/backend
         run: uv sync
 
+      - name: Verify Docker Compose
+        run: docker compose version
+
       - name: Start test services
         working-directory: apps/backend
         run: docker compose -f docker-compose.test.yml up -d
 
       - name: Wait for services to be ready
         run: |
-          echo "Waiting for MongoDB..."
-          timeout 60 bash -c 'until docker exec narrative-mongodb-test mongosh --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 2; done'
-          echo "Waiting for Redis..."
-          timeout 60 bash -c 'until docker exec narrative-redis-test redis-cli ping > /dev/null 2>&1; do sleep 2; done'
-          echo "Waiting for LocalStack..."
-          timeout 60 bash -c 'until curl -f http://localhost:4566/_localstack/health > /dev/null 2>&1; do sleep 2; done'
+          echo "Checking service containers..."
+          docker ps -a
+
+          echo "Waiting for MongoDB to be healthy..."
+          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-mongodb-test 2>/dev/null)" == "healthy" ]; do echo "MongoDB: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-mongodb-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          echo "MongoDB is healthy!"
+
+          echo "Waiting for Redis to be healthy..."
+          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-redis-test 2>/dev/null)" == "healthy" ]; do echo "Redis: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-redis-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          echo "Redis is healthy!"
+
+          echo "Waiting for LocalStack to be healthy..."
+          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-localstack-test 2>/dev/null)" == "healthy" ]; do echo "LocalStack: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-localstack-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          echo "LocalStack is healthy!"
+
           echo "All services ready!"
 
       - name: Run integration tests with coverage
@@ -87,6 +99,21 @@ jobs:
           name: integration-test-results
           path: apps/backend/test-results/
           retention-days: 30
+
+      - name: Debug service logs on failure
+        if: failure()
+        run: |
+          echo "=== Container Status ==="
+          docker ps -a
+          echo ""
+          echo "=== MongoDB Logs ==="
+          docker logs narrative-mongodb-test --tail 100 || echo "MongoDB container not found"
+          echo ""
+          echo "=== Redis Logs ==="
+          docker logs narrative-redis-test --tail 100 || echo "Redis container not found"
+          echo ""
+          echo "=== LocalStack Logs ==="
+          docker logs narrative-localstack-test --tail 100 || echo "LocalStack container not found"
 
       - name: Stop test services
         if: always()
