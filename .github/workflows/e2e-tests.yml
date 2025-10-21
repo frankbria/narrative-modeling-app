@@ -40,6 +40,12 @@ jobs:
         env:
           CI: true
           SKIP_AUTH: true  # Use auth bypass in CI for now
+          NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
+          NEXTAUTH_URL: http://localhost:3000
+          GOOGLE_CLIENT_ID: dummy-client-id
+          GOOGLE_CLIENT_SECRET: dummy-client-secret
+          GITHUB_ID: dummy-client-id
+          GITHUB_SECRET: dummy-client-secret
 
       - name: Upload test results
         if: failure()
