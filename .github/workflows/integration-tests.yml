@@ -41,15 +41,30 @@ jobs:
           docker ps -a
 
           echo "Waiting for MongoDB to be healthy..."
-          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-mongodb-test 2>/dev/null)" == "healthy" ]; do echo "MongoDB: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-mongodb-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          timeout 120 bash -c 'while true; do
+            status=$(docker inspect --format="{{.State.Health.Status}}" narrative-mongodb-test 2>/dev/null || echo "not found")
+            echo "MongoDB: $status"
+            if [ "$status" == "healthy" ]; then break; fi
+            sleep 2
+          done'
           echo "MongoDB is healthy!"
 
           echo "Waiting for Redis to be healthy..."
-          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-redis-test 2>/dev/null)" == "healthy" ]; do echo "Redis: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-redis-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          timeout 120 bash -c 'while true; do
+            status=$(docker inspect --format="{{.State.Health.Status}}" narrative-redis-test 2>/dev/null || echo "not found")
+            echo "Redis: $status"
+            if [ "$status" == "healthy" ]; then break; fi
+            sleep 2
+          done'
           echo "Redis is healthy!"
 
           echo "Waiting for LocalStack to be healthy..."
-          timeout 120 bash -c 'until [ "$(docker inspect --format=\"{{.State.Health.Status}}\" narrative-localstack-test 2>/dev/null)" == "healthy" ]; do echo "LocalStack: $(docker inspect --format=\"{{.State.Health.Status}}\" narrative-localstack-test 2>/dev/null || echo \"not found\")"; sleep 2; done'
+          timeout 120 bash -c 'while true; do
+            status=$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null || echo "not found")
+            echo "LocalStack: $status"
+            if [ "$status" == "healthy" ]; then break; fi
+            sleep 2
+          done'
           echo "LocalStack is healthy!"
 
           echo "All services ready!"
