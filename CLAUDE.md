@@ -75,14 +75,9 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 4. Frontend displays results with visualizations
 
 ## Current Stage
-**Sprint 11 Complete** ✅ - Data model refactoring and performance benchmarking fully implemented. UserData split into focused domain models (DatasetMetadata, TransformationConfig, ModelConfig). Service layer integration completed (Story 11.1B) with DatasetService, TransformationService, and ModelService. Data versioning foundation with lineage tracking. Comprehensive migration testing infrastructure. Performance benchmarks established for all operations. All 37 story points delivered with 100% test pass rate (214 tests passing).
+**Sprint 11 Complete** ✅ | **Sprint 12 Ready** 🟢
 
-**Sprint 12 Ready** 🟢 - Service layer complete, Sprint 12 unblocked. Ready for API integration, data versioning API, and performance optimization.
-
-Previous Sprints:
-- Sprint 10: Monitoring, metrics, and production deployment docs
-- Sprint 9: E2E testing infrastructure
-- Sprint 8: Resilience patterns, circuit breakers, and API versioning
+See `apps/backend/docs/SPRINTS.md` for detailed sprint history.
 
 ## MCP Server Setup
 This project includes a custom MCP server for advanced data processing. To use it with Claude Desktop:
@@ -113,29 +108,13 @@ Additional recommended MCP servers:
 
 ## Feature Development Quality Standards
 
-**CRITICAL**: All new features MUST meet the following mandatory requirements before being considered complete.
+**CRITICAL**: All new features MUST meet mandatory requirements. See `apps/backend/docs/TEST_STANDARDS.md` for complete testing standards.
 
-### Testing Requirements
+### Quick Reference
 
-- **Minimum Coverage**: 85% code coverage ratio required for all new code
-- **Test Pass Rate**: 100% - all tests must pass, no exceptions
-- **Test Types Required**:
-  - Unit tests for all business logic and services
-  - Integration tests for API endpoints
-  - End-to-end tests for critical user workflows
-- **Coverage Validation**: Run coverage reports before marking features complete:
-  ```bash
-  # Backend
-  cd apps/backend && uv run pytest --cov=app tests/ --cov-report=term-missing
-  
-  # Frontend
-  cd apps/frontend && npm run test:coverage
-  
-  # MCP
-  cd apps/mcp && uv run pytest --cov=app tests/ --cov-report=term-missing
-  ```
-- **Test Quality**: Tests must validate behavior, not just achieve coverage metrics
-- **Test Documentation**: Complex test scenarios must include comments explaining the test strategy
+- **Coverage**: 85% minimum, 100% test pass rate
+- **Test Types**: Unit, integration, E2E for critical workflows
+- **Commands**: See TEST_STANDARDS.md for full testing commands
 
 ### Git Workflow Requirements
 
