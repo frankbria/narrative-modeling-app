@@ -153,7 +153,13 @@ class VersioningService:
         )
 
         if existing_version:
-            logger.info(f"Duplicate content detected, returning existing version {existing_version.version_id}")
+            logger.info(f"Duplicate content detected, updating existing version {existing_version.version_id} with new metadata")
+
+            # Update description if provided
+            if description:
+                existing_version.description = description
+                await existing_version.save()
+
             # Still create lineage to track this transformation
             lineage = await self._create_lineage(
                 parent_version=parent_version,
