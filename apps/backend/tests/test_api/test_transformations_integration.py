@@ -18,7 +18,6 @@ from app.models.user_data import UserData
 from app.services.transformation_service.recipe_manager import TransformationRecipe
 from app.schemas.transformation import (
     TransformationType,
-    TransformationRequest,
     TransformationPipelineRequest,
     TransformationStepRequest,
     RecipeCreateRequest,

@@ -240,10 +240,17 @@ class TransformationLineage(Document):
         return v
 
     def calculate_data_loss(self) -> float:
-        """Calculate data loss percentage."""
+        """Calculate data loss percentage.
+
+        Returns percentage of rows lost. If rows were added (rows_after > rows_before),
+        returns 0.0 as no data was lost.
+        """
         if self.rows_before == 0:
             return 0.0
         rows_lost = self.rows_before - self.rows_after
+        # If rows were added, no data was lost
+        if rows_lost < 0:
+            return 0.0
         return (rows_lost / self.rows_before) * 100
 
     def mark_completed(self) -> None:
