@@ -1,10 +1,10 @@
 name: Integration Tests
 
 on:
-  schedule:
-    # Run nightly at 2 AM UTC
-    - cron: '0 2 * * *'
-  workflow_dispatch:  # Allow manual triggering
+  # schedule:
+  #   # Run nightly at 2 AM UTC - DISABLED (not in production yet)
+  #   - cron: '0 2 * * *'
+  workflow_dispatch:  # Manual triggering only (production not active)
 
 jobs:
   integration-tests:
