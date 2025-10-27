@@ -25,8 +25,8 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          # Auth for Claude itself
-          claude_code_oauth_token: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Auth for Claude itself (OAuth token from https://console.anthropic.com)
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # Auth for GitHub (this is what lets gh comment without 'gh auth login')
           github_token: ${{ secrets.GITHUB_TOKEN }}
