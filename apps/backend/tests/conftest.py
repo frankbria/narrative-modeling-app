@@ -508,6 +508,32 @@ def mock_dataset_id() -> str:
     return "test_dataset_123"
 
 
+@pytest_asyncio.fixture
+async def mock_s3_client():
+    """Mock S3 client for versioning service tests."""
+    from unittest.mock import MagicMock, AsyncMock
+    from app.services.versioning_service import versioning_service
+
+    # Create mock S3 client
+    mock_client = MagicMock()
+    mock_client.put_object = MagicMock(return_value={'ETag': '"mock-etag"'})
+    mock_client.get_object = MagicMock(return_value={
+        'Body': MagicMock(read=MagicMock(return_value=b"id,value,category\n1,10.5,A\n2,20.3,B"))
+    })
+    mock_client.delete_object = MagicMock(return_value={})
+
+    # Store original S3 client
+    original_client = versioning_service.s3_client
+
+    # Replace with mock
+    versioning_service.s3_client = mock_client
+
+    yield mock_client
+
+    # Restore original client
+    versioning_service.s3_client = original_client
+
+
 @pytest.fixture
 def authorized_client():
     """Create an authorized test client for the FastAPI application."""
