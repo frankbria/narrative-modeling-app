@@ -40,15 +40,6 @@ jobs:
           echo "Checking service containers..."
           docker ps -a
 
-          echo "Waiting for MongoDB to be healthy..."
-          timeout 120 bash -c 'while true; do
-            status=$(docker inspect --format="{{.State.Health.Status}}" narrative-mongodb-test 2>/dev/null || echo "not found")
-            echo "MongoDB: $status"
-            if [ "$status" == "healthy" ]; then break; fi
-            sleep 2
-          done'
-          echo "MongoDB is healthy!"
-
           echo "Waiting for Redis to be healthy..."
           timeout 120 bash -c 'while true; do
             status=$(docker inspect --format="{{.State.Health.Status}}" narrative-redis-test 2>/dev/null || echo "not found")
@@ -68,6 +59,7 @@ jobs:
           echo "LocalStack is healthy!"
 
           echo "All services ready!"
+          echo "Note: MongoDB connection uses Atlas (configured via secrets)"
 
       - name: Run integration tests with coverage
         working-directory: apps/backend
@@ -80,8 +72,10 @@ jobs:
             --cov-report=xml \
             --cov-report=term-missing
         env:
-          TEST_MONGODB_URI: mongodb://localhost:27018
-          TEST_MONGODB_DB: narrative_test
+          TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          TEST_MONGODB_DB: ${{ secrets.TEST_MONGODB_DB }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB: ${{ secrets.MONGODB_DB }}
           TEST_REDIS_URL: redis://localhost:6380/0
           S3_ENDPOINT_URL: http://localhost:4566
           AWS_ACCESS_KEY_ID: test
@@ -121,14 +115,13 @@ jobs:
           echo "=== Container Status ==="
           docker ps -a
           echo ""
-          echo "=== MongoDB Logs ==="
-          docker logs narrative-mongodb-test --tail 100 || echo "MongoDB container not found"
-          echo ""
           echo "=== Redis Logs ==="
           docker logs narrative-redis-test --tail 100 || echo "Redis container not found"
           echo ""
           echo "=== LocalStack Logs ==="
           docker logs narrative-localstack-test --tail 100 || echo "LocalStack container not found"
+          echo ""
+          echo "Note: MongoDB uses Atlas (not containerized)"
 
       - name: Stop test services
         if: always()

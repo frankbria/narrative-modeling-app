@@ -26,7 +26,7 @@ Comprehensive testing guide for the Narrative Modeling App covering unit tests, 
 The Narrative Modeling App uses a comprehensive three-tier testing strategy:
 
 1. **Unit Tests**: Fast, isolated tests without external dependencies (Backend: Python/pytest, Frontend: TypeScript/Jest)
-2. **Integration Tests**: Tests with real service dependencies (MongoDB, Redis, S3, OpenAI)
+2. **Integration Tests**: Tests with real service dependencies (MongoDB Atlas, Redis, S3, OpenAI)
 3. **E2E Tests**: Full user workflow tests with Playwright across multiple browsers
 
 ### Test Coverage Goals
@@ -650,19 +650,25 @@ The testing pipeline consists of three workflows that run automatically:
 - Docker Compose for services
 
 **Service Setup**:
-1. MongoDB (port 27018)
-2. Redis (port 6380)
-3. LocalStack S3 (port 4566)
+1. Redis (port 6380)
+2. LocalStack S3 (port 4566)
+
+**Note**: MongoDB is accessed via MongoDB Atlas (cloud-hosted) and is not part of Docker Compose setup.
 
 **Health Checks** (60s timeout each):
-- MongoDB: `mongosh --eval "db.adminCommand('ping')"`
 - Redis: `redis-cli ping`
 - LocalStack: `curl http://localhost:4566/_localstack/health`
+- MongoDB: Connection validated during test execution (Atlas)
 
 **Environment Variables**:
 ```bash
-TEST_MONGODB_URI=mongodb://localhost:27018
-TEST_MONGODB_DB=narrative_test
+# MongoDB Atlas connection (from GitHub Secrets)
+TEST_MONGODB_URI=${{ secrets.TEST_MONGODB_URI }}
+TEST_MONGODB_DB=${{ secrets.TEST_MONGODB_DB }}
+MONGODB_URI=${{ secrets.MONGODB_URI }}
+MONGODB_DB=${{ secrets.MONGODB_DB }}
+
+# Local Docker services
 TEST_REDIS_URL=redis://localhost:6380/0
 S3_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
@@ -753,15 +759,16 @@ assert isinstance(exc_info.value.__cause__, CircuitBreakerOpen)
 ### Backend Integration Test Issues
 
 #### MongoDB Connection Issues
+MongoDB uses Atlas (cloud-hosted), not Docker. If you experience connection issues:
 ```bash
-# Check if MongoDB is running
-docker ps | grep mongo
+# Verify TEST_MONGODB_URI environment variable is set correctly
+echo $TEST_MONGODB_URI
 
-# Check MongoDB logs
-docker logs narrative-mongodb-test
-
-# Test connection
-mongosh --host localhost --port 27018
+# Common issues:
+# 1. Invalid credentials in connection string
+# 2. IP not whitelisted in Atlas (allow 0.0.0.0/0 for testing)
+# 3. Network connectivity issues
+# 4. Database name mismatch
 ```
 
 #### Redis Connection Issues
