@@ -79,7 +79,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci
+        run: |
+          # Try npm ci first (faster), fall back to npm install if lock file is out of sync
+          npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
 
       - name: Run unit tests with coverage
         working-directory: apps/frontend

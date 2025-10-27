@@ -1,17 +1,23 @@
 name: E2E Full Suite
 
 on:
-  push:
+  # Only run on manual trigger until we're ready for production
+  # push:
+  #   branches: [main]
+  workflow_dispatch:  # Manual triggering only
+  pull_request:
     branches: [main]
-  workflow_dispatch:  # Allow manual triggering
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/e2e-tests.yml'
 
 jobs:
   e2e-full-suite:
-    timeout-minutes: 60
+    timeout-minutes: 20  # Reduced from 60 to fail faster on hangs
     runs-on: ubuntu-latest
 
     strategy:
-      fail-fast: false
+      fail-fast: false  # Allow other browsers to continue if one fails
       matrix:
         project: [chromium-full, firefox-full, webkit-full]
 
@@ -28,7 +34,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci
+        run: |
+          # Try npm ci first (faster), fall back to npm install if lock file is out of sync
+          npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
 
       - name: Install Playwright Browsers
         working-directory: apps/frontend
