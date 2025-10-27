@@ -20,7 +20,7 @@ jobs:
       fail-fast: false  # Allow other browsers to continue if one fails
       matrix:
         project: [chromium-full, firefox-full, webkit-full]
-        shard: [1/2, 2/2]  # Split each browser into 2 shards for faster execution
+        shard: [1/3, 2/3, 3/3]  # Split each browser into 3 shards for faster execution
 
     steps:
       - name: Checkout code
