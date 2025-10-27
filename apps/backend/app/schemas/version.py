@@ -14,6 +14,8 @@ from app.models.version import TransformationStep
 class TransformationStepResponse(BaseModel):
     """Response model for transformation step."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     step_type: str
     parameters: Dict[str, Any] = Field(default_factory=dict)
     affected_columns: List[str] = Field(default_factory=list)
@@ -73,6 +75,8 @@ class DatasetVersionCreate(BaseModel):
 
 class LineageResponse(BaseModel):
     """Response model for transformation lineage."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     lineage_id: str
     parent_version_id: str
