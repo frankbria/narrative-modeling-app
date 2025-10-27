@@ -29,10 +29,14 @@ Future phases will include:
 narrative-modeling-app/
 ├── apps/
 │   ├── frontend/         # Next.js + Tailwind UI
-│   └── backend/          # FastAPI backend for orchestrating modeling
+│   ├── backend/          # FastAPI backend for ML orchestration
+│   └── mcp/              # MCP server for advanced data processing
 ├── ml/                   # Python modeling scripts & training logic
 ├── shared/               # Shared types, constants, and utilities
-├── .github/              # GitHub Actions / CI setup
+├── infrastructure/       # Infrastructure as code (deployment configs)
+├── scripts/              # Utility scripts for development
+├── docs/                 # Project documentation
+├── .github/              # GitHub Actions / CI workflows
 ├── README.md
 └── .gitignore
 ```
@@ -70,9 +74,13 @@ npm run dev
 ```
 
 ### Environment Setup:
-- Backend: Copy `.env.example` to `.env` and configure
-- Frontend: Copy `.env.local.example` to `.env.local` and configure
-- For development: Set `SKIP_AUTH=true` to bypass authentication
+- **Backend**: Copy `.env.example` to `.env` and configure
+  - MongoDB Atlas connection required (no local MongoDB needed)
+  - Set `MONGODB_URI` to your Atlas connection string
+  - Configure AWS S3 credentials for file storage
+- **Frontend**: Copy `.env.local.example` to `.env.local` and configure
+  - Set `NEXT_PUBLIC_API_URL` to backend URL
+- **Development**: Set `SKIP_AUTH=true` to bypass authentication
 
 ---
 
