@@ -47,6 +47,10 @@ jobs:
           echo "Installing only $BROWSER browser for this job"
           npx playwright install --with-deps $BROWSER
 
+      - name: Set shard identifier
+        id: shard
+        run: echo "id=$(echo '${{ matrix.shard }}' | tr '/' '-')" >> $GITHUB_OUTPUT
+
       - name: Run E2E Full Suite
         working-directory: apps/frontend
         run: npm run test:e2e:full -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
@@ -64,7 +68,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.project }}-shard-${{ replace(matrix.shard, '/', '-') }}
+          name: test-results-${{ matrix.project }}-shard-${{ steps.shard.outputs.id }}
           path: apps/frontend/test-results/
           retention-days: 30
 
@@ -72,6 +76,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}-shard-${{ replace(matrix.shard, '/', '-') }}
+          name: playwright-report-${{ matrix.project }}-shard-${{ steps.shard.outputs.id }}
           path: apps/frontend/playwright-report/
           retention-days: 30
