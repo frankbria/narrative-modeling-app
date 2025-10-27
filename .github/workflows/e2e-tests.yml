@@ -39,9 +39,13 @@ jobs:
           # Try npm ci first (faster), fall back to npm install if lock file is out of sync
           npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
 
-      - name: Install Playwright Browsers
+      - name: Install Playwright Browser
         working-directory: apps/frontend
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: |
+          # Extract browser name from project (e.g., chromium-full -> chromium)
+          BROWSER=$(echo "${{ matrix.project }}" | sed 's/-full$//')
+          echo "Installing only $BROWSER browser for this job"
+          npx playwright install --with-deps $BROWSER
 
       - name: Run E2E Full Suite
         working-directory: apps/frontend
