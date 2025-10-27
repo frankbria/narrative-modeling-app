@@ -1,6 +1,6 @@
 # Integration Tests
 
-This directory contains integration tests that require real service dependencies (MongoDB, Redis, S3, OpenAI).
+This directory contains integration tests that require real service dependencies (MongoDB Atlas, Redis, S3, OpenAI).
 
 > **📚 For comprehensive testing documentation covering all test types, CI/CD workflows, and best practices, see [Testing Guide](/docs/testing/guide.md)**
 
@@ -16,9 +16,10 @@ docker-compose -f docker-compose.test.yml up -d
 ```
 
 This will start:
-- MongoDB on port 27018
 - Redis on port 6380
 - LocalStack (S3) on port 4566
+
+**Note**: MongoDB is accessed via MongoDB Atlas (cloud-hosted) and is not part of the Docker Compose setup. Integration tests connect directly to the Atlas test database using `TEST_MONGODB_URI` environment variable.
 
 Stop the services when done:
 
@@ -29,7 +30,7 @@ docker-compose -f docker-compose.test.yml down
 ### Manual Setup
 
 If you prefer not to use Docker, ensure you have:
-- MongoDB running on `mongodb://localhost:27017` (or configure `TEST_MONGODB_URI`)
+- MongoDB Atlas connection configured via `TEST_MONGODB_URI` (cloud-hosted, no local MongoDB needed)
 - Redis running on port 6379 (or configure `TEST_REDIS_URL`)
 - AWS credentials configured for S3 access (or LocalStack)
 
@@ -38,8 +39,11 @@ If you prefer not to use Docker, ensure you have:
 Configure in `.env` file (or use defaults):
 
 ```bash
-# MongoDB Test Configuration (no authentication for local testing)
-TEST_MONGODB_URI=mongodb://localhost:27018
+# MongoDB Test Configuration (MongoDB Atlas connection)
+# Note: Use MongoDB Atlas connection string for integration tests
+# In CI/CD, this is provided via GitHub Secrets
+# For local development, configure your Atlas test database connection
+TEST_MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/
 TEST_MONGODB_DB=narrative_test
 
 # Redis Test Configuration (no authentication for local testing)
@@ -176,12 +180,15 @@ Each test should be isolated and not depend on the state from other tests:
 ## Troubleshooting
 
 ### MongoDB Connection Issues
+MongoDB uses Atlas (cloud-hosted), not Docker. If you experience connection issues:
 ```bash
-# Check if MongoDB is running
-docker ps | grep mongo
+# Verify your TEST_MONGODB_URI environment variable is set correctly
+echo $TEST_MONGODB_URI
 
-# Check MongoDB logs
-docker logs narrative-mongodb-test
+# Common issues:
+# 1. Invalid credentials in connection string
+# 2. IP not whitelisted in Atlas (allow 0.0.0.0/0 for testing)
+# 3. Network connectivity issues
 ```
 
 ### Redis Connection Issues

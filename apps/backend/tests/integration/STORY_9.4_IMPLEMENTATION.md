@@ -143,14 +143,15 @@ npm run test:e2e -- --project=${{ matrix.browser }}
    ```bash
    docker-compose -f docker-compose.test.yml up -d
    ```
-   - MongoDB (port 27018)
    - Redis (port 6380)
    - LocalStack S3 (port 4566)
 
+   **Note**: MongoDB is accessed via MongoDB Atlas (cloud-hosted) and is not part of Docker Compose setup.
+
 2. **Health Checks** (60s timeout each):
-   - MongoDB: `mongosh --eval "db.adminCommand('ping')"`
    - Redis: `redis-cli ping`
    - LocalStack: `curl http://localhost:4566/_localstack/health`
+   - MongoDB: Connection validated during test execution (Atlas connection)
 
 **Test Execution**:
 ```bash
@@ -165,8 +166,13 @@ PYTHONPATH=. uv run pytest \
 
 **Environment Variables**:
 ```bash
-TEST_MONGODB_URI=mongodb://localhost:27018
-TEST_MONGODB_DB=narrative_test
+# MongoDB Atlas connection (from GitHub Secrets)
+TEST_MONGODB_URI=${{ secrets.TEST_MONGODB_URI }}
+TEST_MONGODB_DB=${{ secrets.TEST_MONGODB_DB }}
+MONGODB_URI=${{ secrets.MONGODB_URI }}
+MONGODB_DB=${{ secrets.MONGODB_DB }}
+
+# Local Docker services
 TEST_REDIS_URL=redis://localhost:6380/0
 S3_ENDPOINT_URL=http://localhost:4566
 AWS_ACCESS_KEY_ID=test
@@ -225,7 +231,7 @@ docker-compose -f docker-compose.test.yml down -v
 
 2. **Nightly Quality Gates**:
    - ✅ Integration tests validate real services
-   - ✅ MongoDB, Redis, S3 integration verified
+   - ✅ MongoDB Atlas, Redis, S3 integration verified
    - ✅ Coverage tracked and reported
    - ✅ Failures reported for investigation
 
@@ -399,10 +405,19 @@ npm run test:e2e
 **Integration Tests**:
 ```bash
 cd apps/backend
+# Start local services (Redis, LocalStack S3)
 docker-compose -f docker-compose.test.yml up -d
+
+# Run tests (MongoDB Atlas connection required via TEST_MONGODB_URI env var)
 PYTHONPATH=. uv run pytest tests/integration/ -v -m integration
+
+# Cleanup
 docker-compose -f docker-compose.test.yml down -v
 ```
+
+**Note**: MongoDB connection requires Atlas credentials. For local testing:
+- Set `TEST_MONGODB_URI` to your Atlas test database connection string
+- Or use GitHub Secrets in CI/CD environment
 
 ### Manual Workflow Triggers
 
