@@ -50,7 +50,7 @@ services:
   # Note: LocalStack uses fake AWS credentials for local testing only
   # These credentials never touch real AWS services
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:3.0.2
     container_name: narrative-localstack-test
     ports:
       - "4566:4566"  # LocalStack edge port
