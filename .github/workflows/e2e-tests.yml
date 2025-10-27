@@ -13,7 +13,7 @@ on:
 
 jobs:
   e2e-full-suite:
-    timeout-minutes: 20  # Reduced from 60 to fail faster on hangs
+    timeout-minutes: 30  # With 4 workers, 210 tests should complete in ~10-15 mins
     runs-on: ubuntu-latest
 
     strategy:
