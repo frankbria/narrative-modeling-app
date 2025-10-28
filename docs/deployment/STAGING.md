@@ -45,8 +45,8 @@ The staging environment serves as a pre-production testing ground for integratio
 |---------|--------|---------|------|--------|
 | **Frontend** | ✅ Running | Next.js | 3010 | https://dev.briaanalytics.com |
 | **Backend** | ✅ Running | FastAPI | 8010 | https://dev.briaanalytics.com/api |
-| **MongoDB** | ✅ Healthy | 7.0 | 27018 | Internal only |
-| **Redis** | ✅ Healthy | 7-alpine | 6381 | Internal only |
+| **MongoDB** | ✅ Healthy | Atlas M0 | - | MongoDB Atlas (managed) |
+| **Redis** | ✅ Healthy | 7-alpine | 6381 | Docker container |
 | **Nginx** | ✅ Running | - | 80/443 | Reverse proxy |
 | **SSL** | ✅ Valid | Let's Encrypt | - | Expires 2026-01-21 |
 
@@ -70,19 +70,18 @@ Nginx (80/443) - dev.briaanalytics.com
     ├─→ Frontend (3010)
     └─→ Backend (8010)
              ↓
-         ┌───┴───┐
-         ↓       ↓
-    MongoDB   Redis
-    (27018)   (6381)
-         ↓
-      AWS S3
+         ┌───┴───┬───────┐
+         ↓       ↓       ↓
+    MongoDB   Redis   AWS S3
+     Atlas   (6381)
+   (managed)
 ```
 
 ### Key Design Decisions
 
 1. **Shared Server**: 47.88.89.175 hosts multiple applications, requiring custom ports
 2. **Backend as Service**: systemd ensures reliability and proper environment variable loading
-3. **Self-Hosted Database**: MongoDB 7.0 runs in Docker for staging environment control
+3. **Managed Database**: MongoDB Atlas provides managed database with automated backups
 4. **SSL Termination**: Nginx handles SSL, internal services use HTTP
 
 ---
@@ -91,72 +90,65 @@ Nginx (80/443) - dev.briaanalytics.com
 
 ### Deployment Strategy
 
-**Staging Environment**: Self-hosted MongoDB 7.0 in Docker
+**Staging Environment**: MongoDB Atlas (Managed Cloud Database)
 
-- **Port**: 27018 (custom to avoid conflicts with other services)
-- **Container**: `narrative-staging-mongodb`
-- **Authentication**: Enabled with separate admin and app users
+- **Tier**: M0 Free Tier (512 MB storage)
+- **Region**: US-based cluster
 - **Database**: `narrative_staging`
-- **Version**: MongoDB 7.0
+- **Cluster Name**: As configured in Atlas
+- **Features**:
+  - Automated backups (available on paid tiers)
+  - Built-in monitoring and alerts
+  - Automatic security patches
+  - High availability with replica sets
 
 ### Connection String
 
-```
-mongodb://narrative_user:${MONGODB_PASSWORD}@localhost:27018/narrative_staging?authSource=admin
-```
+The connection string is stored in `/opt/narrative-modeling-app/staging/.env.staging`:
 
-**Internal (from backend container)**:
-```
-mongodb://narrative_user:${MONGODB_PASSWORD}@mongodb:27017/narrative_staging?authSource=admin
+```bash
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/narrative_staging?retryWrites=true&w=majority
+MONGODB_DB=narrative_staging
 ```
 
-### Users and Access
+**Format**:
+```
+mongodb+srv://username:password@cluster-xxxxx.mongodb.net/narrative_staging?retryWrites=true&w=majority
+```
 
-1. **Admin User**:
-   - Username: `admin`
-   - Password: `${MONGODB_ROOT_PASSWORD}`
-   - Database: `admin`
-   - Roles: Full administrative access
+### Atlas Configuration
 
-2. **Application User**:
-   - Username: `narrative_user`
-   - Password: `${MONGODB_PASSWORD}`
-   - Database: `narrative_staging`
-   - Roles: `readWrite`, `dbAdmin`
+1. **IP Whitelist**:
+   - Staging server IP (47.88.89.175) must be whitelisted in Atlas
+   - Or use "Allow Access from Anywhere" (0.0.0.0/0) for staging
+
+2. **Database User**:
+   - Username and password configured in Atlas
+   - Stored securely in `.env.staging` file
+   - Roles: `readWrite` on `narrative_staging` database
+
+3. **Connection Security**:
+   - TLS/SSL enabled by default with Atlas
+   - Authentication required
+   - Network access controlled via IP whitelist
 
 ### MongoDB Management
 
-**Connect to MongoDB**:
+**Connect via mongosh** (from local machine or server):
 ```bash
-docker exec -it narrative-staging-mongodb mongosh \
-  --username admin \
-  --password "${MONGODB_ROOT_PASSWORD}" \
-  --authenticationDatabase admin
+mongosh "mongodb+srv://<cluster>.mongodb.net/narrative_staging" --username <username>
 ```
 
-**Check Application Database**:
-```javascript
-use narrative_staging
-show collections
-db.stats()
-```
+**Via Atlas Web Interface**:
+- Navigate to https://cloud.mongodb.com
+- Select your cluster
+- Use Collections tab to browse data
+- Use Metrics tab for monitoring
 
-**Backup MongoDB**:
-```bash
-# Create backup directory
-mkdir -p /opt/narrative-modeling-app/backups
-
-# Backup database
-docker exec narrative-staging-mongodb mongodump \
-  --username admin \
-  --password "${MONGODB_ROOT_PASSWORD}" \
-  --authenticationDatabase admin \
-  --out /data/backup
-
-# Copy backup from container
-docker cp narrative-staging-mongodb:/data/backup \
-  /opt/narrative-modeling-app/backups/mongodb-$(date +%Y%m%d-%H%M%S)
-```
+**Backup Strategy**:
+- Atlas M0 tier: Manual exports via Atlas UI
+- Paid tiers: Automated continuous backups
+- Manual backup: Use Atlas "Export Collection" feature
 
 ---
 
@@ -170,8 +162,9 @@ The staging server (47.88.89.175) hosts multiple services. Custom ports avoid co
 |---------|--------------|--------------|--------|
 | Frontend | 3000 | **3010** | Ports 3000-3003 occupied |
 | Backend | 8000 | **8010** | Ports 8000-8001 occupied |
-| MongoDB | 27017 | **27018** | Standard practice |
 | Redis | 6379 | **6381** | Port 6379 occupied |
+
+**Note**: MongoDB runs on Atlas (managed cloud) and does not require a local port.
 
 ### Service Files
 
