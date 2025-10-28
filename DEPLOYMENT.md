@@ -19,20 +19,23 @@ This project follows a 4-stage deployment process to ensure code quality and sta
   - Development experimentation
 - **Status**: Available for dev team use
 
-### Stage 3: Staging Server ⚠️ **HIGH PRIORITY SETUP**
-- **Environment**: 47.88.89.175 (VPS - public IP)
-- **Access**: SSH as root
+### Stage 3: Staging Server ✅ **FULLY DEPLOYED**
+- **Environment**: 47.88.89.175 (dev.briaanalytics.com)
+- **Access**: SSH as narrative-deploy
 - **Purpose**: Integration testing and sprint demonstrations
 - **Usage**:
   - Integration testing
   - Sprint demonstrations
   - QA testing
   - Pre-production validation
-- **Status**: 🚧 **NEEDS SETUP** - See [STAGING_DEPLOYMENT_TODO.md](./STAGING_DEPLOYMENT_TODO.md)
-- **Constraints**:
-  - Server hosts multiple services
-  - Default ports will conflict - custom ports required
-  - Port discovery and allocation needed
+- **Status**: ✅ **FULLY DEPLOYED** - See [docs/deployment/STAGING.md](./docs/deployment/STAGING.md)
+- **Deployed**: October 23, 2025
+- **Details**:
+  - Self-hosted MongoDB 7.0 (port 27018)
+  - Redis 7-alpine (port 6381)
+  - Backend as systemd service (port 8010)
+  - Frontend (port 3010)
+  - SSL via Let's Encrypt
 
 ### Stage 4: Production Deployment
 - **Environment**: Live VPS with production configurations
@@ -47,24 +50,31 @@ This project follows a 4-stage deployment process to ensure code quality and sta
 
 ## Next Steps
 
-### Immediate (Sprint 12)
-1. ⚠️ **HIGH PRIORITY**: Configure staging server (47.88.89.175)
-   - See [STAGING_DEPLOYMENT_TODO.md](./STAGING_DEPLOYMENT_TODO.md) for detailed setup guide
-   - SSH reconnaissance and port discovery
-   - Create deployment configuration
-2. ✅ **COMPLETED**: Fix integration tests in GitHub Actions (CI/CD health checks)
+### Completed ✅
+1. ✅ **DONE**: Staging server fully deployed (47.88.89.175 / dev.briaanalytics.com)
+2. ✅ **DONE**: Fix integration tests in GitHub Actions (CI/CD health checks)
+3. ✅ **DONE**: E2E test infrastructure optimized (13.8 min vs 20+ min timeouts)
 
-### Medium Term (Sprint 13+)
-3. Set up automated deployment pipeline to staging
-4. Configure staging monitoring and logging
-5. Establish smoke test suite for staging deployments
+### Current Sprint
+4. Fix E2E test failures (7 tests) - See Beads issue narrative-modeling-app-30
+5. Set up automated deployment pipeline to staging
+6. Configure staging monitoring and logging
 
-### Long Term
-6. Configure production environment
-7. Set up production monitoring and alerting
-8. Implement blue-green or canary deployment strategy
+### Future
+7. Configure production environment
+8. Set up production monitoring and alerting
+9. Implement blue-green or canary deployment strategy
 
 ---
 
-**Last Updated**: 2025-10-21
+## Documentation
+
+- **Staging Deployment**: [docs/deployment/STAGING.md](./docs/deployment/STAGING.md)
+- **Production Planning**: [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md)
+- **CI Optimization**: [docs/ci/E2E_OPTIMIZATION_2025-10-27.md](./docs/ci/E2E_OPTIMIZATION_2025-10-27.md)
+
+---
+
+**Last Updated**: 2025-10-27
 **Environment**: 4-Stage Deployment Process (Local → Dev → Staging → Production)
+**Staging Status**: ✅ Fully Operational
