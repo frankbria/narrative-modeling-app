@@ -1,22 +1,25 @@
 # Production Deployment Guide
 
+**Last Updated**: 2025-10-27
+**Status**: Pre-Production Planning
+
 ## 🚀 Overview
 
-This guide covers deploying the Narrative Modeling App to production using Docker containers, nginx reverse proxy, and comprehensive monitoring.
+This guide covers deploying the Narrative Modeling App to production using Docker containers, nginx reverse proxy, and comprehensive monitoring. For staging deployment, see [`docs/deployment/STAGING.md`](docs/deployment/STAGING.md).
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │    Nginx    │────│  Frontend   │────│   Backend   │
-│ (Port 80)   │    │ (Port 3000) │    │ (Port 8000) │
+│  (80/443)   │    │ (Port 3000) │    │ (Port 8000) │
 └─────────────┘    └─────────────┘    └─────────────┘
        │                   │                   │
        │                   └───────┬───────────┘
        │                           │
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │   MongoDB   │    │    Redis    │    │ MCP Server  │
-│ (Port 27017)│    │ (Port 6379) │    │(Port 10000) │
+│ Atlas/Docker│    │ (Port 6379) │    │(Port 10000) │
 └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
@@ -27,10 +30,12 @@ This guide covers deploying the Narrative Modeling App to production using Docke
    # Install Docker
    curl -fsSL https://get.docker.com -o get-docker.sh
    sudo sh get-docker.sh
-   
-   # Install Docker Compose
-   sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-   sudo chmod +x /usr/local/bin/docker-compose
+
+   # Install Docker Compose Plugin
+   sudo apt-get install docker-compose-plugin -y
+
+   # Verify installation
+   docker compose version
    ```
 
 2. **Server Requirements**
@@ -39,11 +44,11 @@ This guide covers deploying the Narrative Modeling App to production using Docke
    - OS: Ubuntu 20.04+ or similar Linux distribution
 
 3. **External Services**
-   - MongoDB Atlas (or self-hosted MongoDB)
-   - AWS S3 bucket for file storage
-   - OpenAI API key
-   - Clerk authentication keys
-   - Domain name with SSL certificate
+   - **Database**: MongoDB Atlas OR self-hosted MongoDB 7.0+ (see [MongoDB Deployment Strategy](#mongodb-deployment-strategy))
+   - **Storage**: AWS S3 bucket for file storage
+   - **AI**: OpenAI API key
+   - **Authentication**: NextAuth v5 (Google OAuth, GitHub OAuth)
+   - **Domain**: Domain name with SSL certificate
 
 ## 🔧 Setup Instructions
 
@@ -64,36 +69,114 @@ cp .env.production.example .env.prod
 nano .env.prod
 ```
 
+## MongoDB Deployment Strategy
+
+Choose between MongoDB Atlas (managed) or self-hosted MongoDB based on your needs:
+
+### Option 1: MongoDB Atlas (Recommended for Production)
+
+**Pros**: Fully managed, automated backups, scaling, high availability
+**Cons**: Monthly cost based on usage
+
+```bash
+# Connection string format
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/narrative_production?retryWrites=true&w=majority
+MONGODB_DB=narrative_production
+```
+
+**Setup**:
+1. Create MongoDB Atlas account
+2. Create cluster (M10 or higher for production)
+3. Configure IP whitelist
+4. Create database user
+5. Get connection string
+
+### Option 2: Self-Hosted MongoDB (Used in Staging)
+
+**Pros**: Full control, no per-usage costs
+**Cons**: Requires management, backup setup, monitoring
+
+```bash
+# Connection string format (Docker)
+MONGODB_URI=mongodb://narrative_user:password@mongodb:27017/narrative_production?authSource=admin
+
+# Self-hosted configuration
+MONGODB_ROOT_PASSWORD=strong_root_password
+MONGODB_PASSWORD=strong_app_password
+```
+
+**Recommendation**: Use Atlas for production unless you have dedicated database administration resources. Staging environment successfully runs self-hosted MongoDB 7.0 in Docker.
+
 **Required Environment Variables:**
 
 ```bash
+# ═══════════════════════════════════════
 # Database
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/narrative_modeling
-MONGODB_DB=narrative_modeling
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=your_strong_password
+# ═══════════════════════════════════════
 
+# Option 1: MongoDB Atlas
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/narrative_production?retryWrites=true&w=majority
+MONGODB_DB=narrative_production
+
+# Option 2: Self-Hosted MongoDB
+MONGODB_URI=mongodb://narrative_user:password@mongodb:27017/narrative_production?authSource=admin
+MONGODB_DB=narrative_production
+MONGODB_ROOT_PASSWORD=your_strong_root_password
+MONGODB_PASSWORD=your_strong_app_password
+
+# ═══════════════════════════════════════
 # Redis
-REDIS_URL=redis://redis:6379
+# ═══════════════════════════════════════
+
+REDIS_URL=redis://:password@redis:6379/0
 REDIS_PASSWORD=your_redis_password
 
-# AWS
+# ═══════════════════════════════════════
+# AWS Storage
+# ═══════════════════════════════════════
+
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 AWS_DEFAULT_REGION=us-east-1
-S3_BUCKET=your-bucket-name
+S3_BUCKET_NAME=narrative-production-uploads
 
-# OpenAI
+# ═══════════════════════════════════════
+# AI Services
+# ═══════════════════════════════════════
+
 OPENAI_API_KEY=sk-your-openai-key
 
-# Clerk Auth
-CLERK_SECRET_KEY=sk_live_your_clerk_secret
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_your_clerk_public_key
+# ═══════════════════════════════════════
+# Authentication (NextAuth v5)
+# ═══════════════════════════════════════
 
-# Application
+# NextAuth Configuration
+NEXTAUTH_URL=https://your-domain.com
+NEXTAUTH_SECRET=your_nextauth_secret_64_chars
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# GitHub OAuth
+GITHUB_ID=your_github_client_id
+GITHUB_SECRET=your_github_client_secret
+
+# ═══════════════════════════════════════
+# Backend Configuration
+# ═══════════════════════════════════════
+
+BACKEND_SECRET_KEY=your_backend_secret_key_64_chars
+ALLOWED_ORIGINS=https://your-domain.com
 ENVIRONMENT=production
+LOG_LEVEL=info
+
+# ═══════════════════════════════════════
+# Frontend Configuration
+# ═══════════════════════════════════════
+
 NODE_ENV=production
-NEXT_PUBLIC_API_URL=https://your-domain.com
+NEXT_PUBLIC_API_URL=https://your-domain.com/api
 ```
 
 ### 3. SSL Certificate Setup (Optional but Recommended)
