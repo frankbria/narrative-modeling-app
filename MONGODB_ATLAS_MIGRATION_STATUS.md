@@ -2,6 +2,21 @@
 
 **Date**: 2025-10-27
 **Target**: Staging Environment (47.88.89.175 / dev.briaanalytics.com)
+**Current Status**: ⚠️ **PLANNED - NOT IMPLEMENTED**
+
+---
+
+## ⚠️ Important Note
+
+**This migration is PLANNED but NOT YET IMPLEMENTED on the staging server.**
+
+The staging server (47.88.89.175) currently uses:
+- **Self-hosted MongoDB 7.0** running in Docker (container: `narrative-staging-mongodb`)
+- Port: 27018
+- Status: Healthy, running for 5+ days
+- Connection: `mongodb://narrative_user:PASSWORD@localhost:27018/narrative_staging?authSource=admin`
+
+This document outlines the PLAN for migrating to MongoDB Atlas M0 Free Tier when ready.
 
 ---
 
@@ -9,12 +24,12 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Repository Configuration** | ✅ Complete | `.env.staging.example` updated with Atlas format |
+| **Repository Configuration** | ✅ Complete | `.env.staging.example` updated with Atlas format (for future use) |
 | **Git History Cleanup** | ✅ Complete | Exposed credentials purged from 275 commits |
-| **Documentation** | ✅ Complete | All deployment docs updated |
-| **Server Configuration** | ⏳ Pending | Requires manual SSH access to staging server |
-| **GitHub Secrets** | ⚠️ Action Required | Must update with NEW credentials after rotation |
-| **MongoDB Atlas Setup** | ❓ Unknown | Cluster may exist, credentials need verification |
+| **Documentation** | ⚠️ Revised | Corrected to reflect actual server state (self-hosted) |
+| **Server Configuration** | ❌ Not Started | Server still uses self-hosted MongoDB |
+| **GitHub Secrets** | ✅ Current | Using self-hosted MongoDB connection string |
+| **MongoDB Atlas Setup** | ❌ Not Started | Atlas cluster exists but not actively used |
 
 ---
 

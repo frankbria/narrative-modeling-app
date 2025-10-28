@@ -30,9 +30,9 @@ This project follows a 4-stage deployment process to ensure code quality and sta
   - Pre-production validation
 - **Status**: ✅ **FULLY DEPLOYED** - See [docs/deployment/STAGING.md](./docs/deployment/STAGING.md)
 - **Deployed**: October 23, 2025
-- **Updated**: October 27, 2025 (Migrated to MongoDB Atlas)
+- **Updated**: October 27, 2025 (Nginx auth routing fixed)
 - **Details**:
-  - MongoDB Atlas M0 (managed database)
+  - MongoDB 7.0 (self-hosted in Docker, port 27018)
   - Redis 7-alpine (Docker, port 6381)
   - Backend as systemd service (port 8010)
   - Frontend (port 3010)
