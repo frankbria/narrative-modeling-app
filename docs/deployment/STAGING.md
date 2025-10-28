@@ -458,16 +458,24 @@ npm run build
 - ✅ Environment variables secured (600 permissions)
 - ✅ Auto-renewal for SSL certificates
 
-### Generated Secrets (Secure Storage Required)
+### Secrets Management
 
-**DO NOT COMMIT THESE TO VERSION CONTROL**
+**IMPORTANT**: All secrets are stored securely in `/opt/narrative-modeling-app/staging/.env.staging` on the staging server. These secrets should NEVER be committed to version control.
 
-```
-MONGODB_ROOT_PASSWORD=REDACTED_MONGODB_ROOT_PASSWORD
-MONGODB_PASSWORD=REDACTED_MONGODB_PASSWORD
-REDIS_PASSWORD=REDACTED_REDIS_PASSWORD
-BACKEND_SECRET_KEY=REDACTED_BACKEND_SECRET_KEY
-NEXTAUTH_SECRET=REDACTED_NEXTAUTH_SECRET
+Required secrets:
+- `MONGODB_ROOT_PASSWORD` - MongoDB admin password
+- `MONGODB_PASSWORD` - MongoDB application user password
+- `REDIS_PASSWORD` - Redis authentication password
+- `BACKEND_SECRET_KEY` - FastAPI secret key (64 chars)
+- `NEXTAUTH_SECRET` - NextAuth authentication secret (64 chars)
+
+To generate new secrets if needed:
+```bash
+# Generate strong passwords
+openssl rand -base64 32
+
+# Generate hex keys
+openssl rand -hex 32
 ```
 
 ### Security Best Practices

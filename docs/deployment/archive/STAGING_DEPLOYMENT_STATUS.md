@@ -48,15 +48,12 @@ Successfully created and enabled systemd service at `/etc/systemd/system/narrati
 - Health endpoint responding ✅
 - API authentication working ✅
 
-## Generated Secrets (SECURE THESE!)
+## Generated Secrets
 
-```
-MONGODB_ROOT_PASSWORD=REDACTED_MONGODB_ROOT_PASSWORD
-MONGODB_PASSWORD=REDACTED_MONGODB_PASSWORD
-REDIS_PASSWORD=REDACTED_REDIS_PASSWORD
-BACKEND_SECRET_KEY=REDACTED_BACKEND_SECRET_KEY
-NEXTAUTH_SECRET=REDACTED_NEXTAUTH_SECRET
-```
+**REDACTED - ARCHIVED FILE**
+
+This is an archived file. Secrets have been removed for security.
+Current secrets are stored securely on the staging server at `/opt/narrative-modeling-app/staging/.env.staging`.
 
 ## Access Information
 
