@@ -2,7 +2,20 @@
 
 **Date**: 2025-10-27
 **Server**: 47.88.89.175 (dev.briaanalytics.com)
-**Status**: Repository updated, server configuration pending
+**Status**: ⚠️ **PLANNED - NOT YET IMPLEMENTED**
+
+---
+
+## ⚠️ Important Note
+
+**This migration guide is for FUTURE USE. The staging server currently uses self-hosted MongoDB 7.0 in Docker.**
+
+Current staging configuration:
+- MongoDB 7.0 in Docker (container: `narrative-staging-mongodb`)
+- Port: 27018
+- Connection: `mongodb://narrative_user:PASSWORD@localhost:27018/narrative_staging?authSource=admin`
+
+This guide documents the PLANNED migration to MongoDB Atlas M0 Free Tier when ready.
 
 ---
 
