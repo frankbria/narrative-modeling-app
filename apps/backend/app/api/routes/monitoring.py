@@ -15,6 +15,9 @@ from beanie import PydanticObjectId
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 
+# Create service instance for use in routes
+monitoring_service = PredictionMonitoringService()
+
 
 # Response Models
 class ModelMetricsResponse(BaseModel):
@@ -85,7 +88,7 @@ async def get_model_metrics(
         raise HTTPException(status_code=404, detail="Model not found")
     
     # Get metrics from monitoring service
-    metrics = await PredictionMonitoringService.get_model_metrics(model_id, hours)
+    metrics = await monitoring_service.get_model_metrics(model_id, hours)
     
     return ModelMetricsResponse(
         model_id=model_id,
@@ -113,7 +116,7 @@ async def get_prediction_distribution(
         raise HTTPException(status_code=404, detail="Model not found")
     
     # Get distribution
-    dist_data = await PredictionMonitoringService.get_prediction_distribution(model_id, hours)
+    dist_data = await monitoring_service.get_prediction_distribution(model_id, hours)
     
     # Find most and least common
     most_common = None
@@ -148,7 +151,7 @@ async def check_drift(
         raise HTTPException(status_code=404, detail="Model not found")
     
     # Check drift (simplified version)
-    drift_result = await PredictionMonitoringService.detect_drift(model_id, {})
+    drift_result = await monitoring_service.detect_drift(model_id, {})
     
     return DriftDetectionResponse(
         model_id=model_id,
@@ -179,7 +182,7 @@ async def get_usage_overview(
     model_summaries = []
     
     for model in models:
-        metrics = await PredictionMonitoringService.get_model_metrics(model.model_id, 24)
+        metrics = await monitoring_service.get_model_metrics(model.model_id, 24)
         total_predictions_24h += metrics["total_predictions"]
         
         model_summaries.append({
@@ -229,7 +232,7 @@ async def get_api_key_usage(
         
         # Count requests in last 24h for each model
         for model_id in model_ids:
-            usage_by_key = await PredictionMonitoringService.get_usage_by_api_key(model_id, 24)
+            usage_by_key = await monitoring_service.get_usage_by_api_key(model_id, 24)
             if key.key_id in usage_by_key:
                 requests_24h += usage_by_key[key.key_id]
                 models_accessed.add(model_id)

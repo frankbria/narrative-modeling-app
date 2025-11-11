@@ -55,6 +55,7 @@ class TransformationPreviewRequest(BaseModel):
 
     dataset_id: str = Field(..., description="Dataset to preview transformation on")
     transformation_steps: List[TransformationStepRequest] = Field(..., description="Transformation steps to preview")
+    preview_rows: Optional[int] = Field(default=100, description="Number of rows to preview")
 
 
 class TransformationApplyRequest(BaseModel):

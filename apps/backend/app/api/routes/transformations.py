@@ -64,12 +64,18 @@ async def preview_transformation(
         
         # Create transformation engine
         engine = TransformationEngine()
-        
+
+        # Extract transformation data from first step
+        if not request.transformation_steps:
+            raise HTTPException(status_code=400, detail="No transformation steps provided")
+
+        first_step = request.transformation_steps[0]
+
         # Preview transformation
         result = engine.preview_transformation(
             df=df,
-            transformation_type=EngineTransformationType(request.transformation_type),
-            parameters=request.parameters,
+            transformation_type=EngineTransformationType(first_step.transformation_type),
+            parameters=first_step.parameters or {},
             n_rows=request.preview_rows
         )
         

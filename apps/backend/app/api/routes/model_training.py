@@ -3,10 +3,12 @@ API routes for model training and management
 """
 
 from typing import Optional, List, Dict, Any
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel, Field
 import pandas as pd
 import numpy as np
+import io
 from datetime import datetime, timezone
 import logging
 
@@ -117,17 +119,29 @@ async def train_model_task(
     """Background task for model training"""
     try:
         logger.info(f"Starting model training for dataset {request.dataset_id}")
-        
+
+        # Extract S3 file key from the HTTPS URL
+        parsed_url = urlparse(user_data.s3_url)
+        file_key = parsed_url.path.lstrip('/')
+
         # Load data from S3
-        file_data = await get_file_from_s3(user_data.file_key)
-        
-        # Convert to dataframe based on file type
+        file_bytes = await get_file_from_s3(file_key)
+
+        # Convert to dataframe based on file type, wrapping bytes in proper file-like objects
         if user_data.file_type == "csv":
-            df = pd.read_csv(file_data)
+            # For CSV, decode bytes to text and use StringIO
+            file_str = file_bytes.decode("utf-8")
+            df = pd.read_csv(io.StringIO(file_str))
         elif user_data.file_type in ["xls", "xlsx"]:
-            df = pd.read_excel(file_data)
+            # For Excel, use BytesIO
+            file_io = io.BytesIO(file_bytes)
+            file_io.seek(0)
+            df = pd.read_excel(file_io)
         elif user_data.file_type == "parquet":
-            df = pd.read_parquet(file_data)
+            # For Parquet, use BytesIO
+            file_io = io.BytesIO(file_bytes)
+            file_io.seek(0)
+            df = pd.read_parquet(file_io)
         else:
             raise ValueError(f"Unsupported file type: {user_data.file_type}")
         
@@ -165,14 +179,15 @@ async def train_model_task(
             "training_config": training_config
         }
         
-        # Save model
+        # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
             result.best_model,
             engine.feature_engineer,
             user_id,
             request.dataset_id,
-            model_metadata
+            model_metadata,
+            model_id=model_id
         )
         
         logger.info(f"Model training completed: {ml_model.model_id}")
