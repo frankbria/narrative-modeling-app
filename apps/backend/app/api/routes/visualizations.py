@@ -25,6 +25,11 @@ async def get_histogram(
 ):
     """Get histogram data for a numeric column"""
     try:
+        # Verify dataset ownership before generating visualization
+        dataset = await UserData.get(dataset_id)
+        if not dataset or dataset.user_id != current_user_id:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
         return await generate_and_cache_histogram(dataset_id, column_name, num_bins)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -42,6 +47,11 @@ async def get_boxplot(
 ):
     """Get boxplot data for a numeric column"""
     try:
+        # Verify dataset ownership before generating visualization
+        dataset = await UserData.get(dataset_id)
+        if not dataset or dataset.user_id != current_user_id:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
         return await generate_and_cache_boxplot(dataset_id, column_name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -57,6 +67,11 @@ async def get_correlation_matrix(
 ):
     """Get correlation matrix for numeric columns"""
     try:
+        # Verify dataset ownership before generating visualization
+        dataset = await UserData.get(dataset_id)
+        if not dataset or dataset.user_id != current_user_id:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
         return await generate_and_cache_correlation_matrix(dataset_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
