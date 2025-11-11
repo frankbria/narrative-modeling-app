@@ -1,7 +1,7 @@
 """
 API Key model for production model serving
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import Field
@@ -28,7 +28,7 @@ class APIKey(Document):
     last_used_at: Optional[datetime] = Field(None, description="Last usage timestamp")
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = Field(None, description="Expiration date")
     is_active: bool = Field(default=True)
     
@@ -52,10 +52,22 @@ class APIKey(Document):
         """Check if the API key is valid"""
         if not self.is_active:
             return False
-        
-        if self.expires_at and datetime.utcnow() > self.expires_at:
-            return False
-        
+
+        if self.expires_at:
+            # Get current time as timezone-aware UTC datetime
+            now = datetime.now(timezone.utc)
+
+            # Normalize expires_at to UTC-aware datetime
+            if self.expires_at.tzinfo is None:
+                # Treat naive datetime as UTC
+                expires_at_utc = self.expires_at.replace(tzinfo=timezone.utc)
+            else:
+                # Convert to UTC
+                expires_at_utc = self.expires_at.astimezone(timezone.utc)
+
+            if now > expires_at_utc:
+                return False
+
         return True
     
     def has_model_access(self, model_id: str) -> bool:

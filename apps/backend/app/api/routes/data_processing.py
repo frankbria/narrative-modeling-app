@@ -3,6 +3,7 @@ API routes for data processing functionality
 """
 
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
@@ -251,7 +252,10 @@ async def get_data_preview(
     
     try:
         # Download file from S3 to get actual data
-        file_key = user_data.s3_url.replace(f"s3://{s3_service.bucket_name}/", "")
+        # Parse the HTTPS URL to extract the S3 key
+        parsed_url = urlparse(user_data.s3_url)
+        # Strip leading slash from path to get the key
+        file_key = parsed_url.path.lstrip('/')
         file_bytes = await s3_service.download_file_bytes(file_key)
         
         # Read the file based on type
