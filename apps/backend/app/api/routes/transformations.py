@@ -29,13 +29,13 @@ from app.schemas.transformation import (
     ValidationRequest,
     ValidationResponse,
 )
-from app.services.transformation_service.transformation_engine import (
+from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType as EngineTransformationType
 )
-from app.services.transformation_service.validators import TransformationValidator
-from app.services.transformation_service.recipe_manager import RecipeManager
-from app.services.transformation_service.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
+from app.services.transformation_engine.validators import TransformationValidator
+from app.services.transformation_engine.recipe_manager import RecipeManager
+from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.redis_cache import cache_service
 
 router = APIRouter()

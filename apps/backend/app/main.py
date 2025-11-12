@@ -77,7 +77,7 @@ from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
 from app.models.dataset import DatasetMetadata
 from app.models.version import DatasetVersion, TransformationLineage
-from app.services.transformation_service.recipe_manager import TransformationRecipe, RecipeExecutionHistory
+from app.services.transformation_engine.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 

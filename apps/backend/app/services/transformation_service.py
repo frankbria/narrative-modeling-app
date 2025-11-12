@@ -13,7 +13,7 @@ from app.models.transformation import (
     TransformationPreview,
     TransformationValidation
 )
-from app.services.transformation_service.transformation_engine import (
+from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType
 )
@@ -259,8 +259,8 @@ class TransformationService:
             Preview result with before/after samples
         """
         from app.models.dataset import DatasetMetadata
-        from app.services.transformation_service.data_utils import get_dataframe_from_s3
-        from app.services.transformation_service.transformation_engine import TransformationType
+        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
+        from app.services.transformation_engine.transformation_engine import TransformationType
 
         # Get dataset
         dataset = await DatasetMetadata.find_one(
@@ -315,11 +315,11 @@ class TransformationService:
         import time
         from datetime import datetime
         from app.models.dataset import DatasetMetadata
-        from app.services.transformation_service.data_utils import (
+        from app.services.transformation_engine.data_utils import (
             get_dataframe_from_s3,
             upload_dataframe_to_s3
         )
-        from app.services.transformation_service.transformation_engine import TransformationType
+        from app.services.transformation_engine.transformation_engine import TransformationType
         from app.services.redis_cache import cache_service
         import pandas as pd
 

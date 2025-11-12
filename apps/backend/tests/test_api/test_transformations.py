@@ -74,13 +74,13 @@ class TestTransformationRoutes:
         request_data = {
             "dataset_id": dataset.dataset_id,
             "transformation_steps": [{
-                "transformation_type": "scale",
-                "parameters": {"column": "value", "method": "standard"}
+                "transformation_type": "remove_duplicates",
+                "parameters": {}
             }],
             "preview_rows": 10
         }
 
-        with patch('app.services.transformation_service.data_utils.get_dataframe_from_s3',
+        with patch('app.services.transformation_engine.data_utils.get_dataframe_from_s3',
                    return_value=mock_df):
             response = await async_authorized_client.post(
                 "/api/v1/transformations/preview",
@@ -153,7 +153,7 @@ class TestTransformationRoutes:
         request_data = {
             "dataset_id": "nonexistent_dataset",
             "transformation_steps": [{
-                "transformation_type": "scale",
+                "transformation_type": "remove_duplicates",
                 "parameters": {"column": "value"}
             }],
             "preview_rows": 10
@@ -213,13 +213,13 @@ class TestTransformationRoutes:
         # ACT: Apply transformation
         request_data = {
             "dataset_id": dataset.dataset_id,
-            "transformation_type": "scale",
-            "parameters": {"column": "value", "method": "minmax"}
+            "transformation_type": "remove_duplicates",
+            "parameters": {}
         }
 
-        with patch('app.services.transformation_service.data_utils.get_dataframe_from_s3',
+        with patch('app.services.transformation_engine.data_utils.get_dataframe_from_s3',
                    return_value=mock_df), \
-             patch('app.services.transformation_service.data_utils.upload_dataframe_to_s3',
+             patch('app.services.transformation_engine.data_utils.upload_dataframe_to_s3',
                    return_value="s3://bucket/transformed/apply_test_transformed.parquet"):
             response = await async_authorized_client.post(
                 "/api/v1/transformations/apply",
@@ -276,9 +276,9 @@ class TestTransformationRoutes:
             "parameters": {"column": "value"}
         }
 
-        with patch('app.services.transformation_service.data_utils.get_dataframe_from_s3',
+        with patch('app.services.transformation_engine.data_utils.get_dataframe_from_s3',
                    return_value=mock_df), \
-             patch('app.services.transformation_service.data_utils.upload_dataframe_to_s3',
+             patch('app.services.transformation_engine.data_utils.upload_dataframe_to_s3',
                    return_value="s3://bucket/transformed/loss_test_transformed.parquet"):
             response = await async_authorized_client.post(
                 "/api/v1/transformations/apply",
@@ -330,9 +330,9 @@ class TestTransformationRoutes:
             "parameters": {"column": "x", "method": "label"}
         }
 
-        with patch('app.services.transformation_service.data_utils.get_dataframe_from_s3',
+        with patch('app.services.transformation_engine.data_utils.get_dataframe_from_s3',
                    return_value=mock_df), \
-             patch('app.services.transformation_service.data_utils.upload_dataframe_to_s3',
+             patch('app.services.transformation_engine.data_utils.upload_dataframe_to_s3',
                    return_value="s3://bucket/transformed/config_test_transformed.parquet"):
             response = await async_authorized_client.post(
                 "/api/v1/transformations/apply",
