@@ -238,3 +238,219 @@ class TransformationService:
             TransformationConfig.dataset_id == dataset_id,
             TransformationConfig.is_applied == True
         ).sort(-TransformationConfig.created_at).to_list()
+
+    async def preview_transformation(
+        self,
+        dataset_id: str,
+        transformation_type: str,
+        parameters: Dict[str, Any],
+        preview_rows: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Preview transformation without applying it.
+
+        Args:
+            dataset_id: Dataset identifier
+            transformation_type: Type of transformation
+            parameters: Transformation parameters
+            preview_rows: Number of rows to preview
+
+        Returns:
+            Preview result with before/after samples
+        """
+        from app.models.dataset import DatasetMetadata
+        from app.services.transformation_service.data_utils import get_dataframe_from_s3
+        from app.services.transformation_service.transformation_engine import TransformationType
+
+        # Get dataset
+        dataset = await DatasetMetadata.find_one(
+            DatasetMetadata.dataset_id == dataset_id
+        )
+
+        if not dataset:
+            raise ValueError(f"Dataset {dataset_id} not found")
+
+        # Load data from S3
+        file_path = dataset.file_path or dataset.s3_url
+        df = await get_dataframe_from_s3(file_path)
+
+        # Preview transformation using engine
+        result = self.engine.preview_transformation(
+            df=df,
+            transformation_type=TransformationType(transformation_type),
+            parameters=parameters,
+            n_rows=preview_rows
+        )
+
+        return {
+            "success": result.success,
+            "preview_data": result.preview_data,
+            "affected_rows": result.affected_rows,
+            "affected_columns": result.affected_columns,
+            "stats_before": result.stats_before,
+            "stats_after": result.stats_after,
+            "error": result.error,
+            "warnings": result.warnings
+        }
+
+    async def apply_transformation(
+        self,
+        user_id: str,
+        dataset_id: str,
+        transformation_type: str,
+        parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Apply transformation and persist results.
+
+        Args:
+            user_id: User identifier
+            dataset_id: Dataset identifier
+            transformation_type: Type of transformation
+            parameters: Transformation parameters
+
+        Returns:
+            Apply result with transformation_id and affected rows/columns
+        """
+        import time
+        from datetime import datetime
+        from app.models.dataset import DatasetMetadata
+        from app.services.transformation_service.data_utils import (
+            get_dataframe_from_s3,
+            upload_dataframe_to_s3
+        )
+        from app.services.transformation_service.transformation_engine import TransformationType
+        from app.services.redis_cache import cache_service
+        import pandas as pd
+
+        start_time = time.time()
+
+        # Get dataset
+        dataset = await DatasetMetadata.find_one(
+            DatasetMetadata.dataset_id == dataset_id
+        )
+
+        if not dataset:
+            raise ValueError(f"Dataset {dataset_id} not found")
+
+        # Load data from S3
+        file_path = dataset.file_path or dataset.s3_url
+        df = await get_dataframe_from_s3(file_path)
+
+        # Apply transformation using engine
+        result = self.engine.apply_transformation(
+            df=df,
+            transformation_type=TransformationType(transformation_type),
+            parameters=parameters
+        )
+
+        if not result.success:
+            return {
+                "success": False,
+                "dataset_id": dataset_id,
+                "transformation_id": "",
+                "execution_time_ms": int((time.time() - start_time) * 1000),
+                "error": result.error
+            }
+
+        # Save transformed data to S3
+        transformed_df = pd.DataFrame(result.transformed_data)
+        timestamp = datetime.utcnow().timestamp()
+        new_file_path = await upload_dataframe_to_s3(
+            transformed_df,
+            f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
+        )
+
+        # Create transformation config
+        config_id = f"config_{dataset_id}_{int(timestamp)}"
+        config = await self.create_transformation_config(
+            user_id=user_id,
+            dataset_id=dataset_id,
+            config_id=config_id,
+            current_file_path=new_file_path
+        )
+
+        # Add transformation step
+        await self.add_transformation_step(
+            config_id=config_id,
+            transformation_type=transformation_type,
+            column=parameters.get("column"),
+            columns=parameters.get("columns"),
+            parameters=parameters
+        )
+
+        # Mark as applied
+        await self.mark_transformations_applied(
+            config_id=config_id,
+            file_path=new_file_path
+        )
+
+        # Update dataset file path
+        dataset.file_path = new_file_path
+        dataset.update_timestamp()
+        await dataset.save()
+
+        # Clear cached data
+        await cache_service.delete_pattern(f"stats_{dataset_id}_*")
+
+        execution_time_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "success": True,
+            "dataset_id": dataset_id,
+            "transformation_id": config_id,
+            "affected_rows": result.affected_rows,
+            "affected_columns": result.affected_columns,
+            "execution_time_ms": execution_time_ms,
+            "warnings": result.warnings
+        }
+
+    async def get_transformation_history(
+        self,
+        config_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get transformation history with lineage.
+
+        Args:
+            config_id: Configuration identifier
+
+        Returns:
+            Transformation history with steps, timestamps, and lineage
+        """
+        config = await self.get_transformation_config(config_id)
+
+        if not config:
+            raise ValueError(f"Transformation config {config_id} not found")
+
+        # Build transformation steps response
+        steps = [
+            {
+                "transformation_type": step.transformation_type,
+                "column": step.column,
+                "columns": step.columns,
+                "parameters": step.parameters,
+                "applied_at": step.applied_at.isoformat(),
+                "rows_affected": step.rows_affected,
+                "data_loss_percentage": step.data_loss_percentage,
+                "is_valid": step.is_valid,
+                "validation_errors": step.validation_errors
+            }
+            for step in config.transformation_steps
+        ]
+
+        return {
+            "config_id": config.config_id,
+            "dataset_id": config.dataset_id,
+            "user_id": config.user_id,
+            "transformation_steps": steps,
+            "is_applied": config.is_applied,
+            "applied_at": config.applied_at.isoformat() if config.applied_at else None,
+            "current_file_path": config.current_file_path,
+            "total_transformations": config.total_transformations,
+            "total_data_loss": config.total_data_loss,
+            "parent_config_id": config.parent_config_id,
+            "version": config.version,
+            "created_at": config.created_at.isoformat(),
+            "updated_at": config.updated_at.isoformat()
+        }

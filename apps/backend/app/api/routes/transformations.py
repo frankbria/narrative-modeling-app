@@ -47,49 +47,39 @@ async def preview_transformation(
     request: TransformationPreviewRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Preview a transformation on a subset of data"""
+    """Preview a transformation on a subset of data using TransformationService"""
     try:
-        # Get dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data from S3
-        file_path = user_data.file_path or user_data.s3_url
-        df = await get_dataframe_from_s3(file_path)
-        
-        # Create transformation engine
-        engine = TransformationEngine()
-
         # Extract transformation data from first step
         if not request.transformation_steps:
             raise HTTPException(status_code=400, detail="No transformation steps provided")
 
         first_step = request.transformation_steps[0]
 
-        # Preview transformation
-        result = engine.preview_transformation(
-            df=df,
-            transformation_type=EngineTransformationType(first_step.transformation_type),
+        # Use TransformationService for preview
+        from app.services.transformation_service import TransformationService
+        service = TransformationService()
+
+        result = await service.preview_transformation(
+            dataset_id=request.dataset_id,
+            transformation_type=first_step.transformation_type,
             parameters=first_step.parameters or {},
-            n_rows=request.preview_rows
+            preview_rows=request.preview_rows
         )
-        
+
         return TransformationPreviewResponse(
-            success=result.success,
-            preview_data=result.preview_data,
-            affected_rows=result.affected_rows,
-            affected_columns=result.affected_columns,
-            stats_before=result.stats_before,
-            stats_after=result.stats_after,
-            error=result.error,
-            warnings=result.warnings
+            success=result["success"],
+            preview_data=result["preview_data"],
+            affected_rows=result["affected_rows"],
+            affected_columns=result["affected_columns"],
+            stats_before=result["stats_before"],
+            stats_after=result["stats_after"],
+            error=result.get("error"),
+            warnings=result.get("warnings", [])
         )
-        
+
+    except ValueError as e:
+        logger.error(f"Preview transformation failed: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Preview transformation failed: {str(e)}")
         return TransformationPreviewResponse(
@@ -103,74 +93,33 @@ async def apply_transformation(
     request: TransformationApplyRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Apply a transformation to the full dataset"""
+    """Apply a transformation to the full dataset using TransformationService"""
     try:
-        start_time = time.time()
-        
-        # Get dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data from S3
-        file_path = user_data.file_path or user_data.s3_url
-        df = await get_dataframe_from_s3(file_path)
-        
-        # Create transformation engine
-        engine = TransformationEngine()
-        
-        # Apply transformation
-        result = engine.apply_transformation(
-            df=df,
-            transformation_type=EngineTransformationType(request.transformation_type),
+        # Use TransformationService for apply
+        from app.services.transformation_service import TransformationService
+        service = TransformationService()
+
+        result = await service.apply_transformation(
+            user_id=current_user_id,
+            dataset_id=request.dataset_id,
+            transformation_type=request.transformation_type,
             parameters=request.parameters
         )
-        
-        if not result.success:
-            return TransformationApplyResponse(
-                success=False,
-                dataset_id=request.dataset_id,
-                transformation_id="",
-                execution_time_ms=int((time.time() - start_time) * 1000),
-                error=result.error
-            )
-        
-        # Save transformed data back to S3
-        transformed_df = pd.DataFrame(result.transformed_data)
-        new_file_path = await upload_dataframe_to_s3(
-            transformed_df,
-            f"transformed/{current_user_id}/{request.dataset_id}_{datetime.utcnow().timestamp()}.parquet"
-        )
-        
-        # Update user data with new file path
-        user_data.file_path = new_file_path
-        user_data.updated_at = datetime.utcnow()
-        user_data.transformation_history.append({
-            "timestamp": datetime.utcnow(),
-            "type": request.transformation_type,
-            "parameters": request.parameters,
-            "affected_rows": result.affected_rows
-        })
-        await user_data.save()
-        
-        # Clear cached data
-        await cache_service.delete_pattern(f"stats_{request.dataset_id}_*")
-        
-        execution_time_ms = int((time.time() - start_time) * 1000)
-        
+
         return TransformationApplyResponse(
-            success=True,
-            dataset_id=request.dataset_id,
-            transformation_id=f"transform_{datetime.utcnow().timestamp()}",
-            affected_rows=result.affected_rows,
-            affected_columns=result.affected_columns,
-            execution_time_ms=execution_time_ms
+            success=result["success"],
+            dataset_id=result["dataset_id"],
+            transformation_id=result["transformation_id"],
+            affected_rows=result.get("affected_rows", 0),
+            affected_columns=result.get("affected_columns", []),
+            execution_time_ms=result["execution_time_ms"],
+            error=result.get("error"),
+            warnings=result.get("warnings", [])
         )
-        
+
+    except ValueError as e:
+        logger.error(f"Apply transformation failed: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Apply transformation failed: {str(e)}")
         return TransformationApplyResponse(
@@ -755,4 +704,54 @@ async def delete_recipe(
         raise
     except Exception as e:
         logger.error(f"Delete recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Transformation History Routes
+
+@router.get("/{config_id}/history", response_model=TransformationHistoryResponse)
+async def get_transformation_history(
+    config_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get transformation history with lineage information.
+
+    Returns transformation steps, timestamps, parent/child relationships,
+    and configuration details for a specific transformation config.
+    """
+    try:
+        # Use TransformationService to get history
+        from app.services.transformation_service import TransformationService
+        service = TransformationService()
+
+        history = await service.get_transformation_history(config_id)
+
+        # Verify user has access to this transformation config
+        if history["user_id"] != current_user_id:
+            raise HTTPException(status_code=403, detail="Access denied to this transformation config")
+
+        return TransformationHistoryResponse(
+            config_id=history["config_id"],
+            dataset_id=history["dataset_id"],
+            user_id=history["user_id"],
+            transformation_steps=history["transformation_steps"],
+            is_applied=history["is_applied"],
+            applied_at=history.get("applied_at"),
+            current_file_path=history.get("current_file_path"),
+            total_transformations=history["total_transformations"],
+            total_data_loss=history["total_data_loss"],
+            parent_config_id=history.get("parent_config_id"),
+            version=history["version"],
+            created_at=history["created_at"],
+            updated_at=history["updated_at"]
+        )
+
+    except ValueError as e:
+        logger.error(f"Get transformation history failed: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get transformation history failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
