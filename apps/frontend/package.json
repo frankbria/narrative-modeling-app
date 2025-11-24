@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@playwright/test": "^1.56.0",
+    "@playwright/test": "^1.56.1",
     "@radix-ui/react-progress": "^1.1.7",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.9.1",
