@@ -43,6 +43,7 @@ from app.api.routes import (
     analytics_result,
     plot,
     trained_model,
+    models,
     upload,
     secure_upload,
     store,
@@ -77,7 +78,8 @@ from app.models.ab_test import ABTest
 from app.models.batch_job import BatchJob
 from app.models.dataset import DatasetMetadata
 from app.models.version import DatasetVersion, TransformationLineage
-from app.services.transformation_service.recipe_manager import TransformationRecipe, RecipeExecutionHistory
+from app.models.model import ModelConfig
+from app.services.transformation_engine.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 
@@ -96,6 +98,7 @@ async def lifespan(app: FastAPI):
                          TrainedModel,
                          ColumnStats,
                          MLModel,
+                         ModelConfig,
                          APIKey,
                          ABTest,
                          BatchJob,
@@ -167,7 +170,7 @@ app.include_router(
 )
 app.include_router(plot.router, prefix=f"{settings.API_V1_STR}/plots", tags=["plots"])
 app.include_router(
-    trained_model.router, prefix=f"{settings.API_V1_STR}/models", tags=["models"]
+    models.router, prefix=f"{settings.API_V1_STR}/models", tags=["models"]
 )
 app.include_router(
     visualizations.router,

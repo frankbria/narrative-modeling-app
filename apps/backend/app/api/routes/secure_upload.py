@@ -117,7 +117,25 @@ async def secure_upload(
             )
         
         logger.info(f"S3 upload successful: {s3_url}")
-        
+
+        # Detect file type from extension
+        file_ext = file.filename.lower().rsplit('.', 1)[-1] if '.' in file.filename else ''
+        if file_ext == 'csv':
+            file_type = "csv"
+        elif file_ext in ('xls', 'xlsx'):
+            file_type = "excel"
+        elif file_ext == 'parquet':
+            file_type = "parquet"
+        else:
+            # Fall back to content-type header if extension unclear
+            content_type = file.content_type or ''
+            if 'csv' in content_type:
+                file_type = "csv"
+            elif 'excel' in content_type or 'spreadsheet' in content_type:
+                file_type = "excel"
+            else:
+                file_type = "csv"  # Default fallback
+
         # Create UserData record
         user_data = UserData(
             user_id=current_user_id,
@@ -127,7 +145,7 @@ async def secure_upload(
             num_rows=len(df),
             num_columns=len(df.columns),
             data_schema=schema,
-            file_type="csv",  # TODO: Detect from file extension
+            file_type=file_type,
             columns=list(df.columns),
             data_preview=df.head(100).to_dict('records')
         )

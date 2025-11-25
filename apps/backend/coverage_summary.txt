@@ -1,0 +1,719 @@
+...................F.FFFFFFFF..................                          [100%]
+=================================== FAILURES ===================================
+_________ TestTransformationRoutes.test_preview_transformation_success _________
+tests/test_api/test_transformations.py:91: in test_preview_transformation_success
+    assert response.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+____ TestTransformationRoutes.test_preview_transformation_dataset_not_found ____
+tests/test_api/test_transformations.py:168: in test_preview_transformation_dataset_not_found
+    assert response.status_code == 404
+E   assert 422 == 404
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+__________ TestTransformationRoutes.test_apply_transformation_success __________
+tests/test_api/test_transformations.py:230: in test_apply_transformation_success
+    assert response.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+__ TestTransformationRoutes.test_apply_transformation_with_data_loss_warning ___
+tests/test_api/test_transformations.py:289: in test_apply_transformation_with_data_loss_warning
+    assert response.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+______ TestTransformationRoutes.test_apply_transformation_creates_config _______
+tests/test_api/test_transformations.py:343: in test_apply_transformation_creates_config
+    assert response.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+_______ TestTransformationRoutes.test_get_transformation_history_success _______
+tests/test_api/test_transformations.py:390: in test_get_transformation_history_success
+    config = await transform_service.create_transformation_config(
+app/services/transformation_service.py:52: in create_transformation_config
+    config = TransformationConfig(
+.venv/lib/python3.13/site-packages/beanie/odm/documents.py:209: in __init__
+    self.get_motor_collection()
+.venv/lib/python3.13/site-packages/beanie/odm/interfaces/getters.py:16: in get_motor_collection
+    return cls.get_settings().motor_collection
+           ^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/beanie/odm/documents.py:1108: in get_settings
+    raise CollectionWasNotInitialized
+E   beanie.exceptions.CollectionWasNotInitialized
+______ TestTransformationRoutes.test_get_transformation_history_not_found ______
+tests/test_api/test_transformations.py:457: in test_get_transformation_history_not_found
+    assert response.status_code == 404
+E   assert 500 == 404
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call -------------------------------
+ERROR    app.api.routes.transformations:transformations.py:756 Get transformation history failed: config_id
+____ TestTransformationRoutes.test_get_transformation_history_with_lineage _____
+tests/test_api/test_transformations.py:487: in test_get_transformation_history_with_lineage
+    parent_config = await transform_service.create_transformation_config(
+app/services/transformation_service.py:52: in create_transformation_config
+    config = TransformationConfig(
+.venv/lib/python3.13/site-packages/beanie/odm/documents.py:209: in __init__
+    self.get_motor_collection()
+.venv/lib/python3.13/site-packages/beanie/odm/interfaces/getters.py:16: in get_motor_collection
+    return cls.get_settings().motor_collection
+           ^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/beanie/odm/documents.py:1108: in get_settings
+    raise CollectionWasNotInitialized
+E   beanie.exceptions.CollectionWasNotInitialized
+________ TestTransformationRoutes.test_transformation_types_validation _________
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 76, in collapse_excgroups
+  |     yield
+  |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 177, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |                ~~~~~~~~~~~~~~~~~~~~~~~^^
+  |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/anyio/_backends/_asyncio.py", line 772, in __aexit__
+  |     raise BaseExceptionGroup(
+  |         "unhandled errors in a TaskGroup", self._exceptions
+  |     ) from None
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 344, in from_call
+    |     result: TResult | None = func()
+    |                              ~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 246, in <lambda>
+    |     lambda: runtest_hook(item=item, **kwds), when=when, reraise=reraise
+    |             ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    |     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+    |            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    |     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+    |            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    |     raise exception
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    |     teardown.throw(exception)
+    |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/logging.py", line 850, in pytest_runtest_call
+    |     yield
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    |     teardown.throw(exception)
+    |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 53, in run_old_style_hookwrapper
+    |     return result.get_result()
+    |            ~~~~~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_result.py", line 103, in get_result
+    |     raise exc.with_traceback(tb)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 38, in run_old_style_hookwrapper
+    |     res = yield
+    |           ^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    |     teardown.throw(exception)
+    |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    |     return (yield)
+    |             ^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    |     teardown.throw(exception)
+    |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/skipping.py", line 263, in pytest_runtest_call
+    |     return (yield)
+    |             ^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    |     res = hook_impl.function(*args)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/runner.py", line 178, in pytest_runtest_call
+    |     item.runtest()
+    |     ~~~~~~~~~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pytest_asyncio/plugin.py", line 508, in runtest
+    |     super().runtest()
+    |     ~~~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/python.py", line 1670, in runtest
+    |     self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    |     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+    |            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    |     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+    |            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    |     raise exception
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    |     teardown.throw(exception)
+    |     ~~~~~~~~~~~~~~^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 53, in run_old_style_hookwrapper
+    |     return result.get_result()
+    |            ~~~~~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_result.py", line 103, in get_result
+    |     raise exc.with_traceback(tb)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 38, in run_old_style_hookwrapper
+    |     res = yield
+    |           ^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    |     res = hook_impl.function(*args)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/_pytest/python.py", line 156, in pytest_pyfunc_call
+    |     result = testfunction(**testargs)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pytest_asyncio/plugin.py", line 773, in inner
+    |     _loop.run_until_complete(task)
+    |     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+    |   File "/home/frankbria/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/asyncio/base_events.py", line 719, in run_until_complete
+    |     return future.result()
+    |            ~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/tests/test_api/test_transformations.py", line 559, in test_transformation_types_validation
+    |     response = await async_authorized_client.post(
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ...<9 lines>...
+    |     )
+    |     ^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1859, in post
+    |     return await self.request(
+    |            ^^^^^^^^^^^^^^^^^^^
+    |     ...<13 lines>...
+    |     )
+    |     ^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1540, in request
+    |     return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1629, in send
+    |     response = await self._send_handling_auth(
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ...<4 lines>...
+    |     )
+    |     ^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    |     response = await self._send_handling_redirects(
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ...<3 lines>...
+    |     )
+    |     ^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    |     response = await self._send_single_request(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    |     response = await transport.handle_async_request(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_transports/asgi.py", line 170, in handle_async_request
+    |     await self.app(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    |     raise exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 176, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ~~~~~~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 162, in __exit__
+    |     self.gen.throw(value)
+    |     ~~~~~~~~~~~~~~^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+    |     raise exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 178, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/middleware/metrics.py", line 95, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 156, in call_next
+    |     raise app_exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 141, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 176, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ~~~~~~~~~~~~~~~~~~^^
+    |   File "/home/frankbria/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 162, in __exit__
+    |     self.gen.throw(value)
+    |     ~~~~~~~~~~~~~~^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+    |     raise exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 178, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/middleware/api_version.py", line 71, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 156, in call_next
+    |     raise app_exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 141, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ...<3 lines>...
+    |     )
+    |     ^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/api/routes/transformations.py", line 85, in preview_transformation
+    |     return TransformationPreviewResponse(
+    |         success=False,
+    |         error=str(e)
+    |     )
+    |   File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/main.py", line 253, in __init__
+    |     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+    | pydantic_core._pydantic_core.ValidationError: 2 validation errors for TransformationPreviewResponse
+    | estimated_rows_affected
+    |   Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+    |     For further information visit https://errors.pydantic.dev/2.11/v/missing
+    | generated_at
+    |   Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+    |     For further information visit https://errors.pydantic.dev/2.11/v/missing
+    +------------------------------------
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/tests/test_api/test_transformations.py", line 559, in test_transformation_types_validation
+    response = await async_authorized_client.post(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1859, in post
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<13 lines>...
+    )
+    ^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/httpx/_transports/asgi.py", line 170, in handle_async_request
+    await self.app(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 176, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ~~~~~~~~~~~~~~~~~~^^
+  File "/home/frankbria/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+    raise exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/middleware/metrics.py", line 95, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 156, in call_next
+    raise app_exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 176, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ~~~~~~~~~~~~~~~~~~^^
+  File "/home/frankbria/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+    raise exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/middleware/api_version.py", line 71, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 156, in call_next
+    raise app_exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/app/api/routes/transformations.py", line 85, in preview_transformation
+    return TransformationPreviewResponse(
+        success=False,
+        error=str(e)
+    )
+  File "/home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/main.py", line 253, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+pydantic_core._pydantic_core.ValidationError: 2 validation errors for TransformationPreviewResponse
+estimated_rows_affected
+  Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing
+generated_at
+  Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.11/v/missing
+
+During handling of the above exception, another exception occurred:
+tests/test_api/test_transformations.py:559: in test_transformation_types_validation
+    response = await async_authorized_client.post(
+.venv/lib/python3.13/site-packages/httpx/_client.py:1859: in post
+    return await self.request(
+.venv/lib/python3.13/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+.venv/lib/python3.13/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+.venv/lib/python3.13/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/httpx/_transports/asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+.venv/lib/python3.13/site-packages/fastapi/applications.py:1054: in __call__
+    await super().__call__(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/applications.py:112: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/middleware/errors.py:187: in __call__
+    raise exc
+.venv/lib/python3.13/site-packages/starlette/middleware/errors.py:165: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:176: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py:162: in __exit__
+    self.gen.throw(value)
+.venv/lib/python3.13/site-packages/starlette/_utils.py:82: in collapse_excgroups
+    raise exc
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:178: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/middleware/metrics.py:95: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:156: in call_next
+    raise app_exc
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:141: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:176: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/contextlib.py:162: in __exit__
+    self.gen.throw(value)
+.venv/lib/python3.13/site-packages/starlette/_utils.py:82: in collapse_excgroups
+    raise exc
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:178: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/middleware/api_version.py:71: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:156: in call_next
+    raise app_exc
+.venv/lib/python3.13/site-packages/starlette/middleware/base.py:141: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.13/site-packages/starlette/middleware/cors.py:85: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py:62: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.13/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.13/site-packages/starlette/routing.py:714: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/routing.py:734: in app
+    await route.handle(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/routing.py:288: in handle
+    await self.app(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/routing.py:76: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv/lib/python3.13/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.13/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.13/site-packages/starlette/routing.py:73: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/fastapi/routing.py:301: in app
+    raw_response = await run_endpoint_function(
+.venv/lib/python3.13/site-packages/fastapi/routing.py:212: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/api/routes/transformations.py:85: in preview_transformation
+    return TransformationPreviewResponse(
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for TransformationPreviewResponse
+E   estimated_rows_affected
+E     Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.11/v/missing
+E   generated_at
+E     Field required [type=missing, input_value={'success': False, 'error...ed raised ValueError>]'}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.11/v/missing
+------------------------------ Captured log call -------------------------------
+ERROR    app.services.s3_service:s3_service.py:69 Error downloading file from S3: Invalid S3 URL format: datasets/validation.csv
+ERROR    app.utils.circuit_breaker:circuit_breaker.py:386 Circuit breaker failure for s3: Invalid S3 URL format: datasets/validation.csv
+WARNING  app.utils.circuit_breaker:before_sleep.py:65 Retrying app.services.s3_service.download_file_from_s3 in 2.0 seconds as it raised ValueError: Invalid S3 URL format: datasets/validation.csv.
+ERROR    app.services.s3_service:s3_service.py:69 Error downloading file from S3: Invalid S3 URL format: datasets/validation.csv
+ERROR    app.utils.circuit_breaker:circuit_breaker.py:386 Circuit breaker failure for s3: Invalid S3 URL format: datasets/validation.csv
+WARNING  app.utils.circuit_breaker:before_sleep.py:65 Retrying app.services.s3_service.download_file_from_s3 in 4.0 seconds as it raised ValueError: Invalid S3 URL format: datasets/validation.csv.
+ERROR    app.services.s3_service:s3_service.py:69 Error downloading file from S3: Invalid S3 URL format: datasets/validation.csv
+ERROR    app.utils.circuit_breaker:circuit_breaker.py:386 Circuit breaker failure for s3: Invalid S3 URL format: datasets/validation.csv
+ERROR    app.services.transformation_engine.data_utils:data_utils.py:58 Error loading dataframe from S3: RetryError[<Future at 0x7017e9c2efd0 state=finished raised ValueError>]
+ERROR    app.api.routes.transformations:transformations.py:84 Preview transformation failed: RetryError[<Future at 0x7017e9c2efd0 state=finished raised ValueError>]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserData" shadows an attribute in parent "Document"
+    warnings.warn(
+
+.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:293: 10 warnings
+tests/test_api/test_datasets.py: 12 warnings
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:293: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.11/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(
+
+.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSchemaResponse" shadows an attribute in parent "BaseModel"
+    warnings.warn(
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "UserDataResponse" shadows an attribute in parent "BaseModel"
+    warnings.warn(
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
+  * 'schema_extra' has been renamed to 'json_schema_extra'
+    warnings.warn(message, UserWarning)
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "count" in "ColumnStats" shadows an attribute in parent "Document"
+    warnings.warn(
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/fields.py:1064: PydanticDeprecatedSince20: `max_items` is deprecated and will be removed, use `max_length` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warn('`max_items` is deprecated and will be removed, use `max_length` instead', DeprecationWarning)
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "ProcessingResponse" shadows an attribute in parent "BaseModel"
+    warnings.warn(
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_list_datasets_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/_internal/_fields.py:198: UserWarning: Field name "schema" in "DatasetSummaryRequest" shadows an attribute in parent "BaseModel"
+    warnings.warn(
+
+tests/test_api/test_datasets.py: 44 warnings
+tests/test_api/test_transformations.py: 32 warnings
+tests/test_api/test_models.py: 104 warnings
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/lazy_model/parser/new.py:107: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    res = object.__getattribute__(self, item)
+
+tests/test_api/test_datasets.py: 12 warnings
+tests/test_api/test_transformations.py: 4 warnings
+tests/test_api/test_models.py: 244 warnings
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/beanie/odm/utils/pydantic.py:33: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    return model.model_fields
+
+tests/test_api/test_datasets.py: 19 warnings
+tests/test_api/test_transformations.py: 10 warnings
+tests/test_api/test_models.py: 18 warnings
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/redis_cache.py:44: DeprecationWarning: Call to deprecated close. (Use aclose() instead) -- Deprecated since version 5.0.1.
+    await self.redis_client.close()
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_upload_dataset_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/botocore/auth.py:425: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    datetime_now = datetime.datetime.utcnow()
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_upload_dataset_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/app/services/data_processing/schema_inference.py:360: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+    parsed = pd.to_datetime(str_sample, errors='coerce')
+
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_upload_dataset_success
+tests/test_api/test_datasets.py::TestDatasetRoutes::test_upload_dataset_success
+  /home/frankbria/projects/narrative-modeling-app/apps/backend/.venv/lib/python3.13/site-packages/pydantic/main.py:253: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.3-final-0 ________________
+
+Name                                                          Stmts   Miss  Cover   Missing
+-------------------------------------------------------------------------------------------
+app/__init__.py                                                   1      0   100%
+app/api/routes/__init__.py                                       13      0   100%
+app/api/routes/ab_testing.py                                    120     57    52%   71-104, 114-120, 146-154, 177-195, 205-219, 229-242, 257-267, 282-292, 305-313
+app/api/routes/ai_analysis.py                                    66     42    36%   37-77, 88-98, 114-128, 150-188, 196-198
+app/api/routes/analytics_result.py                               38     20    47%   20-23, 28-29, 36-39, 48-54, 61-65
+app/api/routes/batch_prediction.py                              133     71    47%   77-129, 141-148, 175-180, 204-209, 231-236, 246-251, 262-291, 305-319, 329-354
+app/api/routes/cache.py                                          66     47    29%   21-33, 42-58, 67-76, 85-93, 102-111, 120-134
+app/api/routes/column_stats.py                                   79     61    23%   36-110, 127-192
+app/api/routes/data_processing.py                               141    103    27%   59-156, 165-176, 189-200, 213-224, 239-300, 320-336
+app/api/routes/datasets.py                                      169     32    81%   75-77, 123, 182-184, 247-249, 280, 294, 332-334, 364, 380, 387-389, 419, 433-435, 466, 486-488, 519, 544-546
+app/api/routes/health.py                                         70     45    36%   23-40, 51-68, 79-113, 125, 140-177, 189, 194
+app/api/routes/model_export.py                                   86     56    35%   40-42, 53-70, 80-96, 106-122, 132-148, 160-219, 229-243
+app/api/routes/model_training.py                                133     72    46%   86-106, 120-198, 210-217, 243-251, 264-296, 317-323, 334-346
+app/api/routes/models.py                                        132     24    82%   150-158, 194, 275-277, 354-356, 419, 500-502, 561-563, 633, 648-650
+app/api/routes/monitoring.py                                    124     62    50%   82-93, 110-129, 145-156, 170-200, 217-255, 267-291
+app/api/routes/onboarding.py                                     76     47    38%   27-30, 39-42, 52-58, 69-87, 97-110, 119-122, 131-134, 144-158, 167-178, 187-190, 205-208
+app/api/routes/plot.py                                           36     20    44%   14-16, 21, 26-29, 36-42, 49-53
+app/api/routes/production.py                                    143     77    46%   25-27, 79, 84-102, 107-129, 141-164, 180-182, 204-215, 228-297, 308-321
+app/api/routes/s3.py                                              9      4    56%   12-15
+app/api/routes/secure_upload.py                                 158    126    20%   40-176, 191-247, 268-277, 292-298, 309, 322-375, 385-398, 404-405
+app/api/routes/store.py                                          26     13    50%   24-49
+app/api/routes/trained_model.py                                  36     20    44%   16-18, 23, 28-31, 40-46, 53-57
+app/api/routes/transformations.py                               251    188    25%   54, 69, 81-82, 97-125, 140-222, 237-283, 295-345, 360-397, 408-445, 457-506, 514-546, 555-589, 599-652, 662-686, 695-707, 731-734, 751-752, 754
+app/api/routes/upload.py                                         72     53    26%   34, 48-194
+app/api/routes/user_data.py                                     153    120    22%   27-33, 38-46, 54-74, 83-114, 122-221, 230-236, 243-247, 258-318, 331-352
+app/api/routes/versions.py                                      122     98    20%   46-78, 96-155, 171-189, 205-237, 254-287, 305-343, 360-384
+app/api/routes/visualizations.py                                145    122    16%   27-37, 49-59, 69-79, 93-142, 156-209, 223-270
+app/auth/nextauth_auth.py                                        53     34    36%   27, 38-87, 96-104
+app/config.py                                                    30      0   100%
+app/db/__init__.py                                                0      0   100%
+app/db/mongodb.py                                                 4      2    50%   6, 10
+app/main.py                                                     116     19    84%   12, 259, 269, 284, 295-298, 320-328, 351-359, 375
+app/middleware/__init__.py                                        0      0   100%
+app/middleware/api_version.py                                    42      7    83%   57, 79-82, 99-100, 118, 131
+app/middleware/metrics.py                                        34      2    94%   81, 127
+app/middleware/monitoring.py                                     21     21     0%   6-50
+app/models/ab_test.py                                            63      8    87%   94-97, 101, 105, 109-110
+app/models/analytics_result.py                                   26      1    96%   24
+app/models/api_key.py                                            42     16    62%   47-49, 53-71, 76-78
+app/models/batch_job.py                                         103     38    63%   47-49, 54-56, 112-116, 121-134, 138, 143-144, 148-151, 155-158, 168-175
+app/models/column_stats.py                                       46      1    98%   9
+app/models/dataset.py                                           109     17    84%   40, 49-52, 84-87, 178, 193-196, 204-206
+app/models/ml_model.py                                           35      0   100%
+app/models/model.py                                             172     46    73%   122, 240, 249-251, 255-257, 266-285, 294-297, 313-314, 323-342, 346, 354-360
+app/models/plot.py                                               15      0   100%
+app/models/revised_data.py                                       22      1    95%   9
+app/models/trained_model.py                                      16      0   100%
+app/models/transformation.py                                    122     56    54%   41-49, 54-63, 177-188, 192, 196-199, 203, 223-262, 266-273, 277-283
+app/models/user_data.py                                          55      0   100%
+app/models/version.py                                           139     35    75%   18, 34-40, 126, 131-132, 136-137, 141-142, 146-147, 151, 235-240, 248-254, 258-259, 263-265, 269-270, 274
+app/models/visualization_cache.py                                30      0   100%
+app/schemas/analytics_result_in.py                               11      0   100%
+app/schemas/analytics_result_out.py                              35     18    49%   25-52
+app/schemas/dataset.py                                           89      0   100%
+app/schemas/model.py                                            141      0   100%
+app/schemas/onboarding.py                                       100      0   100%
+app/schemas/transformation.py                                   158      0   100%
+app/schemas/user_data.py                                         33      0   100%
+app/schemas/version.py                                           95      0   100%
+app/services/ab_testing.py                                      141    117    17%   31-72, 78-99, 111-133, 144-182, 195-224, 230-257, 263-307
+app/services/api_documentation.py                                58     37    36%   35-47, 56, 110-196, 205-232, 245, 258, 434, 604, 670, 679, 732, 736, 784, 846
+app/services/batch_prediction.py                                166    136    18%   42-83, 94-135, 140-216, 226-239, 251-301, 312-332, 337, 351-357, 362-375, 380-403, 408-417
+app/services/data_processing/__init__.py                          5      0   100%
+app/services/data_processing/data_processor.py                  138     54    61%   37, 57, 59, 61, 63, 65, 67, 81-83, 138-148, 173, 207, 245-257, 267-290, 316-326, 330-333, 348, 364-366, 374-376
+app/services/data_processing/quality_assessment.py              200     60    70%   115, 191-192, 212, 221-224, 242-265, 284, 289-297, 309-317, 341-344, 362, 371-384, 388, 404, 426-428, 432-439, 445, 451-453, 459, 466, 474-479
+app/services/data_processing/schema_inference.py                230     55    76%   116, 118, 164, 197-200, 226-231, 238, 250, 254, 256, 258, 260, 262, 269, 271, 280, 286-287, 294, 303-304, 311, 315-316, 323-324, 335-337, 344-346, 354-356, 363-368, 376, 384-385, 388-389, 397, 406-407, 412
+app/services/data_processing/statistics_engine.py               198    123    38%   116-124, 162-195, 199-239, 243-295, 299-320, 324-333, 337-352, 356-359, 376-395
+app/services/dataset_service.py                                  63     11    83%   161, 177-180, 262, 289, 315, 342-343, 357
+app/services/dataset_summarization.py                           131     83    37%   51-52, 72-92, 97-128, 132-144, 148, 158-183, 200-231, 235-237, 254-256, 269-285, 298, 316-328, 332
+app/services/eda_summary.py                                      54     41    24%   16-27, 32-67, 71-86, 90-94, 102-107, 111-127
+app/services/mcp_integration.py                                 125     63    50%   71, 82, 85, 89-94, 98-122, 152-220, 224-228, 243-260, 269-283, 293
+app/services/model_export.py                                    109     84    23%   15-17, 40-75, 84-122, 133-155, 166-383, 393-528, 533-570
+app/services/model_service.py                                    81     40    51%   161-178, 195, 218, 237-243, 258-264, 281-287, 304, 324, 342-347, 366
+app/services/model_storage.py                                    73     53    27%   52-104, 118-146, 160-187, 206-211
+app/services/model_training/__init__.py                           4      0   100%
+app/services/model_training/automl_engine.py                    131     89    32%   63-70, 89-174, 199-344, 348-355, 364-369, 377-399
+app/services/model_training/feature_engineer.py                 165    128    22%   51-55, 74-105, 120-180, 184-191, 196-226, 230-265, 269-279, 283-304, 314-355
+app/services/model_training/problem_detector.py                  82     56    32%   37-39, 59-180, 194-218, 222, 226-247
+app/services/monitoring.py                                      123     78    37%   54-55, 59-60, 64-68, 72, 76-82, 86-101, 106-120, 125-138, 143, 156-170, 184-196, 208-214, 218-234, 238-244, 255-258, 261-262, 265-266
+app/services/onboarding_service.py                              208    178    14%   24, 30-51, 68-101, 106-107, 117-165, 174-209, 217-227, 242, 333-427, 441-447, 452-453, 458-512, 517, 541, 565, 727-734, 739-783, 791-795, 801-823, 829-846
+app/services/prediction_monitoring.py                            82     55    33%   33-46, 54-55, 75-97, 105-147, 162-180, 193-199, 212-230
+app/services/redis_cache.py                                     225    160    29%   37-39, 49-53, 71-81, 86, 91, 93-95, 99-107, 111-121, 125-132, 136-143, 147-154, 158-174, 178-193, 197-207, 211-226, 230-240, 244-245, 249-250, 254-255, 259-260, 264-265, 269-270, 274-275, 279-280, 284-285, 289-298, 302-317, 326-346
+app/services/s3_service.py                                       68     34    50%   41-66, 94-99, 103, 114-120, 124, 135-141, 151
+app/services/security/__init__.py                                 3      0   100%
+app/services/security/pii_detector.py                           124     84    32%   75-97, 101-113, 117-131, 135-140, 155-173, 177-183, 187-192, 196-201, 205-210, 214-227, 247-266
+app/services/security/upload_handler.py                         142    103    27%   41-74, 89-148, 158-170, 185-195, 199-218, 222-223, 228-239, 243-245, 249, 253-260, 276-288, 292-293, 297-299, 303-305, 309-310
+app/services/transformation_engine/__init__.py                   15      6    60%   18-27
+app/services/transformation_engine/data_utils.py                 43     28    35%   32-55, 73-95
+app/services/transformation_engine/recipe_manager.py            174    112    36%   84-110, 115-120, 128-134, 142-152, 161-181, 186-198, 211-228, 233-238, 247-274, 279-338
+app/services/transformation_engine/transformation_engine.py     285    197    31%   70-71, 76, 81, 86, 90, 94, 101-105, 108, 111-112, 115, 122, 126-140, 143, 146-148, 155-166, 169-183, 186-187, 190-192, 196-219, 226-234, 238-274, 277, 280-282, 307-311, 328-394, 407-448, 460-527, 540-566, 570, 574
+app/services/transformation_engine/validators.py                122     95    22%   37-63, 71-109, 117-156, 164-179, 184-214
+app/services/transformation_service.py                           97     69    29%   60-61, 95, 120-133, 148-156, 173-179, 194-200, 215-220, 237, 271, 278-285, 315-398, 423-442
+app/services/versioning_service.py                              183    153    16%   64-109, 139-237, 249-276, 280-286, 299-305, 320-334, 355-362, 374-392, 412-457, 466-483, 498-505, 520-527, 546-581
+app/services/visualization_cache.py                              92     77    16%   27-56, 67-101, 109-133, 141-177, 183-209
+app/utils/ai_summary.py                                          66     45    32%   21-22, 42-74, 88-109, 130-201
+app/utils/circuit_breaker.py                                    175     77    56%   58-62, 80-82, 86-88, 143-150, 154-165, 169-180, 189-192, 196-200, 208-228, 232-233, 259-260, 270-272, 321-340, 375-378, 382-383, 389-390
+app/utils/column_stats.py                                        84     71    15%   29-80, 85-100, 106-131, 143-149, 157-168, 174-188
+app/utils/json_encoder.py                                        50     41    18%   18-40, 47-75
+app/utils/plotting.py                                            23     16    30%   13-22, 29-37, 49-52
+app/utils/s3.py                                                  73     36    51%   38-41, 53-55, 77, 82-83, 105-113, 127-155
+app/utils/schema_inference.py                                    49     40    18%   14-39, 47-65, 73-111, 120-126
+-------------------------------------------------------------------------------------------
+TOTAL                                                          9215   4887    47%
+Coverage HTML written to dir htmlcov
+=========================== short test summary info ============================
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_preview_transformation_success
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_preview_transformation_dataset_not_found
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_apply_transformation_success
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_apply_transformation_with_data_loss_warning
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_apply_transformation_creates_config
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_get_transformation_history_success
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_get_transformation_history_not_found
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_get_transformation_history_with_lineage
+FAILED tests/test_api/test_transformations.py::TestTransformationRoutes::test_transformation_types_validation
+9 failed, 38 passed, 524 warnings in 132.49s (0:02:12)

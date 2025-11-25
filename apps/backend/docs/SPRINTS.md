@@ -29,6 +29,25 @@
 **Status**: 87% Complete (33/38 story points)
 **Test Status**: Version API 23/23 passing (100%), Production 45/45 passing (100%)
 
+### Critical Bug Fixes (2025-11-11) ✅
+**PR**: #48 - "fix: resolve 11 critical runtime bugs and security issues"
+**Impact**: CRITICAL - Fixed 11 runtime bugs + 1 critical security vulnerability
+
+**Summary**:
+- Fixed timezone-aware datetime issues causing TypeErrors
+- Fixed S3 URL parsing in 3 locations (data_processing, model_training, user_data)
+- Fixed model ID mismatch causing data integrity issues
+- Fixed file loading with proper BytesIO/StringIO wrapping
+- Fixed instance vs class method calls in monitoring endpoints
+- Fixed hard-coded file type detection
+- Added missing schema fields and proper schema usage
+- Added return type hints to 9 route handlers
+- Fixed FastAPI path parameter conflicts
+- **SECURITY**: Fixed cross-tenant data leak in visualization endpoints
+
+**Files Affected**: 8 files, 13 specific fixes
+**Documentation**: `apps/backend/docs/CRITICAL_BUG_FIXES_PR48.md`
+
 ### Completed Stories
 
 #### ✅ Story 12.1: API Integration for New Models (10 pts)

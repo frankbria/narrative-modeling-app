@@ -15,7 +15,7 @@ from app.main import app
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
-from app.services.transformation_service.recipe_manager import TransformationRecipe
+from app.services.transformation_engine.recipe_manager import TransformationRecipe
 from app.schemas.transformation import (
     TransformationType,
     TransformationPipelineRequest,

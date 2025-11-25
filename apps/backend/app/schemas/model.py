@@ -8,6 +8,7 @@ using ModelConfig model.
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from app.models.model import ProblemType
 
 
 # Request Schemas
@@ -18,7 +19,7 @@ class ModelTrainRequest(BaseModel):
     dataset_id: str = Field(..., description="Dataset to train on")
     name: str = Field(..., description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
-    problem_type: str = Field(..., description="ML problem type")
+    problem_type: ProblemType = Field(..., description="ML problem type")
     algorithm: str = Field(..., description="Algorithm to use")
     target_column: str = Field(..., description="Target column name")
     feature_columns: List[str] = Field(..., description="Feature column names")

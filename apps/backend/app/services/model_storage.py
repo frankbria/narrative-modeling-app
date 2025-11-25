@@ -31,23 +31,26 @@ class ModelStorageService:
         feature_engineer: FeatureEngineer,
         user_id: str,
         dataset_id: str,
-        model_metadata: dict
+        model_metadata: dict,
+        model_id: Optional[str] = None
     ) -> MLModel:
         """
         Save a trained model and its metadata
-        
+
         Args:
             model_candidate: Trained model candidate
             feature_engineer: Feature engineer with transformers
             user_id: User who trained the model
             dataset_id: Dataset used for training
             model_metadata: Additional metadata
-            
+            model_id: Optional pre-generated model ID (if None, generates new one)
+
         Returns:
             MLModel document
         """
-        # Generate unique model ID
-        model_id = f"model_{uuid.uuid4().hex[:12]}"
+        # Use provided model ID or generate unique one
+        if model_id is None:
+            model_id = f"model_{uuid.uuid4().hex[:12]}"
         
         # Serialize model
         model_buffer = io.BytesIO()
