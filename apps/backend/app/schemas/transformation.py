@@ -11,22 +11,52 @@ from datetime import datetime
 from enum import Enum
 
 
-# Transformation types enum
+# Transformation types enum - must match transformation_engine.TransformationType
 class TransformationType(str, Enum):
     """Supported transformation types."""
-    ENCODE = "encode"
-    SCALE = "scale"
-    IMPUTE = "impute"
+    # Data Cleaning
+    REMOVE_DUPLICATES = "remove_duplicates"
+    TRIM_WHITESPACE = "trim_whitespace"
+    FIX_CASING = "fix_casing"
+    REMOVE_SPECIAL_CHARS = "remove_special_chars"
+    STANDARDIZE_FORMAT = "standardize_format"
+
+    # Missing Values
     DROP_MISSING = "drop_missing"
+    FILL_MISSING = "fill_missing"
+    IMPUTE_MEAN = "impute_mean"
+    IMPUTE_MEDIAN = "impute_median"
+    IMPUTE_MODE = "impute_mode"
+    IMPUTE_FORWARD = "impute_forward"
+    IMPUTE_BACKWARD = "impute_backward"
+
+    # Type Conversions
+    TO_NUMERIC = "to_numeric"
+    TO_STRING = "to_string"
+    TO_DATETIME = "to_datetime"
+    TO_BOOLEAN = "to_boolean"
+    ONE_HOT_ENCODE = "one_hot_encode"
+    LABEL_ENCODE = "label_encode"
+
+    # Date/Time
+    EXTRACT_DATE_PARTS = "extract_date_parts"
+    CALCULATE_AGE = "calculate_age"
+    CREATE_CYCLICAL = "create_cyclical"
+
+    # Scaling/Normalization
+    SCALE = "scale"
+    NORMALIZE = "normalize"
+    STANDARDIZE = "standardize"
+
+    # Custom
+    FORMULA = "formula"
+    CONDITIONAL = "conditional"
+    REGEX_REPLACE = "regex_replace"
+    ENCODE = "encode"
+    IMPUTE = "impute"
     FILTER = "filter"
     AGGREGATE = "aggregate"
     DERIVE = "derive"
-    NORMALIZE = "normalize"
-    STANDARDIZE = "standardize"
-    ONE_HOT_ENCODE = "one_hot_encode"
-    LABEL_ENCODE = "label_encode"
-    FILL_MISSING = "fill_missing"
-    DROP_DUPLICATES = "drop_duplicates"
     OUTLIER_REMOVAL = "outlier_removal"
 
 
@@ -59,11 +89,23 @@ class TransformationPreviewRequest(BaseModel):
 
 
 class TransformationApplyRequest(BaseModel):
-    """Request schema for applying transformations."""
+    """Request schema for applying a single transformation."""
 
-    dataset_id: str = Field(..., description="Dataset to apply transformations to")
-    transformation_steps: List[TransformationStepRequest] = Field(..., description="Transformation steps to apply")
+    dataset_id: str = Field(..., description="Dataset to apply transformation to")
+    transformation_type: str = Field(..., description="Type of transformation")
+    column: Optional[str] = Field(None, description="Target column")
+    columns: Optional[List[str]] = Field(None, description="Target columns")
+    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Transformation parameters")
     save_as_new: bool = Field(default=False, description="Whether to save as new dataset version")
+
+    @field_validator('transformation_type')
+    @classmethod
+    def validate_transformation_type(cls, v: str) -> str:
+        """Validate transformation_type is one of supported types."""
+        allowed_types = {t.value for t in TransformationType}
+        if v not in allowed_types:
+            raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")
+        return v
 
 
 # Response Schemas
@@ -102,13 +144,14 @@ class TransformationConfigResponse(BaseModel):
 class TransformationPreviewResponse(BaseModel):
     """Response schema for transformation preview."""
 
-    sample_before: List[Dict[str, Any]] = Field(default_factory=list)
-    sample_after: List[Dict[str, Any]] = Field(default_factory=list)
-    affected_columns: List[str] = Field(default_factory=list)
-    estimated_rows_affected: int = Field(..., ge=0)
-    estimated_data_loss: float = Field(default=0.0, ge=0.0, le=100.0)
-    warnings: List[str] = Field(default_factory=list)
-    generated_at: datetime
+    success: bool = Field(default=True, description="Whether preview succeeded")
+    preview_data: Optional[List[Dict[str, Any]]] = Field(default=None, description="Preview of transformed data")
+    affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
+    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
+    stats_before: Optional[Dict[str, Any]] = Field(default=None, description="Statistics before transformation")
+    stats_after: Optional[Dict[str, Any]] = Field(default=None, description="Statistics after transformation")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+    warnings: List[str] = Field(default_factory=list, description="Warning messages")
 
 
 class TransformationValidationResponse(BaseModel):
@@ -126,13 +169,14 @@ class TransformationValidationResponse(BaseModel):
 class TransformationApplyResponse(BaseModel):
     """Response schema for transformation apply operation."""
 
-    config_id: str = Field(..., description="Configuration ID")
+    success: bool = Field(default=True, description="Whether apply succeeded")
     dataset_id: str = Field(..., description="Dataset ID")
-    is_applied: bool = True
-    applied_at: datetime
-    new_file_path: str = Field(..., description="Path to transformed file")
-    transformations_count: int = Field(..., ge=0)
-    total_data_loss: float = Field(..., ge=0.0, le=100.0)
+    transformation_id: str = Field(default="", description="Transformation ID")
+    affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
+    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
+    execution_time_ms: int = Field(default=0, ge=0, description="Execution time in milliseconds")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+    warnings: List[str] = Field(default_factory=list, description="Warning messages")
 
 
 class TransformationHistoryResponse(BaseModel):

@@ -1,29 +1,21 @@
 """
-Transformation Service for Visual Pipeline
+Transformation Engine for Visual Pipeline
+
+Provides transformation execution, validation, and recipe management.
 """
 
-# Import TransformationService from parent module
-import sys
-import os
+from app.services.transformation_service import TransformationService
+from .transformation_engine import TransformationEngine, TransformationType
+from .validators import TransformationValidator
+from .recipe_manager import RecipeManager
+from .data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 
-# Add parent directory to path to import the .py file
-parent_dir = os.path.dirname(os.path.dirname(__file__))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# Import from the transformation_service.py file in services directory
-try:
-    from .. import transformation_service as ts_file
-    TransformationService = ts_file.TransformationService
-except ImportError:
-    # Fallback: direct import
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "transformation_service_module",
-        os.path.join(os.path.dirname(__file__), "../transformation_service.py")
-    )
-    ts_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ts_module)
-    TransformationService = ts_module.TransformationService
-
-__all__ = ['TransformationService']
+__all__ = [
+    'TransformationService',
+    'TransformationEngine',
+    'TransformationType',
+    'TransformationValidator',
+    'RecipeManager',
+    'get_dataframe_from_s3',
+    'upload_dataframe_to_s3',
+]
