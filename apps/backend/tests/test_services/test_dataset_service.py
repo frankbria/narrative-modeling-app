@@ -234,9 +234,14 @@ class TestDatasetService:
 
         # ACT & ASSERT
         with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            # Mock the chain: find().sort().to_list()
+            # Mock the chain: find().sort().skip().limit().to_list()
+            mock_to_list = AsyncMock(return_value=mock_datasets)
+            mock_limit = MagicMock()
+            mock_limit.to_list = mock_to_list
+            mock_skip = MagicMock()
+            mock_skip.limit = MagicMock(return_value=mock_limit)
             mock_sort = MagicMock()
-            mock_sort.to_list = AsyncMock(return_value=mock_datasets)
+            mock_sort.skip = MagicMock(return_value=mock_skip)
             mock_find = MagicMock()
             mock_find.sort = MagicMock(return_value=mock_sort)
             MockDatasetClass.find = MagicMock(return_value=mock_find)
@@ -247,6 +252,10 @@ class TestDatasetService:
             MockDatasetClass.find.assert_called_once()
             # Verify sort was called
             mock_find.sort.assert_called_once()
+            # Verify skip was called
+            mock_sort.skip.assert_called_once()
+            # Verify limit was called
+            mock_skip.limit.assert_called_once()
             assert result == mock_datasets
             assert len(result) == 3
 
@@ -258,9 +267,14 @@ class TestDatasetService:
 
         # ACT & ASSERT
         with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            # Mock the chain: find().sort().to_list()
+            # Mock the chain: find().sort().skip().limit().to_list()
+            mock_to_list = AsyncMock(return_value=[])
+            mock_limit = MagicMock()
+            mock_limit.to_list = mock_to_list
+            mock_skip = MagicMock()
+            mock_skip.limit = MagicMock(return_value=mock_limit)
             mock_sort = MagicMock()
-            mock_sort.to_list = AsyncMock(return_value=[])
+            mock_sort.skip = MagicMock(return_value=mock_skip)
             mock_find = MagicMock()
             mock_find.sort = MagicMock(return_value=mock_sort)
             MockDatasetClass.find = MagicMock(return_value=mock_find)

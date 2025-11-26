@@ -2,6 +2,7 @@
 Model service for ModelConfig operations.
 
 This service handles ML model configuration operations using the new ModelConfig model.
+Inherits from BaseService for standardized CRUD patterns and error handling.
 """
 
 from typing import List, Optional, Dict, Any
@@ -15,10 +16,19 @@ from app.models.model import (
     TrainingConfig,
     DeploymentConfig
 )
+from app.services.base_service import BaseService
+from app.services.exceptions import NotFoundError, OperationError
 
 
-class ModelService:
+class ModelService(BaseService[ModelConfig]):
     """Service for model operations using ModelConfig."""
+
+    model_class = ModelConfig
+    resource_name = "Model"
+
+    def _get_id_field(self) -> str:
+        """Return the unique identifier field name."""
+        return "model_id"
 
     async def create_model_config(
         self,
@@ -64,29 +74,39 @@ class ModelService:
 
         Returns:
             Created ModelConfig instance
+
+        Raises:
+            OperationError: If model creation fails
         """
-        config = ModelConfig(
-            user_id=user_id,
-            dataset_id=dataset_id,
-            model_id=model_id,
-            name=name,
-            description=description,
-            problem_type=problem_type,
-            algorithm=algorithm,
-            hyperparameters=hyperparameters or HyperparameterConfig(),
-            feature_config=feature_config,
-            training_config=training_config,
-            performance_metrics=performance_metrics,
-            model_path=model_path,
-            model_file_url=model_file_url,
-            feature_transformer_path=feature_transformer_path,
-            model_size=model_size,
-            status=ModelStatus.TRAINING,
-            deployment_config=deployment_config or DeploymentConfig(),
-            **kwargs
-        )
-        await config.save()
-        return config
+        try:
+            config = ModelConfig(
+                user_id=user_id,
+                dataset_id=dataset_id,
+                model_id=model_id,
+                name=name,
+                description=description,
+                problem_type=problem_type,
+                algorithm=algorithm,
+                hyperparameters=hyperparameters or HyperparameterConfig(),
+                feature_config=feature_config,
+                training_config=training_config,
+                performance_metrics=performance_metrics,
+                model_path=model_path,
+                model_file_url=model_file_url,
+                feature_transformer_path=feature_transformer_path,
+                model_size=model_size,
+                status=ModelStatus.TRAINING,
+                deployment_config=deployment_config or DeploymentConfig(),
+                **kwargs
+            )
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to create model configuration",
+                operation="create_model_config",
+                original_error=e
+            )
 
     async def get_model_config(
         self,
@@ -101,7 +121,7 @@ class ModelService:
         Returns:
             ModelConfig instance or None if not found
         """
-        return await ModelConfig.find_one(ModelConfig.model_id == model_id)
+        return await self.get_by_id(model_id, check_ownership=False)
 
     async def list_model_configs(
         self,
@@ -118,9 +138,13 @@ class ModelService:
         Returns:
             List of ModelConfig instances sorted by created_at descending
         """
-        return await ModelConfig.find(
-            ModelConfig.user_id == user_id
-        ).sort(-ModelConfig.created_at).to_list()
+        return await self.list_for_user(
+            user_id=user_id,
+            skip=0,
+            limit=1000,  # High limit for backward compatibility
+            sort_field="created_at",
+            sort_ascending=False
+        )
 
     async def list_models_by_dataset(
         self,
@@ -146,7 +170,7 @@ class ModelService:
         model_id: str,
         status: ModelStatus,
         metrics: Optional[Dict[str, Any]] = None
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Update model training status and optionally update metrics.
 
@@ -156,31 +180,40 @@ class ModelService:
             metrics: Additional metrics to update (optional)
 
         Returns:
-            Updated ModelConfig or None if not found
+            Updated ModelConfig
+
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
         """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
 
-        config.status = status
+        try:
+            config.status = status
 
-        if metrics:
-            # Update performance metrics with new values
-            for key, value in metrics.items():
-                if hasattr(config.performance_metrics, key):
-                    setattr(config.performance_metrics, key, value)
-                else:
-                    # Add to additional_metrics if not a standard field
-                    config.performance_metrics.additional_metrics[key] = value
+            if metrics:
+                # Update performance metrics with new values
+                for key, value in metrics.items():
+                    if hasattr(config.performance_metrics, key):
+                        setattr(config.performance_metrics, key, value)
+                    else:
+                        # Add to additional_metrics if not a standard field
+                        config.performance_metrics.additional_metrics[key] = value
 
-        config.update_timestamp()
-        await config.save()
-        return config
+            config.update_timestamp()
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to update training status",
+                operation="update_training_status",
+                original_error=e
+            )
 
     async def mark_model_trained(
         self,
         model_id: str
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Mark model as trained.
 
@@ -188,21 +221,30 @@ class ModelService:
             model_id: Model identifier
 
         Returns:
-            Updated ModelConfig or None if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+            Updated ModelConfig
 
-        config.mark_trained()
-        await config.save()
-        return config
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
+        """
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+
+        try:
+            config.mark_trained()
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to mark model as trained",
+                operation="mark_model_trained",
+                original_error=e
+            )
 
     async def mark_model_deployed(
         self,
         model_id: str,
         endpoint: Optional[str] = None
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Mark model as deployed.
 
@@ -211,20 +253,29 @@ class ModelService:
             endpoint: API endpoint for deployed model (optional)
 
         Returns:
-            Updated ModelConfig or None if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+            Updated ModelConfig
 
-        config.mark_deployed(endpoint)
-        await config.save()
-        return config
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
+        """
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+
+        try:
+            config.mark_deployed(endpoint)
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to mark model as deployed",
+                operation="mark_model_deployed",
+                original_error=e
+            )
 
     async def mark_model_archived(
         self,
         model_id: str
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Mark model as archived.
 
@@ -232,20 +283,29 @@ class ModelService:
             model_id: Model identifier
 
         Returns:
-            Updated ModelConfig or None if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+            Updated ModelConfig
 
-        config.mark_archived()
-        await config.save()
-        return config
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
+        """
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+
+        try:
+            config.mark_archived()
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to mark model as archived",
+                operation="mark_model_archived",
+                original_error=e
+            )
 
     async def mark_model_failed(
         self,
         model_id: str
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Mark model training as failed.
 
@@ -253,21 +313,30 @@ class ModelService:
             model_id: Model identifier
 
         Returns:
-            Updated ModelConfig or None if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+            Updated ModelConfig
 
-        config.mark_failed()
-        await config.save()
-        return config
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
+        """
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+
+        try:
+            config.mark_failed()
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to mark model as failed",
+                operation="mark_model_failed",
+                original_error=e
+            )
 
     async def record_prediction(
         self,
         model_id: str,
         prediction_time_ms: Optional[float] = None
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Record a prediction event.
 
@@ -276,15 +345,24 @@ class ModelService:
             prediction_time_ms: Prediction time in milliseconds (optional)
 
         Returns:
-            Updated ModelConfig or None if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+            Updated ModelConfig
 
-        config.record_prediction(prediction_time_ms)
-        await config.save()
-        return config
+        Raises:
+            NotFoundError: If model not found
+            OperationError: If update fails
+        """
+        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+
+        try:
+            config.record_prediction(prediction_time_ms)
+            await config.save()
+            return config
+        except Exception as e:
+            raise OperationError(
+                message="Failed to record prediction",
+                operation="record_prediction",
+                original_error=e
+            )
 
     async def get_active_models(
         self,
@@ -301,10 +379,14 @@ class ModelService:
         Returns:
             List of active ModelConfig instances sorted by created_at descending
         """
-        return await ModelConfig.find(
-            ModelConfig.user_id == user_id,
-            ModelConfig.is_active == True
-        ).sort(-ModelConfig.created_at).to_list()
+        return await self.list_for_user(
+            user_id=user_id,
+            skip=0,
+            limit=1000,  # High limit for backward compatibility
+            sort_field="created_at",
+            sort_ascending=False,
+            is_active=True
+        )
 
     async def get_deployed_models(
         self,
@@ -321,55 +403,71 @@ class ModelService:
         Returns:
             List of deployed ModelConfig instances sorted by created_at descending
         """
-        return await ModelConfig.find(
-            ModelConfig.user_id == user_id,
-            ModelConfig.status == ModelStatus.DEPLOYED
-        ).sort(-ModelConfig.created_at).to_list()
+        return await self.list_for_user(
+            user_id=user_id,
+            skip=0,
+            limit=1000,  # High limit for backward compatibility
+            sort_field="created_at",
+            sort_ascending=False,
+            status=ModelStatus.DEPLOYED
+        )
 
     async def delete_model_config(
         self,
-        model_id: str
+        model_id: str,
+        user_id: str
     ) -> bool:
         """
         Delete model configuration.
 
         Args:
             model_id: Model identifier
+            user_id: User ID for ownership check
 
         Returns:
             True if deleted, False if not found
-        """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return False
 
-        await config.delete()
-        return True
+        Raises:
+            PermissionDeniedError: If user doesn't own the model
+        """
+        return await self.delete(
+            resource_id=model_id,
+            user_id=user_id,
+            soft_delete=False
+        )
 
     async def update_model_config(
         self,
         model_id: str,
+        user_id: str,
         **update_fields
-    ) -> Optional[ModelConfig]:
+    ) -> ModelConfig:
         """
         Update model configuration fields.
 
         Args:
             model_id: Model identifier
+            user_id: User ID for ownership check
             **update_fields: Fields to update
 
         Returns:
-            Updated ModelConfig or None if not found
+            Updated ModelConfig
+
+        Raises:
+            NotFoundError: If model not found
+            PermissionDeniedError: If user doesn't own the model
+            OperationError: If update fails
         """
-        config = await self.get_model_config(model_id)
-        if not config:
-            return None
+        result = await self.update(
+            resource_id=model_id,
+            user_id=user_id,
+            update_data=update_fields
+        )
 
-        # Update fields
-        for field, value in update_fields.items():
-            if hasattr(config, field):
-                setattr(config, field, value)
+        if result is None:
+            raise NotFoundError(
+                resource_type=self.resource_name,
+                resource_id=model_id
+            )
 
-        config.update_timestamp()
-        await config.save()
-        return config
+        return result

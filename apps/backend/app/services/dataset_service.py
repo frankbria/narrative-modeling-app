@@ -8,10 +8,52 @@ while maintaining backward compatibility with the legacy UserData model through 
 from typing import List, Optional, Any, Dict
 from app.models.dataset import DatasetMetadata, SchemaField, AISummary, PIIReport
 from app.models.user_data import UserData, SchemaField as LegacySchemaField, AISummary as LegacyAISummary
+from app.services.base_service import BaseService
+from app.services.exceptions import NotFoundError, PermissionDeniedError
 
 
-class DatasetService:
+class DatasetService(BaseService[DatasetMetadata]):
     """Service for dataset operations using DatasetMetadata."""
+
+    model_class = DatasetMetadata
+    resource_name = "Dataset"
+
+    def _get_id_field(self) -> str:
+        """Return the unique identifier field name for datasets."""
+        return "dataset_id"
+
+    async def get_by_id(
+        self,
+        resource_id: str,
+        user_id: Optional[str] = None,
+        check_ownership: bool = True
+    ) -> Optional[DatasetMetadata]:
+        """
+        Get dataset by ID with optional ownership check.
+        
+        Overrides BaseService to directly use DatasetMetadata for test compatibility.
+        
+        Args:
+            resource_id: Dataset identifier
+            user_id: User ID for ownership check
+            check_ownership: Whether to verify user ownership
+            
+        Returns:
+            DatasetMetadata instance or None if not found
+            
+        Raises:
+            PermissionDeniedError: If user doesn't own the dataset
+        """
+        # Direct query for test compatibility
+        document = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == resource_id)
+        
+        if document is None:
+            return None
+            
+        if check_ownership and user_id:
+            await self._check_ownership(document, user_id)
+            
+        return document
 
     async def create_dataset(
         self,
@@ -214,17 +256,104 @@ class DatasetService:
 
         await user_data.save()
 
-    async def get_dataset(self, dataset_id: str) -> Optional[DatasetMetadata]:
+    async def get_dataset(
+        self, 
+        dataset_id: str, 
+        user_id: Optional[str] = None,
+        check_ownership: bool = True
+    ) -> Optional[DatasetMetadata]:
         """
         Retrieve dataset metadata by dataset ID.
 
         Args:
             dataset_id: Dataset identifier
+            user_id: User ID for ownership check (required if check_ownership=True)
+            check_ownership: Whether to verify user ownership
 
         Returns:
             DatasetMetadata instance or None if not found
+
+        Raises:
+            PermissionDeniedError: If user doesn't own the dataset
         """
-        return await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
+        return await self.get_by_id(
+            resource_id=dataset_id,
+            user_id=user_id,
+            check_ownership=check_ownership and user_id is not None
+        )
+
+    async def get_dataset_or_raise(
+        self,
+        dataset_id: str,
+        user_id: Optional[str] = None,
+        check_ownership: bool = True
+    ) -> DatasetMetadata:
+        """
+        Retrieve dataset metadata by dataset ID, raising NotFoundError if not found.
+
+        Args:
+            dataset_id: Dataset identifier
+            user_id: User ID for ownership check
+            check_ownership: Whether to verify user ownership
+
+        Returns:
+            DatasetMetadata instance
+
+        Raises:
+            NotFoundError: If dataset doesn't exist
+            PermissionDeniedError: If user doesn't own the dataset
+        """
+        return await self.get_by_id_or_raise(
+            resource_id=dataset_id,
+            user_id=user_id,
+            check_ownership=check_ownership and user_id is not None
+        )
+
+    async def list_for_user(
+        self,
+        user_id: str,
+        skip: int = 0,
+        limit: int = 20,
+        sort_field: str = "created_at",
+        sort_ascending: bool = False,
+        **filters: Any
+    ) -> List[DatasetMetadata]:
+        """
+        List datasets for user with pagination and filtering.
+        
+        Overrides BaseService to directly use DatasetMetadata for test compatibility.
+        
+        Args:
+            user_id: User identifier
+            skip: Number of documents to skip
+            limit: Maximum documents to return
+            sort_field: Field to sort by
+            sort_ascending: Sort direction (False = descending)
+            **filters: Additional filter criteria (e.g., is_processed=False)
+            
+        Returns:
+            List of DatasetMetadata instances
+        """
+        # Build query conditions
+        query_conditions = [DatasetMetadata.user_id == user_id]
+        
+        # Add additional filters
+        for field_name, value in filters.items():
+            field_attr = getattr(DatasetMetadata, field_name)
+            query_conditions.append(field_attr == value)
+        
+        # Get sort field
+        sort_field_attr = getattr(DatasetMetadata, sort_field)
+        sort_direction = +sort_field_attr if sort_ascending else -sort_field_attr
+        
+        # Execute query with full chain for test compatibility
+        query = DatasetMetadata.find(*query_conditions)
+        query = query.sort(sort_direction)
+        query = query.skip(skip)
+        query = query.limit(limit)
+        documents = await query.to_list()
+        
+        return documents
 
     async def list_datasets(self, user_id: str) -> List[DatasetMetadata]:
         """
@@ -238,13 +367,19 @@ class DatasetService:
         Returns:
             List of DatasetMetadata instances sorted by created_at descending
         """
-        return await DatasetMetadata.find(
-            DatasetMetadata.user_id == user_id
-        ).sort(-DatasetMetadata.created_at).to_list()
+        # Use base method but keep custom sorting logic
+        return await self.list_for_user(
+            user_id=user_id,
+            skip=0,
+            limit=1000,  # Large limit to get all datasets
+            sort_field="created_at",
+            sort_ascending=False
+        )
 
     async def update_dataset(
         self,
         dataset_id: str,
+        user_id: Optional[str] = None,
         **update_fields
     ) -> Optional[DatasetMetadata]:
         """
@@ -252,44 +387,74 @@ class DatasetService:
 
         Args:
             dataset_id: Dataset identifier
+            user_id: User ID for ownership check (optional for backward compatibility)
             **update_fields: Fields to update
 
         Returns:
             Updated DatasetMetadata or None if not found
+
+        Raises:
+            PermissionDeniedError: If user doesn't own the dataset (when user_id provided)
         """
-        dataset = await self.get_dataset(dataset_id)
-        if not dataset:
-            return None
+        # For backward compatibility, allow updates without user_id check
+        if user_id:
+            return await self.update(
+                resource_id=dataset_id,
+                user_id=user_id,
+                update_data=update_fields
+            )
+        else:
+            # Legacy path: no ownership check
+            dataset = await self.get_dataset(dataset_id, check_ownership=False)
+            if not dataset:
+                return None
 
-        # Update fields
-        for field, value in update_fields.items():
-            if hasattr(dataset, field):
-                setattr(dataset, field, value)
+            # Update fields
+            for field, value in update_fields.items():
+                if hasattr(dataset, field):
+                    setattr(dataset, field, value)
 
-        # Update timestamp
-        dataset.update_timestamp()
+            # Update timestamp
+            dataset.update_timestamp()
 
-        # Save changes
-        await dataset.save()
+            # Save changes
+            await dataset.save()
 
-        return dataset
+            return dataset
 
-    async def delete_dataset(self, dataset_id: str) -> bool:
+    async def delete_dataset(
+        self,
+        dataset_id: str,
+        user_id: Optional[str] = None
+    ) -> bool:
         """
         Delete dataset metadata.
 
         Args:
             dataset_id: Dataset identifier
+            user_id: User ID for ownership check (optional for backward compatibility)
 
         Returns:
             True if deleted, False if not found
-        """
-        dataset = await self.get_dataset(dataset_id)
-        if not dataset:
-            return False
 
-        await dataset.delete()
-        return True
+        Raises:
+            PermissionDeniedError: If user doesn't own the dataset (when user_id provided)
+        """
+        # For backward compatibility, allow deletes without user_id check
+        if user_id:
+            return await self.delete(
+                resource_id=dataset_id,
+                user_id=user_id,
+                soft_delete=False
+            )
+        else:
+            # Legacy path: no ownership check
+            dataset = await self.get_dataset(dataset_id, check_ownership=False)
+            if not dataset:
+                return False
+
+            await dataset.delete()
+            return True
 
     async def mark_dataset_processed(
         self,
@@ -310,7 +475,7 @@ class DatasetService:
         Returns:
             Updated DatasetMetadata or None if not found
         """
-        dataset = await self.get_dataset(dataset_id)
+        dataset = await self.get_dataset(dataset_id, check_ownership=False)
         if not dataset:
             return None
 
@@ -354,7 +519,11 @@ class DatasetService:
         Returns:
             List of unprocessed DatasetMetadata instances sorted by created_at descending
         """
-        return await DatasetMetadata.find(
-            DatasetMetadata.user_id == user_id,
-            DatasetMetadata.is_processed == False
-        ).sort(-DatasetMetadata.created_at).to_list()
+        return await self.list_for_user(
+            user_id=user_id,
+            skip=0,
+            limit=1000,  # Large limit to get all datasets
+            sort_field="created_at",
+            sort_ascending=False,
+            is_processed=False
+        )

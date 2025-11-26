@@ -23,6 +23,13 @@ from app.models.version import DatasetVersion, TransformationLineage
 from app.models.dataset import DatasetMetadata
 from app.services.versioning_service import versioning_service
 from app.auth.nextauth_auth import get_current_user_id
+from app.services.exceptions import (
+    NotFoundError,
+    ConflictError,
+    OperationError,
+    ValidationError,
+    PermissionDeniedError
+)
 
 logger = logging.getLogger(__name__)
 
@@ -265,23 +272,16 @@ async def compare_versions(
 
         return VersionComparisonResponse.model_validate(comparison)
 
-    except ValueError as e:
-        # Handle specific validation errors from service
-        if "not found" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
-        elif "same dataset" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-            )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message
+        )
     except Exception as e:
         logger.error(f"Error comparing versions: {e}")
         raise HTTPException(
@@ -368,17 +368,11 @@ async def pin_version(
 
         return DatasetVersionResponse.model_validate(version)
 
-    except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-            )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message
+        )
     except Exception as e:
         logger.error(f"Error pinning version {version_id}: {e}")
         raise HTTPException(
