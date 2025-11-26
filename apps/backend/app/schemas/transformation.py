@@ -8,56 +8,9 @@ using TransformationConfig model.
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
-from enum import Enum
 
-
-# Transformation types enum - must match transformation_engine.TransformationType
-class TransformationType(str, Enum):
-    """Supported transformation types."""
-    # Data Cleaning
-    REMOVE_DUPLICATES = "remove_duplicates"
-    TRIM_WHITESPACE = "trim_whitespace"
-    FIX_CASING = "fix_casing"
-    REMOVE_SPECIAL_CHARS = "remove_special_chars"
-    STANDARDIZE_FORMAT = "standardize_format"
-
-    # Missing Values
-    DROP_MISSING = "drop_missing"
-    FILL_MISSING = "fill_missing"
-    IMPUTE_MEAN = "impute_mean"
-    IMPUTE_MEDIAN = "impute_median"
-    IMPUTE_MODE = "impute_mode"
-    IMPUTE_FORWARD = "impute_forward"
-    IMPUTE_BACKWARD = "impute_backward"
-
-    # Type Conversions
-    TO_NUMERIC = "to_numeric"
-    TO_STRING = "to_string"
-    TO_DATETIME = "to_datetime"
-    TO_BOOLEAN = "to_boolean"
-    ONE_HOT_ENCODE = "one_hot_encode"
-    LABEL_ENCODE = "label_encode"
-
-    # Date/Time
-    EXTRACT_DATE_PARTS = "extract_date_parts"
-    CALCULATE_AGE = "calculate_age"
-    CREATE_CYCLICAL = "create_cyclical"
-
-    # Scaling/Normalization
-    SCALE = "scale"
-    NORMALIZE = "normalize"
-    STANDARDIZE = "standardize"
-
-    # Custom
-    FORMULA = "formula"
-    CONDITIONAL = "conditional"
-    REGEX_REPLACE = "regex_replace"
-    ENCODE = "encode"
-    IMPUTE = "impute"
-    FILTER = "filter"
-    AGGREGATE = "aggregate"
-    DERIVE = "derive"
-    OUTLIER_REMOVAL = "outlier_removal"
+# Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
+from app.models.transformation import TransformationType
 
 
 # Request Schemas

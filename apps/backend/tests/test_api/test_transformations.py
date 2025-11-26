@@ -20,6 +20,7 @@ from app.schemas.transformation import (
     TransformationApplyRequest,
     TransformationStepRequest
 )
+from app.models.transformation import DATA_LOSS_THRESHOLD_PERCENT
 
 
 @pytest.mark.integration
@@ -263,9 +264,11 @@ class TestTransformationRoutes:
             data_schema=[]
         )
 
-        # Mock data with missing values (40% missing - below 50% threshold)
+        # Mock data with missing values (40% missing - below DATA_LOSS_THRESHOLD_PERCENT of 50%)
+        # The business logic rejects transformations with data loss >= DATA_LOSS_THRESHOLD_PERCENT
+        missing_percent = 40  # Must be < DATA_LOSS_THRESHOLD_PERCENT (50%)
         mock_df = pd.DataFrame({
-            'value': [None] * 40 + [10.0 + i for i in range(60)],
+            'value': [None] * missing_percent + [10.0 + i for i in range(100 - missing_percent)],
             'category': ['A'] * 100
         })
 

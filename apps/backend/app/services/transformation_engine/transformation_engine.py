@@ -6,48 +6,13 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
-from enum import Enum
 import logging
 from pydantic import BaseModel, Field
 
+# Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
+from app.models.transformation import TransformationType
+
 logger = logging.getLogger(__name__)
-
-
-class TransformationType(str, Enum):
-    """Types of transformations available"""
-    # Data Cleaning
-    REMOVE_DUPLICATES = "remove_duplicates"
-    TRIM_WHITESPACE = "trim_whitespace"
-    FIX_CASING = "fix_casing"
-    REMOVE_SPECIAL_CHARS = "remove_special_chars"
-    STANDARDIZE_FORMAT = "standardize_format"
-    
-    # Missing Values
-    DROP_MISSING = "drop_missing"
-    FILL_MISSING = "fill_missing"
-    IMPUTE_MEAN = "impute_mean"
-    IMPUTE_MEDIAN = "impute_median"
-    IMPUTE_MODE = "impute_mode"
-    IMPUTE_FORWARD = "impute_forward"
-    IMPUTE_BACKWARD = "impute_backward"
-    
-    # Type Conversions
-    TO_NUMERIC = "to_numeric"
-    TO_STRING = "to_string"
-    TO_DATETIME = "to_datetime"
-    TO_BOOLEAN = "to_boolean"
-    ONE_HOT_ENCODE = "one_hot_encode"
-    LABEL_ENCODE = "label_encode"
-    
-    # Date/Time
-    EXTRACT_DATE_PARTS = "extract_date_parts"
-    CALCULATE_AGE = "calculate_age"
-    CREATE_CYCLICAL = "create_cyclical"
-    
-    # Custom
-    FORMULA = "formula"
-    CONDITIONAL = "conditional"
-    REGEX_REPLACE = "regex_replace"
 
 
 class TransformationResult(BaseModel):
