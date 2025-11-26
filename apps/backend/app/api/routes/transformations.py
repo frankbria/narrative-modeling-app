@@ -37,6 +37,7 @@ from app.services.transformation_engine.validators import TransformationValidato
 from app.services.transformation_engine.recipe_manager import RecipeManager
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.redis_cache import cache_service
+from app.services.exceptions import NotFoundError, OperationError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -77,9 +78,15 @@ async def preview_transformation(
             warnings=result.get("warnings", [])
         )
 
-    except ValueError as e:
+    except NotFoundError as e:
         logger.error(f"Preview transformation failed: {str(e)}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=e.message)
+    except OperationError as e:
+        logger.error(f"Preview transformation failed: {str(e)}")
+        return TransformationPreviewResponse(
+            success=False,
+            error=e.message
+        )
     except Exception as e:
         logger.error(f"Preview transformation failed: {str(e)}")
         return TransformationPreviewResponse(
@@ -117,9 +124,18 @@ async def apply_transformation(
             warnings=result.get("warnings", [])
         )
 
-    except ValueError as e:
+    except NotFoundError as e:
         logger.error(f"Apply transformation failed: {str(e)}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=e.message)
+    except OperationError as e:
+        logger.error(f"Apply transformation failed: {str(e)}")
+        return TransformationApplyResponse(
+            success=False,
+            dataset_id=request.dataset_id,
+            transformation_id="",
+            execution_time_ms=0,
+            error=e.message
+        )
     except Exception as e:
         logger.error(f"Apply transformation failed: {str(e)}")
         return TransformationApplyResponse(
@@ -747,9 +763,9 @@ async def get_transformation_history(
             updated_at=history["updated_at"]
         )
 
-    except ValueError as e:
+    except NotFoundError as e:
         logger.error(f"Get transformation history failed: {str(e)}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=e.message)
     except HTTPException:
         raise
     except Exception as e:

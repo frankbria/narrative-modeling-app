@@ -304,23 +304,51 @@ async def list_models(
     try:
         model_service = ModelService()
 
-        # Get models based on filters
+        # Calculate skip for database-level pagination
+        skip = (page - 1) * limit
+
+        # Get models with database-level pagination where possible
         if dataset_id:
+            # For dataset filter, we still need to fetch and filter in-memory
+            # TODO: Add list_models_by_dataset_and_user() method for better performance
             models = await model_service.list_models_by_dataset(dataset_id)
             # Filter by user
             models = [m for m in models if m.user_id == current_user_id]
+
+            # Apply status filter if provided
+            if status_filter:
+                models = [m for m in models if m.status.value == status_filter]
+
+            # Apply pagination in-memory (already filtered)
+            total = len(models)
+            paginated_models = models[skip:skip + limit]
         else:
-            models = await model_service.list_model_configs(current_user_id)
-
-        # Apply status filter if provided
-        if status_filter:
-            models = [m for m in models if m.status.value == status_filter]
-
-        # Apply pagination
-        total = len(models)
-        start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        paginated_models = models[start_idx:end_idx]
+            # Use database-level pagination for better performance
+            if status_filter:
+                # Use filtered query with pagination
+                status_enum = ModelStatus(status_filter)
+                if status_enum == ModelStatus.DEPLOYED:
+                    paginated_models = await model_service.get_deployed_models(
+                        current_user_id, skip=skip, limit=limit
+                    )
+                    total = await model_service.count_for_user(
+                        current_user_id, status=status_enum
+                    )
+                else:
+                    # For other statuses, use list_for_user with status filter
+                    paginated_models = await model_service.list_for_user(
+                        current_user_id, skip=skip, limit=limit,
+                        status=status_enum
+                    )
+                    total = await model_service.count_for_user(
+                        current_user_id, status=status_enum
+                    )
+            else:
+                # No filter - use database-level pagination
+                paginated_models = await model_service.list_model_configs(
+                    current_user_id, skip=skip, limit=limit
+                )
+                total = await model_service.count_for_user(current_user_id)
 
         # Convert to list items
         model_items = [

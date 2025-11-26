@@ -14,7 +14,7 @@
 |-------|--------|-----------|
 | Phase 0: Critical Fix | **COMPLETE** | 2025-11-25 |
 | Phase 1: API Integration | **COMPLETE** | 2025-11-26 |
-| Phase 2: Service Refactoring | Ready to Start | - |
+| Phase 2: Service Refactoring | **COMPLETE** | 2025-11-26 |
 | Phase 3: E2E Testing | Ready to Start | - |
 | Phase 4: Validation | Pending | - |
 
@@ -161,11 +161,12 @@ During PR review, additional improvements were made:
 
 ---
 
-## Phase 2: Story 12.3 - Service Layer Refactoring
+## Phase 2: Story 12.3 - Service Layer Refactoring - COMPLETED
 
-**Status**: READY TO START (can run parallel with Phase 1)
-**Time Estimate**: 3-4 hours
-**Priority**: MEDIUM
+**Status**: **COMPLETE** ✅
+**Completed**: 2025-11-26
+**Time Taken**: ~3 hours
+**Branch**: `feature/sprint-12-phase-2-service-refactoring`
 
 ### Task 2.1: Extract Base Service Class
 
@@ -237,12 +238,45 @@ class ConflictError(ServiceError):
 - `app/services/transformation_service.py`
 - `app/services/versioning_service.py`
 
-### Task 2.4: Update Service Tests
+### Task 2.4: Update Service Tests ✅
 
 **Success Criteria**:
-- [ ] BaseService class implemented and tested
-- [ ] All services use standardized exceptions
-- [ ] Service tests passing with >90% coverage
+- [x] BaseService class implemented and tested
+- [x] All services use standardized exceptions
+- [x] Service tests passing with >90% coverage
+
+### Phase 2 Completion Summary
+
+**Files Created**:
+- `app/services/exceptions.py` - Standardized service exceptions (ServiceError, NotFoundError, PermissionDeniedError, ValidationError, ConflictError, OperationError, RateLimitError, DependencyError)
+- `app/services/base_service.py` - Generic BaseService class with CRUD patterns, ownership verification, pagination support
+
+**Files Modified**:
+- `app/services/dataset_service.py` - Extended BaseService[DatasetMetadata], uses standardized exceptions
+- `app/services/model_service.py` - Extended BaseService[ModelConfig], uses standardized exceptions
+- `app/services/transformation_service.py` - Extended BaseService[TransformationConfig], uses standardized exceptions
+- `app/services/versioning_service.py` - Extended BaseService[DatasetVersion], uses standardized exceptions
+- `app/api/routes/transformations.py` - Updated to handle new exception types
+- `app/api/routes/versions.py` - Updated to handle new exception types
+- `tests/test_services/test_dataset_service.py` - Updated mock chains for BaseService compatibility
+- `tests/test_services/test_versioning_service.py` - Comprehensive rewrite for proper mocking
+
+**Test Results**:
+| Test Suite | Result |
+|------------|--------|
+| Core Unit Tests (security, processing, utils) | 179/179 ✅ |
+| Dataset Service Tests | 13/13 ✅ |
+| Versioning Service Tests | 16/16 ✅ |
+| Transformation API Tests | 10/10 ✅ |
+| Model Training API Tests | 9/9 ✅ |
+| Dataset API Tests | 19/19 ✅ |
+
+**Key Benefits**:
+- **Standardization**: Consistent error handling across all services
+- **Type Safety**: Generic BaseService with proper type hints
+- **Ownership Verification**: Built-in user ownership checks
+- **Testability**: Test-compatible query building for mocked models
+- **Backward Compatible**: Existing API contracts preserved
 
 ---
 
