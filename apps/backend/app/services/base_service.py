@@ -338,7 +338,7 @@ class BaseService(Generic[T], ABC):
         user_id: str,
         update_data: Dict[str, Any],
         allowed_fields: Optional[List[str]] = None
-    ) -> Optional[T]:
+    ) -> T:
         """
         Update document fields.
 
@@ -349,16 +349,15 @@ class BaseService(Generic[T], ABC):
             allowed_fields: If provided, only update these fields
 
         Returns:
-            Updated document or None if not found
+            Updated document
 
         Raises:
+            NotFoundError: If resource doesn't exist
             PermissionDeniedError: If user doesn't own the resource
             ValidationError: If update_data contains invalid fields
         """
-        document = await self.get_by_id(resource_id, user_id, check_ownership=True)
-
-        if document is None:
-            return None
+        # Use get_by_id_or_raise to make the behavior explicit
+        document = await self.get_by_id_or_raise(resource_id, user_id, check_ownership=True)
 
         # Filter to allowed fields if specified
         if allowed_fields:
@@ -398,15 +397,14 @@ class BaseService(Generic[T], ABC):
             soft_delete: If True, mark as deleted instead of removing
 
         Returns:
-            True if deleted, False if not found
+            True if successfully deleted
 
         Raises:
+            NotFoundError: If resource doesn't exist
             PermissionDeniedError: If user doesn't own the resource
         """
-        document = await self.get_by_id(resource_id, user_id, check_ownership=True)
-
-        if document is None:
-            return False
+        # Use get_by_id_or_raise to make the behavior explicit
+        document = await self.get_by_id_or_raise(resource_id, user_id, check_ownership=True)
 
         if soft_delete:
             # Soft delete - mark as deleted

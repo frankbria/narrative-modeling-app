@@ -458,16 +458,9 @@ class ModelService(BaseService[ModelConfig]):
             PermissionDeniedError: If user doesn't own the model
             OperationError: If update fails
         """
-        result = await self.update(
+        # BaseService.update() now raises NotFoundError directly, no need to check for None
+        return await self.update(
             resource_id=model_id,
             user_id=user_id,
             update_data=update_fields
         )
-
-        if result is None:
-            raise NotFoundError(
-                resource_type=self.resource_name,
-                resource_id=model_id
-            )
-
-        return result

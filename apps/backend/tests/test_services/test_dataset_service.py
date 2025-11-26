@@ -311,9 +311,10 @@ class TestDatasetService:
             assert result == mock_dataset
 
     @pytest.mark.asyncio
-    async def test_update_dataset_returns_none_when_not_found(self):
-        """Test update_dataset returns None when dataset doesn't exist."""
+    async def test_update_dataset_raises_not_found_when_not_found(self):
+        """Test update_dataset raises NotFoundError when dataset doesn't exist."""
         # ARRANGE
+        from app.services.exceptions import NotFoundError
         dataset_id = "nonexistent"
 
         # ACT & ASSERT
@@ -321,9 +322,11 @@ class TestDatasetService:
             mock_find_one = AsyncMock(return_value=None)
             MockDatasetClass.find_one = mock_find_one
 
-            result = await self.service.update_dataset(dataset_id, num_rows=150)
+            with pytest.raises(NotFoundError) as exc_info:
+                await self.service.update_dataset(dataset_id, user_id="user_123", num_rows=150)
 
-            assert result is None
+            assert exc_info.value.details["resource_type"] == "Dataset"
+            assert exc_info.value.details["resource_id"] == dataset_id
 
     @pytest.mark.asyncio
     async def test_delete_dataset_calls_delete(self):
@@ -344,9 +347,10 @@ class TestDatasetService:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_delete_dataset_returns_false_when_not_found(self):
-        """Test delete_dataset returns False when dataset doesn't exist."""
+    async def test_delete_dataset_raises_not_found_when_not_found(self):
+        """Test delete_dataset raises NotFoundError when dataset doesn't exist."""
         # ARRANGE
+        from app.services.exceptions import NotFoundError
         dataset_id = "nonexistent"
 
         # ACT & ASSERT
@@ -354,9 +358,11 @@ class TestDatasetService:
             mock_find_one = AsyncMock(return_value=None)
             MockDatasetClass.find_one = mock_find_one
 
-            result = await self.service.delete_dataset(dataset_id)
+            with pytest.raises(NotFoundError) as exc_info:
+                await self.service.delete_dataset(dataset_id, user_id="user_123")
 
-            assert result is False
+            assert exc_info.value.details["resource_type"] == "Dataset"
+            assert exc_info.value.details["resource_id"] == dataset_id
 
     @pytest.mark.asyncio
     async def test_mark_dataset_processed_updates_status(self):
