@@ -38,6 +38,12 @@ class BaseService(Generic[T], ABC):
     3. Override `_get_id_field()` to return the unique identifier field name
     4. Optionally override `_check_ownership()` for custom ownership logic
 
+    Filter Validation:
+    - All filter field names are validated in production mode
+    - Invalid filter fields raise ValidationError with clear error messages
+    - Test mode (mocked models) uses dict-based queries without strict validation
+    - This prevents AttributeError and provides predictable error handling
+
     Example:
         class DatasetService(BaseService[DatasetMetadata]):
             model_class = DatasetMetadata
@@ -45,6 +51,13 @@ class BaseService(Generic[T], ABC):
 
             def _get_id_field(self) -> str:
                 return "dataset_id"
+
+        # Valid filter - will work
+        datasets = await service.list_for_user(user_id="123", is_processed=True)
+
+        # Invalid filter - raises ValidationError
+        datasets = await service.list_for_user(user_id="123", invalid_field=True)
+        # ValidationError: Invalid filter field 'invalid_field' for Dataset
     """
 
     model_class: Type[T]
@@ -73,7 +86,19 @@ class BaseService(Generic[T], ABC):
         """
         return "user_id"
 
-    def _build_field_query(self, field_name: str, value: Any):
+    def _validate_field_name(self, field_name: str) -> bool:
+        """
+        Validate that a field name exists on the model class.
+
+        Args:
+            field_name: Field name to validate
+
+        Returns:
+            True if field exists, False otherwise
+        """
+        return hasattr(self.model_class, field_name)
+
+    def _build_field_query(self, field_name: str, value: Any, validate: bool = False):
         """
         Build a Beanie field query, with fallback for testing.
 
@@ -84,17 +109,33 @@ class BaseService(Generic[T], ABC):
         Args:
             field_name: Name of the field
             value: Value to query for
+            validate: If True, raise ValidationError for invalid field names (production mode)
+                     If False, silently fall back to dict query (test mode compatibility)
 
         Returns:
             Beanie query expression or fallback for mocked models
+
+        Raises:
+            ValidationError: If validate=True and field_name doesn't exist on model
         """
         try:
             # Try to get the Beanie field descriptor
             field = getattr(self.model_class, field_name)
             return field == value
         except (AttributeError, TypeError):
-            # Fallback for mocked models in tests
+            # Field doesn't exist or is not accessible
+            if validate:
+                # Production mode: raise error for invalid fields
+                raise ValidationError(
+                    message=f"Invalid filter field '{field_name}' for {self.resource_name}",
+                    details={"field_name": field_name, "valid_fields": "see model schema"}
+                )
+            # Test mode: fallback for mocked models
             # This will be handled by the test mocking layer
+            logger.debug(
+                f"Field '{field_name}' not found on {self.model_class.__name__}, "
+                f"using dict-based query (test mode)"
+            )
             return {field_name: value}
 
     async def _check_ownership(
@@ -224,6 +265,9 @@ class BaseService(Generic[T], ABC):
 
         Returns:
             List of document instances
+
+        Raises:
+            ValidationError: If any filter field name is invalid
         """
         user_field_name = self._get_user_id_field()
         
@@ -252,16 +296,22 @@ class BaseService(Generic[T], ABC):
         else:
             # Real Beanie model - use field expressions
             query_conditions.append(user_query)
-            
-            # Add additional filters using Beanie operators
+
+            # Add additional filters using Beanie operators with validation
             for field_name, value in filters.items():
-                filter_query = self._build_field_query(field_name, value)
+                # Validate filter field name in production (raises ValidationError if invalid)
+                filter_query = self._build_field_query(field_name, value, validate=True)
                 query_conditions.append(filter_query)
-            
-            # Get sort field
+
+            # Validate and get sort field
+            if not self._validate_field_name(sort_field):
+                raise ValidationError(
+                    message=f"Invalid sort field '{sort_field}' for {self.resource_name}",
+                    details={"field_name": sort_field, "valid_fields": "see model schema"}
+                )
             sort_field_attr = getattr(self.model_class, sort_field)
             sort_direction = +sort_field_attr if sort_ascending else -sort_field_attr
-            
+
             documents = await self.model_class.find(
                 *query_conditions
             ).sort(sort_direction).skip(skip).limit(limit).to_list()
@@ -282,10 +332,13 @@ class BaseService(Generic[T], ABC):
 
         Returns:
             Count of matching documents
+
+        Raises:
+            ValidationError: If any filter field name is invalid
         """
         user_field_name = self._get_user_id_field()
         user_query = self._build_field_query(user_field_name, user_id)
-        
+
         # Check if we're in test mode
         if isinstance(user_query, dict):
             query_dict = user_query.copy()
@@ -293,8 +346,9 @@ class BaseService(Generic[T], ABC):
             return await self.model_class.find(query_dict).count()
         else:
             query_conditions = [user_query]
+            # Validate filter field names in production
             for field_name, value in filters.items():
-                filter_query = self._build_field_query(field_name, value)
+                filter_query = self._build_field_query(field_name, value, validate=True)
                 query_conditions.append(filter_query)
             return await self.model_class.find(*query_conditions).count()
 
