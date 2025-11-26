@@ -187,14 +187,14 @@ class TransformationHistoryResponse(BaseModel):
     user_id: str = Field(..., description="User ID")
     transformation_steps: List[Dict[str, Any]] = Field(default_factory=list, description="Transformation steps")
     is_applied: bool = Field(default=False, description="Whether transformations are applied")
-    applied_at: Optional[str] = Field(default=None, description="When transformations were applied")
+    applied_at: Optional[datetime] = Field(default=None, description="When transformations were applied")
     current_file_path: Optional[str] = Field(default=None, description="Current file path after transformations")
     total_transformations: int = Field(default=0, ge=0, description="Total number of transformations")
     total_data_loss: float = Field(default=0.0, ge=0.0, description="Total data loss percentage")
     parent_config_id: Optional[str] = Field(default=None, description="Parent config ID for lineage")
     version: str = Field(default="1.0.0", description="Version (major.minor.patch)")
-    created_at: str = Field(..., description="Created timestamp")
-    updated_at: str = Field(..., description="Updated timestamp")
+    created_at: datetime = Field(..., description="Created timestamp")
+    updated_at: datetime = Field(..., description="Updated timestamp")
 
 
 class TransformationListResponse(BaseModel):
