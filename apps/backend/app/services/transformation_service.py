@@ -400,7 +400,7 @@ class TransformationService(BaseService[TransformationConfig]):
 
             # Create transformation config
             config_id = f"config_{dataset_id}_{int(timestamp)}"
-            config = await self.create_transformation_config(
+            await self.create_transformation_config(
                 user_id=user_id,
                 dataset_id=dataset_id,
                 config_id=config_id,
