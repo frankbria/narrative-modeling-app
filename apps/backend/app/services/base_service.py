@@ -9,7 +9,7 @@ Provides a standardized interface for service layer operations with:
 - Audit logging hooks
 """
 
-from typing import TypeVar, Generic, Optional, List, Type, Any, Dict, Callable
+from typing import TypeVar, Generic, Optional, List, Type, Any, Dict
 from abc import ABC, abstractmethod
 from beanie import Document
 from pydantic import BaseModel

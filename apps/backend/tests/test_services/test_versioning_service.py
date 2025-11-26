@@ -407,7 +407,7 @@ class TestVersionManagement:
 
             MockDatasetVersion.find_one = AsyncMock(return_value=mock_version)
 
-            version = await versioning_service.pin_version("v1")
+            await versioning_service.pin_version("v1")
 
             mock_version.pin_version.assert_called_once()
             mock_version.save.assert_called_once()
@@ -432,7 +432,7 @@ class TestVersionManagement:
 
             MockDatasetVersion.find_one = AsyncMock(return_value=mock_version)
 
-            version = await versioning_service.unpin_version("v1")
+            await versioning_service.unpin_version("v1")
 
             mock_version.unpin_version.assert_called_once()
             mock_version.save.assert_called_once()

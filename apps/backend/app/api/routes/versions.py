@@ -25,10 +25,7 @@ from app.services.versioning_service import versioning_service
 from app.auth.nextauth_auth import get_current_user_id
 from app.services.exceptions import (
     NotFoundError,
-    ConflictError,
-    OperationError,
-    ValidationError,
-    PermissionDeniedError
+    ValidationError
 )
 
 logger = logging.getLogger(__name__)

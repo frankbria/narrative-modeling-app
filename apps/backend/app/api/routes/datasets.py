@@ -91,7 +91,7 @@ async def list_datasets(
 
         return DatasetListResponse(
             datasets=dataset_items,
-            total=len(dataset_items)
+            total=total
         )
 
     except Exception as e:
