@@ -42,7 +42,13 @@ class TransformationStep(BaseModel):
             'encode', 'scale', 'impute', 'drop_missing',
             'filter', 'aggregate', 'derive', 'normalize',
             'standardize', 'one_hot_encode', 'label_encode',
-            'fill_missing', 'drop_duplicates', 'outlier_removal'
+            'fill_missing', 'drop_duplicates', 'remove_duplicates',
+            'outlier_removal', 'trim_whitespace', 'fix_casing',
+            'remove_special_chars', 'standardize_format', 'impute_mean',
+            'impute_median', 'impute_mode', 'impute_forward', 'impute_backward',
+            'to_numeric', 'to_string', 'to_datetime', 'to_boolean',
+            'extract_date_parts', 'calculate_age', 'create_cyclical',
+            'formula', 'conditional', 'regex_replace'
         }
         if v not in allowed_types:
             raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")

@@ -38,6 +38,7 @@ async def setup_database(request):
     from app.models.dataset import DatasetMetadata
     from app.models.version import DatasetVersion, TransformationLineage
     from app.models.model import ModelConfig
+    from app.models.transformation import TransformationConfig
 
     # Create a test database client
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
@@ -53,6 +54,7 @@ async def setup_database(request):
             Plot,
             TrainedModel,
             ModelConfig,
+            TransformationConfig,
             ABTest,
             BatchJob,
             MLModel,
@@ -75,6 +77,7 @@ async def setup_database(request):
         await Plot.find().delete()
         await TrainedModel.find().delete()
         await ModelConfig.find().delete()
+        await TransformationConfig.find().delete()
         await ABTest.find().delete()
         await BatchJob.find().delete()
         await MLModel.find().delete()
