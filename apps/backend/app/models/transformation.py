@@ -10,11 +10,76 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
+from enum import Enum
 
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
     return datetime.now(timezone.utc)
+
+
+# =============================================================================
+# CANONICAL TransformationType Enum - Single Source of Truth
+# =============================================================================
+# This enum is the canonical definition for all transformation types.
+# Import this enum in schemas and services - do NOT duplicate.
+# =============================================================================
+
+class TransformationType(str, Enum):
+    """
+    Supported transformation types.
+
+    This is the SINGLE SOURCE OF TRUTH for transformation types.
+    Import from app.models.transformation in all other modules.
+    """
+    # Data Cleaning
+    REMOVE_DUPLICATES = "remove_duplicates"
+    TRIM_WHITESPACE = "trim_whitespace"
+    FIX_CASING = "fix_casing"
+    REMOVE_SPECIAL_CHARS = "remove_special_chars"
+    STANDARDIZE_FORMAT = "standardize_format"
+
+    # Missing Values
+    DROP_MISSING = "drop_missing"
+    FILL_MISSING = "fill_missing"
+    IMPUTE_MEAN = "impute_mean"
+    IMPUTE_MEDIAN = "impute_median"
+    IMPUTE_MODE = "impute_mode"
+    IMPUTE_FORWARD = "impute_forward"
+    IMPUTE_BACKWARD = "impute_backward"
+
+    # Type Conversions
+    TO_NUMERIC = "to_numeric"
+    TO_STRING = "to_string"
+    TO_DATETIME = "to_datetime"
+    TO_BOOLEAN = "to_boolean"
+    ONE_HOT_ENCODE = "one_hot_encode"
+    LABEL_ENCODE = "label_encode"
+
+    # Date/Time
+    EXTRACT_DATE_PARTS = "extract_date_parts"
+    CALCULATE_AGE = "calculate_age"
+    CREATE_CYCLICAL = "create_cyclical"
+
+    # Scaling/Normalization
+    SCALE = "scale"
+    NORMALIZE = "normalize"
+    STANDARDIZE = "standardize"
+
+    # Custom/Advanced
+    FORMULA = "formula"
+    CONDITIONAL = "conditional"
+    REGEX_REPLACE = "regex_replace"
+    ENCODE = "encode"
+    IMPUTE = "impute"
+    FILTER = "filter"
+    AGGREGATE = "aggregate"
+    DERIVE = "derive"
+    OUTLIER_REMOVAL = "outlier_removal"
+
+
+# Constant for data loss threshold (50%)
+DATA_LOSS_THRESHOLD_PERCENT = 50.0
 
 
 class TransformationStep(BaseModel):
@@ -38,14 +103,10 @@ class TransformationStep(BaseModel):
     @classmethod
     def validate_transformation_type(cls, v: str) -> str:
         """Validate transformation_type is one of supported types."""
-        allowed_types = {
-            'encode', 'scale', 'impute', 'drop_missing',
-            'filter', 'aggregate', 'derive', 'normalize',
-            'standardize', 'one_hot_encode', 'label_encode',
-            'fill_missing', 'drop_duplicates', 'outlier_removal'
-        }
+        # Use the canonical TransformationType enum as source of truth
+        allowed_types = {t.value for t in TransformationType}
         if v not in allowed_types:
-            raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")
+            raise ValueError(f"transformation_type must be one of {sorted(allowed_types)}, got: {v}")
         return v
 
     @model_validator(mode='after')

@@ -8,56 +8,9 @@ using TransformationConfig model.
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
-from enum import Enum
 
-
-# Transformation types enum - must match transformation_engine.TransformationType
-class TransformationType(str, Enum):
-    """Supported transformation types."""
-    # Data Cleaning
-    REMOVE_DUPLICATES = "remove_duplicates"
-    TRIM_WHITESPACE = "trim_whitespace"
-    FIX_CASING = "fix_casing"
-    REMOVE_SPECIAL_CHARS = "remove_special_chars"
-    STANDARDIZE_FORMAT = "standardize_format"
-
-    # Missing Values
-    DROP_MISSING = "drop_missing"
-    FILL_MISSING = "fill_missing"
-    IMPUTE_MEAN = "impute_mean"
-    IMPUTE_MEDIAN = "impute_median"
-    IMPUTE_MODE = "impute_mode"
-    IMPUTE_FORWARD = "impute_forward"
-    IMPUTE_BACKWARD = "impute_backward"
-
-    # Type Conversions
-    TO_NUMERIC = "to_numeric"
-    TO_STRING = "to_string"
-    TO_DATETIME = "to_datetime"
-    TO_BOOLEAN = "to_boolean"
-    ONE_HOT_ENCODE = "one_hot_encode"
-    LABEL_ENCODE = "label_encode"
-
-    # Date/Time
-    EXTRACT_DATE_PARTS = "extract_date_parts"
-    CALCULATE_AGE = "calculate_age"
-    CREATE_CYCLICAL = "create_cyclical"
-
-    # Scaling/Normalization
-    SCALE = "scale"
-    NORMALIZE = "normalize"
-    STANDARDIZE = "standardize"
-
-    # Custom
-    FORMULA = "formula"
-    CONDITIONAL = "conditional"
-    REGEX_REPLACE = "regex_replace"
-    ENCODE = "encode"
-    IMPUTE = "impute"
-    FILTER = "filter"
-    AGGREGATE = "aggregate"
-    DERIVE = "derive"
-    OUTLIER_REMOVAL = "outlier_removal"
+# Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
+from app.models.transformation import TransformationType
 
 
 # Request Schemas
@@ -184,10 +137,17 @@ class TransformationHistoryResponse(BaseModel):
 
     config_id: str = Field(..., description="Configuration ID")
     dataset_id: str = Field(..., description="Dataset ID")
-    history: List[Dict[str, Any]] = Field(default_factory=list, description="Transformation history")
-    total_steps: int = Field(..., ge=0)
-    created_at: datetime
-    updated_at: datetime
+    user_id: str = Field(..., description="User ID")
+    transformation_steps: List[Dict[str, Any]] = Field(default_factory=list, description="Transformation steps")
+    is_applied: bool = Field(default=False, description="Whether transformations are applied")
+    applied_at: Optional[datetime] = Field(default=None, description="When transformations were applied")
+    current_file_path: Optional[str] = Field(default=None, description="Current file path after transformations")
+    total_transformations: int = Field(default=0, ge=0, description="Total number of transformations")
+    total_data_loss: float = Field(default=0.0, ge=0.0, description="Total data loss percentage")
+    parent_config_id: Optional[str] = Field(default=None, description="Parent config ID for lineage")
+    version: str = Field(default="1.0.0", description="Version (major.minor.patch)")
+    created_at: datetime = Field(..., description="Created timestamp")
+    updated_at: datetime = Field(..., description="Updated timestamp")
 
 
 class TransformationListResponse(BaseModel):

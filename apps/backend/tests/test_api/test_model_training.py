@@ -27,6 +27,7 @@ def sample_dataset():
     mock_dataset.num_rows = 100
     mock_dataset.data_schema = []
     mock_dataset.file_key = "uploads/test_user/test_data.csv"
+    mock_dataset.s3_url = "s3://test-bucket/uploads/test_user/test_data.csv"
     mock_dataset.created_at = datetime.now(timezone.utc)
     return mock_dataset
 
@@ -285,11 +286,11 @@ class TestModelTrainingBackgroundTask:
 
         # Mock S3 file loading
         with patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock) as mock_s3:
-            # Return CSV data as BytesIO
+            # Return CSV data as bytes (not BytesIO - the code expects raw bytes)
             csv_buffer = io.BytesIO()
             sample_dataframe.to_csv(csv_buffer, index=False)
             csv_buffer.seek(0)
-            mock_s3.return_value = csv_buffer
+            mock_s3.return_value = csv_buffer.getvalue()  # Return bytes, not BytesIO
 
             # Mock AutoML engine
             mock_result = AutoMLResult(
