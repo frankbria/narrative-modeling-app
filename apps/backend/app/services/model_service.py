@@ -125,23 +125,31 @@ class ModelService(BaseService[ModelConfig]):
 
     async def list_model_configs(
         self,
-        user_id: str
+        user_id: str,
+        skip: int = 0,
+        limit: int = 1000
     ) -> List[ModelConfig]:
         """
         List all model configurations for a user, sorted chronologically.
+
+        PERFORMANCE WARNING: Default limit=1000 is high and may cause performance
+        issues with large datasets. Consider using pagination with smaller limits
+        (e.g., 20-100) or use list_for_user() directly with explicit pagination.
 
         Optimization: Uses compound index (user_id, created_at).
 
         Args:
             user_id: User identifier
+            skip: Number of records to skip (for pagination)
+            limit: Maximum records to return (default: 1000 for backward compatibility)
 
         Returns:
             List of ModelConfig instances sorted by created_at descending
         """
         return await self.list_for_user(
             user_id=user_id,
-            skip=0,
-            limit=1000,  # High limit for backward compatibility
+            skip=skip,
+            limit=limit,
             sort_field="created_at",
             sort_ascending=False
         )
@@ -366,23 +374,30 @@ class ModelService(BaseService[ModelConfig]):
 
     async def get_active_models(
         self,
-        user_id: str
+        user_id: str,
+        skip: int = 0,
+        limit: int = 1000
     ) -> List[ModelConfig]:
         """
         Get all active model configurations for a user, sorted chronologically.
+
+        PERFORMANCE WARNING: Default limit=1000 is high and may cause performance
+        issues with large datasets. Consider using pagination with smaller limits.
 
         Optimization: Uses compound index (user_id, is_active, created_at).
 
         Args:
             user_id: User identifier
+            skip: Number of records to skip (for pagination)
+            limit: Maximum records to return (default: 1000 for backward compatibility)
 
         Returns:
             List of active ModelConfig instances sorted by created_at descending
         """
         return await self.list_for_user(
             user_id=user_id,
-            skip=0,
-            limit=1000,  # High limit for backward compatibility
+            skip=skip,
+            limit=limit,
             sort_field="created_at",
             sort_ascending=False,
             is_active=True
@@ -390,23 +405,30 @@ class ModelService(BaseService[ModelConfig]):
 
     async def get_deployed_models(
         self,
-        user_id: str
+        user_id: str,
+        skip: int = 0,
+        limit: int = 1000
     ) -> List[ModelConfig]:
         """
         Get all deployed model configurations for a user, sorted chronologically.
+
+        PERFORMANCE WARNING: Default limit=1000 is high and may cause performance
+        issues with large datasets. Consider using pagination with smaller limits.
 
         Optimization: Uses compound index (user_id, status, created_at).
 
         Args:
             user_id: User identifier
+            skip: Number of records to skip (for pagination)
+            limit: Maximum records to return (default: 1000 for backward compatibility)
 
         Returns:
             List of deployed ModelConfig instances sorted by created_at descending
         """
         return await self.list_for_user(
             user_id=user_id,
-            skip=0,
-            limit=1000,  # High limit for backward compatibility
+            skip=skip,
+            limit=limit,
             sort_field="created_at",
             sort_ascending=False,
             status=ModelStatus.DEPLOYED
