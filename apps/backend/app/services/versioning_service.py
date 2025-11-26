@@ -315,20 +315,51 @@ class VersioningService(BaseService[DatasetVersion]):
             return latest_version.version_number + 1
         return 1
 
-    async def get_version(self, version_id: str, mark_accessed: bool = True) -> Optional[DatasetVersion]:
+    async def get_version(
+        self,
+        version_id: str,
+        mark_accessed: bool = True,
+        user_id: Optional[str] = None
+    ) -> Optional[DatasetVersion]:
         """
         Retrieve a specific dataset version.
+
+        Security: Ownership check enforced when user_id is provided.
 
         Args:
             version_id: Version identifier
             mark_accessed: Whether to increment access counter
+            user_id: Optional user ID for ownership verification.
+                    If provided, only returns version if dataset is owned by this user.
+                    If None, bypasses ownership check (for internal operations).
 
         Returns:
-            DatasetVersion or None if not found
+            DatasetVersion or None if not found or ownership check fails
         """
         version = await DatasetVersion.find_one(DatasetVersion.version_id == version_id)
 
-        if version and mark_accessed:
+        if not version:
+            return None
+
+        # Enforce ownership check if user_id is provided
+        if user_id is not None:
+            # Get the dataset to check ownership
+            from app.models.dataset import DatasetMetadata
+            dataset = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == version.dataset_id)
+            if dataset and dataset.user_id != user_id:
+                logger.warning(
+                    f"Ownership check failed: User {user_id} attempted to access "
+                    f"version {version_id} of dataset {version.dataset_id} owned by {dataset.user_id}"
+                )
+                return None
+        else:
+            # Log bypassed ownership check for security audit
+            logger.info(
+                f"Ownership check bypassed for version {version_id} "
+                f"(dataset {version.dataset_id}). This is expected for internal operations."
+            )
+
+        if mark_accessed:
             version.mark_accessed()
             await version.save()
 
@@ -536,20 +567,28 @@ class VersioningService(BaseService[DatasetVersion]):
 
         return []
 
-    async def pin_version(self, version_id: str) -> DatasetVersion:
+    async def pin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Pin a version to prevent auto-deletion.
 
+        Security: Ownership check enforced when user_id is provided.
+
         Args:
             version_id: Version to pin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
             NotFoundError: If version not found
+            PermissionDeniedError: If ownership check fails (via get_version)
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
             raise NotFoundError(
                 resource_type="DatasetVersion",
@@ -561,20 +600,28 @@ class VersioningService(BaseService[DatasetVersion]):
         logger.info(f"Pinned version {version_id}")
         return version
 
-    async def unpin_version(self, version_id: str) -> DatasetVersion:
+    async def unpin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Unpin a version, allowing auto-deletion.
 
+        Security: Ownership check enforced when user_id is provided.
+
         Args:
             version_id: Version to unpin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
             NotFoundError: If version not found
+            PermissionDeniedError: If ownership check fails (via get_version)
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
             raise NotFoundError(
                 resource_type="DatasetVersion",
