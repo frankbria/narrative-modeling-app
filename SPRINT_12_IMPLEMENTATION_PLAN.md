@@ -10,13 +10,13 @@
 
 ## Progress Summary
 
-| Phase | Status | Completed |
-|-------|--------|-----------|
-| Phase 0: Critical Fix | **COMPLETE** | 2025-11-25 |
-| Phase 1: API Integration | **COMPLETE** | 2025-11-26 |
-| Phase 2: Service Refactoring | **COMPLETE** | 2025-11-26 |
-| Phase 3: E2E Testing | Ready to Start | - |
-| Phase 4: Validation | Pending | - |
+| Phase | Status | Completed | PR |
+|-------|--------|-----------|-----|
+| Phase 0: Critical Fix | **COMPLETE** ✅ | 2025-11-25 | `bc1a354` |
+| Phase 1: API Integration | **COMPLETE** ✅ **MERGED** | 2025-11-26 | [#54](https://github.com/frankbria/narrative-modeling-app/pull/54) |
+| Phase 2: Service Refactoring | **COMPLETE** ✅ **MERGED** | 2025-11-26 | [#55](https://github.com/frankbria/narrative-modeling-app/pull/55) |
+| Phase 3: E2E Testing | Ready to Start | - | - |
+| Phase 4: Validation | Pending | - | - |
 
 ---
 
@@ -73,9 +73,9 @@ uv run pytest tests/test_api/test_datasets.py -v
 
 | Story | Status | Evidence |
 |-------|--------|----------|
-| 12.1 API Integration | **95%** ✅ | Core API tests passing (19/19), integration tests pending |
-| 12.2 Data Versioning | **95%** | versioning_service.py complete, routes working |
-| 12.3 Service Refactoring | **70%** | Services exist, need standardization |
+| 12.1 API Integration | **100%** ✅ **MERGED** | All API tests passing, PR #54 merged |
+| 12.2 Data Versioning | **100%** ✅ **MERGED** | Complete with ownership checks, PR #55 merged |
+| 12.3 Service Refactoring | **100%** ✅ **MERGED** | BaseService implemented, all services refactored, PR #55 merged |
 | 12.4 Performance | **90%** | Benchmarks complete, caching implemented |
 | 12.5 E2E Testing | **60%** | 2,800 lines Playwright tests, gaps remain |
 
@@ -163,10 +163,11 @@ During PR review, additional improvements were made:
 
 ## Phase 2: Story 12.3 - Service Layer Refactoring - COMPLETED
 
-**Status**: **COMPLETE** ✅
+**Status**: **COMPLETE** ✅ **MERGED**
 **Completed**: 2025-11-26
 **Time Taken**: ~3 hours
-**Branch**: `feature/sprint-12-phase-2-service-refactoring`
+**PR**: [#55](https://github.com/frankbria/narrative-modeling-app/pull/55) - feat(backend): Sprint 12 Phase 2 - Service Layer Refactoring
+**Merge Commit**: `27c7e6d`
 
 ### Task 2.1: Extract Base Service Class
 
@@ -277,6 +278,29 @@ class ConflictError(ServiceError):
 - **Ownership Verification**: Built-in user ownership checks
 - **Testability**: Test-compatible query building for mocked models
 - **Backward Compatible**: Existing API contracts preserved
+
+### Phase 2 PR Review and Merge Process
+
+**PR Review Fixes** (Commits before merge):
+1. **Filter Field Validation** (`dedb4db`) - Added validation to prevent AttributeError on invalid filter field names
+2. **Unused Variable Fix** (`4abc5a7`) - Removed unused `config` variable in `transformation_service.py`
+3. **Code Review Feedback** (`46268ad`):
+   - Removed unused imports (`Callable` from base_service.py, exception imports from versions.py)
+   - Removed unused variables in test files
+   - **Fixed critical pagination count bug** in `datasets.py` - was returning `len(dataset_items)` instead of total count from database
+
+**Merge Conflict Resolution** (`b521e6b`):
+- **Issue**: Main branch added manual ownership checks with logging; feature branch used BaseService
+- **Resolution**: Kept BaseService implementation (provides same security with better standardization), added security documentation from main to module docstrings
+- **Files Resolved**: `model_service.py`, `versioning_service.py`
+- **Auto-merged**: API routes (`models.py`, `versions.py`) correctly pass `user_id` to service methods
+
+**Post-Merge Fixes** (`2fb15a2`):
+- **Versioning Service Signatures**: Added `user_id` parameter to `get_version()`, `pin_version()`, `unpin_version()`
+- **Ownership Verification**: Implemented ownership checks via dataset lookup with audit logging
+- **API Compatibility**: Fixed TypeError from API routes passing `user_id` that methods didn't accept
+
+**Final Merge**: PR #55 merged successfully with all tests passing and conflicts resolved.
 
 ---
 
