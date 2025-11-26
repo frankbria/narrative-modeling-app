@@ -83,10 +83,11 @@ uv run pytest tests/test_api/test_datasets.py -v
 
 ## Phase 1: Story 12.1 Completion - API Integration - COMPLETED
 
-**Status**: **COMPLETE**
+**Status**: **COMPLETE** ✅ **MERGED**
 **Completed**: 2025-11-26
 **Time Taken**: ~2 hours
-**Commit**: `f7e6423` - fix(backend): complete Sprint 12 Phase 1 API test fixes
+**PR**: [#54](https://github.com/frankbria/narrative-modeling-app/pull/54) - fix(backend): Sprint 12 Phase 1 - API Integration Test Fixes
+**Merge Commit**: `c66f39b`
 
 ### Task 1.1: Fix Transformation API Test Mocking ✅
 
@@ -128,6 +129,24 @@ uv run pytest tests/test_api/test_transformations.py tests/test_api/test_model_t
 - [x] All model training API tests passing (9/9)
 - [x] All dataset API tests passing (19/19)
 - [ ] Integration tests (35 failures, 12 errors - pre-existing issues, not Phase 1 scope)
+
+### Code Review Fixes (Post-Initial Commit)
+
+During PR review, additional improvements were made:
+
+1. **Timestamp Type Consistency** (`7a6938e`)
+   - Changed `TransformationHistoryResponse` timestamp fields from `str` to `datetime`
+   - Aligns with `TransformationConfigResponse` for consistent API types
+   - Pydantic v2 handles ISO string parsing automatically
+
+2. **Enum Consolidation** (`f2a32d7`)
+   - Created **single source of truth** for `TransformationType` in `app/models/transformation.py`
+   - Removed duplicate enum definitions from schemas and transformation_engine
+   - Added `DATA_LOSS_THRESHOLD_PERCENT = 50.0` constant
+   - `TransformationStep` validator now derives allowed_types from enum dynamically
+
+3. **Gitignore Update** (`ab4f192`)
+   - Added `.claude/settings.local.json` to prevent accidental commits
 
 ### Phase 1 Summary
 
@@ -311,7 +330,7 @@ From SPRINT_12.md:
 ```bash
 cd /home/frankbria/projects/narrative-modeling-app/apps/backend
 
-# 1. Verify Phase 1 completion
+# 1. Verify Phase 1 is merged and tests pass
 uv run pytest tests/test_api/test_transformations.py tests/test_api/test_model_training.py -v --tb=short
 # Should see: 19 passed (10 transformation + 9 model training)
 
@@ -327,17 +346,27 @@ uv run pytest tests/test_api/ -v --tb=short 2>&1 | tail -20
 #    OR continue fixing integration test failures
 ```
 
-### Phase 1 Commit Reference
+### Phase 1 Merged PR Reference
 
-**Branch**: `feature/sprint-12-phase-1-api-integration`
-**Commit**: `f7e6423` - fix(backend): complete Sprint 12 Phase 1 API test fixes
+**PR**: [#54](https://github.com/frankbria/narrative-modeling-app/pull/54)
+**Merge Commit**: `c66f39b`
+**Branch**: `feature/sprint-12-phase-1-api-integration` (deleted after merge)
 
-Files modified in Phase 1:
-- `app/models/transformation.py` - Expanded allowed_types validator
-- `app/schemas/transformation.py` - Fixed TransformationHistoryResponse.version type
+**Commits in PR**:
+1. `f7e6423` - fix(backend): complete Sprint 12 Phase 1 API test fixes
+2. `80e20d3` - docs: update Sprint 12 implementation plan with Phase 1 completion
+3. `ab4f192` - chore: add Claude local settings to .gitignore
+4. `7a6938e` - fix(schemas): align timestamp types in TransformationHistoryResponse
+5. `f2a32d7` - refactor(transformations): consolidate TransformationType enum to single source of truth
+
+**Files Modified**:
+- `app/models/transformation.py` - Canonical TransformationType enum, DATA_LOSS_THRESHOLD_PERCENT constant
+- `app/schemas/transformation.py` - Import enum from models, fixed timestamp types to datetime
+- `app/services/transformation_engine/transformation_engine.py` - Import enum from models
 - `tests/conftest.py` - Added TransformationConfig to init_beanie
-- `tests/test_api/test_transformations.py` - Fixed AsyncMock usage for S3 functions
+- `tests/test_api/test_transformations.py` - Fixed AsyncMock usage, clearer data loss documentation
 - `tests/test_api/test_model_training.py` - Fixed S3 mock return type, added s3_url to fixture
+- `.gitignore` - Added .claude/settings.local.json
 
 ---
 
@@ -389,6 +418,7 @@ apps/frontend/
 
 ---
 
-**Document Version**: 3.0
+**Document Version**: 4.0
+**Last Updated**: 2025-11-26
 **Last Editor**: Claude Code
-**Status**: Phase 0-1 Complete, Phases 2-4 Ready
+**Status**: Phase 0-1 Complete (PR #54 Merged), Phases 2-4 Ready
