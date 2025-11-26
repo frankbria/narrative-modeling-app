@@ -3,6 +3,11 @@ Data versioning service.
 
 Handles creation, retrieval, and management of dataset versions and transformation lineage,
 enabling reproducibility and historical analysis.
+
+Security:
+- Version retrieval methods enforce ownership checks when user_id is provided
+- Ownership checks can be bypassed for internal operations by omitting user_id parameter
+- All bypassed operations are logged for security auditing
 """
 
 from typing import Optional, List, Dict, Any, Tuple

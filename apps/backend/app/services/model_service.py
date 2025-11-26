@@ -3,6 +3,11 @@ Model service for ModelConfig operations.
 
 This service handles ML model configuration operations using the new ModelConfig model.
 Inherits from BaseService for standardized CRUD patterns and error handling.
+
+Security:
+- All retrieval methods enforce ownership checks by default when user_id is provided
+- Ownership checks can be bypassed for internal operations by omitting user_id parameter
+- All bypassed operations are logged for security auditing via BaseService._check_ownership()
 """
 
 from typing import List, Optional, Dict, Any
