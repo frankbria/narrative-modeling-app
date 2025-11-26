@@ -171,8 +171,12 @@ async def get_version(
     try:
         logger.info(f"Retrieving version {version_id}")
 
-        # Get version with access tracking
-        version = await versioning_service.get_version(version_id, mark_accessed=True)
+        # Get version with access tracking and ownership check
+        version = await versioning_service.get_version(
+            version_id,
+            mark_accessed=True,
+            user_id=current_user_id
+        )
 
         if not version:
             raise HTTPException(
@@ -360,11 +364,11 @@ async def pin_version(
     try:
         logger.info(f"{'Pinning' if pin_request.pinned else 'Unpinning'} version {version_id}")
 
-        # Pin or unpin version using service
+        # Pin or unpin version using service with ownership check
         if pin_request.pinned:
-            version = await versioning_service.pin_version(version_id)
+            version = await versioning_service.pin_version(version_id, user_id=current_user_id)
         else:
-            version = await versioning_service.unpin_version(version_id)
+            version = await versioning_service.unpin_version(version_id, user_id=current_user_id)
 
         return DatasetVersionResponse.model_validate(version)
 

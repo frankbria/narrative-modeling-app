@@ -3,6 +3,11 @@ Data versioning service.
 
 Handles creation, retrieval, and management of dataset versions and transformation lineage,
 enabling reproducibility and historical analysis.
+
+Security:
+- All retrieval methods enforce ownership checks by default when user_id is provided
+- Ownership checks can be bypassed for internal operations by omitting user_id parameter
+- All bypassed operations are logged for security auditing
 """
 
 from typing import Optional, List, Dict, Any, Tuple
@@ -285,39 +290,76 @@ class VersioningService:
             return latest_version.version_number + 1
         return 1
 
-    async def get_version(self, version_id: str, mark_accessed: bool = True) -> Optional[DatasetVersion]:
+    async def get_version(
+        self,
+        version_id: str,
+        mark_accessed: bool = True,
+        user_id: Optional[str] = None
+    ) -> Optional[DatasetVersion]:
         """
         Retrieve a specific dataset version.
+
+        Security: Enforces ownership check when user_id is provided.
+        For internal operations that require bypassing ownership checks,
+        omit the user_id parameter. All bypassed operations are logged.
 
         Args:
             version_id: Version identifier
             mark_accessed: Whether to increment access counter
+            user_id: Optional user ID for ownership verification.
+                    If provided, only returns version if owned by this user.
+                    If None, bypasses ownership check (logged for audit).
 
         Returns:
-            DatasetVersion or None if not found
+            DatasetVersion or None if not found or ownership check fails
         """
         version = await DatasetVersion.find_one(DatasetVersion.version_id == version_id)
 
-        if version and mark_accessed:
+        if version is None:
+            return None
+
+        # Enforce ownership check if user_id is provided
+        if user_id is not None:
+            if version.user_id != user_id:
+                logger.warning(
+                    f"Ownership check failed: User {user_id} attempted to access "
+                    f"version {version_id} owned by {version.user_id}"
+                )
+                return None
+        else:
+            # Log bypassed ownership check for security audit
+            logger.info(
+                f"Ownership check bypassed for version {version_id} "
+                f"(owned by {version.user_id}). This is expected for internal operations."
+            )
+
+        if mark_accessed:
             version.mark_accessed()
             await version.save()
 
         return version
 
-    async def get_version_content(self, version_id: str) -> bytes:
+    async def get_version_content(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> bytes:
         """
         Retrieve file content for a specific version.
 
+        Security: Enforces ownership check when user_id is provided.
+
         Args:
             version_id: Version identifier
+            user_id: Optional user ID for ownership verification
 
         Returns:
             File content bytes
 
         Raises:
-            ValueError: If version not found or S3 retrieval fails
+            ValueError: If version not found, ownership check fails, or S3 retrieval fails
         """
-        version = await self.get_version(version_id, mark_accessed=True)
+        version = await self.get_version(version_id, mark_accessed=True, user_id=user_id)
         if not version:
             raise ValueError(f"Version {version_id} not found")
 
@@ -482,20 +524,27 @@ class VersioningService:
 
         return []
 
-    async def pin_version(self, version_id: str) -> DatasetVersion:
+    async def pin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Pin a version to prevent auto-deletion.
 
+        Security: Enforces ownership check when user_id is provided.
+
         Args:
             version_id: Version to pin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
-            ValueError: If version not found
+            ValueError: If version not found or ownership check fails
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
             raise ValueError(f"Version {version_id} not found")
 
@@ -504,20 +553,27 @@ class VersioningService:
         logger.info(f"Pinned version {version_id}")
         return version
 
-    async def unpin_version(self, version_id: str) -> DatasetVersion:
+    async def unpin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Unpin a version, allowing auto-deletion.
 
+        Security: Enforces ownership check when user_id is provided.
+
         Args:
             version_id: Version to unpin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
-            ValueError: If version not found
+            ValueError: If version not found or ownership check fails
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
             raise ValueError(f"Version {version_id} not found")
 

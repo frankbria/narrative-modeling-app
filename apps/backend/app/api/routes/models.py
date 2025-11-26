@@ -181,16 +181,10 @@ async def get_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
         if not model:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
-
-        # Verify user owns the model
-        if model.user_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -390,13 +384,6 @@ async def update_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
-
-        if not model or model.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
 
         # Build update dict from request
         update_fields = {}
@@ -409,9 +396,10 @@ async def update_model(
         if request.notes is not None:
             update_fields["notes"] = request.notes
 
-        # Update model
+        # Update model with ownership check
         updated_model = await model_service.update_model_config(
             model_id=model_id,
+            user_id=current_user_id,
             **update_fields
         )
 
@@ -532,9 +520,10 @@ async def get_model_performance(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
-        if not model or model.user_id != current_user_id:
+        if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -602,9 +591,10 @@ async def deploy_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
-        if not model or model.user_id != current_user_id:
+        if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -623,10 +613,11 @@ async def deploy_model(
                     detail=f"Model must be trained before deployment. Current status: {model.status.value}"
                 )
 
-        # Deploy model
+        # Deploy model with ownership check
         deployed_model = await model_service.mark_model_deployed(
             model_id=model_id,
-            endpoint=request.endpoint
+            endpoint=request.endpoint,
+            user_id=current_user_id
         )
 
         if not deployed_model:
