@@ -177,6 +177,8 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
             ),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in get_preview_data: {e}")
         raise HTTPException(
@@ -239,7 +241,7 @@ async def update_user_data(
 @router.delete("/{id}")
 async def delete_user_data(
     id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
-) -> Dict[str, str]:
+) -> Dict[str, bool]:
     doc = await UserData.get(id)
     if not doc or doc.user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied")

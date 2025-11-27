@@ -92,9 +92,10 @@ class TestUserDataAPI:
         mock_user_id: str
     ):
         """Test creating new user data via POST /user-data/."""
-        # Create request payload
+        # Create request payload with all required SchemaField fields
         user_data_dict = {
             "filename": "new_dataset.csv",
+            "original_filename": "new_dataset.csv",
             "s3_url": f"s3://test-bucket/datasets/{mock_user_id}/new_dataset.csv",
             "num_rows": 50,
             "num_columns": 2,
@@ -106,7 +107,9 @@ class TestUserDataAPI:
                     "inferred_dtype": "object",
                     "unique_values": 50,
                     "missing_values": 0,
-                    "example_values": ["Alice", "Bob", "Charlie"]
+                    "example_values": ["Alice", "Bob", "Charlie"],
+                    "is_constant": False,
+                    "is_high_cardinality": False
                 }
             ]
         }
@@ -262,13 +265,14 @@ class TestUserDataAPI:
         """Test updating user data via PUT /user-data/{id}."""
         user_data_id = str(sample_user_data.id)
 
-        # Create updated data
+        # Create updated data - serialize data_schema to dicts
         updated_dict = {
             "filename": "updated_dataset.csv",
+            "original_filename": "updated_dataset.csv",
             "s3_url": sample_user_data.s3_url,
             "num_rows": 150,
             "num_columns": 3,
-            "data_schema": sample_user_data.data_schema
+            "data_schema": [field.model_dump() for field in sample_user_data.data_schema]
         }
 
         response = await async_authorized_client.put(
@@ -302,6 +306,7 @@ class TestUserDataAPI:
 
         updated_dict = {
             "filename": "hacked.csv",
+            "original_filename": "hacked.csv",
             "s3_url": "s3://test/hacked.csv",
             "num_rows": 999,
             "num_columns": 2,
