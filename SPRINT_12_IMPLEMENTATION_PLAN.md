@@ -540,3 +540,62 @@ apps/frontend/
 **Last Updated**: 2025-11-26
 **Last Editor**: Claude Code
 **Status**: Phase 0-1 Complete (PR #54 Merged), Phases 2-4 Ready
+
+---
+
+## Task 4.1: Test Suite Validation - Phase 1 COMPLETED ✅
+
+**Date**: 2025-11-26  
+**Branch**: `feature/sprint-12-test-improvements`  
+**Commits**: 
+- `5ee3930` - fix(tests): update dataset service unit tests for BaseService compatibility
+- `966e958` - fix(tests): update ML workflow E2E tests with accurate skip reasons
+
+### What Was Done
+
+#### 1. Fixed Dataset Service Unit Tests (9 failing → all passing)
+- **Problem**: Tests mocking at Beanie Document level incompatible with BaseService architecture
+- **Solution**: Changed to service-level mocking (`self.service.get_by_id`, `list_for_user`, etc.)
+- **File**: `apps/backend/tests/test_services/test_dataset_service.py`
+- **Result**: 13/13 tests passing ✅
+
+#### 2. Updated ML Workflow E2E Tests (4 failing → 1 passing, 3 properly skipped)
+- **Fixed**: Response field names (`num_rows`/`num_columns` not `row_count`/`column_count`)
+- **Re-skipped**: 3 tests awaiting API implementation:
+  - Prediction endpoint (`/api/v1/models/predict`) not implemented
+  - Transformation S3 data retrieval not integrated
+- **File**: `apps/backend/tests/integration/test_ml_workflow_e2e.py`
+- **Result**: 1 passing, 3 skipped with accurate reasons ✅
+
+#### 3. Verified Existing API Tests
+- **test_models.py**: 18 tests (8 passing, 10 failing due to service implementation issues)
+- **test_versions.py**: 23 tests, ALL PASSING ✅
+
+### Key Findings
+
+**APIs Not Yet Implemented**:
+1. Prediction endpoint (`/api/v1/models/predict`) - returns 405 Method Not Allowed
+2. Transformation API lacks S3 data retrieval integration
+
+**Test Infrastructure**:
+- MongoDB Atlas connection configured
+- Integration fixtures working correctly
+- 24 passing integration tests
+
+### Integration Test Status
+- **24 passing** 
+- **37 skipped** with clear reasons:
+  - 3 ML workflow (awaiting API completion)
+  - 10 Redis (service not running)
+  - 12 S3 fixtures (LocalStack not configured)
+  - 9 upload workflow (need refactoring)
+  - 3 full workflow (need refactoring)
+
+### Next Steps (Not Started)
+Phase 2 (P1-High priority):
+1. Create tests for `user_data.py` routes (10 tests)
+2. Create tests for `transformations.py` routes (12 tests)
+3. Fix upload workflow integration tests (10 tests)
+4. Investigate `test_models.py` failures (service implementation issues)
+
+---
