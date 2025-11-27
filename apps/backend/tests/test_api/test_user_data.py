@@ -46,7 +46,9 @@ class TestUserDataAPI:
                     inferred_dtype="int64",
                     unique_values=100,
                     missing_values=0,
-                    example_values=[1, 2, 3]
+                    example_values=[1, 2, 3],
+                    is_constant=False,
+                    is_high_cardinality=False
                 ),
                 SchemaField(
                     field_name="value",
@@ -55,7 +57,9 @@ class TestUserDataAPI:
                     inferred_dtype="float64",
                     unique_values=95,
                     missing_values=5,
-                    example_values=[10.5, 20.3, 15.7]
+                    example_values=[10.5, 20.3, 15.7],
+                    is_constant=False,
+                    is_high_cardinality=False
                 ),
                 SchemaField(
                     field_name="category",
@@ -64,7 +68,9 @@ class TestUserDataAPI:
                     inferred_dtype="object",
                     unique_values=3,
                     missing_values=0,
-                    example_values=["A", "B", "C"]
+                    example_values=["A", "B", "C"],
+                    is_constant=False,
+                    is_high_cardinality=False
                 ),
             ],
             aiSummary=AISummary(
