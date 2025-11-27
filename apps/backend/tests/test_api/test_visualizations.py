@@ -120,8 +120,11 @@ async def test_get_histogram(
         f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name}"
     )
 
-    # Instead of mocking everything, just directly mock the service function
+    # Mock UserData.get to return a valid dataset, then mock the cache function
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         return_value=mock_histogram_data.model_dump(),
     ) as mock_generate:
@@ -160,8 +163,11 @@ async def test_get_histogram_error(
         f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name} with invalid num_bins={num_bins}"
     )
 
-    # Just mock the API function to raise a ValueError
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise ValueError
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         side_effect=ValueError("Invalid number of bins"),
     ) as mock_generate:
@@ -197,8 +203,11 @@ async def test_get_boxplot(
         f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name}"
     )
 
-    # Just mock the API function
+    # Mock UserData.get to return a valid dataset, then mock the cache function
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         return_value=mock_boxplot_data.model_dump(),
     ) as mock_generate:
@@ -238,8 +247,11 @@ async def test_get_boxplot_error(
         f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name} with error"
     )
 
-    # Just mock the API function to raise a ValueError
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise ValueError
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         side_effect=ValueError("Column not found"),
     ) as mock_generate:
@@ -272,8 +284,11 @@ async def test_get_correlation_matrix(
 
     print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
-    # Just mock the API function
+    # Mock UserData.get to return a valid dataset, then mock the cache function
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         return_value=mock_correlation_data.model_dump(),
     ) as mock_generate:
@@ -306,8 +321,11 @@ async def test_get_correlation_matrix_error(
 
     print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
-    # Just mock the API function to raise a ValueError
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise ValueError
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         side_effect=ValueError("Invalid data for correlation matrix"),
     ) as mock_generate:
@@ -338,8 +356,11 @@ async def test_get_histogram_server_error(
         f"DEBUG: Testing GET request to /api/v1/visualizations/histogram/{dataset_id}/{column_name} with server error"
     )
 
-    # Just mock the API function to raise an Exception
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise Exception
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         side_effect=Exception("Server error"),
     ) as mock_generate:
@@ -370,8 +391,11 @@ async def test_get_boxplot_server_error(
         f"DEBUG: Testing GET request to /api/v1/visualizations/boxplot/{dataset_id}/{column_name} with server error"
     )
 
-    # Just mock the API function to raise an Exception
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise Exception
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         side_effect=Exception("Server error"),
     ) as mock_generate:
@@ -399,8 +423,11 @@ async def test_get_correlation_matrix_server_error(
 
     print(f"DEBUG: Testing GET request to /api/v1/visualizations/correlation/{dataset_id}")
 
-    # Just mock the API function to raise an Exception
+    # Mock UserData.get to return a valid dataset, then mock the cache function to raise Exception
     with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         side_effect=Exception("Internal server error"),
     ) as mock_generate:
