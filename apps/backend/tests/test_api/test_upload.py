@@ -100,11 +100,11 @@ async def test_process_file_success(mock_user_id, setup_database):
             # Create UserData object
             user_data = UserData(
                 user_id=mock_user_id,
-        filename=mock_file.filename,
-        s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
-        num_rows=5,
-        num_columns=3,
-        data_schema=[
+                filename=mock_file.filename,
+                s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
+                num_rows=5,
+                num_columns=3,
+                data_schema=[
                     SchemaField(
                         field_name="numeric_col",
                         field_type="numeric",
@@ -115,13 +115,32 @@ async def test_process_file_success(mock_user_id, setup_database):
                         example_values=[1.0, 2.0, 3.0],
                         is_constant=False,
                         is_high_cardinality=False
-
-                        )
-
-                        ],
-
-                        original_filename="test.csv"
-                        )
+                    ),
+                    SchemaField(
+                        field_name="categorical_col",
+                        field_type="categorical",
+                        data_type="object",
+                        inferred_dtype="object",
+                        unique_values=3,
+                        missing_values=0,
+                        example_values=["A", "B", "C"],
+                        is_constant=False,
+                        is_high_cardinality=False
+                    ),
+                    SchemaField(
+                        field_name="text_col",
+                        field_type="text",
+                        data_type="object",
+                        inferred_dtype="object",
+                        unique_values=5,
+                        missing_values=0,
+                        example_values=["text1", "text2", "text3"],
+                        is_constant=False,
+                        is_high_cardinality=False
+                    )
+                ],
+                original_filename="test.csv"
+            )
 
             # Verify result
             assert user_data is not None

@@ -192,7 +192,7 @@ class TestCacheAPI:
 
             assert response.status_code == 500
             data = response.json()
-            assert "Internal server error" in data["detail"]
+            assert "Failed to invalidate user cache" in data["detail"]
 
     @pytest.mark.asyncio
     async def test_cache_statistics_calculation(self, async_authorized_client: AsyncClient):
