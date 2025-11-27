@@ -115,18 +115,24 @@ class ModelService(BaseService[ModelConfig]):
 
     async def get_model_config(
         self,
-        model_id: str
+        model_id: str,
+        user_id: Optional[str] = None
     ) -> Optional[ModelConfig]:
         """
         Retrieve model configuration by model ID.
 
         Args:
             model_id: Model identifier
+            user_id: Optional user ID for ownership checking
 
         Returns:
             ModelConfig instance or None if not found
         """
-        return await self.get_by_id(model_id, check_ownership=False)
+        return await self.get_by_id(
+            resource_id=model_id,
+            user_id=user_id,
+            check_ownership=bool(user_id)
+        )
 
     async def list_model_configs(
         self,

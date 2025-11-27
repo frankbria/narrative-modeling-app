@@ -75,45 +75,6 @@ async def get_latest_user_data(user_id: str = Depends(get_current_user_id)) -> U
             status_code=500, detail=f"Error getting latest user data: {str(e)}"
         )
 
-
-@router.get("/{id}", response_model=UserDataResponse)
-async def get_user_data(
-    id: str, user_id: str = Depends(get_current_user_id)
-) -> UserDataResponse:
-    try:
-        logger.info(f"Fetching user data - ID: {id}, User: {user_id}")
-        
-        # Convert string ID to PydanticObjectId
-        try:
-            object_id = PydanticObjectId(id)
-        except Exception as e:
-            logger.error(f"Invalid ObjectId format: {id} - {str(e)}")
-            raise HTTPException(status_code=400, detail=f"Invalid dataset ID format: {id}")
-            
-        doc = await UserData.get(object_id)
-        
-        if not doc:
-            logger.error(f"Document not found for ID: {id}")
-            raise HTTPException(status_code=404, detail="Dataset not found")
-            
-        if doc.user_id != user_id:
-            logger.error(f"Access denied - Doc user: {doc.user_id}, Request user: {user_id}")
-            raise HTTPException(status_code=403, detail="Access denied")
-            
-        # Convert to response model with proper ID handling
-        doc_dict = doc.model_dump(by_alias=True)
-        # Ensure _id is converted to string
-        if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
-            doc_dict['_id'] = str(doc_dict['_id'])
-        return UserDataResponse.model_validate(doc_dict)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting user data: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error retrieving dataset: {str(e)}")
-
-
 @router.get("/preview", response_model=Dict[str, Any])
 async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[str, Any]:
     """
@@ -221,6 +182,45 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
         raise HTTPException(
             status_code=500, detail=f"Error getting preview data: {str(e)}"
         )
+
+
+@router.get("/{id}", response_model=UserDataResponse)
+async def get_user_data(
+    id: str, user_id: str = Depends(get_current_user_id)
+) -> UserDataResponse:
+    try:
+        logger.info(f"Fetching user data - ID: {id}, User: {user_id}")
+        
+        # Convert string ID to PydanticObjectId
+        try:
+            object_id = PydanticObjectId(id)
+        except Exception as e:
+            logger.error(f"Invalid ObjectId format: {id} - {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid dataset ID format: {id}")
+            
+        doc = await UserData.get(object_id)
+        
+        if not doc:
+            logger.error(f"Document not found for ID: {id}")
+            raise HTTPException(status_code=404, detail="Dataset not found")
+            
+        if doc.user_id != user_id:
+            logger.error(f"Access denied - Doc user: {doc.user_id}, Request user: {user_id}")
+            raise HTTPException(status_code=403, detail="Access denied")
+            
+        # Convert to response model with proper ID handling
+        doc_dict = doc.model_dump(by_alias=True)
+        # Ensure _id is converted to string
+        if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+            doc_dict['_id'] = str(doc_dict['_id'])
+        return UserDataResponse.model_validate(doc_dict)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error getting user data: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving dataset: {str(e)}")
+
 
 
 @router.put("/{id}", response_model=UserData)
