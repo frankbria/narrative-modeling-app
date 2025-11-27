@@ -2,7 +2,7 @@
 Model export API routes
 """
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
@@ -212,7 +212,9 @@ async def export_model_custom(
             
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported export format: {format_type}")
-            
+
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -222,6 +224,7 @@ async def export_model_custom(
 @router.get("/{model_id}/export")
 async def get_model_export_info(
     model_id: str,
+    request: Request,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Get export information and options for a model"""
