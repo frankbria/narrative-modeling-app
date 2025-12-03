@@ -6,6 +6,8 @@ export type DataFixtures = {
   testCSV: Buffer;
   uploadTestDataset: () => Promise<string>;
   cleanupDataset: (datasetId: string) => Promise<void>;
+  trainModel: (datasetId: string, targetColumn: string) => Promise<string>;
+  cleanupModel: (modelId: string) => Promise<void>;
 };
 
 /**

@@ -40,7 +40,6 @@
     "clsx": "^2.1.1",
     "csv-parse": "^5.6.0",
     "date-fns": "^4.1.0",
-    "lucide-react": "^0.544.0",
     "framer-motion": "^12.23.22",
     "lucide-react": "^0.544.0",
     "mongodb": "6.20.0",
@@ -60,6 +59,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@faker-js/faker": "^10.1.0",
     "@playwright/test": "^1.56.0",
     "@radix-ui/react-progress": "^1.1.7",
     "@tailwindcss/typography": "^0.5.16",
@@ -77,6 +77,7 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.2"
   }
 }

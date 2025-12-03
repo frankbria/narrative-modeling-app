@@ -1,0 +1,1001 @@
+age,tenure,monthly_charges,contract_type,has_internet,has_phone,payment_method,total_charges,support_calls,churned
+22,27,52.49,One year,false,true,Bank Transfer,1582.58,3,0
+25,32,47.62,Month-to-month,true,true,Electronic Check,1776.02,1,0
+65,33,32.91,Month-to-month,true,true,Credit Card,1117.02,7,0
+69,22,112.68,Two year,false,false,Credit Card,2564.16,8,0
+48,28,79.49,Two year,true,false,Bank Transfer,2323.18,5,0
+39,68,115.99,Two year,false,true,Bank Transfer,7907.70,9,0
+57,62,77.45,Two year,true,false,Electronic Check,4462.30,2,0
+29,0,198.00,One year,false,true,Mailed Check,166.55,7,0
+37,30,198.80,Month-to-month,false,true,Mailed Check,6713.04,8,0
+18,33,106.74,Two year,false,true,Credit Card,3758.47,2,0
+36,57,183.63,Two year,false,true,Bank Transfer,9999.61,0,0
+22,22,102.11,One year,true,true,Electronic Check,2076.62,10,0
+30,0,111.68,Two year,true,true,Bank Transfer,117.12,6,0
+65,42,71.10,Two year,true,false,Mailed Check,3528.80,9,0
+26,43,47.66,Two year,true,false,Credit Card,1862.07,2,0
+22,15,94.86,Month-to-month,false,false,Mailed Check,1481.59,3,0
+47,45,156.74,Two year,true,true,Mailed Check,7682.62,8,1
+47,48,147.76,One year,false,false,Credit Card,5919.43,1,1
+47,38,77.74,One year,true,false,Mailed Check,2537.66,5,0
+25,11,64.06,One year,false,true,Credit Card,589.97,8,0
+18,35,95.68,One year,true,true,Electronic Check,3542.60,8,0
+46,14,177.92,Month-to-month,true,false,Bank Transfer,2585.29,6,1
+77,26,116.80,Two year,true,false,Electronic Check,2649.92,6,1
+74,66,163.59,Two year,true,true,Electronic Check,11126.39,2,0
+30,64,136.14,Two year,false,false,Mailed Check,7822.01,0,0
+66,30,166.13,Two year,false,false,Credit Card,5180.66,10,0
+80,38,96.91,One year,false,false,Mailed Check,3647.92,6,0
+25,24,64.65,Two year,false,false,Credit Card,1350.91,8,0
+34,43,115.82,Two year,false,false,Electronic Check,5645.18,2,0
+79,65,100.84,One year,false,false,Bank Transfer,6188.89,10,0
+58,18,161.53,Two year,false,false,Credit Card,2772.09,5,0
+39,22,47.36,Two year,true,false,Credit Card,1133.62,1,0
+41,25,72.83,One year,true,false,Electronic Check,2149.00,9,0
+26,10,88.89,One year,true,false,Bank Transfer,997.58,4,0
+33,26,21.73,Two year,true,true,Bank Transfer,496.02,5,0
+74,45,129.65,Month-to-month,false,true,Mailed Check,6094.12,7,0
+52,48,35.50,Two year,true,false,Bank Transfer,1595.88,10,0
+28,38,187.84,Month-to-month,true,true,Mailed Check,8508.65,8,0
+25,8,73.43,Month-to-month,true,false,Electronic Check,652.86,3,0
+48,41,183.13,Month-to-month,false,false,Electronic Check,7672.61,3,0
+29,50,74.21,Two year,false,true,Mailed Check,3509.63,9,1
+31,33,64.66,Two year,true,true,Mailed Check,2452.52,6,0
+59,4,104.86,One year,true,true,Credit Card,398.71,4,0
+65,58,111.31,One year,true,true,Credit Card,7081.44,1,0
+41,51,162.79,Two year,false,true,Electronic Check,9720.81,2,0
+20,10,123.47,Two year,true,true,Electronic Check,1442.54,6,1
+52,54,155.99,Month-to-month,true,true,Mailed Check,7592.10,1,0
+25,31,112.73,Two year,true,false,Credit Card,3500.15,2,0
+70,37,46.22,Two year,false,false,Credit Card,2000.94,5,0
+31,19,76.61,Month-to-month,false,false,Bank Transfer,1249.73,10,0
+32,41,95.07,Month-to-month,false,false,Bank Transfer,3245.15,6,0
+46,67,119.11,Two year,true,false,Mailed Check,8557.47,2,0
+45,28,57.43,Month-to-month,true,false,Mailed Check,1851.91,3,0
+54,10,184.12,Two year,false,false,Electronic Check,1884.10,3,0
+62,52,139.65,Month-to-month,false,true,Bank Transfer,6051.05,4,0
+26,3,161.64,Month-to-month,false,false,Bank Transfer,442.77,2,0
+27,62,140.66,Month-to-month,true,true,Bank Transfer,8493.28,3,0
+51,51,65.14,One year,true,true,Mailed Check,2705.55,4,0
+68,27,57.55,Month-to-month,true,true,Bank Transfer,1655.94,10,0
+52,10,105.01,Month-to-month,true,false,Electronic Check,1233.12,10,1
+19,21,171.49,Two year,true,true,Mailed Check,4076.08,4,0
+29,72,60.47,Month-to-month,false,true,Electronic Check,4636.66,7,0
+80,59,74.86,One year,true,false,Bank Transfer,5210.14,10,0
+54,38,189.42,One year,true,true,Electronic Check,6892.55,5,1
+77,66,20.31,One year,false,true,Credit Card,1553.24,1,0
+55,21,82.15,Two year,true,false,Mailed Check,1903.13,3,1
+40,5,30.88,One year,true,false,Mailed Check,184.62,3,1
+70,10,58.32,Month-to-month,false,false,Electronic Check,532.57,1,1
+78,33,176.42,One year,true,false,Bank Transfer,4660.16,10,0
+80,15,59.78,Two year,true,false,Electronic Check,924.13,4,0
+69,22,137.46,Two year,false,true,Mailed Check,3483.69,3,1
+57,3,58.14,Two year,true,false,Mailed Check,202.92,5,0
+48,28,90.50,One year,false,true,Electronic Check,2699.61,6,0
+63,15,93.94,Month-to-month,true,true,Mailed Check,1513.37,5,0
+19,9,33.09,One year,true,false,Credit Card,273.15,9,0
+30,16,105.23,Month-to-month,false,true,Credit Card,1359.19,4,0
+44,18,146.09,Two year,false,true,Bank Transfer,2254.49,7,0
+21,16,84.53,One year,false,false,Mailed Check,1417.55,2,0
+63,10,95.86,Two year,true,false,Bank Transfer,961.48,1,0
+57,68,132.30,Two year,true,true,Electronic Check,9814.40,1,0
+62,68,31.82,Month-to-month,true,false,Mailed Check,1805.53,2,0
+45,71,170.50,Month-to-month,true,false,Credit Card,11256.61,3,0
+55,48,121.45,Month-to-month,true,true,Mailed Check,4672.52,0,0
+42,25,130.63,One year,false,true,Electronic Check,2871.26,0,0
+74,25,140.90,Month-to-month,false,true,Bank Transfer,3611.61,6,0
+39,61,159.33,Month-to-month,true,false,Credit Card,10903.84,10,0
+34,48,64.67,Month-to-month,false,false,Credit Card,2612.31,0,0
+57,4,87.06,Month-to-month,true,true,Mailed Check,363.47,5,1
+64,21,63.28,Two year,false,true,Credit Card,1561.89,5,0
+29,72,182.69,Month-to-month,true,true,Credit Card,15684.22,5,0
+80,53,91.47,Two year,false,true,Credit Card,5679.72,9,0
+75,12,147.99,Two year,false,true,Credit Card,2035.78,4,0
+22,16,172.42,One year,false,true,Credit Card,2323.37,4,1
+59,71,85.94,Month-to-month,true,true,Bank Transfer,5212.52,6,0
+21,69,119.19,Two year,false,true,Credit Card,8362.32,6,0
+77,65,42.06,One year,false,true,Electronic Check,2212.19,8,0
+45,57,63.07,Two year,false,true,Bank Transfer,3414.29,1,0
+49,38,91.71,One year,true,true,Credit Card,3728.32,5,0
+27,67,74.21,One year,true,true,Credit Card,4656.91,4,1
+77,8,63.55,Month-to-month,false,true,Bank Transfer,424.95,7,1
+53,64,117.68,Month-to-month,true,false,Bank Transfer,6933.23,4,0
+51,29,143.41,Month-to-month,false,true,Bank Transfer,4638.40,5,0
+78,47,186.86,Two year,true,true,Bank Transfer,7274.58,8,0
+34,54,103.14,Two year,true,false,Mailed Check,6229.65,2,1
+20,63,56.06,Month-to-month,false,false,Credit Card,3081.43,2,0
+30,16,62.36,One year,true,true,Mailed Check,1083.82,1,1
+20,64,35.50,Month-to-month,true,false,Bank Transfer,2398.56,4,0
+38,57,137.60,One year,false,false,Bank Transfer,7833.44,7,0
+70,71,41.26,Two year,false,false,Bank Transfer,2626.29,4,0
+62,57,188.44,Month-to-month,true,false,Electronic Check,11599.85,8,1
+39,47,153.17,Month-to-month,true,true,Electronic Check,6005.56,9,0
+75,14,177.07,Two year,true,false,Electronic Check,2616.81,1,0
+41,61,192.29,One year,true,true,Credit Card,12984.40,8,0
+27,27,149.66,Two year,true,false,Credit Card,4135.46,1,0
+56,66,63.46,Two year,true,false,Credit Card,3756.31,7,0
+46,35,121.77,Two year,true,false,Mailed Check,4340.42,10,0
+21,66,194.49,Two year,true,true,Electronic Check,10870.42,8,0
+45,65,121.29,Month-to-month,true,false,Bank Transfer,7943.63,5,0
+25,27,49.53,Month-to-month,true,true,Bank Transfer,1584.86,3,0
+24,35,81.74,Two year,false,true,Credit Card,2829.98,2,0
+62,42,165.15,One year,true,false,Credit Card,7786.16,5,1
+30,50,125.53,Month-to-month,false,true,Mailed Check,6320.28,6,0
+73,26,137.06,One year,false,false,Mailed Check,3112.83,10,0
+39,29,160.69,One year,true,true,Credit Card,5332.63,10,0
+67,18,173.98,One year,false,false,Mailed Check,2734.71,4,0
+36,55,99.24,Month-to-month,false,true,Bank Transfer,6372.77,1,0
+47,5,198.20,Two year,true,false,Credit Card,1176.98,9,0
+38,56,130.16,Month-to-month,false,true,Electronic Check,6414.49,3,0
+37,72,38.35,Two year,false,false,Credit Card,2824.29,9,0
+19,57,192.08,Month-to-month,false,true,Mailed Check,12725.23,3,0
+23,71,71.52,Month-to-month,true,true,Mailed Check,5983.17,3,0
+61,17,46.68,Two year,false,true,Credit Card,806.76,3,0
+55,4,145.57,Month-to-month,false,false,Credit Card,545.75,4,0
+23,25,172.60,Two year,false,true,Credit Card,3846.45,2,0
+24,26,128.25,Two year,true,true,Electronic Check,3259.11,4,1
+33,58,105.36,Month-to-month,false,true,Credit Card,5705.36,2,0
+59,11,63.25,One year,false,false,Bank Transfer,816.05,5,0
+70,1,92.87,Two year,false,false,Mailed Check,94.73,5,1
+43,33,30.19,One year,true,false,Credit Card,1075.25,3,0
+29,28,134.46,Two year,true,false,Bank Transfer,3260.56,4,1
+37,71,136.12,One year,false,true,Electronic Check,8270.79,0,0
+74,19,23.87,One year,false,true,Credit Card,449.58,7,0
+26,72,99.64,Month-to-month,false,false,Mailed Check,6503.13,3,0
+18,68,135.85,Month-to-month,true,false,Credit Card,8311.44,4,1
+54,36,62.02,Month-to-month,false,false,Mailed Check,2266.83,7,0
+30,38,63.84,Two year,false,true,Credit Card,2453.10,6,0
+74,33,180.02,Month-to-month,true,false,Bank Transfer,6753.00,0,0
+25,63,89.19,Month-to-month,true,true,Electronic Check,4878.21,0,0
+80,16,169.50,Two year,false,false,Electronic Check,2799.68,8,0
+32,62,102.53,Two year,false,false,Mailed Check,5712.05,2,1
+48,4,148.43,One year,false,true,Electronic Check,590.53,10,0
+71,72,84.83,One year,false,true,Mailed Check,5805.33,8,0
+62,27,68.75,Two year,true,true,Bank Transfer,1956.24,3,0
+31,68,93.46,Two year,true,false,Electronic Check,6714.58,5,0
+34,31,162.11,One year,false,false,Mailed Check,4361.39,9,0
+24,62,170.61,Month-to-month,true,false,Mailed Check,9167.10,3,0
+30,49,79.61,Month-to-month,true,false,Credit Card,4439.90,6,0
+63,31,31.51,Two year,false,false,Bank Transfer,1017.80,0,1
+71,15,71.09,Month-to-month,true,false,Bank Transfer,1210.18,9,0
+37,69,113.28,Two year,false,false,Bank Transfer,8380.69,6,0
+23,57,154.67,One year,true,true,Mailed Check,9683.09,9,0
+57,15,193.78,One year,true,false,Mailed Check,3017.29,3,0
+18,67,72.79,One year,false,false,Mailed Check,4090.93,1,0
+35,23,173.45,One year,true,false,Credit Card,4197.98,5,0
+80,37,197.51,Two year,true,false,Electronic Check,8630.83,1,0
+38,58,124.24,Month-to-month,false,true,Credit Card,7029.25,10,0
+23,50,131.85,Two year,true,true,Electronic Check,6619.54,5,1
+53,53,27.65,One year,true,true,Electronic Check,1493.51,9,1
+44,21,98.23,Month-to-month,true,true,Mailed Check,1917.32,2,0
+55,45,181.17,One year,false,true,Mailed Check,9273.35,9,0
+34,65,79.31,One year,true,false,Bank Transfer,4737.90,9,0
+57,53,92.47,Month-to-month,true,true,Credit Card,4100.22,2,0
+50,61,147.13,Month-to-month,true,true,Electronic Check,10429.48,0,1
+28,13,131.62,One year,false,false,Electronic Check,1523.13,9,0
+26,13,163.32,One year,false,true,Bank Transfer,1963.59,5,0
+48,18,121.46,Month-to-month,false,true,Bank Transfer,2140.28,1,0
+47,5,155.62,Month-to-month,true,false,Mailed Check,754.09,1,1
+35,45,113.59,Month-to-month,true,false,Bank Transfer,4747.53,6,0
+66,6,144.64,One year,true,false,Mailed Check,912.85,7,0
+65,13,196.77,One year,true,true,Mailed Check,2174.86,0,1
+77,72,91.17,Month-to-month,true,false,Mailed Check,6176.06,1,0
+34,32,32.38,One year,false,true,Mailed Check,870.49,0,0
+48,48,133.77,One year,true,true,Credit Card,6703.70,1,0
+57,14,121.11,Month-to-month,true,false,Bank Transfer,1807.11,0,0
+32,56,100.99,Month-to-month,false,false,Bank Transfer,6044.14,7,0
+63,71,159.68,Two year,false,true,Electronic Check,11590.78,0,0
+68,72,180.79,Month-to-month,true,false,Electronic Check,14630.06,9,0
+30,41,125.52,Month-to-month,false,false,Mailed Check,5205.47,0,1
+27,58,123.86,One year,false,true,Electronic Check,5943.50,2,0
+28,42,120.86,Month-to-month,true,false,Bank Transfer,4693.43,9,0
+38,6,135.66,One year,false,true,Electronic Check,714.36,3,0
+41,65,67.96,Two year,true,true,Electronic Check,5177.52,9,1
+43,15,95.48,Two year,true,false,Electronic Check,1627.01,10,0
+27,22,60.17,One year,false,true,Bank Transfer,1577.57,6,0
+63,35,103.17,One year,true,false,Electronic Check,3315.83,0,0
+71,67,65.29,Two year,false,true,Mailed Check,3912.45,6,0
+21,64,59.66,Month-to-month,false,false,Electronic Check,3143.65,6,0
+40,10,140.67,Month-to-month,true,true,Mailed Check,1337.60,8,1
+80,43,150.43,One year,false,false,Mailed Check,5802.90,8,0
+64,70,167.66,Month-to-month,true,false,Mailed Check,12293.31,4,0
+32,46,111.15,One year,false,false,Electronic Check,5359.75,5,0
+32,2,99.34,Two year,false,false,Electronic Check,185.23,2,0
+69,52,193.75,One year,false,false,Bank Transfer,11100.75,5,0
+68,43,74.71,One year,true,false,Mailed Check,2892.27,9,0
+72,24,153.72,Month-to-month,true,true,Mailed Check,3416.07,10,0
+21,28,195.97,Two year,false,false,Mailed Check,5689.68,2,0
+25,53,161.12,Month-to-month,true,false,Mailed Check,8097.44,10,1
+40,40,33.89,Month-to-month,false,true,Credit Card,1437.85,5,0
+32,57,63.76,One year,true,true,Mailed Check,2958.64,7,0
+80,55,81.95,Two year,true,false,Credit Card,5116.62,9,0
+80,44,144.97,Month-to-month,true,true,Electronic Check,6046.03,8,1
+36,15,83.40,One year,false,false,Mailed Check,1242.33,10,0
+78,51,29.35,One year,false,false,Mailed Check,1470.05,1,0
+58,69,57.38,One year,true,true,Electronic Check,3840.96,2,0
+38,38,57.20,One year,true,false,Credit Card,2105.09,5,1
+48,42,130.15,One year,true,false,Mailed Check,5743.20,8,0
+33,6,187.08,Month-to-month,true,false,Bank Transfer,1120.13,6,1
+28,4,147.19,Month-to-month,false,false,Bank Transfer,476.56,6,0
+24,63,116.91,Two year,true,false,Bank Transfer,6546.08,2,0
+37,72,137.07,One year,true,true,Mailed Check,9137.01,8,0
+57,63,145.86,Two year,true,true,Credit Card,8010.97,1,0
+20,32,143.75,Two year,true,true,Bank Transfer,5481.32,3,1
+61,58,128.87,Month-to-month,false,false,Electronic Check,6280.20,2,0
+37,32,28.76,One year,true,false,Bank Transfer,895.25,0,1
+52,26,58.42,One year,false,false,Mailed Check,1692.38,7,1
+73,48,68.70,One year,false,false,Electronic Check,3529.09,6,0
+24,30,185.62,One year,false,true,Electronic Check,5071.72,0,0
+76,13,143.75,One year,false,false,Electronic Check,1897.37,10,1
+51,9,191.61,Month-to-month,false,false,Electronic Check,1965.07,0,1
+50,60,111.28,Two year,false,true,Bank Transfer,6848.49,1,1
+51,51,105.37,Two year,true,false,Mailed Check,5959.29,1,1
+51,55,80.02,One year,false,false,Electronic Check,4745.30,8,1
+27,15,161.93,Month-to-month,true,false,Credit Card,2253.03,0,0
+38,5,188.98,One year,true,false,Credit Card,866.79,1,0
+61,39,55.49,Month-to-month,true,false,Mailed Check,1954.45,1,0
+52,71,164.27,Two year,true,false,Bank Transfer,12616.54,6,0
+19,57,61.16,Month-to-month,false,true,Mailed Check,3148.98,10,0
+33,11,160.45,Month-to-month,true,false,Credit Card,1801.33,3,1
+38,25,44.12,One year,false,false,Mailed Check,1100.97,5,1
+77,61,198.08,Two year,true,true,Electronic Check,10842.35,8,0
+23,21,21.85,Month-to-month,false,false,Bank Transfer,441.17,5,0
+30,39,108.71,Two year,false,false,Electronic Check,4140.99,8,1
+31,13,165.29,One year,true,true,Credit Card,2531.07,3,1
+65,68,112.45,Month-to-month,false,true,Credit Card,8558.35,9,1
+31,26,139.64,One year,false,true,Mailed Check,3312.04,10,0
+80,14,21.76,Two year,true,true,Mailed Check,252.61,4,0
+55,21,73.41,One year,true,true,Electronic Check,1636.46,10,0
+18,37,106.81,One year,false,true,Credit Card,4706.96,1,0
+28,35,79.25,Month-to-month,false,false,Bank Transfer,3123.80,10,0
+28,64,132.01,One year,true,false,Mailed Check,8779.07,8,0
+51,60,91.80,Month-to-month,true,true,Credit Card,4679.51,8,0
+18,35,182.02,Month-to-month,true,false,Mailed Check,7563.28,8,0
+36,31,124.36,Two year,true,false,Mailed Check,4145.02,5,0
+24,49,62.68,Two year,true,false,Credit Card,2597.10,8,0
+33,17,77.57,One year,false,false,Bank Transfer,1337.54,2,1
+52,10,128.54,Month-to-month,true,true,Credit Card,1167.15,6,1
+51,67,145.89,Two year,true,true,Credit Card,10385.05,4,1
+35,17,197.69,Two year,true,true,Electronic Check,3621.57,8,1
+20,22,45.52,Month-to-month,true,true,Bank Transfer,842.26,1,0
+76,11,117.57,Two year,true,false,Credit Card,1346.14,9,0
+67,12,91.72,Two year,false,false,Credit Card,985.94,4,0
+80,60,38.54,One year,true,false,Bank Transfer,2018.44,10,0
+75,70,27.37,Two year,false,false,Credit Card,2088.91,2,1
+53,18,153.82,Two year,false,false,Electronic Check,2912.63,4,0
+67,18,60.43,Month-to-month,true,false,Bank Transfer,994.77,8,0
+49,44,135.33,Month-to-month,true,false,Bank Transfer,6124.16,1,0
+51,49,184.89,Month-to-month,false,false,Bank Transfer,10865.94,2,0
+58,34,57.17,Two year,true,false,Mailed Check,1810.85,2,0
+34,9,62.81,One year,false,true,Electronic Check,563.59,8,0
+35,68,150.86,Month-to-month,true,false,Electronic Check,10479.60,5,1
+43,47,32.31,Month-to-month,true,true,Electronic Check,1758.45,7,0
+47,23,109.54,Month-to-month,true,true,Electronic Check,2072.44,7,0
+42,60,95.23,Month-to-month,true,false,Bank Transfer,6363.33,2,0
+20,52,134.28,Two year,true,true,Mailed Check,7302.41,1,0
+49,29,31.91,Month-to-month,false,true,Mailed Check,1032.61,0,1
+34,44,135.70,Two year,true,true,Credit Card,5210.90,8,0
+22,26,195.32,Month-to-month,false,true,Mailed Check,5705.83,10,0
+66,7,147.26,Month-to-month,true,false,Mailed Check,1221.11,7,1
+36,33,130.16,Two year,false,false,Mailed Check,3512.63,6,0
+61,53,34.40,Month-to-month,false,false,Mailed Check,1845.99,6,0
+75,18,135.39,One year,true,false,Mailed Check,2836.38,3,0
+54,70,195.49,One year,true,true,Electronic Check,15370.85,4,1
+43,46,150.00,Month-to-month,false,true,Mailed Check,5592.98,10,0
+34,25,131.36,One year,false,false,Credit Card,3640.18,10,0
+57,69,175.39,Two year,false,true,Bank Transfer,14014.18,7,1
+30,37,132.25,One year,false,false,Electronic Check,5323.00,3,0
+22,67,69.59,Month-to-month,true,true,Mailed Check,3879.34,0,1
+66,24,84.87,Two year,true,false,Electronic Check,2407.44,8,1
+74,67,97.56,Month-to-month,false,true,Bank Transfer,6445.94,5,1
+65,71,194.28,One year,true,false,Mailed Check,13861.95,4,0
+30,29,65.63,Two year,false,true,Mailed Check,2252.57,5,0
+59,1,107.92,Month-to-month,true,true,Credit Card,120.08,5,0
+25,33,90.42,One year,false,false,Electronic Check,3105.28,10,1
+26,56,154.55,One year,false,false,Credit Card,7508.01,10,0
+39,11,90.02,One year,true,false,Electronic Check,898.72,0,0
+51,69,124.73,Month-to-month,true,true,Bank Transfer,9840.92,3,0
+64,34,154.24,One year,false,true,Credit Card,5002.33,2,0
+69,58,178.93,One year,false,false,Mailed Check,10281.39,3,0
+31,16,193.87,One year,false,false,Mailed Check,3278.74,10,0
+60,50,42.98,Month-to-month,true,true,Electronic Check,2016.53,8,0
+52,31,62.30,Two year,false,true,Mailed Check,1639.10,8,0
+47,57,174.85,One year,false,true,Mailed Check,8136.34,3,1
+54,2,111.82,Two year,false,false,Mailed Check,234.93,4,0
+80,70,147.39,One year,false,false,Electronic Check,10242.41,2,0
+75,61,27.61,Month-to-month,true,false,Electronic Check,2012.04,4,0
+23,53,51.59,One year,false,false,Mailed Check,3197.03,10,1
+25,68,163.15,One year,false,true,Electronic Check,8976.14,5,0
+65,36,90.73,One year,true,true,Electronic Check,3826.67,1,0
+18,21,60.16,Two year,true,true,Bank Transfer,1367.25,4,0
+20,38,142.08,Month-to-month,true,false,Electronic Check,5805.20,10,1
+31,31,91.15,Two year,false,true,Bank Transfer,2395.56,10,0
+78,62,185.05,Two year,false,false,Credit Card,11728.95,0,0
+78,26,191.84,One year,false,true,Mailed Check,4237.89,5,0
+32,7,114.96,Two year,false,true,Credit Card,882.37,0,0
+40,31,43.89,Two year,false,false,Mailed Check,1367.52,0,0
+53,25,156.97,One year,false,true,Electronic Check,3611.27,8,0
+73,13,83.25,Month-to-month,true,false,Mailed Check,1241.69,8,1
+28,0,54.99,Two year,false,true,Mailed Check,64.93,1,1
+38,34,177.56,Two year,true,false,Credit Card,6885.54,9,0
+70,23,54.48,Two year,true,false,Mailed Check,1056.13,2,1
+65,57,156.63,Two year,true,false,Bank Transfer,9228.27,1,0
+65,25,62.11,Two year,true,true,Mailed Check,1332.60,7,0
+50,10,103.70,Two year,false,true,Credit Card,1049.83,6,0
+53,19,168.46,Two year,false,true,Bank Transfer,3120.42,10,0
+29,40,120.71,One year,true,false,Electronic Check,4334.10,5,0
+50,67,151.75,Two year,true,true,Electronic Check,11291.96,1,0
+65,13,21.03,Two year,false,false,Mailed Check,283.30,9,0
+68,13,62.11,One year,true,false,Bank Transfer,814.46,4,1
+21,23,177.28,Month-to-month,false,false,Credit Card,4347.20,8,0
+54,44,112.68,Month-to-month,false,true,Mailed Check,5793.72,1,0
+61,53,193.45,Month-to-month,false,true,Electronic Check,8995.63,2,1
+41,49,62.45,One year,false,false,Electronic Check,3207.39,6,0
+69,31,197.84,One year,true,false,Credit Card,7103.61,2,0
+20,71,158.56,Two year,false,false,Credit Card,11223.65,6,0
+71,9,182.29,Month-to-month,true,true,Bank Transfer,1699.74,7,1
+59,18,98.59,Month-to-month,false,true,Credit Card,1690.53,7,1
+39,49,49.93,Month-to-month,false,false,Credit Card,2628.33,3,0
+35,30,33.43,One year,true,false,Bank Transfer,926.02,4,0
+67,12,192.78,Month-to-month,false,false,Bank Transfer,2373.20,5,0
+46,19,145.69,Month-to-month,false,false,Electronic Check,2933.26,7,1
+36,56,60.79,Two year,true,false,Electronic Check,2820.04,0,0
+51,2,197.92,One year,false,false,Bank Transfer,437.20,8,0
+78,58,69.41,Two year,true,true,Electronic Check,3486.03,0,0
+80,34,145.64,Month-to-month,false,false,Credit Card,4265.76,3,0
+27,5,99.54,One year,false,false,Electronic Check,596.57,6,1
+71,62,175.26,Month-to-month,false,true,Mailed Check,9243.36,6,1
+38,40,60.28,Month-to-month,false,true,Mailed Check,2099.48,3,0
+23,33,184.48,One year,true,false,Bank Transfer,4880.36,8,0
+58,39,93.93,Month-to-month,true,false,Electronic Check,4148.66,10,0
+43,72,47.65,One year,true,false,Credit Card,3771.76,1,0
+48,38,105.07,Two year,true,false,Credit Card,4065.15,2,0
+69,5,38.92,One year,true,false,Mailed Check,229.74,3,0
+59,45,152.40,Two year,true,false,Bank Transfer,6984.83,6,0
+75,36,40.77,Two year,true,true,Electronic Check,1246.30,0,0
+27,31,76.06,Month-to-month,false,false,Mailed Check,2617.08,1,0
+36,22,121.22,Two year,false,false,Electronic Check,2316.23,3,0
+70,58,199.33,One year,false,true,Electronic Check,11919.70,5,0
+18,46,52.90,One year,true,false,Bank Transfer,2909.31,4,0
+18,56,179.77,Two year,false,false,Credit Card,11952.20,7,0
+58,29,88.84,Month-to-month,true,false,Bank Transfer,2557.46,3,0
+49,22,134.38,Two year,false,false,Mailed Check,3332.40,4,0
+58,12,114.02,One year,false,false,Bank Transfer,1561.60,5,0
+70,12,20.92,Two year,true,false,Mailed Check,225.31,2,0
+48,49,28.67,Month-to-month,true,false,Bank Transfer,1485.00,1,0
+53,2,117.67,One year,false,false,Electronic Check,234.03,7,0
+61,53,157.40,Two year,true,true,Electronic Check,8634.94,6,1
+47,30,109.93,Month-to-month,true,false,Electronic Check,3756.86,0,0
+51,11,86.65,Two year,false,true,Credit Card,1058.38,9,0
+23,11,181.92,Two year,false,false,Credit Card,1928.22,9,0
+78,44,68.24,Month-to-month,false,true,Credit Card,2843.38,6,0
+44,10,84.03,Month-to-month,true,true,Credit Card,961.30,7,0
+70,6,101.53,One year,false,false,Electronic Check,678.55,6,1
+46,47,194.26,One year,false,false,Mailed Check,9541.42,4,1
+37,25,185.65,Month-to-month,true,true,Electronic Check,5487.51,5,0
+70,12,76.84,Two year,true,false,Electronic Check,1084.47,4,0
+43,0,147.49,Month-to-month,false,true,Electronic Check,171.85,5,1
+57,9,142.03,Two year,true,false,Mailed Check,1299.67,10,1
+25,35,116.88,Month-to-month,true,false,Mailed Check,4735.71,10,1
+35,19,43.42,Month-to-month,false,false,Bank Transfer,963.61,2,0
+38,67,74.33,Two year,true,false,Electronic Check,4739.70,5,0
+56,37,83.24,Month-to-month,true,false,Credit Card,2785.55,8,0
+28,51,34.73,One year,true,true,Mailed Check,2014.83,3,0
+49,5,60.82,One year,true,false,Mailed Check,315.15,1,0
+68,18,41.76,Month-to-month,true,true,Credit Card,665.88,4,0
+43,50,72.40,One year,true,true,Mailed Check,2956.72,6,1
+77,41,189.02,Month-to-month,false,false,Credit Card,7399.70,0,0
+35,45,133.25,One year,true,false,Credit Card,6027.21,5,1
+79,56,41.14,Two year,false,false,Mailed Check,2442.29,0,1
+68,37,188.88,Two year,true,false,Bank Transfer,7677.80,3,0
+61,34,191.73,One year,false,false,Mailed Check,7815.89,10,0
+77,58,37.74,One year,false,true,Credit Card,2023.30,8,1
+45,40,23.31,One year,true,false,Credit Card,927.80,2,1
+44,65,126.77,Month-to-month,true,true,Bank Transfer,7656.96,4,0
+46,41,29.41,Month-to-month,true,false,Credit Card,1266.50,3,0
+20,51,174.70,One year,true,true,Credit Card,10031.26,8,0
+78,47,54.91,Month-to-month,false,false,Mailed Check,2606.76,6,0
+28,40,57.54,Month-to-month,false,true,Credit Card,2472.70,3,1
+66,71,41.38,Month-to-month,false,true,Bank Transfer,2388.79,7,0
+75,3,157.46,One year,false,false,Credit Card,387.58,4,1
+70,31,59.61,Two year,false,true,Credit Card,2185.67,4,1
+27,42,110.97,One year,true,false,Mailed Check,5248.36,6,0
+71,72,140.85,Two year,false,false,Mailed Check,10377.71,8,0
+79,32,196.81,Month-to-month,false,true,Mailed Check,7360.00,10,0
+63,45,22.09,One year,true,true,Mailed Check,1126.87,9,1
+76,46,92.86,Two year,true,true,Bank Transfer,4371.67,2,0
+66,59,43.71,Month-to-month,false,true,Credit Card,2169.16,4,0
+56,6,61.23,One year,true,false,Mailed Check,427.39,4,0
+78,61,123.57,Two year,false,true,Electronic Check,7719.93,10,0
+38,38,115.48,Month-to-month,true,true,Credit Card,3960.49,4,0
+44,17,69.44,Month-to-month,true,true,Bank Transfer,1250.27,7,0
+20,38,139.96,Month-to-month,true,true,Bank Transfer,5208.36,2,0
+80,56,101.41,One year,false,true,Credit Card,6675.76,6,0
+66,59,84.43,Two year,false,false,Electronic Check,4356.43,5,0
+28,45,129.45,Two year,true,false,Bank Transfer,6921.45,9,1
+37,53,89.30,Two year,true,true,Credit Card,3932.01,4,0
+24,69,190.90,Month-to-month,false,false,Electronic Check,13620.43,3,1
+56,4,197.85,Month-to-month,true,false,Electronic Check,939.55,6,1
+57,63,55.23,One year,false,false,Mailed Check,3562.86,2,0
+74,27,115.72,Month-to-month,true,false,Electronic Check,3200.52,8,1
+34,26,169.08,Month-to-month,true,false,Bank Transfer,5003.13,8,0
+24,20,160.99,Month-to-month,true,false,Electronic Check,3781.90,3,0
+60,42,106.64,Month-to-month,true,true,Electronic Check,3586.16,0,0
+41,0,22.61,One year,false,true,Electronic Check,26.06,0,0
+27,33,77.17,Two year,true,true,Electronic Check,2395.27,1,0
+72,6,112.85,Two year,false,true,Electronic Check,718.60,7,1
+65,49,94.43,Month-to-month,true,true,Electronic Check,4914.39,3,0
+44,17,107.34,Two year,false,false,Mailed Check,1895.40,0,0
+74,27,147.25,One year,false,true,Bank Transfer,3608.70,5,0
+49,48,170.24,Two year,false,false,Mailed Check,8226.57,8,0
+21,63,119.91,Two year,true,false,Bank Transfer,8818.80,9,0
+76,48,148.89,Two year,false,false,Electronic Check,6867.62,4,0
+48,2,195.17,One year,true,false,Electronic Check,344.38,7,0
+25,64,38.61,One year,true,true,Credit Card,2193.65,2,0
+53,29,113.48,Two year,false,false,Mailed Check,3817.83,8,1
+22,39,182.97,One year,true,true,Electronic Check,7635.82,5,0
+48,37,72.86,One year,true,false,Credit Card,2282.21,9,0
+65,17,73.83,Two year,false,false,Mailed Check,1215.28,9,0
+69,32,58.39,One year,false,true,Credit Card,1653.56,1,0
+36,14,171.85,Month-to-month,true,false,Mailed Check,2532.34,9,1
+59,9,95.30,Month-to-month,true,true,Electronic Check,767.99,2,1
+18,32,25.71,Two year,false,true,Credit Card,763.26,6,0
+43,26,176.91,One year,false,true,Electronic Check,4171.04,7,0
+23,53,41.85,Month-to-month,true,false,Electronic Check,2369.37,0,0
+73,62,28.17,Month-to-month,false,false,Electronic Check,1859.40,6,0
+57,13,101.50,Month-to-month,false,true,Credit Card,1513.13,7,0
+58,53,87.81,One year,true,false,Credit Card,5403.20,9,0
+38,27,198.22,One year,false,true,Electronic Check,4806.95,1,1
+32,61,74.75,Month-to-month,false,false,Credit Card,3888.82,4,0
+57,56,165.66,Month-to-month,true,true,Credit Card,9258.46,10,0
+30,46,115.10,Two year,false,true,Electronic Check,5544.94,8,0
+43,45,62.28,Two year,true,true,Mailed Check,3303.27,6,1
+62,44,29.45,Month-to-month,false,false,Bank Transfer,1345.85,0,0
+54,41,99.24,Two year,false,true,Electronic Check,4686.60,2,0
+38,16,22.25,Two year,true,true,Electronic Check,421.30,8,1
+70,36,82.24,Month-to-month,true,true,Mailed Check,3227.91,4,0
+56,41,30.97,One year,false,false,Credit Card,1401.35,5,0
+36,27,126.88,One year,true,false,Bank Transfer,3060.06,10,0
+68,65,77.07,Month-to-month,true,true,Mailed Check,4635.23,9,0
+24,69,194.64,Two year,false,true,Mailed Check,16003.66,3,0
+49,0,95.76,Two year,false,true,Bank Transfer,86.10,0,0
+64,57,154.61,Two year,false,false,Credit Card,9989.52,8,0
+70,50,117.48,Month-to-month,true,false,Credit Card,5909.94,2,0
+74,54,109.84,Two year,true,true,Bank Transfer,5848.46,10,0
+54,60,162.37,Month-to-month,true,true,Mailed Check,8563.96,0,0
+73,39,181.22,Two year,false,true,Electronic Check,5690.48,9,0
+60,35,146.02,One year,false,false,Credit Card,4825.95,7,1
+26,44,78.12,Month-to-month,true,false,Electronic Check,3305.93,2,0
+43,58,150.36,Two year,true,true,Credit Card,9810.90,4,0
+52,24,56.85,One year,true,true,Electronic Check,1106.41,2,1
+18,65,87.04,One year,false,true,Bank Transfer,6780.98,0,1
+43,25,34.50,One year,false,false,Bank Transfer,759.56,4,0
+34,64,159.55,Two year,true,false,Mailed Check,9264.41,2,0
+60,3,144.09,Month-to-month,false,false,Electronic Check,483.45,1,1
+57,53,31.35,Two year,false,false,Electronic Check,1990.89,7,0
+66,14,51.64,One year,false,false,Mailed Check,742.62,10,0
+53,3,71.01,Month-to-month,true,false,Electronic Check,254.39,4,1
+29,0,120.14,Two year,false,true,Bank Transfer,129.77,3,1
+45,42,169.60,Two year,false,false,Mailed Check,5766.06,9,0
+74,72,134.43,Month-to-month,false,true,Bank Transfer,8045.12,8,1
+78,53,125.72,Two year,false,false,Mailed Check,6841.78,2,0
+44,68,199.45,Month-to-month,false,true,Credit Card,11441.90,0,0
+33,35,65.34,Month-to-month,false,true,Bank Transfer,2420.02,8,0
+18,18,76.54,Month-to-month,true,true,Mailed Check,1574.27,2,0
+27,43,114.13,One year,false,false,Credit Card,3953.72,3,1
+70,33,52.24,Two year,false,false,Electronic Check,1575.29,8,1
+67,37,62.35,Month-to-month,false,true,Credit Card,2391.91,9,0
+42,57,171.34,Two year,false,false,Credit Card,9390.78,2,0
+74,31,166.29,Two year,false,false,Credit Card,5762.51,6,0
+18,37,43.54,Month-to-month,true,false,Electronic Check,1644.68,10,1
+72,34,165.28,Two year,true,false,Mailed Check,6649.97,9,0
+51,58,58.06,One year,true,true,Mailed Check,2896.44,6,0
+21,30,107.16,Month-to-month,true,false,Bank Transfer,2632.61,5,0
+32,31,178.18,One year,true,true,Bank Transfer,5730.16,3,0
+74,32,108.62,Month-to-month,true,true,Bank Transfer,2960.33,4,0
+70,18,194.74,Two year,false,false,Mailed Check,3722.52,3,0
+24,39,89.62,One year,false,true,Mailed Check,3193.21,6,0
+38,36,65.72,One year,false,true,Electronic Check,2353.75,3,0
+77,27,34.46,Month-to-month,false,false,Mailed Check,800.44,1,0
+69,3,86.27,One year,false,true,Mailed Check,288.13,6,0
+41,54,55.16,Month-to-month,false,false,Credit Card,2978.96,8,0
+23,46,132.52,One year,false,true,Mailed Check,5963.53,9,0
+71,65,63.18,Month-to-month,false,true,Bank Transfer,4110.50,6,0
+65,42,198.01,Month-to-month,false,false,Mailed Check,8998.04,9,0
+55,3,35.43,Two year,true,false,Bank Transfer,120.43,4,0
+73,52,176.36,Two year,false,true,Bank Transfer,8757.49,0,0
+73,13,122.10,Two year,false,false,Bank Transfer,1593.63,8,1
+49,21,25.32,One year,true,false,Bank Transfer,518.84,8,0
+63,65,25.32,Two year,false,false,Electronic Check,1532.09,2,0
+44,35,192.48,Month-to-month,false,true,Electronic Check,8075.31,8,0
+18,10,114.87,Month-to-month,true,true,Bank Transfer,1341.29,10,1
+47,72,149.42,One year,false,true,Bank Transfer,10591.39,3,0
+18,7,135.19,Two year,true,false,Bank Transfer,818.99,2,1
+50,34,77.30,One year,true,true,Mailed Check,2137.25,8,0
+22,42,92.97,Month-to-month,true,true,Credit Card,4095.56,1,0
+69,61,168.35,Month-to-month,true,false,Bank Transfer,9787.27,9,0
+51,6,68.05,Two year,true,true,Electronic Check,463.90,1,0
+60,25,90.40,One year,false,true,Credit Card,1987.24,2,0
+37,72,45.77,One year,true,false,Bank Transfer,3914.43,5,0
+37,61,47.00,One year,false,true,Electronic Check,2352.71,2,0
+20,50,26.89,Month-to-month,true,false,Credit Card,1603.55,6,0
+54,61,93.45,One year,true,false,Credit Card,6045.71,6,0
+30,47,33.62,Two year,true,true,Electronic Check,1504.76,7,1
+40,22,89.84,Two year,false,true,Electronic Check,2315.50,6,0
+70,20,131.01,Month-to-month,false,false,Bank Transfer,2482.46,7,0
+32,61,199.99,Month-to-month,true,false,Bank Transfer,11026.87,2,0
+68,47,175.44,One year,false,false,Bank Transfer,8191.01,7,0
+35,14,166.25,Month-to-month,true,false,Mailed Check,2055.95,7,1
+74,39,37.83,Month-to-month,false,false,Mailed Check,1548.54,7,0
+67,58,33.90,Two year,true,false,Bank Transfer,1759.21,1,0
+43,51,133.28,One year,false,false,Mailed Check,6889.51,9,0
+22,21,132.01,One year,false,true,Credit Card,3048.35,6,1
+33,3,60.30,Two year,true,false,Bank Transfer,180.12,5,1
+34,39,174.43,Two year,false,true,Bank Transfer,7085.28,0,1
+57,68,183.69,Two year,false,false,Bank Transfer,14532.33,8,0
+50,2,27.24,One year,true,false,Bank Transfer,48.78,7,0
+59,62,125.33,Two year,true,true,Bank Transfer,7570.34,4,0
+62,39,87.69,Two year,false,true,Credit Card,3335.05,3,0
+77,58,96.99,Month-to-month,true,false,Credit Card,4629.62,8,1
+67,44,151.24,Month-to-month,false,false,Credit Card,7013.96,3,0
+33,0,136.90,One year,false,false,Credit Card,162.62,0,0
+35,24,108.93,Month-to-month,true,true,Mailed Check,2616.19,10,0
+72,13,105.23,One year,false,false,Mailed Check,1349.10,1,0
+61,11,27.23,One year,false,true,Mailed Check,343.36,3,1
+54,65,146.84,Month-to-month,true,false,Bank Transfer,10274.83,7,0
+41,18,153.97,One year,true,true,Mailed Check,2513.20,5,0
+46,47,89.35,Month-to-month,true,true,Bank Transfer,4298.81,0,0
+21,18,37.97,Two year,false,true,Mailed Check,556.91,6,1
+25,5,130.28,Two year,true,false,Bank Transfer,574.15,1,0
+25,58,145.90,Two year,true,true,Mailed Check,9095.84,3,0
+19,3,76.66,Two year,true,false,Electronic Check,224.00,5,0
+78,41,123.12,Month-to-month,true,false,Credit Card,4639.80,4,0
+74,35,20.61,One year,true,false,Electronic Check,649.94,8,0
+49,15,156.47,Two year,true,false,Bank Transfer,2429.75,9,0
+73,18,107.58,One year,true,false,Electronic Check,2031.75,9,0
+69,35,143.18,One year,true,false,Credit Card,5742.80,10,0
+33,21,99.54,Month-to-month,false,true,Credit Card,1847.81,5,0
+25,51,35.54,Two year,true,false,Credit Card,1867.36,5,1
+70,39,147.93,One year,false,true,Bank Transfer,6863.05,10,0
+32,61,193.53,One year,true,false,Electronic Check,9723.75,9,0
+75,24,162.14,Two year,false,true,Bank Transfer,3249.33,7,1
+44,61,67.24,Month-to-month,false,false,Credit Card,3822.92,6,0
+36,9,135.60,Two year,true,true,Bank Transfer,1305.65,3,0
+42,0,24.87,Month-to-month,false,true,Credit Card,28.63,8,1
+38,9,50.17,One year,true,true,Mailed Check,439.69,6,0
+59,43,29.19,Month-to-month,true,true,Mailed Check,1044.35,10,1
+28,23,159.50,Month-to-month,false,false,Mailed Check,3054.86,8,1
+54,33,34.34,Two year,false,false,Mailed Check,1074.54,10,0
+65,8,169.00,Month-to-month,true,false,Bank Transfer,1353.22,6,1
+33,66,26.98,One year,false,false,Credit Card,1432.26,4,1
+34,18,167.44,Two year,true,true,Electronic Check,3369.38,2,0
+29,65,126.43,Month-to-month,false,true,Electronic Check,7100.80,3,0
+48,55,104.85,Two year,false,false,Bank Transfer,5380.89,10,0
+60,11,112.19,One year,true,false,Electronic Check,1427.72,6,0
+26,39,131.88,Month-to-month,true,true,Bank Transfer,4123.62,7,0
+30,61,102.01,Two year,true,true,Mailed Check,6243.00,3,0
+33,34,174.44,One year,true,true,Bank Transfer,6689.74,3,0
+28,7,152.39,One year,false,true,Credit Card,941.83,7,0
+77,9,45.85,Two year,true,true,Bank Transfer,405.24,10,0
+56,31,57.57,One year,false,true,Bank Transfer,2019.20,5,1
+34,53,123.68,Month-to-month,true,true,Electronic Check,6266.55,9,0
+22,18,194.77,Month-to-month,false,false,Mailed Check,3408.39,7,0
+35,32,141.83,Month-to-month,true,true,Mailed Check,5276.93,2,0
+27,38,115.31,One year,true,true,Bank Transfer,4689.71,6,0
+27,12,166.12,One year,false,true,Mailed Check,2165.25,10,0
+68,1,198.72,Two year,false,true,Bank Transfer,237.29,0,0
+43,42,92.72,One year,true,true,Bank Transfer,3940.55,4,0
+20,58,65.22,Two year,false,false,Credit Card,3942.03,9,1
+52,4,89.12,Month-to-month,false,true,Electronic Check,347.29,5,1
+32,12,110.63,Two year,true,true,Bank Transfer,1175.07,5,0
+40,48,73.87,One year,false,false,Mailed Check,2888.05,5,0
+75,22,173.03,Month-to-month,false,true,Mailed Check,3842.94,9,1
+45,55,105.24,One year,true,false,Bank Transfer,5611.64,10,0
+68,6,149.99,Month-to-month,false,false,Credit Card,1044.47,6,1
+25,31,113.01,One year,false,true,Electronic Check,3742.19,6,0
+74,10,166.10,Month-to-month,false,false,Credit Card,1656.73,4,1
+66,66,184.01,Month-to-month,false,false,Credit Card,13434.35,3,0
+65,31,152.60,Two year,true,true,Electronic Check,4307.52,5,0
+21,13,189.53,Month-to-month,false,true,Electronic Check,2380.58,5,0
+41,52,33.65,Two year,false,false,Bank Transfer,1609.79,5,0
+75,60,91.49,Two year,true,true,Mailed Check,5935.91,2,1
+54,15,197.79,Month-to-month,false,false,Bank Transfer,3043.25,8,0
+39,62,89.53,One year,true,false,Mailed Check,4525.07,8,0
+54,61,27.36,Month-to-month,true,false,Mailed Check,1444.63,3,1
+33,33,189.40,Two year,true,false,Credit Card,7350.48,2,0
+23,12,103.43,Month-to-month,true,true,Credit Card,1333.88,10,0
+22,33,88.33,Month-to-month,false,true,Credit Card,3247.50,8,0
+77,34,93.66,One year,false,false,Electronic Check,3732.54,7,0
+29,58,183.70,One year,true,false,Bank Transfer,8539.44,9,0
+57,44,116.41,One year,true,false,Electronic Check,5716.78,2,0
+60,55,150.02,Month-to-month,true,true,Bank Transfer,6695.40,6,0
+33,24,60.00,Month-to-month,false,true,Credit Card,1658.28,3,0
+75,33,46.40,Month-to-month,true,true,Mailed Check,1576.85,3,1
+52,37,35.51,Two year,true,true,Credit Card,1135.66,8,0
+47,53,129.35,One year,false,true,Credit Card,5549.36,8,1
+19,16,77.06,Month-to-month,true,false,Electronic Check,1263.25,8,0
+36,7,188.30,Two year,true,false,Electronic Check,1479.24,4,0
+23,58,131.93,Month-to-month,true,true,Mailed Check,6190.53,9,1
+18,17,115.82,Month-to-month,true,true,Electronic Check,1863.35,2,0
+58,33,63.03,Month-to-month,true,true,Bank Transfer,2458.12,7,0
+29,42,63.30,Month-to-month,true,true,Bank Transfer,3099.35,4,0
+73,37,164.31,One year,true,true,Mailed Check,6587.05,9,0
+57,3,48.50,Month-to-month,false,false,Mailed Check,126.67,2,0
+80,16,101.34,Two year,false,true,Bank Transfer,1319.44,10,0
+35,58,54.84,One year,true,true,Credit Card,3475.99,8,1
+43,29,134.37,Month-to-month,false,false,Bank Transfer,4262.40,7,0
+62,22,23.73,Two year,false,true,Credit Card,542.31,2,0
+38,38,190.65,One year,false,true,Electronic Check,7187.81,7,0
+32,65,89.17,Two year,false,true,Bank Transfer,6789.46,5,0
+77,36,64.25,Two year,false,true,Mailed Check,2338.28,7,1
+79,32,39.08,Month-to-month,false,true,Electronic Check,1459.00,0,0
+51,64,115.15,Month-to-month,false,false,Bank Transfer,6817.47,3,0
+24,47,180.69,Month-to-month,false,false,Electronic Check,7348.74,9,0
+77,59,142.86,Month-to-month,false,false,Credit Card,9983.95,6,0
+43,53,166.54,One year,false,false,Mailed Check,7508.54,2,0
+48,66,57.74,Two year,false,false,Bank Transfer,3436.15,5,0
+37,55,38.39,One year,false,false,Bank Transfer,2245.70,10,0
+76,48,68.58,Month-to-month,true,true,Credit Card,3869.23,5,1
+40,39,100.74,Month-to-month,true,true,Mailed Check,3972.08,0,0
+54,41,50.09,One year,true,false,Bank Transfer,2192.78,3,1
+64,69,52.82,One year,true,false,Bank Transfer,3852.75,7,0
+48,6,174.24,Month-to-month,true,false,Credit Card,1135.35,7,0
+54,23,174.07,Month-to-month,true,false,Electronic Check,4468.32,5,0
+63,15,101.21,Month-to-month,false,false,Mailed Check,1797.46,8,0
+43,1,106.17,Month-to-month,true,false,Credit Card,102.14,10,1
+52,51,67.98,One year,true,false,Electronic Check,3631.58,6,0
+34,48,28.24,Two year,false,true,Electronic Check,1622.55,0,0
+37,32,139.41,Two year,false,true,Mailed Check,4626.19,1,0
+67,25,104.10,Month-to-month,true,true,Credit Card,2871.60,10,1
+57,6,115.23,One year,false,true,Mailed Check,604.85,5,0
+62,52,158.46,One year,true,true,Mailed Check,8828.73,10,0
+35,35,156.95,Two year,false,false,Credit Card,5600.34,1,0
+73,1,62.19,Month-to-month,true,true,Electronic Check,50.47,5,0
+30,48,53.97,One year,false,true,Mailed Check,2618.72,10,0
+68,69,97.20,Two year,false,false,Credit Card,5380.29,10,0
+64,53,58.09,Month-to-month,false,false,Mailed Check,2558.40,8,1
+61,37,32.91,One year,true,false,Credit Card,1176.92,9,1
+25,25,45.04,Month-to-month,true,false,Credit Card,1317.29,10,1
+80,27,180.24,One year,true,true,Credit Card,4321.08,0,1
+39,29,183.77,Two year,false,false,Bank Transfer,5886.71,7,0
+28,20,20.23,Two year,false,false,Credit Card,464.03,8,1
+34,1,190.31,One year,false,true,Bank Transfer,155.70,9,0
+29,67,195.83,One year,false,true,Mailed Check,14949.94,7,0
+56,52,117.23,One year,false,true,Mailed Check,5729.68,8,0
+73,20,152.65,Month-to-month,true,true,Credit Card,2824.90,0,0
+46,59,144.42,Two year,true,true,Credit Card,9708.52,1,0
+69,65,75.47,Two year,true,false,Mailed Check,5450.57,0,0
+54,19,27.99,One year,true,false,Mailed Check,541.27,2,1
+26,34,50.69,Month-to-month,true,false,Credit Card,1488.09,2,1
+21,36,72.67,Two year,true,true,Mailed Check,2904.89,3,0
+28,23,105.17,Two year,true,true,Electronic Check,1940.03,7,0
+65,18,144.71,Month-to-month,true,true,Credit Card,2602.96,4,0
+68,57,88.67,Two year,false,true,Mailed Check,4289.91,5,0
+66,47,115.57,One year,true,true,Electronic Check,6009.39,0,0
+37,39,186.41,Two year,false,false,Mailed Check,6563.66,6,0
+68,39,117.83,Two year,true,false,Electronic Check,5306.20,10,0
+25,19,157.58,One year,true,false,Mailed Check,2713.17,0,0
+24,30,109.92,One year,false,false,Credit Card,2991.22,3,0
+58,4,182.80,Two year,true,true,Bank Transfer,588.67,1,0
+57,8,126.73,Month-to-month,true,false,Electronic Check,907.31,4,0
+61,68,30.79,One year,false,true,Mailed Check,2461.85,3,0
+23,54,199.32,Month-to-month,false,true,Bank Transfer,9581.06,0,0
+58,36,116.29,Two year,true,false,Mailed Check,3419.92,10,1
+20,32,164.57,Month-to-month,true,false,Credit Card,6172.28,6,0
+45,34,75.33,Month-to-month,true,false,Bank Transfer,2352.41,2,0
+64,62,135.39,One year,true,true,Mailed Check,8528.68,3,0
+20,36,141.19,One year,true,true,Electronic Check,4187.75,7,1
+71,47,117.12,One year,true,false,Mailed Check,4504.68,7,0
+24,67,85.72,One year,true,false,Credit Card,6146.34,1,0
+79,54,185.93,One year,false,false,Bank Transfer,9339.46,3,0
+75,30,138.06,Two year,true,false,Electronic Check,4845.59,4,1
+37,23,28.65,One year,false,false,Credit Card,574.47,2,0
+63,0,96.46,One year,false,false,Mailed Check,110.55,10,1
+43,30,32.44,One year,false,true,Credit Card,799.87,6,0
+39,33,113.65,Month-to-month,false,false,Credit Card,3054.79,3,0
+55,27,135.76,Month-to-month,false,true,Electronic Check,3732.78,7,0
+70,7,195.54,Two year,false,true,Bank Transfer,1553.81,0,0
+40,25,58.22,Month-to-month,false,false,Mailed Check,1665.33,3,1
+30,44,170.08,Two year,false,true,Credit Card,7210.49,0,0
+53,39,151.11,One year,false,true,Mailed Check,6874.04,1,1
+45,2,148.58,Month-to-month,false,true,Bank Transfer,286.88,2,1
+43,27,87.47,Month-to-month,true,true,Credit Card,2077.54,5,0
+54,48,158.50,Two year,true,false,Mailed Check,7570.40,4,1
+37,45,191.90,Month-to-month,true,true,Electronic Check,7182.08,6,0
+52,24,21.02,One year,false,true,Mailed Check,509.91,10,0
+72,24,141.11,Two year,true,true,Electronic Check,3225.74,10,0
+18,66,95.74,Month-to-month,false,false,Bank Transfer,6066.68,10,0
+79,45,79.69,Two year,true,false,Credit Card,3422.58,10,0
+24,11,36.42,One year,false,true,Mailed Check,415.88,7,1
+30,66,36.26,Two year,false,false,Electronic Check,2379.65,4,1
+23,56,123.55,Two year,false,false,Bank Transfer,8167.60,2,0
+45,27,145.55,One year,true,false,Mailed Check,3648.89,4,1
+35,63,169.32,Month-to-month,false,true,Mailed Check,11585.40,3,0
+57,19,193.80,Two year,true,false,Bank Transfer,4090.22,10,1
+68,5,38.24,Two year,true,true,Credit Card,190.28,1,0
+39,13,93.51,Two year,false,false,Credit Card,1324.32,10,0
+55,68,92.71,Month-to-month,true,true,Bank Transfer,6499.03,7,0
+38,17,89.71,Two year,false,true,Credit Card,1405.17,8,0
+18,11,55.20,Two year,true,true,Electronic Check,639.19,7,0
+50,62,172.26,Month-to-month,false,false,Mailed Check,11819.06,8,0
+48,63,77.90,Month-to-month,false,true,Mailed Check,4177.63,1,0
+20,61,84.97,Month-to-month,false,true,Mailed Check,5764.47,3,0
+40,34,48.56,Two year,true,true,Mailed Check,1376.90,7,0
+68,60,98.70,Two year,true,true,Bank Transfer,4908.12,9,0
+47,26,181.42,Month-to-month,true,true,Mailed Check,4327.85,0,1
+52,20,56.35,One year,false,true,Bank Transfer,1109.96,0,1
+53,5,102.09,Two year,false,false,Bank Transfer,445.70,0,0
+75,44,46.31,One year,false,false,Credit Card,2193.05,1,1
+49,7,63.20,Two year,false,true,Mailed Check,425.27,4,1
+27,19,72.60,One year,true,true,Bank Transfer,1630.56,8,0
+63,0,94.50,Two year,true,true,Electronic Check,80.89,1,1
+33,47,75.79,One year,true,true,Mailed Check,3695.35,0,0
+53,66,167.58,Two year,false,true,Credit Card,9472.26,6,0
+79,3,162.99,Month-to-month,false,true,Credit Card,475.05,6,1
+73,15,56.54,One year,false,false,Credit Card,972.70,1,0
+25,51,148.03,One year,false,false,Bank Transfer,8930.57,3,0
+35,71,83.97,One year,false,true,Credit Card,6740.29,9,0
+70,33,91.84,One year,true,true,Electronic Check,3331.00,7,0
+54,5,40.83,Two year,false,true,Bank Transfer,188.34,2,0
+52,3,188.46,One year,false,false,Electronic Check,627.37,9,0
+76,50,148.53,One year,false,false,Bank Transfer,7789.50,8,0
+67,55,93.40,Month-to-month,true,true,Credit Card,5862.94,0,1
+74,59,120.96,One year,false,true,Credit Card,6519.59,9,0
+71,36,103.15,Month-to-month,false,true,Electronic Check,3757.21,3,0
+64,42,167.15,Two year,false,false,Mailed Check,7194.47,9,0
+78,47,59.31,Two year,false,true,Mailed Check,3267.41,7,0
+80,5,140.45,One year,true,false,Mailed Check,730.59,10,0
+32,49,86.77,Month-to-month,false,true,Mailed Check,4764.04,8,0
+36,55,68.58,Two year,true,false,Bank Transfer,4043.77,2,0
+65,0,116.48,Two year,true,true,Bank Transfer,114.93,3,0
+72,40,49.26,One year,true,false,Bank Transfer,1809.10,6,0
+28,13,145.88,Month-to-month,true,false,Electronic Check,1882.18,0,0
+38,60,161.82,Two year,false,false,Credit Card,11344.68,8,0
+55,39,102.32,Two year,false,false,Electronic Check,4657.19,5,0
+44,25,138.48,Two year,false,true,Credit Card,3673.98,0,1
+71,68,145.53,Two year,true,true,Mailed Check,10425.76,4,0
+44,36,49.48,Month-to-month,false,true,Credit Card,1943.16,10,0
+59,32,167.00,Two year,true,true,Mailed Check,4632.32,7,0
+60,59,45.68,One year,false,false,Electronic Check,2289.02,9,1
+43,49,51.82,Month-to-month,true,true,Electronic Check,2938.16,6,1
+65,0,133.77,Two year,true,false,Bank Transfer,160.02,5,1
+65,44,100.80,One year,true,true,Electronic Check,4747.56,3,0
+57,60,178.34,Two year,false,false,Credit Card,10547.59,10,0
+39,3,101.09,Two year,false,false,Electronic Check,357.56,10,0
+58,21,110.34,Month-to-month,false,false,Credit Card,2421.50,10,0
+44,12,103.10,Month-to-month,true,true,Bank Transfer,1116.42,3,0
+22,47,159.74,One year,true,false,Electronic Check,7590.93,0,0
+42,59,80.36,One year,true,false,Mailed Check,5275.16,6,0
+41,32,86.88,Month-to-month,false,true,Bank Transfer,2891.00,6,0
+80,10,153.04,Month-to-month,false,true,Bank Transfer,1603.07,1,1
+63,20,101.34,One year,true,true,Credit Card,2330.94,1,0
+64,70,181.38,Two year,false,false,Electronic Check,15150.72,7,0
+21,50,104.84,Two year,false,false,Mailed Check,6204.44,5,0
+36,1,56.75,One year,true,false,Bank Transfer,49.46,4,1
+28,5,198.65,One year,false,true,Bank Transfer,815.05,8,0
+34,51,75.71,Two year,false,false,Electronic Check,3385.58,8,1
+18,14,161.15,One year,true,false,Credit Card,2533.84,1,0
+51,41,138.59,One year,false,false,Electronic Check,4561.19,3,1
+65,51,97.36,Month-to-month,true,true,Credit Card,4925.78,7,0
+67,46,92.51,One year,true,false,Electronic Check,5024.14,4,1
+56,39,189.87,One year,true,true,Electronic Check,7032.29,1,0
+23,64,167.09,Two year,false,false,Credit Card,10167.04,5,0
+19,19,24.56,Two year,true,true,Electronic Check,389.87,0,0
+50,57,88.26,One year,true,true,Electronic Check,5445.72,3,0
+20,47,118.65,Two year,true,false,Bank Transfer,6669.27,1,0
+48,28,109.11,Two year,true,true,Bank Transfer,3651.29,8,1
+58,37,100.55,Two year,false,false,Mailed Check,3372.65,7,0
+56,26,187.88,One year,true,false,Credit Card,4102.64,0,0
+71,10,91.63,One year,true,false,Mailed Check,895.85,6,0
+30,47,196.01,Two year,false,false,Mailed Check,9857.99,7,0
+46,50,97.11,One year,false,true,Credit Card,4969.68,4,0
+23,46,140.80,One year,true,true,Credit Card,6644.58,5,0
+29,29,197.40,Two year,false,true,Credit Card,4776.26,7,0
+69,55,123.59,One year,true,true,Credit Card,7497.58,0,0
+72,54,50.68,Month-to-month,false,true,Credit Card,2583.60,2,0
+22,38,117.28,One year,false,true,Mailed Check,4000.58,0,0
+73,44,135.69,Month-to-month,false,false,Electronic Check,6442.78,9,0
+57,34,196.50,One year,false,true,Bank Transfer,7807.57,1,1
+51,40,154.93,One year,false,false,Electronic Check,5536.37,3,1
+71,24,104.29,Two year,false,false,Mailed Check,2331.64,5,0
+54,66,61.82,Two year,false,true,Credit Card,3847.89,10,0
+39,1,136.15,One year,true,false,Mailed Check,156.49,1,0
+37,60,64.67,Month-to-month,false,true,Mailed Check,3530.83,5,0
+20,21,50.12,Two year,true,false,Bank Transfer,1046.65,5,1
+69,35,157.45,One year,false,false,Electronic Check,5405.98,7,0
+56,55,185.90,Month-to-month,true,false,Mailed Check,8777.58,8,0
+22,19,129.16,Two year,true,true,Mailed Check,2585.79,9,0
+45,24,76.24,Month-to-month,false,true,Credit Card,1712.74,1,0
+68,15,56.87,One year,false,true,Mailed Check,861.72,1,0
+65,49,80.79,One year,true,false,Electronic Check,3811.22,7,0
+50,70,39.91,Two year,true,false,Bank Transfer,2461.28,8,1
+60,6,112.22,Two year,false,false,Electronic Check,746.92,9,0
+51,37,86.95,Two year,false,true,Bank Transfer,3164.89,3,0
+66,50,174.97,One year,true,true,Credit Card,7585.06,2,1
+35,13,37.79,Month-to-month,false,true,Mailed Check,468.23,7,0
+50,56,102.21,Two year,true,false,Electronic Check,6494.86,2,0
+43,54,153.54,Two year,false,false,Mailed Check,7496.15,6,0
+74,54,163.25,Month-to-month,false,false,Bank Transfer,9645.61,8,0
+72,31,187.88,Month-to-month,false,true,Bank Transfer,5154.58,10,0
+61,48,168.77,Month-to-month,true,false,Bank Transfer,7741.24,9,1
+71,57,76.45,Month-to-month,true,true,Bank Transfer,4811.96,10,0
+32,59,146.59,Month-to-month,true,true,Mailed Check,9219.60,4,0
+67,59,47.14,One year,true,false,Electronic Check,2653.53,1,0
+80,56,142.97,Two year,true,false,Credit Card,8882.78,0,0
+18,37,134.02,One year,false,false,Bank Transfer,5342.50,6,1
+27,17,139.33,One year,true,false,Credit Card,2095.16,2,0
+64,20,162.70,Month-to-month,true,true,Credit Card,3629.96,2,0
+56,10,31.34,One year,true,true,Credit Card,292.78,5,0
+25,54,68.29,Two year,true,false,Mailed Check,3727.95,4,0
+21,28,40.20,Month-to-month,false,true,Electronic Check,1025.60,1,0
+21,57,73.89,Two year,true,false,Credit Card,3389.05,8,0
+32,10,146.90,Two year,false,false,Electronic Check,1491.74,1,0
+79,24,27.44,One year,true,false,Bank Transfer,671.21,5,0
+42,56,47.12,Two year,true,true,Bank Transfer,2612.12,5,0
+39,64,54.32,One year,true,true,Bank Transfer,3624.93,6,0
+34,14,132.17,Month-to-month,true,true,Mailed Check,1928.47,7,1
+75,12,26.51,Two year,false,false,Credit Card,374.94,0,0
+24,50,171.26,Two year,false,true,Mailed Check,7152.78,5,1
+73,39,30.50,Two year,true,false,Bank Transfer,1230.96,0,0
+47,67,146.56,One year,true,true,Mailed Check,8688.45,0,0
+56,69,74.17,One year,false,true,Bank Transfer,5617.53,4,0
+59,67,93.48,Two year,true,false,Electronic Check,5536.26,1,0
+45,22,142.43,Two year,false,true,Bank Transfer,3499.22,9,0
+68,68,175.43,Month-to-month,true,false,Bank Transfer,13230.97,4,0
+39,72,134.13,One year,true,true,Credit Card,10497.69,9,0
+65,1,147.24,Two year,true,true,Electronic Check,166.26,2,0
+71,51,171.78,One year,true,false,Credit Card,7850.75,8,0
+29,55,143.86,Two year,false,false,Electronic Check,8372.91,4,0
+26,58,118.32,Two year,true,false,Bank Transfer,5795.11,6,0
+61,34,133.94,One year,true,true,Bank Transfer,5222.10,5,0
+58,66,77.72,Two year,true,false,Electronic Check,5419.13,0,0
+58,44,28.99,Two year,true,false,Credit Card,1190.23,8,0
+65,52,179.25,Month-to-month,true,false,Electronic Check,11106.72,1,0
+58,60,65.25,Month-to-month,false,true,Bank Transfer,3581.66,10,0
+56,3,116.99,One year,true,true,Bank Transfer,404.63,6,0
+26,21,162.03,Month-to-month,false,true,Credit Card,3668.80,3,0
+61,52,66.01,Month-to-month,false,true,Mailed Check,2965.64,8,0
+60,32,186.69,One year,false,true,Mailed Check,5299.33,0,0
+63,24,77.24,Month-to-month,true,true,Credit Card,2124.57,8,0
+41,8,115.63,One year,false,false,Electronic Check,787.66,0,0
+27,65,85.58,Month-to-month,false,true,Electronic Check,5926.46,9,0
+63,22,159.75,Two year,false,true,Bank Transfer,3094.26,9,0
+48,54,44.62,Month-to-month,true,false,Electronic Check,2550.97,8,0
+40,28,66.05,One year,false,false,Credit Card,1821.97,9,0
+44,45,57.98,Two year,true,true,Bank Transfer,2784.82,5,0
+21,20,45.55,One year,false,true,Bank Transfer,934.87,5,0
+54,37,71.21,Month-to-month,true,false,Mailed Check,2229.07,0,0
+61,26,188.94,Month-to-month,true,true,Mailed Check,4278.77,10,0
+44,14,104.09,One year,true,true,Mailed Check,1727.63,7,0
+74,34,54.08,Two year,true,true,Mailed Check,1617.32,2,0
+27,15,176.63,One year,false,true,Credit Card,2671.83,8,0
+18,33,28.93,One year,true,true,Bank Transfer,777.14,1,0
+48,11,147.39,One year,true,false,Mailed Check,1433.79,1,0
+23,13,31.93,Month-to-month,false,false,Mailed Check,338.54,6,0
+74,22,109.03,Two year,false,false,Mailed Check,2347.51,1,1
+57,14,104.84,Month-to-month,true,false,Electronic Check,1547.87,5,0
+27,3,53.97,One year,false,false,Bank Transfer,190.64,3,1
+35,35,38.88,Two year,false,true,Bank Transfer,1258.49,6,0
+32,62,138.37,Two year,true,false,Credit Card,9973.91,7,0
+65,30,137.48,Two year,false,false,Mailed Check,4163.07,3,0
+44,28,132.87,One year,false,true,Bank Transfer,3763.76,4,0
+35,37,81.25,Month-to-month,true,false,Electronic Check,2852.21,3,1
+73,40,64.13,One year,true,true,Mailed Check,2510.03,7,0
+22,25,106.68,Two year,false,true,Electronic Check,3035.50,3,0
+57,18,112.89,Month-to-month,false,true,Electronic Check,2279.91,7,1
+60,12,90.87,Two year,false,false,Electronic Check,1231.22,9,0
+45,4,40.72,Two year,true,false,Mailed Check,157.61,3,0
+18,26,69.60,One year,false,false,Electronic Check,1899.66,0,0
+64,37,151.38,One year,true,true,Mailed Check,4536.08,3,0
+42,2,194.80,One year,true,true,Mailed Check,373.05,1,0
+22,64,85.21,One year,true,false,Bank Transfer,4863.61,6,1
+55,55,173.05,Month-to-month,false,false,Electronic Check,9519.03,3,0
+61,19,149.11,Month-to-month,true,false,Electronic Check,3376.12,9,0
+45,34,24.23,Two year,false,false,Electronic Check,797.87,1,0
+45,13,172.94,Two year,false,false,Bank Transfer,2363.88,4,0
+63,23,67.77,One year,false,true,Credit Card,1687.76,0,0
+59,34,145.94,Two year,false,false,Bank Transfer,4871.55,9,0
+60,10,177.37,Month-to-month,true,true,Electronic Check,2081.43,4,1
+78,30,163.43,One year,true,false,Mailed Check,4534.05,6,0
+44,40,129.14,Month-to-month,false,true,Electronic Check,5003.20,5,0
+73,47,192.64,Month-to-month,false,false,Electronic Check,8266.73,6,0
+21,21,39.68,Two year,true,true,Bank Transfer,920.24,10,1
+75,63,171.91,Month-to-month,true,false,Credit Card,12306.66,1,1
+22,16,178.47,Month-to-month,false,false,Bank Transfer,3275.56,4,0
+58,35,193.69,Month-to-month,true,true,Mailed Check,7664.72,3,0
+52,41,23.56,Two year,true,true,Bank Transfer,936.91,8,0
+44,45,101.77,One year,false,false,Bank Transfer,5424.07,1,0
+32,60,188.69,Two year,false,false,Bank Transfer,12909.88,1,0
+75,66,43.63,One year,false,true,Credit Card,2935.65,1,0
+64,16,73.84,Two year,false,false,Mailed Check,1054.50,6,0
+62,16,21.21,One year,false,false,Electronic Check,285.47,10,0
+18,11,109.58,One year,false,false,Bank Transfer,1155.12,1,0
+28,31,128.59,One year,false,true,Mailed Check,4398.03,9,0
+59,26,61.80,Month-to-month,false,false,Mailed Check,1354.66,6,0
+38,57,162.51,Two year,true,true,Bank Transfer,9025.32,2,0
+51,58,98.11,Two year,true,false,Mailed Check,6279.07,2,0
+19,44,69.13,One year,false,false,Electronic Check,2593.30,3,0
+35,53,197.25,One year,true,true,Credit Card,11580.78,9,0
+76,46,59.88,One year,false,false,Electronic Check,2659.14,7,0
+49,47,128.75,Month-to-month,true,false,Credit Card,6246.16,6,0
+45,44,63.94,One year,false,true,Electronic Check,2855.39,9,0
+64,71,129.69,Month-to-month,false,true,Mailed Check,7810.59,10,0
+80,18,157.60,Two year,false,false,Electronic Check,3032.92,2,0
+25,31,50.67,Two year,true,true,Electronic Check,1864.24,6,0
+25,25,20.58,One year,true,false,Credit Card,615.62,2,1
+63,18,71.46,One year,true,true,Bank Transfer,1156.81,2,1
+26,67,46.04,Two year,false,true,Credit Card,3566.42,4,0
+78,45,48.95,Two year,false,true,Electronic Check,2291.24,7,0
+25,30,40.05,One year,true,false,Credit Card,1258.51,6,0
+47,35,160.98,One year,false,true,Credit Card,4767.88,9,1
+34,36,163.16,Month-to-month,false,true,Electronic Check,5554.73,7,0
+40,18,145.73,Two year,true,false,Electronic Check,2365.80,2,0
+67,8,197.90,Two year,true,false,Mailed Check,1469.29,1,1
+28,1,103.47,Two year,true,false,Electronic Check,103.11,5,0
+26,51,41.50,Two year,false,true,Credit Card,2414.78,7,0
+36,6,117.87,Month-to-month,false,true,Electronic Check,667.99,10,1
+72,38,83.12,One year,false,true,Credit Card,3225.49,0,0
+30,46,63.29,One year,false,true,Credit Card,3476.54,7,1
+73,56,196.36,Month-to-month,true,true,Mailed Check,12467.77,9,0
+80,61,156.54,Two year,true,true,Electronic Check,9476.16,7,1
+44,34,156.61,One year,true,true,Electronic Check,4997.98,5,0
+65,40,184.63,Two year,true,false,Mailed Check,6562.42,0,0
+53,29,48.35,Month-to-month,false,true,Electronic Check,1354.69,2,0
+41,1,108.65,Month-to-month,false,true,Electronic Check,107.13,1,0
+23,68,136.68,Month-to-month,false,true,Credit Card,10186.19,5,0
+32,33,33.16,One year,false,true,Mailed Check,1098.78,1,0
+55,25,106.22,One year,false,false,Credit Card,2485.80,6,0
+45,25,176.65,One year,false,false,Mailed Check,5028.72,6,0
+21,61,176.50,Two year,false,false,Bank Transfer,8700.64,5,0
+71,66,156.56,One year,true,true,Credit Card,8602.12,4,0
+32,41,81.24,Two year,true,true,Credit Card,3217.35,6,1
+65,12,118.98,Month-to-month,false,false,Credit Card,1341.40,9,0
+78,59,175.91,Month-to-month,false,false,Electronic Check,9456.22,10,0
+49,72,107.82,One year,false,false,Mailed Check,7598.59,8,0
+74,63,182.59,Month-to-month,false,true,Mailed Check,12440.56,2,1
+39,39,42.55,One year,true,true,Mailed Check,1380.30,3,0
+23,30,88.70,One year,true,false,Electronic Check,2226.47,9,1
+61,70,112.29,One year,false,true,Mailed Check,8975.64,2,1
+46,57,68.16,One year,true,false,Bank Transfer,4280.57,5,0
+33,26,66.21,Month-to-month,true,true,Electronic Check,1722.82,3,0
+75,10,34.39,Month-to-month,false,false,Electronic Check,406.98,2,1
+35,56,52.66,Month-to-month,true,false,Mailed Check,2685.00,9,0
+42,38,31.06,Month-to-month,false,false,Electronic Check,1383.40,3,0
+40,29,89.53,Month-to-month,false,true,Bank Transfer,3095.58,3,0
+39,20,123.76,Two year,false,false,Electronic Check,2394.04,1,0
+48,8,191.37,One year,false,true,Electronic Check,1744.28,10,0
+52,61,124.11,Two year,true,false,Credit Card,7659.33,7,0
+80,54,164.01,Month-to-month,false,false,Mailed Check,10579.70,10,0
+48,48,60.13,Month-to-month,true,false,Electronic Check,2353.03,5,1
+65,49,188.53,Month-to-month,false,false,Electronic Check,7716.47,8,0
+46,52,27.23,Month-to-month,true,true,Electronic Check,1248.78,5,0
+33,61,79.73,Month-to-month,true,true,Mailed Check,5491.91,3,1
+30,62,39.62,Month-to-month,true,false,Credit Card,2934.45,9,0
+64,21,38.61,Month-to-month,true,true,Mailed Check,930.23,3,0
+50,19,150.74,Two year,true,false,Credit Card,2661.41,7,0
+18,63,187.07,Month-to-month,false,false,Credit Card,11434.59,2,0
+76,68,158.01,Two year,true,true,Electronic Check,12520.33,8,0
+36,61,97.18,One year,true,false,Bank Transfer,7098.21,7,0
+44,29,114.43,Two year,true,true,Credit Card,2968.58,0,1
+77,49,123.27,Month-to-month,false,true,Credit Card,5464.40,5,0
+21,22,35.21,One year,false,true,Bank Transfer,834.02,0,0
+50,38,80.52,Two year,false,true,Electronic Check,3186.92,4,0
+72,7,92.89,Month-to-month,true,false,Bank Transfer,714.80,3,1
+51,2,166.74,Two year,false,true,Electronic Check,381.09,7,0
+28,3,128.18,One year,true,false,Bank Transfer,406.20,2,0
+59,70,50.55,One year,false,true,Mailed Check,3684.20,6,0
+31,6,68.54,Two year,false,true,Credit Card,372.57,9,0
+27,33,107.15,Two year,false,false,Electronic Check,3378.41,1,0
+44,44,191.09,Two year,true,false,Electronic Check,9003.84,5,0
+49,11,53.31,Month-to-month,false,true,Mailed Check,569.66,3,1
+34,64,74.02,One year,true,true,Electronic Check,5069.17,2,0
+60,25,109.97,Month-to-month,false,true,Electronic Check,2681.92,0,0
+38,57,137.82,One year,false,false,Credit Card,8044.95,2,0
+32,60,57.10,Two year,false,false,Bank Transfer,2887.49,6,0
+30,8,36.72,Month-to-month,true,false,Credit Card,273.39,4,1
+33,66,134.36,One year,true,false,Electronic Check,8180.37,8,0
+20,3,144.72,Two year,false,false,Mailed Check,363.88,1,0
+73,42,180.31,One year,true,false,Bank Transfer,7922.38,2,0
+36,35,107.75,One year,true,true,Mailed Check,3523.86,1,0
+32,54,169.70,Two year,false,false,Mailed Check,8922.29,9,0
+46,41,93.30,One year,true,true,Bank Transfer,3487.11,5,1

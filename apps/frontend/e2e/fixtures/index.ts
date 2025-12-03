@@ -10,9 +10,21 @@ import type { DataFixtures } from './data';
 // Import fixture implementations
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { AIMockProvider } from './ai-mock';
+
+// AI Mock fixture type
+export interface AIMockFixtures {
+  aiMock: AIMockProvider;
+}
 
 // Merge all fixtures
-export const test = base.extend<AuthFixtures & DataFixtures>({
+export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
+  // AI Mock fixture
+  aiMock: async ({}, use) => {
+    const mock = new AIMockProvider();
+    await use(mock);
+  },
+
   // Auth fixtures
   testUser: async ({}, use) => {
     const user = {
