@@ -25,7 +25,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.BASE_URL || `http://localhost:${process.env.PORT || '3010'}`,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -35,6 +35,12 @@ export default defineConfig({
 
     /* Video on failure */
     video: 'retain-on-failure',
+
+    /* Default timeout for each action (click, fill, etc.) */
+    actionTimeout: 15000,
+
+    /* Navigation timeout */
+    navigationTimeout: 30000,
   },
 
   /* Configure projects for major browsers */
@@ -91,9 +97,14 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: `NEXT_PUBLIC_SKIP_AUTH=true SKIP_AUTH=true PORT=${process.env.PORT || '3010'} npm run dev`,
+    url: `http://localhost:${process.env.PORT || '3010'}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      SKIP_AUTH: 'true',
+      NEXT_PUBLIC_SKIP_AUTH: 'true',
+      PORT: process.env.PORT || '3010',
+    },
   },
 });

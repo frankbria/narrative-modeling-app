@@ -13,7 +13,7 @@ test.describe('E2E Testing Setup', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify page loaded successfully
-    expect(page.url()).toContain('localhost:3000');
+    expect(page.url()).toContain('localhost');
   });
 
   test('should navigate to authentication page', async ({ page }) => {

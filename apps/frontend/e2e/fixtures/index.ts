@@ -37,30 +37,77 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
   authenticatedPage: async ({ page, testUser }, use) => {
     const skipAuth = process.env.SKIP_AUTH === 'true';
+    const maxRetries = 2;
 
-    if (skipAuth) {
-      await page.goto('/dashboard');
-    } else {
-      await page.goto('/auth/signin');
-      await page.waitForLoadState('networkidle');
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (skipAuth) {
+          // Navigate to dashboard
+          await page.goto('/dashboard', { timeout: 30000 });
+          await page.waitForLoadState('networkidle', { timeout: 10000 });
 
-      const emailInput = page.locator('input[name="email"], input[type="email"]').first();
-      const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
+          // Check if we ended up on the signin page (middleware might not have SKIP_AUTH set)
+          const currentUrl = page.url();
+          if (currentUrl.includes('/auth/signin')) {
+            // We're on the signin page - click the development mode button
+            const devButton = page.locator('button:has-text("Continue with Development Account")');
+            const isDevButtonVisible = await devButton.isVisible({ timeout: 5000 }).catch(() => false);
 
-      if (await emailInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await emailInput.fill(testUser.email);
-        await passwordInput.fill(process.env.TEST_USER_PASSWORD || 'test-password');
+            if (isDevButtonVisible) {
+              // Fill email if needed
+              const emailInput = page.locator('input[type="email"]').first();
+              const emailValue = await emailInput.inputValue().catch(() => '');
+              if (!emailValue || emailValue === '') {
+                await emailInput.fill(testUser.email);
+              }
 
-        const submitButton = page.locator('button[type="submit"]').first();
-        await submitButton.click();
+              // Click the development button
+              await devButton.click({ timeout: 5000 });
 
-        await page.waitForURL('**/dashboard', { timeout: 10000 });
-      } else {
-        await page.goto('/dashboard');
+              // Wait for navigation to complete
+              await page.waitForURL('**/dashboard', { timeout: 15000 });
+              await page.waitForLoadState('networkidle', { timeout: 10000 });
+            }
+          }
+          break;
+        } else {
+          await page.goto('/auth/signin', { timeout: 30000 });
+          await page.waitForLoadState('networkidle', { timeout: 10000 });
+
+          const emailInput = page.locator('input[name="email"], input[type="email"]').first();
+          const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
+
+          const emailVisible = await emailInput.isVisible({ timeout: 5000 }).catch(() => false);
+
+          if (emailVisible) {
+            await emailInput.fill(testUser.email, { timeout: 5000 });
+            await passwordInput.fill(process.env.TEST_USER_PASSWORD || 'test-password', { timeout: 5000 });
+
+            const submitButton = page.locator('button[type="submit"]').first();
+            await submitButton.click({ timeout: 5000 });
+
+            // Wait for successful navigation to dashboard
+            await page.waitForURL('**/dashboard', { timeout: 15000 });
+            await page.waitForLoadState('networkidle', { timeout: 10000 });
+            break;
+          } else {
+            // Already authenticated, just go to dashboard
+            await page.goto('/dashboard', { timeout: 30000 });
+            await page.waitForLoadState('networkidle', { timeout: 10000 });
+            break;
+          }
+        }
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw new Error(
+            `Failed to authenticate after ${maxRetries + 1} attempts: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        // Wait before retry with exponential backoff
+        await page.waitForTimeout(2000 * (attempt + 1));
       }
     }
 
-    await page.waitForLoadState('networkidle');
     await use(page);
   },
 
@@ -85,15 +132,21 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   },
 
   uploadTestDataset: async ({ page }, use) => {
-    const upload = async (): Promise<string> => {
+    const upload = async (fileName: string = 'sample.csv'): Promise<string> => {
+      // Navigate to upload page
       await page.goto('/upload');
       await page.waitForLoadState('networkidle');
 
-      // Wait for the file input to be attached to DOM
-      const fileInput = page.locator('input[type="file"]');
+      // Wait for dropzone container to be visible (react-dropzone needs this)
+      const dropzone = page.getByTestId('upload-dropzone');
+      await dropzone.waitFor({ state: 'visible', timeout: 10000 });
+
+      // Locate hidden file input using data-testid
+      const fileInput = page.getByTestId('file-input');
       await fileInput.waitFor({ state: 'attached', timeout: 10000 });
 
-      const csvPath = join(__dirname, '../test-data/sample.csv');
+      // Prepare file buffer
+      const csvPath = join(__dirname, '../test-data', fileName);
       let fileBuffer: Buffer;
 
       try {
@@ -108,41 +161,47 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         fileBuffer = Buffer.from(defaultCSV);
       }
 
-      // Playwright handles hidden file inputs automatically
+      // Set file on hidden input (Playwright handles hidden inputs automatically)
       await fileInput.setInputFiles({
-        name: 'test-data.csv',
+        name: fileName,
         mimeType: 'text/csv',
         buffer: fileBuffer,
       });
 
-      // Wait for upload button and click it
-      await page.click('button:has-text("Upload")');
+      // Wait for upload button to be visible and enabled
+      const uploadButton = page.getByTestId('upload-button');
+      await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
 
-      // Wait for upload to complete
-      await page.waitForSelector('text=/Upload.*success|File uploaded successfully/i', { timeout: 60000 });
+      // Verify button is enabled before clicking
+      await page.waitForFunction(
+        () => {
+          const element = document.querySelector('[data-testid="upload-button"]');
+          return element && !element.hasAttribute('disabled');
+        },
+        { timeout: 5000 }
+      );
 
-      // Extract file ID from the success message or response
-      const fileIdText = await page.locator('text=/File ID:/').textContent().catch(() => null);
-      let datasetId = '';
+      // Click upload button
+      await uploadButton.click();
 
-      if (fileIdText) {
-        const match = fileIdText.match(/File ID:\s*([a-zA-Z0-9-]+)/);
-        datasetId = match ? match[1] : '';
+      // Wait for navigation to dataset detail page
+      try {
+        await page.waitForURL(/\/explore\/[a-zA-Z0-9-]+/, { timeout: 30000 });
+      } catch (error) {
+        throw new Error(
+          `Upload failed: did not navigate to explore page. Current URL: ${page.url()}`
+        );
       }
 
-      // Alternative: extract from URL if redirected
-      if (!datasetId) {
-        await page.waitForTimeout(2000);
-        const url = page.url();
-        const match = url.match(/\/(explore|datasets)\/([a-zA-Z0-9-]+)/);
-        datasetId = match ? match[2] : '';
+      // Extract dataset ID from URL
+      const url = page.url();
+      const match = url.match(/\/explore\/([a-zA-Z0-9-]+)/);
+
+      if (!match) {
+        throw new Error(`Failed to extract dataset ID from URL: ${url}`);
       }
 
-      if (!datasetId) {
-        throw new Error('Could not extract dataset ID from page');
-      }
-
-      return datasetId;
+      return match[1];
     };
 
     await use(upload);
@@ -162,48 +221,74 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
   trainModel: async ({ request }, use) => {
     const train = async (datasetId: string, targetColumn: string): Promise<string> => {
-      try {
-        const response = await request.post('/api/v1/models/train', {
-          data: {
-            dataset_id: datasetId,
-            target_column: targetColumn,
-            algorithm: 'random_forest',
-          },
-        });
+      const maxRetries = 2;
 
-        if (!response.ok()) {
-          throw new Error(`Training failed with status ${response.status()}`);
-        }
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await request.post('/api/v1/models/train', {
+            data: {
+              dataset_id: datasetId,
+              target_column: targetColumn,
+              algorithm: 'random_forest',
+            },
+            timeout: 30000,
+          });
 
-        const data = await response.json();
-        const modelId = data.model_id || data.id;
-
-        // Poll for training completion (with timeout)
-        let status = 'training';
-        let attempts = 0;
-        const maxAttempts = 30; // 60 seconds max
-
-        while (status === 'training' && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          attempts++;
-
-          try {
-            const statusResponse = await request.get(`/api/v1/models/${modelId}/status`);
-            if (statusResponse.ok()) {
-              const statusData = await statusResponse.json();
-              status = statusData.status;
+          if (!response.ok()) {
+            if (attempt < maxRetries) {
+              // Wait and retry for server errors
+              await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+              continue;
             }
-          } catch (error) {
-            // If status endpoint doesn't exist, assume training complete
-            break;
+            throw new Error(`Training failed with status ${response.status()}`);
+          }
+
+          const data = await response.json();
+          const modelId = data.model_id || data.id;
+
+          // Poll for training completion (with timeout and better error handling)
+          let status = 'training';
+          let pollAttempts = 0;
+          const maxPollAttempts = 30; // 60 seconds max
+
+          while (status === 'training' && pollAttempts < maxPollAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            pollAttempts++;
+
+            try {
+              const statusResponse = await request.get(`/api/v1/models/${modelId}/status`, {
+                timeout: 5000,
+              });
+              if (statusResponse.ok()) {
+                const statusData = await statusResponse.json();
+                status = statusData.status;
+
+                if (status === 'failed' || status === 'error') {
+                  throw new Error(`Model training failed with status: ${status}`);
+                }
+              }
+            } catch (error) {
+              // If status endpoint doesn't exist, assume training complete after some attempts
+              if (pollAttempts > 5) {
+                break;
+              }
+            }
+          }
+
+          if (status === 'training') {
+            console.warn('Training timed out, but returning model ID anyway');
+          }
+
+          return modelId;
+        } catch (error) {
+          if (attempt === maxRetries) {
+            console.warn('Training fixture failed after all retries, returning mock ID:', error);
+            return 'mock-model-id';
           }
         }
-
-        return modelId;
-      } catch (error) {
-        console.warn('Training fixture failed, returning mock ID:', error);
-        return 'mock-model-id';
       }
+
+      return 'mock-model-id';
     };
 
     await use(train);

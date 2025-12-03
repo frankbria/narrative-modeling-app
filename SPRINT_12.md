@@ -11,15 +11,16 @@
 
 ---
 
-## Current Status Summary (Dec 2, 2025)
+## Current Status Summary (Dec 3, 2025)
 
-**Phase**: Test Stabilization (Phase 3)
+**Phase**: Test Infrastructure Stabilization (Phase 4 - WIP)
 
 **Completed Stories**:
 - ✅ Story 12.1: API Integration (10 points) - COMPLETE
 - ✅ Story 12.2: Data Versioning API (8 points) - COMPLETE
 - ✅ Story 12.3: Service Layer Refactoring (8 points) - COMPLETE
 - ✅ Story 12.5: E2E Integration Testing (8 points) - **COMPLETE (Dec 2, 2025)**
+- 🔄 Story 12.5B: E2E Test Stabilization - **WIP (Dec 3, 2025)**
 
 **Remaining**:
 - ⏳ Story 12.4: Performance Optimization (4 points) - Not started
@@ -28,7 +29,11 @@
 - Unit Tests: 203/203 passing (100%) ✅
 - API Integration Tests: 83/114 passing (73%) 🟡 (documented as acceptable)
 - **Frontend E2E Tests: 133 tests implemented** ✅ (6 existing + 8 new specs)
-- Recent improvements: Implemented complete E2E test suite (Dec 2, 2025)
+- **E2E Smoke Tests: 1/23 passing (4%) 🔴 [WIP - Infrastructure fixes in progress]**
+- Recent improvements:
+  - Implemented complete E2E test suite (Dec 2, 2025)
+  - Port configuration refactoring (Dec 3, 2025)
+  - Authentication fixture improvements (Dec 3, 2025)
 
 **Key Achievements**:
 - 531 lines of Pydantic schemas created
@@ -633,3 +638,116 @@ MongoDB Collections:
 **Current Sprint**: Sprint 12 🟡 IN PROGRESS (68% complete - Test Stabilization Phase)
 **Current Phase**: Test Stabilization - Improving API test pass rate from 73% to 85%+
 **Blockers**: None
+
+---
+
+## Story 12.5B: E2E Test Infrastructure Stabilization (WIP - Dec 3, 2025)
+
+**Status**: 🔄 **IN PROGRESS**
+
+**Goal**: Stabilize E2E test infrastructure to achieve reliable test execution
+
+**Current State**:
+- **Smoke Tests**: 1/23 passing (4%)
+- **Full Suite**: 20/92 passing (21.7% baseline)
+- **Infrastructure**: Both frontend (port 3010) and backend (port 8000) servers running
+
+### Changes Implemented (Dec 3, 2025)
+
+#### ✅ Port Configuration (apps/frontend/playwright.config.ts)
+- **Issue**: Hardcoded port 3000 conflicted with other projects
+- **Fix**: Made ports configurable via environment variables
+  - `baseURL`: `process.env.BASE_URL || http://localhost:${process.env.PORT || '3010'}`
+  - `webServer.command`: Uses `PORT=${process.env.PORT || '3010'}`
+  - Default port changed from 3000 → 3010
+- **Files Modified**: 
+  - `apps/frontend/playwright.config.ts` (lines 28, 100-108)
+  - `apps/frontend/e2e/workflows/setup.spec.ts` (line 16)
+
+#### ✅ Environment Variable Configuration
+- **Issue**: `NEXT_PUBLIC_SKIP_AUTH` wasn't set in playwright webServer env
+- **Fix**: Added `NEXT_PUBLIC_SKIP_AUTH: 'true'` to playwright.config.ts env object
+- **Rationale**: Next.js client-side code requires `NEXT_PUBLIC_` prefix for env vars
+
+#### 🔄 Authentication Fixture Improvements (apps/frontend/e2e/fixtures/index.ts)
+- **Issue**: `authenticatedPage` fixture failed when middleware redirected to signin page
+- **Fix Attempted**: Added signin page detection and auto-click development button
+  - Navigates to `/dashboard`
+  - Checks if redirected to `/auth/signin`
+  - If so, fills email and clicks "Continue with Development Account"
+- **Status**: Partially working - some tests still timeout
+- **Files Modified**: `apps/frontend/e2e/fixtures/index.ts` (lines 44-72)
+
+### Known Issues (Require Further Investigation)
+
+1. **Authentication Flow Timeouts** 🔴
+   - Many tests timeout waiting for authentication completion
+   - Error: `locator.fill: Timeout 5000ms exceeded` on password field
+   - Root cause: Fixture logic may have edge cases in retry logic
+
+2. **Upload Navigation Failures** 🔴
+   - Upload completes but doesn't navigate to explore page
+   - Error: `Upload failed: did not navigate to explore page. Current URL: http://localhost:3010/upload`
+   - Affects: model-config, performance, predict, train, transform tests
+   - Root cause: Likely backend processing delay or navigation logic issue
+
+3. **Test Timeouts** 🟡
+   - Multiple tests exceed 30s timeout during setup
+   - Error: `Test timeout of 30000ms exceeded while setting up "authenticatedPage"`
+   - Root cause: Compound effect of auth issues + page load delays
+
+### Files Modified Summary
+
+```
+apps/frontend/playwright.config.ts          # Port configuration (lines 28, 100-108)
+apps/frontend/e2e/workflows/setup.spec.ts   # Remove hardcoded port check (line 16)
+apps/frontend/e2e/fixtures/index.ts         # Auth fixture signin handling (lines 44-72)
+```
+
+### Next Steps
+
+1. **Debug authenticatedPage Fixture** (High Priority)
+   - Add logging to understand auth flow failures
+   - Verify signin button click is successful
+   - Check if session is properly established after dev mode signin
+
+2. **Investigate Upload Navigation** (High Priority)
+   - Verify backend upload endpoint returns correct response
+   - Check frontend navigation logic after upload
+   - Add longer timeout or better wait conditions
+
+3. **Increase Test Timeouts** (Medium Priority)
+   - Consider increasing default timeout from 30s to 60s for auth fixtures
+   - Add better progress indicators in fixtures
+
+4. **Backend Health Checks** (Medium Priority)
+   - Ensure backend is fully ready before tests start
+   - Add health check polls in playwright webServer configuration
+
+### Test Execution Notes
+
+**To run tests with current configuration:**
+```bash
+# Ensure backend is running
+cd apps/backend && nohup uv run uvicorn app.main:app --reload --port 8000 > /tmp/backend.log 2>&1 &
+
+# Run smoke tests from frontend directory
+cd apps/frontend
+USE_AI_MOCK=true npx playwright test --grep @smoke --project=chromium-smoke --reporter=list
+
+# Or use environment variables
+SKIP_AUTH=true USE_AI_MOCK=true npx playwright test --grep @smoke --reporter=list
+```
+
+**Environment Variables Required:**
+- `SKIP_AUTH=true` - Bypass authentication (Node.js/test environment)
+- `NEXT_PUBLIC_SKIP_AUTH=true` - Bypass authentication (browser/Next.js)
+- `USE_AI_MOCK=true` - Use mock AI responses
+- `PORT=3010` - Use port 3010 instead of default 3000
+
+### Commit Status
+
+**Commit**: WIP - Test infrastructure improvements (Dec 3, 2025)
+**Reason**: Fundamental app flow issues require resolution before production readiness
+**Next Session**: Continue debugging auth fixture and upload navigation issues
+
