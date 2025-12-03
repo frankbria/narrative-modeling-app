@@ -43,7 +43,7 @@ export class WorkflowOrchestrator {
 
     // Step 1: Upload dataset
     console.log('Step 1: Uploading dataset...');
-    await this.uploadPage.goto('/datasets/upload');
+    await this.uploadPage.goto('/upload');
     await this.uploadPage.uploadFile(csvPath);
     await this.uploadPage.waitForUploadComplete();
     const datasetId = await this.uploadPage.getDatasetId();
@@ -131,7 +131,7 @@ export class WorkflowOrchestrator {
     resolved: boolean;
   }> {
     // Upload dataset with quality issues
-    await this.uploadPage.goto('/datasets/upload');
+    await this.uploadPage.goto('/upload');
     await this.uploadPage.uploadFile(csvPath);
     await this.uploadPage.waitForUploadComplete();
     const datasetId = await this.uploadPage.getDatasetId();

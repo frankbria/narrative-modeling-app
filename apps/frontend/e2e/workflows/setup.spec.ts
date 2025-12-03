@@ -63,10 +63,10 @@ test.describe('Page Objects', () => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Verify we're on the upload page
-    expect(authenticatedPage.url()).toContain('/datasets/upload');
+    expect(authenticatedPage.url()).toContain('/upload');
   });
 
   test('should use BasePage methods', async ({ page }) => {

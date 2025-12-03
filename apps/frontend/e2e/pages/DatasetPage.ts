@@ -21,7 +21,7 @@ export class DatasetPage extends BasePage {
    * Navigate to specific dataset detail page
    */
   async gotoDatasetDetail(datasetId: string) {
-    await this.goto(`/datasets/${datasetId}`);
+    await this.goto(`/explore/${datasetId}`);
   }
 
   /**
@@ -172,13 +172,13 @@ export class DatasetPage extends BasePage {
    * Navigate to dataset transformation page
    */
   async gotoTransform(datasetId: string) {
-    await this.goto(`/datasets/${datasetId}/transform`);
+    await this.goto(`/transform?datasetId=${datasetId}`);
   }
 
   /**
    * Navigate to dataset training page
    */
   async gotoTrain(datasetId: string) {
-    await this.goto(`/datasets/${datasetId}/train`);
+    await this.goto(`/model?datasetId=${datasetId}`);
   }
 }

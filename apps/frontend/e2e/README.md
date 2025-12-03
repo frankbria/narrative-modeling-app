@@ -141,7 +141,7 @@ import { UploadPage } from '../pages/UploadPage';
 test('upload', async ({ authenticatedPage }) => {
   const uploadPage = new UploadPage(authenticatedPage);
 
-  await uploadPage.goto('/datasets/upload');
+  await uploadPage.goto('/upload');
   await uploadPage.uploadFile('path/to/file.csv');
   await uploadPage.waitForUploadComplete();
 

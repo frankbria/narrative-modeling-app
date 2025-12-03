@@ -100,7 +100,7 @@ test.describe('Performance - Page Load', () => {
 test.describe('Performance - API Response Times', () => {
   test('should upload 5MB dataset within 5s', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
 
@@ -405,7 +405,7 @@ test.describe('Performance - Frontend Rendering', () => {
   });
 
   test('should validate form (20 fields) within 100ms', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     const startTime = Date.now();
 
@@ -440,7 +440,7 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
       const uploadPage = new UploadPage(page);
 
       try {
-        await uploadPage.goto('/datasets/upload');
+        await uploadPage.goto('/upload');
 
         const csvPath = join(__dirname, '../test-data/sample.csv');
         await uploadPage.uploadFile(csvPath);

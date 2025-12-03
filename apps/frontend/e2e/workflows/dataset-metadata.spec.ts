@@ -189,7 +189,7 @@ test.describe('Dataset Metadata Workflow', () => {
     const datasetPage = new DatasetPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Create large CSV data
     const largePath = join(__dirname, '../test-data/large-dataset.csv');
@@ -223,7 +223,7 @@ test.describe('Dataset Metadata Workflow', () => {
     const datasetPage = new DatasetPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload file with missing values
     const missingValuesPath = join(__dirname, '../test-data/data-with-missing-values.csv');
@@ -255,7 +255,7 @@ test.describe('Dataset Metadata Workflow', () => {
     const datasetPage = new DatasetPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Create CSV with special characters in name
     const fileInput = authenticatedPage.locator('input[type="file"]');
@@ -295,8 +295,8 @@ test.describe('Dataset Metadata Workflow', () => {
     try {
       // Navigate both pages to upload
       await Promise.all([
-        uploadPage1.goto('/datasets/upload'),
-        uploadPage2.goto('/datasets/upload'),
+        uploadPage1.goto('/upload'),
+        uploadPage2.goto('/upload'),
       ]);
 
       // Create file inputs
@@ -357,7 +357,7 @@ test.describe('Dataset Metadata Workflow', () => {
   test('should show error for invalid file format', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload invalid file format
     const fileInput = authenticatedPage.locator('input[type="file"]');
@@ -378,7 +378,7 @@ test.describe('Dataset Metadata Workflow', () => {
   test('should show error for oversized file', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload file exceeding size limit
     const largePath = join(__dirname, '../test-data/oversized.csv');
@@ -399,7 +399,7 @@ test.describe('Dataset Metadata Workflow', () => {
     const uploadPage = new UploadPage(authenticatedPage);
     const datasetPage = new DatasetPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload malformed CSV that might cause schema inference issues
     const fileInput = authenticatedPage.locator('input[type="file"]');

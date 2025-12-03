@@ -268,7 +268,7 @@ authenticatedPage.locator('button:has-text("Upload"), [data-testid="upload-butto
 All tests leverage existing page object pattern:
 ```typescript
 const uploadPage = new UploadPage(authenticatedPage);
-await uploadPage.goto('/datasets/upload');
+await uploadPage.goto('/upload');
 ```
 
 ### 3. Fixtures Integration

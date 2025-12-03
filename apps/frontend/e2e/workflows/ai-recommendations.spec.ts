@@ -23,7 +23,7 @@ test.describe('AI Recommendations - Problem Type Detection', () => {
     test.setTimeout(120000); // 2 minute timeout for AI
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload binary classification dataset
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
@@ -54,7 +54,7 @@ test.describe('AI Recommendations - Problem Type Detection', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/multiclass-classification.csv');
     await uploadPage.uploadFile(csvPath);
@@ -81,7 +81,7 @@ test.describe('AI Recommendations - Problem Type Detection', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/regression.csv');
     await uploadPage.uploadFile(csvPath);
@@ -108,7 +108,7 @@ test.describe('AI Recommendations - Problem Type Detection', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/time-series.csv');
     await uploadPage.uploadFile(csvPath);
@@ -135,7 +135,7 @@ test.describe('AI Recommendations - Problem Type Detection', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/clustering.csv');
     await uploadPage.uploadFile(csvPath);
@@ -164,7 +164,7 @@ test.describe('AI Recommendations - Transformation Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
     await uploadPage.uploadFile(csvPath);
@@ -198,7 +198,7 @@ test.describe('AI Recommendations - Transformation Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/regression.csv');
     await uploadPage.uploadFile(csvPath);
@@ -232,7 +232,7 @@ test.describe('AI Recommendations - Transformation Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
     await uploadPage.uploadFile(csvPath);
@@ -269,7 +269,7 @@ test.describe('AI Recommendations - Transformation Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/regression.csv');
     await uploadPage.uploadFile(csvPath);
@@ -303,7 +303,7 @@ test.describe('AI Recommendations - Transformation Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/regression.csv');
     await uploadPage.uploadFile(csvPath);
@@ -341,7 +341,7 @@ test.describe('AI Recommendations - Algorithm Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
     await uploadPage.uploadFile(csvPath);
@@ -384,7 +384,7 @@ test.describe('AI Recommendations - Algorithm Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/regression.csv');
     await uploadPage.uploadFile(csvPath);
@@ -419,7 +419,7 @@ test.describe('AI Recommendations - Algorithm Suggestions', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Use small dataset (sample.csv has only 5 rows)
     const csvPath = join(__dirname, '../test-data/sample.csv');
@@ -460,7 +460,7 @@ test.describe('AI Recommendations - Validation and Application', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
     await uploadPage.uploadFile(csvPath);
@@ -503,7 +503,7 @@ test.describe('AI Recommendations - Validation and Application', () => {
     test.setTimeout(120000);
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/binary-classification.csv');
     await uploadPage.uploadFile(csvPath);

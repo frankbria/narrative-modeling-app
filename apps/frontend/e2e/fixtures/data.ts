@@ -43,7 +43,7 @@ export const test = base.extend<DataFixtures>({
    */
   uploadTestDataset: async ({ page }, use) => {
     const upload = async (): Promise<string> => {
-      await page.goto('/datasets/upload');
+      await page.goto('/upload');
 
       // Get the file input element
       const fileInput = page.locator('input[type="file"]');

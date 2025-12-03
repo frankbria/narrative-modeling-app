@@ -42,7 +42,7 @@ test.describe.serial('Complete AI Workflow', () => {
     // Step 1: Upload classification dataset
     console.log('Step 1: Uploading dataset...');
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
     const datasetId = await uploadPage.getDatasetId();
@@ -133,7 +133,7 @@ test.describe.serial('Complete AI Workflow', () => {
 
     // Step 1: Upload regression dataset
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
     const datasetId = await uploadPage.getDatasetId();
@@ -198,7 +198,7 @@ test.describe.serial('Complete AI Workflow', () => {
     console.log('Starting workflow with data quality issues...');
 
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     try {
       await uploadPage.uploadFile(csvPath);
@@ -272,7 +272,7 @@ test.describe.serial('Complete AI Workflow', () => {
     // Upload dataset
     const csvPath = join(__dirname, '../test-data/sample.csv');
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
     const datasetId = await uploadPage.getDatasetId();
@@ -348,7 +348,7 @@ test.describe.serial('Complete AI Workflow', () => {
     try {
       // Simulate user 1 workflow
       const uploadPage1 = new UploadPage(page1);
-      await uploadPage1.goto('/datasets/upload');
+      await uploadPage1.goto('/upload');
 
       const csvPath = join(__dirname, '../test-data/sample.csv');
       await uploadPage1.uploadFile(csvPath);
@@ -357,7 +357,7 @@ test.describe.serial('Complete AI Workflow', () => {
 
       // Simulate user 2 workflow
       const uploadPage2 = new UploadPage(page2);
-      await uploadPage2.goto('/datasets/upload');
+      await uploadPage2.goto('/upload');
       await uploadPage2.uploadFile(csvPath);
       await uploadPage2.waitForUploadComplete();
       const datasetId2 = await uploadPage2.getDatasetId();
@@ -428,7 +428,7 @@ test.describe.serial('Complete AI Workflow', () => {
     // Upload dataset
     const csvPath = join(__dirname, '../test-data/sample.csv');
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
     const datasetId = await uploadPage.getDatasetId();
@@ -492,7 +492,7 @@ test.describe.serial('Complete AI Workflow', () => {
     // Upload dataset
     const csvPath = join(__dirname, '../test-data/sample.csv');
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
     const datasetId = await uploadPage.getDatasetId();
@@ -545,7 +545,7 @@ test.describe('AI Workflow Edge Cases', () => {
   test('should handle empty dataset upload', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload empty CSV
     const emptyPath = join(__dirname, '../test-data/empty.csv');
@@ -567,7 +567,7 @@ test.describe('AI Workflow Edge Cases', () => {
 
     // Upload dataset with all missing values
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const samplePath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(samplePath);

@@ -86,9 +86,13 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
   uploadTestDataset: async ({ page }, use) => {
     const upload = async (): Promise<string> => {
-      await page.goto('/datasets/upload');
+      await page.goto('/upload');
+      await page.waitForLoadState('networkidle');
 
+      // Wait for the file input to be attached to DOM
       const fileInput = page.locator('input[type="file"]');
+      await fileInput.waitFor({ state: 'attached', timeout: 10000 });
+
       const csvPath = join(__dirname, '../test-data/sample.csv');
       let fileBuffer: Buffer;
 
@@ -104,21 +108,38 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         fileBuffer = Buffer.from(defaultCSV);
       }
 
+      // Playwright handles hidden file inputs automatically
       await fileInput.setInputFiles({
         name: 'test-data.csv',
         mimeType: 'text/csv',
         buffer: fileBuffer,
       });
 
-      await page.waitForSelector('text=/Upload (complete|successful)/i', { timeout: 30000 });
-      await page.waitForTimeout(1000);
+      // Wait for upload button and click it
+      await page.click('button:has-text("Upload")');
 
-      const url = page.url();
-      const match = url.match(/\/datasets\/([a-zA-Z0-9-]+)/);
-      const datasetId = match ? match[1] : '';
+      // Wait for upload to complete
+      await page.waitForSelector('text=/Upload.*success|File uploaded successfully/i', { timeout: 60000 });
+
+      // Extract file ID from the success message or response
+      const fileIdText = await page.locator('text=/File ID:/').textContent().catch(() => null);
+      let datasetId = '';
+
+      if (fileIdText) {
+        const match = fileIdText.match(/File ID:\s*([a-zA-Z0-9-]+)/);
+        datasetId = match ? match[1] : '';
+      }
+
+      // Alternative: extract from URL if redirected
+      if (!datasetId) {
+        await page.waitForTimeout(2000);
+        const url = page.url();
+        const match = url.match(/\/(explore|datasets)\/([a-zA-Z0-9-]+)/);
+        datasetId = match ? match[2] : '';
+      }
 
       if (!datasetId) {
-        throw new Error('Could not extract dataset ID from URL: ' + url);
+        throw new Error('Could not extract dataset ID from page');
       }
 
       return datasetId;

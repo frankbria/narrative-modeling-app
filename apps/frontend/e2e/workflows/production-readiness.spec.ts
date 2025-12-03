@@ -50,7 +50,7 @@ test.describe('Production Readiness - Security', () => {
   test('should have CSRF protection on forms', async ({ authenticatedPage }) => {
     const securityTester = new SecurityTester(authenticatedPage);
 
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     const result = await securityTester.testCSRFProtection('form');
 
@@ -60,7 +60,7 @@ test.describe('Production Readiness - Security', () => {
   test('should prevent XSS attacks', async ({ authenticatedPage }) => {
     const securityTester = new SecurityTester(authenticatedPage);
 
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     // Test XSS prevention in dataset name input (if exists)
     const nameInput = authenticatedPage.locator('input[name="name"], input[placeholder*="name"]');
@@ -191,7 +191,7 @@ test.describe('Production Readiness - Accessibility (WCAG 2.1 AA)', () => {
   });
 
   test('should have accessible forms', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     // Check form labels
     const labels = await authenticatedPage.locator('label').count();
@@ -263,7 +263,7 @@ test.describe('Production Readiness - Error Handling', () => {
   test('should display form validation errors', async ({ authenticatedPage }) => {
     const errorCollector = new ConsoleErrorCollector(authenticatedPage);
 
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     // Try to submit without file
     const submitButton = authenticatedPage.locator('button[type="submit"]');
@@ -330,7 +330,7 @@ test.describe('Production Readiness - Data Validation', () => {
   test('should sanitize user input', async ({ authenticatedPage }) => {
     const securityTester = new SecurityTester(authenticatedPage);
 
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     const nameInput = authenticatedPage.locator('input[name="name"], input[placeholder*="name"]');
 
@@ -346,7 +346,7 @@ test.describe('Production Readiness - Data Validation', () => {
 
   test('should validate file uploads', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload invalid file type
     const invalidPath = join(__dirname, '../test-data/invalid.json');
@@ -399,7 +399,7 @@ test.describe('Production Readiness - Monitoring & Logging', () => {
 
     // Perform actions that should trigger analytics
     const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);

@@ -22,7 +22,7 @@ test.describe('Dataset Upload Workflow', () => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload file
     const csvPath = join(__dirname, '../test-data/sample.csv');
@@ -40,7 +40,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should validate file format and reject non-CSV files', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload invalid file (JSON instead of CSV)
     const jsonPath = join(__dirname, '../test-data/invalid.json');
@@ -64,7 +64,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should reject files that exceed size limit', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload large file
     const largePath = join(__dirname, '../test-data/large.csv');
@@ -85,7 +85,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should verify metadata storage after upload @smoke', async ({ authenticatedPage, request }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
@@ -113,7 +113,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should detect and display schema information', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
@@ -144,7 +144,7 @@ test.describe('Dataset Upload Workflow', () => {
 
     try {
       // Navigate both pages to upload
-      await Promise.all([uploadPage1.goto('/datasets/upload'), uploadPage2.goto('/datasets/upload')]);
+      await Promise.all([uploadPage1.goto('/upload'), uploadPage2.goto('/upload')]);
 
       // Start both uploads simultaneously
       const csvPath = join(__dirname, '../test-data/sample.csv');
@@ -168,7 +168,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should display upload progress indicator @smoke', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
 
@@ -193,7 +193,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should support drag and drop upload', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Find the drop zone
     const dropZone = authenticatedPage.locator('[data-testid="drop-zone"], .drop-zone, [class*="upload"]').first();
@@ -217,7 +217,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should allow canceling an in-progress upload', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
 
@@ -242,7 +242,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should preserve uploaded files across page refreshes', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload file
     const csvPath = join(__dirname, '../test-data/sample.csv');
@@ -265,7 +265,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should display data preview after successful upload', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
@@ -283,7 +283,7 @@ test.describe('Dataset Upload Workflow', () => {
   test('should provide option to download uploaded dataset', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
@@ -305,7 +305,7 @@ test.describe('Upload Security and Validation', () => {
   test('should detect and warn about PII in uploaded data', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Upload file with potential PII (if exists)
     const piiPath = join(__dirname, '../test-data/data-with-pii.csv');
@@ -326,7 +326,7 @@ test.describe('Upload Security and Validation', () => {
   test('should validate CSV structure and show errors for malformed files', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload malformed CSV
     const malformedPath = join(__dirname, '../test-data/malformed.csv');
@@ -346,7 +346,7 @@ test.describe('Upload Security and Validation', () => {
   test('should handle empty CSV files gracefully', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try to upload empty CSV
     const emptyPath = join(__dirname, '../test-data/empty.csv');
