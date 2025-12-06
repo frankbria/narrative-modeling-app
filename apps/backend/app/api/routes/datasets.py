@@ -5,7 +5,7 @@ Provides endpoints for managing datasets using DatasetService.
 Implements Story 12.1: API Integration for New Models (Dataset portion).
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Query
 from typing import Optional
 import logging
 import uuid
@@ -36,18 +36,40 @@ router = APIRouter()
 
 @router.get("/datasets", response_model=DatasetListResponse)
 async def list_datasets(
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page (max 100)")
 ):
     """
-    List all datasets for the authenticated user.
+    List all datasets for the authenticated user with pagination.
 
     Returns datasets sorted by created_at (newest first).
+
+    Args:
+        current_user_id: Authenticated user ID
+        page: Page number (1-indexed, default: 1)
+        limit: Items per page (max 100, default: 20)
+
+    Returns:
+        Paginated list of datasets with metadata
     """
     try:
-        logger.info(f"Listing datasets for user {current_user_id}")
+        logger.info(f"Listing datasets for user {current_user_id} (page={page}, limit={limit})")
 
         service = DatasetService()
-        datasets = await service.list_datasets(user_id=current_user_id)
+
+        # Calculate skip for database-level pagination
+        skip = (page - 1) * limit
+
+        # Get paginated datasets with database-level pagination for better performance
+        datasets = await service.list_datasets(
+            user_id=current_user_id,
+            skip=skip,
+            limit=limit
+        )
+
+        # Get total count for pagination metadata
+        total = await service.count_for_user(current_user_id)
 
         # Convert to list response
         dataset_items = [
@@ -69,7 +91,7 @@ async def list_datasets(
 
         return DatasetListResponse(
             datasets=dataset_items,
-            total=len(dataset_items)
+            total=total
         )
 
     except Exception as e:

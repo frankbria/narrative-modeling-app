@@ -72,29 +72,33 @@ Sprint 12 has made substantial progress on modernizing the API layer and refacto
 - Integration with DatasetService
 - PII handling validation
 
-#### Phase 3: Transformation & Model API Routes 🟡 PARTIALLY COMPLETE
+#### Phase 3: Transformation & Model API Routes ✅ CORE TESTS COMPLETE
 
 **Transformation Routes**:
 - File exists: `app/api/routes/transformations.py` (26KB)
-- Tests exist: `tests/test_api/test_transformations_integration.py`
-- **Issue**: Import error - `TransformationType` not found in schemas
-- **Status**: Needs schema alignment fix
+- Unit tests: `tests/test_api/test_transformations.py`
+- Integration tests: `tests/test_api/test_transformations_integration.py` (requires additional fixes)
+- **Test Results**: 10/10 unit tests passing ✅
+- **Issues Fixed (Phase 1)**:
+  - AsyncMock usage for async S3 functions
+  - TransformationConfig added to Beanie init
+  - TransformationStep validator expanded for all transformation types
+  - TransformationHistoryResponse schema aligned with route output
+- **Status**: Unit tests complete, integration tests pending
 
 **Model Training Routes**:
 - Files exist: `app/api/routes/model_training.py`, `model_export.py`, `trained_model.py`
 - Tests exist: `tests/test_api/test_model_training.py`
-- **Test Results**: 4/9 failing
-- **Issues**:
-  - S3 NoSuchKey errors in tests
-  - Coroutine unpacking errors
-  - ModelCandidate initialization errors
-- **Status**: Needs test fixes and possibly route updates
+- **Test Results**: 9/9 passing ✅
+- **Issues Fixed (Phase 1)**:
+  - S3 mock returns bytes instead of BytesIO
+  - sample_dataset fixture includes s3_url attribute
+- **Status**: Complete
 
-**Remaining Work**:
-- Fix transformation schema imports
-- Fix model training test failures
-- Update routes to use new ModelConfig/TransformationConfig models
-- Achieve >95% test coverage
+**Phase 1 Completion (2025-11-25)**:
+- ✅ Transformation unit tests: 10/10 passing
+- ✅ Model Training tests: 9/9 passing
+- 🟡 Integration tests and other API tests: Additional work needed
 
 ---
 
@@ -201,9 +205,10 @@ Sprint 12 has made substantial progress on modernizing the API layer and refacto
 ### Test Coverage
 - **Dataset API**: 100% (19/19 tests passing)
 - **Dataset Service**: 100% (service layer)
-- **Transformation API**: 0% (tests not running due to import errors)
-- **Model Training API**: 44% (4/9 tests passing)
-- **Overall Backend**: ~85%
+- **Transformation API (Unit)**: 100% (10/10 tests passing) ✅ Updated 2025-11-25
+- **Model Training API**: 100% (9/9 tests passing) ✅ Updated 2025-11-25
+- **Transformation Integration**: Needs work (12 errors)
+- **Overall Backend**: ~85% (230 passing in API tests)
 
 ### Code Statistics
 - **New Files**: 3 (datasets.py routes, test_datasets.py, schemas updates)

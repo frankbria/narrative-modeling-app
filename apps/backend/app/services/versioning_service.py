@@ -3,6 +3,11 @@ Data versioning service.
 
 Handles creation, retrieval, and management of dataset versions and transformation lineage,
 enabling reproducibility and historical analysis.
+
+Security:
+- Version retrieval methods enforce ownership checks when user_id is provided
+- Ownership checks can be bypassed for internal operations by omitting user_id parameter
+- All bypassed operations are logged for security auditing
 """
 
 from typing import Optional, List, Dict, Any, Tuple
@@ -24,10 +29,20 @@ from app.models.version import (
 )
 from app.models.dataset import DatasetMetadata
 from app.config import settings
+from app.services.base_service import BaseService
+from app.services.exceptions import (
+    NotFoundError,
+    ConflictError,
+    OperationError,
+    ValidationError
+)
 
 
-class VersioningService:
+class VersioningService(BaseService[DatasetVersion]):
     """Service for managing dataset versions and lineage tracking."""
+
+    model_class = DatasetVersion
+    resource_name = "DatasetVersion"
 
     def __init__(self):
         """Initialize versioning service with S3 client."""
@@ -38,6 +53,10 @@ class VersioningService:
             region_name=settings.AWS_REGION
         )
         self.bucket_name = settings.S3_BUCKET
+
+    def _get_id_field(self) -> str:
+        """Return the unique identifier field name for DatasetVersion."""
+        return "version_id"
 
     async def create_base_version(
         self,
@@ -59,7 +78,7 @@ class VersioningService:
             Created DatasetVersion document
 
         Raises:
-            ValueError: If dataset already has versions
+            ConflictError: If dataset already has a base version
         """
         logger.info(f"Creating base version for dataset {dataset_metadata.dataset_id}")
 
@@ -69,7 +88,10 @@ class VersioningService:
             DatasetVersion.is_base_version == True
         )
         if existing_base:
-            raise ValueError(f"Base version already exists for dataset {dataset_metadata.dataset_id}")
+            raise ConflictError(
+                message=f"Base version already exists for dataset {dataset_metadata.dataset_id}",
+                existing_id=existing_base.version_id
+            )
 
         # Compute content and schema hashes
         content_hash = DatasetVersion.compute_content_hash(file_content)
@@ -134,7 +156,8 @@ class VersioningService:
             Tuple of (new_version, lineage)
 
         Raises:
-            ValueError: If parent version not found
+            NotFoundError: If parent version not found
+            OperationError: If S3 upload fails
         """
         logger.info(f"Creating transformation version from parent {parent_version_id}")
 
@@ -143,7 +166,10 @@ class VersioningService:
             DatasetVersion.version_id == parent_version_id
         )
         if not parent_version:
-            raise ValueError(f"Parent version {parent_version_id} not found")
+            raise NotFoundError(
+                resource_type="DatasetVersion",
+                resource_id=parent_version_id
+            )
 
         # Check for duplicate content (deduplication)
         content_hash = DatasetVersion.compute_content_hash(transformed_content)
@@ -186,7 +212,11 @@ class VersioningService:
             logger.info(f"Uploaded version to {s3_url}")
         except ClientError as e:
             logger.error(f"Failed to upload version to S3: {e}")
-            raise ValueError(f"Failed to upload version: {str(e)}")
+            raise OperationError(
+                message="Failed to upload version to S3",
+                operation="s3_upload",
+                original_error=e
+            )
 
         # Compute schema hash
         dtypes = {}
@@ -285,20 +315,51 @@ class VersioningService:
             return latest_version.version_number + 1
         return 1
 
-    async def get_version(self, version_id: str, mark_accessed: bool = True) -> Optional[DatasetVersion]:
+    async def get_version(
+        self,
+        version_id: str,
+        mark_accessed: bool = True,
+        user_id: Optional[str] = None
+    ) -> Optional[DatasetVersion]:
         """
         Retrieve a specific dataset version.
+
+        Security: Ownership check enforced when user_id is provided.
 
         Args:
             version_id: Version identifier
             mark_accessed: Whether to increment access counter
+            user_id: Optional user ID for ownership verification.
+                    If provided, only returns version if dataset is owned by this user.
+                    If None, bypasses ownership check (for internal operations).
 
         Returns:
-            DatasetVersion or None if not found
+            DatasetVersion or None if not found or ownership check fails
         """
         version = await DatasetVersion.find_one(DatasetVersion.version_id == version_id)
 
-        if version and mark_accessed:
+        if not version:
+            return None
+
+        # Enforce ownership check if user_id is provided
+        if user_id is not None:
+            # Get the dataset to check ownership
+            from app.models.dataset import DatasetMetadata
+            dataset = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == version.dataset_id)
+            if dataset and dataset.user_id != user_id:
+                logger.warning(
+                    f"Ownership check failed: User {user_id} attempted to access "
+                    f"version {version_id} of dataset {version.dataset_id} owned by {dataset.user_id}"
+                )
+                return None
+        else:
+            # Log bypassed ownership check for security audit
+            logger.info(
+                f"Ownership check bypassed for version {version_id} "
+                f"(dataset {version.dataset_id}). This is expected for internal operations."
+            )
+
+        if mark_accessed:
             version.mark_accessed()
             await version.save()
 
@@ -315,11 +376,15 @@ class VersioningService:
             File content bytes
 
         Raises:
-            ValueError: If version not found or S3 retrieval fails
+            NotFoundError: If version not found
+            OperationError: If S3 retrieval fails
         """
         version = await self.get_version(version_id, mark_accessed=True)
         if not version:
-            raise ValueError(f"Version {version_id} not found")
+            raise NotFoundError(
+                resource_type="DatasetVersion",
+                resource_id=version_id
+            )
 
         try:
             response = self.s3_client.get_object(
@@ -331,7 +396,11 @@ class VersioningService:
             return content
         except ClientError as e:
             logger.error(f"Failed to retrieve version content from S3: {e}")
-            raise ValueError(f"Failed to retrieve version content: {str(e)}")
+            raise OperationError(
+                message="Failed to retrieve version content from S3",
+                operation="s3_download",
+                original_error=e
+            )
 
     async def list_versions(
         self,
@@ -407,16 +476,32 @@ class VersioningService:
             VersionComparison with detailed differences
 
         Raises:
-            ValueError: If versions not found or not from same dataset
+            NotFoundError: If versions not found
+            ValidationError: If versions are not from same dataset
         """
         version1 = await self.get_version(version1_id, mark_accessed=False)
         version2 = await self.get_version(version2_id, mark_accessed=False)
 
         if not version1 or not version2:
-            raise ValueError("One or both versions not found")
+            missing_ids = []
+            if not version1:
+                missing_ids.append(version1_id)
+            if not version2:
+                missing_ids.append(version2_id)
+            raise NotFoundError(
+                message=f"Version(s) not found: {', '.join(missing_ids)}",
+                resource_type="DatasetVersion",
+                resource_id=missing_ids[0]
+            )
 
         if version1.dataset_id != version2.dataset_id:
-            raise ValueError("Versions must be from the same dataset")
+            raise ValidationError(
+                message="Versions must be from the same dataset",
+                details={
+                    "version1_dataset_id": version1.dataset_id,
+                    "version2_dataset_id": version2.dataset_id
+                }
+            )
 
         # Calculate dimensional changes
         rows_diff = version2.num_rows - version1.num_rows
@@ -482,44 +567,66 @@ class VersioningService:
 
         return []
 
-    async def pin_version(self, version_id: str) -> DatasetVersion:
+    async def pin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Pin a version to prevent auto-deletion.
 
+        Security: Ownership check enforced when user_id is provided.
+
         Args:
             version_id: Version to pin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
-            ValueError: If version not found
+            NotFoundError: If version not found
+            PermissionDeniedError: If ownership check fails (via get_version)
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
-            raise ValueError(f"Version {version_id} not found")
+            raise NotFoundError(
+                resource_type="DatasetVersion",
+                resource_id=version_id
+            )
 
         version.pin_version()
         await version.save()
         logger.info(f"Pinned version {version_id}")
         return version
 
-    async def unpin_version(self, version_id: str) -> DatasetVersion:
+    async def unpin_version(
+        self,
+        version_id: str,
+        user_id: Optional[str] = None
+    ) -> DatasetVersion:
         """
         Unpin a version, allowing auto-deletion.
 
+        Security: Ownership check enforced when user_id is provided.
+
         Args:
             version_id: Version to unpin
+            user_id: Optional user ID for ownership verification
 
         Returns:
             Updated DatasetVersion
 
         Raises:
-            ValueError: If version not found
+            NotFoundError: If version not found
+            PermissionDeniedError: If ownership check fails (via get_version)
         """
-        version = await self.get_version(version_id, mark_accessed=False)
+        version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
-            raise ValueError(f"Version {version_id} not found")
+            raise NotFoundError(
+                resource_type="DatasetVersion",
+                resource_id=version_id
+            )
 
         version.unpin_version()
         await version.save()

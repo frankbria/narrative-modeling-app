@@ -67,3 +67,6 @@ scripts/awscliv2.zip
 
 # Serena MCP server data
 .serena/
+
+# Claude Code local settings
+.claude/settings.local.json

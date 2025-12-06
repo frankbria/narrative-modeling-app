@@ -181,16 +181,10 @@ async def get_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
         if not model:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
-
-        # Verify user owns the model
-        if model.user_id != current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -310,23 +304,51 @@ async def list_models(
     try:
         model_service = ModelService()
 
-        # Get models based on filters
+        # Calculate skip for database-level pagination
+        skip = (page - 1) * limit
+
+        # Get models with database-level pagination where possible
         if dataset_id:
+            # For dataset filter, we still need to fetch and filter in-memory
+            # TODO: Add list_models_by_dataset_and_user() method for better performance
             models = await model_service.list_models_by_dataset(dataset_id)
             # Filter by user
             models = [m for m in models if m.user_id == current_user_id]
+
+            # Apply status filter if provided
+            if status_filter:
+                models = [m for m in models if m.status.value == status_filter]
+
+            # Apply pagination in-memory (already filtered)
+            total = len(models)
+            paginated_models = models[skip:skip + limit]
         else:
-            models = await model_service.list_model_configs(current_user_id)
-
-        # Apply status filter if provided
-        if status_filter:
-            models = [m for m in models if m.status.value == status_filter]
-
-        # Apply pagination
-        total = len(models)
-        start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        paginated_models = models[start_idx:end_idx]
+            # Use database-level pagination for better performance
+            if status_filter:
+                # Use filtered query with pagination
+                status_enum = ModelStatus(status_filter)
+                if status_enum == ModelStatus.DEPLOYED:
+                    paginated_models = await model_service.get_deployed_models(
+                        current_user_id, skip=skip, limit=limit
+                    )
+                    total = await model_service.count_for_user(
+                        current_user_id, status=status_enum
+                    )
+                else:
+                    # For other statuses, use list_for_user with status filter
+                    paginated_models = await model_service.list_for_user(
+                        current_user_id, skip=skip, limit=limit,
+                        status=status_enum
+                    )
+                    total = await model_service.count_for_user(
+                        current_user_id, status=status_enum
+                    )
+            else:
+                # No filter - use database-level pagination
+                paginated_models = await model_service.list_model_configs(
+                    current_user_id, skip=skip, limit=limit
+                )
+                total = await model_service.count_for_user(current_user_id)
 
         # Convert to list items
         model_items = [
@@ -390,13 +412,6 @@ async def update_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
-
-        if not model or model.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
 
         # Build update dict from request
         update_fields = {}
@@ -409,9 +424,10 @@ async def update_model(
         if request.notes is not None:
             update_fields["notes"] = request.notes
 
-        # Update model
+        # Update model with ownership check
         updated_model = await model_service.update_model_config(
             model_id=model_id,
+            user_id=current_user_id,
             **update_fields
         )
 
@@ -532,9 +548,10 @@ async def get_model_performance(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
-        if not model or model.user_id != current_user_id:
+        if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -602,9 +619,10 @@ async def deploy_model(
     """
     try:
         model_service = ModelService()
-        model = await model_service.get_model_config(model_id)
+        # Ownership check is now enforced in the service layer
+        model = await model_service.get_model_config(model_id, user_id=current_user_id)
 
-        if not model or model.user_id != current_user_id:
+        if not model:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"
@@ -623,10 +641,11 @@ async def deploy_model(
                     detail=f"Model must be trained before deployment. Current status: {model.status.value}"
                 )
 
-        # Deploy model
+        # Deploy model with ownership check
         deployed_model = await model_service.mark_model_deployed(
             model_id=model_id,
-            endpoint=request.endpoint
+            endpoint=request.endpoint,
+            user_id=current_user_id
         )
 
         if not deployed_model:
