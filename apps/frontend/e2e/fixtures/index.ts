@@ -35,78 +35,24 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     await use(user);
   },
 
-  authenticatedPage: async ({ page, testUser }, use) => {
-    const skipAuth = process.env.SKIP_AUTH === 'true';
-    const maxRetries = 2;
+  authenticatedPage: async ({ page }, use) => {
+    // The session is already loaded from storage state (configured in playwright.config.ts)
+    // The global-setup.ts script handles authentication and saves the session state
+    // This fixture just uses that saved state
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (skipAuth) {
-          // Navigate to dashboard
-          await page.goto('/dashboard', { timeout: 30000 });
-          await page.waitForLoadState('networkidle', { timeout: 10000 });
+    console.log('[authenticatedPage] Using pre-authenticated session from storage state');
 
-          // Check if we ended up on the signin page (middleware might not have SKIP_AUTH set)
-          const currentUrl = page.url();
-          if (currentUrl.includes('/auth/signin')) {
-            // We're on the signin page - click the development mode button
-            const devButton = page.locator('button:has-text("Continue with Development Account")');
-            const isDevButtonVisible = await devButton.isVisible({ timeout: 5000 }).catch(() => false);
+    // Navigate to the dashboard
+    await page.goto('/dashboard', { timeout: 30000 });
+    await page.waitForLoadState('networkidle', { timeout: 10000 });
 
-            if (isDevButtonVisible) {
-              // Fill email if needed
-              const emailInput = page.locator('input[type="email"]').first();
-              const emailValue = await emailInput.inputValue().catch(() => '');
-              if (!emailValue || emailValue === '') {
-                await emailInput.fill(testUser.email);
-              }
-
-              // Click the development button
-              await devButton.click({ timeout: 5000 });
-
-              // Wait for navigation to complete
-              await page.waitForURL('**/dashboard', { timeout: 15000 });
-              await page.waitForLoadState('networkidle', { timeout: 10000 });
-            }
-          }
-          break;
-        } else {
-          await page.goto('/auth/signin', { timeout: 30000 });
-          await page.waitForLoadState('networkidle', { timeout: 10000 });
-
-          const emailInput = page.locator('input[name="email"], input[type="email"]').first();
-          const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
-
-          const emailVisible = await emailInput.isVisible({ timeout: 5000 }).catch(() => false);
-
-          if (emailVisible) {
-            await emailInput.fill(testUser.email, { timeout: 5000 });
-            await passwordInput.fill(process.env.TEST_USER_PASSWORD || 'test-password', { timeout: 5000 });
-
-            const submitButton = page.locator('button[type="submit"]').first();
-            await submitButton.click({ timeout: 5000 });
-
-            // Wait for successful navigation to dashboard
-            await page.waitForURL('**/dashboard', { timeout: 15000 });
-            await page.waitForLoadState('networkidle', { timeout: 10000 });
-            break;
-          } else {
-            // Already authenticated, just go to dashboard
-            await page.goto('/dashboard', { timeout: 30000 });
-            await page.waitForLoadState('networkidle', { timeout: 10000 });
-            break;
-          }
-        }
-      } catch (error) {
-        if (attempt === maxRetries) {
-          throw new Error(
-            `Failed to authenticate after ${maxRetries + 1} attempts: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-        // Wait before retry with exponential backoff
-        await page.waitForTimeout(2000 * (attempt + 1));
-      }
+    // Verify we're authenticated (should not be on signin page)
+    const currentUrl = page.url();
+    if (currentUrl.includes('/auth/signin')) {
+      throw new Error('Authentication failed - redirected to signin page despite having storage state');
     }
+
+    console.log('[authenticatedPage] Successfully navigated to dashboard with authenticated session');
 
     await use(page);
   },

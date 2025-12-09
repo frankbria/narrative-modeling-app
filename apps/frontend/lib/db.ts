@@ -3,14 +3,14 @@
 // This approach is taken from https://github.com/vercel/next.js/tree/canary/examples/with-mongodb
 import { MongoClient, ServerApiVersion } from "mongodb"
 
-// Allow missing MONGODB_URI in test/CI environments with SKIP_AUTH
-const skipAuth = process.env.SKIP_AUTH === 'true' || process.env.CI === 'true'
+// Allow missing MONGODB_URI in CI environments only
+const isCI = process.env.CI === 'true'
 
-if (!process.env.MONGODB_URI && !skipAuth) {
+if (!process.env.MONGODB_URI && !isCI) {
   throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')
 }
 
-// Use a mock URI for test environments when auth is skipped
+// Use a mock URI for CI environments
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/test'
 const options = {
   serverApi: {
@@ -30,15 +30,15 @@ if (process.env.NODE_ENV === "development") {
   }
 
   if (!globalWithMongo._mongoClient) {
-    globalWithMongo._mongoClient = skipAuth
-      ? {} as MongoClient  // Mock client when auth is skipped
+    globalWithMongo._mongoClient = isCI
+      ? {} as MongoClient  // Mock client in CI
       : new MongoClient(uri, options)
   }
   client = globalWithMongo._mongoClient
 } else {
   // In production mode, it's best to not use a global variable.
-  client = skipAuth
-    ? {} as MongoClient  // Mock client when auth is skipped
+  client = isCI
+    ? {} as MongoClient  // Mock client in CI
     : new MongoClient(uri, options)
 }
 

@@ -9,25 +9,33 @@ import client from "./lib/db"
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
-const skipAuth = process.env.SKIP_AUTH === 'true'
 
 const providers = []
 
-// Add dev-only credentials provider for bypassing auth
-if (isDevelopment && skipAuth) {
+// Add credentials provider for E2E testing and development
+// This allows test users to authenticate without OAuth
+if (isDevelopment || process.env.NODE_ENV === 'test') {
   providers.push(
     CredentialsProvider({
-      name: 'Development',
+      id: 'credentials',
+      name: 'Test User',
       credentials: {
-        email: { label: "Email", type: "email", placeholder: "dev@example.com" }
+        email: { label: "Email", type: "email", placeholder: "test@example.com" },
+        password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // In dev mode with SKIP_AUTH=true, accept any email
-        if (credentials?.email) {
+        // Accept specific test user credentials
+        const testEmail = process.env.TEST_USER_EMAIL || 'test@narrativeml.com'
+        const testPassword = process.env.TEST_USER_PASSWORD || 'test-password-123'
+
+        if (
+          credentials?.email === testEmail &&
+          credentials?.password === testPassword
+        ) {
           return {
-            id: 'dev-user-' + credentials.email.split('@')[0],
-            email: credentials.email,
-            name: credentials.email.split('@')[0],
+            id: 'test-user-12345',
+            email: testEmail,
+            name: 'Test User',
             image: null,
           }
         }
@@ -48,9 +56,9 @@ providers.push(
     clientSecret: process.env.GITHUB_SECRET || 'dummy-client-secret',
   })
 )
- 
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: skipAuth ? undefined : MongoDBAdapter(client),
+  adapter: MongoDBAdapter(client),
   providers,
   session: {
     strategy: "jwt",

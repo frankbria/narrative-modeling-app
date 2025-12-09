@@ -190,10 +190,9 @@ test('upload workflow', async ({
 
 ## Environment Variables
 
-- `BASE_URL`: Base URL for tests (default: http://localhost:3000)
-- `SKIP_AUTH`: Skip authentication (set to 'true' for dev)
-- `TEST_USER_EMAIL`: Test user email
-- `TEST_USER_PASSWORD`: Test user password
+- `BASE_URL`: Base URL for tests (default: http://localhost:3010)
+- `TEST_USER_EMAIL`: Test user email for E2E authentication (default: test@narrativeml.com)
+- `TEST_USER_PASSWORD`: Test user password for E2E authentication (default: test-password-123)
 
 ## CI/CD Integration
 
@@ -240,9 +239,10 @@ npx playwright show-trace path/to/trace.zip
 - Verify BASE_URL is correct
 
 ### Authentication Issues
-- Set `SKIP_AUTH=true` for development
-- Verify test user credentials
-- Check auth UI selectors in `fixtures/auth.ts`
+- Verify `TEST_USER_EMAIL` and `TEST_USER_PASSWORD` match the test user credentials
+- Ensure Playwright global setup successfully signs in and saves storage state to `e2e/.auth/user.json`
+- Check that the dev server is running in development mode (enables Credentials provider)
+- Verify auth UI selectors in `e2e/global-setup.ts` match the signin page
 
 ### Page Not Found
 - Ensure dev server is running: `npm run dev`

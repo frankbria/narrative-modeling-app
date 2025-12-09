@@ -22,10 +22,16 @@ export default defineConfig({
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
 
+  /* Global setup - authenticate once before all tests */
+  globalSetup: require.resolve('./e2e/global-setup'),
+
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.BASE_URL || `http://localhost:${process.env.PORT || '3010'}`,
+
+    /* Use the authenticated session state from global setup */
+    storageState: './e2e/.auth/user.json',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -97,14 +103,15 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: `NEXT_PUBLIC_SKIP_AUTH=true SKIP_AUTH=true PORT=${process.env.PORT || '3010'} npm run dev`,
+    command: `PORT=${process.env.PORT || '3010'} npm run dev`,
     url: `http://localhost:${process.env.PORT || '3010'}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
     env: {
-      SKIP_AUTH: 'true',
-      NEXT_PUBLIC_SKIP_AUTH: 'true',
+      NODE_ENV: 'development',
       PORT: process.env.PORT || '3010',
+      TEST_USER_EMAIL: process.env.TEST_USER_EMAIL || 'test@narrativeml.com',
+      TEST_USER_PASSWORD: process.env.TEST_USER_PASSWORD || 'test-password-123',
     },
   },
 });

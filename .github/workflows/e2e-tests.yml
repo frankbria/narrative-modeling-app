@@ -56,7 +56,9 @@ jobs:
         run: npm run test:e2e:full -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
         env:
           CI: true
-          SKIP_AUTH: true  # Use auth bypass in CI for now
+          NODE_ENV: development
+          TEST_USER_EMAIL: test@narrativeml.com
+          TEST_USER_PASSWORD: test-password-123
           NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
           NEXTAUTH_URL: http://localhost:3000
           GOOGLE_CLIENT_ID: dummy-client-id

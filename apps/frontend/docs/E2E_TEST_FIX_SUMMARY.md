@@ -133,9 +133,9 @@ HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 401 Unau
 - May pass in production build
 
 **Auth Test** (1 test):
-- Expected to fail with `SKIP_AUTH=true`
+- Uses test user credentials for authentication
 - Test validates auth enforcement
-- Working as designed
+- Working as designed with proper test user login
 
 ## Documentation Created
 
