@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "E2E Performance Test Results",
+  "description": "Schema for storing E2E performance test metrics",
+  "type": "object",
+  "properties": {
+    "testRun": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when tests were run"
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["local", "ci", "staging", "production"],
+          "description": "Test environment"
+        },
+        "branch": {
+          "type": "string",
+          "description": "Git branch name"
+        },
+        "commit": {
+          "type": "string",
+          "description": "Git commit hash"
+        }
+      },
+      "required": ["timestamp", "environment"]
+    },
+    "pageLoadPerformance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testName": { "type": "string" },
+          "pageName": { "type": "string" },
+          "url": { "type": "string" },
+          "timeToInteractive": { "type": "number", "description": "TTI in milliseconds" },
+          "target": { "type": "number", "description": "Target TTI in milliseconds" },
+          "passed": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["testName", "pageName", "timeToInteractive", "target", "passed"]
+      }
+    },
+    "apiResponseTimes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testName": { "type": "string" },
+          "endpoint": { "type": "string" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
+          "responseTime": { "type": "number", "description": "Response time in milliseconds" },
+          "target": { "type": "number", "description": "Target response time in milliseconds" },
+          "passed": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["testName", "endpoint", "method", "responseTime", "target", "passed"]
+      }
+    },
+    "databaseQueries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testName": { "type": "string" },
+          "queryType": { "type": "string" },
+          "executionTime": { "type": "number", "description": "Execution time in milliseconds" },
+          "target": { "type": "number", "description": "Target execution time in milliseconds" },
+          "passed": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["testName", "queryType", "executionTime", "target", "passed"]
+      }
+    },
+    "renderingPerformance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testName": { "type": "string" },
+          "componentName": { "type": "string" },
+          "renderTime": { "type": "number", "description": "Render time in milliseconds" },
+          "target": { "type": "number", "description": "Target render time in milliseconds" },
+          "passed": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["testName", "componentName", "renderTime", "target", "passed"]
+      }
+    },
+    "concurrentLoad": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testName": { "type": "string" },
+          "operationType": { "type": "string" },
+          "concurrentUsers": { "type": "number" },
+          "averageResponseTime": { "type": "number", "description": "Average response time in milliseconds" },
+          "target": { "type": "number", "description": "Target average response time in milliseconds" },
+          "passed": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "required": ["testName", "operationType", "concurrentUsers", "averageResponseTime", "target", "passed"]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "totalTests": { "type": "number" },
+        "passed": { "type": "number" },
+        "failed": { "type": "number" },
+        "passRate": { "type": "number", "minimum": 0, "maximum": 100 },
+        "averagePageLoadTime": { "type": "number" },
+        "averageApiResponseTime": { "type": "number" },
+        "slowestTest": {
+          "type": "object",
+          "properties": {
+            "testName": { "type": "string" },
+            "duration": { "type": "number" }
+          }
+        },
+        "fastestTest": {
+          "type": "object",
+          "properties": {
+            "testName": { "type": "string" },
+            "duration": { "type": "number" }
+          }
+        }
+      },
+      "required": ["totalTests", "passed", "failed", "passRate"]
+    }
+  },
+  "required": ["testRun", "summary"]
+}

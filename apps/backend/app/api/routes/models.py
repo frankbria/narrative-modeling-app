@@ -30,6 +30,7 @@ from app.schemas.model import (
     PerformanceMetricsResponse
 )
 from app.services.model_service import ModelService
+from app.services.exceptions import NotFoundError, PermissionDeniedError
 from app.models.model import ModelStatus
 from app.auth.nextauth_auth import get_current_user_id
 
@@ -513,6 +514,16 @@ async def update_model(
 
     except HTTPException:
         raise
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except PermissionDeniedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except Exception as e:
         logger.error(f"Failed to update model: {str(e)}")
         raise HTTPException(

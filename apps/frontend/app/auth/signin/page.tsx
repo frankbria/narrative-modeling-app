@@ -16,10 +16,10 @@ export default function SignInPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('dev@example.com');
+  const [email, setEmail] = useState('test@narrativeml.com');
+  const [password, setPassword] = useState('test-password-123');
   const isDevelopment = process.env.NODE_ENV === 'development';
-  const skipAuth = process.env.NEXT_PUBLIC_SKIP_AUTH === 'true';
-  
+
   // Get callback URL from search params or default to /upload
   const callbackUrl = searchParams.get('callbackUrl') || '/upload';
   
@@ -61,23 +61,16 @@ export default function SignInPage() {
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
             Choose your preferred sign-in method to access the Narrative Modeling App
-            {isDevelopment && (
-              <>
-                <br />
-                {`isDevelopment Mode: ${isDevelopment ? 'Enabled' : 'Disabled'}`}<br />
-                {`skipAuth: ${skipAuth ? 'Enabled' : 'Disabled'}`}
-              </>
-            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isDevelopment && skipAuth && (
+          {isDevelopment && (
             <>
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                <p className="text-sm text-yellow-800 font-medium">Development Mode</p>
-                <p className="text-xs text-yellow-600 mt-1">Authentication is bypassed. Enter any email to continue.</p>
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800 font-medium">Test User Login</p>
+                <p className="text-xs text-blue-600 mt-1">Use test credentials for E2E testing and development</p>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -85,22 +78,34 @@ export default function SignInPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="dev@example.com"
+                  placeholder="test@narrativeml.com"
                 />
               </div>
-              
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="test-password-123"
+                />
+              </div>
+
               <Button
-                onClick={() => signIn('credentials', { 
-                  email, 
-                  callbackUrl 
+                onClick={() => signIn('credentials', {
+                  email,
+                  password,
+                  callbackUrl
                 })}
                 className="w-full flex items-center justify-center gap-2"
                 variant="default"
               >
                 <Mail className="w-5 h-5" />
-                Continue with Development Account
+                Sign In with Test User
               </Button>
-              
+
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />

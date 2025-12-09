@@ -31,6 +31,8 @@ async def get_histogram(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         return await generate_and_cache_histogram(dataset_id, column_name, num_bins)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -53,6 +55,8 @@ async def get_boxplot(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         return await generate_and_cache_boxplot(dataset_id, column_name)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -73,6 +77,8 @@ async def get_correlation_matrix(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         return await generate_and_cache_correlation_matrix(dataset_id)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -136,6 +142,8 @@ async def get_scatter_plot(
             'correlation': float(correlation) if not np.isnan(correlation) else None
         }
         
+    except HTTPException:
+        raise
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:
@@ -202,7 +210,9 @@ async def get_line_chart(
             'xLabel': x_column,
             'yLabel': 'Value'
         }
-        
+
+    except HTTPException:
+        raise
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:
@@ -263,7 +273,9 @@ async def get_time_series(
             'values': values,
             'label': value_column
         }
-        
+
+    except HTTPException:
+        raise
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:

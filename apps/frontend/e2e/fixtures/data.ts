@@ -6,6 +6,8 @@ export type DataFixtures = {
   testCSV: Buffer;
   uploadTestDataset: () => Promise<string>;
   cleanupDataset: (datasetId: string) => Promise<void>;
+  trainModel: (datasetId: string, targetColumn: string) => Promise<string>;
+  cleanupModel: (modelId: string) => Promise<void>;
 };
 
 /**
@@ -41,7 +43,7 @@ export const test = base.extend<DataFixtures>({
    */
   uploadTestDataset: async ({ page }, use) => {
     const upload = async (): Promise<string> => {
-      await page.goto('/datasets/upload');
+      await page.goto('/upload');
 
       // Get the file input element
       const fileInput = page.locator('input[type="file"]');

@@ -30,13 +30,14 @@ export class UploadPage extends BasePage {
    */
   async getDatasetId(): Promise<string> {
     const url = this.page.url();
-    const match = url.match(/\/datasets\/([a-zA-Z0-9-]+)/);
+    // Match either /explore/[id] or /datasets/[id] patterns
+    const match = url.match(/\/(explore|datasets)\/([a-zA-Z0-9-]+)/);
 
     if (!match) {
       throw new Error('Could not extract dataset ID from URL: ' + url);
     }
 
-    return match[1];
+    return match[2]; // Return the ID (second capture group)
   }
 
   /**

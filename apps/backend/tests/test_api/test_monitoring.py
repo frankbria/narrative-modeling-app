@@ -155,11 +155,11 @@ class TestMonitoringAPI:
     @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
     @patch('app.api.routes.monitoring.APIKey')
-    @patch('app.api.routes.monitoring.PredictionMonitoringService')
+    @patch('app.api.routes.monitoring.monitoring_service')
     async def test_usage_overview_calculation(self, mock_service, mock_api_key, mock_model):
         """Test usage overview calculation logic"""
         from app.api.routes.monitoring import get_usage_overview
-        
+
         # Mock models
         mock_models = [
             Mock(
@@ -176,7 +176,7 @@ class TestMonitoringAPI:
             )
         ]
         mock_model.find.return_value.to_list = AsyncMock(return_value=mock_models)
-        
+
         # Mock API keys
         mock_keys = [
             Mock(is_active=True),
@@ -184,16 +184,16 @@ class TestMonitoringAPI:
             Mock(is_active=False)
         ]
         mock_api_key.find.return_value.to_list = AsyncMock(return_value=mock_keys)
-        
-        # Mock metrics
+
+        # Mock metrics on the service instance
         mock_service.get_model_metrics = AsyncMock(side_effect=[
             {"total_predictions": 100, "avg_latency_ms": 50},
             {"total_predictions": 50, "avg_latency_ms": 75}
         ])
-        
+
         # Test the calculation
         result = await get_usage_overview(current_user_id="user_123")
-        
+
         assert result.total_models == 2
         assert result.active_models == 1
         assert result.total_predictions_24h == 150
@@ -203,18 +203,18 @@ class TestMonitoringAPI:
     
     @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
-    @patch('app.api.routes.monitoring.PredictionMonitoringService')
+    @patch('app.api.routes.monitoring.monitoring_service')
     async def test_model_metrics_response_format(self, mock_service, mock_model):
         """Test model metrics response format"""
         from app.api.routes.monitoring import get_model_metrics
-        
+
         # Mock model
         mock_model_instance = Mock()
         mock_model_instance.name = "Test Model"
         mock_model_instance.last_used_at = datetime.utcnow()
         mock_model.find_one = AsyncMock(return_value=mock_model_instance)
-        
-        # Mock metrics
+
+        # Mock metrics on the service instance
         mock_service.get_model_metrics = AsyncMock(return_value={
             "total_predictions": 1000,
             "avg_latency_ms": 45.5,
@@ -223,13 +223,13 @@ class TestMonitoringAPI:
             "error_rate": 0.02,
             "time_window_hours": 24
         })
-        
+
         result = await get_model_metrics(
             model_id="model_123",
             hours=24,
             current_user_id="user_123"
         )
-        
+
         assert result.model_id == "model_123"
         assert result.model_name == "Test Model"
         assert result.total_predictions == 1000

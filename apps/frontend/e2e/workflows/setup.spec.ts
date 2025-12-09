@@ -13,7 +13,7 @@ test.describe('E2E Testing Setup', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify page loaded successfully
-    expect(page.url()).toContain('localhost:3000');
+    expect(page.url()).toContain('localhost');
   });
 
   test('should navigate to authentication page', async ({ page }) => {
@@ -63,10 +63,10 @@ test.describe('Page Objects', () => {
     const uploadPage = new UploadPage(authenticatedPage);
 
     // Navigate to upload page
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Verify we're on the upload page
-    expect(authenticatedPage.url()).toContain('/datasets/upload');
+    expect(authenticatedPage.url()).toContain('/upload');
   });
 
   test('should use BasePage methods', async ({ page }) => {

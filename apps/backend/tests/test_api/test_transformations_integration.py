@@ -93,7 +93,7 @@ def mock_s3_operations(sample_dataframe):
     
     with patch('boto3.client', return_value=mock_s3_client), \
          patch('app.utils.s3.upload_file_to_s3', side_effect=mock_upload_fixed) as mock_upload, \
-         patch('app.services.transformation_service.data_utils.upload_file_to_s3', side_effect=mock_upload_fixed):
+         patch('app.services.transformation_engine.data_utils.upload_file_to_s3', side_effect=mock_upload_fixed):
         
         yield None, mock_upload
         
@@ -190,9 +190,11 @@ class TestTransformationPreview:
     @pytest.mark.asyncio
     async def test_preview_invalid_dataset(self, authorized_client):
         """Test preview with invalid dataset ID"""
+        # Use a valid ObjectId format that doesn't exist in the database
+        nonexistent_id = str(ObjectId())
         with patch('app.models.user_data.UserData.find_one', return_value=None):
             request = {
-                "dataset_id": "invalid_id",
+                "dataset_id": nonexistent_id,
                 "transformation_type": "remove_duplicates",
                 "parameters": {}
             }
@@ -201,7 +203,7 @@ class TestTransformationPreview:
                 "/api/v1/transformations/preview",
                 json=request
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is False
@@ -278,7 +280,7 @@ class TestTransformationApply:
     async def test_apply_pipeline_with_recipe_save(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test applying pipeline and saving as recipe"""
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data), \
-             patch('app.services.transformation_service.recipe_manager.RecipeManager.create_recipe', new_callable=AsyncMock) as mock_create:
+             patch('app.api.routes.transformations.RecipeManager.create_recipe', new_callable=AsyncMock) as mock_create:
             
             mock_recipe = MagicMock()
             mock_recipe.id = ObjectId()
@@ -410,7 +412,7 @@ class TestRecipeManagement:
     @pytest.mark.asyncio
     async def test_create_recipe(self, authorized_client):
         """Test creating a transformation recipe"""
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.create_recipe') as mock_create:
+        with patch('app.api.routes.transformations.RecipeManager.create_recipe') as mock_create:
             mock_recipe = MagicMock(spec=TransformationRecipe)
             mock_recipe.id = ObjectId()
             mock_recipe.name = "Test Recipe"
@@ -422,7 +424,7 @@ class TestRecipeManagement:
             mock_recipe.is_public = False
             mock_recipe.tags = ["test"]
             mock_recipe.usage_count = 0
-            mock_recipe.rating = None
+            mock_recipe.rating = 0.0  # RecipeResponse expects float, not None
             mock_create.return_value = mock_recipe
             
             request = {
@@ -452,7 +454,7 @@ class TestRecipeManagement:
     @pytest.mark.asyncio
     async def test_list_recipes(self, authorized_client):
         """Test listing user recipes"""
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_user_recipes') as mock_get:
+        with patch('app.api.routes.transformations.RecipeManager.get_user_recipes') as mock_get:
             mock_recipes = []
             for i in range(3):
                 recipe = MagicMock(spec=TransformationRecipe)
@@ -484,7 +486,7 @@ class TestRecipeManagement:
     @pytest.mark.asyncio
     async def test_get_popular_recipes(self, authorized_client):
         """Test getting popular public recipes"""
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_popular_recipes') as mock_get:
+        with patch('app.api.routes.transformations.RecipeManager.get_popular_recipes') as mock_get:
             mock_recipe = MagicMock(spec=TransformationRecipe)
             mock_recipe.id = ObjectId()
             mock_recipe.name = "Popular Recipe"
@@ -512,7 +514,7 @@ class TestRecipeManagement:
     async def test_get_single_recipe(self, authorized_client):
         """Test getting a specific recipe"""
         recipe_id = str(ObjectId())
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe') as mock_get:
+        with patch('app.api.routes.transformations.RecipeManager.get_recipe') as mock_get:
             mock_recipe = MagicMock(spec=TransformationRecipe)
             mock_recipe.id = ObjectId(recipe_id)
             mock_recipe.name = "My Recipe"
@@ -540,9 +542,9 @@ class TestRecipeManagement:
     async def test_apply_recipe(self, authorized_client, mock_user_data, mock_s3_operations):
         """Test applying a saved recipe"""
         recipe_id = str(ObjectId())
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get_recipe, \
+        with patch('app.api.routes.transformations.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get_recipe, \
              patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data), \
-             patch('app.services.transformation_service.recipe_manager.RecipeManager.record_execution', new_callable=AsyncMock) as mock_record:
+             patch('app.api.routes.transformations.RecipeManager.record_execution', new_callable=AsyncMock) as mock_record:
             
             # Mock recipe
             mock_recipe = MagicMock(spec=TransformationRecipe)
@@ -579,8 +581,8 @@ class TestRecipeManagement:
     async def test_export_recipe(self, authorized_client):
         """Test exporting recipe as code"""
         recipe_id = str(ObjectId())
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get, \
-             patch('app.services.transformation_service.recipe_manager.RecipeManager.export_recipe_to_code') as mock_export:
+        with patch('app.api.routes.transformations.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get, \
+             patch('app.api.routes.transformations.RecipeManager.export_recipe_to_code') as mock_export:
             
             mock_recipe = MagicMock(spec=TransformationRecipe)
             mock_recipe.id = ObjectId(recipe_id)
@@ -611,7 +613,7 @@ class TestRecipeManagement:
     async def test_delete_recipe(self, authorized_client):
         """Test deleting a recipe"""
         recipe_id = str(ObjectId())
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.delete_recipe') as mock_delete:
+        with patch('app.api.routes.transformations.RecipeManager.delete_recipe') as mock_delete:
             mock_delete.return_value = True
 
             response = authorized_client.delete(
@@ -715,7 +717,7 @@ class TestErrorHandling:
     async def test_handle_recipe_access_denied(self, authorized_client):
         """Test access denied for private recipes"""
         recipe_id = str(ObjectId())
-        with patch('app.services.transformation_service.recipe_manager.RecipeManager.get_recipe') as mock_get:
+        with patch('app.api.routes.transformations.RecipeManager.get_recipe') as mock_get:
             mock_recipe = MagicMock(spec=TransformationRecipe)
             mock_recipe.is_public = False
             mock_recipe.user_id = "other_user"

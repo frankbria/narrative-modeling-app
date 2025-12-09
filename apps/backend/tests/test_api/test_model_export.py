@@ -318,14 +318,14 @@ class TestModelExportRoutes:
         data = response.json()
         assert "Unsupported export format" in data["detail"]
     
-    @patch('app.api.routes.model_export.MLModel')
+    @patch('app.models.ml_model.MLModel')
     @patch('app.api.routes.model_export.export_service')
     def test_get_model_export_info_success(
-        self, 
-        mock_export_service, 
-        mock_ml_model, 
-        client, 
-        mock_user_id, 
+        self,
+        mock_export_service,
+        mock_ml_model,
+        client,
+        mock_user_id,
         mock_model_id,
         mock_export_formats
     ):
@@ -338,7 +338,7 @@ class TestModelExportRoutes:
         mock_model.algorithm = "random_forest"
         mock_model.problem_type = "binary_classification"
         mock_model.n_features = 10
-        mock_ml_model.find_one.return_value = mock_model
+        mock_ml_model.find_one = AsyncMock(return_value=mock_model)
         mock_export_service.get_export_formats = AsyncMock(return_value=mock_export_formats)
         
         # Make request
@@ -371,16 +371,16 @@ class TestModelExportRoutes:
         assert "curl_python" in data["usage_examples"]
         assert "curl_docker" in data["usage_examples"]
     
-    @patch('app.api.routes.model_export.MLModel')
+    @patch('app.models.ml_model.MLModel')
     def test_get_model_export_info_model_not_found(
-        self, 
-        mock_ml_model, 
-        client, 
-        mock_user_id, 
+        self,
+        mock_ml_model,
+        client,
+        mock_user_id,
         mock_model_id
     ):
         """Test model export info when model is not found"""
-        mock_ml_model.find_one.return_value = None
+        mock_ml_model.find_one = AsyncMock(return_value=None)
         
         # Make request
         response = client.get(f"/api/v1/models/{mock_model_id}/export")

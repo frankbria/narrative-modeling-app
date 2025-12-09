@@ -149,11 +149,14 @@ async def process_uploaded_file(
             status_code=200
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions without wrapping
+        raise
     except Exception as e:
         import traceback
         print(f"ERROR in process_data: {str(e)}")
         print(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing dataset: {str(e)}")
 
 
 @router.get("/{file_id}/schema")

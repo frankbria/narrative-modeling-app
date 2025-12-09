@@ -194,20 +194,19 @@ class TestDatasetService:
 
     @pytest.mark.asyncio
     async def test_get_dataset_calls_find_one(self):
-        """Test get_dataset uses correct Beanie query."""
+        """Test get_dataset uses correct service method."""
         # ARRANGE
         dataset_id = "dataset_123"
         mock_dataset = MagicMock()
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=mock_dataset)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'get_by_id', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_dataset
 
             result = await self.service.get_dataset(dataset_id)
 
-            # Verify find_one was called
-            mock_find_one.assert_called_once()
+            # Verify get_by_id was called with correct params (resource_id is keyword arg)
+            mock_get.assert_called_once_with(resource_id=dataset_id, user_id=None, check_ownership=False)
             assert result == mock_dataset
 
     @pytest.mark.asyncio
@@ -217,9 +216,8 @@ class TestDatasetService:
         dataset_id = "nonexistent"
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=None)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'get_by_id', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = None
 
             result = await self.service.get_dataset(dataset_id)
 
@@ -233,29 +231,19 @@ class TestDatasetService:
         mock_datasets = [MagicMock(), MagicMock(), MagicMock()]
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            # Mock the chain: find().sort().skip().limit().to_list()
-            mock_to_list = AsyncMock(return_value=mock_datasets)
-            mock_limit = MagicMock()
-            mock_limit.to_list = mock_to_list
-            mock_skip = MagicMock()
-            mock_skip.limit = MagicMock(return_value=mock_limit)
-            mock_sort = MagicMock()
-            mock_sort.skip = MagicMock(return_value=mock_skip)
-            mock_find = MagicMock()
-            mock_find.sort = MagicMock(return_value=mock_sort)
-            MockDatasetClass.find = MagicMock(return_value=mock_find)
+        with patch.object(self.service, 'list_for_user', new_callable=AsyncMock) as mock_list:
+            mock_list.return_value = mock_datasets
 
             result = await self.service.list_datasets(user_id)
 
-            # Verify find was called
-            MockDatasetClass.find.assert_called_once()
-            # Verify sort was called
-            mock_find.sort.assert_called_once()
-            # Verify skip was called
-            mock_sort.skip.assert_called_once()
-            # Verify limit was called
-            mock_skip.limit.assert_called_once()
+            # Verify list_for_user was called with correct params
+            mock_list.assert_called_once_with(
+                user_id=user_id,
+                skip=0,
+                limit=1000,
+                sort_field="created_at",
+                sort_ascending=False
+            )
             assert result == mock_datasets
             assert len(result) == 3
 
@@ -266,18 +254,8 @@ class TestDatasetService:
         user_id = "new_user"
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            # Mock the chain: find().sort().skip().limit().to_list()
-            mock_to_list = AsyncMock(return_value=[])
-            mock_limit = MagicMock()
-            mock_limit.to_list = mock_to_list
-            mock_skip = MagicMock()
-            mock_skip.limit = MagicMock(return_value=mock_limit)
-            mock_sort = MagicMock()
-            mock_sort.skip = MagicMock(return_value=mock_skip)
-            mock_find = MagicMock()
-            mock_find.sort = MagicMock(return_value=mock_sort)
-            MockDatasetClass.find = MagicMock(return_value=mock_find)
+        with patch.object(self.service, 'list_for_user', new_callable=AsyncMock) as mock_list:
+            mock_list.return_value = []
 
             result = await self.service.list_datasets(user_id)
 
@@ -296,11 +274,13 @@ class TestDatasetService:
         update_data = {"num_rows": 150, "statistics": {"mean": 35.5}}
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=mock_dataset)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'get_dataset', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_dataset
 
             result = await self.service.update_dataset(dataset_id, **update_data)
+
+            # Verify get_dataset was called (no user_id means legacy path with check_ownership=False)
+            mock_get.assert_called_once_with(dataset_id, check_ownership=False)
 
             # Verify update_timestamp was called
             mock_dataset.update_timestamp.assert_called_once()
@@ -316,14 +296,19 @@ class TestDatasetService:
         # ARRANGE
         from app.services.exceptions import NotFoundError
         dataset_id = "nonexistent"
+        user_id = "user_123"
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=None)
-            MockDatasetClass.find_one = mock_find_one
+        # When user_id is provided, update_dataset uses self.update() which can raise NotFoundError
+        with patch.object(self.service, 'update', new_callable=AsyncMock) as mock_update:
+            mock_update.side_effect = NotFoundError(
+                message="Dataset not found",
+                resource_type="Dataset",
+                resource_id=dataset_id
+            )
 
             with pytest.raises(NotFoundError) as exc_info:
-                await self.service.update_dataset(dataset_id, user_id="user_123", num_rows=150)
+                await self.service.update_dataset(dataset_id, user_id=user_id, num_rows=150)
 
             assert exc_info.value.details["resource_type"] == "Dataset"
             assert exc_info.value.details["resource_id"] == dataset_id
@@ -333,17 +318,18 @@ class TestDatasetService:
         """Test delete_dataset calls delete on dataset."""
         # ARRANGE
         dataset_id = "dataset_123"
+        user_id = "user_123"
         mock_dataset = MagicMock()
         mock_dataset.delete = AsyncMock()
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=mock_dataset)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
+            mock_delete.return_value = True
 
-            result = await self.service.delete_dataset(dataset_id)
+            result = await self.service.delete_dataset(dataset_id, user_id=user_id)
 
-            mock_dataset.delete.assert_called_once()
+            # Verify delete was called with correct params (soft_delete not soft)
+            mock_delete.assert_called_once_with(resource_id=dataset_id, user_id=user_id, soft_delete=False)
             assert result is True
 
     @pytest.mark.asyncio
@@ -352,14 +338,18 @@ class TestDatasetService:
         # ARRANGE
         from app.services.exceptions import NotFoundError
         dataset_id = "nonexistent"
+        user_id = "user_123"
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=None)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
+            mock_delete.side_effect = NotFoundError(
+                message="Dataset not found",
+                resource_type="Dataset",
+                resource_id=dataset_id
+            )
 
             with pytest.raises(NotFoundError) as exc_info:
-                await self.service.delete_dataset(dataset_id, user_id="user_123")
+                await self.service.delete_dataset(dataset_id, user_id=user_id)
 
             assert exc_info.value.details["resource_type"] == "Dataset"
             assert exc_info.value.details["resource_id"] == dataset_id
@@ -374,12 +364,15 @@ class TestDatasetService:
         mock_dataset.save = AsyncMock()
 
         # ACT & ASSERT
-        with patch('app.services.dataset_service.DatasetMetadata') as MockDatasetClass:
-            mock_find_one = AsyncMock(return_value=mock_dataset)
-            MockDatasetClass.find_one = mock_find_one
+        with patch.object(self.service, 'get_dataset', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_dataset
 
             result = await self.service.mark_dataset_processed(dataset_id)
 
+            # Verify get_dataset was called with check_ownership=False
+            mock_get.assert_called_once_with(dataset_id, check_ownership=False)
+
+            # Verify mark_processed and save were called
             mock_dataset.mark_processed.assert_called_once()
             mock_dataset.save.assert_called_once()
             assert result == mock_dataset

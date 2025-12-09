@@ -29,28 +29,31 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Get the authenticated session
   const session = await auth();
 
   return (
     <html lang="en">
       <body className={`flex antialiased`}>
         <SessionProvider session={session}>
-          {session ? (
-            <WorkflowProvider>
-              <SidebarWrapper />
-              <main className="flex flex-1 min-h-screen flex-col">
-                <WorkflowBar />
-                <div className="flex flex-1">
-                  <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
-                  <ConditionalAIChat />
-                </div>
+          <WorkflowProvider>
+            {session ? (
+              <>
+                <SidebarWrapper />
+                <main className="flex flex-1 min-h-screen flex-col">
+                  <WorkflowBar />
+                  <div className="flex flex-1">
+                    <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
+                    <ConditionalAIChat />
+                  </div>
+                </main>
+              </>
+            ) : (
+              <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">
+                {children}
               </main>
-            </WorkflowProvider>
-          ) : (
-            <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">
-              {children}
-            </main>
-          )}
+            )}
+          </WorkflowProvider>
         </SessionProvider>
       </body>
     </html>

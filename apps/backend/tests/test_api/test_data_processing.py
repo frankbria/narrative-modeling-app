@@ -17,16 +17,16 @@ from app.models.user_data import UserData
 def create_mock_user_data(**kwargs):
     """Helper to create mock user data with defaults"""
     mock_data = MagicMock(spec=UserData)
-    
+
     # Set default attributes
     mock_data.id = ObjectId()
     mock_data.user_id = "test-user-123"
     mock_data.filename = "test_data.csv"
     mock_data.original_filename = "test_data.csv"
     mock_data.s3_url = "s3://test-bucket/test-file-123.csv"
-    mock_data.s3_url = "s3://test-bucket/test-file-123.csv"  # Add for backward compatibility
     mock_data.num_rows = 100
     mock_data.num_columns = 5
+    mock_data.file_type = "csv"  # Required for data processor
     mock_data.data_schema = [
         {
             "field_name": "id",
@@ -40,16 +40,15 @@ def create_mock_user_data(**kwargs):
         }
     ]
     mock_data.is_processed = False
-    mock_data.data_schema = []  # Changed from file_type "csv"
     mock_data.schema = None
     mock_data.statistics = None
     mock_data.quality_report = None
     mock_data.save = AsyncMock()
-    
+
     # Update with any provided kwargs
     for key, value in kwargs.items():
         setattr(mock_data, key, value)
-    
+
     return mock_data
 
 
@@ -102,7 +101,7 @@ class TestDataProcessingAPI:
                         
                         # Check statistics
                         assert "statistics" in data
-                        assert "columns" in data["statistics"]
+                        assert "column_statistics" in data["statistics"]
                         
                         # Check quality report
                         assert "quality_report" in data
@@ -150,7 +149,8 @@ class TestDataProcessingAPI:
             assert response.status_code == 200
 
             data = response.json()
-            assert data == schema_data
+            assert "schema" in data
+            assert data["schema"] == schema_data
     
     @pytest.mark.asyncio
     async def test_get_statistics_success(self, async_authorized_client, setup_database):
@@ -178,21 +178,22 @@ class TestDataProcessingAPI:
             }
         }
         
-        mock_user_data = create_mock_user_data(schema=schema_data, is_processed=True)
-        
+        mock_user_data = create_mock_user_data(statistics=stats_data, is_processed=True)
+
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
             mock_find.return_value = mock_user_data
-            
-            
+
+
             response = await async_authorized_client.get("/api/v1/data/test-file-123/statistics")
 
             assert response.status_code == 200
 
             data = response.json()
 
-            assert "columns" in data
-            assert "age" in data["columns"]
-            assert "salary" in data["columns"]
+            assert "statistics" in data
+            assert "columns" in data["statistics"]
+            assert "age" in data["statistics"]["columns"]
+            assert "salary" in data["statistics"]["columns"]
     
     @pytest.mark.asyncio
     async def test_get_quality_report_success(self, async_authorized_client, setup_database):
@@ -209,21 +210,22 @@ class TestDataProcessingAPI:
             "recommendations": ["Consider adding data validation rules"]
         }
         
-        mock_user_data = create_mock_user_data(schema=schema_data, is_processed=True)
-        
+        mock_user_data = create_mock_user_data(quality_report=quality_data, is_processed=True)
+
         with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
             mock_find.return_value = mock_user_data
-            
-            
+
+
             response = await async_authorized_client.get("/api/v1/data/test-file-123/quality")
 
             assert response.status_code == 200
 
             data = response.json()
 
-            assert data["overall_quality_score"] == 0.95
-            assert "dimension_scores" in data
-            assert len(data["recommendations"]) == 1
+            assert "quality_report" in data
+            assert data["quality_report"]["overall_quality_score"] == 0.95
+            assert "dimension_scores" in data["quality_report"]
+            assert len(data["quality_report"]["recommendations"]) == 1
     
     @pytest.mark.asyncio
     async def test_get_data_preview_success(self, async_authorized_client, setup_database, sample_dataframe):
@@ -240,7 +242,7 @@ class TestDataProcessingAPI:
                 csv_bytes = csv_buffer.getvalue()
                 mock_s3_download.return_value = csv_bytes
                 
-                response = await async_authorized_client.get("/api/v1/data/test-file-123/preview?limit=3")
+                response = await async_authorized_client.get("/api/v1/data/test-file-123/preview?rows=3")
         
                 assert response.status_code == 200
                 data = response.json()
@@ -267,18 +269,15 @@ class TestDataProcessingAPI:
 
                 mock_s3_download.return_value = csv_bytes
                 
-                with patch('app.utils.s3.upload_file_to_s3') as mock_upload:
-                    mock_upload.return_value = (True, "https://test-bucket.s3.amazonaws.com/exports/test.csv")
-                    
-                    response = await async_authorized_client.post(
-            "/api/v1/data/test-file-123/export",
-            json={"format": "csv"}
-        )
-        
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert "download_url" in data
-                    assert "exports/test" in data["download_url"]
+                # API exports return a download URL
+                response = await async_authorized_client.post(
+                    "/api/v1/data/test-file-123/export?format=csv"
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert "download_url" in data
+                assert "/download?format=csv" in data["download_url"]
     
     @pytest.mark.asyncio
     async def test_process_dataset_with_invalid_file(self, async_authorized_client, setup_database):

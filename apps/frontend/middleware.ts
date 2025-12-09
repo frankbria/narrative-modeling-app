@@ -4,20 +4,21 @@ import type { NextRequest } from "next/server";
 
 export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
+
   // Skip auth for auth routes themselves
   if (pathname.startsWith('/auth/') || pathname.startsWith('/api/auth/')) {
     return NextResponse.next();
   }
-  
+
   // Check for session cookie (next-auth uses this)
-  const sessionCookie = request.cookies.get('authjs.session-token') || 
+  const sessionCookie = request.cookies.get('authjs.session-token') ||
                        request.cookies.get('__Secure-authjs.session-token'); // Production uses secure prefix
-  
+
   // Define protected routes
   const protectedRoutes = ['/', '/dashboard', '/api/protected', '/upload', '/prepare', '/explore', '/analyze', '/model', '/deploy', '/monitor', '/insights'];
   const isProtectedRoute = protectedRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
-  
+
+  // Enforce authentication for protected routes
   if (isProtectedRoute && !sessionCookie) {
     const signInUrl = new URL('/auth/signin', request.url);
     signInUrl.searchParams.set('callbackUrl', pathname);

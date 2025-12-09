@@ -117,7 +117,7 @@ test.describe('Network and API Error Handling', () => {
   });
 
   test('should handle API timeout errors', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     // Mock slow API response (timeout)
     await authenticatedPage.route('**/api/v1/datasets', async (route) => {
@@ -212,7 +212,7 @@ test.describe('Validation and Data Error Scenarios', () => {
   test('should detect and reject corrupted upload files', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
-    await uploadPage.goto('/datasets/upload');
+    await uploadPage.goto('/upload');
 
     // Try uploading malformed CSV
     const malformedPath = join(__dirname, '../test-data/malformed.csv');
@@ -347,7 +347,7 @@ test.describe('Resource and State Error Scenarios', () => {
   });
 
   test('should handle quota or rate limit errors', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/datasets/upload');
+    await authenticatedPage.goto('/upload');
 
     // Mock rate limit error (429)
     await authenticatedPage.route('**/api/v1/datasets', (route) => {

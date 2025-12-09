@@ -115,18 +115,24 @@ class ModelService(BaseService[ModelConfig]):
 
     async def get_model_config(
         self,
-        model_id: str
+        model_id: str,
+        user_id: Optional[str] = None
     ) -> Optional[ModelConfig]:
         """
         Retrieve model configuration by model ID.
 
         Args:
             model_id: Model identifier
+            user_id: Optional user ID for ownership checking
 
         Returns:
             ModelConfig instance or None if not found
         """
-        return await self.get_by_id(model_id, check_ownership=False)
+        return await self.get_by_id(
+            resource_id=model_id,
+            user_id=user_id,
+            check_ownership=bool(user_id)
+        )
 
     async def list_model_configs(
         self,
@@ -256,7 +262,8 @@ class ModelService(BaseService[ModelConfig]):
     async def mark_model_deployed(
         self,
         model_id: str,
-        endpoint: Optional[str] = None
+        endpoint: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> ModelConfig:
         """
         Mark model as deployed.
@@ -264,6 +271,7 @@ class ModelService(BaseService[ModelConfig]):
         Args:
             model_id: Model identifier
             endpoint: API endpoint for deployed model (optional)
+            user_id: Optional user ID for ownership checking
 
         Returns:
             Updated ModelConfig
@@ -272,7 +280,11 @@ class ModelService(BaseService[ModelConfig]):
             NotFoundError: If model not found
             OperationError: If update fails
         """
-        config = await self.get_by_id_or_raise(model_id, check_ownership=False)
+        config = await self.get_by_id_or_raise(
+            model_id,
+            user_id=user_id,
+            check_ownership=bool(user_id)
+        )
 
         try:
             config.mark_deployed(endpoint)

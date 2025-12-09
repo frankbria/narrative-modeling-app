@@ -64,7 +64,8 @@ def mock_user_data():
 def mock_s3_upload():
     """Mock S3 upload function"""
     with patch('app.api.routes.secure_upload.upload_file_to_s3') as mock:
-        mock.return_value = "s3://test-bucket/test-file.csv"
+        # upload_file_to_s3 returns Tuple[bool, Optional[str]]
+        mock.return_value = (True, "s3://test-bucket/test-file.csv")
         yield mock
 
 
