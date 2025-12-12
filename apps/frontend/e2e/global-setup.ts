@@ -27,30 +27,21 @@ async function globalSetup(config: FullConfig) {
     await page.goto(`${baseURL}/auth/signin`);
     await page.waitForLoadState('networkidle');
 
-    // Look for the credentials sign-in form
-    // NextAuth may show provider buttons first, so we need to click "Sign in with Credentials"
-    const credentialsButton = page.locator('button:has-text("Test User"), button:has-text("Credentials")').first();
-
-    if (await credentialsButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await credentialsButton.click();
-      await page.waitForLoadState('networkidle');
-    }
-
-    // Fill in credentials
-    const emailInput = page.locator('input[name="email"], input[type="email"]').first();
-    const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
+    // The signin page shows test user login in development mode
+    // Fill in the email and password fields
+    const emailInput = page.locator('input[id="email"]');
+    const passwordInput = page.locator('input[id="password"]');
 
     await emailInput.waitFor({ state: 'visible', timeout: 10000 });
     await emailInput.fill(testEmail);
     await passwordInput.fill(testPassword);
 
-    // Submit the form
-    const submitButton = page.locator('button[type="submit"]').first();
-    await submitButton.click();
+    // Click the "Sign In with Test User" button
+    const signInButton = page.locator('button:has-text("Sign In with Test User")');
+    await signInButton.click();
 
-    // Wait for successful authentication
-    // The app should redirect to dashboard or home page
-    await page.waitForURL('**/', { timeout: 15000 });
+    // Wait for successful authentication and redirect
+    await page.waitForURL(/\/(upload|dashboard|$)/, { timeout: 15000 });
 
     // Verify we're authenticated by checking for session
     const cookies = await context.cookies();
