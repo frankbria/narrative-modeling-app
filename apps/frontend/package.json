@@ -44,7 +44,7 @@
     "framer-motion": "^12.23.22",
     "lucide-react": "^0.544.0",
     "mongodb": "6.20.0",
-    "next": "15.5.7",
+    "next": "15.5.9",
     "next-auth": "^5.0.0-beta.28",
     "node-fetch": "^2.7.0",
     "openai": "^4.92.1",
