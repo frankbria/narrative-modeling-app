@@ -101,30 +101,56 @@ Quick reference guide to all project documentation with clear purposes and targe
 
 ---
 
+## 📚 User Perspective Documentation
+
+### User-Facing Guides
+
+13. **[APPLICATION_FUNCTIONALITY_GUIDE.md](user_perspective/APPLICATION_FUNCTIONALITY_GUIDE.md)** - Comprehensive user functionality guide
+    - **Purpose**: Explain what the application can do from the user's perspective
+    - **Audience**: Users, potential customers, marketing teams
+    - **When**: User onboarding, marketing materials, training resources
+    - **Status**: ✅ Current (2025-12-02)
+
+## 🔍 Development & Gap Analysis
+
+### Technical Documentation
+
+14. **[FUNCTIONALITY_GAPS_ANALYSIS.md](development/FUNCTIONALITY_GAPS_ANALYSIS.md)** - Critical functionality gaps and roadmap
+    - **Purpose**: Identify and prioritize missing functionality for development
+    - **Audience**: Developers, product managers, technical leads
+    - **When**: Sprint planning, GitHub issue creation, resource allocation
+    - **Status**: ✅ Current (2025-12-02)
+
+15. **[DOCUMENTATION_SUMMARY.md](DOCUMENTATION_SUMMARY.md)** - Overview of all documentation
+    - **Purpose**: Provide a comprehensive guide to available documentation
+    - **Audience**: All team members, new contributors
+    - **When**: Getting started, finding specific information
+    - **Status**: ✅ Current (2025-12-02)
+
 ## 📚 Historical Reference
 
 ### Archived Documentation
 Located in `claudedocs/historical/` and `docs/sprints/`:
 
-13. **[SPECIFICATION_REVIEW.md](claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
+16. **[SPECIFICATION_REVIEW.md](claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
     - **Purpose**: Multi-domain architectural analysis and recommendations
     - **Historical context**: Initial system assessment
 
-14. **[WORK_LOG.md](claudedocs/historical/WORK_LOG.md)** - Historical development log
+17. **[WORK_LOG.md](claudedocs/historical/WORK_LOG.md)** - Historical development log
     - **Purpose**: Session-by-session implementation tracking
     - **Historical context**: Sprint 7 development details
 
-15. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
+18. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
     - **Purpose**: E2E testing infrastructure with Playwright
     - **Historical context**: 101 E2E tests, 42 integration tests, CI/CD pipeline
     - **Outcome**: 30/30 points (100%), comprehensive test coverage
 
-16. **[Sprint 10 (claudedocs/historical/sprint-10/)](claudedocs/historical/sprint-10/)** - Completed sprint
+19. **[Sprint 10 (claudedocs/historical/sprint-10/)](claudedocs/historical/sprint-10/)** - Completed sprint
     - **Purpose**: Monitoring, metrics, and production deployment documentation
     - **Historical context**: Production readiness features
     - **Outcome**: Production deployment capabilities established
 
-17. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (2025-10-10 to 10-14)
+20. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (2025-10-10 to 10-14)
     - **Purpose**: Data model refactoring and performance benchmarking
     - **Historical context**: UserData split into domain models, versioning foundation
     - **Outcome**: 29/29 points (100%), production-ready architecture
