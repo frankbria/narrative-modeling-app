@@ -25,6 +25,21 @@ interface Dataset {
   file_id?: string;
 }
 
+/**
+ * DatasetPreparePage Component
+ *
+ * Provides a data preparation interface for applying transformations to uploaded datasets.
+ * Manages two view modes: visual (ReactFlow pipeline) and chain (linear list).
+ *
+ * State Management:
+ * - transformations: Array of transformation steps (persisted in localStorage)
+ * - viewMode: Current view mode ('visual' | 'chain')
+ * - editingIndex: Index of transformation being edited (null when dialog closed)
+ * - availableColumns: Column names from dataset for transformation config
+ * - transformationTypes: Available transformation types from backend API
+ *
+ * @returns {JSX.Element} The data preparation page with transformation pipeline
+ */
 export default function DatasetPreparePage() {
   const params = useParams();
   const router = useRouter();
@@ -69,12 +84,17 @@ export default function DatasetPreparePage() {
 
   // Save transformations to localStorage when they change
   useEffect(() => {
-    if (transformations.length > 0 && datasetId) {
-      try {
+    if (!datasetId) return;
+
+    try {
+      if (transformations.length > 0) {
         localStorage.setItem(`transformations_${datasetId}`, JSON.stringify(transformations));
-      } catch (err) {
-        console.error('Failed to save transformations:', err);
+      } else {
+        // Clear localStorage when all transformations are deleted
+        localStorage.removeItem(`transformations_${datasetId}`);
       }
+    } catch (err) {
+      console.error('Failed to save/clear transformations:', err);
     }
   }, [transformations, datasetId]);
 
@@ -182,6 +202,18 @@ export default function DatasetPreparePage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  /**
+   * Completes the data preparation stage and advances workflow
+   *
+   * @param {string} transformedDatasetId - The ID of the transformed dataset from backend
+   * @returns {Promise<void>}
+   *
+   * Side effects:
+   * - Completes DATA_PREPARATION workflow stage via WorkflowContext
+   * - Stores completion metadata (datasetId, originalDatasetId, timestamp)
+   * - Triggers automatic navigation to next workflow stage
+   * - Sets error state if completion fails
+   */
   const handleComplete = async (transformedDatasetId: string) => {
     try {
       // Complete DATA_PREPARATION stage
@@ -199,7 +231,18 @@ export default function DatasetPreparePage() {
     }
   };
 
-  // Transformation Chain View handlers
+  /**
+   * Reorders transformations in the chain by moving a step from one position to another
+   *
+   * @param {number} startIndex - Current index of the transformation to move
+   * @param {number} endIndex - Target index where the transformation should be placed
+   * @returns {void}
+   *
+   * Side effects:
+   * - Updates transformations state array with new order
+   * - Marks changes as unsaved (triggers browser warning on navigation)
+   * - Triggers localStorage save via useEffect
+   */
   const handleReorder = (startIndex: number, endIndex: number) => {
     const newTransformations = [...transformations];
     const [movedItem] = newTransformations.splice(startIndex, 1);
@@ -208,10 +251,32 @@ export default function DatasetPreparePage() {
     setHasUnsavedChanges(true);
   };
 
+  /**
+   * Opens the edit dialog for a transformation at the specified index
+   *
+   * @param {number} index - Index of the transformation to edit
+   * @returns {void}
+   *
+   * Side effects:
+   * - Sets editingIndex state, triggering TransformationConfigDialog to render
+   * - Dialog pre-populated with existing transformation configuration
+   */
   const handleEditTransformation = (index: number) => {
     setEditingIndex(index);
   };
 
+  /**
+   * Saves changes from the edit dialog to update a transformation
+   *
+   * @param {TransformationConfig} config - Updated transformation configuration from dialog
+   * @returns {void}
+   *
+   * Side effects:
+   * - Updates transformation at editingIndex with new type, label, and parameters
+   * - Closes edit dialog by setting editingIndex to null
+   * - Marks changes as unsaved
+   * - Triggers localStorage save via useEffect
+   */
   const handleSaveEdit = (config: TransformationConfig) => {
     if (editingIndex === null) return;
 
@@ -228,10 +293,29 @@ export default function DatasetPreparePage() {
     setHasUnsavedChanges(true);
   };
 
+  /**
+   * Cancels editing and closes the edit dialog without saving changes
+   *
+   * @returns {void}
+   *
+   * Side effects:
+   * - Closes edit dialog by setting editingIndex to null
+   */
   const handleCancelEdit = () => {
     setEditingIndex(null);
   };
 
+  /**
+   * Deletes a transformation from the chain
+   *
+   * @param {number} index - Index of the transformation to delete
+   * @returns {void}
+   *
+   * Side effects:
+   * - Removes transformation at specified index from state array
+   * - Marks changes as unsaved
+   * - Triggers localStorage save or cleanup via useEffect
+   */
   const handleDeleteTransformation = (index: number) => {
     const newTransformations = transformations.filter((_, i) => i !== index);
     setTransformations(newTransformations);
@@ -361,11 +445,11 @@ export default function DatasetPreparePage() {
       {/* Information Footer */}
       <div className="flex flex-col gap-2 text-xs text-muted-foreground">
         <p>
-          Changes are automatically saved. Navigate away to continue to the next stage when you're done.
+          Changes are saved locally in your browser. Use the Complete button to save to the server and continue.
         </p>
         {hasUnsavedChanges && (
           <p className="text-yellow-600 dark:text-yellow-500">
-            You have unsaved changes. They will be lost if you navigate away.
+            You have unsaved changes that are not yet saved to the server.
           </p>
         )}
       </div>
