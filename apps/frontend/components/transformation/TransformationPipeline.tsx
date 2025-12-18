@@ -26,15 +26,17 @@ import { Save, Play, Undo, Redo, Code, CheckCircle } from 'lucide-react';
 interface TransformationPipelineProps {
   datasetId: string;
   onComplete?: (transformedDatasetId: string) => void;
+  onUnsavedChanges?: (hasChanges: boolean) => void;
 }
 
 const nodeTypes: NodeTypes = {
   transformation: TransformationNode,
 };
 
-export default function TransformationPipeline({ 
-  datasetId, 
-  onComplete 
+export default function TransformationPipeline({
+  datasetId,
+  onComplete,
+  onUnsavedChanges
 }: TransformationPipelineProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -45,11 +47,19 @@ export default function TransformationPipeline({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Load initial data preview
   useEffect(() => {
     loadPreview();
   }, [datasetId]);
+
+  // Notify parent of unsaved changes
+  useEffect(() => {
+    if (onUnsavedChanges) {
+      onUnsavedChanges(hasUnsavedChanges);
+    }
+  }, [hasUnsavedChanges, onUnsavedChanges]);
 
   const loadPreview = async () => {
     try {
@@ -81,6 +91,7 @@ export default function TransformationPipeline({
         },
       };
       setEdges((eds) => addEdge(edge, eds));
+      setHasUnsavedChanges(true);
     },
     [setEdges]
   );
@@ -110,6 +121,7 @@ export default function TransformationPipeline({
       };
 
       setNodes((nds) => nds.concat(newNode));
+      setHasUnsavedChanges(true);
     },
     [nodes, setNodes]
   );
@@ -127,6 +139,7 @@ export default function TransformationPipeline({
     setNodes((nds) =>
       nds.map((node) => (node.id === nodeId ? { ...node, data } : node))
     );
+    setHasUnsavedChanges(true);
   }, [setNodes]);
 
   const handlePreviewTransformation = async () => {
@@ -185,6 +198,7 @@ export default function TransformationPipeline({
       if (response.ok) {
         const data = await response.json();
         setTransformedDatasetId(data.transformed_dataset_id);
+        setHasUnsavedChanges(false);
         if (onComplete) {
           onComplete(data.transformed_dataset_id);
         }

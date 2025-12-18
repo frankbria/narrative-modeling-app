@@ -28,6 +28,7 @@ from app.schemas.transformation import (
     TransformationSuggestionResponse,
     ValidationRequest,
     ValidationResponse,
+    TransformationTypeInfo,
 )
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -56,13 +57,24 @@ async def preview_transformation(
 
         first_step = request.transformation_steps[0]
 
+        # Validate transformation type against whitelist
+        try:
+            transformation_type = EngineTransformationType(first_step.transformation_type)
+        except ValueError:
+            valid_types = [t.value for t in EngineTransformationType]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid transformation type '{first_step.transformation_type}'. Allowed types: {', '.join(valid_types)}"
+            )
+
         # Use TransformationService for preview
         from app.services.transformation_service import TransformationService
         service = TransformationService()
 
+        # Use validated enum value to prevent bypass
         result = await service.preview_transformation(
             dataset_id=request.dataset_id,
-            transformation_type=first_step.transformation_type,
+            transformation_type=transformation_type.value,
             parameters=first_step.parameters or {},
             preview_rows=request.preview_rows
         )
@@ -177,9 +189,23 @@ async def apply_transformation_pipeline(
         
         # Apply each transformation in sequence
         for step in request.transformations:
+            # Validate transformation type against whitelist
+            try:
+                transformation_type = EngineTransformationType(step.type)
+            except ValueError:
+                # Invalid transformation type - reject request
+                valid_types = [t.value for t in EngineTransformationType]
+                return TransformationApplyResponse(
+                    success=False,
+                    dataset_id=request.dataset_id,
+                    transformation_id="",
+                    execution_time_ms=int((time.time() - start_time) * 1000),
+                    error=f"Invalid transformation type '{step.type}'. Allowed types: {', '.join(valid_types)}"
+                )
+
             result = engine.apply_transformation(
                 df=df,
-                transformation_type=EngineTransformationType(step.type),
+                transformation_type=transformation_type,
                 parameters=step.parameters
             )
             
@@ -771,3 +797,218 @@ async def get_transformation_history(
     except Exception as e:
         logger.error(f"Get transformation history failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/available", response_model=List[TransformationTypeInfo])
+async def get_available_transformations():
+    """
+    Get list of all available transformation types with metadata.
+
+    Returns transformation types grouped by category with parameter schemas
+    and usage information for the frontend transformation library.
+    """
+    from app.models.transformation import TransformationType
+
+    # Define transformation metadata by category
+    transformations = []
+
+    # Data Cleaning
+    transformations.extend([
+        TransformationTypeInfo(
+            type=TransformationType.REMOVE_DUPLICATES.value,
+            category="Data Cleaning",
+            label="Remove Duplicates",
+            description="Remove duplicate rows from dataset",
+            parameters_schema={},
+            requires_columns=False
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.TRIM_WHITESPACE.value,
+            category="Data Cleaning",
+            label="Trim Whitespace",
+            description="Remove leading and trailing whitespace from text columns",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.FIX_CASING.value,
+            category="Data Cleaning",
+            label="Fix Casing",
+            description="Standardize text casing (lower, upper, title)",
+            parameters_schema={
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "casing": {"type": "string", "enum": ["lower", "upper", "title"]}
+            },
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.REMOVE_SPECIAL_CHARS.value,
+            category="Data Cleaning",
+            label="Remove Special Characters",
+            description="Remove or replace special characters from text",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+    ])
+
+    # Missing Values
+    transformations.extend([
+        TransformationTypeInfo(
+            type=TransformationType.DROP_MISSING.value,
+            category="Missing Values",
+            label="Drop Missing",
+            description="Remove rows with missing values",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=False
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.FILL_MISSING.value,
+            category="Missing Values",
+            label="Fill Missing",
+            description="Fill missing values with a specified value",
+            parameters_schema={
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "fill_value": {"type": "string"}
+            },
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.IMPUTE_MEAN.value,
+            category="Missing Values",
+            label="Impute with Mean",
+            description="Replace missing values with column mean",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.IMPUTE_MEDIAN.value,
+            category="Missing Values",
+            label="Impute with Median",
+            description="Replace missing values with column median",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.IMPUTE_MODE.value,
+            category="Missing Values",
+            label="Impute with Mode",
+            description="Replace missing values with most common value",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+    ])
+
+    # Type Conversions
+    transformations.extend([
+        TransformationTypeInfo(
+            type=TransformationType.TO_NUMERIC.value,
+            category="Type Conversion",
+            label="To Numeric",
+            description="Convert columns to numeric type",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.TO_STRING.value,
+            category="Type Conversion",
+            label="To String",
+            description="Convert columns to string type",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.TO_DATETIME.value,
+            category="Type Conversion",
+            label="To DateTime",
+            description="Parse columns as date/time values",
+            parameters_schema={
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "format": {"type": "string"}
+            },
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.TO_BOOLEAN.value,
+            category="Type Conversion",
+            label="To Boolean",
+            description="Convert columns to true/false values",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.ONE_HOT_ENCODE.value,
+            category="Type Conversion",
+            label="One-Hot Encode",
+            description="Create dummy variables for categorical columns",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.LABEL_ENCODE.value,
+            category="Type Conversion",
+            label="Label Encode",
+            description="Convert categories to integer labels",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+    ])
+
+    # Date/Time
+    transformations.extend([
+        TransformationTypeInfo(
+            type=TransformationType.EXTRACT_DATE_PARTS.value,
+            category="Date/Time",
+            label="Extract Date Parts",
+            description="Extract year, month, day, etc. from datetime columns",
+            parameters_schema={
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "parts": {"type": "array", "items": {"type": "string", "enum": ["year", "month", "day", "hour", "minute", "second"]}}
+            },
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.CALCULATE_AGE.value,
+            category="Date/Time",
+            label="Calculate Age",
+            description="Calculate age from date of birth column",
+            parameters_schema={
+                "column": {"type": "string"},
+                "reference_date": {"type": "string"}
+            },
+            requires_columns=True
+        ),
+    ])
+
+    # Scaling/Normalization
+    transformations.extend([
+        TransformationTypeInfo(
+            type=TransformationType.SCALE.value,
+            category="Scaling",
+            label="Scale",
+            description="Scale numeric columns to a specific range",
+            parameters_schema={
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "min": {"type": "number"},
+                "max": {"type": "number"}
+            },
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.NORMALIZE.value,
+            category="Scaling",
+            label="Normalize",
+            description="Normalize numeric columns (L2 normalization)",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+        TransformationTypeInfo(
+            type=TransformationType.STANDARDIZE.value,
+            category="Scaling",
+            label="Standardize",
+            description="Standardize numeric columns (z-score normalization)",
+            parameters_schema={"columns": {"type": "array", "items": {"type": "string"}}},
+            requires_columns=True
+        ),
+    ])
+
+    return transformations
