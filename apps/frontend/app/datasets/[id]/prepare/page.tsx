@@ -14,9 +14,7 @@ import Link from 'next/link';
 // Import transformation components
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 import { TransformationChainView, TransformationStep } from '@/components/transformation/TransformationChainView';
-// TODO: Integrate TransformationConfigDialog for edit functionality
-// import { TransformationConfigDialog } from '@/components/transformation/TransformationConfigDialog';
-// import { ColumnSelector } from '@/components/transformation/ColumnSelector';
+import { TransformationConfigDialog, TransformationConfig } from '@/components/transformation/TransformationConfigDialog';
 
 interface Dataset {
   id: string;
@@ -40,6 +38,11 @@ export default function DatasetPreparePage() {
   const [viewMode, setViewMode] = useState<'visual' | 'chain'>('visual');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [transformations, setTransformations] = useState<TransformationStep[]>([]);
+
+  // Edit dialog state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [transformationTypes, setTransformationTypes] = useState<any[]>([]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -120,6 +123,52 @@ export default function DatasetPreparePage() {
     fetchDataset();
   }, [datasetId, apiUrl, canAccessStage, router]);
 
+  // Fetch transformation types and available columns for edit dialog
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const token = await getAuthToken();
+
+        // Fetch available transformation types
+        const typesResponse = await fetch(`${apiUrl}/transformations/available`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (typesResponse.ok) {
+          const typesData = await typesResponse.json();
+          setTransformationTypes(typesData.transformations || []);
+        }
+
+        // Fetch available columns from dataset preview
+        if (datasetId) {
+          const columnsResponse = await fetch(`${apiUrl}/data/${datasetId}/preview`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (columnsResponse.ok) {
+            const columnsData = await columnsResponse.json();
+            if (columnsData.columns && Array.isArray(columnsData.columns)) {
+              const columnNames = columnsData.columns.map((col: any) => col.name);
+              setAvailableColumns(columnNames);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch metadata for edit dialog:', err);
+      }
+    };
+
+    if (datasetId) {
+      fetchMetadata();
+    }
+  }, [datasetId, apiUrl]);
+
   // Warn before navigation if unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -160,8 +209,27 @@ export default function DatasetPreparePage() {
   };
 
   const handleEditTransformation = (index: number) => {
-    // TODO: Implement edit dialog with transformation schema fetching
-    console.log('Edit transformation at index:', index, transformations[index]);
+    setEditingIndex(index);
+  };
+
+  const handleSaveEdit = (config: TransformationConfig) => {
+    if (editingIndex === null) return;
+
+    const newTransformations = [...transformations];
+    newTransformations[editingIndex] = {
+      ...newTransformations[editingIndex],
+      type: config.type,
+      label: config.label || config.type,
+      parameters: config.parameters
+    };
+
+    setTransformations(newTransformations);
+    setEditingIndex(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
   };
 
   const handleDeleteTransformation = (index: number) => {
@@ -301,6 +369,25 @@ export default function DatasetPreparePage() {
           </p>
         )}
       </div>
+
+      {/* Edit Transformation Dialog */}
+      {editingIndex !== null && (
+        <TransformationConfigDialog
+          open={editingIndex !== null}
+          onOpenChange={(open) => {
+            if (!open) handleCancelEdit();
+          }}
+          transformationType={transformations[editingIndex].type}
+          existingConfig={{
+            type: transformations[editingIndex].type,
+            label: transformations[editingIndex].label,
+            parameters: transformations[editingIndex].parameters
+          }}
+          availableColumns={availableColumns}
+          transformationTypes={transformationTypes}
+          onSave={handleSaveEdit}
+        />
+      )}
     </div>
   );
 }
