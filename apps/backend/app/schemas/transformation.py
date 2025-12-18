@@ -271,3 +271,14 @@ class ValidationResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     info: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+
+
+class TransformationTypeInfo(BaseModel):
+    """Response schema for available transformation types with metadata."""
+
+    type: str = Field(..., description="Transformation type identifier")
+    category: str = Field(..., description="Category (Data Cleaning, Missing Values, etc.)")
+    label: str = Field(..., description="Human-readable label")
+    description: str = Field(..., description="What this transformation does")
+    parameters_schema: Dict[str, Any] = Field(default_factory=dict, description="JSON schema for parameters")
+    requires_columns: bool = Field(default=False, description="Whether transformation requires column selection")
