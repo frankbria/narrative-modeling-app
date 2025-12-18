@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, CheckSquare, Square, Database, Calendar, Hash, Type } from 'lucide-react';
+import { validateDatasetId } from '@/lib/utils/sanitize';
 
 /**
  * Column data structure from the API
@@ -118,20 +119,27 @@ export function ColumnSelector({
   const listRef = useRef<List<any>>(null);
 
   /**
-   * Fetch columns from the dataset preview endpoint
+   * Fetch columns from the dataset preview endpoint with retry logic
    */
   useEffect(() => {
-    const fetchColumns = async () => {
+    const fetchColumns = async (retryCount = 0) => {
       setIsLoading(true);
       setError(null);
+
       try {
+        // Validate datasetId to prevent path traversal
+        const validatedId = validateDatasetId(datasetId);
+        if (!validatedId) {
+          throw new Error('Invalid dataset ID format');
+        }
+
         const token = await getAuthToken();
         if (!token) {
           throw new Error('Authentication failed');
         }
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-        const response = await fetch(`${apiUrl}/data/${datasetId}/preview`, {
+        const response = await fetch(`${apiUrl}/data/${validatedId}/preview`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -153,6 +161,15 @@ export function ColumnSelector({
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch columns';
+
+        // Retry logic: retry up to 3 times with exponential backoff
+        if (retryCount < 3 && errorMessage !== 'Invalid dataset ID format') {
+          const retryDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          console.warn(`Retrying column fetch (attempt ${retryCount + 1}/3) after ${retryDelay}ms`);
+          setTimeout(() => fetchColumns(retryCount + 1), retryDelay);
+          return;
+        }
+
         setError(errorMessage);
         console.error('Error fetching columns:', err);
       } finally {
@@ -258,8 +275,9 @@ export function ColumnSelector({
 
   /**
    * Render a single column item in the virtualized list
+   * Memoized to prevent unnecessary re-renders
    */
-  const ColumnListItem = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+  const ColumnListItem = memo(({ index, style }: { index: number; style: React.CSSProperties }) => {
     const column = filteredColumns[index];
     if (!column) return null;
 
@@ -335,7 +353,7 @@ export function ColumnSelector({
         </div>
       </div>
     );
-  };
+  });
 
   // Calculate item height based on content
   const ITEM_HEIGHT = 80;

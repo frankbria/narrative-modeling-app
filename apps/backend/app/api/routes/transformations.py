@@ -57,6 +57,16 @@ async def preview_transformation(
 
         first_step = request.transformation_steps[0]
 
+        # Validate transformation type against whitelist
+        try:
+            transformation_type = EngineTransformationType(first_step.transformation_type)
+        except ValueError:
+            valid_types = [t.value for t in EngineTransformationType]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid transformation type '{first_step.transformation_type}'. Allowed types: {', '.join(valid_types)}"
+            )
+
         # Use TransformationService for preview
         from app.services.transformation_service import TransformationService
         service = TransformationService()
@@ -178,9 +188,23 @@ async def apply_transformation_pipeline(
         
         # Apply each transformation in sequence
         for step in request.transformations:
+            # Validate transformation type against whitelist
+            try:
+                transformation_type = EngineTransformationType(step.type)
+            except ValueError:
+                # Invalid transformation type - reject request
+                valid_types = [t.value for t in EngineTransformationType]
+                return TransformationApplyResponse(
+                    success=False,
+                    dataset_id=request.dataset_id,
+                    transformation_id="",
+                    execution_time_ms=int((time.time() - start_time) * 1000),
+                    error=f"Invalid transformation type '{step.type}'. Allowed types: {', '.join(valid_types)}"
+                )
+
             result = engine.apply_transformation(
                 df=df,
-                transformation_type=EngineTransformationType(step.type),
+                transformation_type=transformation_type,
                 parameters=step.parameters
             )
             

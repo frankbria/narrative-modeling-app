@@ -12,6 +12,18 @@ import {
   MoveUp,
   MoveDown,
 } from 'lucide-react';
+import { sanitizeForDisplay } from '@/lib/utils/sanitize';
+
+/**
+ * Supported parameter value types
+ */
+export type ParameterValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | number[]
+  | Record<string, string | number | boolean>;
 
 /**
  * Transformation Step interface matching backend structure
@@ -20,8 +32,7 @@ export interface TransformationStep {
   id: string;
   type: string;
   label: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  parameters: Record<string, any>;
+  parameters: Record<string, ParameterValue>;
 }
 
 /**
@@ -356,10 +367,8 @@ export function TransformationChainView({
                               {Object.entries(step.parameters).map(
                                 ([key, value]) => (
                                   <li key={key} className="text-xs">
-                                    <span className="font-medium">{key}:</span>{' '}
-                                    {typeof value === 'object'
-                                      ? JSON.stringify(value)
-                                      : String(value)}
+                                    <span className="font-medium">{sanitizeForDisplay(key, 50)}:</span>{' '}
+                                    {sanitizeForDisplay(value, 200)}
                                   </li>
                                 )
                               )}

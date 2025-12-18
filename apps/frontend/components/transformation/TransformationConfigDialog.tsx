@@ -88,9 +88,12 @@ export function TransformationConfigDialog({
       }
       setErrors({});
       // Focus first input after dialog is rendered
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         firstInputRef.current?.focus();
       }, 0);
+
+      // Cleanup timeout on unmount to prevent React warnings
+      return () => clearTimeout(timeoutId);
     }
   }, [open, transformationType, existingConfig]);
 

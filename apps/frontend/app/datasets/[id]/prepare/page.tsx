@@ -43,6 +43,38 @@ export default function DatasetPreparePage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+  // Load saved transformations from backend/localStorage
+  useEffect(() => {
+    const loadTransformations = async () => {
+      try {
+        // Try to load from localStorage first (draft state)
+        const savedTransformations = localStorage.getItem(`transformations_${datasetId}`);
+        if (savedTransformations) {
+          const parsed = JSON.parse(savedTransformations);
+          setTransformations(parsed);
+          console.log('Loaded transformations from localStorage:', parsed.length);
+        }
+      } catch (err) {
+        console.error('Failed to load transformations:', err);
+      }
+    };
+
+    if (datasetId) {
+      loadTransformations();
+    }
+  }, [datasetId]);
+
+  // Save transformations to localStorage when they change
+  useEffect(() => {
+    if (transformations.length > 0 && datasetId) {
+      try {
+        localStorage.setItem(`transformations_${datasetId}`, JSON.stringify(transformations));
+      } catch (err) {
+        console.error('Failed to save transformations:', err);
+      }
+    }
+  }, [transformations, datasetId]);
+
   // Check workflow access and fetch dataset
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.DATA_PREPARATION)) {
