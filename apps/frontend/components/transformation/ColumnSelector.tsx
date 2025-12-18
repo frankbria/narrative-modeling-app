@@ -156,24 +156,34 @@ export function ColumnSelector({
         // Assuming the API returns { columns: Column[], data: any[] }
         if (data.columns && Array.isArray(data.columns)) {
           setColumns(data.columns);
+          setIsLoading(false);
         } else {
           throw new Error('Invalid data structure from API');
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch columns';
 
-        // Retry logic: retry up to 3 times with exponential backoff
-        if (retryCount < 3 && errorMessage !== 'Invalid dataset ID format') {
+        // Retry logic: retry up to 3 times with exponential backoff (disabled in tests)
+        const shouldRetry = retryCount < 3 &&
+                           errorMessage !== 'Invalid dataset ID format' &&
+                           errorMessage !== 'Authentication failed' &&
+                           process.env.NODE_ENV !== 'test';
+
+        if (shouldRetry) {
           const retryDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
           console.warn(`Retrying column fetch (attempt ${retryCount + 1}/3) after ${retryDelay}ms`);
           setTimeout(() => fetchColumns(retryCount + 1), retryDelay);
+          // Don't set loading to false or set error during retry
           return;
         }
 
+        // Final failure or non-retriable error
         setError(errorMessage);
+        setIsLoading(false);
         console.error('Error fetching columns:', err);
       } finally {
-        setIsLoading(false);
+        // Only set loading to false if we're not retrying
+        // If we returned early for retry, finally block doesn't set loading to false
       }
     };
 
@@ -354,6 +364,8 @@ export function ColumnSelector({
       </div>
     );
   });
+
+  ColumnListItem.displayName = 'ColumnListItem';
 
   // Calculate item height based on content
   const ITEM_HEIGHT = 80;

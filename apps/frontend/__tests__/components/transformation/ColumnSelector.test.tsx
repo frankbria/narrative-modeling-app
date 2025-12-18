@@ -629,14 +629,31 @@ describe('ColumnSelector', () => {
         expect(screen.getByText('age')).toBeInTheDocument();
       });
 
-      const options = container.querySelectorAll('[role="option"]');
-      const firstOption = options[0] as HTMLElement;
+      // Wait for options to be rendered
+      await waitFor(() => {
+        const options = container.querySelectorAll('[role="option"]');
+        expect(options.length).toBeGreaterThan(0);
+      });
+
+      let options = container.querySelectorAll('[role="option"]');
+      let firstOption = options[0] as HTMLElement;
+
+      // Initially, first option should have no focus (tabIndex -1)
+      expect(firstOption).toHaveAttribute('tabindex', '-1');
 
       fireEvent.keyDown(firstOption, { key: 'ArrowDown' });
 
-      // After arrow down, focus should move to next item
-      // This is tested indirectly by checking state change
+      // After arrow down, re-query to get fresh element references
+      await waitFor(() => {
+        options = container.querySelectorAll('[role="option"]');
+        expect(options.length).toBeGreaterThan(1);
+      });
+
+      // Verify both options exist after keyboard event
+      firstOption = options[0] as HTMLElement;
+      const secondOption = options[1] as HTMLElement;
       expect(firstOption).toBeInTheDocument();
+      expect(secondOption).toBeInTheDocument();
     });
 
     it('should support keyboard navigation with Space to select', async () => {
@@ -1017,7 +1034,7 @@ describe('ColumnSelector', () => {
         expect(screen.getByText('age')).toBeInTheDocument();
       });
 
-      const ageCheckbox = screen.getByRole('checkbox', {
+      let ageCheckbox = screen.getByRole('checkbox', {
         name: /Select age/i,
       });
       expect(ageCheckbox).not.toBeChecked();
@@ -1030,6 +1047,10 @@ describe('ColumnSelector', () => {
         />
       );
 
+      // Re-query for the checkbox after rerender
+      ageCheckbox = screen.getByRole('checkbox', {
+        name: /Select age/i,
+      });
       expect(ageCheckbox).toBeChecked();
     });
   });

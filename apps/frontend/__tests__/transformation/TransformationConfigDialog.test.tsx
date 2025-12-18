@@ -73,16 +73,14 @@ describe('TransformationConfigDialog', () => {
       expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
-    it('calls onOpenChange with false when dialog closed', async () => {
-      const { rerender } = render(
-        <TransformationConfigDialog {...defaultProps} open={true} />
-      );
+    it('calls onOpenChange with false when close button clicked', async () => {
+      render(<TransformationConfigDialog {...defaultProps} />);
 
-      rerender(
-        <TransformationConfigDialog {...defaultProps} open={false} />
-      );
+      // Find and click the close button (X button in dialog header)
+      const closeButton = screen.getByRole('button', { name: /close/i });
+      fireEvent.click(closeButton);
 
-      expect(mockOnOpenChange).toHaveBeenCalled();
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
   });
 
