@@ -279,8 +279,19 @@ export function TransformationConfigDialog({
       );
     }
 
-    // Single select dropdown (enum values)
-    if (schema.enum) {
+    // Auto-detect column selection fields and populate from availableColumns
+    // This handles cases where backend doesn't specify enum but field is for column selection
+    const isColumnField =
+      schema.type === 'string' &&
+      !schema.enum &&
+      availableColumns.length > 0 &&
+      (key.toLowerCase().includes('column') ||
+       schema.title?.toLowerCase().includes('column') ||
+       schema.description?.toLowerCase().includes('column'));
+
+    // Single select dropdown (enum values or auto-detected column fields)
+    if (schema.enum || isColumnField) {
+      const options = schema.enum || availableColumns;
       return (
         <div key={key} className="grid gap-2">
           <Label htmlFor={key} className="flex items-center gap-1">
@@ -301,7 +312,7 @@ export function TransformationConfigDialog({
               <SelectValue placeholder={schema.description || 'Select an option'} />
             </SelectTrigger>
             <SelectContent>
-              {schema.enum.map((option: string) => (
+              {options.map((option: string) => (
                 <SelectItem key={option} value={option}>
                   {option
                     .split('_')
@@ -511,7 +522,6 @@ export function TransformationConfigDialog({
               variant="outline"
               onClick={handlePreview}
               disabled={isSubmitting || isPreviewLoading}
-              loading={isPreviewLoading}
               aria-label="Preview transformation effect"
             >
               <Eye className="mr-2 h-4 w-4" />
@@ -524,7 +534,6 @@ export function TransformationConfigDialog({
             variant="default"
             onClick={handleAdd}
             disabled={isSubmitting || isPreviewLoading}
-            loading={isSubmitting}
             aria-label="Add transformation to pipeline"
           >
             <Plus className="mr-2 h-4 w-4" />

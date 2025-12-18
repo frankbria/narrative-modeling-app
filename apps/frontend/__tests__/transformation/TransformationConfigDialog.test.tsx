@@ -94,7 +94,7 @@ describe('TransformationConfigDialog', () => {
 
     it('renders select dropdown for enum type parameters', () => {
       render(<TransformationConfigDialog {...defaultProps} />);
-      const methodSelect = screen.getByRole('button', { name: /Fill Method/i });
+      const methodSelect = screen.getByRole('combobox', { name: /Fill Method/i });
       expect(methodSelect).toBeInTheDocument();
     });
 
@@ -106,8 +106,9 @@ describe('TransformationConfigDialog', () => {
 
     it('displays field descriptions', () => {
       render(<TransformationConfigDialog {...defaultProps} />);
+      // Column field is now a Select with description as placeholder in SelectValue
       expect(
-        screen.getByDisplayValue('Select column to fill')
+        screen.getByText('Select column to fill')
       ).toBeInTheDocument();
     });
   });
@@ -225,7 +226,11 @@ describe('TransformationConfigDialog', () => {
         />
       );
 
-      const trigger = screen.getByRole('button', { name: /Columns/i });
+      // MultiSelect renders as a button but not with role="button" - it's a custom component
+      // Look for the placeholder or selected count text
+      const trigger = screen.getByText((content, element) => {
+        return element?.textContent === 'Select columns...' || element?.textContent === '0 selected';
+      });
       expect(trigger).toBeInTheDocument();
     });
 
@@ -235,6 +240,7 @@ describe('TransformationConfigDialog', () => {
         columns: {
           type: 'array',
           items: { type: 'string' },
+          title: 'Columns',
           required: true,
         },
       };
@@ -246,7 +252,9 @@ describe('TransformationConfigDialog', () => {
         />
       );
 
-      const trigger = screen.getByRole('button', { name: /Columns/i });
+      const trigger = screen.getByText((content, element) => {
+        return element?.textContent === 'Select columns...' || element?.textContent === '0 selected';
+      });
       await user.click(trigger);
 
       const options = screen.getAllByRole('option');
@@ -259,6 +267,7 @@ describe('TransformationConfigDialog', () => {
         columns: {
           type: 'array',
           items: { type: 'string' },
+          title: 'Columns',
           required: true,
         },
       };
@@ -270,14 +279,19 @@ describe('TransformationConfigDialog', () => {
         />
       );
 
-      const trigger = screen.getByRole('button', { name: /Columns/i });
+      const trigger = screen.getByText((content, element) => {
+        return element?.textContent === 'Select columns...' || element?.textContent === '0 selected';
+      });
       await user.click(trigger);
 
       const nameCheckbox = screen.getByRole('checkbox', { name: /name/i });
       await user.click(nameCheckbox);
 
       expect(nameCheckbox).toBeChecked();
-      expect(trigger).toHaveTextContent('1 selected');
+      // After selecting, should show "1 selected"
+      await waitFor(() => {
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+      });
     });
 
     it('supports select all in multi-select', async () => {
@@ -286,6 +300,7 @@ describe('TransformationConfigDialog', () => {
         columns: {
           type: 'array',
           items: { type: 'string' },
+          title: 'Columns',
           required: true,
         },
       };
@@ -297,10 +312,12 @@ describe('TransformationConfigDialog', () => {
         />
       );
 
-      const trigger = screen.getByRole('button', { name: /Columns/i });
+      const trigger = screen.getByText((content, element) => {
+        return element?.textContent === 'Select columns...' || element?.textContent === '0 selected';
+      });
       await user.click(trigger);
 
-      const selectAllButton = screen.getByRole('button', { name: /Select All/i });
+      const selectAllButton = screen.getByText(/Select All/i);
       await user.click(selectAllButton);
 
       const checkboxes = screen.getAllByRole('checkbox').filter(
@@ -317,25 +334,33 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const methodButton = screen.getByRole('button', { name: /Fill Method/i });
+      const methodButton = screen.getByRole('combobox', { name: /Fill Method/i });
       await user.click(methodButton);
 
-      expect(screen.getByText('Mean')).toBeInTheDocument();
-      expect(screen.getByText('Median')).toBeInTheDocument();
-      expect(screen.getByText('Mode')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Mean')).toBeInTheDocument();
+        expect(screen.getByText('Median')).toBeInTheDocument();
+        expect(screen.getByText('Mode')).toBeInTheDocument();
+      });
     });
 
     it('selects enum value', async () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const methodButton = screen.getByRole('button', { name: /Fill Method/i });
+      const methodButton = screen.getByRole('combobox', { name: /Fill Method/i });
       await user.click(methodButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /Median/i })).toBeInTheDocument();
+      });
 
       const medianOption = screen.getByRole('option', { name: /Median/i });
       await user.click(medianOption);
 
-      expect(methodButton).toHaveTextContent('Median');
+      await waitFor(() => {
+        expect(methodButton).toHaveTextContent('Median');
+      });
     });
   });
 
@@ -344,7 +369,7 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -356,7 +381,7 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -368,15 +393,19 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
         expect(screen.getByText(/is required/)).toBeInTheDocument();
       });
 
-      const columnSelect = screen.getByRole('button', { name: /Column/i });
+      const columnSelect = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnSelect);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const option = screen.getByRole('option', { name: /name/i });
       await user.click(option);
@@ -409,7 +438,7 @@ describe('TransformationConfigDialog', () => {
       const input = screen.getByLabelText(/Percentage/i);
       await user.type(input, '150');
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -424,19 +453,31 @@ describe('TransformationConfigDialog', () => {
       render(<TransformationConfigDialog {...defaultProps} />);
 
       // Fill required fields
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
 
-      const methodButton = screen.getByRole('button', { name: /Fill Method/i });
+      await waitFor(() => {
+        expect(columnButton).toHaveTextContent('Name');
+      });
+
+      const methodButton = screen.getByRole('combobox', { name: /Fill Method/i });
       await user.click(methodButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /Median/i })).toBeInTheDocument();
+      });
 
       const medianOption = screen.getByRole('option', { name: /Median/i });
       await user.click(medianOption);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -456,19 +497,27 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
 
-      const methodButton = screen.getByRole('button', { name: /Fill Method/i });
+      const methodButton = screen.getByRole('combobox', { name: /Fill Method/i });
       await user.click(methodButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /Median/i })).toBeInTheDocument();
+      });
 
       const medianOption = screen.getByRole('option', { name: /Median/i });
       await user.click(medianOption);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -482,8 +531,12 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
@@ -502,8 +555,12 @@ describe('TransformationConfigDialog', () => {
 
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
@@ -527,8 +584,12 @@ describe('TransformationConfigDialog', () => {
 
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
@@ -536,7 +597,7 @@ describe('TransformationConfigDialog', () => {
       const previewButton = screen.getByRole('button', { name: /Preview/i });
       await user.click(previewButton);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       expect(addButton).toBeDisabled();
 
       await waitFor(
@@ -578,8 +639,12 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const columnButton = screen.getByRole('button', { name: /Column/i });
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
       await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: /name/i })).toBeInTheDocument();
+      });
 
       const nameOption = screen.getByRole('option', { name: /name/i });
       await user.click(nameOption);
@@ -587,7 +652,7 @@ describe('TransformationConfigDialog', () => {
       // Tab to cycle through form elements
       await user.keyboard('{Tab}');
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       addButton.focus();
 
       // Simulate forward Tab at end (should cycle back)
@@ -630,11 +695,11 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
-        const fields = screen.getAllByRole('button');
+        const fields = screen.getAllByRole('combobox');
         const invalidField = fields.find((f) =>
           f.getAttribute('aria-invalid') === 'true'
         );
@@ -646,11 +711,11 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
-        const errorElements = screen.getAllByRole('button');
+        const errorElements = screen.getAllByRole('combobox');
         const fieldWithError = errorElements.find((f) =>
           f.getAttribute('aria-describedby')
         );
@@ -677,7 +742,7 @@ describe('TransformationConfigDialog', () => {
       const user = userEvent.setup();
       render(<TransformationConfigDialog {...defaultProps} />);
 
-      const addButton = screen.getByRole('button', { name: /Add to Pipeline/i });
+      const addButton = screen.getByRole('button', { name: /Add.*to.*pipeline/i });
       await user.click(addButton);
 
       await waitFor(() => {
@@ -704,11 +769,12 @@ describe('TransformationConfigDialog', () => {
 
       // Button text should change to "Update"
       expect(
-        screen.getByRole('button', { name: /Update to Pipeline/i })
+        screen.getByRole('button', { name: /Update.*to.*pipeline/i })
       ).toBeInTheDocument();
     });
 
-    it('handles very long column names', () => {
+    it('handles very long column names', async () => {
+      const user = userEvent.setup();
       const longColumnName = 'a'.repeat(100);
       render(
         <TransformationConfigDialog
@@ -717,7 +783,13 @@ describe('TransformationConfigDialog', () => {
         />
       );
 
-      expect(screen.getByText(longColumnName)).toBeInTheDocument();
+      // The long column name should appear in the Column dropdown
+      const columnButton = screen.getByRole('combobox', { name: /Column/i });
+      await user.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.getByText(longColumnName)).toBeInTheDocument();
+      });
     });
   });
 });
