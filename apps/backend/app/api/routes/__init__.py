@@ -10,6 +10,7 @@ from app.api.routes import (
     health,
     secure_upload,
     onboarding,
+    data_issues,
 )
 
 api_router = APIRouter()
@@ -30,3 +31,4 @@ api_router.include_router(
 api_router.include_router(health.router, prefix="", tags=["health"])
 api_router.include_router(secure_upload.router, prefix="/secure-upload", tags=["secure-upload"])
 api_router.include_router(onboarding.router, prefix="/onboarding", tags=["onboarding"])
+api_router.include_router(data_issues.router, prefix="/data-issues", tags=["data-issues"])

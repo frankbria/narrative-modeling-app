@@ -20,6 +20,16 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function() {};
 }
 
+// Mock ResizeObserver for Radix UI components
+global.ResizeObserver = class ResizeObserver {
+  constructor(callback) {
+    this.callback = callback;
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
