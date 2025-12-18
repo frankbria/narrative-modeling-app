@@ -111,8 +111,15 @@ export default function DatasetPreparePage() {
         setError(null);
         const token = await getAuthToken();
 
+        if (!token) {
+          setError('Not authenticated. Please log in to continue.');
+          setIsLoading(false);
+          return;
+        }
+
         if (!datasetId) {
           setError('No dataset ID provided');
+          setIsLoading(false);
           return;
         }
 
@@ -148,6 +155,11 @@ export default function DatasetPreparePage() {
     const fetchMetadata = async () => {
       try {
         const token = await getAuthToken();
+
+        if (!token) {
+          console.error('Cannot fetch metadata: Not authenticated');
+          return;
+        }
 
         // Fetch available transformation types
         const typesResponse = await fetch(`${apiUrl}/transformations/available`, {
