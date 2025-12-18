@@ -214,7 +214,7 @@ class TestFixSuggestionEngine:
             estimated_rows_affected=3,
         )
 
-        is_safe, warnings = engine.validate_fix_safety(fix, sample_df)
+        _is_safe, warnings = engine.validate_fix_safety(fix, sample_df)
 
         # Low data loss should be considered potentially safe (no data loss warning)
         data_loss_warnings = [w for w in warnings if 'data loss' in w.lower()]
@@ -284,7 +284,7 @@ class TestFixPreview:
             explanation='Remove duplicate rows',
         )
 
-        result = await engine.preview_fix(sample_df, issue, fix, n_rows=10)
+        result = engine.preview_fix(sample_df, issue, fix, n_rows=10)
 
         assert result.get('success') is True
         assert result.get('preview_data_after') is not None
@@ -335,7 +335,7 @@ class TestBatchFix:
             ),
         ]
 
-        result_df, applied_fixes, errors = await engine.apply_batch_fixes(
+        result_df, applied_fixes, _errors = await engine.apply_batch_fixes(
             sample_df,
             issues,
             user_id='test_user',

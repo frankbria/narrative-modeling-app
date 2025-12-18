@@ -10,6 +10,7 @@ These endpoints provide functionality for:
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from beanie import PydanticObjectId
 import pandas as pd
 from datetime import datetime, timezone
 import logging
@@ -108,10 +109,15 @@ async def detect_issues(
 
     try:
         # Get the dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
+        try:
+            dataset_oid = PydanticObjectId(request.dataset_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
+
+        user_data = await UserData.find_one(
+            UserData.id == dataset_oid,
+            UserData.user_id == current_user_id,
+        )
 
         if not user_data:
             raise HTTPException(status_code=404, detail="Dataset not found")
@@ -257,10 +263,15 @@ async def preview_fix(
     """
     try:
         # Get the dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
+        try:
+            dataset_oid = PydanticObjectId(request.dataset_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
+
+        user_data = await UserData.find_one(
+            UserData.id == dataset_oid,
+            UserData.user_id == current_user_id,
+        )
 
         if not user_data:
             raise HTTPException(status_code=404, detail="Dataset not found")
@@ -304,7 +315,7 @@ async def preview_fix(
 
         # Preview the fix
         engine = FixSuggestionEngine()
-        preview_result = await engine.preview_fix(
+        preview_result = engine.preview_fix(
             df=df,
             issue=issue,
             fix=fix,
@@ -357,10 +368,15 @@ async def apply_fix(
 
     try:
         # Get the dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
+        try:
+            dataset_oid = PydanticObjectId(request.dataset_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
+
+        user_data = await UserData.find_one(
+            UserData.id == dataset_oid,
+            UserData.user_id == current_user_id,
+        )
 
         if not user_data:
             raise HTTPException(status_code=404, detail="Dataset not found")
@@ -403,7 +419,7 @@ async def apply_fix(
             file_path = user_data.file_path or user_data.s3_url
             df = await get_dataframe_from_s3(file_path)
             engine = FixSuggestionEngine()
-            preview_result = await engine.preview_fix(df, issue, fix, n_rows=100)
+            preview_result = engine.preview_fix(df, issue, fix, n_rows=100)
 
             return FixApplicationResponse(
                 success=True,
@@ -421,7 +437,7 @@ async def apply_fix(
         df = await get_dataframe_from_s3(file_path)
 
         engine = FixSuggestionEngine()
-        transformed_df, applied_fix = await engine.apply_fix(
+        transformed_df, applied_fix = engine.apply_fix(
             df=df,
             issue=issue,
             fix=fix,
@@ -498,10 +514,15 @@ async def batch_apply_fixes(
 
     try:
         # Get the dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": request.dataset_id
-        })
+        try:
+            dataset_oid = PydanticObjectId(request.dataset_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
+
+        user_data = await UserData.find_one(
+            UserData.id == dataset_oid,
+            UserData.user_id == current_user_id,
+        )
 
         if not user_data:
             raise HTTPException(status_code=404, detail="Dataset not found")

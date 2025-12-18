@@ -146,22 +146,38 @@ class FixSuggestionEngine:
             mean_val = series.mean()
             median_val = series.median()
 
+            # Format mean explanation, handling NaN case
+            if pd.isna(mean_val):
+                mean_explanation = "Fill missing values with mean (no numeric values available)"
+                mean_preview_impact = {"fill_value": None}
+            else:
+                mean_explanation = f"Fill missing values with mean ({mean_val:.2f})"
+                mean_preview_impact = {"fill_value": float(mean_val)}
+
             fixes.append(SuggestedFix(
                 transformation_type="fill_missing",
                 parameters={"columns": [col], "method": "mean"},
-                explanation=f"Fill missing values with mean ({mean_val:.2f})",
+                explanation=mean_explanation,
                 confidence_score=0.85,
                 estimated_rows_affected=issue.affected_rows,
-                preview_impact={"fill_value": float(mean_val) if not pd.isna(mean_val) else None},
+                preview_impact=mean_preview_impact,
             ))
+
+            # Format median explanation, handling NaN case
+            if pd.isna(median_val):
+                median_explanation = "Fill missing values with median (no numeric values available)"
+                median_preview_impact = {"fill_value": None}
+            else:
+                median_explanation = f"Fill missing values with median ({median_val:.2f}) - more robust to outliers"
+                median_preview_impact = {"fill_value": float(median_val)}
 
             fixes.append(SuggestedFix(
                 transformation_type="fill_missing",
                 parameters={"columns": [col], "method": "median"},
-                explanation=f"Fill missing values with median ({median_val:.2f}) - more robust to outliers",
+                explanation=median_explanation,
                 confidence_score=0.85,
                 estimated_rows_affected=issue.affected_rows,
-                preview_impact={"fill_value": float(median_val) if not pd.isna(median_val) else None},
+                preview_impact=median_preview_impact,
             ))
 
         elif col_type in ["string", "categorical"]:
@@ -259,6 +275,10 @@ class FixSuggestionEngine:
 
     def _suggest_whitespace_fixes(self, issue: DataIssue) -> List[SuggestedFix]:
         """Suggest fixes for whitespace issues."""
+        # Guard against None affected_column
+        if issue.affected_column is None:
+            return []
+
         return [
             SuggestedFix(
                 transformation_type="trim_whitespace",
@@ -418,7 +438,7 @@ class FixSuggestionEngine:
 
         return False
 
-    async def preview_fix(
+    def preview_fix(
         self,
         df: pd.DataFrame,
         issue: DataIssue,
@@ -427,6 +447,8 @@ class FixSuggestionEngine:
     ) -> Dict[str, Any]:
         """
         Preview a fix before applying it.
+
+        This is a synchronous method performing CPU-bound DataFrame operations.
 
         Args:
             df: The DataFrame
@@ -483,7 +505,7 @@ class FixSuggestionEngine:
                 "error": str(e)
             }
 
-    async def apply_fix(
+    def apply_fix(
         self,
         df: pd.DataFrame,
         issue: DataIssue,
@@ -492,6 +514,8 @@ class FixSuggestionEngine:
     ) -> Tuple[pd.DataFrame, AppliedFix]:
         """
         Apply a fix to the DataFrame.
+
+        This is a synchronous method performing CPU-bound DataFrame transformations.
 
         Args:
             df: The DataFrame to transform
@@ -594,7 +618,8 @@ class FixSuggestionEngine:
 
         # Check if operation would remove all rows
         if fix.transformation_type == "drop_missing":
-            col = fix.parameters.get("columns", [None])[0]
+            columns_list = fix.parameters.get("columns", [])
+            col = columns_list[0] if columns_list else None
             if col and col in df.columns:
                 rows_to_drop = df[col].isna().sum()
                 if rows_to_drop >= len(df):
@@ -653,7 +678,7 @@ class FixSuggestionEngine:
                 continue
 
             try:
-                current_df, applied_fix = await self.apply_fix(
+                current_df, applied_fix = self.apply_fix(
                     current_df, issue, fix_to_apply, user_id
                 )
                 applied_fixes.append(applied_fix)

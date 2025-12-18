@@ -11,7 +11,7 @@ import logging
 from typing import Dict, List, Optional, Any
 import pandas as pd
 import numpy as np
-from openai import OpenAI, OpenAIError
+from openai import AsyncOpenAI, OpenAIError
 from datetime import datetime, timezone
 
 from app.models.data_issue import (
@@ -46,13 +46,13 @@ class AIIssueAnalyzer:
         """Initialize the AI analyzer."""
         self.client = self._initialize_client()
 
-    def _initialize_client(self) -> Optional[OpenAI]:
-        """Initialize the OpenAI client."""
+    def _initialize_client(self) -> Optional[AsyncOpenAI]:
+        """Initialize the async OpenAI client."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             logger.warning("OPENAI_API_KEY not set, AI analysis will be disabled")
             return None
-        return OpenAI(api_key=api_key)
+        return AsyncOpenAI(api_key=api_key)
 
     async def analyze_data_patterns(
         self,
@@ -295,7 +295,7 @@ Issues already detected (DO NOT duplicate these):
 Please identify any additional data quality issues not covered above."""
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -419,7 +419,7 @@ Provide a brief (1-2 sentences) explanation of:
 Keep the explanation non-technical and easy to understand."""
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.5,
@@ -461,7 +461,7 @@ Briefly assess:
 Return as JSON: {{"risk_level": "...", "consequences": "...", "considerations": "..."}}"""
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
