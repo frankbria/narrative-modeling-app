@@ -71,9 +71,10 @@ async def preview_transformation(
         from app.services.transformation_service import TransformationService
         service = TransformationService()
 
+        # Use validated enum value to prevent bypass
         result = await service.preview_transformation(
             dataset_id=request.dataset_id,
-            transformation_type=first_step.transformation_type,
+            transformation_type=transformation_type.value,
             parameters=first_step.parameters or {},
             preview_rows=request.preview_rows
         )

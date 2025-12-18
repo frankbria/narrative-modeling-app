@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
@@ -79,13 +79,37 @@ export function TransformationChainView({
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [announcement, setAnnouncement] = useState<string>('');
 
+  // Ref to store timeout ID for cleanup
+  const announcementTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   /**
    * Announce changes to screen readers
+   * Clears previous timeout to prevent memory leaks
    */
   const announce = useCallback((message: string) => {
+    // Clear any existing timeout
+    if (announcementTimeoutRef.current) {
+      clearTimeout(announcementTimeoutRef.current);
+    }
+
     setAnnouncement(message);
+
     // Clear announcement after a delay so it can be read again if needed
-    setTimeout(() => setAnnouncement(''), 1000);
+    announcementTimeoutRef.current = setTimeout(() => {
+      setAnnouncement('');
+      announcementTimeoutRef.current = null;
+    }, 1000);
+  }, []);
+
+  /**
+   * Cleanup timeout on unmount to prevent state updates on unmounted component
+   */
+  useEffect(() => {
+    return () => {
+      if (announcementTimeoutRef.current) {
+        clearTimeout(announcementTimeoutRef.current);
+      }
+    };
   }, []);
 
   /**
