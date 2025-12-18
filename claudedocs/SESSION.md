@@ -1,523 +1,167 @@
-# Coding Session Log
+# Session: Visual Data Cleaning Interface Enhancement
 
-## Session: 2025-12-09 (Post-SKIP_AUTH Removal)
-
-### Git Context
-- **Branch**: `main` (all feature branches merged/cleaned)
-- **Latest Commit**: `cf2b04a` - security(e2e): replace SKIP_AUTH with proper test user authentication (#62)
-- **Previous Session**: Continued from context compaction
-- **Modified Files**:
-  - apps/backend/.env (SKIP_AUTH removed)
-  - apps/frontend/.env.local (SKIP_AUTH, NEXT_PUBLIC_SKIP_AUTH, NEXT_SKIP_AUTH removed)
-  - apps/frontend/e2e/global-setup.ts (selectors updated for new signin page)
-  - apps/backend/tests/test_models/test_user_data.py → test_user_data_model.py (renamed to fix pytest conflict)
-- **Untracked Files**: None critical
-
-### Project Context
-- **Project**: Narrative Modeling App (AI-guided ML platform)
-- **Sprint**: Sprint 12 - API Integration & Production Readiness
-- **Sprint Status**: Post-Sprint 12, security hardening phase
-- **Current Phase**: SKIP_AUTH removal cleanup and test stabilization
-
-### Test Status Summary
-- **Backend Tests**: 963/1057 passing (91%) 🟡
-- **Frontend E2E Tests**: Blocked at global-setup authentication 🔴
-- **Previous State**: 336/356 backend passing (94%) before cleanup
-
-### Branch Cleanup Summary
-- ✅ Merged PR #62: SKIP_AUTH removal (security/remove-skip-auth)
-- ✅ Deleted branches:
-  - feature/sprint-12-test-improvements (redundant)
-  - feature/story-12.5-e2e-completion (merged to main)
-  - feature/fix-e2e-file-upload-tests (superseded)
-  - feature/sprint-12-phase-2-service-refactoring (only docs, no code)
-- ✅ Closed PR #63 (misleading - contained only E2E docs, not service code)
-- ✅ Repository now clean with single main branch
+**Date**: 2025-12-17
+**Branch**: feature/enhance-data-preparation-ui
+**Status**: In Progress
 
 ---
 
-## Session Goals
+## OPTIMAL EXECUTION PLAN: Visual Data Cleaning Interface Enhancement
 
-**Status**: ✅ **ENVIRONMENT CLEANUP COMPLETE** | ⏳ **TEST STABILIZATION IN PROGRESS**
-
-**Objective**: Remove all SKIP_AUTH references, verify environment configuration, assess test status after security changes
-
-**Completed**:
-- ✅ All SKIP_AUTH references removed from .env files
-- ✅ MongoDB local test database verified working
-- ✅ OpenAI API key already updated by user
-- ✅ Test file naming conflict resolved
-- ✅ Full backend test suite executed (18m 17s)
-
-**Pending**:
-- ⏳ Fix 45 failed backend tests (authentication, transformations, cache)
-- ⏳ Fix 10 backend test errors (AI summary, visualization cache)
-- ⏳ Fix E2E global-setup authentication (NextAuth redirect failure)
-- ⏳ Verify Redis cache tests (service not running)
+### REQUEST ANALYSIS
+**Phases**: 5 distinct phases
+**Primary Complexity**: Frontend route restructuring + component creation + backend API extension + accessibility enhancements
+**Codebase Status**: Substantial existing implementation; enhancement/reorganization focused
 
 ---
 
-## Session Accomplishments
+## STRUCTURED EXECUTION PLAN
 
-### 1. Branch Management & Git Cleanup ✅
-- **Analyzed 4 feature branches** for consolidation
-- **Rebased** `feature/sprint-12-phase-2-service-refactoring`:
-  - Resolved conflicts in 8 files across 18 commits
-  - All commits already upstream - branch became identical to main
-  - Created PR #63, then closed as redundant (only docs, no service code)
-- **Deleted all feature branches** after consolidation to main
-- **Repository Status**: Clean single main branch
+### PHASE 1: CODEBASE ANALYSIS & PLANNING (Parallel Execution Safe)
 
-### 2. Environment Variable Cleanup ✅
-- **Backend .env Changes**:
-  - Removed `SKIP_AUTH=true` (line 29)
-  - Verified MONGODB_URI correctly points to Atlas for main app
-  - Confirmed TEST_MONGODB_URI points to local MongoDB (mongodb://localhost:27017/)
-  - Confirmed OpenAI key updated by user
-  - Preserved proper structure: main app uses Atlas, tests use local MongoDB
+**Purpose**: Understand current state, identify dependencies, map existing components
 
-- **Frontend .env.local Changes**:
-  - Removed `SKIP_AUTH=true`
-  - Removed `NEXT_PUBLIC_SKIP_AUTH=true`
-  - Removed `NEXT_SKIP_AUTH=true`
-  - Verified NEXT_PUBLIC_API_URL and NEXTAUTH configuration intact
+**Resources**:
 
-- **Key Learning**: User correctly identified that MONGODB_URI affects whole app, not just tests
-  - Initially attempted to change MONGODB_URI to localhost (incorrect)
-  - User corrected: "The .env affects the whole app. there are testing variables below it."
-  - Proper approach: Use TEST_MONGODB_URI for test database separation
+| Resource | Type | Why Selected |
+|----------|------|-------------|
+| **Skill: `searching-code`** | Skill Tool | Semantic search using MorphLLM MCP server to find:<br>- Existing TransformationPipeline component structure<br>- Current route patterns for dynamic dataset handling<br>- Transformation logic patterns (available types, handlers)<br>- Accessibility patterns already in codebase |
+| **Bash Tool** | Inspection | Quick file structure verification:<br>- Check if `apps/frontend/app/datasets/[id]/prepare` path exists<br>- Verify backend transformations route completeness<br>- Count existing component files needing refactoring |
 
-### 3. E2E Test Infrastructure Fixes ✅
-- **Fixed global-setup.ts** to match updated signin page:
-  ```typescript
-  // OLD (broken selectors)
-  button:has-text("Test User"), button:has-text("Credentials")
-  input[name="email"], input[type="email"]
-  button[type="submit"]
+**Key Questions to Answer**:
+1. What transformations are currently available?
+2. What UI components exist for data display/interaction?
+3. What keyboard navigation patterns are used elsewhere in app?
+4. How are dynamic routes currently structured?
 
-  // NEW (working selectors)
-  input[id="email"]
-  input[id="password"]
-  button:has-text("Sign In with Test User")
-  ```
-- **Result**: Button clicks now succeed, but redirect fails with ERR_CONNECTION_REFUSED
-
-### 4. Test File Conflict Resolution ✅
-- **Issue**: Duplicate `test_user_data.py` in `test_api/` and `test_models/`
-- **Pytest Error**: `import file mismatch` - pytest cannot handle same module name
-- **Solution**: Renamed `test_models/test_user_data.py` → `test_user_data_model.py`
-- **Rationale**:
-  - `test_api/test_user_data.py`: API endpoint integration tests (19,625 bytes)
-  - `test_models/test_user_data_model.py`: Model validation tests (7,759 bytes)
-
-### 5. Backend Test Suite Execution ✅
-- **Duration**: 18 minutes 17 seconds
-- **Total Tests**: 1057 (up from 356 - more tests discovered after cache clear)
-- **Results**:
-  - **Passed**: 963 (91%)
-  - **Failed**: 45 (4%)
-  - **Errors**: 10 (1%)
-  - **Skipped**: 39 (4%)
+**Parallel Execution**: All resources can run in parallel (independent reads)
 
 ---
 
-## Test Failure Analysis
+### PHASE 2: FRONTEND ARCHITECTURE DESIGN (Sequential)
 
-### Critical Issues (Require Immediate Attention)
+**Purpose**: Plan route restructuring and component hierarchy before implementation
 
-#### 1. NextAuth Authentication Tests (5 failures) 🔴
-**Location**: `tests/test_auth/test_nextauth.py`
-**Failures**:
-- `test_get_current_user_id_nextauth_token`
-- `test_get_current_user_id_mongodb_fallback`
-- `test_get_current_user_id_invalid_format`
-- `test_get_current_user_id_invalid_jwt`
-- `test_get_current_user_id_missing_user_id`
+**Depends On**: Phase 1 completion
 
-**Root Cause**: JWT validation errors, token format issues
-**Impact**: Authentication flow broken after SKIP_AUTH removal
-**Priority**: CRITICAL - blocks E2E tests
+**Resources**:
 
-#### 2. Transformation Integration Tests (14 failures) 🔴
-**Location**: `tests/test_api/test_transformations_integration.py`
-**Failures Include**:
-- Preview operations (remove_duplicates, fill_missing, trim_whitespace)
-- Apply transformations (single, pipeline, with recipe)
-- Auto-clean (default and custom options)
-- Authentication bypass test (test_skip_auth_with_dev_token) - expected failure
-- Error handling tests
+| Resource | Type | Why Selected |
+|----------|------|-------------|
+| **Skill: `reviewing-system-architecture`** | Skill Tool | Evaluate:<br>- Route migration strategy (backward compatibility considerations)<br>- Component composition patterns for new components<br>- Context flow implications with new routes<br>- Accessibility architecture (ARIA labels, keyboard handlers) |
 
-**Root Cause**: Likely authentication-related after SKIP_AUTH removal
-**Impact**: Data transformation workflow broken
-**Priority**: HIGH
+**Deliverable**: Architecture document with:
+- Route migration plan (`/prepare` → `/datasets/[id]/prepare`)
+- Component hierarchy for new UI elements
+- Keyboard navigation specification (Tab order, Escape handlers, arrow key patterns)
+- Context/state management approach for transformation chain
 
-#### 3. E2E Global Setup Authentication (1 error) 🔴
-**Location**: `apps/frontend/e2e/global-setup.ts`
-**Error**: `ERR_CONNECTION_REFUSED` after successful signin button click
-**Root Cause**: NextAuth redirect flow issue
-**Status**:
-- ✅ Selectors fixed - button clicks succeed
-- ❌ Redirect after authentication fails
-- Blocks ALL E2E tests from running
-**Priority**: CRITICAL
-
-### Service Layer Issues (Require Investigation)
-
-#### 4. AI Summary Service (4 errors + 4 failures) 🟡
-**Location**: `tests/test_services/test_ai_summary.py`
-**Errors**:
-- `test_generate_dataset_summary_success`
-- `test_generate_dataset_summary_existing`
-- `test_generate_dataset_summary_api_error`
-- `test_prepare_dataset_summary`
-
-**Failures**:
-- `test_generate_dataset_summary_not_found`
-- `test_call_openai_api_client_not_initialized`
-- `test_call_openai_api_invalid_json`
-- `test_call_openai_api_exception`
-
-**Root Cause**: OpenAI API client initialization issues
-**Note**: OpenAI key was updated by user, may need service restart
-**Priority**: MEDIUM
-
-#### 5. Visualization Cache Service (6 errors) 🟡
-**Location**: `tests/test_services/test_visualization_cache.py`
-**Errors**:
-- Histogram, boxplot, correlation visualization tests (get and cache)
-
-**Root Cause**: MongoDB/cache connection issues
-**Note**: TEST_MONGODB_URI configured correctly, may be service-level issue
-**Priority**: MEDIUM
-
-#### 6. Redis Cache Integration (4 failures) 🟡
-**Location**: `tests/test_integration/test_redis_cache_integration.py`
-**Failures**:
-- `test_onboarding_service_cache_integration`
-- `test_visualization_cache_integration`
-- `test_cache_graceful_degradation`
-- `test_cache_ttl_behavior`
-
-**Root Cause**: Redis service not running locally
-**Solution**: Start Redis service or skip these integration tests
-**Priority**: LOW (optional service)
-
-### Model Validation Issues (Require Review)
-
-#### 7. Model Tests (9 failures) 🟡
-**Locations**:
-- `test_models/test_analytics_result.py` (3 failures)
-- `test_models/test_transformation.py` (5 failures)
-- `test_models/test_user_data_model.py` (1 failure)
-
-**Failures Include**:
-- Analytics result creation and validation
-- Transformation step validation
-- Schema field validation
-
-**Root Cause**: Unknown - may be model schema changes
-**Priority**: MEDIUM
-
-#### 8. Performance Test (1 failure) 🟡
-**Location**: `tests/test_api/test_health_checks.py`
-**Failure**: `test_parallel_execution_performance`
-**Priority**: LOW (performance optimization)
+**Token Estimate**: 8K-12K tokens
 
 ---
 
-## Technical Decisions & Rationale
+### PHASE 3: BACKEND API EXTENSION (Parallel Execution Safe)
 
-### 1. MongoDB Configuration Strategy
-**Decision**: Keep MONGODB_URI pointing to Atlas, use TEST_MONGODB_URI for tests
-**Rationale**:
-- MONGODB_URI affects the entire application, not just tests
-- TEST_MONGODB_URI provides proper isolation for test database
-- Prevents test data from polluting production database
-- User feedback was critical: "The .env affects the whole app. there are testing variables below it."
+**Purpose**: Implement GET /api/transformations/available endpoint + supporting changes
 
-**Implementation**:
-```bash
-# Main app - Atlas
-MONGODB_URI=mongodb+srv://frankbria:***@briastrategygroup.oxzhocn.mongodb.net/
+**Depends On**: Phase 1 completion (understanding existing patterns)
 
-# Tests - Local
-TEST_MONGODB_URI=mongodb://localhost:27017/
-TEST_MONGODB_DB=narrative-modeling_test
-```
+**Resources**:
 
-### 2. E2E Authentication Approach
-**Decision**: Use global-setup.ts with proper test user credentials instead of SKIP_AUTH
-**Rationale**:
-- More secure and production-like
-- Tests real authentication flow
-- Saves session state for reuse across tests
-- Follows Playwright best practices
+| Resource | Type | Why Selected |
+|----------|------|-------------|
+| **Bash Tool** | Command | Verify backend structure:<br>- Check existing transformations.py route file<br>- List all TransformationType enum values<br>- Verify MongoDB/schema structures for transformations |
+| **Skill: `reviewing-code`** | Skill Tool (Inline) | When: API endpoint implementation complete<br>Review for:<br>- Type safety (Pydantic validation)<br>- Error handling (HTTP status codes)<br>- Security (user_id dependency injection)<br>- Performance (caching if needed) |
 
-**Status**: Selectors fixed, redirect still failing
+**Implementation Tasks**:
+1. Extend `/api/routes/transformations.py` with GET endpoint
+2. Create response schema: `TransformationTypeInfo`
+3. Document endpoint with OpenAPI specs
 
-### 3. Test File Naming Convention
-**Decision**: Rename model tests to include "model" suffix when API tests exist
-**Pattern**:
-- API tests: `test_<resource>.py` (e.g., `test_user_data.py`)
-- Model tests: `test_<resource>_model.py` (e.g., `test_user_data_model.py`)
-
-**Rationale**:
-- Pytest requires unique module names
-- Naming makes it clear what's being tested (API vs model)
-- Prevents import conflicts
+**Token Estimate**: 6K-8K tokens
 
 ---
 
-## Pending Work & Next Steps
+### PHASE 4: FRONTEND COMPONENT CREATION & ROUTING (Sequential)
 
-### Immediate (Critical Path)
+**Purpose**: Build missing components and restructure routes
 
-1. **Fix NextAuth Authentication Flow** 🔴
-   - Investigate ERR_CONNECTION_REFUSED after signin
-   - Debug NextAuth redirect configuration
-   - Verify callback URLs in auth.ts
-   - **Blocking**: All E2E tests
-   - **Files**: `apps/frontend/e2e/global-setup.ts`, `apps/frontend/auth.ts`
+**Depends On**: Phase 2 (architecture), Phase 3 (backend ready)
 
-2. **Fix NextAuth Backend Tests** 🔴
-   - Address JWT validation errors
-   - Fix token format issues
-   - Update tests for new auth flow without SKIP_AUTH
-   - **Files**: `tests/test_auth/test_nextauth.py`
+**Implementation Order** (Sequential):
+1. Create route: `/datasets/[id]/prepare/page.tsx`
+2. Create `ColumnSelector` component with keyboard support
+3. Create `TransformationConfigDialog` with Escape/click-outside handling
+4. Create `TransformationChainView` with drag-to-reorder capability
+5. Update imports in existing TransformationPipeline
+6. Migrate old `/prepare` page (deprecation/redirect)
 
-3. **Fix Transformation Integration Tests** 🔴
-   - Update authentication in transformation tests
-   - Verify API endpoints work without SKIP_AUTH
-   - **Files**: `tests/test_api/test_transformations_integration.py`
-
-### Short-Term (Important)
-
-4. **Investigate AI Summary Service** 🟡
-   - Verify OpenAI client initialization with new key
-   - Check service configuration
-   - **Files**: `tests/test_services/test_ai_summary.py`
-
-5. **Investigate Visualization Cache** 🟡
-   - Debug MongoDB connection in cache service
-   - Verify TEST_MONGODB_URI usage
-   - **Files**: `tests/test_services/test_visualization_cache.py`
-
-6. **Review Model Validation Tests** 🟡
-   - Check for schema changes affecting validation
-   - Update tests if model structure changed
-   - **Files**: `test_models/test_analytics_result.py`, `test_models/test_transformation.py`
-
-### Optional (Nice to Have)
-
-7. **Start Redis for Integration Tests** 🟢
-   - `sudo systemctl start redis` or Docker
-   - Re-run cache integration tests
-   - **Files**: `tests/test_integration/test_redis_cache_integration.py`
-
-8. **Commit Current Changes** 🟢
-   - Test file rename
-   - E2E global-setup selector fixes
-   - Document decisions in commit message
+**Token Estimate**: 15K-20K tokens
 
 ---
 
-## Key Files & Changes
+### PHASE 5: INTEGRATION, TESTING & DOCUMENTATION (Sequential)
 
-### Modified Files
+**Purpose**: Connect all pieces, verify functionality, update documentation
 
-1. **apps/backend/.env**
-   - Removed: `SKIP_AUTH=true` (line 29)
-   - Preserved: MONGODB_URI (Atlas), TEST_MONGODB_URI (local)
-   - Verified: OpenAI key updated
+**Depends On**: Phase 4 completion
 
-2. **apps/frontend/.env.local**
-   - Removed: `SKIP_AUTH=true`
-   - Removed: `NEXT_PUBLIC_SKIP_AUTH=true`
-   - Removed: `NEXT_SKIP_AUTH=true`
-   - Preserved: NEXT_PUBLIC_API_URL, NEXTAUTH configuration
+**Verification Tasks**:
+1. E2E flow: Upload dataset → Navigate to `/datasets/[id]/prepare` → Apply transformation
+2. Keyboard navigation test (Tab through all interactive elements, Escape closes dialogs)
+3. Screen reader test (semantic HTML, ARIA labels)
+4. Backward compatibility (old `/prepare` URL redirects properly)
 
-3. **apps/frontend/e2e/global-setup.ts**
-   - Updated selectors to match new signin page
-   - Changed from generic selectors to specific IDs
-   - Status: Button clicks work, redirect fails
-
-4. **apps/backend/tests/test_models/test_user_data.py**
-   - Renamed to: `test_user_data_model.py`
-   - Reason: Conflict with `test_api/test_user_data.py`
-   - **Action Required**: Stage and commit this rename
-
-### Untracked Files
-- `apps/backend/tests/test_models/test_user_data_model.py` (needs git add)
-
-### Deleted Files
-- `apps/backend/tests/test_models/test_user_data.py` (renamed)
+**Token Estimate**: 10K-15K tokens
 
 ---
 
-## Environment Status
+## EXECUTION SUMMARY
 
-### Services Running
-- ✅ MongoDB: Running locally (verified with mongosh ping)
-- ✅ Backend API: Running on port 8000 (background process)
-- ❌ Redis: Not running (optional for integration tests)
-
-### Database Connections
-- ✅ Local MongoDB Test DB: Connected and verified
-  - URI: `mongodb://localhost:27017/`
-  - Database: `narrative-modeling_test`
-- ✅ Atlas MongoDB: Configured for main app
-  - URI: `mongodb+srv://frankbria:***@briastrategygroup.oxzhocn.mongodb.net/`
-
-### API Keys
-- ✅ OpenAI: Updated by user in both backend and frontend .env files
-- ✅ AWS S3: Present in backend .env
-- ✅ Anthropic: Present in backend .env
+| Phase | Duration | Token Budget | Parallel Safe | Critical Path |
+|-------|----------|--------------|---------------|---|
+| 1: Analysis | 15-20 min | 8K-12K | ✅ Yes | Part of critical path |
+| 2: Design | 10-15 min | 8K-12K | ❌ No | Blocks Phase 3-4 |
+| 3: Backend | 15-20 min | 6K-8K | ✅ Yes (can run with Phase 2) | Blocks Phase 4 |
+| 4: Frontend | 30-40 min | 15K-20K | ❌ No (sequential scaffolding) | Longest phase |
+| 5: Integration | 20-25 min | 10K-15K | ❌ No (sequential testing) | Final verification |
+| **TOTAL** | **90-120 min** | **47K-67K tokens** | — | **Critical path: 75-95 min** |
 
 ---
 
-## Blockers & Risks
+## RISK ASSESSMENT & MITIGATION
 
-### Critical Blockers 🔴
-
-1. **E2E Tests Completely Blocked**
-   - Global setup authentication fails with ERR_CONNECTION_REFUSED
-   - Cannot run ANY E2E tests until fixed
-   - Affects entire frontend testing strategy
-
-2. **Authentication Flow Broken**
-   - 5 NextAuth backend tests failing
-   - 14 transformation integration tests failing (likely auth-related)
-   - May indicate broader authentication issues
-
-### Risks 🟡
-
-1. **Test Coverage Regression**
-   - Went from 94% pass rate to 91% after SKIP_AUTH removal
-   - Expected, but needs to be recovered to 100%
-
-2. **Service Integration Issues**
-   - AI summary and visualization cache services showing errors
-   - May require service restarts or configuration updates
-
-3. **Missing Redis Service**
-   - 4 integration tests skipped without Redis
-   - Not critical, but reduces integration test coverage
+| Risk | Severity | Mitigation |
+|------|----------|-----------|
+| Breaking existing `/prepare` routing | HIGH | Create redirect from `/prepare` to `/datasets/[id]/prepare` using Next.js redirect or useRouter |
+| Accessibility compliance gaps | MEDIUM | Use `reviewing-code` skill with explicit WCAG checklist; test with keyboard-only navigation |
+| Backend API performance with large transformation lists | MEDIUM | Keep response lightweight; transformation metadata only |
+| Component prop drilling for transformation state | MEDIUM | Use Context API or pass callbacks; verify in Phase 2 architecture design |
+| TypeScript type safety across components | MEDIUM | Enable strict mode; use `reviewing-code` skill before Phase 5 |
 
 ---
 
-## Context for Next Session
+## SUCCESS CRITERIA
 
-### What's Working ✅
-- All SKIP_AUTH references successfully removed
-- MongoDB test database connected and verified
-- Backend API running and accessible
-- Test file naming conflicts resolved
-- Branch cleanup complete - repository clean
-
-### What's Broken ❌
-- E2E global-setup authentication redirect
-- NextAuth JWT validation in backend tests
-- Transformation integration tests
-- AI summary service tests
-- Visualization cache service tests
-
-### What Needs Investigation 🔍
-- Why NextAuth redirect fails after successful signin
-- Whether AI/visualization errors are due to service state or config
-- Whether Redis is required or tests can be safely skipped
-
-### Recommended Next Actions
-1. Debug NextAuth redirect failure in global-setup.ts
-2. Fix NextAuth backend tests (may help with E2E issue)
-3. Restart backend services to clear any stale state
-4. Re-run backend tests to verify service issues persist
-
-### Commands to Resume Testing
-
-```bash
-# E2E smoke tests (currently blocked)
-cd apps/frontend
-npm run test:e2e:smoke
-
-# Backend tests (specific failures)
-cd apps/backend
-uv run pytest tests/test_auth/test_nextauth.py -v
-uv run pytest tests/test_api/test_transformations_integration.py -v
-uv run pytest tests/test_services/test_ai_summary.py -v
-
-# Full backend suite
-uv run pytest tests/ -v --tb=short
-
-# Check services
-systemctl status mongodb
-systemctl status redis  # optional
-ps aux | grep uvicorn   # backend API
-```
+✅ Execution complete when:
+1. All tests passing (frontend + backend, >85% coverage)
+2. New route `/datasets/[id]/prepare` functioning with existing data flow
+3. Keyboard navigation tested (Tab, Escape, Arrow keys functional)
+4. GET `/api/transformations/available` returning proper schema
+5. All 3 new components rendering with visual hierarchy
+6. Documentation updated (CLAUDE.md, README, API docs)
+7. Git commits made with conventional commit messages
+8. CI/CD pipeline passing
 
 ---
 
-## Test Results Summary
+## Progress Tracking
 
-### Overall Stats
-- **Total Tests**: 1057
-- **Passed**: 963 (91.1%)
-- **Failed**: 45 (4.3%)
-- **Errors**: 10 (0.9%)
-- **Skipped**: 39 (3.7%)
-- **Duration**: 18m 17s (1097.86s)
-- **Warnings**: 12,015 (deprecation warnings, not critical)
-
-### Pass Rate by Category
-- **Benchmarks**: ~95% (minor skips)
-- **Integration Tests**: ~85% (Redis tests skipped)
-- **API Tests**: ~92% (transformations failing)
-- **Auth Tests**: ~60% (NextAuth failures)
-- **Model Tests**: ~85% (validation issues)
-- **Service Tests**: ~70% (AI/cache failures)
-
-### Comparison to Previous State
-- **Before**: 336/356 tests passing (94.4%)
-- **After**: 963/1057 tests passing (91.1%)
-- **Delta**: -3.3% pass rate (expected after SKIP_AUTH removal)
-
-**Full Test Log**: `/tmp/backend-test-results.log`
-
----
-
-## Notes & Observations
-
-### User Feedback & Corrections
-
-1. **MongoDB Configuration** (Critical Learning)
-   - User: "The .env affects the whole app. there are testing variables below it."
-   - Taught me proper environment variable structure
-   - MONGODB_URI for app, TEST_MONGODB_URI for tests
-
-2. **OpenAI Key**
-   - User confirmed: "We'll need a new OpenAI key"
-   - User had already updated it in .env files
-
-### Architectural Insights
-
-1. **Test Isolation**
-   - Backend properly separates test database from production
-   - TEST_MONGODB_URI pattern is good practice
-   - Should be documented in TEST_STANDARDS.md
-
-2. **E2E Authentication**
-   - Global setup approach is correct
-   - Saves session state for reuse (efficient)
-   - Current issue is NextAuth redirect, not authentication itself
-
-3. **Test Naming**
-   - Pytest module name conflicts are common in large suites
-   - Established naming pattern: API tests = resource name, Model tests = resource_model
-   - Should be added to testing conventions
-
----
-
-**Session End**: 2025-12-09 23:55 UTC
-**Duration**: ~2 hours
-**Next Session**: Focus on NextAuth authentication fixes (E2E blocker)
-**Branch**: main (clean, all features merged)
-**Handoff Status**: READY - clear priorities, documented blockers, environment clean
+- [x] Plan saved to SESSION.md
+- [ ] Feature branch created
+- [ ] Phase 1: Codebase Analysis
+- [ ] Phase 2: Architecture Design
+- [ ] Phase 3: Backend API Extension
+- [ ] Phase 4: Frontend Components
+- [ ] Phase 5: Integration & Testing
+- [ ] Final commit and push

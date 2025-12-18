@@ -13,10 +13,10 @@ import Link from 'next/link';
 
 // Import transformation components
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
-// Note: These components will be created in the next phase
-// import { ColumnSelector } from '@/components/transformation/ColumnSelector';
-// import { TransformationChainView } from '@/components/transformation/TransformationChainView';
+import { TransformationChainView, TransformationStep } from '@/components/transformation/TransformationChainView';
+// TODO: Integrate TransformationConfigDialog for edit functionality
 // import { TransformationConfigDialog } from '@/components/transformation/TransformationConfigDialog';
+// import { ColumnSelector } from '@/components/transformation/ColumnSelector';
 
 interface Dataset {
   id: string;
@@ -39,6 +39,7 @@ export default function DatasetPreparePage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'visual' | 'chain'>('visual');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [transformations, setTransformations] = useState<TransformationStep[]>([]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -115,6 +116,26 @@ export default function DatasetPreparePage() {
       console.error('Error completing preparation stage:', err);
       setError('Failed to complete data preparation. Please try again.');
     }
+  };
+
+  // Transformation Chain View handlers
+  const handleReorder = (startIndex: number, endIndex: number) => {
+    const newTransformations = [...transformations];
+    const [movedItem] = newTransformations.splice(startIndex, 1);
+    newTransformations.splice(endIndex, 0, movedItem);
+    setTransformations(newTransformations);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleEditTransformation = (index: number) => {
+    // TODO: Implement edit dialog with transformation schema fetching
+    console.log('Edit transformation at index:', index, transformations[index]);
+  };
+
+  const handleDeleteTransformation = (index: number) => {
+    const newTransformations = transformations.filter((_, i) => i !== index);
+    setTransformations(newTransformations);
+    setHasUnsavedChanges(true);
   };
 
   // Loading state
@@ -223,13 +244,14 @@ export default function DatasetPreparePage() {
               </>
             ) : (
               <>
-                {/* Chain View - Placeholder for future TransformationChainView component */}
-                <div className="flex items-center justify-center h-64 border-2 border-dashed rounded-lg">
-                  <div className="text-center text-muted-foreground">
-                    <List className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Chain view coming soon</p>
-                  </div>
-                </div>
+                {/* Chain View - Linear list of transformation steps */}
+                <TransformationChainView
+                  transformations={transformations}
+                  onReorder={handleReorder}
+                  onEdit={handleEditTransformation}
+                  onDelete={handleDeleteTransformation}
+                  className="min-h-[400px]"
+                />
               </>
             )}
           </CardContent>
