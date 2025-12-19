@@ -34,13 +34,23 @@ class TransformationRecipe(Document):
     usage_count: int = 0
     rating: Optional[float] = None
     schema_snapshot: Optional[Dict[str, str]] = None  # Column types when recipe was created
-    
+
+    # Versioning fields
+    version: int = 1
+    parent_recipe_id: Optional[PydanticObjectId] = None
+
+    # Metadata for creator and tracking
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
     class Settings:
         name = "transformation_recipes"
         indexes = [
             [("user_id", 1)],
             [("is_public", 1)],
             [("tags", 1)],
+            [("name", "text"), ("description", "text")],  # Text search index
+            [("created_at", -1)],  # Chronological sorting
+            [("parent_recipe_id", 1)],  # Version lineage queries
         ]
 
 
@@ -54,7 +64,7 @@ class RecipeExecutionHistory(Document):
     rows_affected: int
     execution_time_ms: int
     error_message: Optional[str] = None
-    
+
     class Settings:
         name = "recipe_execution_history"
         indexes = [
@@ -62,6 +72,128 @@ class RecipeExecutionHistory(Document):
             [("user_id", 1)],
             [("executed_at", -1)],
         ]
+
+
+class SharedRecipe(Document):
+    """Independent copy of a shared recipe (not linked to original)"""
+    name: str
+    description: Optional[str] = None
+    user_id: str  # User who received the shared recipe
+    original_recipe_id: PydanticObjectId  # Reference to original recipe
+    original_owner_id: str  # Original creator
+    steps: List[TransformationStep]
+    shared_at: datetime = Field(default_factory=datetime.utcnow)
+    tags: List[str] = Field(default_factory=list)
+    schema_snapshot: Optional[Dict[str, str]] = None
+    version: int = 1
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    class Settings:
+        name = "shared_recipes"
+        indexes = [
+            [("user_id", 1)],  # Find recipes shared with user
+            [("original_recipe_id", 1)],  # Track shared copies
+            [("shared_at", -1)],  # Chronological
+        ]
+
+
+class CompatibilityReport(BaseModel):
+    """Report on recipe-dataset compatibility"""
+    is_compatible: bool
+    missing_columns: List[str] = Field(default_factory=list)
+    type_mismatches: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
+    compatibility_score: float = Field(ge=0.0, le=100.0)  # 0-100%
+
+
+class RecipeCompatibilityChecker:
+    """Checks compatibility between recipes and datasets"""
+
+    @staticmethod
+    async def check_compatibility(
+        recipe_id: str,
+        dataset_schema: Dict[str, str]
+    ) -> CompatibilityReport:
+        """
+        Check if recipe can be applied to dataset.
+
+        Args:
+            recipe_id: Recipe to check
+            dataset_schema: Target dataset's column schema {column_name: type}
+
+        Returns:
+            Compatibility report with score, warnings, and suggestions
+        """
+        try:
+            recipe = await TransformationRecipe.get(PydanticObjectId(recipe_id))
+            if not recipe:
+                return CompatibilityReport(
+                    is_compatible=False,
+                    warnings=["Recipe not found"],
+                    compatibility_score=0.0
+                )
+
+            recipe_schema = recipe.schema_snapshot or {}
+            missing_columns = []
+            type_mismatches = []
+            warnings = []
+            suggestions = []
+
+            # Check each required column from recipe
+            for col_name, expected_type in recipe_schema.items():
+                if col_name not in dataset_schema:
+                    missing_columns.append(col_name)
+                    suggestions.append(
+                        f"Column '{col_name}' is missing. "
+                        f"Consider renaming a similar column or removing steps using this column."
+                    )
+                elif dataset_schema[col_name] != expected_type:
+                    type_mismatches.append({
+                        "column": col_name,
+                        "expected": expected_type,
+                        "actual": dataset_schema[col_name]
+                    })
+                    warnings.append(
+                        f"Column '{col_name}' type mismatch: "
+                        f"expected {expected_type}, got {dataset_schema[col_name]}"
+                    )
+
+            # Calculate compatibility score
+            if not recipe_schema:
+                # No schema snapshot, assume compatible but warn
+                compatibility_score = 100.0
+                warnings.append("Recipe has no schema snapshot - compatibility cannot be fully verified")
+            else:
+                total_cols = len(recipe_schema)
+                matched_cols = total_cols - len(missing_columns) - len(type_mismatches)
+                compatibility_score = (matched_cols / total_cols * 100) if total_cols > 0 else 0.0
+
+            # Determine overall compatibility
+            is_compatible = compatibility_score >= 80.0  # 80% threshold
+
+            if not is_compatible and compatibility_score >= 50.0:
+                suggestions.append(
+                    "Partial compatibility detected. "
+                    "You may need to modify the recipe or adapt your dataset."
+                )
+
+            return CompatibilityReport(
+                is_compatible=is_compatible,
+                missing_columns=missing_columns,
+                type_mismatches=type_mismatches,
+                warnings=warnings,
+                suggestions=suggestions,
+                compatibility_score=round(compatibility_score, 1)
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking compatibility: {str(e)}")
+            return CompatibilityReport(
+                is_compatible=False,
+                warnings=[f"Error checking compatibility: {str(e)}"],
+                compatibility_score=0.0
+            )
 
 
 class RecipeManager:
@@ -273,6 +405,367 @@ class RecipeManager:
         
         return recipes
     
+    @staticmethod
+    async def create_version(
+        recipe_id: str,
+        user_id: str,
+        changes: Dict[str, Any],
+        version_notes: Optional[str] = None
+    ) -> Optional[TransformationRecipe]:
+        """
+        Create a new version of a recipe.
+
+        Args:
+            recipe_id: Original recipe ID
+            user_id: User creating the version
+            changes: Changes to apply
+            version_notes: Optional notes about this version
+
+        Returns:
+            New recipe version or None if failed
+        """
+        try:
+            original = await TransformationRecipe.get(PydanticObjectId(recipe_id))
+
+            if not original or original.user_id != user_id:
+                logger.error(f"Recipe {recipe_id} not found or unauthorized")
+                return None
+
+            # Create new recipe with incremented version
+            new_version = TransformationRecipe(
+                name=changes.get('name', original.name),
+                description=changes.get('description', original.description),
+                user_id=user_id,
+                dataset_id=changes.get('dataset_id', original.dataset_id),
+                steps=changes.get('steps', original.steps),
+                is_public=changes.get('is_public', original.is_public),
+                tags=changes.get('tags', original.tags),
+                schema_snapshot=changes.get('schema_snapshot', original.schema_snapshot),
+                version=original.version + 1,
+                parent_recipe_id=original.id,
+                metadata={
+                    **original.metadata,
+                    'version_notes': version_notes,
+                    'versioned_from': str(original.id),
+                    'created_from_version': original.version
+                }
+            )
+
+            await new_version.save()
+            logger.info(f"Created version {new_version.version} of recipe {recipe_id}")
+
+            return new_version
+
+        except Exception as e:
+            logger.error(f"Error creating recipe version: {str(e)}")
+            return None
+
+    @staticmethod
+    async def get_version_history(recipe_id: str) -> List[TransformationRecipe]:
+        """
+        Get all versions of a recipe in chronological order.
+
+        Args:
+            recipe_id: Recipe ID (can be any version)
+
+        Returns:
+            List of recipe versions
+        """
+        try:
+            # Get the recipe to find root
+            recipe = await TransformationRecipe.get(PydanticObjectId(recipe_id))
+            if not recipe:
+                return []
+
+            # Find root (recipe with no parent)
+            root_id = recipe.parent_recipe_id if recipe.parent_recipe_id else recipe.id
+
+            # Get all versions (root + all descendants)
+            versions = []
+
+            # Add root
+            root = await TransformationRecipe.get(root_id)
+            if root:
+                versions.append(root)
+
+            # Find all descendants
+            descendants = await TransformationRecipe.find(
+                {"parent_recipe_id": root_id}
+            ).sort("version").to_list()
+
+            versions.extend(descendants)
+
+            return sorted(versions, key=lambda r: r.version)
+
+        except Exception as e:
+            logger.error(f"Error getting version history: {str(e)}")
+            return []
+
+    @staticmethod
+    async def duplicate_recipe(
+        recipe_id: str,
+        user_id: str,
+        new_name: str
+    ) -> Optional[TransformationRecipe]:
+        """
+        Duplicate a recipe as a template for the user.
+
+        Args:
+            recipe_id: Recipe to duplicate
+            user_id: User creating the duplicate
+            new_name: Name for the duplicate
+
+        Returns:
+            Duplicated recipe or None if failed
+        """
+        try:
+            original = await TransformationRecipe.get(PydanticObjectId(recipe_id))
+            if not original:
+                return None
+
+            duplicate = TransformationRecipe(
+                name=new_name,
+                description=f"Duplicated from: {original.name}",
+                user_id=user_id,
+                dataset_id=None,  # Don't copy dataset reference
+                steps=original.steps,
+                is_public=False,  # Duplicates start as private
+                tags=original.tags,
+                schema_snapshot=original.schema_snapshot,
+                version=1,
+                metadata={
+                    'duplicated_from': str(original.id),
+                    'original_name': original.name,
+                    'original_owner': original.user_id
+                }
+            )
+
+            await duplicate.save()
+            logger.info(f"Duplicated recipe {recipe_id} as '{new_name}' for user {user_id}")
+
+            return duplicate
+
+        except Exception as e:
+            logger.error(f"Error duplicating recipe: {str(e)}")
+            return None
+
+    @staticmethod
+    async def share_recipe(
+        recipe_id: str,
+        owner_id: str,
+        target_user_id: str
+    ) -> Optional[SharedRecipe]:
+        """
+        Share a recipe with another user (creates independent copy).
+
+        Args:
+            recipe_id: Recipe to share
+            owner_id: Recipe owner (for authorization)
+            target_user_id: User to share with
+
+        Returns:
+            Shared recipe copy or None if failed
+        """
+        try:
+            original = await TransformationRecipe.get(PydanticObjectId(recipe_id))
+
+            if not original or original.user_id != owner_id:
+                logger.error(f"Recipe {recipe_id} not found or unauthorized")
+                return None
+
+            # Create independent copy for target user
+            shared = SharedRecipe(
+                name=original.name,
+                description=original.description,
+                user_id=target_user_id,
+                original_recipe_id=original.id,
+                original_owner_id=owner_id,
+                steps=original.steps,
+                tags=original.tags,
+                schema_snapshot=original.schema_snapshot,
+                version=original.version,
+                metadata={
+                    'shared_from': str(original.id),
+                    'shared_by': owner_id,
+                    'original_name': original.name
+                }
+            )
+
+            await shared.save()
+            logger.info(f"Shared recipe {recipe_id} with user {target_user_id}")
+
+            return shared
+
+        except Exception as e:
+            logger.error(f"Error sharing recipe: {str(e)}")
+            return None
+
+    @staticmethod
+    async def get_shared_recipes(user_id: str) -> List[SharedRecipe]:
+        """
+        Get all recipes shared with a user.
+
+        Args:
+            user_id: User to get shared recipes for
+
+        Returns:
+            List of shared recipes
+        """
+        try:
+            shared_recipes = await SharedRecipe.find(
+                {"user_id": user_id}
+            ).sort("-shared_at").to_list()
+
+            return shared_recipes
+
+        except Exception as e:
+            logger.error(f"Error getting shared recipes: {str(e)}")
+            return []
+
+    @staticmethod
+    async def update_shared_recipe(
+        shared_recipe_id: str,
+        user_id: str,
+        original_recipe_id: str
+    ) -> Optional[SharedRecipe]:
+        """
+        Update a shared recipe to match current version of original.
+
+        Args:
+            shared_recipe_id: Shared recipe to update
+            user_id: User who owns the shared copy
+            original_recipe_id: Original recipe to sync from
+
+        Returns:
+            Updated shared recipe or None if failed
+        """
+        try:
+            shared = await SharedRecipe.get(PydanticObjectId(shared_recipe_id))
+            original = await TransformationRecipe.get(PydanticObjectId(original_recipe_id))
+
+            if not shared or not original:
+                return None
+
+            if shared.user_id != user_id:
+                logger.error(f"Unauthorized access to shared recipe {shared_recipe_id}")
+                return None
+
+            # Update shared copy with current original version
+            shared.name = original.name
+            shared.description = original.description
+            shared.steps = original.steps
+            shared.tags = original.tags
+            shared.schema_snapshot = original.schema_snapshot
+            shared.version = original.version
+            shared.metadata['last_synced'] = datetime.utcnow().isoformat()
+
+            await shared.save()
+            logger.info(f"Updated shared recipe {shared_recipe_id} from original {original_recipe_id}")
+
+            return shared
+
+        except Exception as e:
+            logger.error(f"Error updating shared recipe: {str(e)}")
+            return None
+
+    @staticmethod
+    def export_recipe_to_json(recipe: TransformationRecipe) -> Dict[str, Any]:
+        """
+        Export recipe as JSON for portability.
+
+        Args:
+            recipe: Recipe to export
+
+        Returns:
+            JSON-serializable dictionary
+        """
+        return {
+            "format_version": "1.0",
+            "recipe": {
+                "name": recipe.name,
+                "description": recipe.description,
+                "version": recipe.version,
+                "tags": recipe.tags,
+                "schema_snapshot": recipe.schema_snapshot,
+                "steps": [
+                    {
+                        "step_id": step.step_id,
+                        "transformation_type": step.transformation_type,
+                        "parameters": step.parameters,
+                        "description": step.description,
+                        "order": step.order
+                    }
+                    for step in recipe.steps
+                ],
+                "metadata": {
+                    **recipe.metadata,
+                    "exported_at": datetime.utcnow().isoformat(),
+                    "exported_from_version": recipe.version
+                }
+            }
+        }
+
+    @staticmethod
+    async def import_recipe_from_json(
+        json_data: Dict[str, Any],
+        user_id: str,
+        name_override: Optional[str] = None
+    ) -> Optional[TransformationRecipe]:
+        """
+        Import recipe from JSON.
+
+        Args:
+            json_data: JSON data (from export_recipe_to_json)
+            user_id: User importing the recipe
+            name_override: Optional name override
+
+        Returns:
+            Imported recipe or None if failed
+        """
+        try:
+            # Validate format
+            if json_data.get("format_version") != "1.0":
+                logger.error("Unsupported recipe format version")
+                return None
+
+            recipe_data = json_data.get("recipe", {})
+
+            # Convert steps
+            steps = []
+            for step_data in recipe_data.get("steps", []):
+                steps.append(TransformationStep(
+                    step_id=step_data["step_id"],
+                    transformation_type=step_data["transformation_type"],
+                    parameters=step_data["parameters"],
+                    description=step_data.get("description"),
+                    order=step_data["order"]
+                ))
+
+            # Create recipe
+            imported = TransformationRecipe(
+                name=name_override or recipe_data.get("name", "Imported Recipe"),
+                description=recipe_data.get("description"),
+                user_id=user_id,
+                steps=steps,
+                tags=recipe_data.get("tags", []),
+                schema_snapshot=recipe_data.get("schema_snapshot"),
+                version=1,  # Start at version 1 for imports
+                metadata={
+                    **recipe_data.get("metadata", {}),
+                    "imported_at": datetime.utcnow().isoformat(),
+                    "imported_by": user_id
+                }
+            )
+
+            await imported.save()
+            logger.info(f"Imported recipe '{imported.name}' for user {user_id}")
+
+            return imported
+
+        except Exception as e:
+            logger.error(f"Error importing recipe: {str(e)}")
+            return None
+
     @staticmethod
     def export_recipe_to_code(recipe: TransformationRecipe, language: str = "python") -> str:
         """Export recipe to executable code"""
