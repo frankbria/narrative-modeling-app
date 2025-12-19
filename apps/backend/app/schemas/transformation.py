@@ -241,6 +241,79 @@ class RecipeExportResponse(BaseModel):
     code: str
 
 
+class RecipeCompatibilityRequest(BaseModel):
+    """Request schema for recipe compatibility check."""
+
+    dataset_schema: Dict[str, str] = Field(..., description="Dataset column schema {column: type}")
+
+
+class RecipeCompatibilityResponse(BaseModel):
+    """Response schema for compatibility check."""
+
+    is_compatible: bool
+    missing_columns: List[str] = Field(default_factory=list)
+    type_mismatches: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
+    compatibility_score: float
+
+
+class RecipeVersionRequest(BaseModel):
+    """Request schema for creating recipe version."""
+
+    changes: Dict[str, Any] = Field(..., description="Changes to apply to new version")
+    version_notes: Optional[str] = Field(None, description="Notes about this version")
+
+
+class RecipeShareRequest(BaseModel):
+    """Request schema for sharing recipe."""
+
+    target_user_id: str = Field(..., description="User ID to share with")
+
+
+class RecipeShareResponse(BaseModel):
+    """Response schema for sharing recipe."""
+
+    shared_recipe_id: str
+    target_user_id: str
+    shared_at: str
+    message: str
+
+
+class SharedRecipeListResponse(BaseModel):
+    """Response schema for shared recipes list."""
+
+    shared_recipes: List[Dict[str, Any]]
+    total: int
+
+
+class RecipeImportRequest(BaseModel):
+    """Request schema for recipe import."""
+
+    json_data: Dict[str, Any] = Field(..., description="Recipe JSON data")
+    name_override: Optional[str] = Field(None, description="Override recipe name")
+
+
+class RecipeExportJSONResponse(BaseModel):
+    """Response schema for JSON recipe export."""
+
+    format_version: str
+    recipe: Dict[str, Any]
+
+
+class RecipeDuplicateRequest(BaseModel):
+    """Request schema for duplicating recipe."""
+
+    new_name: str = Field(..., description="Name for duplicate recipe")
+
+
+class RecipeVersionHistoryResponse(BaseModel):
+    """Response schema for version history."""
+
+    versions: List[Dict[str, Any]]
+    total_versions: int
+
+
 class AutoCleanRequest(BaseModel):
     """Request schema for auto-clean operation."""
 

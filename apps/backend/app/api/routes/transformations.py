@@ -23,6 +23,16 @@ from app.schemas.transformation import (
     RecipeApplyRequest,
     RecipeExportRequest,
     RecipeExportResponse,
+    RecipeCompatibilityRequest,
+    RecipeCompatibilityResponse,
+    RecipeVersionRequest,
+    RecipeShareRequest,
+    RecipeShareResponse,
+    SharedRecipeListResponse,
+    RecipeImportRequest,
+    RecipeExportJSONResponse,
+    RecipeDuplicateRequest,
+    RecipeVersionHistoryResponse,
     TransformationHistoryResponse,
     AutoCleanRequest,
     TransformationSuggestionResponse,
@@ -35,7 +45,7 @@ from app.services.transformation_engine.transformation_engine import (
     TransformationType as EngineTransformationType
 )
 from app.services.transformation_engine.validators import TransformationValidator
-from app.services.transformation_engine.recipe_manager import RecipeManager
+from app.services.transformation_engine.recipe_manager import RecipeManager, RecipeCompatibilityChecker
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.redis_cache import cache_service
 from app.services.exceptions import NotFoundError, OperationError
@@ -736,16 +746,293 @@ async def delete_recipe(
     """Delete a recipe"""
     try:
         success = await RecipeManager.delete_recipe(recipe_id, current_user_id)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail="Recipe not found or unauthorized")
-        
+
         return {"message": "Recipe deleted successfully"}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Enhanced Recipe Management Routes
+
+@router.post("/recipes/{recipe_id}/check-compatibility", response_model=RecipeCompatibilityResponse)
+async def check_recipe_compatibility(
+    recipe_id: str,
+    request: RecipeCompatibilityRequest,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Check if recipe can be applied to a dataset"""
+    try:
+        compatibility = await RecipeCompatibilityChecker.check_compatibility(
+            recipe_id=recipe_id,
+            dataset_schema=request.dataset_schema
+        )
+
+        return RecipeCompatibilityResponse(
+            is_compatible=compatibility.is_compatible,
+            missing_columns=compatibility.missing_columns,
+            type_mismatches=compatibility.type_mismatches,
+            warnings=compatibility.warnings,
+            suggestions=compatibility.suggestions,
+            compatibility_score=compatibility.compatibility_score
+        )
+
+    except Exception as e:
+        logger.error(f"Compatibility check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recipes/{recipe_id}/versions", response_model=RecipeResponse)
+async def create_recipe_version(
+    recipe_id: str,
+    request: RecipeVersionRequest,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Create a new version of a recipe"""
+    try:
+        new_version = await RecipeManager.create_version(
+            recipe_id=recipe_id,
+            user_id=current_user_id,
+            changes=request.changes,
+            version_notes=request.version_notes
+        )
+
+        if not new_version:
+            raise HTTPException(status_code=404, detail="Recipe not found or unauthorized")
+
+        return RecipeResponse(
+            id=str(new_version.id),
+            name=new_version.name,
+            description=new_version.description,
+            user_id=new_version.user_id,
+            steps=[{
+                "step_id": step.step_id,
+                "type": step.transformation_type,
+                "parameters": step.parameters,
+                "description": step.description,
+                "order": step.order
+            } for step in new_version.steps],
+            created_at=new_version.created_at,
+            updated_at=new_version.updated_at,
+            is_public=new_version.is_public,
+            tags=new_version.tags,
+            usage_count=new_version.usage_count,
+            rating=new_version.rating
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Create version failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/recipes/{recipe_id}/versions", response_model=RecipeVersionHistoryResponse)
+async def get_recipe_version_history(
+    recipe_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Get version history for a recipe"""
+    try:
+        versions = await RecipeManager.get_version_history(recipe_id)
+
+        return RecipeVersionHistoryResponse(
+            versions=[{
+                "id": str(v.id),
+                "name": v.name,
+                "version": v.version,
+                "created_at": v.created_at.isoformat(),
+                "updated_at": v.updated_at.isoformat(),
+                "parent_recipe_id": str(v.parent_recipe_id) if v.parent_recipe_id else None,
+                "metadata": v.metadata
+            } for v in versions],
+            total_versions=len(versions)
+        )
+
+    except Exception as e:
+        logger.error(f"Get version history failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recipes/{recipe_id}/duplicate", response_model=RecipeResponse)
+async def duplicate_recipe(
+    recipe_id: str,
+    request: RecipeDuplicateRequest,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Duplicate a recipe as a template"""
+    try:
+        duplicate = await RecipeManager.duplicate_recipe(
+            recipe_id=recipe_id,
+            user_id=current_user_id,
+            new_name=request.new_name
+        )
+
+        if not duplicate:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+        return RecipeResponse(
+            id=str(duplicate.id),
+            name=duplicate.name,
+            description=duplicate.description,
+            user_id=duplicate.user_id,
+            steps=[{
+                "step_id": step.step_id,
+                "type": step.transformation_type,
+                "parameters": step.parameters,
+                "description": step.description,
+                "order": step.order
+            } for step in duplicate.steps],
+            created_at=duplicate.created_at,
+            updated_at=duplicate.updated_at,
+            is_public=duplicate.is_public,
+            tags=duplicate.tags,
+            usage_count=duplicate.usage_count,
+            rating=duplicate.rating
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Duplicate recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recipes/{recipe_id}/share", response_model=RecipeShareResponse)
+async def share_recipe(
+    recipe_id: str,
+    request: RecipeShareRequest,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Share a recipe with another user (creates independent copy)"""
+    try:
+        shared = await RecipeManager.share_recipe(
+            recipe_id=recipe_id,
+            owner_id=current_user_id,
+            target_user_id=request.target_user_id
+        )
+
+        if not shared:
+            raise HTTPException(status_code=404, detail="Recipe not found or unauthorized")
+
+        return RecipeShareResponse(
+            shared_recipe_id=str(shared.id),
+            target_user_id=request.target_user_id,
+            shared_at=shared.shared_at.isoformat(),
+            message=f"Recipe shared successfully with user {request.target_user_id}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Share recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/recipes/shared", response_model=SharedRecipeListResponse)
+async def get_shared_recipes(
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Get all recipes shared with the current user"""
+    try:
+        shared_recipes = await RecipeManager.get_shared_recipes(current_user_id)
+
+        return SharedRecipeListResponse(
+            shared_recipes=[{
+                "id": str(sr.id),
+                "name": sr.name,
+                "description": sr.description,
+                "original_recipe_id": str(sr.original_recipe_id),
+                "original_owner_id": sr.original_owner_id,
+                "shared_at": sr.shared_at.isoformat(),
+                "version": sr.version,
+                "tags": sr.tags,
+                "steps_count": len(sr.steps)
+            } for sr in shared_recipes],
+            total=len(shared_recipes)
+        )
+
+    except Exception as e:
+        logger.error(f"Get shared recipes failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/recipes/{recipe_id}/export/json", response_model=RecipeExportJSONResponse)
+async def export_recipe_json(
+    recipe_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Export recipe as JSON for portability"""
+    try:
+        recipe = await RecipeManager.get_recipe(recipe_id)
+
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+        # Check access
+        if not recipe.is_public and recipe.user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        json_data = RecipeManager.export_recipe_to_json(recipe)
+
+        return RecipeExportJSONResponse(
+            format_version=json_data["format_version"],
+            recipe=json_data["recipe"]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export recipe JSON failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recipes/import", response_model=RecipeResponse)
+async def import_recipe(
+    request: RecipeImportRequest,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Import recipe from JSON"""
+    try:
+        imported = await RecipeManager.import_recipe_from_json(
+            json_data=request.json_data,
+            user_id=current_user_id,
+            name_override=request.name_override
+        )
+
+        if not imported:
+            raise HTTPException(status_code=400, detail="Import failed - invalid recipe format")
+
+        return RecipeResponse(
+            id=str(imported.id),
+            name=imported.name,
+            description=imported.description,
+            user_id=imported.user_id,
+            steps=[{
+                "step_id": step.step_id,
+                "type": step.transformation_type,
+                "parameters": step.parameters,
+                "description": step.description,
+                "order": step.order
+            } for step in imported.steps],
+            created_at=imported.created_at,
+            updated_at=imported.updated_at,
+            is_public=imported.is_public,
+            tags=imported.tags,
+            usage_count=imported.usage_count,
+            rating=imported.rating
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Import recipe failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
