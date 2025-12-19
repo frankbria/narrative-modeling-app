@@ -24,6 +24,17 @@ export { default as TransformationNode } from './TransformationNode';
 export { default as TransformationSidebar } from './TransformationSidebar';
 export { default as RecipeManager } from './RecipeManager';
 export { default as PreviewPanel } from './PreviewPanel';
+export {
+  PreviewControls,
+  type PreviewControlsProps,
+} from './PreviewControls';
+export {
+  TransformationPreview,
+  type TransformationPreviewProps,
+  type PreviewResult,
+  type PreviewResponse,
+  type ImpactStatistics,
+} from './TransformationPreview';
 
 // Export integration examples for documentation
 export {
