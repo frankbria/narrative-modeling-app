@@ -88,6 +88,44 @@ export interface RecipeListResponse {
   per_page: number
 }
 
+export interface RecipeCompatibilityResponse {
+  is_compatible: boolean
+  missing_columns: string[]
+  type_mismatches: Record<string, string>
+  warnings: string[]
+  suggestions: string[]
+  compatibility_score: number
+}
+
+export interface RecipeShareResponse {
+  shared_recipe_id: string
+  target_user_id: string
+  shared_at: string
+  message: string
+}
+
+export interface SharedRecipe {
+  id: string
+  name: string
+  description: string
+  original_recipe_id: string
+  original_owner_id: string
+  shared_at: string
+  version: number
+  tags: string[]
+  steps_count: number
+}
+
+export interface SharedRecipeListResponse {
+  shared_recipes: SharedRecipe[]
+  total: number
+}
+
+export interface RecipeExportJSONResponse {
+  format_version: string
+  recipe: any
+}
+
 export class TransformationService {
   private static async getHeaders(token: string | null): Promise<HeadersInit> {
     return {
@@ -320,5 +358,129 @@ export class TransformationService {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to delete recipe')
     }
+  }
+
+  static async checkRecipeCompatibility(
+    recipeId: string,
+    datasetSchema: Record<string, string>,
+    token: string | null
+  ): Promise<RecipeCompatibilityResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/check-compatibility`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ dataset_schema: datasetSchema })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to check compatibility')
+    }
+
+    return response.json()
+  }
+
+  static async duplicateRecipe(
+    recipeId: string,
+    newName: string,
+    token: string | null
+  ): Promise<Recipe> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/duplicate`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ new_name: newName })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to duplicate recipe')
+    }
+
+    return response.json()
+  }
+
+  static async shareRecipe(
+    recipeId: string,
+    targetUserId: string,
+    token: string | null
+  ): Promise<RecipeShareResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/share`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ target_user_id: targetUserId })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to share recipe')
+    }
+
+    return response.json()
+  }
+
+  static async getSharedRecipes(
+    token: string | null
+  ): Promise<SharedRecipeListResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/shared`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to fetch shared recipes')
+    }
+
+    return response.json()
+  }
+
+  static async exportRecipeAsJSON(
+    recipeId: string,
+    token: string | null
+  ): Promise<RecipeExportJSONResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/export/json`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to export recipe')
+    }
+
+    return response.json()
+  }
+
+  static async importRecipe(
+    jsonData: any,
+    token: string | null
+  ): Promise<Recipe> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/import`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ json_data: jsonData })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to import recipe')
+    }
+
+    return response.json()
   }
 }
