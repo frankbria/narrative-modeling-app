@@ -22,6 +22,7 @@ interface RecipeLibraryProps {
   onApplyRecipe?: (recipe: Recipe) => void;
   onCreateNew?: () => void;
   showCreateButton?: boolean;
+  includePublic?: boolean;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -30,7 +31,8 @@ type SortBy = 'recent' | 'popular' | 'name';
 export function RecipeLibrary({
   onApplyRecipe,
   onCreateNew,
-  showCreateButton = false
+  showCreateButton = false,
+  includePublic = true
 }: RecipeLibraryProps) {
   const { data: session } = useSession();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -70,7 +72,7 @@ export function RecipeLibrary({
         token,
         page,
         perPage,
-        true,
+        includePublic,
         selectedTags.length > 0 ? selectedTags : undefined
       );
 

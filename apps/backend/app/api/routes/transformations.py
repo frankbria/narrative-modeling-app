@@ -797,6 +797,21 @@ async def check_recipe_compatibility(
 ):
     """Check if recipe can be applied to a dataset"""
     try:
+        # Fetch recipe to check authorization
+        recipe = await RecipeManager.get_recipe(recipe_id)
+
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+        # Check access - user must own the recipe or it must be public
+        if not recipe.is_public and recipe.user_id != current_user_id:
+            logger.warning(
+                f"Access denied: User {current_user_id} attempted to check compatibility "
+                f"for recipe {recipe_id} owned by {recipe.user_id}"
+            )
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Only proceed with compatibility check if authorized
         compatibility = await RecipeCompatibilityChecker.check_compatibility(
             recipe_id=recipe_id,
             dataset_schema=request.dataset_schema
@@ -811,6 +826,8 @@ async def check_recipe_compatibility(
             compatibility_score=compatibility.compatibility_score
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Compatibility check failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -868,6 +885,21 @@ async def get_recipe_version_history(
 ):
     """Get version history for a recipe"""
     try:
+        # Fetch recipe to check authorization
+        recipe = await RecipeManager.get_recipe(recipe_id)
+
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+        # Check access - user must own the recipe or it must be public
+        if not recipe.is_public and recipe.user_id != current_user_id:
+            logger.warning(
+                f"Access denied: User {current_user_id} attempted to view version history "
+                f"for recipe {recipe_id} owned by {recipe.user_id}"
+            )
+            raise HTTPException(status_code=403, detail="Not authorized to view recipe versions")
+
+        # Only proceed with fetching version history if authorized
         versions = await RecipeManager.get_version_history(recipe_id)
 
         return RecipeVersionHistoryResponse(
@@ -883,6 +915,8 @@ async def get_recipe_version_history(
             total_versions=len(versions)
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get version history failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

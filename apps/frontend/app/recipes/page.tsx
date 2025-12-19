@@ -155,6 +155,7 @@ export default function RecipesPage() {
             onApplyRecipe={handleApplyRecipe}
             onCreateNew={handleCreateNew}
             showCreateButton={true}
+            includePublic={false}
           />
         </TabsContent>
 
@@ -237,7 +238,7 @@ export default function RecipesPage() {
                 <RecipeCard
                   key={recipe.id}
                   recipe={recipe}
-                  onApplyRecipe={handleApplyRecipe}
+                  onApply={handleApplyRecipe}
                   currentUserId={session?.user?.id}
                   showActions={true}
                 />
