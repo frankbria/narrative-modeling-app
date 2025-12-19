@@ -68,10 +68,10 @@ describe('RecipeCompatibilityBadge', () => {
     });
 
     it('should use success variant for high compatibility', () => {
-      const { container } = render(<RecipeCompatibilityBadge compatibility={highCompatibility} />);
+      render(<RecipeCompatibilityBadge compatibility={highCompatibility} />);
 
-      const badge = container.querySelector('[class*="badge"]');
-      expect(badge).toBeTruthy();
+      // Verify the badge is rendered with the correct content
+      expect(screen.getByText('Compatible')).toBeInTheDocument();
     });
 
     it('should show CheckCircle icon for high compatibility', () => {

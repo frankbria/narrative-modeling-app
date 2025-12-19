@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { RecipeShareDialog } from '@/components/recipes/RecipeShareDialog';
 import { TransformationService } from '@/lib/services/transformation';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { waitForAsync, actAsync } from '@/__tests__/utils';
 
 // Mock dependencies
 jest.mock('@/lib/services/transformation');
@@ -29,7 +30,8 @@ describe('RecipeShareDialog', () => {
       render(<RecipeShareDialog {...mockProps} />);
 
       expect(screen.getByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByText('Share Recipe')).toBeInTheDocument();
+      // Use heading role to be more specific than text which appears in both title and button
+      expect(screen.getByRole('heading', { name: /share recipe/i })).toBeInTheDocument();
     });
 
     it('should not render dialog when open is false', () => {
@@ -121,17 +123,19 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
-        expect(getAuthToken).toHaveBeenCalled();
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
       });
 
-      expect(TransformationService.shareRecipe).toHaveBeenCalledWith(
-        'recipe-123',
-        'user-456',
-        'mock-token'
-      );
+      await waitForAsync(() => {
+        expect(getAuthToken).toHaveBeenCalled();
+        expect(TransformationService.shareRecipe).toHaveBeenCalledWith(
+          'recipe-123',
+          'user-456',
+          'mock-token'
+        );
+      });
     });
 
     it('should trim whitespace from user ID before submitting', async () => {
@@ -141,9 +145,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: '  user-456  ' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(TransformationService.shareRecipe).toHaveBeenCalledWith(
           'recipe-123',
           'user-456',
@@ -165,13 +172,18 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Sharing...')).toBeInTheDocument();
       });
 
-      resolveShare!({ message: 'Recipe shared successfully' });
+      await actAsync(async () => {
+        resolveShare!({ message: 'Recipe shared successfully' });
+      });
     });
 
     it('should disable form inputs while sharing', async () => {
@@ -187,16 +199,20 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
-        expect(userIdInput).toBeDisabled();
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
       });
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i });
-      expect(cancelButton).toBeDisabled();
+      await waitForAsync(() => {
+        expect(userIdInput).toBeDisabled();
+        const cancelButton = screen.getByRole('button', { name: /cancel/i });
+        expect(cancelButton).toBeDisabled();
+      });
 
-      resolveShare!({ message: 'Recipe shared successfully' });
+      await actAsync(async () => {
+        resolveShare!({ message: 'Recipe shared successfully' });
+      });
     });
 
     it('should display success message after successful share', async () => {
@@ -206,9 +222,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Recipe shared successfully')).toBeInTheDocument();
       });
     });
@@ -220,14 +239,17 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Recipe shared successfully')).toBeInTheDocument();
       });
 
-      // Wait for success message timeout
-      await waitFor(() => {
+      // Wait for success message - input should be cleared
+      await waitForAsync(() => {
         expect(userIdInput.value).toBe('');
       }, { timeout: 2500 });
     });
@@ -240,15 +262,20 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Recipe shared successfully')).toBeInTheDocument();
       });
 
-      jest.advanceTimersByTime(2000);
+      await actAsync(async () => {
+        jest.advanceTimersByTime(2000);
+      });
 
-      await waitFor(() => {
+      await waitForAsync(() => {
         expect(mockProps.onOpenChange).toHaveBeenCalledWith(false);
       });
 
@@ -268,9 +295,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'invalid-user' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('User not found')).toBeInTheDocument();
       });
     });
@@ -284,9 +314,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Failed to share recipe')).toBeInTheDocument();
       });
     });
@@ -302,9 +335,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'invalid-user' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('User not found')).toBeInTheDocument();
       });
 
@@ -315,9 +351,12 @@ describe('RecipeShareDialog', () => {
 
       // Type again
       fireEvent.change(userIdInput, { target: { value: 'valid-user' } });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.queryByText('User not found')).not.toBeInTheDocument();
       });
     });
@@ -363,9 +402,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'invalid-user' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('User not found')).toBeInTheDocument();
       });
 
@@ -386,9 +428,12 @@ describe('RecipeShareDialog', () => {
       fireEvent.change(userIdInput, { target: { value: 'user-456' } });
 
       const shareButton = screen.getByRole('button', { name: /share recipe/i });
-      fireEvent.click(shareButton);
 
-      await waitFor(() => {
+      await actAsync(async () => {
+        fireEvent.click(shareButton);
+      });
+
+      await waitForAsync(() => {
         expect(screen.getByText('Recipe shared successfully')).toBeInTheDocument();
       });
 
