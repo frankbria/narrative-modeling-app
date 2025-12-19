@@ -61,7 +61,43 @@ export function mockRouter(overrides: Partial<{
 }
 
 /**
- * Create a wrapper component with optional providers
+ * Creates a wrapper component that conditionally composes multiple provider layers
+ * based on the test configuration options.
+ *
+ * This function implements a composition pattern where provider components are
+ * layered from innermost (children) to outermost (final wrapper). The composition
+ * order is: children → WorkflowProvider → CustomWrapper.
+ *
+ * @param {CustomRenderOptions} options - Configuration for wrapper composition
+ * @param {boolean} options.withWorkflow - If true, wraps children with WorkflowProvider
+ * @param {string} options.initialDatasetId - Dataset ID to pass to WorkflowProvider
+ * @param {React.ComponentType} options.wrapper - Additional custom wrapper component
+ *
+ * @returns {React.ComponentType | undefined} A composed wrapper component, or undefined
+ *   if no providers are needed (optimization to avoid unnecessary React elements)
+ *
+ * @internal This is an internal helper function for renderWithProviders
+ *
+ * @example
+ * // Returns undefined (no wrapping needed)
+ * const wrapper = createWrapper({});
+ *
+ * @example
+ * // Returns a Wrapper component with WorkflowProvider
+ * const wrapper = createWrapper({ withWorkflow: true, initialDatasetId: 'dataset-1' });
+ *
+ * @example
+ * // Returns a Wrapper with custom provider only
+ * const wrapper = createWrapper({
+ *   wrapper: ({ children }) => <CustomContext.Provider>{children}</CustomContext.Provider>
+ * });
+ *
+ * @example
+ * // Returns a Wrapper with both WorkflowProvider and custom wrapper (layered)
+ * const wrapper = createWrapper({
+ *   withWorkflow: true,
+ *   wrapper: MyCustomProvider
+ * });
  */
 function createWrapper(options: CustomRenderOptions = {}) {
   const { withWorkflow, initialDatasetId, wrapper: CustomWrapper } = options;
