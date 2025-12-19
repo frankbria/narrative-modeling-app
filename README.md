@@ -106,15 +106,15 @@ npm run dev
 
 ## 📚 Documentation
 
-For comprehensive documentation, see **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)**
+For comprehensive documentation, see **[DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)**
 
 Quick links:
-- [Local Development Setup](LOCAL_DEVELOPMENT.md)
-- [Current Sprint (Sprint 12)](SPRINT_12.md)
-- [Sprint History](docs/sprints/sprint-11/)
+- [Local Development Setup](docs/development/LOCAL_DEVELOPMENT.md)
+- [Current Sprint (Sprint 12)](docs/sprints/sprint-12/SPRINT_12.md)
+- [Sprint History](docs/sprints/)
 - [User Stories](USER_STORIES.md)
-- [Production Deployment](PRODUCTION_DEPLOYMENT.md)
-- [Production API Guide](PRODUCTION_API_GUIDE.md)
+- [Production Deployment](docs/deployment/PRODUCTION_DEPLOYMENT.md)
+- [Production API Guide](docs/deployment/PRODUCTION_API_GUIDE.md)
 
 ## 📚 License
 

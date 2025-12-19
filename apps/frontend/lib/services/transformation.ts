@@ -1,29 +1,41 @@
 /**
  * Transformation service for data pipeline operations
+ *
+ * Provides methods for transformation operations, recipe management,
+ * and pipeline execution.
+ *
+ * @module lib/services/transformation
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+import type {
+  Recipe,
+  RecipeListResponse,
+  RecipeCompatibilityResponse,
+  RecipeShareResponse,
+  SharedRecipeListResponse,
+  RecipeExportJSONResponse,
+  RecipeVersionHistoryResponse,
+  RecipeCreateRequest,
+  TransformationStep,
+  ParameterValue
+} from '@/lib/types/recipe'
 
-export interface TransformationStep {
-  type: string
-  parameters: Record<string, any>
-  description?: string
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface TransformationRequest {
   dataset_id: string
   transformation_type: string
-  parameters: Record<string, any>
+  parameters: Record<string, ParameterValue>
   preview_rows?: number
 }
 
 export interface TransformationPreviewResponse {
   success: boolean
-  preview_data: any[]
+  preview_data: Array<Record<string, ParameterValue>>
   affected_rows: number
   affected_columns: string[]
-  stats_before: Record<string, any>
-  stats_after: Record<string, any>
+  stats_before: Record<string, ParameterValue>
+  stats_after: Record<string, ParameterValue>
   error?: string
   warnings?: string[]
 }
@@ -61,32 +73,7 @@ export interface TransformationSuggestionResponse {
   critical_issues: string[]
 }
 
-export interface Recipe {
-  id: string
-  name: string
-  description: string
-  user_id: string
-  steps: Array<{
-    step_id: string
-    type: string
-    parameters: Record<string, any>
-    description: string
-    order: number
-  }>
-  created_at: string
-  updated_at: string
-  is_public: boolean
-  tags: string[]
-  usage_count: number
-  rating: number
-}
-
-export interface RecipeListResponse {
-  recipes: Recipe[]
-  total: number
-  page: number
-  per_page: number
-}
+// Recipe types are imported from @/lib/types/recipe
 
 export class TransformationService {
   private static async getHeaders(token: string | null): Promise<HeadersInit> {
@@ -187,6 +174,16 @@ export class TransformationService {
     return response.json()
   }
 
+  /**
+   * List recipes with pagination and filtering
+   *
+   * @param token - Authentication token
+   * @param page - Page number (1-indexed)
+   * @param perPage - Results per page
+   * @param includePublic - Include public recipes from other users
+   * @param tags - Filter by tags (optional)
+   * @returns Paginated recipe list
+   */
   static async listRecipes(
     token: string | null,
     page: number = 1,
@@ -279,15 +276,15 @@ export class TransformationService {
     return response.json()
   }
 
+  /**
+   * Create a new recipe
+   *
+   * @param recipe - Recipe creation request
+   * @param token - Authentication token
+   * @returns The created recipe
+   */
   static async createRecipe(
-    recipe: {
-      name: string
-      description: string
-      steps: TransformationStep[]
-      dataset_id?: string
-      is_public?: boolean
-      tags?: string[]
-    },
+    recipe: RecipeCreateRequest,
     token: string | null
   ): Promise<Recipe> {
     const response = await fetch(`${API_BASE_URL}/transformations/recipes`, {
@@ -320,5 +317,233 @@ export class TransformationService {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to delete recipe')
     }
+  }
+
+  /**
+   * Check if a recipe is compatible with a dataset schema
+   *
+   * @param recipeId - ID of the recipe to check
+   * @param datasetSchema - Dataset column schema (column_name -> data_type)
+   * @param token - Authentication token
+   * @returns Compatibility report with score and suggestions
+   */
+  static async checkRecipeCompatibility(
+    recipeId: string,
+    datasetSchema: Record<string, string>,
+    token: string | null
+  ): Promise<RecipeCompatibilityResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/check-compatibility`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ dataset_schema: datasetSchema })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to check compatibility')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Duplicate an existing recipe with a new name
+   *
+   * @param recipeId - ID of the recipe to duplicate
+   * @param newName - Name for the duplicated recipe
+   * @param token - Authentication token
+   * @returns The newly created duplicate recipe
+   */
+  static async duplicateRecipe(
+    recipeId: string,
+    newName: string,
+    token: string | null
+  ): Promise<Recipe> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/duplicate`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ new_name: newName })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to duplicate recipe')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Share a recipe with another user (creates independent copy)
+   *
+   * @param recipeId - ID of the recipe to share
+   * @param targetUserId - User ID to share the recipe with
+   * @param token - Authentication token
+   * @returns Share confirmation with shared recipe details
+   */
+  static async shareRecipe(
+    recipeId: string,
+    targetUserId: string,
+    token: string | null
+  ): Promise<RecipeShareResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/share`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ target_user_id: targetUserId })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to share recipe')
+    }
+
+    return response.json()
+  }
+
+  static async getSharedRecipes(
+    token: string | null
+  ): Promise<SharedRecipeListResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/shared`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to fetch shared recipes')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Export a recipe as JSON for backup or sharing
+   *
+   * @param recipeId - ID of the recipe to export
+   * @param token - Authentication token
+   * @returns Recipe data in JSON format with format version
+   */
+  static async exportRecipeAsJSON(
+    recipeId: string,
+    token: string | null
+  ): Promise<RecipeExportJSONResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/export/json`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to export recipe')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Import a recipe from JSON data
+   *
+   * @param jsonData - Recipe JSON data (from export)
+   * @param token - Authentication token
+   * @param nameOverride - Optional new name for the imported recipe
+   * @returns The newly created recipe from import
+   */
+  static async importRecipe(
+    jsonData: RecipeExportJSONResponse,
+    token: string | null,
+    nameOverride?: string
+  ): Promise<Recipe> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/import`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({
+          json_data: jsonData,
+          name_override: nameOverride
+        })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to import recipe')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Create a new version of an existing recipe
+   *
+   * @param recipeId - ID of the recipe to version
+   * @param changes - Changes to apply to the new version
+   * @param versionNotes - Optional notes about this version
+   * @param token - Authentication token
+   * @returns The newly created recipe version
+   */
+  static async createRecipeVersion(
+    recipeId: string,
+    changes: Record<string, ParameterValue>,
+    versionNotes: string | undefined,
+    token: string | null
+  ): Promise<Recipe> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/versions`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({
+          changes,
+          version_notes: versionNotes
+        })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to create recipe version')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Get version history for a recipe
+   *
+   * @param recipeId - ID of the recipe
+   * @param token - Authentication token
+   * @returns Version history with all versions
+   */
+  static async getRecipeVersionHistory(
+    recipeId: string,
+    token: string | null
+  ): Promise<RecipeVersionHistoryResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/recipes/${recipeId}/versions`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to fetch version history')
+    }
+
+    return response.json()
   }
 }

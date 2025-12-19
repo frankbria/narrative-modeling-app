@@ -1,0 +1,612 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { RecipeLibrary } from '@/components/recipes/RecipeLibrary';
+import { Recipe, TransformationService } from '@/lib/services/transformation';
+import { useSession } from 'next-auth/react';
+import { getAuthToken } from '@/lib/auth-helpers';
+import { waitForAsync, actAsync } from '@/__tests__/utils';
+
+// Mock dependencies
+jest.mock('next-auth/react', () => ({
+  useSession: jest.fn(),
+}));
+jest.mock('@/lib/auth-helpers');
+jest.mock('@/lib/services/transformation');
+
+// Mock RecipeCard component
+jest.mock('@/components/recipes/RecipeCard', () => ({
+  RecipeCard: ({ recipe, onApply, onDuplicate, onDelete }: any) => (
+    <div data-testid={`recipe-card-${recipe.id}`}>
+      <h3>{recipe.name}</h3>
+      <button onClick={() => onApply?.(recipe)}>Apply</button>
+      <button onClick={() => onDuplicate?.(recipe)}>Duplicate</button>
+      <button onClick={() => onDelete?.(recipe)}>Delete</button>
+    </div>
+  ),
+}));
+
+describe('RecipeLibrary', () => {
+  const mockRecipes: Recipe[] = [
+    {
+      id: 'recipe-1',
+      name: 'Data Cleaning Recipe',
+      description: 'Clean and preprocess data',
+      user_id: 'user-1',
+      steps: [{ type: 'remove_duplicates', parameters: {} }],
+      tags: ['cleaning', 'preprocessing'],
+      version: 1,
+      created_at: '2024-01-15T10:00:00Z',
+      updated_at: '2024-01-15T10:00:00Z',
+      is_public: true,
+      usage_count: 10,
+      rating: 4.5,
+    },
+    {
+      id: 'recipe-2',
+      name: 'Feature Engineering',
+      description: 'Create new features',
+      user_id: 'user-1',
+      steps: [{ type: 'encode', parameters: {} }],
+      tags: ['feature-engineering'],
+      version: 1,
+      created_at: '2024-01-14T10:00:00Z',
+      updated_at: '2024-01-14T10:00:00Z',
+      is_public: false,
+      usage_count: 5,
+      rating: 4.0,
+    },
+    {
+      id: 'recipe-3',
+      name: 'Anomaly Detection Prep',
+      description: 'Prepare data for anomaly detection',
+      user_id: 'user-1',
+      steps: [{ type: 'scale', parameters: {} }],
+      tags: ['preprocessing', 'scaling'],
+      version: 1,
+      created_at: '2024-01-13T10:00:00Z',
+      updated_at: '2024-01-13T10:00:00Z',
+      is_public: true,
+      usage_count: 15,
+      rating: 4.8,
+    },
+  ];
+
+  const mockSession = {
+    user: { id: 'user-1', email: 'test@example.com' },
+    expires: '2024-12-31',
+  };
+
+  const mockHandlers = {
+    onApplyRecipe: jest.fn(),
+    onCreateNew: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useSession as jest.Mock).mockReturnValue({ data: mockSession, status: 'authenticated' });
+    (getAuthToken as jest.Mock).mockResolvedValue('mock-token');
+    (TransformationService.listRecipes as jest.Mock).mockResolvedValue({
+      recipes: mockRecipes,
+      total: 3,
+      page: 1,
+      per_page: 12,
+    });
+    (TransformationService.duplicateRecipe as jest.Mock).mockResolvedValue({
+      id: 'recipe-4',
+      name: 'Data Cleaning Recipe (Copy)',
+    });
+    (TransformationService.deleteRecipe as jest.Mock).mockResolvedValue({ success: true });
+  });
+
+  describe('Rendering', () => {
+    it('should render recipe library with title and description', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      expect(screen.getByText('Recipe Library')).toBeInTheDocument();
+      expect(screen.getByText('Browse and apply transformation recipes')).toBeInTheDocument();
+    });
+
+    it('should show loading state initially', () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      // Check for loading spinner by looking for common loading indicators
+      // The loading state should be present before recipes are loaded
+      expect(TransformationService.listRecipes).toHaveBeenCalled();
+    });
+
+    it('should load and display recipes', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Feature Engineering')).toBeInTheDocument();
+      expect(screen.getByText('Anomaly Detection Prep')).toBeInTheDocument();
+    });
+
+    it('should display create button when showCreateButton is true', () => {
+      render(
+        <RecipeLibrary
+          onApplyRecipe={mockHandlers.onApplyRecipe}
+          onCreateNew={mockHandlers.onCreateNew}
+          showCreateButton={true}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: /create new recipe/i })).toBeInTheDocument();
+    });
+
+    it('should not display create button when showCreateButton is false', () => {
+      render(
+        <RecipeLibrary
+          onApplyRecipe={mockHandlers.onApplyRecipe}
+          showCreateButton={false}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /create new recipe/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Search Functionality', () => {
+    it('should filter recipes by name', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const searchInput = screen.getByPlaceholderText('Search recipes...');
+
+      await actAsync(async () => {
+        fireEvent.change(searchInput, { target: { value: 'Feature' } });
+      });
+
+      await waitForAsync(() => {
+        expect(screen.queryByText('Data Cleaning Recipe')).not.toBeInTheDocument();
+        expect(screen.getByText('Feature Engineering')).toBeInTheDocument();
+        expect(screen.queryByText('Anomaly Detection Prep')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should filter recipes by description', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const searchInput = screen.getByPlaceholderText('Search recipes...');
+
+      await actAsync(async () => {
+        fireEvent.change(searchInput, { target: { value: 'anomaly' } });
+      });
+
+      await waitForAsync(() => {
+        expect(screen.queryByText('Data Cleaning Recipe')).not.toBeInTheDocument();
+        expect(screen.getByText('Anomaly Detection Prep')).toBeInTheDocument();
+      });
+    });
+
+    it('should filter recipes by tags', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const searchInput = screen.getByPlaceholderText('Search recipes...');
+
+      await actAsync(async () => {
+        fireEvent.change(searchInput, { target: { value: 'cleaning' } });
+      });
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+        expect(screen.queryByText('Feature Engineering')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should show empty state when no results match search', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const searchInput = screen.getByPlaceholderText('Search recipes...');
+
+      await actAsync(async () => {
+        fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
+      });
+
+      await waitForAsync(() => {
+        expect(screen.getByText('No recipes found')).toBeInTheDocument();
+        expect(screen.getByText('Try adjusting your search filters')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Tag Filtering', () => {
+    it('should display all available tags', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('cleaning')).toBeInTheDocument();
+        expect(screen.getByText('preprocessing')).toBeInTheDocument();
+        expect(screen.getByText('feature-engineering')).toBeInTheDocument();
+        expect(screen.getByText('scaling')).toBeInTheDocument();
+      });
+    });
+
+    it('should filter recipes when tag is selected', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('cleaning')).toBeInTheDocument();
+      });
+
+      const cleaningTag = screen.getByText('cleaning');
+
+      await actAsync(async () => {
+        fireEvent.click(cleaningTag);
+      });
+
+      await waitForAsync(() => {
+        expect(TransformationService.listRecipes).toHaveBeenCalledWith(
+          'mock-token',
+          1,
+          12,
+          true,
+          ['cleaning']
+        );
+      });
+    });
+
+    it('should toggle tag selection', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('cleaning')).toBeInTheDocument();
+      });
+
+      const cleaningTag = screen.getByText('cleaning');
+
+      // Select tag
+      await actAsync(async () => {
+        fireEvent.click(cleaningTag);
+      });
+
+      await waitForAsync(() => {
+        expect(TransformationService.listRecipes).toHaveBeenCalledWith(
+          'mock-token',
+          1,
+          12,
+          true,
+          ['cleaning']
+        );
+      });
+
+      // Deselect tag
+      await actAsync(async () => {
+        fireEvent.click(cleaningTag);
+      });
+
+      await waitForAsync(() => {
+        expect(TransformationService.listRecipes).toHaveBeenCalledWith(
+          'mock-token',
+          1,
+          12,
+          true,
+          undefined
+        );
+      });
+    });
+  });
+
+  describe('Sorting', () => {
+    it('should sort by most recent by default', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        const recipeCards = screen.getAllByTestId(/recipe-card/);
+        expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-1');
+      });
+    });
+
+    it('should sort by popularity', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const sortSelect = screen.getByRole('combobox');
+
+      await actAsync(async () => {
+        fireEvent.change(sortSelect, { target: { value: 'popular' } });
+      });
+
+      await waitForAsync(() => {
+        const recipeCards = screen.getAllByTestId(/recipe-card/);
+        expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
+      });
+    });
+
+    it('should sort by name alphabetically', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const sortSelect = screen.getByRole('combobox');
+
+      await actAsync(async () => {
+        fireEvent.change(sortSelect, { target: { value: 'name' } });
+      });
+
+      await waitForAsync(() => {
+        const recipeCards = screen.getAllByTestId(/recipe-card/);
+        expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
+      });
+    });
+  });
+
+  describe('View Mode Toggle', () => {
+    it('should default to grid view', async () => {
+      const { container } = render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const gridContainer = container.querySelector('.grid');
+      expect(gridContainer).toBeInTheDocument();
+    });
+
+    it('should switch to list view', async () => {
+      const { container } = render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const viewButtons = screen.getAllByRole('button');
+      const listViewButton = viewButtons.find(btn => btn.querySelector('svg'));
+
+      if (listViewButton) {
+        await actAsync(async () => {
+          fireEvent.click(listViewButton);
+        });
+      }
+
+      await waitForAsync(() => {
+        const listContainer = container.querySelector('.space-y-4');
+        expect(listContainer).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Recipe Actions', () => {
+    it('should call onApplyRecipe when apply button is clicked', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const applyButtons = screen.getAllByRole('button', { name: /apply/i });
+
+      await actAsync(async () => {
+        fireEvent.click(applyButtons[0]);
+      });
+
+      expect(mockHandlers.onApplyRecipe).toHaveBeenCalledWith(mockRecipes[0]);
+    });
+
+    it('should duplicate recipe successfully', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitForAsync(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const duplicateButtons = screen.getAllByRole('button', { name: /duplicate/i });
+
+      await actAsync(async () => {
+        fireEvent.click(duplicateButtons[0]);
+      });
+
+      await waitForAsync(() => {
+        expect(TransformationService.duplicateRecipe).toHaveBeenCalledWith(
+          'recipe-1',
+          'Data Cleaning Recipe (Copy)',
+          'mock-token'
+        );
+      });
+
+      expect(TransformationService.listRecipes).toHaveBeenCalledTimes(2);
+    });
+
+    it('should delete recipe successfully', async () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+      fireEvent.click(deleteButtons[0]);
+
+      await waitFor(() => {
+        expect(TransformationService.deleteRecipe).toHaveBeenCalledWith(
+          'recipe-1',
+          'mock-token'
+        );
+      });
+
+      expect(TransformationService.listRecipes).toHaveBeenCalledTimes(2);
+    });
+
+    it('should display error when duplicate fails', async () => {
+      (TransformationService.duplicateRecipe as jest.Mock).mockRejectedValue(
+        new Error('Duplicate failed')
+      );
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const duplicateButtons = screen.getAllByRole('button', { name: /duplicate/i });
+      fireEvent.click(duplicateButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to duplicate recipe')).toBeInTheDocument();
+      });
+    });
+
+    it('should display error when delete fails', async () => {
+      (TransformationService.deleteRecipe as jest.Mock).mockRejectedValue(
+        new Error('Delete failed')
+      );
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+      fireEvent.click(deleteButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to delete recipe')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Pagination', () => {
+    it('should show pagination when there are multiple pages', async () => {
+      (TransformationService.listRecipes as jest.Mock).mockResolvedValue({
+        recipes: mockRecipes,
+        total: 25,
+        page: 1,
+        per_page: 12,
+      });
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /previous/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /next/i })).toBeInTheDocument();
+      expect(screen.getByText(/Page 1 of 3/i)).toBeInTheDocument();
+    });
+
+    it('should disable previous button on first page', async () => {
+      (TransformationService.listRecipes as jest.Mock).mockResolvedValue({
+        recipes: mockRecipes,
+        total: 25,
+        page: 1,
+        per_page: 12,
+      });
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const prevButton = screen.getByRole('button', { name: /previous/i });
+      expect(prevButton).toBeDisabled();
+    });
+
+    it('should navigate to next page', async () => {
+      (TransformationService.listRecipes as jest.Mock).mockResolvedValue({
+        recipes: mockRecipes,
+        total: 25,
+        page: 1,
+        per_page: 12,
+      });
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
+      });
+
+      const nextButton = screen.getByRole('button', { name: /next/i });
+      fireEvent.click(nextButton);
+
+      await waitFor(() => {
+        expect(TransformationService.listRecipes).toHaveBeenCalledWith(
+          'mock-token',
+          2,
+          12,
+          true,
+          undefined
+        );
+      });
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should display error when loading recipes fails', async () => {
+      (TransformationService.listRecipes as jest.Mock).mockRejectedValue(
+        new Error('Failed to load')
+      );
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to load recipes')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Empty State', () => {
+    it('should show empty state when no recipes exist', async () => {
+      (TransformationService.listRecipes as jest.Mock).mockResolvedValue({
+        recipes: [],
+        total: 0,
+        page: 1,
+        per_page: 12,
+      });
+
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('No recipes found')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Create your first recipe to get started')).toBeInTheDocument();
+    });
+  });
+
+  describe('Create Button', () => {
+    it('should call onCreateNew when create button is clicked', async () => {
+      render(
+        <RecipeLibrary
+          onApplyRecipe={mockHandlers.onApplyRecipe}
+          onCreateNew={mockHandlers.onCreateNew}
+          showCreateButton={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /create new recipe/i })).toBeInTheDocument();
+      });
+
+      const createButton = screen.getByRole('button', { name: /create new recipe/i });
+      fireEvent.click(createButton);
+
+      expect(mockHandlers.onCreateNew).toHaveBeenCalled();
+    });
+  });
+});

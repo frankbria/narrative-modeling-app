@@ -7,17 +7,17 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🚀 Getting Started (Start Here)
 
 ### Essential Reading
-1. **[README.md](README.md)** - Project overview and quick start
+1. **[README.md](../README.md)** - Project overview and quick start
    - **Purpose**: High-level introduction to the Narrative Modeling App
    - **Audience**: Everyone (new developers, stakeholders, users)
    - **When**: First document to read
 
-2. **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Development environment setup
+2. **[LOCAL_DEVELOPMENT.md](development/LOCAL_DEVELOPMENT.md)** - Development environment setup
    - **Purpose**: Complete local setup instructions for all components
    - **Audience**: Developers setting up the project locally
    - **When**: After reading README, before coding
 
-3. **[CLAUDE.md](CLAUDE.md)** - AI pair programming conventions
+3. **[CLAUDE.md](../CLAUDE.md)** - AI pair programming conventions
    - **Purpose**: Project-specific guidelines for Claude Code assistant
    - **Audience**: Claude Code, developers using AI assistance
    - **When**: Reference during development
@@ -27,12 +27,12 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 📋 Product & Requirements
 
 ### Product Documentation
-4. **[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)** - Product vision and requirements
+4. **[PRODUCT_REQUIREMENTS.md](../PRODUCT_REQUIREMENTS.md)** - Product vision and requirements
    - **Purpose**: Comprehensive product specification and user stories
    - **Audience**: Product managers, developers, stakeholders
    - **When**: Understanding product goals and features
 
-5. **[USER_STORIES.md](USER_STORIES.md)** - Detailed user scenarios
+5. **[USER_STORIES.md](../USER_STORIES.md)** - Detailed user scenarios
    - **Purpose**: User-centric feature descriptions with acceptance criteria
    - **Audience**: Product owners, QA, developers
    - **When**: Implementing or testing features
@@ -42,7 +42,7 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🏃 Sprint Planning & Execution
 
 ### Current Sprint
-6. **[SPRINT_12.md](SPRINT_12.md)** - Current sprint (API Integration & Production Readiness)
+6. **[SPRINT_12.md](sprints/sprint-12/SPRINT_12.md)** - Current sprint (API Integration & Production Readiness)
    - **Purpose**: API integration for new models, versioning API, service layer refactoring
    - **Audience**: Development team, project managers
    - **When**: Sprint 12 (Oct 15-21, 2025)
@@ -50,13 +50,13 @@ Quick reference guide to all project documentation with clear purposes and targe
    - **Focus**: Integrate Sprint 11 models with API layer and prepare for production
 
 ### Completed Sprints
-7. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (Oct 10-14, 2025)
+7. **[Sprint 11 (sprints/sprint-11/)](sprints/sprint-11/)** - Completed sprint (Oct 10-14, 2025)
    - **Purpose**: Data model refactoring and performance benchmarking
    - **Historical context**: UserData split into focused domain models, versioning foundation
    - **Outcome**: 29/29 points (100%), production-ready architecture
 
 ### Implementation Archive
-8. **[docs/sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md](docs/sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap archive
+8. **[sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md](sprints/sprint-11/SPRINT_IMPLEMENTATION_PLAN.md)** - 8-sprint roadmap archive
    - **Purpose**: Historical planning document for Sprints 7-14
    - **Audience**: Reference for historical planning decisions
    - **When**: Understanding past sprint planning
@@ -89,12 +89,12 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🚀 Deployment & Operations
 
 ### Production Deployment
-11. **[PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)** - Production deployment guide
+11. **[PRODUCTION_DEPLOYMENT.md](deployment/PRODUCTION_DEPLOYMENT.md)** - Production deployment guide
     - **Purpose**: Docker deployment, infrastructure, monitoring setup
     - **Audience**: DevOps engineers, SREs, deployment teams
     - **When**: Deploying to production environments
 
-12. **[PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)** - Production API usage
+12. **[PRODUCTION_API_GUIDE.md](deployment/PRODUCTION_API_GUIDE.md)** - Production API usage
     - **Purpose**: API key management, prediction endpoints, monitoring
     - **Audience**: API consumers, ML engineers, integration teams
     - **When**: Using production APIs or integrating services
@@ -130,27 +130,27 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 📚 Historical Reference
 
 ### Archived Documentation
-Located in `claudedocs/historical/` and `docs/sprints/`:
+Located in `claudedocs/historical/` and `sprints/`:
 
-16. **[SPECIFICATION_REVIEW.md](claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
+16. **[SPECIFICATION_REVIEW.md](../claudedocs/historical/SPECIFICATION_REVIEW.md)** - Expert panel review (2025-10-07)
     - **Purpose**: Multi-domain architectural analysis and recommendations
     - **Historical context**: Initial system assessment
 
-17. **[WORK_LOG.md](claudedocs/historical/WORK_LOG.md)** - Historical development log
+17. **[WORK_LOG.md](../claudedocs/historical/WORK_LOG.md)** - Historical development log
     - **Purpose**: Session-by-session implementation tracking
     - **Historical context**: Sprint 7 development details
 
-18. **[Sprint 9 (claudedocs/historical/sprint-9/)](claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
+18. **[Sprint 9 (../claudedocs/historical/sprint-9/)](../claudedocs/historical/sprint-9/)** - Completed sprint (2025-10-08 to 10-09)
     - **Purpose**: E2E testing infrastructure with Playwright
     - **Historical context**: 101 E2E tests, 42 integration tests, CI/CD pipeline
     - **Outcome**: 30/30 points (100%), comprehensive test coverage
 
-19. **[Sprint 10 (claudedocs/historical/sprint-10/)](claudedocs/historical/sprint-10/)** - Completed sprint
+19. **[Sprint 10 (../claudedocs/historical/sprint-10/)](../claudedocs/historical/sprint-10/)** - Completed sprint
     - **Purpose**: Monitoring, metrics, and production deployment documentation
     - **Historical context**: Production readiness features
     - **Outcome**: Production deployment capabilities established
 
-20. **[Sprint 11 (docs/sprints/sprint-11/)](docs/sprints/sprint-11/)** - Completed sprint (2025-10-10 to 10-14)
+20. **[Sprint 11 (sprints/sprint-11/)](sprints/sprint-11/)** - Completed sprint (2025-10-10 to 10-14)
     - **Purpose**: Data model refactoring and performance benchmarking
     - **Historical context**: UserData split into domain models, versioning foundation
     - **Outcome**: 29/29 points (100%), production-ready architecture
@@ -163,16 +163,8 @@ Located in `claudedocs/historical/` and `docs/sprints/`:
 narrative-modeling-app/
 ├── README.md                      # Project overview
 ├── CLAUDE.md                      # AI assistant conventions
-├── LOCAL_DEVELOPMENT.md           # Local setup guide
-├── DOCUMENTATION_INDEX.md         # This file
-│
 ├── PRODUCT_REQUIREMENTS.md        # Product specification
 ├── USER_STORIES.md                # User scenarios
-│
-├── SPRINT_12.md                   # Current sprint (Oct 15-21, 2025)
-│
-├── PRODUCTION_DEPLOYMENT.md       # Deployment guide
-├── PRODUCTION_API_GUIDE.md        # Production API docs
 │
 ├── apps/
 │   ├── backend/README.md          # Backend documentation
@@ -180,23 +172,57 @@ narrative-modeling-app/
 │   └── mcp/README.md              # MCP server documentation
 │
 ├── docs/
-│   ├── testing/
-│   │   └── guide.md               # Comprehensive testing guide
-│   └── sprints/
-│       ├── sprint-10/             # Sprint 10 archive
-│       └── sprint-11/             # Sprint 11 archive
-│           ├── SPRINT_11.md
-│           └── SPRINT_IMPLEMENTATION_PLAN.md
+│   ├── DOCUMENTATION_INDEX.md     # This file
+│   ├── DOCUMENTATION_SUMMARY.md   # Overview of all docs
+│   ├── architecture/              # Architecture documentation
+│   │   ├── ARCHITECTURE_INDEX.md
+│   │   ├── ARCHITECTURE_PHASE3.md
+│   │   ├── ARCHITECTURE_SUMMARY.md
+│   │   └── COMPONENT_DIAGRAMS.md
+│   ├── implementation/            # Detailed implementation docs
+│   │   ├── COLUMN_SELECTOR_IMPLEMENTATION.md
+│   │   ├── COMPONENT_SUMMARY_TransformationChainView.md
+│   │   ├── IMPLEMENTATION_SUMMARY.md
+│   │   ├── PREPARE_PAGE_IMPLEMENTATION.md
+│   │   ├── TRANSFORMATION_CONFIG_DIALOG_SUMMARY.md
+│   │   └── USAGE_GUIDE_TransformationChainView.md
+│   ├── testing/                   # Testing documentation
+│   │   ├── TESTING_FILES_INDEX.md
+│   │   ├── TESTING_QUICK_START.md
+│   │   ├── TEST_IMPLEMENTATION_SUMMARY.md
+│   │   └── TEST_STRUCTURE_GUIDE.md
+│   ├── deployment/                # Deployment guides
+│   │   ├── PRODUCTION_DEPLOYMENT.md
+│   │   └── PRODUCTION_API_GUIDE.md
+│   ├── development/               # Development guides
+│   │   └── LOCAL_DEVELOPMENT.md
+│   ├── sprints/                   # Sprint documentation
+│   │   ├── sprint-11/
+│   │   │   ├── SPRINT_11.md
+│   │   │   └── SPRINT_IMPLEMENTATION_PLAN.md
+│   │   └── sprint-12/
+│   │       ├── SPRINT_12.md
+│   │       └── SPRINT_12_IMPLEMENTATION_PLAN.md
+│   ├── archive/                   # Completed/outdated docs
+│   │   ├── ACCEPTANCE_CRITERIA_SUMMARY.md
+│   │   ├── ACCEPTANCE_CRITERIA_VALIDATION.md
+│   │   ├── ACCESSIBILITY_RESPONSIVE_AUDIT.md
+│   │   ├── IMPLEMENTATION_CHECKLIST.md
+│   │   ├── PREPARE_PAGE_QUICK_REFERENCE.md
+│   │   ├── PREPARE_PAGE_VISUAL_SUMMARY.md
+│   │   ├── VALIDATION_CHECKLIST.md
+│   │   ├── VALIDATION_EXECUTIVE_SUMMARY.md
+│   │   └── VALIDATION_REPORTS_INDEX.md
+│   └── user_perspective/          # User-facing documentation
+│       └── APPLICATION_FUNCTIONALITY_GUIDE.md
 │
-└── claudedocs/
-    ├── historical/                # Archived documents
+└── claudedocs/                    # Claude session notes
+    ├── SESSION.md                 # Current session notes
+    ├── historical/                # Historical documents
     │   ├── SPECIFICATION_REVIEW.md
     │   ├── WORK_LOG.md
-    │   ├── sprint-9/              # Sprint 9 archive
-    │   │   ├── SPRINT_9.md
-    │   │   └── SPRINT_9_STORY_1_IMPLEMENTATION.md
-    │   └── sprint-10/             # Sprint 10 archive
-    │       └── README.md
+    │   ├── sprint-9/
+    │   └── sprint-10/
     └── archived_docs/             # Deprecated planning docs
 ```
 
@@ -230,19 +256,19 @@ narrative-modeling-app/
 ## 🆘 Quick Help
 
 **I want to...**
-- **Set up the project locally** → [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
-- **Understand what we're building** → [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)
-- **View current sprint** → [SPRINT_12.md](SPRINT_12.md)
-- **Review sprint history** → [docs/sprints/sprint-11/](docs/sprints/sprint-11/)
-- **Run tests** → [docs/testing/guide.md](docs/testing/guide.md)
-- **Deploy to production** → [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)
-- **Use the API** → [PRODUCTION_API_GUIDE.md](PRODUCTION_API_GUIDE.md)
-- **Set up backend** → [apps/backend/README.md](apps/backend/README.md)
-- **Set up frontend** → [apps/frontend/README.md](apps/frontend/README.md)
-- **Configure Claude Code** → [CLAUDE.md](CLAUDE.md)
+- **Set up the project locally** → [LOCAL_DEVELOPMENT.md](development/LOCAL_DEVELOPMENT.md)
+- **Understand what we're building** → [PRODUCT_REQUIREMENTS.md](../PRODUCT_REQUIREMENTS.md)
+- **View current sprint** → [SPRINT_12.md](sprints/sprint-12/SPRINT_12.md)
+- **Review sprint history** → [sprints/](sprints/)
+- **Run tests** → [testing/TESTING_QUICK_START.md](testing/TESTING_QUICK_START.md)
+- **Deploy to production** → [PRODUCTION_DEPLOYMENT.md](deployment/PRODUCTION_DEPLOYMENT.md)
+- **Use the API** → [PRODUCTION_API_GUIDE.md](deployment/PRODUCTION_API_GUIDE.md)
+- **Set up backend** → [apps/backend/README.md](../apps/backend/README.md)
+- **Set up frontend** → [apps/frontend/README.md](../apps/frontend/README.md)
+- **Configure Claude Code** → [CLAUDE.md](../CLAUDE.md)
 
 ---
 
-**Last Updated**: 2025-10-14
+**Last Updated**: 2025-12-18
 **Maintained By**: Development team
-**Version**: 3.0 (Sprint 11 complete, Sprint 12 planned, documentation reorganized)
+**Version**: 4.0 (Documentation reorganized into structured directories)
