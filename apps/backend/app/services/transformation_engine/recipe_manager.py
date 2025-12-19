@@ -477,23 +477,37 @@ class RecipeManager:
             if not recipe:
                 return []
 
-            # Find root (recipe with no parent)
-            root_id = recipe.parent_recipe_id if recipe.parent_recipe_id else recipe.id
+            # Find root by walking up parent chain
+            current = recipe
+            while current.parent_recipe_id:
+                parent = await TransformationRecipe.get(current.parent_recipe_id)
+                if not parent:
+                    break
+                current = parent
+            root_id = current.id
 
-            # Get all versions (root + all descendants)
+            # Get all versions by collecting entire tree
             versions = []
+            to_process = [root_id]
+            seen = set()
 
-            # Add root
-            root = await TransformationRecipe.get(root_id)
-            if root:
-                versions.append(root)
+            while to_process:
+                current_id = to_process.pop(0)
+                if current_id in seen:
+                    continue
+                seen.add(current_id)
 
-            # Find all descendants
-            descendants = await TransformationRecipe.find(
-                {"parent_recipe_id": root_id}
-            ).sort("version").to_list()
+                recipe_obj = await TransformationRecipe.get(current_id)
+                if recipe_obj:
+                    versions.append(recipe_obj)
 
-            versions.extend(descendants)
+                    # Find children of this recipe
+                    children = await TransformationRecipe.find(
+                        {"parent_recipe_id": current_id}
+                    ).to_list()
+
+                    for child in children:
+                        to_process.append(child.id)
 
             return sorted(versions, key=lambda r: r.version)
 

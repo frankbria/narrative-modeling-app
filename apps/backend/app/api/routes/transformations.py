@@ -598,6 +598,34 @@ async def list_popular_recipes(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/recipes/shared", response_model=SharedRecipeListResponse)
+async def get_shared_recipes(
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Get all recipes shared with the current user"""
+    try:
+        shared_recipes = await RecipeManager.get_shared_recipes(current_user_id)
+
+        return SharedRecipeListResponse(
+            shared_recipes=[{
+                "id": str(sr.id),
+                "name": sr.name,
+                "description": sr.description,
+                "original_recipe_id": str(sr.original_recipe_id),
+                "original_owner_id": sr.original_owner_id,
+                "shared_at": sr.shared_at.isoformat(),
+                "version": sr.version,
+                "tags": sr.tags,
+                "steps_count": len(sr.steps)
+            } for sr in shared_recipes],
+            total=len(shared_recipes)
+        )
+
+    except Exception as e:
+        logger.error(f"Get shared recipes failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/recipes/{recipe_id}", response_model=RecipeResponse)
 async def get_recipe(
     recipe_id: str,
@@ -932,34 +960,6 @@ async def share_recipe(
         raise
     except Exception as e:
         logger.error(f"Share recipe failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/recipes/shared", response_model=SharedRecipeListResponse)
-async def get_shared_recipes(
-    current_user_id: str = Depends(get_current_user_id)
-):
-    """Get all recipes shared with the current user"""
-    try:
-        shared_recipes = await RecipeManager.get_shared_recipes(current_user_id)
-
-        return SharedRecipeListResponse(
-            shared_recipes=[{
-                "id": str(sr.id),
-                "name": sr.name,
-                "description": sr.description,
-                "original_recipe_id": str(sr.original_recipe_id),
-                "original_owner_id": sr.original_owner_id,
-                "shared_at": sr.shared_at.isoformat(),
-                "version": sr.version,
-                "tags": sr.tags,
-                "steps_count": len(sr.steps)
-            } for sr in shared_recipes],
-            total=len(shared_recipes)
-        )
-
-    except Exception as e:
-        logger.error(f"Get shared recipes failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

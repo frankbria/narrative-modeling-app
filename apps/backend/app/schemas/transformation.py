@@ -209,7 +209,7 @@ class RecipeResponse(BaseModel):
     is_public: bool = False
     tags: List[str] = Field(default_factory=list)
     usage_count: int = 0
-    rating: float = 0.0
+    rating: Optional[float] = None
 
 
 class RecipeListResponse(BaseModel):

@@ -39,6 +39,7 @@ async def setup_database(request):
     from app.models.version import DatasetVersion, TransformationLineage
     from app.models.model import ModelConfig
     from app.models.transformation import TransformationConfig
+    from app.services.transformation_engine.recipe_manager import TransformationRecipe, SharedRecipe, RecipeExecutionHistory
 
     # Create a test database client
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
@@ -61,7 +62,10 @@ async def setup_database(request):
             RevisedData,
             DatasetMetadata,
             DatasetVersion,
-            TransformationLineage
+            TransformationLineage,
+            TransformationRecipe,
+            SharedRecipe,
+            RecipeExecutionHistory
         ],
     )
 
@@ -85,6 +89,9 @@ async def setup_database(request):
         await DatasetMetadata.find().delete()
         await DatasetVersion.find().delete()
         await TransformationLineage.find().delete()
+        await TransformationRecipe.find().delete()
+        await SharedRecipe.find().delete()
+        await RecipeExecutionHistory.find().delete()
     except Exception as e:
         print(f"Error during cleanup: {e}")
     finally:
