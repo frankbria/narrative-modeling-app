@@ -17,19 +17,9 @@ export interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   initialRoute?: string;
 
   /**
-   * Initial dataset ID for WorkflowProvider
-   */
-  initialDatasetId?: string;
-
-  /**
    * Additional wrapper components to wrap around the component under test
    */
   wrapper?: React.ComponentType<{ children: React.ReactNode }>;
-
-  /**
-   * Whether to wrap with WorkflowProvider (default: false)
-   */
-  withWorkflow?: boolean;
 }
 
 /**
@@ -61,20 +51,16 @@ export function mockRouter(overrides: Partial<{
 }
 
 /**
- * Creates a wrapper component that conditionally composes multiple provider layers
- * based on the test configuration options.
+ * Creates a wrapper component for the provided custom wrapper, if any.
  *
- * This function implements a composition pattern where provider components are
- * layered from innermost (children) to outermost (final wrapper). The composition
- * order is: children → WorkflowProvider → CustomWrapper.
+ * This function returns the custom wrapper component if provided, or undefined
+ * if no wrapper is needed (optimization to avoid unnecessary React elements).
  *
  * @param {CustomRenderOptions} options - Configuration for wrapper composition
- * @param {boolean} options.withWorkflow - If true, wraps children with WorkflowProvider
- * @param {string} options.initialDatasetId - Dataset ID to pass to WorkflowProvider
- * @param {React.ComponentType} options.wrapper - Additional custom wrapper component
+ * @param {React.ComponentType} options.wrapper - Custom wrapper component to use
  *
- * @returns {React.ComponentType | undefined} A composed wrapper component, or undefined
- *   if no providers are needed (optimization to avoid unnecessary React elements)
+ * @returns {React.ComponentType | undefined} The custom wrapper component, or undefined
+ *   if no wrapper is provided
  *
  * @internal This is an internal helper function for renderWithProviders
  *
@@ -83,65 +69,29 @@ export function mockRouter(overrides: Partial<{
  * const wrapper = createWrapper({});
  *
  * @example
- * // Returns a Wrapper component with WorkflowProvider
- * const wrapper = createWrapper({ withWorkflow: true, initialDatasetId: 'dataset-1' });
- *
- * @example
- * // Returns a Wrapper with custom provider only
+ * // Returns the custom provider
  * const wrapper = createWrapper({
  *   wrapper: ({ children }) => <CustomContext.Provider>{children}</CustomContext.Provider>
  * });
- *
- * @example
- * // Returns a Wrapper with both WorkflowProvider and custom wrapper (layered)
- * const wrapper = createWrapper({
- *   withWorkflow: true,
- *   wrapper: MyCustomProvider
- * });
  */
 function createWrapper(options: CustomRenderOptions = {}) {
-  const { withWorkflow, initialDatasetId, wrapper: CustomWrapper } = options;
+  const { wrapper: CustomWrapper } = options;
 
-  // If no special providers are needed, just use the custom wrapper or no wrapper
-  if (!withWorkflow && !CustomWrapper) {
+  // If no wrapper is provided, return undefined to avoid unnecessary wrapping
+  if (!CustomWrapper) {
     return undefined;
   }
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    let element = <>{children}</>;
-
-    // Wrap with WorkflowProvider if requested
-    if (withWorkflow) {
-      // Note: This requires WorkflowProvider to be mocked or imported
-      // For now, we'll create a placeholder. In actual tests, you'd import the real provider
-      const MockWorkflowProvider = ({ children }: { children: React.ReactNode }) => (
-        <div data-testid="workflow-provider">{children}</div>
-      );
-      element = <MockWorkflowProvider>{element}</MockWorkflowProvider>;
-    }
-
-    // Wrap with custom wrapper if provided
-    if (CustomWrapper) {
-      element = <CustomWrapper>{element}</CustomWrapper>;
-    }
-
-    return element;
-  };
+  // Return the custom wrapper directly
+  return CustomWrapper;
 }
 
 /**
- * Custom render function that wraps components with common providers
+ * Custom render function that wraps components with optional custom providers
  *
  * @example
  * // Basic usage (no providers)
  * const { getByText } = renderWithProviders(<MyComponent />);
- *
- * @example
- * // With WorkflowProvider
- * const { getByText } = renderWithProviders(<MyComponent />, {
- *   withWorkflow: true,
- *   initialDatasetId: 'test-id'
- * });
  *
  * @example
  * // With custom wrapper
@@ -174,14 +124,18 @@ export function renderWithProviders(
  * Useful for reusing the same provider setup across multiple tests
  *
  * @example
- * const renderWithWorkflow = createTestWrapper({ withWorkflow: true });
+ * const CustomProvider = ({ children }) => (
+ *   <ThemeProvider theme={mockTheme}>{children}</ThemeProvider>
+ * );
+ *
+ * const renderWithTheme = createTestWrapper({ wrapper: CustomProvider });
  *
  * it('test 1', () => {
- *   renderWithWorkflow(<Component1 />);
+ *   renderWithTheme(<Component1 />);
  * });
  *
  * it('test 2', () => {
- *   renderWithWorkflow(<Component2 />);
+ *   renderWithTheme(<Component2 />);
  * });
  */
 export function createTestWrapper(defaultOptions: CustomRenderOptions = {}) {
