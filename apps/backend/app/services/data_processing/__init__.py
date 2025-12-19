@@ -6,14 +6,16 @@ from .schema_inference import SchemaInferenceService, DataType, SchemaDefinition
 from .statistics_engine import StatisticsEngine, ColumnStatistics
 from .quality_assessment import QualityAssessmentService, QualityReport
 from .data_processor import DataProcessor
+from .preview_service import PreviewService
 
 __all__ = [
     "SchemaInferenceService",
     "DataType",
     "SchemaDefinition",
-    "StatisticsEngine", 
+    "StatisticsEngine",
     "ColumnStatistics",
     "QualityAssessmentService",
     "QualityReport",
     "DataProcessor",
+    "PreviewService",
 ]
