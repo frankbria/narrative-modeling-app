@@ -19,6 +19,7 @@ const customJestConfig = {
     '<rootDir>/node_modules/',
     '<rootDir>/.next/',
     '<rootDir>/e2e/',  // Exclude Playwright E2E tests from Jest
+    '<rootDir>/__tests__/utils/',  // Exclude test utility helpers from test runs
   ],
   collectCoverageFrom: [
     'components/**/*.{ts,tsx}',

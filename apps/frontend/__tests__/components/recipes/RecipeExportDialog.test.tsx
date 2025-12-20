@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RecipeExportDialog } from '@/components/recipes/RecipeExportDialog';
 import { TransformationService } from '@/lib/services/transformation';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -34,13 +35,18 @@ describe('RecipeExportDialog', () => {
   };
 
   beforeEach(() => {
+    // Ensure clean DOM before each test
+    document.body.innerHTML = '';
+
     jest.clearAllMocks();
     (getAuthToken as jest.Mock).mockResolvedValue('mock-token');
     (TransformationService.exportRecipeAsJSON as jest.Mock).mockResolvedValue(mockRecipeJSON);
 
-    // Mock clipboard
-    Object.assign(navigator, {
-      clipboard: mockClipboard,
+    // Mock clipboard using defineProperty for compatibility
+    Object.defineProperty(navigator, 'clipboard', {
+      value: mockClipboard,
+      writable: true,
+      configurable: true,
     });
 
     // Mock URL.createObjectURL and revokeObjectURL
@@ -52,6 +58,12 @@ describe('RecipeExportDialog', () => {
       size: JSON.stringify(content).length,
       type: options?.type,
     })) as any;
+  });
+
+  afterEach(() => {
+    cleanup();
+    // Ensure timers are always real after each test
+    jest.useRealTimers();
   });
 
   describe('Rendering', () => {
@@ -126,7 +138,7 @@ describe('RecipeExportDialog', () => {
       render(<RecipeExportDialog {...mockProps} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Failed to export recipe')).toBeInTheDocument();
+        expect(screen.getByText('Export failed')).toBeInTheDocument();
       });
     });
   });
@@ -152,14 +164,17 @@ describe('RecipeExportDialog', () => {
     });
 
     it('should switch to Formatted tab when clicked', async () => {
+      const user = userEvent.setup();
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load
       await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /formatted/i })).toBeInTheDocument();
+        const downloadButton = screen.getByRole('button', { name: /download/i });
+        expect(downloadButton).not.toBeDisabled();
       });
 
       const formattedTab = screen.getByRole('tab', { name: /formatted/i });
-      fireEvent.click(formattedTab);
+      await user.click(formattedTab);
 
       await waitFor(() => {
         expect(screen.getByText('Recipe Format')).toBeInTheDocument();
@@ -176,14 +191,17 @@ describe('RecipeExportDialog', () => {
     });
 
     it('should display recipe metadata in Formatted tab', async () => {
+      const user = userEvent.setup();
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load
       await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /formatted/i })).toBeInTheDocument();
+        const downloadButton = screen.getByRole('button', { name: /download/i });
+        expect(downloadButton).not.toBeDisabled();
       });
 
       const formattedTab = screen.getByRole('tab', { name: /formatted/i });
-      fireEvent.click(formattedTab);
+      await user.click(formattedTab);
 
       await waitFor(() => {
         expect(screen.getByText(/Test_Recipe_recipe\.json/)).toBeInTheDocument();
@@ -191,14 +209,17 @@ describe('RecipeExportDialog', () => {
     });
 
     it('should display file size in Formatted tab', async () => {
+      const user = userEvent.setup();
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load
       await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /formatted/i })).toBeInTheDocument();
+        const downloadButton = screen.getByRole('button', { name: /download/i });
+        expect(downloadButton).not.toBeDisabled();
       });
 
       const formattedTab = screen.getByRole('tab', { name: /formatted/i });
-      fireEvent.click(formattedTab);
+      await user.click(formattedTab);
 
       await waitFor(() => {
         expect(screen.getByText(/Size:/)).toBeInTheDocument();
@@ -212,8 +233,10 @@ describe('RecipeExportDialog', () => {
 
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load (button to be enabled)
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument();
+        const copyButton = screen.getByRole('button', { name: /copy json/i });
+        expect(copyButton).not.toBeDisabled();
       });
 
       const copyButton = screen.getByRole('button', { name: /copy json/i });
@@ -232,8 +255,10 @@ describe('RecipeExportDialog', () => {
 
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load (button to be enabled)
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument();
+        const copyButton = screen.getByRole('button', { name: /copy json/i });
+        expect(copyButton).not.toBeDisabled();
       });
 
       const copyButton = screen.getByRole('button', { name: /copy json/i });
@@ -245,29 +270,33 @@ describe('RecipeExportDialog', () => {
     });
 
     it('should hide success message after timeout', async () => {
-      jest.useFakeTimers();
-      mockClipboard.writeText.mockResolvedValue(undefined);
+      try {
+        jest.useFakeTimers();
+        mockClipboard.writeText.mockResolvedValue(undefined);
 
-      render(<RecipeExportDialog {...mockProps} />);
+        render(<RecipeExportDialog {...mockProps} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument();
-      });
+        // Wait for data to load (button to be enabled)
+        await waitFor(() => {
+          const copyButton = screen.getByRole('button', { name: /copy json/i });
+          expect(copyButton).not.toBeDisabled();
+        });
 
-      const copyButton = screen.getByRole('button', { name: /copy json/i });
-      fireEvent.click(copyButton);
+        const copyButton = screen.getByRole('button', { name: /copy json/i });
+        fireEvent.click(copyButton);
 
-      await waitFor(() => {
-        expect(screen.getByText('Copied to clipboard!')).toBeInTheDocument();
-      });
+        await waitFor(() => {
+          expect(screen.getByText('Copied to clipboard!')).toBeInTheDocument();
+        });
 
-      jest.advanceTimersByTime(2000);
+        jest.advanceTimersByTime(2000);
 
-      await waitFor(() => {
-        expect(screen.queryByText('Copied to clipboard!')).not.toBeInTheDocument();
-      });
-
-      jest.useRealTimers();
+        await waitFor(() => {
+          expect(screen.queryByText('Copied to clipboard!')).not.toBeInTheDocument();
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should display error when clipboard copy fails', async () => {
@@ -275,8 +304,10 @@ describe('RecipeExportDialog', () => {
 
       render(<RecipeExportDialog {...mockProps} />);
 
+      // Wait for data to load (button to be enabled)
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument();
+        const copyButton = screen.getByRole('button', { name: /copy json/i });
+        expect(copyButton).not.toBeDisabled();
       });
 
       const copyButton = screen.getByRole('button', { name: /copy json/i });
@@ -308,11 +339,12 @@ describe('RecipeExportDialog', () => {
     it('should trigger download when Download button is clicked', async () => {
       render(<RecipeExportDialog {...mockProps} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
+      // Wait for data to load (button to be enabled)
+      const downloadButton = await waitFor(() => {
+        const btn = screen.getByRole('button', { name: /download/i });
+        expect(btn).not.toBeDisabled();
+        return btn;
       });
-
-      const downloadButton = screen.getByRole('button', { name: /download/i });
 
       // Mock createElement and appendChild
       const mockLink = {
@@ -349,11 +381,12 @@ describe('RecipeExportDialog', () => {
 
       render(<RecipeExportDialog {...propsWithSpaces} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
+      // Wait for data to load (button to be enabled)
+      const downloadButton = await waitFor(() => {
+        const btn = screen.getByRole('button', { name: /download/i });
+        expect(btn).not.toBeDisabled();
+        return btn;
       });
-
-      const downloadButton = screen.getByRole('button', { name: /download/i });
 
       const mockLink = {
         href: '',
@@ -374,11 +407,12 @@ describe('RecipeExportDialog', () => {
     it('should create blob with correct content type', async () => {
       render(<RecipeExportDialog {...mockProps} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
+      // Wait for data to load (button to be enabled)
+      const downloadButton = await waitFor(() => {
+        const btn = screen.getByRole('button', { name: /download/i });
+        expect(btn).not.toBeDisabled();
+        return btn;
       });
-
-      const downloadButton = screen.getByRole('button', { name: /download/i });
 
       const mockLink = {
         href: '',

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 # Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
 from app.models.transformation import TransformationType
+from app.schemas.transformation import TransformationStepRequest
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +534,94 @@ class TransformationEngine:
     def get_history(self) -> List[Dict[str, Any]]:
         """Get transformation history"""
         return self.history
-    
+
     def clear_history(self) -> None:
         """Clear transformation history"""
         self.history = []
+
+    async def preview_transformation_step(
+        self,
+        df: pd.DataFrame,
+        operation: TransformationStepRequest,
+        track_changes: bool = False
+    ) -> Tuple[pd.DataFrame, Optional[List[Tuple[int, str]]]]:
+        """
+        Preview a single transformation operation on a DataFrame.
+
+        This method applies a transformation and optionally tracks which cells changed.
+        Used by PreviewService to generate detailed change information for UI highlighting.
+
+        Args:
+            df: Input DataFrame
+            operation: Transformation operation to apply (TransformationStepRequest schema)
+            track_changes: If True, return list of changed cell positions (row_idx, col_name)
+
+        Returns:
+            Tuple of (transformed_df, changed_cells)
+            - transformed_df: DataFrame after transformation
+            - changed_cells: If track_changes=True, list of (row_idx, col_name) tuples for changed cells
+                            If track_changes=False, None
+
+        Raises:
+            ValueError: If transformation type is invalid or parameters are incorrect
+        """
+        # Store original DataFrame for comparison if tracking changes
+        original_df = df.copy() if track_changes else None
+
+        # Convert TransformationStepRequest to TransformationType and parameters
+        try:
+            transformation_type = TransformationType(operation.transformation_type)
+        except ValueError:
+            raise ValueError(f"Invalid transformation type: {operation.transformation_type}")
+
+        # Build parameters dict from TransformationStepRequest
+        parameters = operation.parameters.copy() if operation.parameters else {}
+
+        # Add column/columns to parameters if specified
+        if operation.column:
+            parameters['columns'] = [operation.column]
+        elif operation.columns:
+            parameters['columns'] = operation.columns
+
+        # Apply transformation using existing logic
+        transformation = self.create_transformation(transformation_type, parameters)
+        transformed_df = transformation.apply(df)
+
+        # Track changes if requested
+        changed_cells = None
+        if track_changes and original_df is not None:
+            # Compare original vs transformed to find changed cells
+            # Use vectorized numpy operations for performance
+            changed_cells = []
+
+            for col in original_df.columns:
+                if col not in transformed_df.columns:
+                    continue
+
+                original_col = original_df[col]
+                transformed_col = transformed_df[col]
+
+                # Handle NaN comparison: NaN == NaN should be considered "no change"
+                # Create mask where values differ
+                both_nan = original_col.isna() & transformed_col.isna()
+                nan_mismatch = original_col.isna() != transformed_col.isna()
+                neither_nan = ~original_col.isna() & ~transformed_col.isna()
+
+                # For non-NaN values, check if they differ
+                values_differ = pd.Series(False, index=original_col.index)
+                if neither_nan.any():
+                    values_differ[neither_nan] = (
+                        original_col[neither_nan] != transformed_col[neither_nan]
+                    )
+
+                # Combine into final mask
+                changed_mask = nan_mismatch | values_differ
+
+                # Extract row indices where this column changed
+                changed_rows = changed_mask[changed_mask].index.tolist()
+
+                # Add (row_idx, col_name) tuples to changed_cells
+                for row_idx in changed_rows:
+                    changed_cells.append((int(row_idx), str(col)))
+
+        return transformed_df, changed_cells
