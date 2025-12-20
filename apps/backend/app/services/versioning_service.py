@@ -421,11 +421,13 @@ class VersioningService(BaseService[DatasetVersion]):
         Returns:
             List of DatasetVersion documents
         """
-        query = DatasetVersion.find({"dataset_id": dataset_id})
-
+        # Build filter conditionally
+        filter_dict = {"dataset_id": dataset_id}
         if user_id:
-            query = query.find({"user_id": user_id})
+            filter_dict["user_id"] = user_id
 
+        # Single find() call with combined filter
+        query = DatasetVersion.find(filter_dict)
         versions = await query.sort(-DatasetVersion.version_number).skip(skip).limit(limit).to_list()
         logger.info(f"Listed {len(versions)} versions for dataset {dataset_id}")
         return versions
