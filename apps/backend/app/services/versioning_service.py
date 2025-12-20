@@ -336,7 +336,7 @@ class VersioningService(BaseService[DatasetVersion]):
         Returns:
             DatasetVersion or None if not found or ownership check fails
         """
-        version = await DatasetVersion.find_one(DatasetVersion.version_id == version_id)
+        version = await DatasetVersion.find_one({"version_id": version_id})
 
         if not version:
             return None
@@ -345,7 +345,7 @@ class VersioningService(BaseService[DatasetVersion]):
         if user_id is not None:
             # Get the dataset to check ownership
             from app.models.dataset import DatasetMetadata
-            dataset = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == version.dataset_id)
+            dataset = await DatasetMetadata.find_one({"dataset_id": version.dataset_id})
             if dataset and dataset.user_id != user_id:
                 logger.warning(
                     f"Ownership check failed: User {user_id} attempted to access "
@@ -421,10 +421,10 @@ class VersioningService(BaseService[DatasetVersion]):
         Returns:
             List of DatasetVersion documents
         """
-        query = DatasetVersion.find(DatasetVersion.dataset_id == dataset_id)
+        query = DatasetVersion.find({"dataset_id": dataset_id})
 
         if user_id:
-            query = query.find(DatasetVersion.user_id == user_id)
+            query = query.find({"user_id": user_id})
 
         versions = await query.sort(-DatasetVersion.version_number).skip(skip).limit(limit).to_list()
         logger.info(f"Listed {len(versions)} versions for dataset {dataset_id}")

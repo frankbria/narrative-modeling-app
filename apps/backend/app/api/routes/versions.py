@@ -101,9 +101,9 @@ async def create_dataset_version(
         logger.info(f"Creating new version for dataset {dataset_id}")
 
         # Get dataset metadata
-        dataset_metadata = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id
-        )
+        dataset_metadata = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id
+        })
         if not dataset_metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -111,9 +111,9 @@ async def create_dataset_version(
             )
 
         # Get the latest version to use as parent
-        latest_version = await DatasetVersion.find(
-            DatasetVersion.dataset_id == dataset_id
-        ).sort(-DatasetVersion.version_number).first_or_none()
+        latest_version = await DatasetVersion.find({
+            "dataset_id": dataset_id
+        }).sort(-DatasetVersion.version_number).first_or_none()
 
         if not latest_version:
             raise HTTPException(
