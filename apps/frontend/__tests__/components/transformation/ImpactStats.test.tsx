@@ -66,7 +66,8 @@ describe('ImpactStats Component', () => {
     it('should show improvement badge when quality increases', () => {
       render(<ImpactStats impactStats={basicImpactStats} />);
       expect(screen.getByText(/improvement/i)).toBeInTheDocument();
-      expect(screen.getByText('16.7%')).toBeInTheDocument();
+      // Quality change: 0.88 - 0.72 = 0.16 => 16.0%
+      expect(screen.getByText(/16\.0%\s+improvement/i)).toBeInTheDocument();
     });
 
     it('should show degradation badge when quality decreases', () => {
@@ -78,7 +79,8 @@ describe('ImpactStats Component', () => {
 
       render(<ImpactStats impactStats={degradedStats} />);
       expect(screen.getByText(/degradation/i)).toBeInTheDocument();
-      expect(screen.getByText('14.0%')).toBeInTheDocument();
+      // Quality change: 0.78 - 0.92 = -0.14 => 14.0%
+      expect(screen.getByText(/14\.0%\s+degradation/i)).toBeInTheDocument();
     });
 
     it('should not show change badge when quality is unchanged', () => {
@@ -216,7 +218,8 @@ describe('ImpactStats Component', () => {
       fireEvent.click(expandButton);
 
       expect(screen.getByText('status')).toBeInTheDocument();
-      expect(screen.getByText('Active')).toBeInTheDocument();
+      // "Active" appears twice (before and after), so use getAllByText
+      expect(screen.getAllByText('Active')).toHaveLength(2);
     });
 
     it('should collapse distribution details on second click', () => {
@@ -225,7 +228,8 @@ describe('ImpactStats Component', () => {
       const expandButton = screen.getByText('Value Distribution Changes');
 
       fireEvent.click(expandButton);
-      expect(screen.getByText('Active')).toBeInTheDocument();
+      // "Active" appears twice (before and after), so use getAllByText
+      expect(screen.getAllByText('Active')).toHaveLength(2);
 
       fireEvent.click(expandButton);
       expect(screen.queryByText('Active')).not.toBeInTheDocument();
