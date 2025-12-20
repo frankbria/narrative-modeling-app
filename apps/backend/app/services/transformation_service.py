@@ -261,6 +261,7 @@ class TransformationService(BaseService[TransformationConfig]):
 
     async def preview_transformation(
         self,
+        user_id: str,
         dataset_id: str,
         transformation_type: str,
         parameters: Dict[str, Any],
@@ -270,6 +271,7 @@ class TransformationService(BaseService[TransformationConfig]):
         Preview transformation without applying it.
 
         Args:
+            user_id: User identifier (for ownership verification)
             dataset_id: Dataset identifier
             transformation_type: Type of transformation
             parameters: Transformation parameters
@@ -279,20 +281,25 @@ class TransformationService(BaseService[TransformationConfig]):
             Preview result with before/after samples
 
         Raises:
-            NotFoundError: If dataset not found
+            NotFoundError: If dataset not found or user doesn't own it
             OperationError: If transformation preview fails
         """
         from app.models.dataset import DatasetMetadata
         from app.services.transformation_engine.data_utils import get_dataframe_from_s3
         from app.services.transformation_engine.transformation_engine import TransformationType
 
-        # Get dataset
+        # Get dataset with ownership verification
         dataset = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id
+            DatasetMetadata.dataset_id == dataset_id,
+            DatasetMetadata.user_id == user_id
         )
 
         if not dataset:
-            raise NotFoundError(resource_type="Dataset", resource_id=dataset_id)
+            raise NotFoundError(
+                resource_type="Dataset",
+                resource_id=dataset_id,
+                message=f"Dataset {dataset_id} not found or not owned by user"
+            )
 
         try:
             # Load data from S3
@@ -345,7 +352,7 @@ class TransformationService(BaseService[TransformationConfig]):
             Apply result with transformation_id and affected rows/columns
 
         Raises:
-            NotFoundError: If dataset not found
+            NotFoundError: If dataset not found or user doesn't own it
             OperationError: If transformation application fails
         """
         import time
@@ -361,13 +368,18 @@ class TransformationService(BaseService[TransformationConfig]):
 
         start_time = time.time()
 
-        # Get dataset
+        # Get dataset with ownership verification
         dataset = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id
+            DatasetMetadata.dataset_id == dataset_id,
+            DatasetMetadata.user_id == user_id
         )
 
         if not dataset:
-            raise NotFoundError(resource_type="Dataset", resource_id=dataset_id)
+            raise NotFoundError(
+                resource_type="Dataset",
+                resource_id=dataset_id,
+                message=f"Dataset {dataset_id} not found or not owned by user {user_id}"
+            )
 
         try:
             # Load data from S3

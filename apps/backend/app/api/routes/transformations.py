@@ -83,6 +83,7 @@ async def preview_transformation(
 
         # Use validated enum value to prevent bypass
         result = await service.preview_transformation(
+            user_id=current_user_id,
             dataset_id=request.dataset_id,
             transformation_type=transformation_type.value,
             parameters=first_step.parameters or {},

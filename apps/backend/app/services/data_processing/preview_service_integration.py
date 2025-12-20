@@ -76,7 +76,7 @@ class PreviewServiceIntegration:
             PreviewResult with original_data, transformed_data, impact_stats, warnings, errors
 
         Raises:
-            ValueError: If operations list is empty or sample_size is invalid
+            ValueError: If operations list is empty, sample_size is invalid, dataset not owned by user, or S3 path mismatch
             Exception: If data loading or transformation fails
         """
         logger.info(
@@ -90,6 +90,26 @@ class PreviewServiceIntegration:
 
         if sample_size < 10 or sample_size > 1000:
             raise ValueError("Sample size must be between 10 and 1000")
+
+        # CRITICAL SECURITY CHECK: Verify user owns this dataset
+        from app.models.dataset import DatasetMetadata
+        dataset = await DatasetMetadata.find_one(
+            DatasetMetadata.dataset_id == dataset_id,
+            DatasetMetadata.user_id == user_id
+        )
+
+        if not dataset:
+            logger.error(f"Dataset {dataset_id} not found or not owned by user {user_id}")
+            raise ValueError(f"Dataset {dataset_id} not found or not owned by user {user_id}")
+
+        # Verify S3 path matches dataset's stored path
+        expected_path = dataset.file_path or dataset.s3_url
+        if expected_path != s3_file_path:
+            logger.error(
+                f"S3 path mismatch for dataset {dataset_id}: "
+                f"expected {expected_path}, got {s3_file_path}"
+            )
+            raise ValueError("S3 path mismatch - potential security violation")
 
         warnings: List[str] = []
         errors: List[str] = []
