@@ -13,6 +13,7 @@ Integrates:
 - S3 data loading (for fetching dataset samples)
 """
 
+import asyncio
 import logging
 from typing import List, Optional
 import pandas as pd
@@ -115,104 +116,113 @@ class PreviewServiceIntegration:
         errors: List[str] = []
 
         try:
-            # Step 1: Load sample data from S3
-            logger.info(f"Loading {sample_size} rows from S3: {s3_file_path}")
-            original_df = await get_dataframe_from_s3(s3_file_path, nrows=sample_size)
+            # SECURITY: Enforce 30-second timeout for entire preview generation to prevent DoS
+            async with asyncio.timeout(30.0):
+                # Step 1: Load sample data from S3
+                logger.info(f"Loading {sample_size} rows from S3: {s3_file_path}")
+                original_df = await get_dataframe_from_s3(s3_file_path, nrows=sample_size)
 
-            if original_df.empty:
-                raise ValueError("Dataset is empty or could not be loaded")
+                if original_df.empty:
+                    raise ValueError("Dataset is empty or could not be loaded")
 
-            # Limit to sample_size if we got more rows than expected
-            if len(original_df) > sample_size:
-                original_df = original_df.head(sample_size)
+                # Limit to sample_size if we got more rows than expected
+                if len(original_df) > sample_size:
+                    original_df = original_df.head(sample_size)
 
-            logger.info(
-                f"Loaded {len(original_df)} rows, {len(original_df.columns)} columns"
-            )
+                logger.info(
+                    f"Loaded {len(original_df)} rows, {len(original_df.columns)} columns"
+                )
 
-            # Step 2: Apply transformations sequentially
-            transformed_df = original_df.copy()
+                # Step 2: Apply transformations sequentially
+                transformed_df = original_df.copy()
 
-            for idx, operation in enumerate(operations):
-                try:
-                    logger.info(
-                        f"Applying transformation {idx+1}/{len(operations)}: "
-                        f"{operation.transformation_type}"
-                    )
-
-                    # Apply transformation with change tracking
-                    transformed_df, changed_cells = (
-                        await self.transformation_engine.preview_transformation_step(
-                            transformed_df,
-                            operation,
-                            track_changes=True  # Enable change tracking for highlighting
+                for idx, operation in enumerate(operations):
+                    try:
+                        logger.info(
+                            f"Applying transformation {idx+1}/{len(operations)}: "
+                            f"{operation.transformation_type}"
                         )
+
+                        # Apply transformation with change tracking
+                        transformed_df, changed_cells = (
+                            await self.transformation_engine.preview_transformation_step(
+                                transformed_df,
+                                operation,
+                                track_changes=True  # Enable change tracking for highlighting
+                            )
+                        )
+
+                        # Note: changed_cells could be used for cell-level highlighting in UI
+                        # For now, we don't include it in the response, but we could add it
+                        # to PreviewResult if needed
+
+                        logger.info(
+                            f"Transformation {idx+1} applied successfully. "
+                            f"Result: {len(transformed_df)} rows"
+                        )
+
+                    except Exception as e:
+                        error_msg = (
+                            f"Transformation '{operation.transformation_type}' failed: {str(e)}"
+                        )
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+                        break  # Stop processing on first error
+
+                # If all transformations failed, return early
+                if errors and transformed_df.equals(original_df):
+                    return PreviewResult(
+                        original_data=original_df.to_dict('records'),
+                        transformed_data=original_df.to_dict('records'),
+                        impact_stats=ImpactStatistics(
+                            rows_affected=0,
+                            values_changed=0,
+                            columns_affected=[],
+                            quality_score_before=0.5,
+                            quality_score_after=0.5,
+                            value_distributions={}
+                        ),
+                        warnings=warnings,
+                        errors=errors
                     )
 
-                    # Note: changed_cells could be used for cell-level highlighting in UI
-                    # For now, we don't include it in the response, but we could add it
-                    # to PreviewResult if needed
+                # Step 3: Calculate impact statistics
+                logger.info("Calculating impact statistics")
 
-                    logger.info(
-                        f"Transformation {idx+1} applied successfully. "
-                        f"Result: {len(transformed_df)} rows"
+                try:
+                    impact_stats = await self.preview_service.calculate_impact(
+                        original_df,
+                        transformed_df
                     )
-
                 except Exception as e:
-                    error_msg = (
-                        f"Transformation '{operation.transformation_type}' failed: {str(e)}"
-                    )
-                    logger.error(error_msg)
-                    errors.append(error_msg)
-                    break  # Stop processing on first error
-
-            # If all transformations failed, return early
-            if errors and transformed_df.equals(original_df):
-                return PreviewResult(
-                    original_data=original_df.to_dict('records'),
-                    transformed_data=original_df.to_dict('records'),
-                    impact_stats=ImpactStatistics(
+                    logger.warning(f"Failed to calculate impact statistics: {e}")
+                    # Provide fallback impact stats
+                    impact_stats = ImpactStatistics(
                         rows_affected=0,
                         values_changed=0,
                         columns_affected=[],
                         quality_score_before=0.5,
                         quality_score_after=0.5,
                         value_distributions={}
-                    ),
+                    )
+                    warnings.append(f"Could not calculate detailed impact statistics: {str(e)}")
+
+                # Step 4: Build and return PreviewResult
+                logger.info("Preview generation complete")
+
+                return PreviewResult(
+                    original_data=original_df.to_dict('records'),
+                    transformed_data=transformed_df.to_dict('records'),
+                    impact_stats=impact_stats,
                     warnings=warnings,
                     errors=errors
                 )
 
-            # Step 3: Calculate impact statistics
-            logger.info("Calculating impact statistics")
-
-            try:
-                impact_stats = await self.preview_service.calculate_impact(
-                    original_df,
-                    transformed_df
-                )
-            except Exception as e:
-                logger.warning(f"Failed to calculate impact statistics: {e}")
-                # Provide fallback impact stats
-                impact_stats = ImpactStatistics(
-                    rows_affected=0,
-                    values_changed=0,
-                    columns_affected=[],
-                    quality_score_before=0.5,
-                    quality_score_after=0.5,
-                    value_distributions={}
-                )
-                warnings.append(f"Could not calculate detailed impact statistics: {str(e)}")
-
-            # Step 4: Build and return PreviewResult
-            logger.info("Preview generation complete")
-
-            return PreviewResult(
-                original_data=original_df.to_dict('records'),
-                transformed_data=transformed_df.to_dict('records'),
-                impact_stats=impact_stats,
-                warnings=warnings,
-                errors=errors
+        except asyncio.TimeoutError:
+            # Timeout exceeded - prevent DoS
+            logger.error(f"Preview generation timeout (30s) for dataset {dataset_id}")
+            raise ValueError(
+                "Preview timeout (30s). Try reducing sample_size or simplifying transformations."
             )
 
         except ValueError as e:

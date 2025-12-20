@@ -1,6 +1,7 @@
 """
 API routes for data transformation pipeline
 """
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 import pandas as pd
@@ -81,14 +82,23 @@ async def preview_transformation(
         from app.services.transformation_service import TransformationService
         service = TransformationService()
 
-        # Use validated enum value to prevent bypass
-        result = await service.preview_transformation(
-            user_id=current_user_id,
-            dataset_id=request.dataset_id,
-            transformation_type=transformation_type.value,
-            parameters=first_step.parameters or {},
-            preview_rows=request.preview_rows
-        )
+        # SECURITY: Defense-in-depth timeout at API layer (service layer also has timeout)
+        try:
+            async with asyncio.timeout(30.0):
+                # Use validated enum value to prevent bypass
+                result = await service.preview_transformation(
+                    user_id=current_user_id,
+                    dataset_id=request.dataset_id,
+                    transformation_type=transformation_type.value,
+                    parameters=first_step.parameters or {},
+                    preview_rows=request.preview_rows
+                )
+        except asyncio.TimeoutError:
+            logger.error(f"Preview timeout at API layer for dataset {request.dataset_id}")
+            raise HTTPException(
+                status_code=408,
+                detail="Preview timeout (30s). Try reducing preview_rows or simplifying transformations."
+            )
 
         return TransformationPreviewResponse(
             success=result["success"],
@@ -101,6 +111,9 @@ async def preview_transformation(
             warnings=result.get("warnings", [])
         )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions (including timeout) to let FastAPI handle them
+        raise
     except NotFoundError as e:
         logger.error(f"Preview transformation failed: {str(e)}")
         raise HTTPException(status_code=404, detail=e.message)
