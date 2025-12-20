@@ -23,7 +23,6 @@ from app.services.data_processing.preview_service_integration import PreviewServ
 from app.schemas.preview import PreviewResult, ImpactStatistics
 from app.schemas.transformation import TransformationStepRequest
 
-
 @pytest.mark.unit
 class TestPreviewServiceIntegration:
     """Unit tests for PreviewServiceIntegration service."""
@@ -32,6 +31,15 @@ class TestPreviewServiceIntegration:
         """Set up test fixtures for each test."""
         # Create service instance with mocked dependencies
         self.service = PreviewServiceIntegration()
+
+    def _create_mock_dataset(self, dataset_id="dataset456", user_id="user123", s3_url="s3://bucket/file.csv"):
+        """Helper to create mock dataset"""
+        mock_dataset = MagicMock()
+        mock_dataset.dataset_id = dataset_id
+        mock_dataset.user_id = user_id
+        mock_dataset.s3_url = s3_url
+        mock_dataset.file_path = s3_url
+        return mock_dataset
 
     @pytest.fixture
     def sample_dataframe(self):
@@ -82,8 +90,14 @@ class TestPreviewServiceIntegration:
             }
         )
 
+        # Mock dataset metadata lookup
+        mock_dataset = self._create_mock_dataset()
+
         # Mock S3 data loading
         with patch(
+            'app.models.dataset.DatasetMetadata.find_one',
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=sample_dataframe)
         ), patch.object(
@@ -219,8 +233,14 @@ class TestPreviewServiceIntegration:
             parameters={"method": "iqr"}
         )
 
+        # Mock dataset metadata lookup
+        mock_dataset = self._create_mock_dataset()
+
         # Mock S3 and transformation engine
         with patch(
+            'app.models.dataset.DatasetMetadata.find_one',
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=sample_dataframe)
         ), patch.object(
@@ -276,8 +296,14 @@ class TestPreviewServiceIntegration:
             value_distributions={}
         )
 
+        # Mock dataset metadata lookup
+        mock_dataset = self._create_mock_dataset()
+
         # Mock S3 loading success but transformation failure
         with patch(
+            'app.models.dataset.DatasetMetadata.find_one',
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=sample_dataframe)
         ), patch.object(
@@ -320,7 +346,17 @@ class TestPreviewServiceIntegration:
         - Appropriate error message is included
         """
         # ARRANGE
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(side_effect=Exception("S3 connection failed"))
         ):
@@ -351,7 +387,17 @@ class TestPreviewServiceIntegration:
         # ARRANGE
         empty_df = pd.DataFrame()
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=empty_df)
         ):
@@ -393,7 +439,17 @@ class TestPreviewServiceIntegration:
             value_distributions={}
         )
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=large_df)
         ), patch.object(
@@ -436,7 +492,17 @@ class TestPreviewServiceIntegration:
         # ARRANGE
         expected_transformed = sample_dataframe.copy()
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=sample_dataframe)
         ), patch.object(
@@ -502,7 +568,17 @@ class TestPreviewServiceIntegration:
             column="nonexistent"
         )
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=sample_dataframe)
         ), patch.object(
@@ -559,7 +635,17 @@ class TestPreviewServiceIntegration:
             value_distributions={}
         )
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=small_df)
         ), patch.object(
@@ -613,7 +699,17 @@ class TestPreviewServiceIntegration:
             value_distributions={}
         )
 
+        # Mock dataset metadata lookup
+
+        mock_dataset = self._create_mock_dataset()
+
         with patch(
+
+            'app.models.dataset.DatasetMetadata.find_one',
+
+            new=AsyncMock(return_value=mock_dataset)
+        ), patch(
+
             'app.services.data_processing.preview_service_integration.get_dataframe_from_s3',
             new=AsyncMock(return_value=large_df)
         ), patch.object(

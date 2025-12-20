@@ -94,10 +94,10 @@ class PreviewServiceIntegration:
 
         # CRITICAL SECURITY CHECK: Verify user owns this dataset
         from app.models.dataset import DatasetMetadata
-        dataset = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id,
-            DatasetMetadata.user_id == user_id
-        )
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             logger.error(f"Dataset {dataset_id} not found or not owned by user {user_id}")

@@ -289,10 +289,10 @@ class TransformationService(BaseService[TransformationConfig]):
         from app.services.transformation_engine.transformation_engine import TransformationType
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id,
-            DatasetMetadata.user_id == user_id
-        )
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             raise NotFoundError(
@@ -369,10 +369,10 @@ class TransformationService(BaseService[TransformationConfig]):
         start_time = time.time()
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one(
-            DatasetMetadata.dataset_id == dataset_id,
-            DatasetMetadata.user_id == user_id
-        )
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             raise NotFoundError(
