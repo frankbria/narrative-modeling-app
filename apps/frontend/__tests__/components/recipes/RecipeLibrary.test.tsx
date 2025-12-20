@@ -4,7 +4,6 @@ import { RecipeLibrary } from '@/components/recipes/RecipeLibrary';
 import { Recipe, TransformationService } from '@/lib/services/transformation';
 import { useSession } from 'next-auth/react';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { waitForAsync, actAsync } from '@/__tests__/utils';
 
 // Mock dependencies
 jest.mock('next-auth/react', () => ({
@@ -106,12 +105,13 @@ describe('RecipeLibrary', () => {
       expect(screen.getByText('Browse and apply transformation recipes')).toBeInTheDocument();
     });
 
-    it('should show loading state initially', () => {
+    it('should show loading state initially', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      // Check for loading spinner by looking for common loading indicators
-      // The loading state should be present before recipes are loaded
-      expect(TransformationService.listRecipes).toHaveBeenCalled();
+      // Wait for the useEffect to trigger and call listRecipes
+      await waitFor(() => {
+        expect(TransformationService.listRecipes).toHaveBeenCalled();
+      });
     });
 
     it('should load and display recipes', async () => {
@@ -153,17 +153,15 @@ describe('RecipeLibrary', () => {
     it('should filter recipes by name', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const searchInput = screen.getByPlaceholderText('Search recipes...');
 
-      await actAsync(async () => {
-        fireEvent.change(searchInput, { target: { value: 'Feature' } });
-      });
+      fireEvent.change(searchInput, { target: { value: 'Feature' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.queryByText('Data Cleaning Recipe')).not.toBeInTheDocument();
         expect(screen.getByText('Feature Engineering')).toBeInTheDocument();
         expect(screen.queryByText('Anomaly Detection Prep')).not.toBeInTheDocument();
@@ -173,17 +171,15 @@ describe('RecipeLibrary', () => {
     it('should filter recipes by description', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const searchInput = screen.getByPlaceholderText('Search recipes...');
 
-      await actAsync(async () => {
-        fireEvent.change(searchInput, { target: { value: 'anomaly' } });
-      });
+      fireEvent.change(searchInput, { target: { value: 'anomaly' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.queryByText('Data Cleaning Recipe')).not.toBeInTheDocument();
         expect(screen.getByText('Anomaly Detection Prep')).toBeInTheDocument();
       });
@@ -192,17 +188,15 @@ describe('RecipeLibrary', () => {
     it('should filter recipes by tags', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const searchInput = screen.getByPlaceholderText('Search recipes...');
 
-      await actAsync(async () => {
-        fireEvent.change(searchInput, { target: { value: 'cleaning' } });
-      });
+      fireEvent.change(searchInput, { target: { value: 'cleaning' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
         expect(screen.queryByText('Feature Engineering')).not.toBeInTheDocument();
       });
@@ -211,17 +205,15 @@ describe('RecipeLibrary', () => {
     it('should show empty state when no results match search', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const searchInput = screen.getByPlaceholderText('Search recipes...');
 
-      await actAsync(async () => {
-        fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
-      });
+      fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('No recipes found')).toBeInTheDocument();
         expect(screen.getByText('Try adjusting your search filters')).toBeInTheDocument();
       });
@@ -232,7 +224,7 @@ describe('RecipeLibrary', () => {
     it('should display all available tags', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('cleaning')).toBeInTheDocument();
         expect(screen.getByText('preprocessing')).toBeInTheDocument();
         expect(screen.getByText('feature-engineering')).toBeInTheDocument();
@@ -243,17 +235,15 @@ describe('RecipeLibrary', () => {
     it('should filter recipes when tag is selected', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('cleaning')).toBeInTheDocument();
       });
 
       const cleaningTag = screen.getByText('cleaning');
 
-      await actAsync(async () => {
-        fireEvent.click(cleaningTag);
-      });
+      fireEvent.click(cleaningTag);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(TransformationService.listRecipes).toHaveBeenCalledWith(
           'mock-token',
           1,
@@ -267,18 +257,16 @@ describe('RecipeLibrary', () => {
     it('should toggle tag selection', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('cleaning')).toBeInTheDocument();
       });
 
       const cleaningTag = screen.getByText('cleaning');
 
       // Select tag
-      await actAsync(async () => {
-        fireEvent.click(cleaningTag);
-      });
+      fireEvent.click(cleaningTag);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(TransformationService.listRecipes).toHaveBeenCalledWith(
           'mock-token',
           1,
@@ -289,11 +277,9 @@ describe('RecipeLibrary', () => {
       });
 
       // Deselect tag
-      await actAsync(async () => {
-        fireEvent.click(cleaningTag);
-      });
+      fireEvent.click(cleaningTag);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(TransformationService.listRecipes).toHaveBeenCalledWith(
           'mock-token',
           1,
@@ -309,7 +295,7 @@ describe('RecipeLibrary', () => {
     it('should sort by most recent by default', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         const recipeCards = screen.getAllByTestId(/recipe-card/);
         expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-1');
       });
@@ -318,17 +304,15 @@ describe('RecipeLibrary', () => {
     it('should sort by popularity', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const sortSelect = screen.getByRole('combobox');
 
-      await actAsync(async () => {
-        fireEvent.change(sortSelect, { target: { value: 'popular' } });
-      });
+      fireEvent.change(sortSelect, { target: { value: 'popular' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         const recipeCards = screen.getAllByTestId(/recipe-card/);
         expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
       });
@@ -337,17 +321,15 @@ describe('RecipeLibrary', () => {
     it('should sort by name alphabetically', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const sortSelect = screen.getByRole('combobox');
 
-      await actAsync(async () => {
-        fireEvent.change(sortSelect, { target: { value: 'name' } });
-      });
+      fireEvent.change(sortSelect, { target: { value: 'name' } });
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         const recipeCards = screen.getAllByTestId(/recipe-card/);
         expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
       });
@@ -358,7 +340,7 @@ describe('RecipeLibrary', () => {
     it('should default to grid view', async () => {
       const { container } = render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
@@ -369,7 +351,7 @@ describe('RecipeLibrary', () => {
     it('should switch to list view', async () => {
       const { container } = render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
@@ -377,12 +359,10 @@ describe('RecipeLibrary', () => {
       const listViewButton = viewButtons.find(btn => btn.querySelector('svg'));
 
       if (listViewButton) {
-        await actAsync(async () => {
-          fireEvent.click(listViewButton);
-        });
+        fireEvent.click(listViewButton);
       }
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         const listContainer = container.querySelector('.space-y-4');
         expect(listContainer).toBeInTheDocument();
       });
@@ -393,15 +373,13 @@ describe('RecipeLibrary', () => {
     it('should call onApplyRecipe when apply button is clicked', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const applyButtons = screen.getAllByRole('button', { name: /apply/i });
 
-      await actAsync(async () => {
-        fireEvent.click(applyButtons[0]);
-      });
+      fireEvent.click(applyButtons[0]);
 
       expect(mockHandlers.onApplyRecipe).toHaveBeenCalledWith(mockRecipes[0]);
     });
@@ -409,17 +387,15 @@ describe('RecipeLibrary', () => {
     it('should duplicate recipe successfully', async () => {
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
       const duplicateButtons = screen.getAllByRole('button', { name: /duplicate/i });
 
-      await actAsync(async () => {
-        fireEvent.click(duplicateButtons[0]);
-      });
+      fireEvent.click(duplicateButtons[0]);
 
-      await waitForAsync(() => {
+      await waitFor(() => {
         expect(TransformationService.duplicateRecipe).toHaveBeenCalledWith(
           'recipe-1',
           'Data Cleaning Recipe (Copy)',
