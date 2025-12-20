@@ -36,6 +36,11 @@ export {
   type ImpactStatistics,
 } from './TransformationPreview';
 
+export {
+  ImpactStats,
+  type ImpactStatsProps,
+} from './ImpactStats';
+
 // Export integration examples for documentation
 export {
   BasicPipelineIntegration,

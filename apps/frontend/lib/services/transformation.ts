@@ -73,9 +73,43 @@ export interface TransformationSuggestionResponse {
   critical_issues: string[]
 }
 
+/**
+ * Statistical impact of transformations on data
+ */
+export interface ImpactStatistics {
+  rows_affected: number
+  values_changed: number
+  columns_affected: string[]
+  quality_score_before: number
+  quality_score_after: number
+  value_distributions?: Record<string, { before: Record<string, number>; after: Record<string, number> }>
+}
+
+/**
+ * Result of transformation preview generation
+ */
+export interface PreviewResult {
+  original_data: Array<Record<string, ParameterValue>>
+  transformed_data: Array<Record<string, ParameterValue>>
+  impact_stats: ImpactStatistics
+  warnings: string[]
+  errors: string[]
+}
+
+/**
+ * API response for transformation preview endpoint
+ */
+export interface PreviewResponse {
+  success: boolean
+  preview_result?: PreviewResult
+  error?: string
+  cache_hit: boolean
+}
+
 // Recipe types are imported from @/lib/types/recipe
 
 export class TransformationService {
+  private static abortController: AbortController | null = null
   private static async getHeaders(token: string | null): Promise<HeadersInit> {
     return {
       'Content-Type': 'application/json',
@@ -132,6 +166,52 @@ export class TransformationService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Apply pipeline failed')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Preview transformation effects before applying them permanently
+   *
+   * Calls: POST /api/datasets/{datasetId}/transformations/preview
+   *
+   * @param datasetId - Dataset identifier
+   * @param operations - List of transformation steps
+   * @param sampleSize - Number of rows to sample (10-1000, default: 100)
+   * @returns PreviewResponse with success status, preview_result, error, and cache_hit
+   * @throws Error on network failures, 404, 429, or other HTTP errors
+   */
+  static async previewTransformations(
+    datasetId: string,
+    operations: TransformationStep[],
+    sampleSize: number = 100,
+    token: string | null = null
+  ): Promise<PreviewResponse> {
+    // Cancel any previous request to prevent race conditions
+    if (this.abortController) {
+      this.abortController.abort()
+    }
+
+    // Create new abort controller for request cancellation (debouncing support)
+    this.abortController = new AbortController()
+
+    const response = await fetch(
+      `${API_BASE_URL}/datasets/${datasetId}/transformations/preview`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({
+          transformation_steps: operations,
+          preview_rows: sampleSize
+        }),
+        signal: this.abortController.signal
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || `Preview failed with status ${response.status}`)
     }
 
     return response.json()

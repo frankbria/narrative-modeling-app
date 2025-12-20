@@ -20,9 +20,9 @@ class PreviewRequest(BaseModel):
     Request schema for transformation preview.
 
     Used by POST /api/datasets/{dataset_id}/transformations/preview
+    Note: dataset_id comes from the URL path, not the request body.
     """
 
-    dataset_id: str = Field(..., description="Dataset identifier")
     operations: List[TransformationStepRequest] = Field(
         ..., description="List of transformation steps to preview"
     )
@@ -36,7 +36,6 @@ class PreviewRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "dataset_id": "dataset_abc123",
                 "operations": [
                     {"transformation_type": "remove_nulls", "column": "age"},
                     {

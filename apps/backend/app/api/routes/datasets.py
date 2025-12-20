@@ -5,7 +5,7 @@ Provides endpoints for managing datasets using DatasetService.
 Implements Story 12.1: API Integration for New Models (Dataset portion).
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Path, Body
 from typing import Optional
 import logging
 import uuid
@@ -24,10 +24,12 @@ from app.schemas.dataset import (
     DatasetProcessingRequest,
     DatasetProcessingResponse
 )
+from app.schemas.preview import PreviewRequest, PreviewResponse
 from app.services.dataset_service import DatasetService
 from app.auth.nextauth_auth import get_current_user_id
 from app.utils.s3 import upload_file_to_s3
 from app.services.data_processing.data_processor import DataProcessor
+from app.models.dataset import DatasetMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -568,4 +570,98 @@ async def mark_dataset_processed(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing dataset: {str(e)}"
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/transformations/preview",
+    response_model=PreviewResponse,
+    summary="Preview transformation effects",
+    description="""
+    Generate a preview of transformation effects on a dataset sample.
+
+    - Loads a sample of the dataset from S3
+    - Applies transformation operations sequentially
+    - Calculates impact statistics (rows affected, quality score changes, etc.)
+    - Returns both original and transformed data for side-by-side comparison
+    - Results are cached for 5 minutes with user-scoped keys
+
+    **Rate Limiting**: Maximum 10 requests per minute per user.
+    **Timeout**: Preview generation will timeout after 30 seconds.
+    **Sample Size**: Must be between 10 and 1000 rows.
+    """
+)
+async def preview_transformation(
+    dataset_id: str = Path(..., description="Dataset identifier"),
+    request: PreviewRequest = Body(...),
+    current_user_id: str = Depends(get_current_user_id)
+) -> PreviewResponse:
+    """
+    Preview transformation effects before applying them permanently.
+
+    This endpoint:
+    1. Verifies user owns the dataset (CRITICAL SECURITY CHECK)
+    2. Loads sample data from S3 (limited by sample_size)
+    3. Applies transformations via PreviewService
+    4. Returns before/after data with impact statistics
+    5. Caches results with user-scoped keys
+
+    Args:
+        dataset_id: Dataset to preview transformations on
+        request: PreviewRequest with operations and sample_size
+        current_user_id: Authenticated user ID (from JWT)
+
+    Returns:
+        PreviewResponse with success status, preview_result, and cache_hit flag
+
+    Raises:
+        HTTPException 404: Dataset not found or not owned by user
+        HTTPException 408: Preview generation timeout (>30s)
+        HTTPException 429: Rate limit exceeded
+        HTTPException 500: Internal error during preview generation
+    """
+    try:
+        logger.info(f"Previewing transformations for dataset {dataset_id} (user={current_user_id}, sample_size={request.sample_size})")
+
+        # CRITICAL SECURITY CHECK: Verify user owns this dataset
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": current_user_id
+        })
+
+        if not dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset {dataset_id} not found or not owned by user"
+            )
+
+        # Import PreviewService here to avoid circular imports
+        from app.services.data_processing.preview_service_integration import preview_service
+
+        # Call PreviewService to generate preview
+        preview_result = await preview_service.generate_preview(
+            user_id=current_user_id,
+            dataset_id=dataset_id,
+            s3_file_path=dataset.s3_url,
+            operations=request.operations,
+            sample_size=request.sample_size
+        )
+
+        logger.info(f"Preview generated successfully for dataset {dataset_id}")
+
+        return PreviewResponse(
+            success=True,
+            preview_result=preview_result,
+            error=None,
+            cache_hit=False  # PreviewService tracks this internally
+        )
+
+    except HTTPException:
+        # Re-raise HTTPExceptions from PreviewService (429, 408)
+        raise
+    except Exception as e:
+        logger.error(f"Preview generation failed for dataset {dataset_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Preview generation failed: {str(e)}"
         )

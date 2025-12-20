@@ -105,6 +105,174 @@ describe('TransformationService', () => {
     })
   })
 
+  describe('Preview Transformations (Pipeline Preview)', () => {
+    it('should preview multiple transformations successfully', async () => {
+      const operations = [
+        {
+          type: 'remove_nulls',
+          parameters: {}
+        },
+        {
+          type: 'remove_outliers',
+          column: 'salary',
+          parameters: { method: 'iqr' }
+        }
+      ]
+
+      const mockResponse = {
+        success: true,
+        preview_result: {
+          original_data: [
+            { id: 1, age: null, salary: 50000 },
+            { id: 2, age: 30, salary: 75000 }
+          ],
+          transformed_data: [
+            { id: 1, age: 28, salary: 50000 },
+            { id: 2, age: 30, salary: 75000 }
+          ],
+          impact_stats: {
+            rows_affected: 1,
+            values_changed: 1,
+            columns_affected: ['age'],
+            quality_score_before: 0.75,
+            quality_score_after: 0.85,
+            value_distributions: {}
+          },
+          warnings: ['Replaced 5 null values in age column'],
+          errors: []
+        },
+        cache_hit: false
+      }
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      } as Response)
+
+      const result = await TransformationService.previewTransformations(
+        mockDatasetId,
+        operations as any,
+        100,
+        mockToken
+      )
+
+      expect(result).toEqual(mockResponse)
+      expect(result.success).toBe(true)
+      expect(result.preview_result?.impact_stats.quality_score_after).toBe(0.85)
+
+      const lastCall = (global.fetch as jest.Mock).mock.calls[(global.fetch as jest.Mock).mock.calls.length - 1]
+      const url = lastCall[0] as string
+      expect(url).toContain(`/api/v1/datasets/${mockDatasetId}/transformations/preview`)
+      expect(lastCall[1]).toEqual(
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            transformation_steps: operations,
+            preview_rows: 100
+          })
+        })
+      )
+    })
+
+    it('should handle preview transformation errors', async () => {
+      const operations = [
+        {
+          type: 'invalid_operation',
+          parameters: {}
+        }
+      ]
+
+      global.fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ detail: 'Invalid transformation operation' })
+      } as Response)
+
+      await expect(
+        TransformationService.previewTransformations(
+          mockDatasetId,
+          operations as any,
+          100,
+          mockToken
+        )
+      ).rejects.toThrow('Invalid transformation operation')
+    })
+
+    it('should use default sample size of 100', async () => {
+      const operations = [
+        {
+          type: 'trim_whitespace',
+          parameters: { columns: [] }
+        }
+      ]
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          preview_result: {
+            original_data: [],
+            transformed_data: [],
+            impact_stats: {
+              rows_affected: 0,
+              values_changed: 0,
+              columns_affected: [],
+              quality_score_before: 1.0,
+              quality_score_after: 1.0
+            },
+            warnings: [],
+            errors: []
+          },
+          cache_hit: false
+        })
+      } as Response)
+
+      await TransformationService.previewTransformations(
+        mockDatasetId,
+        operations as any,
+        undefined,
+        mockToken
+      )
+
+      const lastCall = (global.fetch as jest.Mock).mock.calls[(global.fetch as jest.Mock).mock.calls.length - 1]
+      const body = JSON.parse(lastCall[1]?.body as string)
+      expect(body.preview_rows).toBe(100)
+    })
+
+    it('should support request cancellation via abort controller', async () => {
+      const operations = [{ type: 'test', parameters: {} }]
+
+      // Mock abort controller behavior
+      const mockAbortController = new AbortController()
+      jest.spyOn(global, 'AbortController' as any).mockImplementation(() => mockAbortController)
+
+      global.fetch.mockImplementationOnce(
+        (url: string, options: any) => {
+          expect(options.signal).toBeDefined()
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              preview_result: null,
+              cache_hit: false
+            })
+          } as Response)
+        }
+      )
+
+      await TransformationService.previewTransformations(
+        mockDatasetId,
+        operations as any,
+        100,
+        mockToken
+      )
+
+      // Verify abort controller was created with signal
+      const lastCall = (global.fetch as jest.Mock).mock.calls[(global.fetch as jest.Mock).mock.calls.length - 1]
+      expect(lastCall[1]?.signal).toBeDefined()
+    })
+  })
+
   describe('Apply Transformation', () => {
     it('should apply single transformation successfully', async () => {
       const request = {
