@@ -83,12 +83,9 @@ class HistoryService:
 
         # Get version at new position
         target_step = config.transformation_steps[config.current_position]
-        version_id = target_step.version_id if hasattr(target_step, 'version_id') else None
+        version_id = target_step.version_id
 
         if version_id:
-            # Load version content from S3
-            version_content = await self.versioning_service.get_version_content(version_id)
-
             # Update dataset file_path to point to this version
             dataset = await DatasetMetadata.find_one({
                 "dataset_id": dataset_id,
@@ -96,7 +93,7 @@ class HistoryService:
             })
 
             if dataset:
-                # Get version details to update file_path
+                # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
                     dataset.file_path = version.file_path
@@ -157,12 +154,9 @@ class HistoryService:
 
         # Get version at new position
         target_step = config.transformation_steps[config.current_position]
-        version_id = target_step.version_id if hasattr(target_step, 'version_id') else None
+        version_id = target_step.version_id
 
         if version_id:
-            # Load version content from S3
-            version_content = await self.versioning_service.get_version_content(version_id)
-
             # Update dataset file_path to point to this version
             dataset = await DatasetMetadata.find_one({
                 "dataset_id": dataset_id,
@@ -170,7 +164,7 @@ class HistoryService:
             })
 
             if dataset:
-                # Get version details to update file_path
+                # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
                     dataset.file_path = version.file_path
@@ -235,12 +229,9 @@ class HistoryService:
 
         # Get version at new position
         target_step = config.transformation_steps[config.current_position]
-        version_id = target_step.version_id if hasattr(target_step, 'version_id') else None
+        version_id = target_step.version_id
 
         if version_id:
-            # Load version content from S3
-            version_content = await self.versioning_service.get_version_content(version_id)
-
             # Update dataset file_path to point to this version
             dataset = await DatasetMetadata.find_one({
                 "dataset_id": dataset_id,
@@ -248,7 +239,7 @@ class HistoryService:
             })
 
             if dataset:
-                # Get version details to update file_path
+                # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
                     dataset.file_path = version.file_path

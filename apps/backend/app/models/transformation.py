@@ -90,6 +90,7 @@ class TransformationStep(BaseModel):
     columns: Optional[List[str]] = Field(None, description="Target columns for transformation (for multi-column ops)")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
     applied_at: datetime = Field(default_factory=get_current_time, description="When transformation was applied")
+    version_id: Optional[str] = Field(None, description="Dataset version ID after this transformation")
 
     # Validation results
     is_valid: bool = Field(default=True, description="Whether transformation parameters are valid")
@@ -225,7 +226,8 @@ class TransformationConfig(Document):
         transformation_type: str,
         column: Optional[str] = None,
         columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
+        version_id: Optional[str] = None
     ) -> TransformationStep:
         """
         Add a new transformation step with branching support.
@@ -238,6 +240,7 @@ class TransformationConfig(Document):
             column: Single column to transform (optional)
             columns: Multiple columns to transform (optional)
             parameters: Transformation parameters
+            version_id: Dataset version ID after this transformation (optional)
 
         Returns:
             The created transformation step
@@ -246,7 +249,8 @@ class TransformationConfig(Document):
             transformation_type=transformation_type,
             column=column,
             columns=columns,
-            parameters=parameters or {}
+            parameters=parameters or {},
+            version_id=version_id
         )
 
         # Handle branching: if we're not at the end, truncate forward history

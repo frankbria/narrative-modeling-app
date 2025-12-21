@@ -118,7 +118,8 @@ class TransformationService(BaseService[TransformationConfig]):
         transformation_type: str,
         column: Optional[str] = None,
         columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
+        version_id: Optional[str] = None
     ) -> TransformationConfig:
         """
         Add a transformation step to configuration.
@@ -129,6 +130,7 @@ class TransformationService(BaseService[TransformationConfig]):
             column: Single column to transform (optional)
             columns: Multiple columns to transform (optional)
             parameters: Transformation parameters (optional)
+            version_id: Dataset version ID after this transformation (optional)
 
         Returns:
             Updated TransformationConfig
@@ -143,7 +145,8 @@ class TransformationService(BaseService[TransformationConfig]):
             transformation_type=transformation_type,
             column=column,
             columns=columns,
-            parameters=parameters
+            parameters=parameters,
+            version_id=version_id
         )
 
         await config.save()
@@ -419,25 +422,10 @@ class TransformationService(BaseService[TransformationConfig]):
                 current_file_path=new_file_path
             )
 
-            # Add transformation step
-            await self.add_transformation_step(
-                config_id=config_id,
-                transformation_type=transformation_type,
-                column=parameters.get("column"),
-                columns=parameters.get("columns"),
-                parameters=parameters
-            )
-
-            # Mark as applied
-            config = await self.mark_transformations_applied(
-                config_id=config_id,
-                file_path=new_file_path
-            )
-
             # Calculate execution time early for versioning
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            # Create dataset version for transformation
+            # Create dataset version for transformation BEFORE adding step
             from app.services.versioning_service import versioning_service
 
             # Get parent version (most recent version for this dataset)
@@ -446,6 +434,7 @@ class TransformationService(BaseService[TransformationConfig]):
                 {"dataset_id": dataset_id}
             ).sort([("version_number", -1)]).first_or_none()
 
+            version_id = None
             if parent_version:
                 # Get file content for versioning
                 import io
@@ -479,6 +468,23 @@ class TransformationService(BaseService[TransformationConfig]):
                     description=f"Applied {transformation_type} transformation",
                     transformation_config_id=config_id
                 )
+                version_id = version.version_id
+
+            # Add transformation step WITH version_id
+            await self.add_transformation_step(
+                config_id=config_id,
+                transformation_type=transformation_type,
+                column=parameters.get("column"),
+                columns=parameters.get("columns"),
+                parameters=parameters,
+                version_id=version_id
+            )
+
+            # Mark as applied
+            config = await self.mark_transformations_applied(
+                config_id=config_id,
+                file_path=new_file_path
+            )
 
             # Update dataset file path
             dataset.file_path = new_file_path
