@@ -96,8 +96,8 @@ done
 
 echo ""
 echo -e "${YELLOW}=== Starting Frontend Dev Server ===${NC}"
-# Start frontend in background
-SKIP_AUTH=true NEXT_PUBLIC_SKIP_AUTH=true PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
+# Start frontend in background (without SKIP_AUTH - tests need real auth flow)
+PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
 FRONTEND_PID=$!
 
 # Wait for frontend to be ready
