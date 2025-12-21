@@ -36,14 +36,25 @@ async function globalSetup(config: FullConfig) {
     await emailInput.fill(testEmail);
     await passwordInput.fill(testPassword);
 
-    // Click the "Sign In with Test User" button
+    // Click the "Sign In with Test User" button and wait for navigation
     const signInButton = page.locator('button:has-text("Sign In with Test User")');
-    await signInButton.click();
 
-    // Wait for successful authentication and redirect
-    await page.waitForURL(/\/(upload|dashboard|$)/, { timeout: 15000 });
+    // Wait for navigation after clicking sign-in
+    await Promise.all([
+      page.waitForResponse(
+        response => response.url().includes('/api/auth/callback/credentials') && response.status() === 200,
+        { timeout: 10000 }
+      ),
+      signInButton.click(),
+    ]);
 
-    // Verify we're authenticated by checking for session
+    // Give NextAuth time to set the cookie and complete the redirect
+    await page.waitForTimeout(2000);
+
+    // Wait for redirect to complete - check if we're no longer on the signin page
+    await page.waitForURL(url => !url.toString().includes('/auth/signin'), { timeout: 15000 });
+
+    // Verify we're authenticated by checking for session cookie
     const cookies = await context.cookies();
     const hasSessionCookie = cookies.some(
       cookie => cookie.name.includes('authjs.session-token')
@@ -54,6 +65,7 @@ async function globalSetup(config: FullConfig) {
     }
 
     console.log('✅ Authentication successful');
+    console.log(`   Redirected to: ${page.url()}`);
 
     // Save the authenticated state
     await context.storageState({ path: storageStatePath });
