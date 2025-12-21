@@ -217,6 +217,22 @@ class TestHistoryServiceRedo:
         with pytest.raises(ValidationError, match="Cannot redo"):
             await history_service.redo("ds1", "user1")
 
+    @pytest.mark.asyncio
+    async def test_redo_unauthorized(
+        self,
+        history_service,
+        mock_transformation_service,
+        mock_transformation_config
+    ):
+        """Test redo with unauthorized user."""
+        # Setup: config belongs to user1, but user2 is trying to redo
+        mock_transformation_config.user_id = "user1"
+        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+
+        # Execute & Verify
+        with pytest.raises(PermissionDeniedError):
+            await history_service.redo("ds1", "user2")
+
 
 @pytest.mark.unit
 class TestHistoryServiceJumpToPosition:
@@ -280,6 +296,22 @@ class TestHistoryServiceJumpToPosition:
         with pytest.raises(ValidationError, match="Invalid position"):
             await history_service.jump_to_position("ds1", -2, "user1")
 
+    @pytest.mark.asyncio
+    async def test_jump_to_position_unauthorized(
+        self,
+        history_service,
+        mock_transformation_service,
+        mock_transformation_config
+    ):
+        """Test jump_to_position with unauthorized user."""
+        # Setup: config belongs to user1, but user2 is trying to jump
+        mock_transformation_config.user_id = "user1"
+        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+
+        # Execute & Verify
+        with pytest.raises(PermissionDeniedError):
+            await history_service.jump_to_position("ds1", 0, "user2")
+
 
 @pytest.mark.unit
 class TestHistoryServiceGetHistory:
@@ -332,6 +364,22 @@ class TestHistoryServiceGetHistory:
         assert len(result["transformation_steps"]) == 0
         assert result["can_undo"] is False
         assert result["can_redo"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_history_unauthorized(
+        self,
+        history_service,
+        mock_transformation_service,
+        mock_transformation_config
+    ):
+        """Test get_history with unauthorized user."""
+        # Setup: config belongs to user1, but user2 is trying to get history
+        mock_transformation_config.user_id = "user1"
+        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+
+        # Execute & Verify
+        with pytest.raises(PermissionDeniedError):
+            await history_service.get_history("ds1", "user2")
 
 
 @pytest.mark.unit

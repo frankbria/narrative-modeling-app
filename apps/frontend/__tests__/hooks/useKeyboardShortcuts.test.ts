@@ -39,32 +39,43 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('should call onUndo when Cmd+Z is pressed (Mac)', () => {
-    // Mock Mac platform
-    Object.defineProperty(navigator, 'platform', {
-      value: 'MacIntel',
-      configurable: true
-    });
+    // Save original platform
+    const originalPlatform = navigator.platform;
 
-    renderHook(() =>
-      useKeyboardShortcuts({
-        onUndo,
-        onRedo,
-        enabled: true
-      })
-    );
+    try {
+      // Mock Mac platform
+      Object.defineProperty(navigator, 'platform', {
+        value: 'MacIntel',
+        configurable: true
+      });
 
-    const event = new KeyboardEvent('keydown', {
-      key: 'z',
-      metaKey: true,
-      bubbles: true
-    });
+      renderHook(() =>
+        useKeyboardShortcuts({
+          onUndo,
+          onRedo,
+          enabled: true
+        })
+      );
 
-    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
-    window.dispatchEvent(event);
+      const event = new KeyboardEvent('keydown', {
+        key: 'z',
+        metaKey: true,
+        bubbles: true
+      });
 
-    expect(onUndo).toHaveBeenCalledTimes(1);
-    expect(onRedo).not.toHaveBeenCalled();
-    expect(preventDefaultSpy).toHaveBeenCalled();
+      const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+      window.dispatchEvent(event);
+
+      expect(onUndo).toHaveBeenCalledTimes(1);
+      expect(onRedo).not.toHaveBeenCalled();
+      expect(preventDefaultSpy).toHaveBeenCalled();
+    } finally {
+      // Restore original platform
+      Object.defineProperty(navigator, 'platform', {
+        value: originalPlatform,
+        configurable: true
+      });
+    }
   });
 
   // Note: This test is skipped due to JSDOM limitations with KeyboardEvent
