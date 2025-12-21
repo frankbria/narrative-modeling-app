@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RecipeCard } from '@/components/recipes/RecipeCard';
 import { Recipe, RecipeCompatibilityResponse } from '@/lib/services/transformation';
 
@@ -205,7 +206,7 @@ describe('RecipeCard', () => {
         />
       );
 
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
       expect(dropdownTrigger).toBeInTheDocument();
     });
 
@@ -262,7 +263,9 @@ describe('RecipeCard', () => {
     });
 
     it('should call onDuplicate when Duplicate is clicked from dropdown', async () => {
-      const { container } = render(
+      const user = userEvent.setup();
+
+      render(
         <RecipeCard
           recipe={mockRecipe}
           onDuplicate={mockHandlers.onDuplicate}
@@ -271,19 +274,13 @@ describe('RecipeCard', () => {
         />
       );
 
-      // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      // Open dropdown using aria-label
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      // Wait for dropdown menu to appear
-      await waitFor(() => {
-        const duplicateItem = screen.getByText('Duplicate', { selector: 'div[role="menuitem"]' });
-        expect(duplicateItem).toBeInTheDocument();
-      }, { timeout: 3000 });
-
-      // Click Duplicate
-      const duplicateItem = screen.getByText('Duplicate', { selector: 'div[role="menuitem"]' });
-      fireEvent.click(duplicateItem);
+      // Wait for dropdown menu to appear and click Duplicate
+      const duplicateItem = await screen.findByRole('menuitem', { name: /duplicate/i });
+      await user.click(duplicateItem);
 
       expect(mockHandlers.onDuplicate).toHaveBeenCalledWith(mockRecipe);
     });
@@ -291,6 +288,8 @@ describe('RecipeCard', () => {
 
   describe('Ownership Permissions', () => {
     it('should show Share option in dropdown when user is owner', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -300,16 +299,17 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      // Wait for dropdown menu
-      await waitFor(() => {
-        expect(screen.getByText('Share')).toBeInTheDocument();
-      });
+      // Wait for dropdown menu and verify Share option exists
+      const shareItem = await screen.findByRole('menuitem', { name: /share/i });
+      expect(shareItem).toBeInTheDocument();
     });
 
     it('should not show Share option when user is not owner', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -319,19 +319,19 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      // Wait for dropdown menu
-      await waitFor(() => {
-        const exportItem = screen.getByText('Export JSON');
-        expect(exportItem).toBeInTheDocument();
-      });
+      // Wait for dropdown menu to open
+      await screen.findByRole('menuitem', { name: /export json/i });
 
-      expect(screen.queryByText('Share')).not.toBeInTheDocument();
+      // Verify Share option does not exist
+      expect(screen.queryByRole('menuitem', { name: /share/i })).not.toBeInTheDocument();
     });
 
     it('should show Delete option when user is owner', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -342,16 +342,17 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      // Wait for dropdown menu
-      await waitFor(() => {
-        expect(screen.getByText('Delete')).toBeInTheDocument();
-      });
+      // Wait for dropdown menu and verify Delete option exists
+      const deleteItem = await screen.findByRole('menuitem', { name: /delete/i });
+      expect(deleteItem).toBeInTheDocument();
     });
 
     it('should not show Delete option when user is not owner', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -362,19 +363,19 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      // Wait for dropdown menu
-      await waitFor(() => {
-        const exportItem = screen.getByText('Export JSON');
-        expect(exportItem).toBeInTheDocument();
-      });
+      // Wait for dropdown menu to open
+      await screen.findByRole('menuitem', { name: /export json/i });
 
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+      // Verify Delete option does not exist
+      expect(screen.queryByRole('menuitem', { name: /delete/i })).not.toBeInTheDocument();
     });
 
     it('should confirm deletion before calling onDelete', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -385,17 +386,12 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
       // Click Delete
-      await waitFor(() => {
-        const deleteItem = screen.getByText('Delete');
-        expect(deleteItem).toBeInTheDocument();
-      });
-
-      const deleteItem = screen.getByText('Delete');
-      fireEvent.click(deleteItem);
+      const deleteItem = await screen.findByRole('menuitem', { name: /delete/i });
+      await user.click(deleteItem);
 
       expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Recipe"?');
       expect(mockHandlers.onDelete).toHaveBeenCalledWith(mockRecipe);
@@ -403,6 +399,7 @@ describe('RecipeCard', () => {
 
     it('should not delete when confirmation is cancelled', async () => {
       global.confirm = jest.fn(() => false);
+      const user = userEvent.setup();
 
       render(
         <RecipeCard
@@ -414,17 +411,12 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
       // Click Delete
-      await waitFor(() => {
-        const deleteItem = screen.getByText('Delete');
-        expect(deleteItem).toBeInTheDocument();
-      });
-
-      const deleteItem = screen.getByText('Delete');
-      fireEvent.click(deleteItem);
+      const deleteItem = await screen.findByRole('menuitem', { name: /delete/i });
+      await user.click(deleteItem);
 
       expect(mockHandlers.onDelete).not.toHaveBeenCalled();
     });
@@ -432,6 +424,8 @@ describe('RecipeCard', () => {
 
   describe('Share Dialog', () => {
     it('should open share dialog when Share is clicked', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -441,18 +435,14 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
       // Click Share
-      await waitFor(() => {
-        const shareItem = screen.getByText('Share');
-        expect(shareItem).toBeInTheDocument();
-      });
+      const shareItem = await screen.findByRole('menuitem', { name: /share/i });
+      await user.click(shareItem);
 
-      const shareItem = screen.getByText('Share');
-      fireEvent.click(shareItem);
-
+      // Verify share dialog opens
       await waitFor(() => {
         expect(screen.getByTestId('share-dialog')).toBeInTheDocument();
       });
@@ -461,6 +451,8 @@ describe('RecipeCard', () => {
 
   describe('Export Dialog', () => {
     it('should open export dialog when Export JSON is clicked', async () => {
+      const user = userEvent.setup();
+
       render(
         <RecipeCard
           recipe={mockRecipe}
@@ -470,17 +462,12 @@ describe('RecipeCard', () => {
       );
 
       // Open dropdown
-      const dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      const dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
       // Click Export JSON
-      await waitFor(() => {
-        const exportItem = screen.getByText('Export JSON');
-        expect(exportItem).toBeInTheDocument();
-      });
-
-      const exportItem = screen.getByText('Export JSON');
-      fireEvent.click(exportItem);
+      const exportItem = await screen.findByRole('menuitem', { name: /export json/i });
+      await user.click(exportItem);
 
       await waitFor(() => {
         expect(screen.getByTestId('export-dialog')).toBeInTheDocument();
@@ -488,6 +475,8 @@ describe('RecipeCard', () => {
     });
 
     it('should allow export for both owner and non-owner', async () => {
+      const user = userEvent.setup();
+
       const { rerender } = render(
         <RecipeCard
           recipe={mockRecipe}
@@ -497,15 +486,14 @@ describe('RecipeCard', () => {
       );
 
       // Test as owner
-      let dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      let dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      await waitFor(() => {
-        expect(screen.getByText('Export JSON')).toBeInTheDocument();
-      });
+      const exportItemOwner = await screen.findByRole('menuitem', { name: /export json/i });
+      expect(exportItemOwner).toBeInTheDocument();
 
-      // Close dropdown
-      fireEvent.click(dropdownTrigger);
+      // Close dropdown by pressing Escape
+      await user.keyboard('{Escape}');
 
       // Test as non-owner
       rerender(
@@ -516,12 +504,11 @@ describe('RecipeCard', () => {
         />
       );
 
-      dropdownTrigger = screen.getByRole('button', { name: '' });
-      fireEvent.click(dropdownTrigger);
+      dropdownTrigger = screen.getByRole('button', { name: /recipe actions/i });
+      await user.click(dropdownTrigger);
 
-      await waitFor(() => {
-        expect(screen.getByText('Export JSON')).toBeInTheDocument();
-      });
+      const exportItemNonOwner = await screen.findByRole('menuitem', { name: /export json/i });
+      expect(exportItemNonOwner).toBeInTheDocument();
     });
   });
 });

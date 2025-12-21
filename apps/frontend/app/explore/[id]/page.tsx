@@ -51,14 +51,25 @@ export default function DatasetAnalysisPage() {
       return
     }
 
+    // AbortController to cancel fetch on cleanup
+    const abortController = new AbortController()
+    let isMounted = true
+
     const fetchDataset = async () => {
+      if (!isMounted) return
+
       try {
-        setIsLoading(true)
+        if (isMounted) {
+          setIsLoading(true)
+        }
+
         const token = await getAuthToken()
         const datasetId = params?.id as string
 
         if (!datasetId) {
-          setError('No dataset ID provided')
+          if (isMounted) {
+            setError('No dataset ID provided')
+          }
           return
         }
 
@@ -70,7 +81,8 @@ export default function DatasetAnalysisPage() {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          signal: abortController.signal,
         })
 
         if (!response.ok) {
@@ -78,24 +90,42 @@ export default function DatasetAnalysisPage() {
         }
 
         const data = await response.json()
-        setDataset(data)
+
+        if (isMounted) {
+          setDataset(data)
+        }
 
         // If not processed, start processing
-        if (!data.is_processed) {
-          await processDataset(datasetId, token)
+        if (!data.is_processed && isMounted) {
+          await processDataset(datasetId, token, abortController.signal)
         }
       } catch (err) {
+        // Ignore abort errors
+        if (err instanceof Error && err.name === 'AbortError') {
+          return
+        }
+
         console.error('Error fetching dataset:', err)
-        setError(err instanceof Error ? err.message : 'Failed to fetch dataset')
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch dataset')
+        }
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     fetchDataset()
+
+    // Cleanup function
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
   }, [params?.id, apiUrl])
 
-  const processDataset = async (datasetId: string, token: string) => {
+  const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
     try {
       const response = await fetch(`${apiUrl}/data/process`, {
         method: 'POST',
@@ -103,7 +133,8 @@ export default function DatasetAnalysisPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ file_id: datasetId })
+        body: JSON.stringify({ file_id: datasetId }),
+        signal,
       })
 
       if (response.ok) {
@@ -111,6 +142,10 @@ export default function DatasetAnalysisPage() {
         setDataset(prev => prev ? { ...prev, ...processedData } : null)
       }
     } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
       console.error('Error processing dataset:', err)
     }
   }

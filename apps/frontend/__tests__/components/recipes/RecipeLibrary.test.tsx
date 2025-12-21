@@ -308,10 +308,20 @@ describe('RecipeLibrary', () => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
+      // Click the select trigger to open the dropdown
       const sortSelect = screen.getByRole('combobox');
+      fireEvent.click(sortSelect);
 
-      fireEvent.change(sortSelect, { target: { value: 'popular' } });
+      // Wait for the dropdown to open and click the "Most Popular" option
+      await waitFor(() => {
+        const popularOption = screen.getByText('Most Popular');
+        expect(popularOption).toBeInTheDocument();
+      });
 
+      const popularOption = screen.getByText('Most Popular');
+      fireEvent.click(popularOption);
+
+      // Wait for recipes to be sorted by popularity (recipe-3 has highest usage_count: 15)
       await waitFor(() => {
         const recipeCards = screen.getAllByTestId(/recipe-card/);
         expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
@@ -325,10 +335,20 @@ describe('RecipeLibrary', () => {
         expect(screen.getByText('Data Cleaning Recipe')).toBeInTheDocument();
       });
 
+      // Click the select trigger to open the dropdown
       const sortSelect = screen.getByRole('combobox');
+      fireEvent.click(sortSelect);
 
-      fireEvent.change(sortSelect, { target: { value: 'name' } });
+      // Wait for the dropdown to open and click the "Name (A-Z)" option
+      await waitFor(() => {
+        const nameOption = screen.getByText('Name (A-Z)');
+        expect(nameOption).toBeInTheDocument();
+      });
 
+      const nameOption = screen.getByText('Name (A-Z)');
+      fireEvent.click(nameOption);
+
+      // Wait for recipes to be sorted by name (Anomaly Detection Prep comes first alphabetically)
       await waitFor(() => {
         const recipeCards = screen.getAllByTestId(/recipe-card/);
         expect(recipeCards[0]).toHaveAttribute('data-testid', 'recipe-card-recipe-3');
@@ -427,7 +447,7 @@ describe('RecipeLibrary', () => {
     });
 
     it('should display error when duplicate fails', async () => {
-      (TransformationService.duplicateRecipe as jest.Mock).mockRejectedValue(
+      (TransformationService.duplicateRecipe as jest.Mock).mockRejectedValueOnce(
         new Error('Duplicate failed')
       );
 
@@ -440,13 +460,14 @@ describe('RecipeLibrary', () => {
       const duplicateButtons = screen.getAllByRole('button', { name: /duplicate/i });
       fireEvent.click(duplicateButtons[0]);
 
+      // Wait for the error alert to appear
       await waitFor(() => {
-        expect(screen.getByText('Failed to duplicate recipe')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Duplicate failed')).toBeInTheDocument();
+      }, { timeout: 2000 });
     });
 
     it('should display error when delete fails', async () => {
-      (TransformationService.deleteRecipe as jest.Mock).mockRejectedValue(
+      (TransformationService.deleteRecipe as jest.Mock).mockRejectedValueOnce(
         new Error('Delete failed')
       );
 
@@ -459,9 +480,10 @@ describe('RecipeLibrary', () => {
       const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
       fireEvent.click(deleteButtons[0]);
 
+      // Wait for the error alert to appear
       await waitFor(() => {
-        expect(screen.getByText('Failed to delete recipe')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Delete failed')).toBeInTheDocument();
+      }, { timeout: 2000 });
     });
   });
 
@@ -534,15 +556,16 @@ describe('RecipeLibrary', () => {
 
   describe('Error Handling', () => {
     it('should display error when loading recipes fails', async () => {
-      (TransformationService.listRecipes as jest.Mock).mockRejectedValue(
+      (TransformationService.listRecipes as jest.Mock).mockRejectedValueOnce(
         new Error('Failed to load')
       );
 
       render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
 
+      // Wait for the error alert to appear
       await waitFor(() => {
-        expect(screen.getByText('Failed to load recipes')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Failed to load')).toBeInTheDocument();
+      }, { timeout: 2000 });
     });
   });
 

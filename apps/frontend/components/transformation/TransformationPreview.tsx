@@ -108,7 +108,13 @@ export function TransformationPreview({
       return;
     }
 
+    // AbortController to cancel fetch on cleanup
+    const abortController = new AbortController();
+    let isMounted = true;
+
     const fetchPreview = async () => {
+      if (!isMounted) return;
+
       setLoading(true);
       setError(null);
 
@@ -121,7 +127,7 @@ export function TransformationPreview({
           parameters: op.parameters || {},
         }));
 
-        // Call the service method
+        // Call the service method with abort signal
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/transformations/pipeline/preview`,
           {
@@ -135,6 +141,7 @@ export function TransformationPreview({
               transformations,
               sample_size: debouncedSampleSize,
             }),
+            signal: abortController.signal,
           }
         );
 
@@ -146,18 +153,38 @@ export function TransformationPreview({
         }
 
         const data = (await response.json()) as PreviewResponse;
-        setPreviewData(data);
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setPreviewData(data);
+        }
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to generate preview'
-        );
-        setPreviewData(null);
+        // Ignore abort errors
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setError(
+            err instanceof Error ? err.message : 'Failed to generate preview'
+          );
+          setPreviewData(null);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchPreview();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [datasetId, debouncedOperations, debouncedSampleSize]);
 
   // Handle sample size change

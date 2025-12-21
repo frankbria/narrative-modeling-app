@@ -35,45 +35,68 @@ export function DataPreviewTable({ datasetId, onExport }: DataPreviewTableProps)
   const rowsPerPage = 50
 
   useEffect(() => {
-    if (datasetId && datasetId !== 'undefined') {
-      fetchPreviewData()
-    } else {
-      setError('Invalid dataset ID')
-      setLoading(false)
-    }
-  }, [datasetId, currentPage])
-
-  const fetchPreviewData = async () => {
     if (!datasetId || datasetId === 'undefined') {
       setError('Invalid dataset ID')
       setLoading(false)
       return
     }
-    
-    try {
-      setLoading(true)
-      const response = await fetch(
-        `/api/data/${datasetId}/preview?rows=${rowsPerPage}&offset=${currentPage * rowsPerPage}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
+
+    // AbortController to cancel fetch on cleanup
+    const abortController = new AbortController()
+    let isMounted = true
+
+    const fetchPreviewData = async () => {
+      if (!isMounted) return
+
+      try {
+        if (isMounted) {
+          setLoading(true)
         }
-      )
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch preview data')
+        const response = await fetch(
+          `/api/data/${datasetId}/preview?rows=${rowsPerPage}&offset=${currentPage * rowsPerPage}`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            signal: abortController.signal,
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch preview data')
+        }
+
+        const data = await response.json()
+
+        if (isMounted) {
+          setPreviewData(data)
+        }
+      } catch (err) {
+        // Ignore abort errors
+        if (err instanceof Error && err.name === 'AbortError') {
+          return
+        }
+
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'An error occurred')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
       }
-
-      const data = await response.json()
-      setPreviewData(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchPreviewData()
+
+    // Cleanup function
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [datasetId, currentPage])
 
   const totalPages = previewData ? Math.ceil(previewData.total_rows / rowsPerPage) : 0
 
