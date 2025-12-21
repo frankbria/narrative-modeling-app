@@ -90,6 +90,7 @@ class TransformationStep(BaseModel):
     columns: Optional[List[str]] = Field(None, description="Target columns for transformation (for multi-column ops)")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
     applied_at: datetime = Field(default_factory=get_current_time, description="When transformation was applied")
+    version_id: Optional[str] = Field(None, description="Dataset version ID after this transformation")
 
     # Validation results
     is_valid: bool = Field(default=True, description="Whether transformation parameters are valid")
@@ -166,6 +167,7 @@ class TransformationConfig(Document):
 
     # Transformation history
     transformation_steps: List[TransformationStep] = Field(default_factory=list, description="Applied transformation steps")
+    current_position: int = Field(default=-1, description="Current position in transformation history (-1 = no transformations)")
 
     # Current state
     current_file_path: Optional[str] = Field(None, description="Current file path after transformations")
@@ -205,6 +207,9 @@ class TransformationConfig(Document):
             [("dataset_id", 1), ("is_applied", 1)],  # Filter applied/pending transformations
             [("dataset_id", 1), ("is_applied", 1), ("created_at", -1)],  # Applied configs chronologically
             [("dataset_id", 1), ("created_at", -1)],  # All dataset configs chronologically
+            # History navigation indexes
+            [("dataset_id", 1), ("current_position", 1)],  # Query by dataset and position
+            [("user_id", 1), ("dataset_id", 1), ("updated_at", -1)],  # User's dataset configs by recency
         ]
 
     model_config = {
@@ -221,16 +226,21 @@ class TransformationConfig(Document):
         transformation_type: str,
         column: Optional[str] = None,
         columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
+        version_id: Optional[str] = None
     ) -> TransformationStep:
         """
-        Add a new transformation step.
+        Add a new transformation step with branching support.
+
+        If current_position is not at the end of history (i.e., user has done undo),
+        this will truncate forward history and create a new branch.
 
         Args:
             transformation_type: Type of transformation
             column: Single column to transform (optional)
             columns: Multiple columns to transform (optional)
             parameters: Transformation parameters
+            version_id: Dataset version ID after this transformation (optional)
 
         Returns:
             The created transformation step
@@ -239,11 +249,22 @@ class TransformationConfig(Document):
             transformation_type=transformation_type,
             column=column,
             columns=columns,
-            parameters=parameters or {}
+            parameters=parameters or {},
+            version_id=version_id
         )
 
+        # Handle branching: if we're not at the end, truncate forward history
+        if self.current_position < len(self.transformation_steps) - 1:
+            # Truncate steps after current position
+            self.transformation_steps = self.transformation_steps[:self.current_position + 1]
+
+        # Add new step
         self.transformation_steps.append(step)
-        self.total_transformations += 1
+        self.total_transformations = len(self.transformation_steps)
+
+        # Update position to point to new step
+        self.current_position = len(self.transformation_steps) - 1
+
         self.update_timestamp()
 
         return step
@@ -342,3 +363,35 @@ class TransformationConfig(Document):
             if step.columns:
                 affected.update(step.columns)
         return list(affected)
+
+    def can_undo(self) -> bool:
+        """
+        Check if undo operation is possible.
+
+        Returns:
+            True if current_position > 0, False otherwise
+        """
+        return self.current_position > 0
+
+    def can_redo(self) -> bool:
+        """
+        Check if redo operation is possible.
+
+        Returns:
+            True if current_position < len(transformation_steps) - 1, False otherwise
+        """
+        return self.current_position < len(self.transformation_steps) - 1
+
+    def get_current_state(self) -> Dict[str, Any]:
+        """
+        Get current history state metadata.
+
+        Returns:
+            Dictionary with current_position, total_steps, can_undo, can_redo
+        """
+        return {
+            "current_position": self.current_position,
+            "total_steps": len(self.transformation_steps),
+            "can_undo": self.can_undo(),
+            "can_redo": self.can_redo()
+        }

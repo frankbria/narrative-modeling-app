@@ -355,3 +355,41 @@ class TransformationTypeInfo(BaseModel):
     description: str = Field(..., description="What this transformation does")
     parameters_schema: Dict[str, Any] = Field(default_factory=dict, description="JSON schema for parameters")
     requires_columns: bool = Field(default=False, description="Whether transformation requires column selection")
+
+
+# History Response Schemas
+
+class HistoryOperationResponse(BaseModel):
+    """Response schema for history operations (undo/redo/jump)."""
+
+    success: bool = Field(..., description="Whether operation succeeded")
+    version_id: Optional[str] = Field(None, description="Version ID after operation")
+    current_position: int = Field(..., description="Current position in history")
+    message: str = Field(..., description="Human-readable message")
+
+
+class HistoryEntrySchema(BaseModel):
+    """Schema for a single history entry."""
+
+    position: int = Field(..., description="Position in history (0-indexed)")
+    transformation_type: str = Field(..., description="Type of transformation")
+    description: str = Field(..., description="Human-readable description")
+    timestamp: str = Field(..., description="ISO timestamp")
+    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
+    rows_affected: Optional[int] = Field(None, description="Number of rows affected")
+    version_id: Optional[str] = Field(None, description="Associated version ID")
+
+
+class HistoryDataResponse(BaseModel):
+    """Response schema for get history endpoint."""
+
+    history: List[HistoryEntrySchema] = Field(..., description="List of history entries")
+    current_position: int = Field(..., description="Current position in history")
+    can_undo: bool = Field(..., description="Whether undo is available")
+    can_redo: bool = Field(..., description="Whether redo is available")
+
+
+class ClearHistoryResponse(BaseModel):
+    """Response schema for clear history endpoint."""
+
+    success: bool = Field(..., description="Whether operation succeeded")

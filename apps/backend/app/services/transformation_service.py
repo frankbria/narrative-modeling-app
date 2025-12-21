@@ -118,7 +118,8 @@ class TransformationService(BaseService[TransformationConfig]):
         transformation_type: str,
         column: Optional[str] = None,
         columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
+        version_id: Optional[str] = None
     ) -> TransformationConfig:
         """
         Add a transformation step to configuration.
@@ -129,6 +130,7 @@ class TransformationService(BaseService[TransformationConfig]):
             column: Single column to transform (optional)
             columns: Multiple columns to transform (optional)
             parameters: Transformation parameters (optional)
+            version_id: Dataset version ID after this transformation (optional)
 
         Returns:
             Updated TransformationConfig
@@ -143,7 +145,8 @@ class TransformationService(BaseService[TransformationConfig]):
             transformation_type=transformation_type,
             column=column,
             columns=columns,
-            parameters=parameters
+            parameters=parameters,
+            version_id=version_id
         )
 
         await config.save()
@@ -419,17 +422,66 @@ class TransformationService(BaseService[TransformationConfig]):
                 current_file_path=new_file_path
             )
 
-            # Add transformation step
+            # Calculate execution time early for versioning
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # Create dataset version for transformation BEFORE adding step
+            from app.services.versioning_service import versioning_service
+
+            # Get parent version (most recent version for this dataset)
+            from app.models.version import DatasetVersion
+            parent_version = await DatasetVersion.find(
+                {"dataset_id": dataset_id}
+            ).sort([("version_number", -1)]).first_or_none()
+
+            version_id = None
+            if parent_version:
+                # Get file content for versioning
+                import io
+                buffer = io.BytesIO()
+                transformed_df.to_parquet(buffer, index=False)
+                transformed_content = buffer.getvalue()
+
+                # Update dataset metadata for version creation
+                dataset.num_rows = len(transformed_df)
+                dataset.num_columns = len(transformed_df.columns)
+                dataset.columns = transformed_df.columns.tolist()
+
+                # Build transformation steps for lineage
+                transformation_steps = [
+                    {
+                        "transformation_type": transformation_type,
+                        "column": parameters.get("column"),
+                        "columns": parameters.get("columns"),
+                        "parameters": parameters,
+                        "execution_time": execution_time_ms
+                    }
+                ]
+
+                # Create version with lineage
+                version, lineage = await versioning_service.create_transformation_version(
+                    parent_version_id=parent_version.version_id,
+                    transformed_content=transformed_content,
+                    transformation_steps=transformation_steps,
+                    dataset_metadata=dataset,
+                    user_id=user_id,
+                    description=f"Applied {transformation_type} transformation",
+                    transformation_config_id=config_id
+                )
+                version_id = version.version_id
+
+            # Add transformation step WITH version_id
             await self.add_transformation_step(
                 config_id=config_id,
                 transformation_type=transformation_type,
                 column=parameters.get("column"),
                 columns=parameters.get("columns"),
-                parameters=parameters
+                parameters=parameters,
+                version_id=version_id
             )
 
             # Mark as applied
-            await self.mark_transformations_applied(
+            config = await self.mark_transformations_applied(
                 config_id=config_id,
                 file_path=new_file_path
             )
@@ -441,8 +493,6 @@ class TransformationService(BaseService[TransformationConfig]):
 
             # Clear cached data
             await cache_service.delete_pattern(f"stats_{dataset_id}_*")
-
-            execution_time_ms = int((time.time() - start_time) * 1000)
 
             return {
                 "success": True,

@@ -40,6 +40,9 @@ from app.schemas.transformation import (
     ValidationRequest,
     ValidationResponse,
     TransformationTypeInfo,
+    HistoryOperationResponse,
+    HistoryDataResponse,
+    ClearHistoryResponse,
 )
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -49,7 +52,12 @@ from app.services.transformation_engine.validators import TransformationValidato
 from app.services.transformation_engine.recipe_manager import RecipeManager, RecipeCompatibilityChecker
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.redis_cache import cache_service
-from app.services.exceptions import NotFoundError, OperationError
+from app.services.exceptions import (
+    NotFoundError,
+    OperationError,
+    ValidationError,
+    PermissionDeniedError
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -1362,3 +1370,145 @@ async def get_available_transformations():
     ])
 
     return transformations
+
+
+# =============================================================================
+# History Navigation Endpoints (Undo/Redo)
+# =============================================================================
+
+def get_history_service():
+    """Dependency injection for HistoryService."""
+    from app.services.history_service import HistoryService
+    from app.services.versioning_service import versioning_service
+    from app.services.transformation_service import TransformationService
+
+    transformation_service = TransformationService()
+    return HistoryService(
+        versioning_service=versioning_service,
+        transformation_service=transformation_service
+    )
+
+
+@router.post("/datasets/{dataset_id}/history/undo", response_model=HistoryOperationResponse)
+async def undo_transformation(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    history_service: "HistoryService" = Depends(get_history_service)
+):
+    """
+    Undo the last transformation, moving back one step in history.
+
+    Returns the version ID and current position after undo.
+    """
+    try:
+        result = await history_service.undo(dataset_id, current_user_id)
+        return result
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error undoing transformation for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/datasets/{dataset_id}/history/redo", response_model=HistoryOperationResponse)
+async def redo_transformation(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    history_service: "HistoryService" = Depends(get_history_service)
+):
+    """
+    Redo the next transformation, moving forward one step in history.
+
+    Returns the version ID and current position after redo.
+    """
+    try:
+        result = await history_service.redo(dataset_id, current_user_id)
+        return result
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error redoing transformation for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/datasets/{dataset_id}/history/jump", response_model=HistoryOperationResponse)
+async def jump_to_position(
+    dataset_id: str,
+    position: int = Query(..., description="Target position in history (0-indexed)"),
+    current_user_id: str = Depends(get_current_user_id),
+    history_service: "HistoryService" = Depends(get_history_service)
+):
+    """
+    Jump to a specific position in transformation history.
+
+    Args:
+        position: Target position (0-indexed)
+
+    Returns the version ID and current position after jump.
+    """
+    try:
+        result = await history_service.jump_to_position(dataset_id, position, current_user_id)
+        return result
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error jumping to position for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.get("/datasets/{dataset_id}/history", response_model=HistoryDataResponse)
+async def get_history(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    history_service: "HistoryService" = Depends(get_history_service)
+):
+    """
+    Get full transformation history for a dataset.
+
+    Returns transformation steps, current position, and navigation state.
+    """
+    try:
+        result = await history_service.get_history(dataset_id, current_user_id)
+        return result
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error getting history for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.delete("/datasets/{dataset_id}/history", response_model=ClearHistoryResponse)
+async def clear_history(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    history_service: "HistoryService" = Depends(get_history_service)
+):
+    """
+    Clear all transformation history for a dataset.
+
+    Returns success status.
+    """
+    try:
+        result = await history_service.clear_history(dataset_id, current_user_id)
+        return {"success": result}
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error clearing history for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e

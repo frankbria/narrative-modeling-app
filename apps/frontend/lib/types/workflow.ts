@@ -25,6 +25,10 @@ export interface WorkflowState {
   datasetId?: string;
   modelId?: string;
   deploymentId?: string;
+  // Transformation history state
+  historyPosition?: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export interface WorkflowContextType {
@@ -36,6 +40,10 @@ export interface WorkflowContextType {
   resetWorkflow: () => void;
   loadWorkflow: (datasetId: string) => Promise<void>;
   saveWorkflow: () => Promise<void>;
+  // Transformation history methods
+  updateHistoryPosition: (position: number) => void;
+  updateHistoryState: (historyState: { position: number; canUndo: boolean; canRedo: boolean }) => void;
+  refreshHistory: () => Promise<void>;
 }
 
 export const WORKFLOW_STAGES: StageConfig[] = [
