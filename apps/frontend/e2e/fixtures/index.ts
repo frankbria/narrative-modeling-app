@@ -42,8 +42,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
     console.log('[authenticatedPage] Using pre-authenticated session from storage state');
 
-    // Navigate to the dashboard
-    await page.goto('/dashboard', { timeout: 30000 });
+    // Navigate to the upload page (root redirects to first incomplete workflow stage)
+    await page.goto('/upload', { timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 });
 
     // Verify we're authenticated (should not be on signin page)
@@ -52,7 +52,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       throw new Error('Authentication failed - redirected to signin page despite having storage state');
     }
 
-    console.log('[authenticatedPage] Successfully navigated to dashboard with authenticated session');
+    console.log('[authenticatedPage] Successfully navigated to upload page with authenticated session');
 
     await use(page);
   },
