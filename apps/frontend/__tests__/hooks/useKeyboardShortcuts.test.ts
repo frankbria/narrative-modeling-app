@@ -149,6 +149,47 @@ describe('useKeyboardShortcuts', () => {
     expect(onRedo).not.toHaveBeenCalled();
   });
 
+  it('should handle uppercase keys from Shift modifier', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        onUndo,
+        onRedo,
+        enabled: true
+      })
+    );
+
+    // Test Ctrl+Shift+Z with uppercase 'Z'
+    const redoEventUpperZ = new KeyboardEvent('keydown', {
+      key: 'Z', // Uppercase from Shift
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true
+    });
+
+    const preventDefaultSpyZ = jest.spyOn(redoEventUpperZ, 'preventDefault');
+    window.dispatchEvent(redoEventUpperZ);
+
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(preventDefaultSpyZ).toHaveBeenCalled();
+
+    jest.clearAllMocks();
+
+    // Test Ctrl+Y with uppercase 'Y' (edge case)
+    const redoEventUpperY = new KeyboardEvent('keydown', {
+      key: 'Y', // Uppercase
+      ctrlKey: true,
+      bubbles: true
+    });
+
+    const preventDefaultSpyY = jest.spyOn(redoEventUpperY, 'preventDefault');
+    window.dispatchEvent(redoEventUpperY);
+
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(preventDefaultSpyY).toHaveBeenCalled();
+  });
+
   it('should call handlers on valid shortcuts', () => {
     // This test verifies that shortcuts work (preventDefault is called internally)
     // We already test undo with Ctrl+Z in the first test

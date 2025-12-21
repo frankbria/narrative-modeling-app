@@ -27,7 +27,7 @@ export function useKeyboardShortcuts({
       const modifier = isMac ? e.metaKey : e.ctrlKey;
 
       // Undo: Ctrl+Z or Cmd+Z (without Shift)
-      if (modifier && e.key === 'z' && !e.shiftKey) {
+      if (modifier && e.key && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         onUndo();
         return;
@@ -35,8 +35,8 @@ export function useKeyboardShortcuts({
 
       // Redo: Ctrl+Y, Ctrl+Shift+Z, or Cmd+Shift+Z
       if (
-        (modifier && e.key === 'y') ||
-        (modifier && e.shiftKey && e.key === 'z')
+        (modifier && e.key && e.key.toLowerCase() === 'y') ||
+        (modifier && e.shiftKey && e.key && e.key.toLowerCase() === 'z')
       ) {
         e.preventDefault();
         onRedo();
