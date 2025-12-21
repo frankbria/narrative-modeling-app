@@ -95,6 +95,28 @@ for i in {1..30}; do
 done
 
 echo ""
+echo -e "${YELLOW}=== Starting Frontend Dev Server ===${NC}"
+# Start frontend in background
+SKIP_AUTH=true NEXT_PUBLIC_SKIP_AUTH=true PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
+FRONTEND_PID=$!
+
+# Wait for frontend to be ready
+echo "Waiting for frontend to start..."
+for i in {1..60}; do
+  if curl -s http://localhost:${TEST_PORT} > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Frontend is ready${NC}"
+    break
+  fi
+  if [ $i -eq 60 ]; then
+    echo -e "${RED}ERROR: Frontend failed to start within 60 seconds${NC}"
+    kill $FRONTEND_PID 2>/dev/null
+    kill $BACKEND_PID 2>/dev/null
+    exit 1
+  fi
+  sleep 1
+done
+
+echo ""
 echo -e "${YELLOW}=== Starting Playwright Tests ===${NC}"
 echo "Command: npx playwright test $@"
 echo ""
@@ -102,6 +124,8 @@ echo ""
 # Export environment variables for E2E testing
 export NODE_ENV=development
 export NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}/api/v1
+export BASE_URL=http://localhost:${TEST_PORT}
+export PORT=${TEST_PORT}
 export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
 export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
 
@@ -111,9 +135,13 @@ npx playwright test "$@"
 # Capture exit code
 EXIT_CODE=$?
 
-# Cleanup: Kill backend server
+# Cleanup: Kill both servers
 echo ""
 echo -e "${YELLOW}=== Cleaning up ===${NC}"
+if [ ! -z "$FRONTEND_PID" ]; then
+  kill $FRONTEND_PID 2>/dev/null
+  echo "Stopped frontend server (PID: $FRONTEND_PID)"
+fi
 if [ ! -z "$BACKEND_PID" ]; then
   kill $BACKEND_PID 2>/dev/null
   echo "Stopped backend server (PID: $BACKEND_PID)"
@@ -126,6 +154,7 @@ else
     echo ""
     echo -e "${RED}=== Tests failed with exit code ${EXIT_CODE} ===${NC}"
     echo -e "${YELLOW}Backend logs: /tmp/backend-e2e.log${NC}"
+    echo -e "${YELLOW}Frontend logs: /tmp/frontend-e2e.log${NC}"
 fi
 
 exit $EXIT_CODE
