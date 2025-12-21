@@ -95,6 +95,20 @@ for i in {1..30}; do
 done
 
 echo ""
+echo -e "${YELLOW}=== Seeding E2E Test Data ===${NC}"
+# Seed MongoDB with test user and sample data
+cd ../backend
+uv run python scripts/seed_e2e_data.py
+SEED_EXIT_CODE=$?
+cd -
+
+if [ $SEED_EXIT_CODE -ne 0 ]; then
+  echo -e "${RED}ERROR: Failed to seed test data${NC}"
+  kill $BACKEND_PID 2>/dev/null
+  exit 1
+fi
+
+echo ""
 echo -e "${YELLOW}=== Starting Frontend Dev Server ===${NC}"
 # Start frontend in background (without SKIP_AUTH - tests need real auth flow)
 PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
@@ -128,6 +142,9 @@ export BASE_URL=http://localhost:${TEST_PORT}
 export PORT=${TEST_PORT}
 export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
 export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
+export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/narrative-modeling-test}
+export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
+export NEXTAUTH_URL=http://localhost:${TEST_PORT}
 
 # Run Playwright with all arguments passed to this script
 npx playwright test "$@"
