@@ -41,6 +41,10 @@ export {
   type ImpactStatsProps,
 } from './ImpactStats';
 
+export { HistoryItem } from './HistoryItem';
+export { UndoRedoControls } from './UndoRedoControls';
+export { TransformationHistory } from './TransformationHistory';
+
 // Export integration examples for documentation
 export {
   BasicPipelineIntegration,

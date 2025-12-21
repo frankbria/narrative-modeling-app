@@ -204,6 +204,48 @@ export function WorkflowProvider({
     }
   }, [state]);
 
+  const updateHistoryPosition = useCallback((position: number) => {
+    setState(prev => ({
+      ...prev,
+      historyPosition: position
+    }));
+  }, []);
+
+  const updateHistoryState = useCallback((historyState: { position: number; canUndo: boolean; canRedo: boolean }) => {
+    setState(prev => ({
+      ...prev,
+      historyPosition: historyState.position,
+      canUndo: historyState.canUndo,
+      canRedo: historyState.canRedo
+    }));
+  }, []);
+
+  const refreshHistory = useCallback(async () => {
+    if (!state.datasetId) return;
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(
+        `${API_URL}/api/v1/transformations/datasets/${state.datasetId}/history`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        updateHistoryState({
+          position: data.current_position,
+          canUndo: data.can_undo,
+          canRedo: data.can_redo
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh history:', error);
+    }
+  }, [state.datasetId, updateHistoryState]);
+
   const value: WorkflowContextType = {
     state,
     canAccessStage,
@@ -212,7 +254,10 @@ export function WorkflowProvider({
     setDatasetId,
     resetWorkflow,
     loadWorkflow,
-    saveWorkflow
+    saveWorkflow,
+    updateHistoryPosition,
+    updateHistoryState,
+    refreshHistory
   };
 
   return (
