@@ -508,6 +508,7 @@ DELETE /api/v1/transformations/datasets/{id}/config    - Clear transformation co
 GET    /api/v1/transformations/datasets/{id}/history       - Get transformation history
 POST   /api/v1/transformations/datasets/{id}/history/undo  - Undo transformation
 POST   /api/v1/transformations/datasets/{id}/history/redo  - Redo transformation
+POST   /api/v1/transformations/datasets/{id}/history/jump  - Jump to specific position
 DELETE /api/v1/transformations/datasets/{id}/history       - Clear history
 ```
 
