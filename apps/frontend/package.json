@@ -19,7 +19,7 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "@auth/mongodb-adapter": "^3.10.0",
+    "@auth/mongodb-adapter": "^3.11.1",
     "@icons-pack/react-simple-icons": "^13.8.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -42,7 +42,7 @@
     "csv-parse": "^5.6.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.22",
-    "lucide-react": "^0.544.0",
+    "lucide-react": "^0.555.0",
     "mongodb": "6.20.0",
     "next": "15.5.9",
     "next-auth": "^5.0.0-beta.28",
@@ -56,7 +56,7 @@
     "react-markdown": "^10.1.0",
     "react-window": "^1.8.10",
     "recharts": "^2.12.0",
-    "tailwind-merge": "^3.2.0",
+    "tailwind-merge": "^3.4.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -64,7 +64,7 @@
     "@faker-js/faker": "^10.1.0",
     "@playwright/test": "^1.56.1",
     "@radix-ui/react-progress": "^1.1.8",
-    "@tailwindcss/typography": "^0.5.16",
+    "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
