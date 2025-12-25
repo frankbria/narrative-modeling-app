@@ -146,9 +146,12 @@ class BulkTransformationJob(Document):
     # Configuration
     selected_columns: List[str] = Field(
         default_factory=list,
-        description="List of columns to transform"
+        description="List of columns to transform",
+        min_length=1,
+        max_length=100
     )
     transformation_type: str = Field(..., description="Type of transformation to apply")
+
     global_parameters: Dict[str, Any] = Field(
         default_factory=dict,
         description="Global transformation parameters"
@@ -163,6 +166,17 @@ class BulkTransformationJob(Document):
         default=False,
         description="Whether to stop on first error"
     )
+
+    @field_validator('selected_columns')
+    @classmethod
+    def validate_column_names(cls, v: List[str]) -> List[str]:
+        """Validate selected column names."""
+        if len(v) != len(set(v)):
+            raise ValueError("Duplicate column names in selected_columns")
+        for col in v:
+            if not col or not col.strip():
+                raise ValueError("Column names cannot be empty")
+        return v
 
     # Status and progress
     status: BulkJobStatus = Field(default=BulkJobStatus.PENDING)

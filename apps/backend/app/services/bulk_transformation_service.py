@@ -9,8 +9,10 @@ import asyncio
 import re
 import time
 import logging
+import signal
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
+from contextlib import contextmanager
 import pandas as pd
 
 from app.models.bulk_transformation import (
@@ -32,11 +34,42 @@ from app.services.transformation_engine.data_utils import (
     upload_dataframe_to_s3,
 )
 from app.services.redis_cache import cache_service
-from app.services.exceptions import NotFoundError, OperationError
+from app.services.exceptions import NotFoundError, OperationError, ValidationError
 from beanie import PydanticObjectId
 
 
 logger = logging.getLogger(__name__)
+
+# Constants for limits and configuration
+MAX_COLUMNS_PER_JOB = 100
+MAX_CONCURRENT_JOBS_PER_USER = 5
+REGEX_TIMEOUT_SECONDS = 2
+PROGRESS_UPDATE_FREQUENCY = 5  # Update DB every N columns
+
+
+@contextmanager
+def regex_timeout(seconds: int):
+    """
+    Context manager that times out regex operations to prevent ReDoS attacks.
+
+    Note: This uses Unix signals and only works on Unix-like systems.
+    On Windows, regex will run without timeout.
+    """
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Regex operation timed out")
+
+    # Only use signal-based timeout on Unix systems
+    if hasattr(signal, 'SIGALRM'):
+        original_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, original_handler)
+    else:
+        # Windows fallback - no timeout
+        yield
 
 
 class BulkTransformationService:
@@ -45,6 +78,19 @@ class BulkTransformationService:
     def __init__(self):
         """Initialize service with transformation engine."""
         self.engine = TransformationEngine()
+        # Track active background tasks for proper cleanup and cancellation
+        self._active_tasks: Dict[str, asyncio.Task] = {}
+
+    def _cleanup_task(self, job_id: str, task: asyncio.Task) -> None:
+        """Callback to clean up task reference when done."""
+        if job_id in self._active_tasks:
+            del self._active_tasks[job_id]
+
+        # Log any unhandled exceptions from the task
+        if task.done() and not task.cancelled():
+            exc = task.exception()
+            if exc:
+                logger.error(f"Background task for job {job_id} failed: {exc}")
 
     async def select_columns_by_pattern(
         self,
@@ -108,9 +154,10 @@ class BulkTransformationService:
         elif pattern.pattern_type == PatternType.NAME_PATTERN:
             regex_pattern = criteria.get("pattern", "")
             try:
-                return bool(re.search(regex_pattern, field.field_name, re.IGNORECASE))
-            except re.error:
-                logger.warning(f"Invalid regex pattern: {regex_pattern}")
+                with regex_timeout(REGEX_TIMEOUT_SECONDS):
+                    return bool(re.search(regex_pattern, field.field_name, re.IGNORECASE))
+            except (re.error, TimeoutError) as e:
+                logger.warning(f"Invalid or slow regex pattern: {regex_pattern} - {e}")
                 return False
 
         elif pattern.pattern_type == PatternType.QUALITY_METRIC:
@@ -313,7 +360,52 @@ class BulkTransformationService:
 
         Raises:
             NotFoundError: If dataset not found
+            ValidationError: If validation fails
+            OperationError: If rate limit exceeded
         """
+        # Input validation
+        if not selected_columns:
+            raise ValidationError(
+                message="selected_columns cannot be empty",
+                field="selected_columns"
+            )
+
+        if len(selected_columns) > MAX_COLUMNS_PER_JOB:
+            raise ValidationError(
+                message=f"Cannot transform more than {MAX_COLUMNS_PER_JOB} columns at once",
+                field="selected_columns"
+            )
+
+        # Check for duplicate columns
+        if len(selected_columns) != len(set(selected_columns)):
+            raise ValidationError(
+                message="Duplicate column names in selected_columns",
+                field="selected_columns"
+            )
+
+        # Validate transformation type
+        try:
+            TransformationType(transformation_type)
+        except ValueError:
+            raise ValidationError(
+                message=f"Invalid transformation_type: {transformation_type}",
+                field="transformation_type"
+            )
+
+        # Rate limiting - check user's active jobs
+        active_jobs = await BulkTransformationJob.find({
+            "user_id": user_id,
+            "status": {"$in": [BulkJobStatus.PENDING, BulkJobStatus.RUNNING]}
+        }).count()
+
+        if active_jobs >= MAX_CONCURRENT_JOBS_PER_USER:
+            raise OperationError(
+                message=f"Maximum concurrent bulk transformation jobs ({MAX_CONCURRENT_JOBS_PER_USER}) reached. "
+                        "Please wait for existing jobs to complete.",
+                operation="apply_bulk_transformation",
+                details={"active_jobs": active_jobs, "limit": MAX_CONCURRENT_JOBS_PER_USER}
+            )
+
         # Verify dataset exists
         dataset = await DatasetMetadata.find_one({
             "dataset_id": dataset_id,
@@ -349,8 +441,10 @@ class BulkTransformationService:
 
         await job.create()
 
-        # Start processing asynchronously
-        asyncio.create_task(self._process_bulk_job(job))
+        # Start processing asynchronously with proper task management
+        task = asyncio.create_task(self._process_bulk_job(job))
+        self._active_tasks[job_id] = task
+        task.add_done_callback(lambda t: self._cleanup_task(job_id, t))
 
         return job
 
@@ -359,7 +453,8 @@ class BulkTransformationService:
         Process a bulk transformation job asynchronously.
 
         This method runs in the background and updates job progress
-        as columns are processed.
+        as columns are processed. It checks for cancellation periodically
+        and batches database updates for efficiency.
         """
         start_time = time.time()
 
@@ -390,9 +485,14 @@ class BulkTransformationService:
 
             # Process columns sequentially for DataFrame modifications
             for i, column in enumerate(job.selected_columns):
-                # Update current column
+                # Check for cancellation by reloading job status from DB
+                current_job = await BulkTransformationJob.find_one({"job_id": job.job_id})
+                if current_job and current_job.status == BulkJobStatus.CANCELLED:
+                    logger.info(f"Job {job.job_id} was cancelled, stopping processing")
+                    return
+
+                # Update current column in memory
                 job.update_progress(current_column=column)
-                await job.save()
 
                 # Apply transformation and get result
                 new_df, apply_result = await self._apply_column_transformation(
@@ -419,13 +519,18 @@ class BulkTransformationService:
                         await job.save()
                         return
 
-                # Update progress
+                # Update progress in memory
                 job.update_progress(
                     processed_columns=i + 1,
                     successful_columns=len(successful_columns),
                     failed_columns=len(failed_columns),
                 )
-                await job.save()
+
+                # Batch database updates: save every N columns or on the last column
+                is_last_column = (i == len(job.selected_columns) - 1)
+                should_save = (i + 1) % PROGRESS_UPDATE_FREQUENCY == 0 or is_last_column
+                if should_save:
+                    await job.save()
 
             # Calculate total time
             total_time_ms = int((time.time() - start_time) * 1000)
@@ -610,6 +715,9 @@ class BulkTransformationService:
         """
         Cancel a pending or running job.
 
+        This method cancels both the database record and the actual running
+        background task if one exists.
+
         Args:
             job_id: Job identifier
             user_id: User identifier
@@ -625,6 +733,20 @@ class BulkTransformationService:
 
         if not job:
             return False
+
+        # Cancel the actual background task if it exists
+        if job_id in self._active_tasks:
+            task = self._active_tasks[job_id]
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                logger.info(f"Background task for job {job_id} was cancelled")
+            except Exception as e:
+                logger.warning(f"Error while cancelling task for job {job_id}: {e}")
+            finally:
+                if job_id in self._active_tasks:
+                    del self._active_tasks[job_id]
 
         job.mark_cancelled()
         await job.save()
@@ -669,8 +791,10 @@ class BulkTransformationService:
 
         await job.save()
 
-        # Start processing again
-        asyncio.create_task(self._process_bulk_job(job))
+        # Start processing again with proper task management
+        task = asyncio.create_task(self._process_bulk_job(job))
+        self._active_tasks[job_id] = task
+        task.add_done_callback(lambda t: self._cleanup_task(job_id, t))
 
         return job
 

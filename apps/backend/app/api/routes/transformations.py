@@ -1658,6 +1658,12 @@ async def apply_bulk_transformation(
 
     Creates an async job that processes columns in parallel with progress tracking.
     Returns immediately with job ID for status polling.
+
+    Raises:
+        400: Invalid request (empty columns, too many columns, invalid transformation type)
+        404: Dataset not found
+        429: Rate limit exceeded (too many concurrent jobs)
+        500: Internal server error
     """
     try:
         job = await bulk_service.apply_bulk_transformation(
@@ -1680,6 +1686,13 @@ async def apply_bulk_transformation(
 
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=e.message) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except OperationError as e:
+        # Rate limit exceeded returns 429
+        if "Maximum concurrent" in str(e.message):
+            raise HTTPException(status_code=429, detail=e.message) from e
+        raise HTTPException(status_code=400, detail=e.message) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:

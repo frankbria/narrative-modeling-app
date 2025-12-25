@@ -581,3 +581,167 @@ class TestColumnSelectionPatternValidation:
                 criteria={"metric": "invalid_metric"}
             )
         assert "Invalid metric" in str(exc_info.value)
+
+
+class TestBulkTransformationValidation:
+    """Tests for new validation features in BulkTransformationService."""
+
+    @pytest.mark.asyncio
+    async def test_apply_bulk_transformation_empty_columns(
+        self, bulk_service, mock_dataset
+    ):
+        """Test that empty selected_columns raises ValidationError."""
+        from app.services.exceptions import ValidationError
+
+        with patch.object(
+            DatasetMetadata, 'find_one', new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = mock_dataset
+
+            with pytest.raises(ValidationError) as exc_info:
+                await bulk_service.apply_bulk_transformation(
+                    user_id="user-123",
+                    dataset_id="test-dataset-123",
+                    selected_columns=[],
+                    transformation_type="trim_whitespace",
+                    global_parameters={},
+                )
+            assert "cannot be empty" in str(exc_info.value.message)
+
+    @pytest.mark.asyncio
+    async def test_apply_bulk_transformation_too_many_columns(
+        self, bulk_service, mock_dataset
+    ):
+        """Test that exceeding MAX_COLUMNS_PER_JOB raises ValidationError."""
+        from app.services.exceptions import ValidationError
+        from app.services.bulk_transformation_service import MAX_COLUMNS_PER_JOB
+
+        many_columns = [f"col_{i}" for i in range(MAX_COLUMNS_PER_JOB + 1)]
+
+        with patch.object(
+            DatasetMetadata, 'find_one', new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = mock_dataset
+
+            with pytest.raises(ValidationError) as exc_info:
+                await bulk_service.apply_bulk_transformation(
+                    user_id="user-123",
+                    dataset_id="test-dataset-123",
+                    selected_columns=many_columns,
+                    transformation_type="trim_whitespace",
+                    global_parameters={},
+                )
+            assert "more than" in str(exc_info.value.message)
+
+    @pytest.mark.asyncio
+    async def test_apply_bulk_transformation_duplicate_columns(
+        self, bulk_service, mock_dataset
+    ):
+        """Test that duplicate column names raise ValidationError."""
+        from app.services.exceptions import ValidationError
+
+        with patch.object(
+            DatasetMetadata, 'find_one', new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = mock_dataset
+
+            with pytest.raises(ValidationError) as exc_info:
+                await bulk_service.apply_bulk_transformation(
+                    user_id="user-123",
+                    dataset_id="test-dataset-123",
+                    selected_columns=["col_a", "col_b", "col_a"],  # Duplicate
+                    transformation_type="trim_whitespace",
+                    global_parameters={},
+                )
+            assert "Duplicate" in str(exc_info.value.message)
+
+    @pytest.mark.asyncio
+    async def test_apply_bulk_transformation_invalid_transformation_type(
+        self, bulk_service, mock_dataset
+    ):
+        """Test that invalid transformation_type raises ValidationError."""
+        from app.services.exceptions import ValidationError
+
+        with patch.object(
+            DatasetMetadata, 'find_one', new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = mock_dataset
+
+            with pytest.raises(ValidationError) as exc_info:
+                await bulk_service.apply_bulk_transformation(
+                    user_id="user-123",
+                    dataset_id="test-dataset-123",
+                    selected_columns=["col_a"],
+                    transformation_type="invalid_transformation_type",
+                    global_parameters={},
+                )
+            assert "Invalid transformation_type" in str(exc_info.value.message)
+
+    @pytest.mark.asyncio
+    async def test_apply_bulk_transformation_rate_limit(
+        self, bulk_service, mock_dataset
+    ):
+        """Test that exceeding concurrent job limit raises OperationError."""
+        from app.services.bulk_transformation_service import MAX_CONCURRENT_JOBS_PER_USER
+
+        with patch.object(
+            DatasetMetadata, 'find_one', new_callable=AsyncMock
+        ) as mock_find, patch.object(
+            BulkTransformationJob, 'find', new_callable=MagicMock
+        ) as mock_job_find:
+            mock_find.return_value = mock_dataset
+
+            # Mock that user has max concurrent jobs
+            mock_query = MagicMock()
+            mock_query.count = AsyncMock(return_value=MAX_CONCURRENT_JOBS_PER_USER)
+            mock_job_find.return_value = mock_query
+
+            with pytest.raises(OperationError) as exc_info:
+                await bulk_service.apply_bulk_transformation(
+                    user_id="user-123",
+                    dataset_id="test-dataset-123",
+                    selected_columns=["col_a"],
+                    transformation_type="trim_whitespace",
+                    global_parameters={},
+                )
+            assert "Maximum concurrent" in str(exc_info.value.message)
+
+    def test_task_cleanup_callback(self, bulk_service):
+        """Test that _cleanup_task removes task from _active_tasks."""
+        import asyncio
+
+        # Create a mock completed task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = True
+        mock_task.cancelled.return_value = False
+        mock_task.exception.return_value = None
+
+        # Add task to active_tasks
+        job_id = "test_job_123"
+        bulk_service._active_tasks[job_id] = mock_task
+
+        # Call cleanup
+        bulk_service._cleanup_task(job_id, mock_task)
+
+        # Verify task was removed
+        assert job_id not in bulk_service._active_tasks
+
+    def test_task_cleanup_logs_exception(self, bulk_service):
+        """Test that _cleanup_task logs exceptions from failed tasks."""
+        import asyncio
+
+        # Create a mock failed task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = True
+        mock_task.cancelled.return_value = False
+        mock_task.exception.return_value = Exception("Test error")
+
+        job_id = "test_job_456"
+        bulk_service._active_tasks[job_id] = mock_task
+
+        with patch('app.services.bulk_transformation_service.logger') as mock_logger:
+            bulk_service._cleanup_task(job_id, mock_task)
+
+            # Verify error was logged
+            mock_logger.error.assert_called_once()
+            assert "Test error" in str(mock_logger.error.call_args)
