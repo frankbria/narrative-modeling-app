@@ -38,9 +38,6 @@ from beanie import PydanticObjectId
 
 logger = logging.getLogger(__name__)
 
-# Maximum concurrent column transformations to avoid memory issues
-MAX_CONCURRENT_COLUMNS = 10
-
 
 class BulkTransformationService:
     """Service for bulk transformation operations on multiple columns."""
@@ -391,29 +388,14 @@ class BulkTransformationService:
             successful_columns: List[str] = []
             failed_columns: List[Dict[str, Any]] = []
 
-            # Use semaphore to limit concurrent processing
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT_COLUMNS)
-
-            async def process_column(column: str) -> ColumnResult:
-                """Process a single column with semaphore."""
-                async with semaphore:
-                    return await self._transform_column(
-                        df=df,
-                        column=column,
-                        transformation_type=job.transformation_type,
-                        global_parameters=job.global_parameters,
-                        per_column_params=job.per_column_params,
-                    )
-
-            # Process columns (we'll process sequentially for DataFrame modifications)
-            # but track progress along the way
+            # Process columns sequentially for DataFrame modifications
             for i, column in enumerate(job.selected_columns):
                 # Update current column
                 job.update_progress(current_column=column)
                 await job.save()
 
-                # Process column
-                result = await self._transform_column(
+                # Apply transformation and get result
+                new_df, apply_result = await self._apply_column_transformation(
                     df=df,
                     column=column,
                     transformation_type=job.transformation_type,
@@ -421,26 +403,19 @@ class BulkTransformationService:
                     per_column_params=job.per_column_params,
                 )
 
-                column_results.append(result)
+                column_results.append(apply_result)
 
-                if result.success:
+                if apply_result.success:
                     successful_columns.append(column)
-                    # Apply the transformation to the DataFrame
-                    df = await self._apply_column_transformation(
-                        df=df,
-                        column=column,
-                        transformation_type=job.transformation_type,
-                        global_parameters=job.global_parameters,
-                        per_column_params=job.per_column_params,
-                    )
+                    df = new_df
                 else:
                     failed_columns.append({
                         "column_name": column,
-                        "error": result.error,
+                        "error": apply_result.error,
                     })
 
                     if job.stop_on_error:
-                        job.mark_failed(f"Stopped at column {column}: {result.error}")
+                        job.mark_failed(f"Stopped at column {column}: {apply_result.error}")
                         await job.save()
                         return
 
@@ -499,19 +474,20 @@ class BulkTransformationService:
             job.mark_failed(str(e))
             await job.save()
 
-    async def _transform_column(
+    async def _apply_column_transformation(
         self,
         df: pd.DataFrame,
         column: str,
         transformation_type: str,
         global_parameters: Dict[str, Any],
         per_column_params: Dict[str, Dict[str, Any]],
-    ) -> ColumnResult:
+    ) -> Tuple[pd.DataFrame, ColumnResult]:
         """
-        Transform a single column and return the result.
+        Apply transformation to a single column and return the modified DataFrame
+        along with the result status.
 
-        This method previews the transformation to gather statistics
-        without modifying the original DataFrame.
+        Returns:
+            Tuple of (modified DataFrame, ColumnResult with success/failure info)
         """
         start_time = time.time()
 
@@ -522,30 +498,52 @@ class BulkTransformationService:
         params["column"] = column
 
         try:
-            # Preview to get stats
-            result = self.engine.preview_transformation(
+            # First get preview stats
+            preview_result = self.engine.preview_transformation(
                 df=df,
                 transformation_type=TransformationType(transformation_type),
                 parameters=params,
                 n_rows=10,
             )
 
+            # Then apply the actual transformation
+            apply_result = self.engine.apply_transformation(
+                df=df,
+                transformation_type=TransformationType(transformation_type),
+                parameters=params,
+            )
+
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            return ColumnResult(
-                column_name=column,
-                success=result.success,
-                affected_rows=result.affected_rows,
-                error=result.error,
-                warnings=result.warnings,
-                execution_time_ms=execution_time_ms,
-                stats_before=result.stats_before,
-                stats_after=result.stats_after,
-            )
+            if apply_result.success and apply_result.transformed_data:
+                new_df = pd.DataFrame(apply_result.transformed_data)
+                return new_df, ColumnResult(
+                    column_name=column,
+                    success=True,
+                    affected_rows=apply_result.affected_rows,
+                    error=None,
+                    warnings=apply_result.warnings,
+                    execution_time_ms=execution_time_ms,
+                    stats_before=preview_result.stats_before,
+                    stats_after=preview_result.stats_after,
+                )
+            else:
+                # Apply failed - return original df and failure result
+                return df, ColumnResult(
+                    column_name=column,
+                    success=False,
+                    affected_rows=0,
+                    error=apply_result.error or "Transformation returned no data",
+                    warnings=apply_result.warnings,
+                    execution_time_ms=execution_time_ms,
+                    stats_before=preview_result.stats_before if preview_result.success else None,
+                    stats_after=None,
+                )
 
         except Exception as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
-            return ColumnResult(
+            logger.error(f"Failed to apply transformation to column {column}: {e}")
+            return df, ColumnResult(
                 column_name=column,
                 success=False,
                 affected_rows=0,
@@ -553,38 +551,6 @@ class BulkTransformationService:
                 warnings=[],
                 execution_time_ms=execution_time_ms,
             )
-
-    async def _apply_column_transformation(
-        self,
-        df: pd.DataFrame,
-        column: str,
-        transformation_type: str,
-        global_parameters: Dict[str, Any],
-        per_column_params: Dict[str, Dict[str, Any]],
-    ) -> pd.DataFrame:
-        """
-        Apply transformation to a single column and return the modified DataFrame.
-        """
-        # Get column-specific parameters
-        params = {**global_parameters}
-        if column in per_column_params:
-            params.update(per_column_params[column])
-        params["column"] = column
-
-        try:
-            result = self.engine.apply_transformation(
-                df=df,
-                transformation_type=TransformationType(transformation_type),
-                parameters=params,
-            )
-
-            if result.success and result.transformed_data:
-                return pd.DataFrame(result.transformed_data)
-            return df
-
-        except Exception as e:
-            logger.error(f"Failed to apply transformation to column {column}: {e}")
-            return df
 
     async def get_job_status(
         self,

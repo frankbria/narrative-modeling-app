@@ -34,11 +34,12 @@ interface BulkTransformationPanelProps {
 }
 
 // Available transformation types for bulk operations
+// Values must match backend TransformationType enum
 const transformationTypes = [
   { value: 'trim_whitespace', label: 'Trim Whitespace', description: 'Remove leading/trailing spaces' },
-  { value: 'fill_mean', label: 'Fill with Mean', description: 'Replace missing values with column mean' },
-  { value: 'fill_median', label: 'Fill with Median', description: 'Replace missing values with column median' },
-  { value: 'fill_mode', label: 'Fill with Mode', description: 'Replace missing values with most common value' },
+  { value: 'impute_mean', label: 'Fill with Mean', description: 'Replace missing values with column mean' },
+  { value: 'impute_median', label: 'Fill with Median', description: 'Replace missing values with column median' },
+  { value: 'impute_mode', label: 'Fill with Mode', description: 'Replace missing values with most common value' },
   { value: 'drop_missing', label: 'Drop Missing', description: 'Remove rows with missing values' },
   { value: 'to_numeric', label: 'To Numeric', description: 'Convert to numeric type' },
   { value: 'to_string', label: 'To String', description: 'Convert to text type' },

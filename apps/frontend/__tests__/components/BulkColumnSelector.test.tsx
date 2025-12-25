@@ -10,13 +10,26 @@ import type { ColumnMetadata } from '@/lib/services/transformation';
 
 // Mock react-window to avoid virtualization issues in tests
 jest.mock('react-window', () => ({
-  FixedSizeList: ({ children, itemCount }: { children: React.FC<{ index: number; style: React.CSSProperties }>; itemCount: number }) => (
-    <div data-testid="virtualized-list">
-      {Array.from({ length: itemCount }, (_, index) => (
-        <div key={index}>{children({ index, style: {} })}</div>
-      ))}
-    </div>
-  ),
+  FixedSizeList: React.forwardRef(function MockFixedSizeList(
+    props: {
+      children: React.ComponentType<{ index: number; style: React.CSSProperties }>;
+      itemCount: number;
+      itemSize: number;
+      height: number;
+      width: number | string;
+      role?: string;
+    },
+    ref: React.Ref<unknown>
+  ) {
+    const { children: ItemComponent, itemCount } = props;
+    return (
+      <div data-testid="virtualized-list" ref={ref as React.Ref<HTMLDivElement>}>
+        {Array.from({ length: itemCount }, (_, index) => (
+          <ItemComponent key={index} index={index} style={{}} />
+        ))}
+      </div>
+    );
+  }),
 }));
 
 // Mock useDebounce hook
@@ -153,7 +166,7 @@ describe('BulkColumnSelector', () => {
       />
     );
 
-    const selectAllButton = screen.getByRole('button', { name: /select all/i });
+    const selectAllButton = screen.getByRole('button', { name: /^select all/i });
     await user.click(selectAllButton);
 
     expect(mockOnSelectionChange).toHaveBeenCalledWith(
@@ -257,11 +270,11 @@ describe('BulkColumnSelector', () => {
         columns={[]}
         selectedColumns={new Set()}
         onSelectionChange={mockOnSelectionChange}
-        error="Failed to load columns"
+        error="Network error: unable to fetch column metadata"
       />
     );
 
-    expect(screen.getByText('Failed to load columns')).toBeInTheDocument();
+    expect(screen.getByText('Network error: unable to fetch column metadata')).toBeInTheDocument();
   });
 
   it('displays empty state when no columns', () => {
@@ -285,8 +298,9 @@ describe('BulkColumnSelector', () => {
       />
     );
 
-    expect(screen.getByText('Numeric')).toBeInTheDocument();
-    expect(screen.getByText('Text')).toBeInTheDocument();
+    // Use getAllByText since there are multiple numeric columns (age, salary)
+    expect(screen.getAllByText('Numeric').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Text').length).toBeGreaterThan(0);
     expect(screen.getByText('DateTime')).toBeInTheDocument();
   });
 
@@ -301,7 +315,7 @@ describe('BulkColumnSelector', () => {
       />
     );
 
-    const selectAllButton = screen.getByRole('button', { name: /select all/i });
+    const selectAllButton = screen.getByRole('button', { name: /^select all/i });
     expect(selectAllButton).toBeDisabled();
   });
 
