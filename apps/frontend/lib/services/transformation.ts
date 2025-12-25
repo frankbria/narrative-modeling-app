@@ -29,6 +29,101 @@ export interface TransformationRequest {
   preview_rows?: number
 }
 
+// =============================================================================
+// Bulk Transformation Types
+// =============================================================================
+
+export interface ColumnMetadata {
+  column_name: string
+  field_type: string
+  missing_values: number
+  unique_values: number
+  is_constant: boolean
+  is_high_cardinality: boolean
+}
+
+export interface ColumnSelectionPatternRequest {
+  pattern_type: 'data_type' | 'name_pattern' | 'quality_metric' | 'custom'
+  criteria: Record<string, ParameterValue>
+}
+
+export interface ColumnSelectionResponse {
+  columns: ColumnMetadata[]
+  total_matched: number
+  pattern_applied: string
+}
+
+export interface BulkTransformationPreviewRequest {
+  selected_columns: string[]
+  transformation_type: string
+  global_parameters?: Record<string, ParameterValue>
+  per_column_params?: Record<string, Record<string, ParameterValue>>
+  preview_rows?: number
+}
+
+export interface ColumnPreviewResult {
+  column_name: string
+  success: boolean
+  preview_data?: Array<Record<string, ParameterValue>>
+  stats_before?: Record<string, ParameterValue>
+  stats_after?: Record<string, ParameterValue>
+  affected_rows: number
+  error?: string
+  warnings: string[]
+}
+
+export interface BulkTransformationPreviewResponse {
+  success: boolean
+  column_previews: ColumnPreviewResult[]
+  total_estimated_rows_affected: number
+  total_columns: number
+  successful_previews: number
+  failed_previews: number
+  error?: string
+  warnings: string[]
+}
+
+export interface BulkTransformationRequest {
+  selected_columns: string[]
+  transformation_type: string
+  global_parameters?: Record<string, ParameterValue>
+  per_column_params?: Record<string, Record<string, ParameterValue>>
+  stop_on_error?: boolean
+}
+
+export interface BulkTransformationJobResponse {
+  job_id: string
+  status: string
+  selected_columns: string[]
+  total_columns: number
+  message: string
+}
+
+export interface BulkTransformationProgressResponse {
+  job_id: string
+  status: string
+  progress: Record<string, ParameterValue>
+  percentage_complete: number
+  total_columns: number
+  processed_columns: number
+  successful_columns: number
+  failed_columns: number
+  current_column?: string
+  estimated_remaining_seconds?: number
+  error_message?: string
+  result?: {
+    successful_columns: string[]
+    failed_columns: Array<{ column_name: string; error: string }>
+    total_time_ms: number
+    total_rows_affected: number
+  }
+}
+
+export interface BulkJobListResponse {
+  jobs: BulkTransformationJobResponse[]
+  total: number
+}
+
 export interface TransformationPreviewResponse {
   success: boolean
   preview_data: Array<Record<string, ParameterValue>>
@@ -622,6 +717,223 @@ export class TransformationService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to fetch version history')
+    }
+
+    return response.json()
+  }
+
+  // ===========================================================================
+  // Bulk Transformation Methods
+  // ===========================================================================
+
+  /**
+   * Select columns by pattern (data type, name pattern, quality metric)
+   *
+   * @param datasetId - Dataset identifier
+   * @param pattern - Column selection pattern
+   * @param token - Authentication token
+   * @returns List of matching columns with metadata
+   */
+  static async selectColumnsByPattern(
+    datasetId: string,
+    pattern: ColumnSelectionPatternRequest,
+    token: string | null
+  ): Promise<ColumnSelectionResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/columns/select-pattern`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify(pattern)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to select columns by pattern')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Preview bulk transformation on multiple columns
+   *
+   * @param datasetId - Dataset identifier
+   * @param request - Bulk preview request
+   * @param token - Authentication token
+   * @returns Preview results for each column
+   */
+  static async previewBulkTransformation(
+    datasetId: string,
+    request: BulkTransformationPreviewRequest,
+    token: string | null
+  ): Promise<BulkTransformationPreviewResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-preview`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify(request)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to preview bulk transformation')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Apply bulk transformation to multiple columns
+   *
+   * Creates an async job that processes columns with progress tracking.
+   *
+   * @param datasetId - Dataset identifier
+   * @param request - Bulk transformation request
+   * @param token - Authentication token
+   * @returns Job response with job ID for status polling
+   */
+  static async applyBulkTransformation(
+    datasetId: string,
+    request: BulkTransformationRequest,
+    token: string | null
+  ): Promise<BulkTransformationJobResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-apply`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify(request)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to apply bulk transformation')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Get status and progress of a bulk transformation job
+   *
+   * @param datasetId - Dataset identifier
+   * @param jobId - Job identifier
+   * @param token - Authentication token
+   * @returns Job progress and status
+   */
+  static async getBulkJobStatus(
+    datasetId: string,
+    jobId: string,
+    token: string | null
+  ): Promise<BulkTransformationProgressResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-jobs/${jobId}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to get bulk job status')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * List bulk transformation jobs for a dataset
+   *
+   * @param datasetId - Dataset identifier
+   * @param token - Authentication token
+   * @param status - Optional status filter
+   * @param limit - Maximum number of jobs to return
+   * @returns List of jobs
+   */
+  static async listBulkJobs(
+    datasetId: string,
+    token: string | null,
+    status?: string,
+    limit: number = 50
+  ): Promise<BulkJobListResponse> {
+    const params = new URLSearchParams({ limit: limit.toString() })
+    if (status) {
+      params.append('status', status)
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-jobs?${params}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to list bulk jobs')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Cancel a pending or running bulk transformation job
+   *
+   * @param datasetId - Dataset identifier
+   * @param jobId - Job identifier
+   * @param token - Authentication token
+   * @returns Success status
+   */
+  static async cancelBulkJob(
+    datasetId: string,
+    jobId: string,
+    token: string | null
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-jobs/${jobId}/cancel`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to cancel bulk job')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Retry a failed bulk transformation job
+   *
+   * @param datasetId - Dataset identifier
+   * @param jobId - Job identifier
+   * @param token - Authentication token
+   * @returns Restarted job response
+   */
+  static async retryBulkJob(
+    datasetId: string,
+    jobId: string,
+    token: string | null
+  ): Promise<BulkTransformationJobResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/transformations/datasets/${datasetId}/bulk-jobs/${jobId}/retry`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to retry bulk job')
     }
 
     return response.json()
