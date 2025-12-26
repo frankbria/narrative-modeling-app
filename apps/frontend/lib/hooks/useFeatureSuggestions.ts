@@ -80,6 +80,62 @@ export interface UseFeatureSuggestionsReturn {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+/**
+ * Custom hook for managing AI-powered feature engineering suggestions.
+ *
+ * Provides functionality to fetch, accept, reject, and load more feature suggestions
+ * for a given dataset. Communicates with the backend feature engineering API and
+ * manages local state for suggestions, loading status, and errors.
+ *
+ * @param options - Configuration options for the hook
+ * @param options.datasetId - Required. The unique identifier of the dataset to generate suggestions for
+ * @param options.targetColumn - Optional. The target column for ML predictions (auto-detected if not provided)
+ * @param options.problemType - Optional. The ML problem type ('classification' | 'regression' | 'clustering')
+ * @param options.maxSuggestions - Optional. Maximum number of suggestions to return (default: 20)
+ * @param options.includeAi - Optional. Whether to include AI-generated suggestions (default: true)
+ *
+ * @returns {UseFeatureSuggestionsReturn} Object containing:
+ * - `suggestions` - Array of feature suggestions with optional status flags (_accepted, _rejected)
+ * - `isLoading` - Boolean indicating if an API request is in progress
+ * - `error` - Error message string or null if no error
+ * - `detectedProblemType` - Auto-detected ML problem type from the dataset
+ * - `detectedTargetColumn` - Auto-detected target column from the dataset
+ * - `detectedDomain` - Auto-detected business domain (e.g., 'financial', 'healthcare')
+ * - `metadata` - Additional metadata from the API response (processing time, column counts, etc.)
+ * - `fetchSuggestions` - Async function to fetch/refresh suggestions with optional override options
+ * - `acceptSuggestion` - Async function to record positive feedback for a suggestion
+ * - `rejectSuggestion` - Async function to record negative feedback and remove suggestion from list
+ * - `loadMore` - Async function to fetch additional suggestions excluding specified IDs
+ * - `clearError` - Function to clear the current error state
+ *
+ * @throws Sets error state (does not throw) when:
+ * - User is not authenticated (missing auth token)
+ * - API request fails (network error, server error)
+ * - Invalid dataset ID or access denied
+ *
+ * @example
+ * ```tsx
+ * const {
+ *   suggestions,
+ *   isLoading,
+ *   error,
+ *   fetchSuggestions,
+ *   acceptSuggestion
+ * } = useFeatureSuggestions({ datasetId: 'dataset-123' });
+ *
+ * // Fetch suggestions on mount
+ * useEffect(() => {
+ *   fetchSuggestions();
+ * }, [fetchSuggestions]);
+ *
+ * // Accept a suggestion
+ * await acceptSuggestion('suggestion-456');
+ * ```
+ *
+ * @see {@link UseFeatureSuggestionsOptions} for input options
+ * @see {@link UseFeatureSuggestionsReturn} for return type details
+ * @see {@link FeatureSuggestion} for suggestion object structure
+ */
 export function useFeatureSuggestions(
   options: UseFeatureSuggestionsOptions
 ): UseFeatureSuggestionsReturn {
