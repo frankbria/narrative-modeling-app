@@ -125,10 +125,11 @@ export function FeatureSuggestionPanel({
         case 'type':
           comparison = a.feature_type.localeCompare(b.feature_type);
           break;
-        case 'cost':
+        case 'cost': {
           const costOrder = { low: 0, medium: 1, high: 2 };
           comparison = costOrder[a.computation_cost] - costOrder[b.computation_cost];
           break;
+        }
       }
 
       return filters.sortOrder === 'asc' ? comparison : -comparison;

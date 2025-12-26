@@ -5,7 +5,7 @@ Provides endpoints for AI-powered feature suggestions, feedback recording,
 and feature application.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Path
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
 from typing import Optional, List
 import logging
 import pandas as pd
@@ -205,7 +205,7 @@ async def get_suggestion_explanation(
 )
 async def record_suggestion_feedback(
     suggestion_id: str = Path(..., description="Suggestion identifier"),
-    request: FeatureFeedbackRequest = None,
+    request: FeatureFeedbackRequest = Body(...),
     dataset_id: str = Query(..., description="Dataset identifier"),
     current_user_id: str = Depends(get_current_user_id)
 ) -> FeatureFeedbackResponse:
@@ -213,13 +213,33 @@ async def record_suggestion_feedback(
     try:
         logger.info(f"Recording feedback for suggestion {suggestion_id}: accepted={request.accepted}")
 
-        # Create feedback record
+        # Load the dataset to look up the suggestion and get its feature_type
+        df = await _load_dataset_dataframe(dataset_id, current_user_id)
+        suggestions_response = await feature_engineering_service.suggest_features(
+            df=df,
+            dataset_id=dataset_id
+        )
+
+        # Find the suggestion to get its feature_type
+        suggestion = None
+        for s in suggestions_response.suggestions:
+            if s.id == suggestion_id:
+                suggestion = s
+                break
+
+        if not suggestion:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Suggestion {suggestion_id} not found"
+            )
+
+        # Create feedback record with actual feature_type from suggestion
         feedback = FeatureFeedbackRecord(
             feedback_id=f"fb_{uuid.uuid4().hex[:12]}",
             suggestion_id=suggestion_id,
             user_id=current_user_id,
             dataset_id=dataset_id,
-            feature_type=FeatureType.MATHEMATICAL,  # Default, would be looked up in production
+            feature_type=suggestion.feature_type,
             accepted=request.accepted,
             modified_parameters=request.modified_parameters,
             reason=request.reason,
@@ -260,7 +280,7 @@ async def record_suggestion_feedback(
 )
 async def suggest_more_features(
     dataset_id: str = Path(..., description="Dataset identifier"),
-    request: GenerateMoreRequest = None,
+    request: GenerateMoreRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
 ) -> FeatureSuggestionResponse:
     """Generate additional feature suggestions"""
@@ -270,21 +290,25 @@ async def suggest_more_features(
         # Load dataset
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
 
+        # Ensure list fields have safe defaults
+        excluded_ids = request.excluded_suggestion_ids or []
+        prefer_types = request.prefer_feature_types or []
+
         # Generate more suggestions with higher AI temperature for creativity
         response = await feature_engineering_service.suggest_features(
             df=df,
             dataset_id=dataset_id,
             target_column=request.target_column,
             problem_type=request.problem_type,
-            max_suggestions=request.count + len(request.excluded_suggestion_ids),
+            max_suggestions=request.count + len(excluded_ids),
             include_ai=True,
-            feature_types=request.prefer_feature_types
+            feature_types=prefer_types if prefer_types else None
         )
 
         # Filter out excluded suggestions
         filtered_suggestions = [
             s for s in response.suggestions
-            if s.id not in request.excluded_suggestion_ids
+            if s.id not in excluded_ids
         ][:request.count]
 
         response.suggestions = filtered_suggestions
@@ -310,7 +334,7 @@ async def suggest_more_features(
 )
 async def apply_feature(
     dataset_id: str = Path(..., description="Dataset identifier"),
-    request: ApplyFeatureRequest = None,
+    request: ApplyFeatureRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
 ) -> ApplyFeatureResponse:
     """Apply a single feature suggestion to the dataset"""
@@ -388,7 +412,7 @@ async def apply_feature(
 )
 async def apply_multiple_features(
     dataset_id: str = Path(..., description="Dataset identifier"),
-    request: ApplyMultipleFeaturesRequest = None,
+    request: ApplyMultipleFeaturesRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
 ) -> ApplyFeatureResponse:
     """Apply multiple feature suggestions to the dataset"""

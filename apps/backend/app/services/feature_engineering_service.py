@@ -264,7 +264,7 @@ class FeatureEngineeringService:
             return False
 
         try:
-            pd.to_datetime(sample, infer_datetime_format=True, errors='raise')
+            pd.to_datetime(sample, errors='raise')
             return True
         except (ValueError, TypeError):
             return False
