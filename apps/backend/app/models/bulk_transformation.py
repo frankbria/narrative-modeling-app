@@ -5,6 +5,7 @@ This model handles bulk operations that apply the same transformation
 to multiple columns simultaneously with parallel processing.
 """
 
+import re
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
@@ -63,6 +64,11 @@ class ColumnSelectionPattern(BaseModel):
         elif pattern_type == PatternType.NAME_PATTERN:
             if 'pattern' not in v:
                 raise ValueError("name_pattern requires 'pattern' in criteria")
+            # Validate that the regex pattern compiles
+            try:
+                re.compile(v['pattern'])
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {e}")
 
         elif pattern_type == PatternType.QUALITY_METRIC:
             valid_metrics = {'missing_values', 'is_constant', 'is_high_cardinality', 'unique_values'}
@@ -221,6 +227,7 @@ class BulkTransformationJob(Document):
             [("user_id", 1), ("status", 1)],
             [("user_id", 1), ("created_at", -1)],
             [("dataset_id", 1), ("status", 1)],
+            [("user_id", 1), ("dataset_id", 1), ("status", 1)],  # For filtered job listing
         ]
 
     model_config = {

@@ -9,10 +9,9 @@ import asyncio
 import re
 import time
 import logging
-import signal
+from threading import Thread
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
-from contextlib import contextmanager
 import pandas as pd
 
 from app.models.bulk_transformation import (
@@ -47,29 +46,46 @@ REGEX_TIMEOUT_SECONDS = 2
 PROGRESS_UPDATE_FREQUENCY = 5  # Update DB every N columns
 
 
-@contextmanager
-def regex_timeout(seconds: int):
+def safe_regex_search(pattern: str, text: str, timeout: int = REGEX_TIMEOUT_SECONDS) -> bool:
     """
-    Context manager that times out regex operations to prevent ReDoS attacks.
+    Thread-based regex search with timeout protection (cross-platform).
 
-    Note: This uses Unix signals and only works on Unix-like systems.
-    On Windows, regex will run without timeout.
+    This approach works on both Unix and Windows systems, unlike signal-based
+    timeouts. If the regex takes longer than the timeout, we return False
+    to prevent ReDoS attacks.
+
+    Args:
+        pattern: Regex pattern to search for
+        text: Text to search in
+        timeout: Maximum seconds to wait for regex to complete
+
+    Returns:
+        True if pattern matches, False if no match or timeout/error
     """
-    def timeout_handler(signum, frame):
-        raise TimeoutError("Regex operation timed out")
+    result: Dict[str, Any] = {'match': False, 'error': None}
 
-    # Only use signal-based timeout on Unix systems
-    if hasattr(signal, 'SIGALRM'):
-        original_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(seconds)
+    def run_regex() -> None:
         try:
-            yield
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, original_handler)
-    else:
-        # Windows fallback - no timeout
-        yield
+            result['match'] = bool(re.search(pattern, text, re.IGNORECASE))
+        except re.error as e:
+            result['error'] = e
+
+    thread = Thread(target=run_regex, daemon=True)
+    thread.start()
+    thread.join(timeout)
+
+    if thread.is_alive():
+        # Timeout occurred - thread is still running but we return False
+        # Note: Python threads cannot be forcibly killed, but daemon=True
+        # ensures they won't block process exit
+        logger.warning(f"Regex pattern timed out after {timeout}s: {pattern[:50]}...")
+        return False
+
+    if result['error']:
+        logger.warning(f"Invalid regex pattern: {pattern} - {result['error']}")
+        return False
+
+    return result['match']
 
 
 class BulkTransformationService:
@@ -153,12 +169,7 @@ class BulkTransformationService:
 
         elif pattern.pattern_type == PatternType.NAME_PATTERN:
             regex_pattern = criteria.get("pattern", "")
-            try:
-                with regex_timeout(REGEX_TIMEOUT_SECONDS):
-                    return bool(re.search(regex_pattern, field.field_name, re.IGNORECASE))
-            except (re.error, TimeoutError) as e:
-                logger.warning(f"Invalid or slow regex pattern: {regex_pattern} - {e}")
-                return False
+            return safe_regex_search(regex_pattern, field.field_name)
 
         elif pattern.pattern_type == PatternType.QUALITY_METRIC:
             metric = criteria.get("metric", "")
@@ -486,12 +497,18 @@ class BulkTransformationService:
             # Process columns sequentially for DataFrame modifications
             for i, column in enumerate(job.selected_columns):
                 # Check for cancellation by reloading job status from DB
+                # This ensures we detect cancellation requests promptly
                 current_job = await BulkTransformationJob.find_one({"job_id": job.job_id})
-                if current_job and current_job.status == BulkJobStatus.CANCELLED:
+                if not current_job:
+                    logger.warning(f"Job {job.job_id} was deleted, stopping processing")
+                    return
+                if current_job.status == BulkJobStatus.CANCELLED:
                     logger.info(f"Job {job.job_id} was cancelled, stopping processing")
                     return
 
-                # Update current column in memory
+                # Sync progress from database to avoid overwriting external updates
+                # but keep our local progress tracking for the current batch
+                job.progress = current_job.progress
                 job.update_progress(current_column=column)
 
                 # Apply transformation and get result

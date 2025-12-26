@@ -564,6 +564,15 @@ class TestColumnSelectionPatternValidation:
             )
         assert "requires 'pattern'" in str(exc_info.value)
 
+    def test_name_pattern_invalid_regex(self):
+        """Test name_pattern with invalid regex syntax."""
+        with pytest.raises(ValueError) as exc_info:
+            ColumnSelectionPattern(
+                pattern_type=PatternType.NAME_PATTERN,
+                criteria={"pattern": "[invalid(regex"}
+            )
+        assert "Invalid regex pattern" in str(exc_info.value)
+
     def test_quality_metric_pattern_missing_metric(self):
         """Test quality_metric pattern without metric."""
         with pytest.raises(ValueError) as exc_info:
