@@ -24,27 +24,6 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - FastMCP framework
 - Tools for advanced data processing and modeling
 
-## Code Conventions
-
-### Python (Backend/MCP)
-- Use type hints for all function parameters and returns
-- Follow PEP 8 style guide
-- Use async/await for I/O operations
-- Error handling with proper HTTP status codes
-- Pydantic models for request/response validation
-
-### TypeScript (Frontend)
-- Strict TypeScript mode enabled
-- Interfaces over types where appropriate
-- Async/await over promises
-- Component files use PascalCase
-- Utility files use camelCase
-
-### Git Workflow
-- Main branch for production
-- Feature branches for development
-- Descriptive commit messages
-
 ## Testing Commands
 - Backend: `cd apps/backend && uv run pytest`
 - Backend (unit tests only): `cd apps/backend && uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -v`
@@ -106,43 +85,7 @@ Additional recommended MCP servers:
 - **Context7** - For library documentation lookup
 - **Serena** - For project memory and session management
 
-## Feature Development Quality Standards
-
-**CRITICAL**: All new features MUST meet mandatory requirements. See `apps/backend/docs/TEST_STANDARDS.md` for complete testing standards.
-
-### Quick Reference
-
-- **Coverage**: 85% minimum, 100% test pass rate
-- **Test Types**: Unit, integration, E2E for critical workflows
-- **Commands**: See TEST_STANDARDS.md for full testing commands
-
-### Git Workflow Requirements
-
-Before moving to the next feature, ALL changes must be:
-
-1. **Committed with Clear Messages**:
-   ```bash
-   git add .
-   git commit -m "feat(module): descriptive message following conventional commits"
-   ```
-   - Use conventional commit format: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, etc.
-   - Include scope when applicable: `feat(backend):`, `fix(frontend):`, `test(mcp):`
-   - Write descriptive messages that explain WHAT changed and WHY
-
-2. **Pushed to Remote Repository**:
-   ```bash
-   git push origin <branch-name>
-   ```
-   - Never leave completed features uncommitted
-   - Push regularly to maintain backup and enable collaboration
-   - Ensure CI/CD pipelines pass before considering feature complete
-
-3. **Branch Hygiene**:
-   - Work on feature branches, never directly on `main`
-   - Branch naming convention: `feature/<feature-name>`, `fix/<issue-name>`, `docs/<doc-update>`
-   - Create pull requests for all significant changes
-
-### Documentation Requirements
+## Documentation Requirements
 
 **ALL implementation documentation MUST remain synchronized with the codebase**:
 
@@ -176,31 +119,36 @@ Before moving to the next feature, ALL changes must be:
    - Keep command examples accurate and tested
    - Document new testing patterns or quality gates
 
-### Feature Completion Checklist
+## Automated Workflow Configuration
 
-Before marking ANY feature as complete, verify:
+### Traycer AI Integration
 
-- [ ] All tests pass (backend, frontend, MCP)
-- [ ] Code coverage meets 85% minimum threshold
-- [ ] Coverage report reviewed for meaningful test quality
-- [ ] Code formatted and linted (ruff, ESLint)
-- [ ] Type checking passes (mypy for Python, tsc for TypeScript)
-- [ ] All changes committed with conventional commit messages
-- [ ] All commits pushed to remote repository
-- [ ] API documentation updated (if applicable)
-- [ ] Implementation documentation updated
-- [ ] Inline code comments updated or added
-- [ ] CLAUDE.md updated (if new patterns introduced)
-- [ ] Breaking changes documented
-- [ ] CI/CD pipeline passes
+When receiving Traycer AI prompts:
+1. Save prompt to: `prompts/<issue-id>.txt`
+2. Run: `./scripts/traycer-workflow.sh <issue-id>`
+3. Monitor: `npx claude-flow@alpha status --watch`
+4. Only intervene if blocker queue triggered
 
-### Rationale
+### Quality Gates
 
-These standards ensure:
-- **Quality**: High test coverage and pass rates prevent regressions
-- **Traceability**: Git commits provide clear history of changes
-- **Maintainability**: Current documentation reduces onboarding time and prevents knowledge loss
-- **Collaboration**: Pushed changes enable team visibility and code review
-- **Reliability**: Consistent quality gates maintain production stability
+Before PR creation:
+- ✅ All tests must pass (100% requirement)
+- ✅ Test coverage >85%
+- ✅ Linting (ruff/eslint) passes
+- ✅ Type checking (mypy/tsc) passes
+- ✅ No TODO/FIXME/NotImplemented markers
+- ✅ Security scan (OWASP patterns)
 
-**Enforcement**: AI agents should automatically apply these standards to all feature development tasks without requiring explicit instruction for each task.
+### CodeRabbit Configuration
+
+Max iterations: 3
+Auto-fix categories:
+- Code style and formatting
+- Type errors
+- Simple logic bugs
+- Documentation improvements
+
+Blocker queue triggers:
+- Iteration 3 still has failing tests
+- Architecture change suggestions
+- Security vulnerabilities requiring human decision

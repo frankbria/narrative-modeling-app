@@ -1,0 +1,418 @@
+## Observations
+
+The codebase already has a solid foundation for AutoML with `file:apps/backend/app/services/model_training/automl_engine.py`, `file:apps/backend/app/services/model_training/problem_detector.py`, and `file:apps/backend/app/services/model_training/feature_engineer.py` implementing core ML functionality. The infrastructure includes S3 storage via `file:apps/backend/app/services/model_storage.py`, MongoDB models in `file:apps/backend/app/models/ml_model.py`, Redis caching in `file:apps/backend/app/services/redis_cache.py`, and a batch job system in `file:apps/backend/app/models/batch_job.py`. Frontend components like `file:apps/frontend/components/ModelTrainingButton.tsx` exist but lack the comprehensive training interface required. Missing components include AI-guided algorithm selection, parallel training, WebSocket progress tracking, class balancing, time series algorithms (ARIMA/Prophet), and the dedicated training page UI.
+
+## Approach
+
+The implementation will enhance the existing AutoML engine with AI-guided algorithm selection using OpenAI API for explanations, implement parallel training using Python's `asyncio` and `concurrent.futures`, add WebSocket support for real-time progress updates, integrate class balancing with `imbalanced-learn`, and add time series support with `statsmodels` and `prophet`. The frontend will be built as a new page at `file:apps/frontend/app/datasets/[id]/train/page.tsx` with components for algorithm selection, training progress, and model comparison. The approach leverages existing infrastructure (Redis for progress state, S3 for models, MongoDB for metadata) while adding new capabilities incrementally. Training modes (quick/comprehensive) will control the number of algorithms and hyperparameter search depth.
+
+## Implementation Steps
+
+### Phase 1: Backend - Enhanced AutoML Engine
+
+#### 1.1 Algorithm Recommendation System
+
+Create `file:apps/backend/app/services/model_training/algorithm_selector.py`:
+- Implement `AlgorithmSelector` class with method `select_algorithms(problem_type, data_profile, config)` returning ranked algorithm recommendations
+- Define `DataProfile` dataclass capturing dataset size, feature types distribution, class balance ratio, missing value percentage, and cardinality metrics
+- Define `AlgorithmRecommendation` schema with fields: algorithm name, priority (1-10), expected_performance, training_time_estimate, interpretability_score, explanation, and pros/cons lists
+- Implement selection logic based on rules:
+  - Dataset size: Use SVM/KNN only for <5000 samples, LightGBM/XGBoost for large datasets
+  - Class imbalance: Prioritize tree-based models, recommend class balancing
+  - High cardinality: Prefer tree-based over linear models
+  - Interpretability needs: Prioritize Logistic/Linear Regression, Decision Trees
+  - Speed requirements: Prioritize LightGBM, Linear models
+- Integrate with OpenAI API to generate natural language explanations for each recommendation using `file:apps/backend/app/services/openai_service.py` pattern
+
+#### 1.2 AI Explanation Service
+
+Create `file:apps/backend/app/services/model_training/explanation_service.py`:
+- Implement `ExplanationService` class using OpenAI API
+- Method `explain_algorithm_selection(algorithms, data_profile, problem_type)` generating why each algorithm was selected
+- Method `explain_best_model(best_model, all_models, comparison_metrics)` explaining why the best model was chosen
+- Method `explain_model_tradeoffs(model_a, model_b)` comparing two models with trade-off analysis
+- Use structured prompts with data characteristics, algorithm properties, and performance metrics
+- Cache explanations in Redis using `file:apps/backend/app/services/redis_cache.py` with key pattern `explanation:{hash}`
+
+#### 1.3 Parallel Training Infrastructure
+
+Enhance `file:apps/backend/app/services/model_training/automl_engine.py`:
+- Add `ParallelTrainingConfig` with fields: max_parallel_jobs, use_multiprocessing, timeout_per_model
+- Implement `_train_models_parallel()` method using `asyncio.gather()` with `concurrent.futures.ProcessPoolExecutor` for CPU-bound training
+- Create `_train_single_model_async()` wrapper that runs sklearn training in executor
+- Add progress callback mechanism: `on_model_started`, `on_model_completed`, `on_model_failed`
+- Implement timeout handling using `asyncio.wait_for()` with graceful degradation
+- Store intermediate results in Redis with key pattern `training:{job_id}:model:{algorithm}`
+
+#### 1.4 Class Balancing Support
+
+Enhance `file:apps/backend/app/services/model_training/feature_engineer.py`:
+- Add dependency `imbalanced-learn` to `file:apps/backend/pyproject.toml`
+- Add `ClassBalancingConfig` with fields: method (smote/random_oversample/random_undersample/smote_tomek), sampling_strategy, k_neighbors
+- Implement `_balance_classes()` method in `FeatureEngineer`:
+  - Detect class imbalance (ratio > 2:1)
+  - Apply SMOTE for minority oversampling using `imblearn.over_sampling.SMOTE`
+  - Apply RandomUnderSampler for majority undersampling using `imblearn.under_sampling.RandomUnderSampler`
+  - Apply SMOTE+Tomek for combined approach using `imblearn.combine.SMOTETomek`
+- Add to `fit_transform()` method before feature selection
+- Store balancing metadata in `FeatureEngineeringResult.metadata`
+
+#### 1.5 Time Series Algorithm Support
+
+Create `file:apps/backend/app/services/model_training/time_series_models.py`:
+- Add dependencies to `file:apps/backend/pyproject.toml`: `statsmodels>=0.14.0`, `prophet>=1.1.0`
+- Implement `ARIMAModel` wrapper class with auto-ARIMA using `pmdarima.auto_arima`
+- Implement `ProphetModel` wrapper class with automatic seasonality detection
+- Implement `TimeSeriesPreprocessor` for datetime feature extraction, lag features, rolling statistics
+- Add time series specific cross-validation using `sklearn.model_selection.TimeSeriesSplit`
+- Integrate into `AutoMLEngine._get_candidate_models()` when `problem_type` is TIME_SERIES_*
+
+#### 1.6 Training Modes Implementation
+
+Enhance `file:apps/backend/app/services/model_training/automl_engine.py`:
+- Add `TrainingMode` enum: QUICK, BALANCED, COMPREHENSIVE
+- Implement mode configurations:
+  - QUICK: 3-5 algorithms, no hyperparameter tuning, 3-fold CV, 10min timeout
+  - BALANCED: 5-7 algorithms, basic grid search, 5-fold CV, 30min timeout
+  - COMPREHENSIVE: 8-10 algorithms, extensive grid search, 10-fold CV, 2hr timeout
+- Add `optimize_for` parameter: ACCURACY, SPEED, INTERPRETABILITY affecting algorithm prioritization
+- Implement basic hyperparameter tuning using `sklearn.model_selection.GridSearchCV` for COMPREHENSIVE mode
+
+#### 1.7 Enhanced Model Comparison
+
+Enhance `file:apps/backend/app/services/model_training/automl_engine.py`:
+- Implement `ModelComparison` dataclass with fields: ranking, metric_comparison_table, performance_summary, recommendation, explanation
+- Implement `compare_models()` method:
+  - Rank models by primary metric (accuracy/R²/F1)
+  - Calculate secondary metrics: training_time, model_size, interpretability_score
+  - Generate comparison matrix with all metrics
+  - Identify best model considering trade-offs
+  - Use `ExplanationService` to generate natural language comparison
+- Add statistical significance testing using paired t-test on CV scores
+
+### Phase 2: Backend - API & Real-time Updates
+
+#### 2.1 Training Job Management
+
+Create `file:apps/backend/app/models/training_job.py`:
+- Define `TrainingJob` document extending `BatchJob` pattern from `file:apps/backend/app/models/batch_job.py`
+- Add fields: dataset_id, target_column, training_config, algorithm_recommendations, trained_models list, best_model_id, comparison_results
+- Add `TrainingProgress` with fields: current_algorithm, completed_algorithms, total_algorithms, current_cv_fold, estimated_time_remaining
+- Implement methods: `update_algorithm_progress()`, `add_trained_model()`, `mark_best_model()`
+
+#### 2.2 WebSocket Infrastructure
+
+Create `file:apps/backend/app/api/websocket.py`:
+- Implement WebSocket endpoint `/ws/training/{job_id}` using FastAPI WebSocket
+- Create `ConnectionManager` class managing active WebSocket connections per job_id
+- Implement `broadcast_progress(job_id, progress_data)` method
+- Add authentication using JWT token in WebSocket connection params
+- Handle connection lifecycle: connect, disconnect, error handling
+
+Create `file:apps/backend/app/services/training_progress_service.py`:
+- Implement `TrainingProgressService` class
+- Method `update_progress(job_id, progress_data)` storing in Redis and broadcasting via WebSocket
+- Method `get_progress(job_id)` retrieving current progress from Redis
+- Redis key pattern: `training_progress:{job_id}`
+- TTL: 24 hours
+
+#### 2.3 Enhanced Training API Endpoints
+
+Enhance `file:apps/backend/app/api/routes/model_training.py`:
+- Add `POST /api/v1/ml/datasets/{dataset_id}/detect-problem-type` endpoint:
+  - Load dataset from S3
+  - Call `ProblemDetector.detect_problem_type()`
+  - Return `ProblemDetectionResult` with confidence and reasoning
+- Add `POST /api/v1/ml/datasets/{dataset_id}/recommend-algorithms` endpoint:
+  - Accept `AlgorithmRecommendationRequest` with problem_type, training_mode, optimize_for
+  - Generate `DataProfile` from dataset
+  - Call `AlgorithmSelector.select_algorithms()`
+  - Return list of `AlgorithmRecommendation` with AI explanations
+- Add `POST /api/v1/ml/datasets/{dataset_id}/train-automl` endpoint:
+  - Create `TrainingJob` document
+  - Start async training task with progress callbacks
+  - Return job_id for progress tracking
+- Add `GET /api/v1/ml/training-jobs/{job_id}/status` endpoint:
+  - Return current `TrainingJob` status and progress
+- Add `GET /api/v1/ml/training-jobs/{job_id}/results` endpoint:
+  - Return complete training results with model comparison
+
+#### 2.4 Async Training Task
+
+Enhance `file:apps/backend/app/api/routes/model_training.py`:
+- Refactor `train_model_task()` to support progress tracking:
+  - Create `TrainingJob` at start
+  - Initialize `TrainingProgressService`
+  - Pass progress callbacks to `AutoMLEngine.run()`
+  - Update progress after each model trains
+  - Broadcast progress via WebSocket
+  - Store all trained models, not just best
+  - Generate model comparison with AI explanations
+  - Update `TrainingJob` with final results
+
+### Phase 3: Frontend - Training Interface
+
+#### 3.1 Training Page Structure
+
+Create `file:apps/frontend/app/datasets/[id]/train/page.tsx`:
+- Implement main training page component
+- Fetch dataset metadata and columns
+- Implement training workflow states: CONFIGURE → DETECTING → RECOMMENDING → TRAINING → COMPLETED
+- Use React state management for workflow progression
+- Integrate with `file:apps/frontend/lib/services/model.ts` for API calls
+
+#### 3.2 Problem Type Detection Component
+
+Create `file:apps/frontend/components/training/ProblemTypeDetector.tsx`:
+- Display target column selector
+- Show "Detect Problem Type" button
+- Call `/detect-problem-type` endpoint
+- Display detected problem type with confidence badge
+- Show AI reasoning in expandable card
+- Allow manual override if confidence < 0.8
+
+#### 3.3 Algorithm Recommendation Component
+
+Create `file:apps/frontend/components/training/AlgorithmSelector.tsx`:
+- Display training mode selector (Quick/Balanced/Comprehensive) with descriptions
+- Display optimize_for selector (Accuracy/Speed/Interpretability)
+- Show recommended algorithms in cards with:
+  - Algorithm name and icon
+  - Priority badge (High/Medium/Low)
+  - Expected performance range
+  - Training time estimate
+  - Interpretability score visualization
+  - AI explanation in expandable section
+  - Pros/cons lists
+- Allow user to select/deselect algorithms
+- Show selected count and estimated total training time
+
+#### 3.4 Training Configuration Component
+
+Create `file:apps/frontend/components/training/TrainingConfig.tsx`:
+- Reuse configuration from `file:apps/frontend/components/ModelTrainingButton.tsx`
+- Add class balancing options: enable/disable, method selector
+- Add advanced options: CV folds, test size, random seed
+- Add time budget slider for comprehensive mode
+- Show configuration summary card
+
+#### 3.5 Training Progress Component
+
+Create `file:apps/frontend/components/training/TrainingProgress.tsx`:
+- Establish WebSocket connection to `/ws/training/{job_id}`
+- Display overall progress bar with percentage
+- Show list of algorithms with status badges: PENDING, TRAINING, COMPLETED, FAILED
+- For currently training algorithm:
+  - Show algorithm name and icon
+  - Display CV fold progress (e.g., "Fold 3/5")
+  - Show elapsed time and estimated remaining time
+  - Display real-time metrics if available
+- Show completed algorithms with their scores
+- Display training logs in scrollable terminal-style component
+- Add cancel training button
+
+#### 3.6 Model Comparison Component
+
+Create `file:apps/frontend/components/training/ModelComparison.tsx`:
+- Display comparison table with columns: Algorithm, CV Score, Test Score, Training Time, Model Size, Interpretability
+- Highlight best model row with gold background
+- Show metric visualizations:
+  - Bar chart comparing CV scores
+  - Scatter plot: accuracy vs training time
+  - Radar chart: multi-metric comparison
+- Display AI-generated comparison explanation
+- Show statistical significance indicators
+- Add "View Details" button for each model opening modal with:
+  - Full metrics
+  - Feature importance chart
+  - Confusion matrix (classification) or residual plot (regression)
+  - Hyperparameters used
+
+#### 3.7 Best Model Card Component
+
+Create `file:apps/frontend/components/training/BestModelCard.tsx`:
+- Display prominent card with best model
+- Show algorithm name with trophy icon
+- Display key metrics with large numbers
+- Show AI explanation of why this model was chosen
+- Display trade-off analysis vs second-best model
+- Add action buttons: "Deploy Model", "View Details", "Download Model"
+- Show model metadata: training date, dataset info, feature count
+
+#### 3.8 WebSocket Hook
+
+Create `file:apps/frontend/hooks/useTrainingProgress.ts`:
+- Implement custom React hook for WebSocket connection
+- Handle connection lifecycle: connect, reconnect, disconnect
+- Parse progress messages and update state
+- Handle authentication with JWT token
+- Implement exponential backoff for reconnection
+- Return: `{ progress, isConnected, error, connect, disconnect }`
+
+#### 3.9 Training Service Enhancement
+
+Enhance `file:apps/frontend/lib/services/model.ts`:
+- Add `detectProblemType(datasetId, targetColumn, token)` method
+- Add `recommendAlgorithms(datasetId, request, token)` method
+- Add `startAutoMLTraining(datasetId, config, token)` method
+- Add `getTrainingJobStatus(jobId, token)` method
+- Add `getTrainingJobResults(jobId, token)` method
+- Add `cancelTrainingJob(jobId, token)` method
+
+### Phase 4: Testing & Documentation
+
+#### 4.1 Backend Unit Tests
+
+Enhance `file:apps/backend/tests/test_model_training/test_automl_engine.py`:
+- Add tests for parallel training with mocked models
+- Test training mode configurations (quick/balanced/comprehensive)
+- Test timeout handling and graceful degradation
+- Test progress callback mechanism
+- Test class balancing with imbalanced datasets
+- Test algorithm selection logic with various data profiles
+
+Create `file:apps/backend/tests/test_model_training/test_algorithm_selector.py`:
+- Test algorithm recommendation for different problem types
+- Test data profile generation
+- Test selection rules (dataset size, class balance, etc.)
+- Mock OpenAI API calls for explanation generation
+
+Create `file:apps/backend/tests/test_model_training/test_time_series_models.py`:
+- Test ARIMA model wrapper
+- Test Prophet model wrapper
+- Test time series preprocessing
+- Test time series cross-validation
+
+#### 4.2 Backend Integration Tests
+
+Create `file:apps/backend/tests/integration/test_training_workflow.py`:
+- Test complete training workflow from dataset to trained model
+- Test WebSocket progress broadcasting
+- Test Redis progress storage and retrieval
+- Test S3 model storage for multiple models
+- Test MongoDB training job persistence
+
+#### 4.3 Frontend Component Tests
+
+Create `file:apps/frontend/__tests__/components/training/`:
+- Test `AlgorithmSelector.test.tsx`: algorithm selection, filtering, explanations
+- Test `TrainingProgress.test.tsx`: progress updates, WebSocket connection
+- Test `ModelComparison.test.tsx`: comparison table, visualizations
+- Test `BestModelCard.test.tsx`: best model display, actions
+
+#### 4.4 E2E Tests
+
+Enhance `file:apps/frontend/e2e/workflows/train.spec.ts`:
+- Test complete training workflow: configure → detect → recommend → train → compare
+- Test WebSocket real-time updates
+- Test training cancellation
+- Test error handling and retry
+- Test model deployment after training
+
+#### 4.5 Documentation
+
+Create `file:apps/backend/docs/AUTOML_ENGINE.md`:
+- Document AutoML architecture and components
+- Explain algorithm selection logic and rules
+- Document training modes and configurations
+- Provide examples of API usage
+- Document WebSocket protocol for progress tracking
+
+Update `file:README.md`:
+- Add Stage 5: Model Training section
+- Document new API endpoints
+- Provide training workflow examples
+- Add troubleshooting guide
+
+## Architecture Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant AutoML
+    participant AlgoSelector
+    participant OpenAI
+    participant Redis
+    participant WebSocket
+    participant S3
+    participant MongoDB
+
+    User->>Frontend: Navigate to /datasets/{id}/train
+    Frontend->>API: GET /datasets/{id}
+    API-->>Frontend: Dataset metadata
+    
+    User->>Frontend: Select target column
+    Frontend->>API: POST /detect-problem-type
+    API->>AutoML: ProblemDetector.detect()
+    AutoML-->>API: ProblemType + confidence
+    API-->>Frontend: Detection result
+    
+    User->>Frontend: Configure training
+    Frontend->>API: POST /recommend-algorithms
+    API->>AlgoSelector: select_algorithms()
+    AlgoSelector->>OpenAI: Generate explanations
+    OpenAI-->>AlgoSelector: AI explanations
+    AlgoSelector-->>API: Algorithm recommendations
+    API-->>Frontend: Recommended algorithms
+    
+    User->>Frontend: Start training
+    Frontend->>API: POST /train-automl
+    API->>MongoDB: Create TrainingJob
+    API->>Redis: Initialize progress
+    API-->>Frontend: job_id
+    
+    Frontend->>WebSocket: Connect /ws/training/{job_id}
+    
+    API->>AutoML: run_automl() async
+    
+    loop For each algorithm
+        AutoML->>AutoML: Train model (parallel)
+        AutoML->>Redis: Update progress
+        Redis->>WebSocket: Broadcast progress
+        WebSocket-->>Frontend: Progress update
+        Frontend->>User: Show progress
+        AutoML->>S3: Save model
+        AutoML->>MongoDB: Save model metadata
+    end
+    
+    AutoML->>AlgoSelector: compare_models()
+    AlgoSelector->>OpenAI: Generate comparison
+    OpenAI-->>AlgoSelector: AI explanation
+    AlgoSelector-->>AutoML: ModelComparison
+    
+    AutoML->>MongoDB: Update TrainingJob (completed)
+    AutoML->>Redis: Final progress
+    Redis->>WebSocket: Broadcast completion
+    WebSocket-->>Frontend: Training complete
+    
+    Frontend->>API: GET /training-jobs/{job_id}/results
+    API->>MongoDB: Fetch results
+    API-->>Frontend: All models + comparison
+    Frontend->>User: Show model comparison
+```
+
+## Implementation Summary
+
+| Component | Files to Create/Modify | Key Technologies |
+|-----------|------------------------|------------------|
+| Algorithm Selection | `algorithm_selector.py`, `explanation_service.py` | OpenAI API, scikit-learn |
+| Parallel Training | `automl_engine.py` (enhance) | asyncio, concurrent.futures |
+| Class Balancing | `feature_engineer.py` (enhance) | imbalanced-learn |
+| Time Series | `time_series_models.py` | statsmodels, prophet |
+| WebSocket | `websocket.py`, `training_progress_service.py` | FastAPI WebSocket, Redis |
+| Training API | `model_training.py` (enhance) | FastAPI, Pydantic |
+| Training Page | `app/datasets/[id]/train/page.tsx` | Next.js, React |
+| UI Components | 7 new components in `components/training/` | React, shadcn/ui, Recharts |
+| Progress Hook | `useTrainingProgress.ts` | WebSocket API, React hooks |
+| Tests | 10+ test files | pytest, Jest, Playwright |
+
+## Estimated Timeline
+
+- **Phase 1** (Backend AutoML): 2-3 weeks
+- **Phase 2** (API & WebSocket): 1-2 weeks
+- **Phase 3** (Frontend UI): 2-3 weeks
+- **Phase 4** (Testing & Docs): 1 week
+
+**Total: 6-9 weeks** (aligns with 6-8 week estimate in ticket)

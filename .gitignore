@@ -70,3 +70,8 @@ scripts/awscliv2.zip
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Claude Flow
+memory/claude-flow-data.json
+.claude/logs/
+.swarm/

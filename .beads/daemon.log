@@ -1,0 +1,45 @@
+[2025-12-21 13:59:48] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 13:59:48] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 13:59:48] Expected: beads.db
+[2025-12-21 13:59:48] 
+[2025-12-21 13:59:48] Run 'bd init' to migrate to canonical name
+[2025-12-21 13:59:59] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 13:59:59] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 13:59:59] Expected: beads.db
+[2025-12-21 13:59:59] 
+[2025-12-21 13:59:59] Run 'bd init' to migrate to canonical name
+[2025-12-21 14:02:54] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 14:02:54] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 14:02:54] Expected: beads.db
+[2025-12-21 14:02:54] 
+[2025-12-21 14:02:54] Run 'bd init' to migrate to canonical name
+[2025-12-21 14:14:18] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 14:14:18] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 14:14:18] Expected: beads.db
+[2025-12-21 14:14:18] 
+[2025-12-21 14:14:18] Run 'bd init' to migrate to canonical name
+[2025-12-21 15:04:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 15:04:01] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 15:04:01] Expected: beads.db
+[2025-12-21 15:04:01] 
+[2025-12-21 15:04:01] Run 'bd init' to migrate to canonical name
+[2025-12-21 15:04:41] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 15:04:41] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 15:04:41] Expected: beads.db
+[2025-12-21 15:04:41] 
+[2025-12-21 15:04:41] Run 'bd init' to migrate to canonical name
+[2025-12-21 16:38:11] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 16:38:11] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 16:38:11] Expected: beads.db
+[2025-12-21 16:38:11] 
+[2025-12-21 16:38:11] Run 'bd init' to migrate to canonical name
+[2025-12-21 16:38:26] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 16:38:26] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 16:38:26] Expected: beads.db
+[2025-12-21 16:38:26] 
+[2025-12-21 16:38:26] Run 'bd init' to migrate to canonical name
+[2025-12-21 16:38:35] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-12-21 16:38:35] Error: Non-canonical database name: narrative-modeling-app.db
+[2025-12-21 16:38:35] Expected: beads.db
+[2025-12-21 16:38:35] 
+[2025-12-21 16:38:35] Run 'bd init' to migrate to canonical name

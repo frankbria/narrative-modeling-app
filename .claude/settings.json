@@ -1,0 +1,15 @@
+{
+  "version": "2.0",
+  "memory": {
+    "enabled": true,
+    "persistence_db": "memory/claude-flow-data.json",
+    "max_context_tokens": 100000
+  },
+  "coordination": {
+    "enabled": true,
+    "auto_checkpoint": true
+  },
+  "commands": {
+    "directory": ".claude/commands"
+  }
+}
