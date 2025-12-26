@@ -2,7 +2,7 @@
 API routes for data transformation pipeline
 """
 import asyncio
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 import pandas as pd
 from datetime import datetime
@@ -1545,7 +1545,7 @@ async def select_columns_by_pattern(
     request: ColumnSelectionPatternRequest,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> ColumnSelectionResponse:
     """
     Select columns matching a pattern.
 
@@ -1595,7 +1595,7 @@ async def preview_bulk_transformation(
     request: BulkTransformationPreviewRequest,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> BulkTransformationPreviewResponse:
     """
     Preview a bulk transformation on multiple columns.
 
@@ -1652,7 +1652,7 @@ async def apply_bulk_transformation(
     request: BulkTransformationRequest,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> BulkTransformationJobResponse:
     """
     Apply a bulk transformation to multiple columns.
 
@@ -1709,7 +1709,7 @@ async def get_bulk_job_status(
     job_id: str,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> BulkTransformationProgressResponse:
     """
     Get the status and progress of a bulk transformation job.
 
@@ -1776,7 +1776,7 @@ async def list_bulk_jobs(
     limit: int = Query(50, ge=1, le=100, description="Maximum number of jobs to return"),
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> BulkJobListResponse:
     """
     List bulk transformation jobs for a dataset.
 
@@ -1828,11 +1828,20 @@ async def cancel_bulk_job(
     job_id: str,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> Dict[str, Any]:
     """
     Cancel a pending or running bulk transformation job.
+
+    Validates that the job belongs to the specified dataset before cancelling.
     """
     try:
+        # First verify the job exists and belongs to this dataset
+        job = await bulk_service.get_job_status(job_id=job_id, user_id=current_user_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="Job not found for this dataset")
+
         success = await bulk_service.cancel_job(
             job_id=job_id,
             user_id=current_user_id
@@ -1862,11 +1871,20 @@ async def retry_bulk_job(
     job_id: str,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-):
+) -> BulkTransformationJobResponse:
     """
     Retry a failed bulk transformation job.
+
+    Validates that the job belongs to the specified dataset before retrying.
     """
     try:
+        # First verify the job exists and belongs to this dataset
+        existing_job = await bulk_service.get_job_status(job_id=job_id, user_id=current_user_id)
+        if not existing_job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if existing_job.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="Job not found for this dataset")
+
         job = await bulk_service.retry_job(
             job_id=job_id,
             user_id=current_user_id
