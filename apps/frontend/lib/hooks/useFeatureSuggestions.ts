@@ -15,6 +15,12 @@ export interface FeatureSuggestion {
   source: 'rule_based' | 'ai';
 }
 
+// Extended type for suggestions with local state (accepted/rejected status)
+export interface FeatureSuggestionWithStatus extends FeatureSuggestion {
+  _accepted?: boolean;
+  _rejected?: boolean;
+}
+
 export type FeatureType =
   | 'polynomial'
   | 'interaction'
@@ -79,7 +85,7 @@ export function useFeatureSuggestions(
 ): UseFeatureSuggestionsReturn {
   const { datasetId } = options;
 
-  const [suggestions, setSuggestions] = useState<FeatureSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<FeatureSuggestionWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detectedProblemType, setDetectedProblemType] = useState<string | null>(null);
@@ -167,9 +173,9 @@ export function useFeatureSuggestions(
 
         // Optimistic update - mark as accepted in UI
         setSuggestions((prev) =>
-          prev.map((s) =>
+          prev.map((s): FeatureSuggestionWithStatus =>
             s.id === suggestionId
-              ? { ...s, _accepted: true } as FeatureSuggestion & { _accepted: boolean }
+              ? { ...s, _accepted: true }
               : s
           )
         );

@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Allowed file types for dataset loading (security whitelist)
+ALLOWED_FILE_TYPES = {'csv', 'xlsx', 'xls', 'json', 'parquet'}
+
 
 async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame:
     """Load dataset as DataFrame from S3"""
@@ -59,6 +62,13 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
         file_path = download_file_from_s3(dataset.s3_url)
         file_type = dataset.file_type.lower()
 
+        # Explicit whitelist validation for security
+        if file_type not in ALLOWED_FILE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type: {file_type}. Allowed types: {', '.join(sorted(ALLOWED_FILE_TYPES))}"
+            )
+
         if file_type == 'csv':
             df = pd.read_csv(file_path)
         elif file_type in ['xlsx', 'xls']:
@@ -68,6 +78,7 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
         elif file_type == 'parquet':
             df = pd.read_parquet(file_path)
         else:
+            # This should never be reached due to whitelist check above
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported file type: {file_type}"
@@ -422,12 +433,13 @@ async def apply_multiple_features(
         # Load dataset
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
 
-        # Get suggestions
+        # Get suggestions (fetched once, cached by service via Redis)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
             dataset_id=dataset_id
         )
 
+        # Build lookup map for O(1) access per suggestion
         suggestion_map = {s.id: s for s in suggestions_response.suggestions}
 
         applied_features = []
@@ -523,6 +535,7 @@ async def _apply_single_feature(
             if operation == "multiply":
                 df[suggestion.name] = df[col1] * df[col2]
             elif operation == "divide":
+                # Safe division: add small epsilon to prevent division by zero
                 df[suggestion.name] = df[col1] / (df[col2] + 1e-8)
             elif operation == "add":
                 df[suggestion.name] = df[col1] + df[col2]
@@ -588,7 +601,10 @@ async def _apply_single_feature(
 
         else:
             # Feature type not yet implemented
+            logger.warning(
+                f"Feature type '{feature_type.value}' not yet implemented for feature '{suggestion.name}'"
+            )
             return None
 
     except Exception as e:
-        raise ValueError(f"Failed to apply feature: {str(e)}")
+        raise ValueError(f"Failed to apply feature '{suggestion.name}' ({feature_type.value}): {str(e)}")

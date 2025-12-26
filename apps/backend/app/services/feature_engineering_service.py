@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from openai import OpenAI, OpenAIError
+from openai import OpenAI, OpenAIError, RateLimitError, AuthenticationError, APIConnectionError
 
 from app.schemas.feature_engineering import (
     FeatureSuggestion,
@@ -54,6 +54,18 @@ FEATURE_SUGGESTION_MODEL = os.getenv("OPENAI_FEATURE_SUGGESTION_MODEL", "gpt-4")
 # Configuration
 FEATURE_SUGGESTION_CACHE_TTL = int(os.getenv("FEATURE_SUGGESTION_CACHE_TTL", "3600"))
 FEATURE_IMPORTANCE_SAMPLE_SIZE = int(os.getenv("FEATURE_IMPORTANCE_SAMPLE_SIZE", "1000"))
+
+# Feature generation limits (prevent excessive computation)
+MAX_NUMERIC_FEATURES_FOR_POLYNOMIAL = 10
+MAX_NUMERIC_FEATURES_FOR_STATS = 20
+MAX_CATEGORICAL_FEATURES_FOR_STATS = 10
+MAX_CATEGORICAL_FOR_AGGREGATION = 3
+MAX_NUMERIC_FOR_AGGREGATION = 5
+MAX_DATETIME_FEATURES = 3
+MAX_TEXT_FEATURES = 3
+MAX_BINNING_FEATURES = 5
+MAX_ENCODING_FEATURES = 5
+MAX_INTERACTION_SUGGESTIONS = 20
 
 
 @dataclass
@@ -349,7 +361,7 @@ class FeatureEngineeringService:
         suggestions = []
         target = analysis.target_column
 
-        for col in analysis.numeric_columns[:10]:  # Limit
+        for col in analysis.numeric_columns[:MAX_NUMERIC_FEATURES_FOR_POLYNOMIAL]:
             if col == target:
                 continue
 
@@ -434,23 +446,24 @@ class FeatureEngineeringService:
                     source="rule_based"
                 ))
 
-                # Ratio (if col2 has no zeros)
-                if (analysis.df[col2] != 0).all():
+                # Ratio (if col2 has few zeros - safe division handles remaining)
+                zero_ratio = (analysis.df[col2] == 0).mean()
+                if zero_ratio < 0.1:  # Allow if less than 10% zeros
                     suggestions.append(FeatureSuggestion(
                         id=self._generate_id("int"),
                         name=f"{col1}_per_{col2}",
-                        description=f"Ratio of {col1} to {col2}",
+                        description=f"Ratio of {col1} to {col2} (safe division)",
                         feature_type=FeatureType.INTERACTION,
-                        formula=f"{col1} / {col2}",
+                        formula=f"{col1} / ({col2} + epsilon)",
                         expected_importance=0.45,
-                        explanation="Ratios can reveal proportional relationships between features.",
+                        explanation="Ratios can reveal proportional relationships between features. Uses safe division to handle zero values.",
                         computation_cost=ComputationCost.LOW,
                         input_columns=[col1, col2],
                         parameters={"operation": "divide"},
                         source="rule_based"
                     ))
 
-        return suggestions[:20]  # Limit interaction features
+        return suggestions[:MAX_INTERACTION_SUGGESTIONS]
 
     def _suggest_aggregation_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
         """Suggest aggregation features based on categorical groupings"""
@@ -460,9 +473,9 @@ class FeatureEngineeringService:
         if not analysis.categorical_columns:
             return suggestions
 
-        numeric_cols = [c for c in analysis.numeric_columns if c != target][:5]
+        numeric_cols = [c for c in analysis.numeric_columns if c != target][:MAX_NUMERIC_FOR_AGGREGATION]
 
-        for cat_col in analysis.categorical_columns[:3]:
+        for cat_col in analysis.categorical_columns[:MAX_CATEGORICAL_FOR_AGGREGATION]:
             # Skip if too many unique values
             if analysis.df[cat_col].nunique() > 100:
                 continue
@@ -504,7 +517,7 @@ class FeatureEngineeringService:
         """Suggest time-based features from datetime columns"""
         suggestions = []
 
-        for col in analysis.datetime_columns[:3]:
+        for col in analysis.datetime_columns[:MAX_DATETIME_FEATURES]:
             # Day of week
             suggestions.append(FeatureSuggestion(
                 id=self._generate_id("time"),
@@ -586,7 +599,7 @@ class FeatureEngineeringService:
         """Suggest text-based features"""
         suggestions = []
 
-        for col in analysis.text_columns[:3]:
+        for col in analysis.text_columns[:MAX_TEXT_FEATURES]:
             # Character count
             suggestions.append(FeatureSuggestion(
                 id=self._generate_id("text"),
@@ -892,10 +905,22 @@ Domain: {analysis.domain.value}"""
             return suggestions
 
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse AI response: {e}")
+            logger.warning(f"Failed to parse AI response as JSON: {e}")
+            return []
+        except RateLimitError as e:
+            logger.warning(f"OpenAI rate limit exceeded, suggestions skipped: {e}")
+            return []
+        except AuthenticationError as e:
+            logger.error(f"OpenAI authentication failed - check API key: {e}")
+            return []
+        except APIConnectionError as e:
+            logger.warning(f"OpenAI API connection error, suggestions skipped: {e}")
+            return []
+        except OpenAIError as e:
+            logger.error(f"OpenAI API error during suggestion generation: {e}")
             return []
         except Exception as e:
-            logger.error(f"AI suggestion generation error: {e}")
+            logger.error(f"Unexpected error in AI suggestion generation: {e}")
             return []
 
     def _prepare_ai_context(
