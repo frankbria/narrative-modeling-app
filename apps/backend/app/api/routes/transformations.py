@@ -1530,7 +1530,7 @@ async def clear_history(
 # =============================================================================
 
 
-def get_bulk_transformation_service():
+def get_bulk_transformation_service() -> 'BulkTransformationService':
     """Dependency injection for BulkTransformationService."""
     from app.services.bulk_transformation_service import BulkTransformationService
     return BulkTransformationService()
