@@ -351,5 +351,318 @@ class FeatureEngineer:
         
         self.transformers["selector"] = selector
         self.transformers["selected_features"] = selected_features
-        
+
         return X_selected_df, feature_importance
+
+    async def apply_suggestion(
+        self,
+        df: pd.DataFrame,
+        suggestion: Any
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Apply a single feature suggestion to a dataframe.
+
+        Args:
+            df: Input dataframe
+            suggestion: FeatureSuggestion object with feature details
+
+        Returns:
+            Tuple of (transformed dataframe, metadata dict)
+        """
+        df = df.copy()
+        metadata: Dict[str, Any] = {
+            "feature_name": suggestion.name,
+            "success": False,
+            "error": None
+        }
+
+        try:
+            feature_type = suggestion.feature_type
+            params = suggestion.parameters
+            input_cols = suggestion.input_columns
+
+            # Validate input columns
+            missing_cols = [c for c in input_cols if c not in df.columns]
+            if missing_cols:
+                metadata["error"] = f"Missing columns: {missing_cols}"
+                return df, metadata
+
+            # Apply based on feature type
+            if feature_type.value == "polynomial":
+                df = self._apply_polynomial(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "interaction":
+                df = self._apply_interaction(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "aggregation":
+                df = self._apply_aggregation(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "time_based":
+                df = self._apply_time_based(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "text":
+                df = self._apply_text(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "binning":
+                df = self._apply_binning(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "encoding":
+                df = await self._apply_encoding(df, suggestion.name, input_cols, params)
+            elif feature_type.value == "scaling":
+                df = self._apply_scaling(df, suggestion.name, input_cols, params)
+            else:
+                # Try generic application for mathematical/domain-specific
+                df = self._apply_generic(df, suggestion.name, input_cols, params)
+
+            metadata["success"] = True
+            metadata["new_columns"] = [suggestion.name]
+
+        except Exception as e:
+            logger.error(f"Error applying suggestion {suggestion.name}: {e}")
+            metadata["error"] = str(e)
+
+        return df, metadata
+
+    async def apply_multiple_suggestions(
+        self,
+        df: pd.DataFrame,
+        suggestions: List[Any]
+    ) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+        """
+        Apply multiple feature suggestions to a dataframe.
+
+        Args:
+            df: Input dataframe
+            suggestions: List of FeatureSuggestion objects
+
+        Returns:
+            Tuple of (transformed dataframe, list of metadata dicts)
+        """
+        all_metadata: List[Dict[str, Any]] = []
+
+        for suggestion in suggestions:
+            df, metadata = await self.apply_suggestion(df, suggestion)
+            all_metadata.append(metadata)
+
+        return df, all_metadata
+
+    def _apply_polynomial(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply polynomial transformation"""
+        col = input_cols[0]
+        func = params.get("function", "")
+        power = params.get("power", 2)
+
+        if func == "sqrt":
+            df[name] = np.sqrt(df[col].clip(lower=0))
+        elif func == "log":
+            df[name] = np.log1p(df[col].clip(lower=0))
+        elif func == "exp":
+            df[name] = np.exp(df[col].clip(upper=100))  # Prevent overflow
+        else:
+            df[name] = df[col] ** power
+
+        return df
+
+    def _apply_interaction(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply interaction transformation"""
+        col1, col2 = input_cols[0], input_cols[1]
+        operation = params.get("operation", "multiply")
+
+        if operation == "multiply":
+            df[name] = df[col1] * df[col2]
+        elif operation == "divide":
+            df[name] = df[col1] / (df[col2] + 1e-8)
+        elif operation == "add":
+            df[name] = df[col1] + df[col2]
+        elif operation == "subtract":
+            df[name] = df[col1] - df[col2]
+
+        return df
+
+    def _apply_aggregation(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply aggregation transformation"""
+        aggregation = params.get("aggregation", "mean")
+        group_by = params.get("group_by")
+
+        if not group_by or group_by not in df.columns:
+            raise ValueError(f"Group by column '{group_by}' not found")
+
+        if aggregation == "mean" and len(input_cols) > 0:
+            num_col = input_cols[0]
+            df[name] = df.groupby(group_by)[num_col].transform("mean")
+        elif aggregation == "sum" and len(input_cols) > 0:
+            num_col = input_cols[0]
+            df[name] = df.groupby(group_by)[num_col].transform("sum")
+        elif aggregation == "count":
+            df[name] = df.groupby(group_by)[group_by].transform("count")
+        elif aggregation == "std" and len(input_cols) > 0:
+            num_col = input_cols[0]
+            df[name] = df.groupby(group_by)[num_col].transform("std")
+        elif aggregation == "median" and len(input_cols) > 0:
+            num_col = input_cols[0]
+            df[name] = df.groupby(group_by)[num_col].transform("median")
+
+        return df
+
+    def _apply_time_based(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply time-based transformation"""
+        col = input_cols[0]
+        extract = params.get("extract", "")
+
+        # Convert to datetime if needed
+        dt_col = pd.to_datetime(df[col], errors='coerce')
+
+        if extract == "dayofweek":
+            df[name] = dt_col.dt.dayofweek
+        elif extract == "month":
+            df[name] = dt_col.dt.month
+        elif extract == "day":
+            df[name] = dt_col.dt.day
+        elif extract == "hour":
+            df[name] = dt_col.dt.hour
+        elif extract == "minute":
+            df[name] = dt_col.dt.minute
+        elif extract == "quarter":
+            df[name] = dt_col.dt.quarter
+        elif extract == "year":
+            df[name] = dt_col.dt.year
+        elif extract == "is_weekend":
+            df[name] = dt_col.dt.dayofweek.isin([5, 6]).astype(int)
+        elif extract == "is_month_start":
+            df[name] = dt_col.dt.is_month_start.astype(int)
+        elif extract == "is_month_end":
+            df[name] = dt_col.dt.is_month_end.astype(int)
+
+        return df
+
+    def _apply_text(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply text transformation"""
+        col = input_cols[0]
+        operation = params.get("operation", "")
+
+        str_col = df[col].astype(str)
+
+        if operation == "char_count":
+            df[name] = str_col.str.len()
+        elif operation == "word_count":
+            df[name] = str_col.str.split().str.len()
+        elif operation == "has_special":
+            df[name] = str_col.str.contains(r'[!@#$%^&*]', regex=True).astype(int)
+        elif operation == "is_upper":
+            df[name] = str_col.str.isupper().astype(int)
+        elif operation == "is_lower":
+            df[name] = str_col.str.islower().astype(int)
+        elif operation == "digit_count":
+            df[name] = str_col.str.count(r'\d')
+
+        return df
+
+    def _apply_binning(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply binning transformation"""
+        col = input_cols[0]
+        method = params.get("method", "equal_width")
+        bins = params.get("bins", 5)
+
+        if method == "quantile":
+            df[name] = pd.qcut(df[col], q=bins, labels=False, duplicates='drop')
+        else:  # equal_width
+            df[name] = pd.cut(df[col], bins=bins, labels=False)
+
+        return df
+
+    async def _apply_encoding(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply encoding transformation"""
+        col = input_cols[0]
+        method = params.get("method", "label")
+
+        if method == "one_hot":
+            # Create one-hot encoded columns
+            dummies = pd.get_dummies(df[col], prefix=col)
+            df = pd.concat([df, dummies], axis=1)
+        else:  # label encoding
+            le = LabelEncoder()
+            df[name] = le.fit_transform(df[col].astype(str))
+
+        return df
+
+    def _apply_scaling(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply scaling transformation"""
+        method = params.get("method", "standard")
+
+        if method == "standard":
+            scaler = StandardScaler()
+        elif method == "minmax":
+            scaler = MinMaxScaler()
+        else:
+            scaler = RobustScaler()
+
+        # Scale all input columns
+        for col in input_cols:
+            if col in df.columns:
+                scaled_name = f"{col}_scaled" if name == "standard_scaling" or name == "minmax_scaling" else name
+                df[scaled_name] = scaler.fit_transform(df[[col]])
+
+        return df
+
+    def _apply_generic(
+        self,
+        df: pd.DataFrame,
+        name: str,
+        input_cols: List[str],
+        params: Dict[str, Any]
+    ) -> pd.DataFrame:
+        """Apply generic transformation based on formula (limited support)"""
+        # This is a simplified implementation
+        # In production, you might use a safe expression evaluator
+        if len(input_cols) == 1:
+            col = input_cols[0]
+            # Simple copy with optional modification
+            df[name] = df[col].copy()
+        elif len(input_cols) == 2:
+            col1, col2 = input_cols[0], input_cols[1]
+            # Default to multiplication for two columns
+            df[name] = df[col1] * df[col2]
+
+        return df

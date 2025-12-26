@@ -63,6 +63,7 @@ from app.api.routes import (
     transformations,
     versions,
     datasets,
+    feature_engineering,
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
@@ -253,6 +254,11 @@ app.include_router(
     datasets.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["datasets"],
+)
+app.include_router(
+    feature_engineering.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["feature-engineering"],
 )
 
 
