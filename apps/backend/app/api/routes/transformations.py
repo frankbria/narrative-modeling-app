@@ -2,7 +2,7 @@
 API routes for data transformation pipeline
 """
 import asyncio
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 import pandas as pd
 from datetime import datetime
@@ -43,6 +43,17 @@ from app.schemas.transformation import (
     HistoryOperationResponse,
     HistoryDataResponse,
     ClearHistoryResponse,
+    # Bulk transformation schemas
+    ColumnSelectionPatternRequest,
+    ColumnSelectionResponse,
+    ColumnMetadataResponse,
+    BulkTransformationPreviewRequest,
+    BulkTransformationPreviewResponse,
+    ColumnPreviewResult,
+    BulkTransformationRequest,
+    BulkTransformationJobResponse,
+    BulkTransformationProgressResponse,
+    BulkJobListResponse,
 )
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -1511,4 +1522,390 @@ async def clear_history(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.exception(f"Error clearing history for dataset {dataset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+# =============================================================================
+# Bulk Transformation Endpoints
+# =============================================================================
+
+
+def get_bulk_transformation_service() -> 'BulkTransformationService':
+    """Dependency injection for BulkTransformationService."""
+    from app.services.bulk_transformation_service import BulkTransformationService
+    return BulkTransformationService()
+
+
+@router.post(
+    "/datasets/{dataset_id}/columns/select-pattern",
+    response_model=ColumnSelectionResponse
+)
+async def select_columns_by_pattern(
+    dataset_id: str,
+    request: ColumnSelectionPatternRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> ColumnSelectionResponse:
+    """
+    Select columns matching a pattern.
+
+    Supports pattern types:
+    - data_type: Select by field type (numeric, text, boolean, datetime, categorical)
+    - name_pattern: Select by regex pattern on column names
+    - quality_metric: Select by data quality metrics (missing_values, unique_values, etc.)
+    - custom: Select by custom criteria matching field attributes
+    """
+    try:
+        from app.models.bulk_transformation import ColumnSelectionPattern, PatternType
+
+        pattern = ColumnSelectionPattern(
+            pattern_type=PatternType(request.pattern_type),
+            criteria=request.criteria
+        )
+
+        matching_columns = await bulk_service.select_columns_by_pattern(
+            user_id=current_user_id,
+            dataset_id=dataset_id,
+            pattern=pattern
+        )
+
+        return ColumnSelectionResponse(
+            columns=[
+                ColumnMetadataResponse(**col) for col in matching_columns
+            ],
+            total_matched=len(matching_columns),
+            pattern_applied=f"{request.pattern_type}: {request.criteria}"
+        )
+
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error selecting columns by pattern: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post(
+    "/datasets/{dataset_id}/bulk-preview",
+    response_model=BulkTransformationPreviewResponse
+)
+async def preview_bulk_transformation(
+    dataset_id: str,
+    request: BulkTransformationPreviewRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> BulkTransformationPreviewResponse:
+    """
+    Preview a bulk transformation on multiple columns.
+
+    Returns preview results for each selected column including before/after
+    statistics and affected row counts.
+    """
+    try:
+        result = await bulk_service.preview_bulk_transformation(
+            user_id=current_user_id,
+            dataset_id=dataset_id,
+            selected_columns=request.selected_columns,
+            transformation_type=request.transformation_type,
+            global_parameters=request.global_parameters or {},
+            per_column_params=request.per_column_params or {},
+            preview_rows=request.preview_rows
+        )
+
+        return BulkTransformationPreviewResponse(
+            success=result["success"],
+            column_previews=[
+                ColumnPreviewResult(**preview) for preview in result["column_previews"]
+            ],
+            total_estimated_rows_affected=result["total_estimated_rows_affected"],
+            total_columns=result["total_columns"],
+            successful_previews=result["successful_previews"],
+            failed_previews=result["failed_previews"],
+            error=result.get("error"),
+            warnings=result.get("warnings", [])
+        )
+
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except OperationError as e:
+        return BulkTransformationPreviewResponse(
+            success=False,
+            column_previews=[],
+            error=e.message
+        )
+    except Exception as e:
+        logger.exception(f"Error previewing bulk transformation: {e}")
+        return BulkTransformationPreviewResponse(
+            success=False,
+            column_previews=[],
+            error=str(e)
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/bulk-apply",
+    response_model=BulkTransformationJobResponse
+)
+async def apply_bulk_transformation(
+    dataset_id: str,
+    request: BulkTransformationRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> BulkTransformationJobResponse:
+    """
+    Apply a bulk transformation to multiple columns.
+
+    Creates an async job that processes columns in parallel with progress tracking.
+    Returns immediately with job ID for status polling.
+
+    Raises:
+        400: Invalid request (empty columns, too many columns, invalid transformation type)
+        404: Dataset not found
+        429: Rate limit exceeded (too many concurrent jobs)
+        500: Internal server error
+    """
+    try:
+        job = await bulk_service.apply_bulk_transformation(
+            user_id=current_user_id,
+            dataset_id=dataset_id,
+            selected_columns=request.selected_columns,
+            transformation_type=request.transformation_type,
+            global_parameters=request.global_parameters or {},
+            per_column_params=request.per_column_params or {},
+            stop_on_error=request.stop_on_error
+        )
+
+        return BulkTransformationJobResponse(
+            job_id=job.job_id,
+            status=job.status.value,
+            selected_columns=job.selected_columns,
+            total_columns=len(job.selected_columns),
+            message=f"Bulk transformation job created with {len(job.selected_columns)} columns"
+        )
+
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except OperationError as e:
+        # Rate limit exceeded returns 429
+        if "Maximum concurrent" in str(e.message):
+            raise HTTPException(status_code=429, detail=e.message) from e
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Error creating bulk transformation job: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.get(
+    "/datasets/{dataset_id}/bulk-jobs/{job_id}",
+    response_model=BulkTransformationProgressResponse
+)
+async def get_bulk_job_status(
+    dataset_id: str,
+    job_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> BulkTransformationProgressResponse:
+    """
+    Get the status and progress of a bulk transformation job.
+
+    Returns detailed progress information including processed/successful/failed
+    column counts and estimated remaining time.
+    """
+    try:
+        job = await bulk_service.get_job_status(
+            job_id=job_id,
+            user_id=current_user_id
+        )
+
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="Job not found for this dataset")
+
+        # Build result dict if job is completed
+        result_dict = None
+        if job.result:
+            result_dict = {
+                "successful_columns": job.result.successful_columns,
+                "failed_columns": job.result.failed_columns,
+                "total_time_ms": job.result.total_time_ms,
+                "total_rows_affected": job.result.total_rows_affected,
+            }
+
+        return BulkTransformationProgressResponse(
+            job_id=job.job_id,
+            status=job.status.value,
+            progress={
+                "total_columns": job.progress.total_columns,
+                "processed_columns": job.progress.processed_columns,
+                "successful_columns": job.progress.successful_columns,
+                "failed_columns": job.progress.failed_columns,
+                "current_column": job.progress.current_column,
+            },
+            percentage_complete=job.progress.percentage_complete,
+            total_columns=job.progress.total_columns,
+            processed_columns=job.progress.processed_columns,
+            successful_columns=job.progress.successful_columns,
+            failed_columns=job.progress.failed_columns,
+            current_column=job.progress.current_column,
+            estimated_remaining_seconds=job.estimated_remaining_seconds,
+            error_message=job.error_message,
+            result=result_dict
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting bulk job status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.get(
+    "/datasets/{dataset_id}/bulk-jobs",
+    response_model=BulkJobListResponse
+)
+async def list_bulk_jobs(
+    dataset_id: str,
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of jobs to return"),
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> BulkJobListResponse:
+    """
+    List bulk transformation jobs for a dataset.
+
+    Supports filtering by status and pagination.
+    """
+    try:
+        from app.models.bulk_transformation import BulkJobStatus
+
+        status_filter = None
+        if status:
+            try:
+                status_filter = BulkJobStatus(status)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status: {status}. Must be one of: {[s.value for s in BulkJobStatus]}"
+                )
+
+        jobs = await bulk_service.list_user_jobs(
+            user_id=current_user_id,
+            dataset_id=dataset_id,
+            status=status_filter,
+            limit=limit
+        )
+
+        return BulkJobListResponse(
+            jobs=[
+                BulkTransformationJobResponse(
+                    job_id=job.job_id,
+                    status=job.status.value,
+                    selected_columns=job.selected_columns,
+                    total_columns=len(job.selected_columns),
+                    message=f"Job {job.status.value}"
+                ) for job in jobs
+            ],
+            total=len(jobs)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error listing bulk jobs: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/datasets/{dataset_id}/bulk-jobs/{job_id}/cancel")
+async def cancel_bulk_job(
+    dataset_id: str,
+    job_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> Dict[str, Any]:
+    """
+    Cancel a pending or running bulk transformation job.
+
+    Validates that the job belongs to the specified dataset before cancelling.
+    """
+    try:
+        # First verify the job exists and belongs to this dataset
+        job = await bulk_service.get_job_status(job_id=job_id, user_id=current_user_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="Job not found for this dataset")
+
+        success = await bulk_service.cancel_job(
+            job_id=job_id,
+            user_id=current_user_id
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found or already completed"
+            )
+
+        return {"success": True, "message": "Job cancelled successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error cancelling bulk job: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post(
+    "/datasets/{dataset_id}/bulk-jobs/{job_id}/retry",
+    response_model=BulkTransformationJobResponse
+)
+async def retry_bulk_job(
+    dataset_id: str,
+    job_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
+) -> BulkTransformationJobResponse:
+    """
+    Retry a failed bulk transformation job.
+
+    Validates that the job belongs to the specified dataset before retrying.
+    """
+    try:
+        # First verify the job exists and belongs to this dataset
+        existing_job = await bulk_service.get_job_status(job_id=job_id, user_id=current_user_id)
+        if not existing_job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if existing_job.dataset_id != dataset_id:
+            raise HTTPException(status_code=404, detail="Job not found for this dataset")
+
+        job = await bulk_service.retry_job(
+            job_id=job_id,
+            user_id=current_user_id
+        )
+
+        if not job:
+            raise HTTPException(
+                status_code=400,
+                detail="Job cannot be retried (not failed or max retries exceeded)"
+            )
+
+        return BulkTransformationJobResponse(
+            job_id=job.job_id,
+            status=job.status.value,
+            selected_columns=job.selected_columns,
+            total_columns=len(job.selected_columns),
+            message="Job retry initiated"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error retrying bulk job: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e

@@ -393,3 +393,192 @@ class ClearHistoryResponse(BaseModel):
     """Response schema for clear history endpoint."""
 
     success: bool = Field(..., description="Whether operation succeeded")
+
+
+# =============================================================================
+# Bulk Transformation Schemas
+# =============================================================================
+
+
+class ColumnSelectionPatternRequest(BaseModel):
+    """Request schema for column selection by pattern."""
+
+    pattern_type: str = Field(
+        ...,
+        description="Type of pattern: data_type, name_pattern, quality_metric, custom"
+    )
+    criteria: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Pattern-specific criteria"
+    )
+
+    @field_validator('pattern_type')
+    @classmethod
+    def validate_pattern_type(cls, v: str) -> str:
+        """Validate pattern type."""
+        allowed = {'data_type', 'name_pattern', 'quality_metric', 'custom'}
+        if v not in allowed:
+            raise ValueError(f"pattern_type must be one of {allowed}, got: {v}")
+        return v
+
+
+class ColumnMetadataResponse(BaseModel):
+    """Response schema for column metadata in selection results."""
+
+    column_name: str = Field(..., description="Column name")
+    field_type: str = Field(..., description="Field type (numeric, text, etc.)")
+    missing_values: int = Field(default=0, ge=0, description="Number of missing values")
+    unique_values: int = Field(default=0, ge=0, description="Number of unique values")
+    is_constant: bool = Field(default=False, description="Whether column is constant")
+    is_high_cardinality: bool = Field(default=False, description="Whether column has high cardinality")
+
+
+class ColumnSelectionResponse(BaseModel):
+    """Response schema for column selection endpoint."""
+
+    columns: List[ColumnMetadataResponse] = Field(
+        default_factory=list,
+        description="List of matching columns with metadata"
+    )
+    total_matched: int = Field(default=0, ge=0, description="Total number of matched columns")
+    pattern_applied: str = Field(..., description="Pattern that was applied")
+
+
+class BulkTransformationPreviewRequest(BaseModel):
+    """Request schema for bulk transformation preview."""
+
+    selected_columns: List[str] = Field(
+        ...,
+        min_length=1,
+        description="List of columns to preview transformation on"
+    )
+    transformation_type: str = Field(..., description="Type of transformation")
+    global_parameters: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Global transformation parameters"
+    )
+    per_column_params: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="Per-column parameter overrides"
+    )
+    preview_rows: int = Field(default=10, ge=1, le=100, description="Number of rows to preview")
+
+    @field_validator('transformation_type')
+    @classmethod
+    def validate_transformation_type(cls, v: str) -> str:
+        """Validate transformation_type is one of supported types."""
+        allowed_types = {t.value for t in TransformationType}
+        if v not in allowed_types:
+            raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")
+        return v
+
+
+class ColumnPreviewResult(BaseModel):
+    """Preview result for a single column."""
+
+    column_name: str = Field(..., description="Column name")
+    success: bool = Field(default=True, description="Whether preview succeeded")
+    preview_data: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Preview rows for this column"
+    )
+    stats_before: Optional[Dict[str, Any]] = Field(default=None, description="Stats before")
+    stats_after: Optional[Dict[str, Any]] = Field(default=None, description="Stats after")
+    affected_rows: int = Field(default=0, ge=0, description="Estimated rows affected")
+    error: Optional[str] = Field(default=None, description="Error if preview failed")
+    warnings: List[str] = Field(default_factory=list, description="Warnings")
+
+
+class BulkTransformationPreviewResponse(BaseModel):
+    """Response schema for bulk transformation preview."""
+
+    success: bool = Field(default=True, description="Whether all previews succeeded")
+    column_previews: List[ColumnPreviewResult] = Field(
+        default_factory=list,
+        description="Preview results per column"
+    )
+    total_estimated_rows_affected: int = Field(
+        default=0,
+        ge=0,
+        description="Total estimated rows affected"
+    )
+    total_columns: int = Field(default=0, ge=0, description="Total columns previewed")
+    successful_previews: int = Field(default=0, ge=0, description="Number of successful previews")
+    failed_previews: int = Field(default=0, ge=0, description="Number of failed previews")
+    error: Optional[str] = Field(default=None, description="Global error if any")
+    warnings: List[str] = Field(default_factory=list, description="Global warnings")
+
+
+class BulkTransformationRequest(BaseModel):
+    """Request schema for applying bulk transformation."""
+
+    selected_columns: List[str] = Field(
+        ...,
+        min_length=1,
+        description="List of columns to transform"
+    )
+    transformation_type: str = Field(..., description="Type of transformation")
+    global_parameters: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Global transformation parameters"
+    )
+    per_column_params: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="Per-column parameter overrides"
+    )
+    stop_on_error: bool = Field(
+        default=False,
+        description="Whether to stop processing on first error"
+    )
+
+    @field_validator('transformation_type')
+    @classmethod
+    def validate_transformation_type(cls, v: str) -> str:
+        """Validate transformation_type is one of supported types."""
+        allowed_types = {t.value for t in TransformationType}
+        if v not in allowed_types:
+            raise ValueError(f"transformation_type must be one of {allowed_types}, got: {v}")
+        return v
+
+
+class BulkTransformationJobResponse(BaseModel):
+    """Response schema for bulk transformation job creation."""
+
+    job_id: str = Field(..., description="Unique job identifier")
+    status: str = Field(..., description="Current job status")
+    selected_columns: List[str] = Field(default_factory=list, description="Columns being transformed")
+    total_columns: int = Field(default=0, ge=0, description="Total columns to process")
+    message: str = Field(..., description="Status message")
+
+
+class BulkTransformationProgressResponse(BaseModel):
+    """Response schema for bulk transformation job progress."""
+
+    job_id: str = Field(..., description="Job identifier")
+    status: str = Field(..., description="Current job status")
+    progress: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Progress details"
+    )
+    percentage_complete: float = Field(default=0.0, ge=0, le=100, description="Percentage complete")
+    total_columns: int = Field(default=0, ge=0, description="Total columns")
+    processed_columns: int = Field(default=0, ge=0, description="Processed columns")
+    successful_columns: int = Field(default=0, ge=0, description="Successful columns")
+    failed_columns: int = Field(default=0, ge=0, description="Failed columns")
+    current_column: Optional[str] = Field(default=None, description="Currently processing column")
+    estimated_remaining_seconds: Optional[float] = Field(
+        default=None,
+        description="Estimated time remaining in seconds"
+    )
+    error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    result: Optional[Dict[str, Any]] = Field(default=None, description="Results if completed")
+
+
+class BulkJobListResponse(BaseModel):
+    """Response schema for listing bulk transformation jobs."""
+
+    jobs: List[BulkTransformationJobResponse] = Field(
+        default_factory=list,
+        description="List of jobs"
+    )
+    total: int = Field(default=0, ge=0, description="Total number of jobs")
