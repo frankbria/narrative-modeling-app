@@ -192,6 +192,8 @@ export default function FeaturePreview({
     }
 
     const maxCount = Math.max(...preview.distribution.map(b => b.count));
+    // Guard against division by zero - use at least 1 for the denominator
+    const safeMax = maxCount === 0 ? 1 : maxCount;
 
     return (
       <div className="space-y-2">
@@ -203,7 +205,7 @@ export default function FeaturePreview({
             <div className="flex-1 h-4 bg-gray-200 rounded overflow-hidden">
               <div
                 className="h-full bg-blue-500"
-                style={{ width: `${(bin.count / maxCount) * 100}%` }}
+                style={{ width: `${(bin.count / safeMax) * 100}%` }}
               />
             </div>
             <div className="w-12 text-xs text-right text-gray-600">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -65,7 +65,8 @@ export default function FeatureBuilder({
   const [featureName, setFeatureName] = useState('');
   const [featureDescription, setFeatureDescription] = useState('');
   const [featureTags, setFeatureTags] = useState<string[]>([]);
-  const [nodeIdCounter, setNodeIdCounter] = useState(1);
+  // Use ref for node ID counter to avoid stale closure issues with rapid calls
+  const nodeIdCounterRef = useRef(1);
 
   // Load initial feature if editing
   useEffect(() => {
@@ -80,11 +81,12 @@ export default function FeatureBuilder({
     }
   }, [initialFeature, setNodes, setEdges]);
 
+  // Generate unique node IDs using ref to avoid duplicate IDs when called rapidly
   const generateNodeId = useCallback(() => {
-    const id = `node-${nodeIdCounter}`;
-    setNodeIdCounter(c => c + 1);
+    const id = `node-${nodeIdCounterRef.current}`;
+    nodeIdCounterRef.current += 1;
     return id;
-  }, [nodeIdCounter]);
+  }, []);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -98,6 +100,23 @@ export default function FeatureBuilder({
     },
     [setEdges]
   );
+
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node.id);
+  }, []);
+
+  // Define handleNodeUpdate before onDrop to avoid stale closure
+  const handleNodeUpdate = useCallback((nodeId: string, data: any) => {
+    setNodes((nds) =>
+      nds.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node))
+    );
+  }, [setNodes]);
+
+  // Define handleDeleteNode before onDrop to avoid stale closure
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    setNodes((nds) => nds.filter((node) => node.id !== nodeId));
+    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+  }, [setNodes, setEdges]);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -131,28 +150,13 @@ export default function FeatureBuilder({
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [generateNodeId, setNodes]
+    [generateNodeId, setNodes, handleDeleteNode, handleNodeUpdate]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
-
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    setSelectedNode(node.id);
-  }, []);
-
-  const handleNodeUpdate = useCallback((nodeId: string, data: any) => {
-    setNodes((nds) =>
-      nds.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node))
-    );
-  }, [setNodes]);
-
-  const handleDeleteNode = useCallback((nodeId: string) => {
-    setNodes((nds) => nds.filter((node) => node.id !== nodeId));
-    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
-  }, [setNodes, setEdges]);
 
   const buildExpressionTree = useCallback(() => {
     // Find root nodes (nodes with no incoming edges)

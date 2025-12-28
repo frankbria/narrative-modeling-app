@@ -28,7 +28,7 @@ from app.services.expression_evaluator import (
     ExpressionError,
     ColumnNotFoundError,
 )
-from app.services.transformation_engine.data_utils import get_dataframe_from_s3
+from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -608,16 +608,16 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         create_new_dataset: bool = False
     ) -> Dict[str, Any]:
         """
-        Apply a feature to the dataset, adding the computed column.
+        Apply a feature to the dataset, adding the computed column and persisting to S3.
 
         Args:
             feature_id: Feature to apply
             user_id: User requesting the application
             output_column_name: Name for the new column (defaults to feature name)
-            create_new_dataset: Whether to create a new dataset version
+            create_new_dataset: If True, create a new dataset; otherwise update existing
 
         Returns:
-            Dictionary with result details
+            Dictionary with result details including dataset_id and s3_url
         """
         # Get feature
         feature = await self.get_by_id_or_raise(
@@ -650,8 +650,82 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             # Add column to dataframe
             df[column_name] = result_series
 
-            # Update statistics
+            # Calculate statistics
             stats = self._calculate_statistics(result_series)
+
+            # Generate S3 key for the updated dataframe
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            if create_new_dataset:
+                new_dataset_id = str(uuid.uuid4())
+                s3_key = f"datasets/{user_id}/{new_dataset_id}/data_{timestamp}.parquet"
+            else:
+                s3_key = f"datasets/{user_id}/{dataset.dataset_id}/data_{timestamp}.parquet"
+
+            # Upload modified dataframe to S3
+            try:
+                new_s3_url = await upload_dataframe_to_s3(df, s3_key)
+            except Exception as upload_error:
+                logger.exception(f"Failed to upload dataframe to S3: {upload_error}")
+                return {
+                    "success": False,
+                    "dataset_id": feature.dataset_id,
+                    "column_name": column_name,
+                    "rows_computed": 0,
+                    "null_values": 0,
+                    "warnings": warnings,
+                    "error": f"Failed to upload to S3: {str(upload_error)}",
+                    "s3_url": None
+                }
+
+            # Handle dataset creation or update
+            final_dataset_id = feature.dataset_id
+            if create_new_dataset:
+                # Create new dataset with copied metadata
+                new_columns = list(dataset.columns) + [column_name]
+                new_schema = list(dataset.data_schema)
+                # Add schema field for new column
+                from app.models.dataset import SchemaField
+                new_schema.append(SchemaField(
+                    field_name=column_name,
+                    field_type=self._infer_output_type(result_series),
+                    nullable=bool(stats["null_count"] > 0),
+                    unique=bool(stats["unique_count"] == stats["total_count"])
+                ))
+
+                new_dataset = await self.dataset_service.create_dataset(
+                    user_id=user_id,
+                    dataset_id=new_dataset_id,
+                    filename=f"{dataset.original_filename.rsplit('.', 1)[0]}_with_{column_name}.parquet",
+                    original_filename=f"{dataset.original_filename.rsplit('.', 1)[0]}_with_{column_name}",
+                    file_type="parquet",
+                    file_path=s3_key,
+                    s3_url=new_s3_url,
+                    num_rows=len(df),
+                    num_columns=len(new_columns),
+                    columns=new_columns,
+                    data_schema=new_schema,
+                    file_size=None,  # Will be calculated by S3
+                )
+                final_dataset_id = new_dataset_id
+
+                # Update feature to point to new dataset
+                feature.dataset_id = new_dataset_id
+            else:
+                # Update existing dataset
+                dataset.s3_url = new_s3_url
+                dataset.columns = list(dataset.columns) + [column_name]
+                dataset.num_columns = len(dataset.columns)
+                # Add schema field for new column
+                from app.models.dataset import SchemaField
+                dataset.data_schema.append(SchemaField(
+                    field_name=column_name,
+                    field_type=self._infer_output_type(result_series),
+                    nullable=bool(stats["null_count"] > 0),
+                    unique=bool(stats["unique_count"] == stats["total_count"])
+                ))
+                await dataset.save()
+
+            # Update feature statistics
             feature.statistics = FeatureStatistics(
                 mean=stats["mean"],
                 median=stats["median"],
@@ -666,12 +740,13 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
 
             return {
                 "success": True,
-                "dataset_id": feature.dataset_id,
+                "dataset_id": final_dataset_id,
                 "column_name": column_name,
                 "rows_computed": len(result_series),
                 "null_values": stats["null_count"],
                 "warnings": warnings,
-                "error": None
+                "error": None,
+                "s3_url": new_s3_url
             }
 
         except Exception as e:
@@ -683,7 +758,8 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 "rows_computed": 0,
                 "null_values": 0,
                 "warnings": [],
-                "error": str(e)
+                "error": str(e),
+                "s3_url": None
             }
 
 

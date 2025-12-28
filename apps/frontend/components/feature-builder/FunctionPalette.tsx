@@ -49,6 +49,21 @@ const functions: Record<string, Function[]> = {
   ],
 };
 
+/**
+ * FunctionPalette component renders a searchable, categorized palette of functions
+ * for the Visual Feature Builder.
+ *
+ * Functions are organized into categories (mathematical, statistical, string, date, utility)
+ * with collapsible sections. Each function can be dragged onto the feature builder canvas.
+ *
+ * @returns A React element displaying the function palette with category toggles and drag-and-drop support
+ *
+ * @remarks
+ * - Uses internal state to manage category expansion and main section visibility
+ * - Mathematical category is expanded by default
+ * - Each function item is draggable and sets dataTransfer data for nodeType, nodeValue, and nodeLabel
+ * - Functions have tooltips showing their descriptions
+ */
 export default function FunctionPalette() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({

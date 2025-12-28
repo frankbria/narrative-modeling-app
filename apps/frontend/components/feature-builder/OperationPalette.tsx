@@ -34,6 +34,22 @@ const operations: Record<string, Operation[]> = {
   ],
 };
 
+/**
+ * OperationPalette component renders a categorized palette of operations
+ * for the Visual Feature Builder.
+ *
+ * Operations are organized into categories (arithmetic, comparison, logical)
+ * with collapsible sections. Each operation can be dragged onto the feature builder canvas.
+ *
+ * @returns A React element displaying the operation palette with category toggles and drag-and-drop support
+ *
+ * @remarks
+ * - Uses internal state to manage category expansion and main section visibility
+ * - Arithmetic category is expanded by default
+ * - Each operation item is draggable and sets dataTransfer data for nodeType, nodeValue, and nodeLabel
+ * - Operations display their symbols (+, -, *, /, etc.) and have tooltips showing descriptions
+ * - Supports drag-and-drop to ReactFlow canvas in the parent FeatureBuilder component
+ */
 export default function OperationPalette() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({

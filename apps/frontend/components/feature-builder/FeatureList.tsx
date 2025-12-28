@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Pencil, Trash2, Copy, Check, AlertCircle, Plus, Search, Tag } from 'lucide-react';
@@ -24,6 +24,26 @@ interface FeatureListProps {
   onApply?: (featureId: string) => void;
 }
 
+/**
+ * FeatureList component displays a list of saved features for a dataset.
+ *
+ * Provides functionality for viewing, searching, filtering by tags, editing,
+ * duplicating, and deleting features. Also supports applying features to datasets.
+ *
+ * @param props - Component properties
+ * @param props.datasetId - The ID of the dataset to load features for
+ * @param props.onEdit - Callback invoked when user clicks edit on a feature
+ * @param props.onCreate - Callback invoked when user clicks the New Feature button
+ * @param props.onApply - Optional callback invoked when user applies a feature to the dataset
+ * @returns A React element displaying the feature list with search, filter, and CRUD controls
+ *
+ * @remarks
+ * - Features are loaded from the API on mount and when datasetId changes
+ * - Supports text search by name and description
+ * - Supports filtering by multiple tags (AND logic)
+ * - Delete operations require user confirmation
+ * - Duplicate creates a copy with "_copy" suffix
+ */
 export default function FeatureList({
   datasetId,
   onEdit,
@@ -37,11 +57,8 @@ export default function FeatureList({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadFeatures();
-  }, [datasetId]);
-
-  const loadFeatures = async () => {
+  // Memoize loadFeatures to ensure stable reference for useEffect dependency
+  const loadFeatures = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -68,7 +85,12 @@ export default function FeatureList({
     } finally {
       setLoading(false);
     }
-  };
+  }, [datasetId]);
+
+  // Load features when datasetId changes
+  useEffect(() => {
+    loadFeatures();
+  }, [loadFeatures]);
 
   const handleDelete = async (featureId: string) => {
     if (!confirm('Are you sure you want to delete this feature?')) return;

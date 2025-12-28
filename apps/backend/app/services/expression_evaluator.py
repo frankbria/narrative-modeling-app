@@ -253,7 +253,15 @@ class ExpressionEvaluator:
         )
 
     def _eval_logical_and(self, node: ExpressionNode, df: pd.DataFrame) -> pd.Series:
-        """Evaluate logical AND with short-circuit semantics."""
+        """
+        Evaluate logical AND operation.
+
+        Note: This implementation evaluates all child operands for all rows. There is
+        no per-row short-circuit evaluation - all operands are computed before combining.
+        For most vectorized use cases this is acceptable, but if per-row short-circuiting
+        is needed (e.g., to avoid errors in subsequent operands), a masked evaluation
+        approach would be required, which adds significant complexity.
+        """
         if len(node.children) < 2:
             raise ExpressionError(
                 "AND operation requires at least 2 operands",
@@ -271,7 +279,15 @@ class ExpressionEvaluator:
         return result
 
     def _eval_logical_or(self, node: ExpressionNode, df: pd.DataFrame) -> pd.Series:
-        """Evaluate logical OR with short-circuit semantics."""
+        """
+        Evaluate logical OR operation.
+
+        Note: This implementation evaluates all child operands for all rows. There is
+        no per-row short-circuit evaluation - all operands are computed before combining.
+        For most vectorized use cases this is acceptable, but if per-row short-circuiting
+        is needed (e.g., to avoid errors in subsequent operands), a masked evaluation
+        approach would be required, which adds significant complexity.
+        """
         if len(node.children) < 2:
             raise ExpressionError(
                 "OR operation requires at least 2 operands",
