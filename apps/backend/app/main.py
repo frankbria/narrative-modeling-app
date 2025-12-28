@@ -64,6 +64,7 @@ from app.api.routes import (
     versions,
     datasets,
     feature_engineering,
+    features,
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
@@ -81,6 +82,7 @@ from app.models.dataset import DatasetMetadata
 from app.models.version import DatasetVersion, TransformationLineage
 from app.models.model import ModelConfig
 from app.models.bulk_transformation import BulkTransformationJob
+from app.models.feature import FeatureDefinition
 from app.services.transformation_engine.recipe_manager import TransformationRecipe, RecipeExecutionHistory
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -109,7 +111,8 @@ async def lifespan(app: FastAPI):
                          TransformationLineage,
                          TransformationRecipe,
                          RecipeExecutionHistory,
-                         BulkTransformationJob],
+                         BulkTransformationJob,
+                         FeatureDefinition],
     )
 
     # Initialize OpenAI client
@@ -259,6 +262,11 @@ app.include_router(
     feature_engineering.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["feature-engineering"],
+)
+app.include_router(
+    features.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["feature-builder"],
 )
 
 
