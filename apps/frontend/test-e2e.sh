@@ -71,6 +71,15 @@ kill_port_processes() {
 kill_port_processes ${TEST_PORT}
 kill_port_processes ${BACKEND_PORT}
 
+# Export environment variables BEFORE starting backend
+export NODE_ENV=development
+export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
+export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
+export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/narrative-modeling-test}
+export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
+export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
+export SKIP_AUTH=true
+
 echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
 # Start backend in background
@@ -135,15 +144,10 @@ echo -e "${YELLOW}=== Starting Playwright Tests ===${NC}"
 echo "Command: npx playwright test $@"
 echo ""
 
-# Export environment variables for E2E testing
-export NODE_ENV=development
+# Export additional environment variables for Playwright tests
 export NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}/api/v1
 export BASE_URL=http://localhost:${TEST_PORT}
 export PORT=${TEST_PORT}
-export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
-export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
-export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/narrative-modeling-test}
-export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
 export NEXTAUTH_URL=http://localhost:${TEST_PORT}
 
 # Run Playwright with all arguments passed to this script

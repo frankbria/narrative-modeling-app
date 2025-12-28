@@ -12,6 +12,17 @@ jobs:
     timeout-minutes: 15
     runs-on: ubuntu-latest
 
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,7 +34,19 @@ jobs:
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: uv sync
+
+      - name: Install frontend dependencies
         working-directory: apps/frontend
         run: npm ci
 
@@ -45,6 +68,8 @@ jobs:
           GOOGLE_CLIENT_SECRET: dummy-client-secret
           GITHUB_ID: dummy-client-id
           GITHUB_SECRET: dummy-client-secret
+          MONGODB_URI: mongodb://localhost:27017/narrative-modeling-test
+          MONGODB_DB: narrative-modeling-test
 
       - name: Upload test results
         if: failure()
