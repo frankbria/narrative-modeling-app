@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'apps/frontend/**'
+      - 'apps/backend/**'
       - '.github/workflows/smoke-tests.yml'
 
 jobs:
@@ -68,7 +69,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: dummy-client-secret
           GITHUB_ID: dummy-client-id
           GITHUB_SECRET: dummy-client-secret
-          MONGODB_URI: mongodb://localhost:27017/narrative-modeling-test
+          MONGODB_URI: mongodb://localhost:27017
           MONGODB_DB: narrative-modeling-test
 
       - name: Upload test results
