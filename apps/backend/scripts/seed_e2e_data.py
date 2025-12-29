@@ -11,7 +11,8 @@ Usage:
     uv run python scripts/seed_e2e_data.py
 
 Environment Variables:
-    MONGODB_URI: MongoDB connection string (default: mongodb://localhost:27017/narrative-modeling-test)
+    MONGODB_URI: MongoDB connection string (default: mongodb://localhost:27017)
+    MONGODB_DB: MongoDB database name (default: narrative-modeling-test)
     TEST_USER_EMAIL: Test user email (default: test@narrativeml.com)
     TEST_USER_ID: Test user ID (default: test-user-12345)
 """
@@ -23,7 +24,8 @@ from pymongo import MongoClient
 from bson import ObjectId
 
 # Configuration from environment variables
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/narrative-modeling-test')
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
+MONGODB_DB = os.getenv('MONGODB_DB', 'narrative-modeling-test')
 TEST_USER_EMAIL = os.getenv('TEST_USER_EMAIL', 'test@narrativeml.com')
 TEST_USER_ID = os.getenv('TEST_USER_ID', 'test-user-12345')
 TEST_USER_NAME = 'Test User'
@@ -195,7 +197,7 @@ def main():
 
     # Connect to MongoDB
     client = get_db_client()
-    db = client.get_database()
+    db = client[MONGODB_DB]
 
     print(f"\n✅ Connected to database: {db.name}")
 

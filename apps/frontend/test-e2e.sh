@@ -10,6 +10,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Get absolute paths for frontend and backend directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRONTEND_DIR="${SCRIPT_DIR}"
+BACKEND_DIR="$(cd "${SCRIPT_DIR}/../backend" && pwd)"
+
 # Determine the ports to use
 TEST_PORT="${PORT:-3010}"
 BACKEND_PORT=8000
@@ -71,13 +76,20 @@ kill_port_processes() {
 kill_port_processes ${TEST_PORT}
 kill_port_processes ${BACKEND_PORT}
 
+# Export environment variables BEFORE starting backend
+export NODE_ENV=development
+export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
+export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
+export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
+export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
+export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
+export SKIP_AUTH=true
+
 echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
-# Start backend in background
-cd ../backend
-uv run uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} > /tmp/backend-e2e.log 2>&1 &
+# Start backend in background using absolute path
+uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} > /tmp/backend-e2e.log 2>&1 &
 BACKEND_PID=$!
-cd -
 
 # Wait for backend to be ready
 echo "Waiting for backend to start..."
@@ -96,11 +108,9 @@ done
 
 echo ""
 echo -e "${YELLOW}=== Seeding E2E Test Data ===${NC}"
-# Seed MongoDB with test user and sample data
-cd ../backend
-uv run python scripts/seed_e2e_data.py
+# Seed MongoDB with test user and sample data using absolute path
+uv run --directory "${BACKEND_DIR}" python scripts/seed_e2e_data.py
 SEED_EXIT_CODE=$?
-cd -
 
 if [ $SEED_EXIT_CODE -ne 0 ]; then
   echo -e "${RED}ERROR: Failed to seed test data${NC}"
@@ -135,15 +145,10 @@ echo -e "${YELLOW}=== Starting Playwright Tests ===${NC}"
 echo "Command: npx playwright test $@"
 echo ""
 
-# Export environment variables for E2E testing
-export NODE_ENV=development
+# Export additional environment variables for Playwright tests
 export NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}/api/v1
 export BASE_URL=http://localhost:${TEST_PORT}
 export PORT=${TEST_PORT}
-export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
-export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
-export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/narrative-modeling-test}
-export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
 export NEXTAUTH_URL=http://localhost:${TEST_PORT}
 
 # Run Playwright with all arguments passed to this script
