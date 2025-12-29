@@ -114,10 +114,10 @@ async def list_datasets(
         )
 
     except Exception as e:
-        logger.error(f"Error listing datasets for user {current_user_id}: {e}")
+        logger.error(f"Error listing datasets for user {current_user_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing datasets: {str(e)}"
+            detail="An error occurred while listing datasets. Please try again or contact support."
         )
 
 
@@ -221,10 +221,10 @@ async def upload_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uploading dataset: {e}")
+        logger.error(f"Error uploading dataset: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading dataset: {str(e)}"
+            detail="An error occurred while uploading the dataset. Please try again or contact support."
         )
 
 
@@ -286,10 +286,10 @@ async def get_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting dataset {dataset_id}: {e}")
+        logger.error(f"Error getting dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting dataset: {str(e)}"
+            detail="An error occurred while retrieving the dataset. Please try again or contact support."
         )
 
 
@@ -371,10 +371,10 @@ async def update_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating dataset {dataset_id}: {e}")
+        logger.error(f"Error updating dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating dataset: {str(e)}"
+            detail="An error occurred while updating the dataset. Please try again or contact support."
         )
 
 
@@ -426,10 +426,10 @@ async def delete_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting dataset {dataset_id}: {e}")
+        logger.error(f"Error deleting dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting dataset: {str(e)}"
+            detail="An error occurred while deleting the dataset. Please try again or contact support."
         )
 
 
@@ -472,10 +472,10 @@ async def get_dataset_schema(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting schema for dataset {dataset_id}: {e}")
+        logger.error(f"Error getting schema for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting schema: {str(e)}"
+            detail="An error occurred while retrieving the dataset schema. Please try again or contact support."
         )
 
 
@@ -525,10 +525,10 @@ async def get_dataset_preview(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting preview for dataset {dataset_id}: {e}")
+        logger.error(f"Error getting preview for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting preview: {str(e)}"
+            detail="An error occurred while generating the dataset preview. Please try again or contact support."
         )
 
 
@@ -583,10 +583,10 @@ async def mark_dataset_processed(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error marking dataset {dataset_id} as processed: {e}")
+        logger.error(f"Error marking dataset {dataset_id} as processed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing dataset: {str(e)}"
+            detail="An error occurred while processing the dataset. Please try again or contact support."
         )
 
 
@@ -833,10 +833,10 @@ async def preview_transformation(
         # Re-raise HTTPExceptions from PreviewService (429, 408)
         raise
     except Exception as e:
-        logger.error(f"Preview generation failed for dataset {dataset_id}: {e}")
+        logger.error(f"Preview generation failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Preview generation failed: {str(e)}"
+            detail="An error occurred during preview generation. Please try again or contact support."
         )
 
 
@@ -909,10 +909,10 @@ async def select_features(
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Feature selection failed for dataset {dataset_id}: {e}")
+        logger.error(f"Feature selection failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Feature selection failed: {str(e)}"
+            detail="An error occurred during feature selection. Please try again or contact support."
         )
 
 
@@ -972,10 +972,10 @@ async def calculate_feature_importance(
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Importance calculation failed for dataset {dataset_id}: {e}")
+        logger.error(f"Importance calculation failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Importance calculation failed: {str(e)}"
+            detail="An error occurred during feature importance calculation. Please try again or contact support."
         )
 
 
@@ -1050,10 +1050,10 @@ async def detect_redundant_features(
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Redundancy detection failed for dataset {dataset_id}: {e}")
+        logger.error(f"Redundancy detection failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Redundancy detection failed: {str(e)}"
+            detail="An error occurred during redundancy detection. Please try again or contact support."
         )
 
 
@@ -1115,10 +1115,10 @@ async def compare_selection_methods(
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Method comparison failed for dataset {dataset_id}: {e}")
+        logger.error(f"Method comparison failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Method comparison failed: {str(e)}"
+            detail="An error occurred during method comparison. Please try again or contact support."
         )
 
 
