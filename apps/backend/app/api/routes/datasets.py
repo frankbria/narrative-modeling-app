@@ -843,7 +843,13 @@ async def preview_transformation(
 # ==================== Feature Selection Endpoints ====================
 
 
-@router.post("/datasets/{dataset_id}/features/select", response_model=FeatureSelectionResult)
+@router.post(
+    "/datasets/{dataset_id}/features/select",
+    response_model=FeatureSelectionResult,
+    tags=["Feature Selection"],
+    summary="Run feature selection algorithm",
+    description="Select the most important features from a dataset using various algorithms (correlation, mutual info, random forest, RFE, LASSO, statistical tests)"
+)
 async def select_features(
     dataset_id: str = Path(..., description="Dataset ID"),
     request: FeatureSelectionRequest = Body(...),
@@ -916,7 +922,13 @@ async def select_features(
         )
 
 
-@router.post("/datasets/{dataset_id}/features/importance", response_model=FeatureImportanceResponse)
+@router.post(
+    "/datasets/{dataset_id}/features/importance",
+    response_model=FeatureImportanceResponse,
+    tags=["Feature Selection"],
+    summary="Calculate feature importance",
+    description="Calculate and rank feature importance scores without applying selection criteria"
+)
 async def calculate_feature_importance(
     dataset_id: str = Path(..., description="Dataset ID"),
     request: FeatureImportanceRequest = Body(...),
@@ -979,7 +991,13 @@ async def calculate_feature_importance(
         )
 
 
-@router.post("/datasets/{dataset_id}/features/redundancy", response_model=RedundancyDetectionResponse)
+@router.post(
+    "/datasets/{dataset_id}/features/redundancy",
+    response_model=RedundancyDetectionResponse,
+    tags=["Feature Selection"],
+    summary="Detect redundant features",
+    description="Identify pairs of highly correlated features that provide redundant information"
+)
 async def detect_redundant_features(
     dataset_id: str = Path(..., description="Dataset ID"),
     request: RedundancyDetectionRequest = Body(...),
@@ -1057,7 +1075,13 @@ async def detect_redundant_features(
         )
 
 
-@router.post("/datasets/{dataset_id}/features/compare", response_model=MethodComparisonResponse)
+@router.post(
+    "/datasets/{dataset_id}/features/compare",
+    response_model=MethodComparisonResponse,
+    tags=["Feature Selection"],
+    summary="Compare selection methods",
+    description="Run multiple feature selection algorithms and identify consensus features across methods"
+)
 async def compare_selection_methods(
     dataset_id: str = Path(..., description="Dataset ID"),
     request: MethodComparisonRequest = Body(...),
@@ -1124,7 +1148,10 @@ async def compare_selection_methods(
 
 @router.get(
     "/datasets/{dataset_id}/features/selected",
-    response_model=SelectedFeaturesResponse
+    response_model=SelectedFeaturesResponse,
+    tags=["Feature Selection"],
+    summary="Get selected features",
+    description="Retrieve previously selected features for a dataset from cache or metadata"
 )
 async def get_selected_features(
     dataset_id: str = Path(..., description="Dataset ID"),
