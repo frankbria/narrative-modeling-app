@@ -6,16 +6,11 @@ Tests rule-based detection, fix suggestion generation, and detection summary cre
 
 import pytest
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
 from app.services.data_issue_detection_service import DataIssueDetectionService
 from app.models.data_issue import (
-    DataIssue,
     IssueType,
     IssueSeverity,
-    SuggestedFix,
-    DetectionSummary,
 )
 from app.schemas.data_issue import DetectionOptions
 

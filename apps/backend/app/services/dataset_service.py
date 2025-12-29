@@ -9,7 +9,6 @@ from typing import List, Optional, Any, Dict
 from app.models.dataset import DatasetMetadata, SchemaField, AISummary, PIIReport
 from app.models.user_data import UserData, SchemaField as LegacySchemaField, AISummary as LegacyAISummary
 from app.services.base_service import BaseService
-from app.services.exceptions import NotFoundError, PermissionDeniedError
 
 
 class DatasetService(BaseService[DatasetMetadata]):

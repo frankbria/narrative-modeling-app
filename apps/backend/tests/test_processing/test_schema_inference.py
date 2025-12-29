@@ -5,7 +5,6 @@ Tests for schema inference service
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, date
 
 from app.services.data_processing.schema_inference import SchemaInferenceService, DataType
 

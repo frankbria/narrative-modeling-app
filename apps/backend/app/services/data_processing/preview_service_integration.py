@@ -16,7 +16,6 @@ Integrates:
 import asyncio
 import logging
 from typing import List, Optional
-import pandas as pd
 
 from app.schemas.transformation import TransformationStepRequest
 from app.schemas.preview import PreviewResult, ImpactStatistics

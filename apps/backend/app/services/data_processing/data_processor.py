@@ -3,7 +3,7 @@ Main data processor that orchestrates schema inference, statistics, and quality 
 """
 
 import io
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from pathlib import Path
 import pandas as pd
 import numpy as np

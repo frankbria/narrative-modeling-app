@@ -11,22 +11,10 @@ Tests cover all 8 endpoints with success/error cases and backward compatibility.
 """
 
 import pytest
-import pytest_asyncio
-from datetime import datetime, timezone
-from unittest.mock import Mock, patch, AsyncMock
-from fastapi import UploadFile
+from unittest.mock import patch
 import io
 
-from app.schemas.dataset import (
-    DatasetListResponse,
-    DatasetDetailResponse,
-    DatasetUploadResponse,
-    DatasetUpdateRequest,
-    DatasetDeleteResponse,
-    DatasetProcessingRequest,
-    DatasetProcessingResponse
-)
-from app.models.dataset import DatasetMetadata, SchemaField
+from app.models.dataset import SchemaField
 
 
 @pytest.mark.integration

@@ -13,14 +13,9 @@ Tests:
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from prometheus_client import REGISTRY
 from app.middleware.metrics import (
     MetricsMiddleware,
     get_metrics,
-    metrics_registry,
-    request_latency,
-    request_count,
-    active_requests,
 )
 from prometheus_client import CONTENT_TYPE_LATEST
 

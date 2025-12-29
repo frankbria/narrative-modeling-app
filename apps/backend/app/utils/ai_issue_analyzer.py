@@ -10,9 +10,7 @@ import json
 import logging
 from typing import Dict, List, Optional, Any
 import pandas as pd
-import numpy as np
 from openai import AsyncOpenAI, OpenAIError
-from datetime import datetime, timezone
 
 from app.models.data_issue import (
     DataIssue,

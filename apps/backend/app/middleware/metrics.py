@@ -28,7 +28,6 @@ from prometheus_client import (
     Histogram,
     Gauge,
     generate_latest,
-    CONTENT_TYPE_LATEST,
 )
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -94,7 +93,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             # Process the request
             response = await call_next(request)
             status_code = response.status_code
-        except Exception as e:
+        except Exception:
             # Track errors as 500
             status_code = 500
             raise

@@ -5,7 +5,7 @@ This model focuses on data transformation configurations, history, and validatio
 It replaces the transformation-specific fields from the legacy UserData model.
 """
 
-from beanie import Document, Indexed, Link
+from beanie import Document, Indexed
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone

@@ -4,7 +4,6 @@ Tests for prediction monitoring service
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
-import numpy as np
 
 from app.services.prediction_monitoring import (
     PredictionLog,

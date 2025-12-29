@@ -2,12 +2,8 @@
 Tests for Secure Upload API endpoints
 """
 
-import pytest
-import pytest_asyncio
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock
 import io
-import pandas as pd
 
 
 class TestSecureUploadAPI:

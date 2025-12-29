@@ -1,12 +1,12 @@
 # app/models/analytics_result.py
 
 from beanie import Document, Link
-from pydantic import BaseModel, Field
+from pydantic import Field
 from typing import List, Optional
 from datetime import datetime, timezone
 from app.models.user_data import UserData
 from app.models.plot import Plot
-from inspect import signature, Parameter
+from inspect import signature
 
 
 class AnalyticsResult(Document):

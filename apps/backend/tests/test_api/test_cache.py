@@ -4,7 +4,6 @@ Tests for cache management API endpoints
 import pytest
 from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
-import app.main
 
 
 @pytest.fixture(autouse=True, scope="module")

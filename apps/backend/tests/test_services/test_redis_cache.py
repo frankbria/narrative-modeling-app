@@ -2,12 +2,9 @@
 Tests for Redis cache service
 """
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
-import json
+from unittest.mock import AsyncMock, patch
 
-from app.services.redis_cache import RedisCacheService, cache_result, cache_service
+from app.services.redis_cache import RedisCacheService, cache_result
 
 
 class TestRedisCacheService:

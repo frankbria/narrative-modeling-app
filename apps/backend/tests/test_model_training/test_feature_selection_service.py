@@ -13,9 +13,7 @@ from app.services.model_training.feature_selection_service import (
     FeatureSelectionConfig
 )
 from app.schemas.feature_selection import (
-    FeatureScore,
-    RedundantPair,
-    SelectionMethod
+    FeatureScore
 )
 
 

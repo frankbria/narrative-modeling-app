@@ -4,7 +4,6 @@ Production model serving API routes
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import hashlib
 import redis
@@ -12,7 +11,6 @@ from beanie import PydanticObjectId
 
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
-from app.models.user_data import UserData
 from app.services.model_storage import ModelStorageService
 from app.auth.nextauth_auth import get_current_user_id
 from app.config import settings

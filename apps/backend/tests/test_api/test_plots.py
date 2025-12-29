@@ -1,12 +1,9 @@
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
 from app.models.plot import Plot
-from app.models.user_data import UserData
 from app.main import app
-from pydantic import HttpUrl
 import json
 
 

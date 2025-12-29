@@ -4,7 +4,7 @@ Identifies and helps manage sensitive data in uploaded datasets
 """
 
 import re
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 import pandas as pd

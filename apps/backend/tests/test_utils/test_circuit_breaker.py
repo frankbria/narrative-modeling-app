@@ -11,10 +11,8 @@ Tests validate:
 - Decorator usage
 """
 
-import asyncio
 import time
 import threading
-from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.utils.circuit_breaker import (

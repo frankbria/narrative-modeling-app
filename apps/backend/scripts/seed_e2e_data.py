@@ -21,7 +21,6 @@ import os
 import sys
 from datetime import datetime, UTC
 from pymongo import MongoClient
-from bson import ObjectId
 
 # Configuration from environment variables
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
@@ -64,7 +63,7 @@ def seed_nextauth_user(db):
 
     if existing_user:
         print(f"   ℹ️  User {TEST_USER_EMAIL} already exists (ID: {existing_user.get('_id')})")
-        print(f"   ♻️  Updating user data...")
+        print("   ♻️  Updating user data...")
 
         # Update existing user
         users_collection.update_one(
@@ -174,7 +173,7 @@ def verify_seed(db):
     if user:
         print(f"   ✅ User verified: {user['email']} (ID: {user['_id']})")
     else:
-        print(f"   ❌ User not found!")
+        print("   ❌ User not found!")
         return False
 
     # Verify dataset
@@ -182,7 +181,7 @@ def verify_seed(db):
     if dataset:
         print(f"   ✅ Dataset verified: {dataset['filename']}")
     else:
-        print(f"   ℹ️  No datasets found (this is OK if not needed)")
+        print("   ℹ️  No datasets found (this is OK if not needed)")
 
     return True
 

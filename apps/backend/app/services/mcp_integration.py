@@ -3,8 +3,6 @@ MCP (Model Context Protocol) integration service for AI tool orchestration
 """
 
 import os
-import json
-import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass

@@ -1,8 +1,6 @@
 import pytest
-import json
-import numpy as np
-from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock, Mock
+from datetime import datetime
+from unittest.mock import patch, MagicMock, AsyncMock
 from beanie import Link
 
 from app.models.visualization_cache import (
@@ -13,10 +11,7 @@ from app.models.visualization_cache import (
 from app.models.user_data import UserData
 from app.services.visualization_cache import (
     get_cached_visualization,
-    cache_visualization,
-    generate_and_cache_histogram,
-    generate_and_cache_boxplot,
-    generate_and_cache_correlation_matrix)
+    cache_visualization)
 
 
 @pytest.fixture

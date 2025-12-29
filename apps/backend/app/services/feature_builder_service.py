@@ -16,11 +16,9 @@ from app.models.feature import (
     FeatureDefinition,
     ExpressionNode,
     FeatureStatistics,
-    FeatureValidationResult,
     NodeType,
     OutputType,
 )
-from app.models.dataset import DatasetMetadata
 from app.services.base_service import BaseService
 from app.services.dataset_service import DatasetService
 from app.services.expression_evaluator import (
@@ -29,7 +27,7 @@ from app.services.expression_evaluator import (
     ColumnNotFoundError,
 )
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
-from app.services.exceptions import NotFoundError, ValidationError
+from app.services.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 

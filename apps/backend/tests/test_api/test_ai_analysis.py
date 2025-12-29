@@ -3,12 +3,8 @@ Tests for AI analysis API endpoints
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from unittest.mock import patch, AsyncMock
 
-from app.main import app
-from app.models.user_data import UserData
 from app.services.mcp_integration import MCPAnalysisResponse
 
 

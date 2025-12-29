@@ -2,7 +2,6 @@
 Model storage service for saving and loading ML models
 """
 
-import pickle
 import joblib
 from typing import Any, Optional, Tuple
 import io

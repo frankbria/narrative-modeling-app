@@ -1,11 +1,8 @@
 """
 Onboarding service for managing user tutorial and guidance experience
 """
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Any, List, Optional
-import json
-import os
 
 from app.schemas.onboarding import (
     OnboardingStepType,

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 import numpy as np
 import pandas as pd
 from app.models.visualization_cache import (
@@ -10,11 +10,6 @@ from app.models.visualization_cache import (
 )
 from app.models.user_data import UserData
 from app.utils.s3 import get_file_from_s3
-from app.utils.plotting import (
-    generate_histogram,
-    generate_boxplot,
-    generate_correlation_matrix,
-)
 from beanie import Link
 from app.services.redis_cache import cache_service
 

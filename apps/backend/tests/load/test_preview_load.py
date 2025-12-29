@@ -20,7 +20,6 @@ Run with:
 import asyncio
 import pytest
 import time
-from typing import List, Dict, Any
 from app.schemas.transformation import TransformationStepRequest
 from app.services.data_processing.preview_service_integration import PreviewServiceIntegration
 
@@ -84,8 +83,8 @@ async def test_concurrent_preview_requests(preview_service, test_data_config):
     successful = [r for r in results if not isinstance(r, Exception)]
     errors = [r for r in results if isinstance(r, Exception)]
 
-    print(f"\n--- Concurrent Request Test Results ---")
-    print(f"Total requests: 10")
+    print("\n--- Concurrent Request Test Results ---")
+    print("Total requests: 10")
     print(f"Successful: {len(successful)}")
     print(f"Errors: {len(errors)}")
     print(f"Total duration: {duration:.2f}s")
@@ -127,7 +126,7 @@ async def test_preview_performance_by_sample_size(preview_service, test_data_con
         (1000, 3000), # 1000 rows, max 3s
     ]
 
-    print(f"\n--- Performance by Sample Size ---")
+    print("\n--- Performance by Sample Size ---")
 
     results = []
     for sample_size, max_duration_ms in test_cases:
@@ -198,11 +197,11 @@ async def test_memory_usage_with_large_sample(preview_service, test_data_config)
 
     memory_used_mb = (peak - baseline) / 1024 / 1024
 
-    print(f"\n--- Memory Usage Test ---")
+    print("\n--- Memory Usage Test ---")
     print(f"Baseline memory: {baseline / 1024 / 1024:.1f} MB")
     print(f"Peak memory: {peak / 1024 / 1024:.1f} MB")
     print(f"Memory used: {memory_used_mb:.1f} MB")
-    print(f"Target: <500 MB")
+    print("Target: <500 MB")
 
     assert result is not None, "Preview should succeed"
 
@@ -236,7 +235,7 @@ async def test_rapid_sequential_requests(preview_service, test_data_config):
         ],
     ]
 
-    print(f"\n--- Rapid Sequential Requests Test ---")
+    print("\n--- Rapid Sequential Requests Test ---")
 
     results = []
     timings = []
@@ -306,7 +305,7 @@ async def test_transformation_overhead(preview_service, test_data_config):
         ]),
     ]
 
-    print(f"\n--- Transformation Overhead Test ---")
+    print("\n--- Transformation Overhead Test ---")
 
     results = []
     for description, operations in test_cases:

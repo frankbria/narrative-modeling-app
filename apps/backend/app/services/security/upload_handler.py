@@ -3,13 +3,12 @@ Resilient Upload Handler
 Handles network interruptions, large files, and security checks
 """
 
-import os
 import hashlib
 import json
-from typing import Optional, Dict, Any, BinaryIO
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import aiofiles
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException
 import logging
 from pathlib import Path
 

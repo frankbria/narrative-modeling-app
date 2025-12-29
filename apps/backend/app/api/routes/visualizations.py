@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from app.services.visualization_cache import (
     generate_and_cache_histogram,
     generate_and_cache_boxplot,
@@ -11,7 +11,6 @@ from app.utils.s3 import get_file_from_s3
 import pandas as pd
 import json
 import numpy as np
-from datetime import datetime
 
 router = APIRouter()
 

@@ -3,28 +3,17 @@ Comprehensive tests for transformation pipeline integration
 Tests authentication, CRUD operations, preview/apply functionality
 """
 import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import FastAPI, HTTPException
 from httpx import AsyncClient, ASGITransport
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
+from datetime import datetime
 from bson import ObjectId
 from app.main import app
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.transformation_engine.recipe_manager import TransformationRecipe
-from app.schemas.transformation import (
-    TransformationType,
-    TransformationPipelineRequest,
-    TransformationStepRequest,
-    RecipeCreateRequest,
-    RecipeApplyRequest,
-    AutoCleanRequest,
-    ValidationRequest
-)
 
 
 

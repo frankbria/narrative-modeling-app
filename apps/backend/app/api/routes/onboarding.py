@@ -2,8 +2,7 @@
 Onboarding API routes for guiding new users through the platform
 """
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import List, Optional
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.services.onboarding_service import OnboardingService
@@ -174,7 +173,7 @@ async def reset_onboarding(
             "message": "Onboarding progress reset successfully"
         }
         
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to reset onboarding progress")
 
 

@@ -8,8 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
-from app.services.mcp_integration import mcp_service, MCPAnalysisRequest, MCPAnalysisResponse
-from app.services.s3_service import s3_service
+from app.services.mcp_integration import mcp_service, MCPAnalysisResponse
 from app.services.dataset_summarization import dataset_summarization_service, DatasetSummaryRequest
 
 

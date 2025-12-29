@@ -12,13 +12,10 @@ Test Coverage:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
-from datetime import datetime, timezone
-import io
 
 from app.services.transformation_service import TransformationService
-from app.services.exceptions import NotFoundError, OperationError
 
 
 @pytest.fixture

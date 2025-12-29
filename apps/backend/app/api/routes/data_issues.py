@@ -8,10 +8,9 @@ These endpoints provide functionality for:
 - Batch fix operations
 """
 
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from beanie import PydanticObjectId
-import pandas as pd
 from datetime import datetime, timezone
 import logging
 import time
@@ -21,14 +20,11 @@ from app.models.user_data import UserData
 from app.models.data_issue import (
     DataIssueRecord,
     DataIssue,
-    AppliedFix,
-    IssueType,
     IssueSeverity,
 )
 from app.schemas.data_issue import (
     IssueDetectionRequest,
     IssueDetectionResponse,
-    DetectionOptions,
     FixPreviewRequest,
     FixPreviewResponse,
     FixApplicationRequest,
@@ -48,7 +44,7 @@ from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
     upload_dataframe_to_s3,
 )
-from app.services.exceptions import NotFoundError, OperationError, ValidationError
+from app.services.exceptions import OperationError, ValidationError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

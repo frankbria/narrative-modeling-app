@@ -11,9 +11,7 @@ import numpy as np
 from app.models.feature import ExpressionNode, NodeType
 from app.services.expression_evaluator import (
     ExpressionEvaluator,
-    ExpressionError,
     ColumnNotFoundError,
-    TypeMismatchError,
 )
 
 

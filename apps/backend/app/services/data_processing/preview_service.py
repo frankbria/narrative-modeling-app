@@ -7,9 +7,8 @@ on data by comparing original vs transformed DataFrames.
 
 from typing import Dict, List, Any, Optional
 import pandas as pd
-import numpy as np
 
-from .quality_assessment import QualityAssessmentService, QualityReport
+from .quality_assessment import QualityAssessmentService
 from app.schemas.preview import ImpactStatistics
 
 

@@ -4,11 +4,10 @@ History service for undo/redo transformation operations.
 Handles navigation through transformation history, restoring previous dataset versions.
 """
 
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, TYPE_CHECKING
 import logging
 
 from app.services.versioning_service import VersioningService
-from app.models.transformation import TransformationConfig
 from app.models.dataset import DatasetMetadata
 from app.services.exceptions import (
     NotFoundError,

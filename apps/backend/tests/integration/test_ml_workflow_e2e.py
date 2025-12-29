@@ -6,19 +6,10 @@ Uses real MongoDB connections and minimal mocking.
 """
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
 import pandas as pd
 import io
-import json
-from datetime import datetime, timezone
-from beanie import PydanticObjectId
 from unittest.mock import patch, AsyncMock
 
-from app.models.dataset import DatasetMetadata, SchemaField
-from app.models.transformation import TransformationConfig
-from app.models.model import ModelConfig
-from app.models.version import DatasetVersion
 
 
 class TestMLWorkflowE2E:

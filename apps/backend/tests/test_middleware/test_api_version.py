@@ -13,7 +13,6 @@ Tests validate:
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from starlette.responses import JSONResponse
 
 from app.middleware.api_version import (
     APIVersionMiddleware,
@@ -216,7 +215,6 @@ class TestGetAPIVersion:
     def test_returns_version_from_state(self):
         """Test helper returns version from request state."""
         from starlette.requests import Request
-        from starlette.datastructures import State
 
         # Create mock request with state
         scope = {

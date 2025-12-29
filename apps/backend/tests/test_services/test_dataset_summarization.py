@@ -3,7 +3,7 @@ Tests for dataset summarization service
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 
 from app.services.dataset_summarization import (

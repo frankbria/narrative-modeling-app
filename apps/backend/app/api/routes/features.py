@@ -6,7 +6,6 @@ validating, and managing feature definitions.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
-from typing import Optional, List
 import logging
 
 from app.schemas.feature import (
@@ -32,8 +31,6 @@ from app.schemas.feature import (
 from app.models.feature import (
     ExpressionNode,
     NodeType,
-    OperationType,
-    FunctionType,
     OutputType,
 )
 from app.services.feature_builder_service import feature_builder_service

@@ -1,9 +1,8 @@
 """
 Validators for transformation pipeline
 """
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List
 import pandas as pd
-import numpy as np
 from pydantic import BaseModel, Field
 
 

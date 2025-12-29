@@ -1,7 +1,5 @@
 import pytest
 from jose import jwt
-import base64
-import json
 from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials

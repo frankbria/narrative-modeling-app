@@ -2,14 +2,11 @@
 Tests for model export service
 """
 import pytest
-import tempfile
-import json
 import zipfile
 from unittest.mock import Mock, AsyncMock, patch
 from io import BytesIO
 
 from app.services.model_export import ModelExportService
-from app.models.ml_model import MLModel
 from app.services.model_storage import ModelStorageService
 
 

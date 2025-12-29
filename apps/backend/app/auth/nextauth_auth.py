@@ -1,7 +1,6 @@
 # backend/app/auth/nextauth_auth.py
 
 import os
-import httpx
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials

@@ -6,13 +6,10 @@ Implements Story 12.1: API Integration for New Models (Dataset portion).
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Path, Body
-from typing import Optional
 import logging
 import uuid
-import hashlib
 import numpy as np
 import time
-from datetime import datetime, timezone
 
 from app.schemas.dataset import (
     DatasetListResponse,

@@ -10,7 +10,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 # Import types from models - SINGLE SOURCE OF TRUTH
-from app.models.data_issue import IssueType, IssueSeverity
 
 
 # Request Schemas

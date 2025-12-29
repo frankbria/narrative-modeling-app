@@ -8,22 +8,17 @@ importance estimation, and feedback recording.
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 
 from app.services.feature_engineering_service import (
     FeatureEngineeringService,
-    DatasetAnalysis,
 )
 from app.services.domain_detector import DomainDetector, Domain
 from app.schemas.feature_engineering import (
-    FeatureSuggestion,
     FeatureType,
-    ComputationCost,
     FeatureSuggestionResponse,
     FeatureFeedbackRecord,
 )
-from app.services.model_training.problem_detector import ProblemType
 
 
 class TestFeatureEngineeringService:

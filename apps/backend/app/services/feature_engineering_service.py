@@ -10,13 +10,13 @@ import json
 import uuid
 import logging
 import hashlib
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 
-from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
+from sklearn.feature_selection import mutual_info_classif
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from openai import OpenAI, OpenAIError, RateLimitError, AuthenticationError, APIConnectionError
 

@@ -5,7 +5,7 @@ API routes for model training and management
 from typing import Optional, List, Dict, Any
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import io
@@ -19,8 +19,7 @@ from app.services.s3_service import get_file_from_s3
 from app.services.model_storage import ModelStorageService
 from app.services.model_training import (
     AutoMLEngine,
-    FeatureEngineeringConfig,
-    ProblemType
+    FeatureEngineeringConfig
 )
 
 logger = logging.getLogger(__name__)

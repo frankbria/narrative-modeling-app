@@ -12,8 +12,6 @@ from datetime import datetime
 # Import enums from models
 from app.models.feature import (
     NodeType,
-    OperationType,
-    FunctionType,
     OutputType,
 )
 

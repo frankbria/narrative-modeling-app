@@ -1,7 +1,5 @@
 import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, PropertyMock
-import numpy as np
 import json
 from app.models.visualization_cache import (
     HistogramData,
@@ -90,7 +88,6 @@ def mock_dataset():
 def mock_dataframe():
     """Create a mock DataFrame for testing."""
     import pandas as pd
-    import numpy as np
 
     # Create a simple DataFrame with test data
     return pd.DataFrame(

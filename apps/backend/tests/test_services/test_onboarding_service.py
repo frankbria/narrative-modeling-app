@@ -2,7 +2,7 @@
 Tests for onboarding service
 """
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, patch
 from datetime import datetime
 
 from app.services.onboarding_service import OnboardingService

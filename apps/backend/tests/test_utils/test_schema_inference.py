@@ -1,6 +1,4 @@
-import pytest
 import pandas as pd
-import numpy as np
 from datetime import datetime
 from app.utils.schema_inference import infer_field_type, infer_data_type, infer_schema
 

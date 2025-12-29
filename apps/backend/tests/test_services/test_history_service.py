@@ -12,8 +12,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.services.history_service import HistoryService
 from app.services.exceptions import (

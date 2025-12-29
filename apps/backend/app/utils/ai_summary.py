@@ -1,8 +1,7 @@
 import os
 import json
 import logging
-import pandas as pd
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from openai import OpenAI, OpenAIError
 from app.models.user_data import UserData, AISummary
 from app.utils.circuit_breaker import with_circuit_breaker

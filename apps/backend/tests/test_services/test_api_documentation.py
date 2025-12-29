@@ -2,8 +2,7 @@
 Tests for API documentation service
 """
 import pytest
-import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from fastapi import FastAPI
 
 from app.services.api_documentation import APIDocumentationService

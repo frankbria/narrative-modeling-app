@@ -3,7 +3,7 @@ Batch prediction job model
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Document, Indexed
 from pydantic import Field, BaseModel
 from enum import Enum
 

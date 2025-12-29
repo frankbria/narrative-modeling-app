@@ -4,7 +4,7 @@ Automatically tracks API calls and performance
 """
 
 import time
-from fastapi import Request, Response
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.services.monitoring import monitor
 

@@ -6,10 +6,9 @@ and feature application.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
-from typing import Optional, List
+from typing import Optional
 import logging
 import pandas as pd
-import io
 import uuid
 from datetime import datetime
 
@@ -30,7 +29,6 @@ from app.services.feature_engineering_service import feature_engineering_service
 from app.services.dataset_service import DatasetService
 from app.services.s3_service import download_file_from_s3
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.dataset import DatasetMetadata
 
 logger = logging.getLogger(__name__)
 

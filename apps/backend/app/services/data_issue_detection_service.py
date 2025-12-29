@@ -10,7 +10,6 @@ import time
 from typing import Dict, List, Optional, Any, Tuple
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
 
 from app.models.data_issue import (
     DataIssue,
@@ -22,7 +21,6 @@ from app.models.data_issue import (
 )
 from app.services.data_processing.quality_assessment import (
     QualityAssessmentService,
-    QualityReport,
     QualityIssue,
     QualityDimension,
 )
@@ -441,7 +439,7 @@ class DataIssueDetectionService:
             fixes.append(SuggestedFix(
                 transformation_type="remove_duplicates",
                 parameters={"keep": "first"},
-                explanation=f"Remove duplicate rows, keeping the first occurrence",
+                explanation="Remove duplicate rows, keeping the first occurrence",
                 confidence_score=0.9,
                 estimated_rows_affected=issue.affected_rows,
                 is_safe=True,

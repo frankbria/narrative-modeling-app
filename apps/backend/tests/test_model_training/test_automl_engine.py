@@ -5,8 +5,7 @@ Tests for AutoML engine
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 from app.services.model_training.automl_engine import (
     AutoMLEngine,

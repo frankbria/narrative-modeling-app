@@ -5,7 +5,6 @@ Tests for problem type detection
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
 from app.services.model_training.problem_detector import ProblemDetector, ProblemType
 
