@@ -11,6 +11,7 @@ import logging
 import uuid
 import hashlib
 import numpy as np
+import time
 from datetime import datetime, timezone
 
 from app.schemas.dataset import (
@@ -941,6 +942,9 @@ async def calculate_feature_importance(
 
         service = FeatureSelectionService()
 
+        # Track execution time
+        start_time = time.perf_counter()
+
         feature_scores = await service.calculate_importance(
             dataset_id=dataset_id,
             user_id=current_user_id,
@@ -950,8 +954,8 @@ async def calculate_feature_importance(
             algorithm_params=request.algorithm_params
         )
 
-        # Calculate execution time (approximation)
-        execution_time_ms = 0.0  # Tracked internally
+        # Calculate execution time in milliseconds
+        execution_time_ms = (time.perf_counter() - start_time) * 1000
 
         return FeatureImportanceResponse(
             dataset_id=dataset_id,

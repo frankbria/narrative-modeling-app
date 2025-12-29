@@ -12,6 +12,7 @@ import time
 import logging
 import hashlib
 import json
+import asyncio
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
@@ -134,7 +135,8 @@ class FeatureSelectionService:
                 df,
                 target_column,
                 config.problem_type,
-                config.sample_size
+                config.sample_size,
+                dataset_id
             )
 
             # Select features using specified method
@@ -207,7 +209,7 @@ class FeatureSelectionService:
 
         df, _ = await self._load_dataset(dataset_id, user_id)
         X, y, detected_problem_type = await self._prepare_data(
-            df, target_column, problem_type
+            df, target_column, problem_type, dataset_id=dataset_id
         )
 
         config = FeatureSelectionConfig(
@@ -289,7 +291,7 @@ class FeatureSelectionService:
         """Compare multiple selection methods"""
         df, _ = await self._load_dataset(dataset_id, user_id)
         X, y, detected_problem_type = await self._prepare_data(
-            df, target_column, problem_type
+            df, target_column, problem_type, dataset_id=dataset_id
         )
 
         results = []
@@ -352,14 +354,14 @@ class FeatureSelectionService:
         """Load dataset from S3"""
         dataset = await self.dataset_service.get_by_id(dataset_id, user_id)
 
-        # Download file from S3
-        local_path = download_file_from_s3(dataset.s3_url)
+        # Download file from S3 (wrap sync call in thread to avoid blocking event loop)
+        local_path = await asyncio.to_thread(download_file_from_s3, dataset.s3_url)
 
-        # Load into DataFrame
+        # Load into DataFrame (wrap sync pandas operations in thread)
         if dataset.file_type == "csv":
-            df = pd.read_csv(local_path)
+            df = await asyncio.to_thread(pd.read_csv, local_path)
         elif dataset.file_type in ["xlsx", "xls"]:
-            df = pd.read_excel(local_path)
+            df = await asyncio.to_thread(pd.read_excel, local_path)
         else:
             raise ValueError(f"Unsupported file type: {dataset.file_type}")
 
@@ -370,7 +372,8 @@ class FeatureSelectionService:
         df: pd.DataFrame,
         target_column: str,
         problem_type: Optional[str] = None,
-        sample_size: Optional[int] = None
+        sample_size: Optional[int] = None,
+        dataset_id: str = ""
     ) -> Tuple[pd.DataFrame, pd.Series, str]:
         """Prepare features and target, detect problem type"""
         # Validate target column exists
@@ -381,10 +384,13 @@ class FeatureSelectionService:
         y = df[target_column]
         X = df.drop(columns=[target_column])
 
-        # Sample if needed for large datasets
+        # Sample if needed for large datasets (using deterministic seed for reproducibility)
         if sample_size and len(X) > sample_size:
             logger.info(f"Sampling {sample_size} rows from {len(X)} total rows")
-            sample_indices = np.random.choice(len(X), sample_size, replace=False)
+            # Use deterministic RNG with seed derived from dataset hash for reproducibility
+            seed = hash(f"{dataset_id}_{target_column}") % (2**32)
+            rng = np.random.default_rng(seed)
+            sample_indices = rng.choice(len(X), sample_size, replace=False)
             X = X.iloc[sample_indices]
             y = y.iloc[sample_indices]
 
@@ -499,7 +505,9 @@ class FeatureSelectionService:
                 try:
                     corr, _ = pearsonr(X[col].fillna(0), y_numeric)
                     scores[col] = abs(corr)  # Use absolute value
-                except:
+                except (ValueError, TypeError) as e:
+                    # Handle cases where correlation cannot be computed (e.g., constant column, NaN values)
+                    logger.debug(f"Could not compute correlation for column {col}: {e}")
                     scores[col] = 0.0
             else:
                 scores[col] = 0.0
@@ -656,8 +664,9 @@ class FeatureSelectionService:
             X_positive = X_filled - X_filled.min() + 1e-10
             try:
                 scores, _ = chi2(X_positive, y)
-            except:
-                # Fallback to f_classif if chi2 fails
+            except ValueError as e:
+                # Fallback to f_classif if chi2 fails (e.g., negative values)
+                logger.debug(f"Chi-squared test failed, falling back to f_classif: {e}")
                 scores, _ = f_classif(X_filled, y)
         else:
             scores, _ = f_regression(X_filled, y)

@@ -56,15 +56,25 @@ export function SelectedFeatureSet({
   }
 
   const downloadCSV = () => {
+    // Helper function to escape CSV fields per RFC 4180
+    const escapeCsvField = (field: string): string => {
+      // If field contains comma, quote, or newline, it must be quoted
+      if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+        // Escape quotes by doubling them, then wrap in quotes
+        return `"${field.replace(/"/g, '""')}"`
+      }
+      return field
+    }
+
     const headers = ['Feature Name', 'Importance Score', 'Rank', 'Selected']
     const rows = result.feature_scores.map((f) => [
-      f.feature_name,
+      escapeCsvField(f.feature_name),
       f.score.toFixed(6),
       f.rank.toString(),
       f.selected ? 'Yes' : 'No'
     ])
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const csv = [headers.map(escapeCsvField).join(','), ...rows.map((r) => r.join(','))].join('\n')
 
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
