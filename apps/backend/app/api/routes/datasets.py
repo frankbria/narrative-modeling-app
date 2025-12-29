@@ -10,6 +10,8 @@ from typing import Optional
 import logging
 import uuid
 import hashlib
+import numpy as np
+import time
 from datetime import datetime, timezone
 
 from app.schemas.dataset import (
@@ -25,7 +27,22 @@ from app.schemas.dataset import (
     DatasetProcessingResponse
 )
 from app.schemas.preview import PreviewRequest, PreviewResponse
+from app.schemas.feature_selection import (
+    FeatureSelectionRequest,
+    FeatureSelectionResult,
+    FeatureImportanceRequest,
+    FeatureImportanceResponse,
+    RedundancyDetectionRequest,
+    RedundancyDetectionResponse,
+    MethodComparisonRequest,
+    MethodComparisonResponse,
+    SelectedFeaturesResponse
+)
 from app.services.dataset_service import DatasetService
+from app.services.model_training.feature_selection_service import (
+    FeatureSelectionService,
+    FeatureSelectionConfig
+)
 from app.auth.nextauth_auth import get_current_user_id
 from app.utils.s3 import upload_file_to_s3
 from app.services.data_processing.data_processor import DataProcessor
@@ -97,10 +114,10 @@ async def list_datasets(
         )
 
     except Exception as e:
-        logger.error(f"Error listing datasets for user {current_user_id}: {e}")
+        logger.error(f"Error listing datasets for user {current_user_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing datasets: {str(e)}"
+            detail="An error occurred while listing datasets. Please try again or contact support."
         )
 
 
@@ -204,10 +221,10 @@ async def upload_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uploading dataset: {e}")
+        logger.error(f"Error uploading dataset: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading dataset: {str(e)}"
+            detail="An error occurred while uploading the dataset. Please try again or contact support."
         )
 
 
@@ -269,10 +286,10 @@ async def get_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting dataset {dataset_id}: {e}")
+        logger.error(f"Error getting dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting dataset: {str(e)}"
+            detail="An error occurred while retrieving the dataset. Please try again or contact support."
         )
 
 
@@ -354,10 +371,10 @@ async def update_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating dataset {dataset_id}: {e}")
+        logger.error(f"Error updating dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating dataset: {str(e)}"
+            detail="An error occurred while updating the dataset. Please try again or contact support."
         )
 
 
@@ -409,10 +426,10 @@ async def delete_dataset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting dataset {dataset_id}: {e}")
+        logger.error(f"Error deleting dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting dataset: {str(e)}"
+            detail="An error occurred while deleting the dataset. Please try again or contact support."
         )
 
 
@@ -455,10 +472,10 @@ async def get_dataset_schema(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting schema for dataset {dataset_id}: {e}")
+        logger.error(f"Error getting schema for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting schema: {str(e)}"
+            detail="An error occurred while retrieving the dataset schema. Please try again or contact support."
         )
 
 
@@ -508,10 +525,10 @@ async def get_dataset_preview(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting preview for dataset {dataset_id}: {e}")
+        logger.error(f"Error getting preview for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting preview: {str(e)}"
+            detail="An error occurred while generating the dataset preview. Please try again or contact support."
         )
 
 
@@ -566,10 +583,10 @@ async def mark_dataset_processed(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error marking dataset {dataset_id} as processed: {e}")
+        logger.error(f"Error marking dataset {dataset_id} as processed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing dataset: {str(e)}"
+            detail="An error occurred while processing the dataset. Please try again or contact support."
         )
 
 
@@ -816,8 +833,372 @@ async def preview_transformation(
         # Re-raise HTTPExceptions from PreviewService (429, 408)
         raise
     except Exception as e:
-        logger.error(f"Preview generation failed for dataset {dataset_id}: {e}")
+        logger.error(f"Preview generation failed for dataset {dataset_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Preview generation failed: {str(e)}"
+            detail="An error occurred during preview generation. Please try again or contact support."
         )
+
+
+# ==================== Feature Selection Endpoints ====================
+
+
+@router.post(
+    "/datasets/{dataset_id}/features/select",
+    response_model=FeatureSelectionResult,
+    tags=["Feature Selection"],
+    summary="Run feature selection algorithm",
+    description="Select the most important features from a dataset using various algorithms (correlation, mutual info, random forest, RFE, LASSO, statistical tests)"
+)
+async def select_features(
+    dataset_id: str = Path(..., description="Dataset ID"),
+    request: FeatureSelectionRequest = Body(...),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Run feature selection on a dataset using the specified algorithm.
+
+    Supported methods:
+    - correlation: Pearson correlation with target
+    - mutual_info: Mutual information (captures non-linear relationships)
+    - random_forest: Tree-based feature importance
+    - rfe: Recursive Feature Elimination
+    - lasso: LASSO regularization (L1 penalty)
+    - statistical: Chi-squared or F-test
+
+    Args:
+        dataset_id: Dataset identifier
+        request: Feature selection configuration
+        current_user_id: Authenticated user ID
+
+    Returns:
+        Feature selection results with scores and explanations
+    """
+    try:
+        logger.info(
+            f"Feature selection for dataset {dataset_id} (user={current_user_id}, "
+            f"method={request.method}, target={request.target_column})"
+        )
+
+        service = FeatureSelectionService()
+
+        # Create configuration
+        config = FeatureSelectionConfig(
+            top_k=request.top_k,
+            threshold=request.threshold,
+            correlation_threshold=request.correlation_threshold or 0.7,
+            problem_type=request.problem_type,
+            sample_size=request.sample_size,
+            algorithm_params=request.algorithm_params or {}
+        )
+
+        # Run feature selection
+        result = await service.select_features(
+            dataset_id=dataset_id,
+            user_id=current_user_id,
+            target_column=request.target_column,
+            method=request.method,
+            config=config
+        )
+
+        logger.info(
+            f"Feature selection complete for dataset {dataset_id}: "
+            f"selected {len(result['selected_features'])} features"
+        )
+
+        return FeatureSelectionResult(**result)
+
+    except ValueError as e:
+        logger.error(f"Invalid request for feature selection: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Feature selection failed for dataset {dataset_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during feature selection. Please try again or contact support."
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/features/importance",
+    response_model=FeatureImportanceResponse,
+    tags=["Feature Selection"],
+    summary="Calculate feature importance",
+    description="Calculate and rank feature importance scores without applying selection criteria"
+)
+async def calculate_feature_importance(
+    dataset_id: str = Path(..., description="Dataset ID"),
+    request: FeatureImportanceRequest = Body(...),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Calculate feature importance scores without selecting features.
+
+    Returns importance scores for all features ranked by importance.
+
+    Args:
+        dataset_id: Dataset identifier
+        request: Importance calculation configuration
+        current_user_id: Authenticated user ID
+
+    Returns:
+        Feature importance scores and rankings
+    """
+    try:
+        logger.info(
+            f"Calculating feature importance for dataset {dataset_id} "
+            f"(method={request.method}, target={request.target_column})"
+        )
+
+        service = FeatureSelectionService()
+
+        # Track execution time
+        start_time = time.perf_counter()
+
+        feature_scores = await service.calculate_importance(
+            dataset_id=dataset_id,
+            user_id=current_user_id,
+            target_column=request.target_column,
+            method=request.method,
+            problem_type=request.problem_type,
+            algorithm_params=request.algorithm_params
+        )
+
+        # Calculate execution time in milliseconds
+        execution_time_ms = (time.perf_counter() - start_time) * 1000
+
+        return FeatureImportanceResponse(
+            dataset_id=dataset_id,
+            method=request.method,
+            feature_scores=feature_scores,
+            execution_time_ms=execution_time_ms
+        )
+
+    except ValueError as e:
+        logger.error(f"Invalid request for importance calculation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Importance calculation failed for dataset {dataset_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during feature importance calculation. Please try again or contact support."
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/features/redundancy",
+    response_model=RedundancyDetectionResponse,
+    tags=["Feature Selection"],
+    summary="Detect redundant features",
+    description="Identify pairs of highly correlated features that provide redundant information"
+)
+async def detect_redundant_features(
+    dataset_id: str = Path(..., description="Dataset ID"),
+    request: RedundancyDetectionRequest = Body(...),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Detect pairs of highly correlated (redundant) features.
+
+    Identifies features that may cause multicollinearity issues in models.
+
+    Args:
+        dataset_id: Dataset identifier
+        request: Redundancy detection configuration
+        current_user_id: Authenticated user ID
+
+    Returns:
+        Redundant feature pairs with correlations and recommendations
+    """
+    try:
+        logger.info(
+            f"Detecting redundant features for dataset {dataset_id} "
+            f"(threshold={request.correlation_threshold})"
+        )
+
+        service = FeatureSelectionService()
+
+        # Load dataset
+        df, _ = await service._load_dataset(dataset_id, current_user_id)
+
+        # Get numeric columns only
+        numeric_df = df.select_dtypes(include=[np.number])
+
+        # Detect redundancy
+        redundant_pairs = await service.detect_redundancy(
+            numeric_df,
+            request.correlation_threshold
+        )
+
+        # Calculate full correlation matrix
+        from app.services.data_processing.statistics_engine import StatisticsEngine
+        stats_engine = StatisticsEngine()
+        correlation_matrix = stats_engine._calculate_correlation_matrix(numeric_df)
+
+        # Generate recommendations
+        recommendations = []
+        if redundant_pairs:
+            recommendations.append(
+                f"Found {len(redundant_pairs)} pairs of highly correlated features. "
+                "Consider removing one feature from each pair to reduce multicollinearity."
+            )
+        else:
+            recommendations.append(
+                f"No highly correlated features found (threshold={request.correlation_threshold}). "
+                "Dataset shows good feature independence."
+            )
+
+        return RedundancyDetectionResponse(
+            dataset_id=dataset_id,
+            redundant_pairs=redundant_pairs,
+            correlation_matrix=correlation_matrix,
+            recommendations=recommendations
+        )
+
+    except ValueError as e:
+        logger.error(f"Invalid request for redundancy detection: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Redundancy detection failed for dataset {dataset_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during redundancy detection. Please try again or contact support."
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/features/compare",
+    response_model=MethodComparisonResponse,
+    tags=["Feature Selection"],
+    summary="Compare selection methods",
+    description="Run multiple feature selection algorithms and identify consensus features across methods"
+)
+async def compare_selection_methods(
+    dataset_id: str = Path(..., description="Dataset ID"),
+    request: MethodComparisonRequest = Body(...),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Compare multiple feature selection methods side-by-side.
+
+    Runs multiple selection algorithms and identifies consensus features.
+    Useful for understanding which features are consistently important
+    across different selection approaches.
+
+    Args:
+        dataset_id: Dataset identifier
+        request: Method comparison configuration
+        current_user_id: Authenticated user ID
+
+    Returns:
+        Comparison results with consensus features and overlap matrix
+    """
+    try:
+        logger.info(
+            f"Comparing feature selection methods for dataset {dataset_id} "
+            f"(methods={request.methods}, target={request.target_column})"
+        )
+
+        if len(request.methods) < 2:
+            raise ValueError("At least 2 methods required for comparison")
+
+        if len(request.methods) > 6:
+            raise ValueError("Maximum 6 methods allowed for comparison")
+
+        service = FeatureSelectionService()
+
+        result = await service.compare_methods(
+            dataset_id=dataset_id,
+            user_id=current_user_id,
+            target_column=request.target_column,
+            methods=request.methods,
+            top_k=request.top_k,
+            problem_type=request.problem_type
+        )
+
+        logger.info(
+            f"Method comparison complete for dataset {dataset_id}: "
+            f"{len(result['consensus_features'])} consensus features"
+        )
+
+        return MethodComparisonResponse(**result)
+
+    except ValueError as e:
+        logger.error(f"Invalid request for method comparison: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Method comparison failed for dataset {dataset_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during method comparison. Please try again or contact support."
+        )
+
+
+@router.get(
+    "/datasets/{dataset_id}/features/selected",
+    response_model=SelectedFeaturesResponse,
+    tags=["Feature Selection"],
+    summary="Get selected features",
+    description="Retrieve previously selected features for a dataset from cache or metadata"
+)
+async def get_selected_features(
+    dataset_id: str = Path(..., description="Dataset ID"),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get previously selected features for a dataset.
+
+    Returns cached feature selection results if available.
+
+    Args:
+        dataset_id: Dataset identifier
+        current_user_id: Authenticated user ID
+
+    Returns:
+        Previously selected features or empty list
+
+    Raises:
+        HTTPException: 404 if dataset not found, 403 if not authorized
+    """
+    logger.info(f"Retrieving selected features for dataset {dataset_id}")
+
+    # Get dataset
+    dataset_service = DatasetService()
+    dataset = await dataset_service.get_by_id(dataset_id, current_user_id)
+
+    # Check if dataset exists
+    if dataset is None:
+        logger.warning(f"Dataset {dataset_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    # Verify ownership
+    if dataset.user_id != current_user_id:
+        logger.warning(f"User {current_user_id} unauthorized to access dataset {dataset_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this dataset"
+        )
+
+    # Check if feature selection results are stored in metadata
+    selected_features = dataset.metadata.get("selected_features", []) if hasattr(dataset, "metadata") else []
+
+    return SelectedFeaturesResponse(
+        dataset_id=dataset_id,
+        selected_features=selected_features,
+        has_selection=len(selected_features) > 0
+    )
