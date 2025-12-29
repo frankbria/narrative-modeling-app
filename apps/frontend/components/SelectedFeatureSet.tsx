@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import type { FeatureSelectionResult, FeatureScore } from '@/lib/services/featureSelection'
+import type { FeatureSelectionResult } from '@/lib/services/featureSelection'
 import { formatExecutionTime } from '@/lib/services/featureSelection'
 
 export interface SelectedFeatureSetProps {

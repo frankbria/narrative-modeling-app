@@ -5,7 +5,6 @@ Tests for feature engineering
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import MagicMock
 
 from app.services.model_training.feature_engineer import (
     FeatureEngineer,

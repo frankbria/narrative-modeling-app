@@ -1,9 +1,9 @@
 """
 A/B Test model for experiment tracking
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Document, Indexed
 from pydantic import Field, BaseModel
 from enum import Enum
 

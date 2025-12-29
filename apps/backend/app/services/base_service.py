@@ -18,8 +18,7 @@ import logging
 from app.services.exceptions import (
     NotFoundError,
     PermissionDeniedError,
-    ValidationError,
-    OperationError
+    ValidationError
 )
 
 # Type variable for Beanie Document subclasses

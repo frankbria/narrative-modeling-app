@@ -1,7 +1,7 @@
 # app/models/user_data.py
 
 from beanie import Document, Indexed
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from beanie import PydanticObjectId

@@ -3,20 +3,15 @@ Tests for visualization cache service
 """
 import pytest
 import pandas as pd
-import numpy as np
 from unittest.mock import AsyncMock, patch, Mock
 from beanie import PydanticObjectId
-from datetime import datetime
 
 from app.services.visualization_cache import (
     get_cached_visualization,
     cache_visualization,
     generate_and_cache_histogram,
-    generate_and_cache_boxplot,
     generate_and_cache_correlation_matrix
 )
-from app.models.user_data import UserData
-from app.models.visualization_cache import VisualizationCache
 
 
 class TestVisualizationCache:

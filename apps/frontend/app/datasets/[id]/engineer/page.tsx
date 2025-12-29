@@ -31,7 +31,6 @@ import {
   ArrowLeft,
   Loader2,
   Sparkles,
-  Settings,
   Play,
   Trash2,
   ChevronRight,
@@ -39,7 +38,6 @@ import {
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
-import { FeatureSuggestion } from '@/lib/hooks/useFeatureSuggestions';
 
 interface Dataset {
   dataset_id: string;
@@ -53,8 +51,8 @@ interface Dataset {
 
 export default function FeatureEngineeringPage() {
   const params = useParams();
-  const router = useRouter();
-  const { data: session } = useSession();
+  useRouter();
+  useSession();
   const datasetId = params?.id as string;
 
   const [dataset, setDataset] = useState<Dataset | null>(null);
@@ -291,7 +289,7 @@ function FeatureEngineeringContent({
               <SheetHeader>
                 <SheetTitle>Selected Features</SheetTitle>
                 <SheetDescription>
-                  Features you've selected to add to your dataset
+                  Features you&apos;ve selected to add to your dataset
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-4">

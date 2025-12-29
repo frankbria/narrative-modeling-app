@@ -6,12 +6,11 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import pandas as pd
 import numpy as np
-from scipy import stats
 from pydantic import BaseModel, Field, ConfigDict
 import hashlib
 import json
 
-from app.services.redis_cache import cache_service, cache_result
+from app.services.redis_cache import cache_service
 
 
 class ColumnStatistics(BaseModel):

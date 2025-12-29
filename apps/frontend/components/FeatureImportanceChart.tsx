@@ -9,8 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
-  Legend
+  Cell
 } from 'recharts'
 import type { FeatureScore } from '@/lib/services/featureSelection'
 
@@ -48,7 +47,7 @@ export function FeatureImportanceChart({
     return '#F59E0B' // Orange for low importance
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: FeatureScore }> }) => {
     if (active && payload && payload.length) {
       const feature: FeatureScore = payload[0].payload
       return (

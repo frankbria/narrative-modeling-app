@@ -7,10 +7,8 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { HistogramChart } from './HistogramChart'
-import { BoxplotChart } from './BoxplotChart'
-import { 
-  BarChart3, 
-  TrendingUp, 
+import {
+  BarChart3,
   AlertTriangle,
   Database,
   Percent,
@@ -34,7 +32,7 @@ interface ColumnStatistic {
   q3?: number
   outlier_count?: number
   outlier_percentage?: number
-  most_frequent_values?: Array<{value: any, count: number, percentage: number}>
+  most_frequent_values?: Array<{value: unknown, count: number, percentage: number}>
 }
 
 interface StatisticsData {
@@ -59,12 +57,12 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
   const [statistics, setStatistics] = useState<StatisticsData | null>(initialStats || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedColumn, setSelectedColumn] = useState<string | null>(null)
 
   useEffect(() => {
     if (!statistics) {
       fetchStatistics()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
 
   const fetchStatistics = async () => {

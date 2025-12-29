@@ -10,16 +10,9 @@ Tests cover model lifecycle endpoints using ModelService.
 """
 
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import Mock, patch, AsyncMock
 import uuid
 
-from app.schemas.model import (
-    ModelTrainRequest,
-    ModelUpdateRequest,
-    ModelDeployRequest
-)
-from app.models.model import ModelStatus, ProblemType
+from app.models.model import ProblemType
 
 
 @pytest.mark.integration
@@ -190,7 +183,7 @@ class TestModelRoutes:
         from app.services.model_service import ModelService
         from app.models.model import (
             FeatureConfig, TrainingConfig, PerformanceMetrics,
-            ProblemType, HyperparameterConfig
+            HyperparameterConfig
         )
 
         model_service = ModelService()
@@ -279,7 +272,7 @@ class TestModelRoutes:
         # ARRANGE: Create multiple models
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -341,7 +334,7 @@ class TestModelRoutes:
         # ARRANGE: Create models for different datasets
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -422,7 +415,7 @@ class TestModelRoutes:
         # ARRANGE: Create models and mark some as trained
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -503,7 +496,7 @@ class TestModelRoutes:
         # ARRANGE: Create 25 models
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -556,7 +549,7 @@ class TestModelRoutes:
         # ARRANGE: Create model
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -641,7 +634,7 @@ class TestModelRoutes:
         # ARRANGE: Create model with performance metrics
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -704,7 +697,7 @@ class TestModelRoutes:
         # ARRANGE: Create regression model
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -779,7 +772,7 @@ class TestModelRoutes:
         # ARRANGE: Create trained model
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -841,7 +834,7 @@ class TestModelRoutes:
         # ARRANGE: Create model in TRAINING state (not TRAINED)
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()
@@ -896,7 +889,7 @@ class TestModelRoutes:
         # ARRANGE: Create and deploy model
         from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics, ProblemType
+            FeatureConfig, TrainingConfig, PerformanceMetrics
         )
 
         model_service = ModelService()

@@ -19,7 +19,7 @@ interface ScatterPlotChartProps {
   data: ScatterPlotData
   width?: number
   height?: number
-  onPointClick?: (point: any) => void
+  onPointClick?: (point: Record<string, unknown>) => void
 }
 
 export function ScatterPlotChart({ 
@@ -40,7 +40,7 @@ export function ScatterPlotChart({
     return acc
   }, {} as Record<string, typeof data.data>)
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { x: number; y: number; label?: string; category?: string } }> }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (

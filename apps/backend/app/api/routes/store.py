@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from typing import List, Any
 from app.models.user_data import UserData
 from app.auth.nextauth_auth import get_current_user_id
 from pydantic import BaseModel

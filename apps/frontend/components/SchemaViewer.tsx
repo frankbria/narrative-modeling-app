@@ -21,7 +21,7 @@ interface ColumnSchema {
   cardinality: number
   null_count: number
   null_percentage: number
-  sample_values?: any[]
+  sample_values?: unknown[]
 }
 
 interface SchemaViewerProps {
@@ -75,7 +75,7 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
     return dataTypeColors[dataType] || dataTypeColors.unknown
   }
 
-  const formatSampleValues = (values?: any[]) => {
+  const formatSampleValues = (values?: unknown[]) => {
     if (!values || values.length === 0) return 'N/A'
     return values.slice(0, 3).map(v => 
       v === null ? '<null>' : String(v)

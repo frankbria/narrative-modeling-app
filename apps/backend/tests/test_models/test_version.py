@@ -5,7 +5,7 @@ Tests DatasetVersion, TransformationLineage, and VersionComparison models.
 """
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 from app.models.version import (
     DatasetVersion,
     TransformationLineage,

@@ -2,7 +2,7 @@
 Cache management API endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
 
 from app.services.redis_cache import cache_service

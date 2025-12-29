@@ -14,7 +14,7 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from typing import Optional, List
+from typing import Optional
 import logging
 
 from app.schemas.model import (
@@ -24,7 +24,6 @@ from app.schemas.model import (
     ModelListResponse,
     ModelListItem,
     ModelUpdateRequest,
-    ModelPerformanceSummaryResponse,
     ModelDeployRequest,
     ModelDeployResponse,
     PerformanceMetricsResponse
@@ -66,7 +65,7 @@ async def train_model(
         from app.services.dataset_service import DatasetService
         from app.models.model import (
             FeatureConfig, TrainingConfig, PerformanceMetrics,
-            ProblemType, HyperparameterConfig
+            HyperparameterConfig
         )
         import uuid
         import time

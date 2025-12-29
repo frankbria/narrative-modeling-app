@@ -3,9 +3,8 @@ Problem type detection for AutoML
 """
 
 from enum import Enum
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 import pandas as pd
-import numpy as np
 from dataclasses import dataclass
 
 

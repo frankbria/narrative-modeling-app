@@ -1,6 +1,6 @@
 from beanie import Document, Link, Indexed
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional
 from datetime import datetime, timezone
 from app.models.user_data import UserData
 

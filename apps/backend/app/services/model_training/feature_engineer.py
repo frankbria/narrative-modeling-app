@@ -11,8 +11,7 @@ from sklearn.preprocessing import (
 )
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import (
-    SelectKBest, f_classif, f_regression,
-    mutual_info_classif, mutual_info_regression
+    SelectKBest, f_classif, f_regression
 )
 from dataclasses import dataclass
 import logging

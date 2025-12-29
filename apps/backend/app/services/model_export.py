@@ -3,9 +3,8 @@ Model export service for converting trained models to various formats
 """
 import os
 import tempfile
-import pickle
 import json
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Tuple, List
 from datetime import datetime
 import zipfile
 from io import BytesIO
@@ -402,7 +401,7 @@ if __name__ == "__main__":
         python_code, _ = await self.export_python_code(model_id, user_id)
         
         # Create Dockerfile
-        dockerfile_content = f'''FROM python:3.11-slim
+        dockerfile_content = '''FROM python:3.11-slim
 
 # Install required packages
 RUN pip install pandas numpy scikit-learn

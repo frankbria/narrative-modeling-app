@@ -8,7 +8,6 @@ without requiring a database connection.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
-import numpy as np
 
 from app.services.bulk_transformation_service import BulkTransformationService
 from app.models.bulk_transformation import (

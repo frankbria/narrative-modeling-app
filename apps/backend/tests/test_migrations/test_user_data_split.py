@@ -9,14 +9,12 @@ rollback procedures, performance measurement, and data integrity verification.
 import pytest
 import time
 from datetime import datetime, timezone
-from typing import List, Dict, Any
-from unittest.mock import AsyncMock, patch
+from typing import List
 import uuid
 
 from app.models.user_data import UserData, SchemaField as LegacySchemaField, AISummary
 from app.models.dataset import DatasetMetadata, SchemaField, PIIReport
 from app.models.transformation import TransformationConfig, TransformationStep
-from app.models.model import ModelConfig
 
 
 class TestMigrationDataGeneration:

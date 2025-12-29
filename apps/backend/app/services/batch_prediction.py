@@ -8,9 +8,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
 import tempfile
 import os
-from io import StringIO, BytesIO
-import boto3
-from botocore.exceptions import NoCredentialsError
+from io import StringIO
 
 from app.models.batch_job import BatchJob, JobStatus, JobType, BatchPredictionConfig
 from app.models.ml_model import MLModel

@@ -22,7 +22,7 @@ export default function TransformPage() {
     <div className="flex items-center justify-center h-screen">
       <div className="text-center">
         <h2 className="text-xl font-semibold mb-2">Redirecting...</h2>
-        <p className="text-gray-600">You'll be redirected to the integrated transformation pipeline.</p>
+        <p className="text-gray-600">You&apos;ll be redirected to the integrated transformation pipeline.</p>
       </div>
     </div>
   );

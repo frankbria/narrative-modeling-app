@@ -60,7 +60,6 @@ def test_openai_response_fixture(test_openai_response):
 @pytest.mark.asyncio
 async def test_openai_data_summarization():
     """Test OpenAI integration for data summarization."""
-    from unittest.mock import patch, AsyncMock
 
     # Create properly structured mock
     mock_message = MagicMock()
@@ -90,7 +89,6 @@ async def test_openai_data_summarization():
 @pytest.mark.asyncio
 async def test_openai_model_recommendation():
     """Test OpenAI integration for model recommendation."""
-    from unittest.mock import patch, AsyncMock
 
     # Create properly structured mock
     mock_message = MagicMock()
@@ -121,7 +119,6 @@ async def test_openai_model_recommendation():
 @pytest.mark.asyncio
 async def test_openai_error_handling():
     """Test OpenAI error handling in mocked scenarios."""
-    from unittest.mock import patch, AsyncMock
     from openai import OpenAIError
 
     with patch("openai.AsyncOpenAI") as mock_openai:
@@ -146,7 +143,6 @@ async def test_openai_error_handling():
 @pytest.mark.asyncio
 async def test_openai_streaming_response():
     """Test mocked streaming OpenAI response."""
-    from unittest.mock import patch, AsyncMock
 
     # Mock streaming chunks with proper structure
     async def mock_stream():
@@ -190,7 +186,6 @@ async def test_openai_streaming_response():
 @pytest.mark.asyncio
 async def test_openai_function_calling():
     """Test mocked OpenAI function calling."""
-    from unittest.mock import patch, AsyncMock
     import json
 
     # Create properly structured mock
@@ -257,7 +252,6 @@ async def test_openai_token_counting(mock_openai):
 @pytest.mark.asyncio
 async def test_openai_multiple_responses():
     """Test handling multiple AI responses in sequence."""
-    from unittest.mock import patch, AsyncMock
 
     # Create properly structured mocks for each response
     mock_responses = []

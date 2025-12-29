@@ -6,7 +6,6 @@ Tests transformation operations to ensure they meet performance targets:
 - Transformation application: <30s for 100K rows
 """
 import pytest
-import pandas as pd
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType,

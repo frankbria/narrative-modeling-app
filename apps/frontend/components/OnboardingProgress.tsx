@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// Unused Card components removed
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -148,7 +148,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-purple-600" />
               <div className="text-sm text-purple-800">
-                You're making excellent progress! 
+                You&apos;re making excellent progress! 
               </div>
             </div>
           </div>
@@ -159,7 +159,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
             <div className="flex items-center gap-2">
               <Star className="h-4 w-4 text-green-600" />
               <div className="text-sm text-green-800">
-                Halfway there! You're doing amazing!
+                Halfway there! You&apos;re doing amazing!
               </div>
             </div>
           </div>
@@ -170,7 +170,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-orange-600" />
               <div className="text-sm text-orange-800">
-                Almost finished! You're so close to completion!
+                Almost finished! You&apos;re so close to completion!
               </div>
             </div>
           </div>
@@ -181,7 +181,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-green-600" />
               <div className="text-sm text-green-800 font-medium">
-                🎉 Tutorial Complete! You're ready to build amazing models!
+                🎉 Tutorial Complete! You&apos;re ready to build amazing models!
               </div>
             </div>
           </div>

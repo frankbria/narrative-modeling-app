@@ -11,8 +11,6 @@ Tests validate:
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
-from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 from tenacity import RetryError
 

@@ -7,7 +7,6 @@ Tests prediction operations to ensure they meet performance targets:
 """
 import pytest
 import pandas as pd
-import numpy as np
 
 
 class TestPredictionPerformance:

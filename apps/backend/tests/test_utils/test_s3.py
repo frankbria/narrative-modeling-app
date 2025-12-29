@@ -1,7 +1,6 @@
 import pytest
-import boto3
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from botocore.exceptions import ClientError, NoCredentialsError
 import io
 from app.utils.s3 import get_s3_client, upload_file_to_s3, get_file_from_s3

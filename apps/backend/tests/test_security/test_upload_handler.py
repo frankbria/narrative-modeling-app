@@ -5,8 +5,6 @@ Tests for Chunked Upload Handler
 import pytest
 import pytest_asyncio
 from app.services.security.upload_handler import ChunkedUploadHandler
-from app.models.user_data import UserData
-from tests.conftest import setup_database
 
 
 @pytest.mark.integration

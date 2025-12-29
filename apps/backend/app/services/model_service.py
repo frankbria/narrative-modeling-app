@@ -22,7 +22,7 @@ from app.models.model import (
     DeploymentConfig
 )
 from app.services.base_service import BaseService
-from app.services.exceptions import NotFoundError, OperationError
+from app.services.exceptions import OperationError
 
 
 class ModelService(BaseService[ModelConfig]):

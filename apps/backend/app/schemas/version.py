@@ -8,7 +8,6 @@ and lineage management endpoints.
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from app.models.version import TransformationStep
 
 
 class TransformationStepResponse(BaseModel):

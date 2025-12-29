@@ -15,9 +15,6 @@ Integration tests for user_data routes covering all endpoints:
 
 import pytest
 from httpx import AsyncClient
-from datetime import datetime, timezone
-import uuid
-from typing import Dict, Any
 from unittest.mock import patch, AsyncMock, MagicMock
 from beanie import PydanticObjectId
 

@@ -9,7 +9,6 @@ import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
-import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',

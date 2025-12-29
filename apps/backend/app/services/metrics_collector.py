@@ -36,7 +36,6 @@ Usage:
 
 import time
 from contextlib import contextmanager
-from typing import Optional
 from prometheus_client import Histogram, Gauge, Counter
 from app.middleware.metrics import metrics_registry
 

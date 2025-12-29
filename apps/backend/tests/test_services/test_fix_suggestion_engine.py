@@ -6,10 +6,8 @@ Tests fix suggestion generation, validation, and preview functionality.
 
 import pytest
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
-from app.services.fix_suggestion_engine import FixSuggestionEngine, MAX_SAFE_DATA_LOSS_PERCENT
+from app.services.fix_suggestion_engine import FixSuggestionEngine
 from app.models.data_issue import (
     DataIssue,
     IssueType,

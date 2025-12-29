@@ -1,9 +1,8 @@
 """
 Tests for API Key model
 """
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from app.models.api_key import APIKey
 
 

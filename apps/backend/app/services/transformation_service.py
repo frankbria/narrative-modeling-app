@@ -10,7 +10,6 @@ from typing import List, Optional, Dict, Any
 from app.models.transformation import (
     TransformationConfig,
     TransformationStep,
-    TransformationPreview,
     TransformationValidation
 )
 from app.services.transformation_engine.transformation_engine import (
@@ -20,7 +19,6 @@ from app.services.transformation_engine.transformation_engine import (
 from app.services.base_service import BaseService
 from app.services.exceptions import (
     NotFoundError,
-    ValidationError,
     OperationError
 )
 
@@ -289,7 +287,6 @@ class TransformationService(BaseService[TransformationConfig]):
         """
         from app.models.dataset import DatasetMetadata
         from app.services.transformation_engine.data_utils import get_dataframe_from_s3
-        from app.services.transformation_engine.transformation_engine import TransformationType
 
         # Get dataset with ownership verification
         dataset = await DatasetMetadata.find_one({
@@ -365,7 +362,6 @@ class TransformationService(BaseService[TransformationConfig]):
             get_dataframe_from_s3,
             upload_dataframe_to_s3
         )
-        from app.services.transformation_engine.transformation_engine import TransformationType
         from app.services.redis_cache import cache_service
         import pandas as pd
 

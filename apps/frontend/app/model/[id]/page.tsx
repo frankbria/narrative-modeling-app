@@ -43,6 +43,7 @@ export default function ModelDetailPage() {
     if (session && modelId) {
       fetchModel()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, modelId])
 
   const fetchModel = async () => {

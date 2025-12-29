@@ -2,25 +2,18 @@
 Integration tests for Redis cache functionality
 """
 import pytest
-import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 import pandas as pd
-from datetime import datetime, timedelta
-import tempfile
-import os
+from datetime import datetime
 
-from app.services.redis_cache import cache_service, cache_result
+from app.services.redis_cache import cache_result
 from app.services.data_processing.statistics_engine import StatisticsEngine
 from app.services.onboarding_service import OnboardingService
 from app.services.visualization_cache import (
     get_cached_visualization,
-    cache_visualization,
-    generate_and_cache_histogram,
-    generate_and_cache_boxplot,
-    generate_and_cache_correlation_matrix
+    generate_and_cache_histogram
 )
-from app.models.user_data import UserData
-from app.schemas.onboarding import OnboardingUserProgress, OnboardingStepResponse
+from app.schemas.onboarding import OnboardingUserProgress
 from app.services.data_processing.statistics_engine import DatasetStatistics
 from beanie import PydanticObjectId
 

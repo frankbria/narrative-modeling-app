@@ -27,7 +27,7 @@ interface SampleDataset {
   problem_type: string;
   difficulty_level: string;
   tags: string[];
-  preview_data: Array<Record<string, any>>;
+  preview_data: Array<Record<string, unknown>>;
   target_column: string;
   feature_columns: string[];
   learning_objectives: string[];
@@ -281,7 +281,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
           <CardContent className="space-y-4">
             {/* Learning Objectives */}
             <div>
-              <h4 className="font-medium mb-2">What you'll learn:</h4>
+              <h4 className="font-medium mb-2">What you&apos;ll learn:</h4>
               <ul className="space-y-1">
                 {selectedDataset.learning_objectives.map((objective, index) => (
                   <li key={index} className="flex items-start gap-2 text-sm">

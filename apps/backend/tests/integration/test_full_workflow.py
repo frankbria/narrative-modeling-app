@@ -3,16 +3,13 @@ Integration tests for the complete upload → process → analyze workflow
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock
 import pandas as pd
 import io
-import json
 from datetime import datetime, timezone
 import uuid
 
-from app.main import app
-from app.models.dataset import DatasetMetadata, SchemaField
+from app.models.dataset import DatasetMetadata
 from beanie import PydanticObjectId
 
 @pytest.fixture

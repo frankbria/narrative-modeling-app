@@ -10,7 +10,7 @@ import { Target, Upload, FileText, Send, CheckCircle } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 interface PredictionInput {
-  [key: string]: any;
+  [key: string]: string | number;
 }
 
 export default function PredictPage() {
@@ -19,9 +19,9 @@ export default function PredictPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
-  const [features, setFeatures] = useState<any[]>([]);
+  const [features, setFeatures] = useState<Record<string, unknown>[]>([]);
   const [predictionInput, setPredictionInput] = useState<PredictionInput>({});
-  const [prediction, setPrediction] = useState<any>(null);
+  const [prediction, setPrediction] = useState<Record<string, unknown> | null>(null);
   const [batchFile, setBatchFile] = useState<File | null>(null);
 
   useEffect(() => {
@@ -36,6 +36,7 @@ export default function PredictPage() {
     }
 
     loadModelFeatures();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessStage, router, state.modelId]);
 
   const loadModelFeatures = async () => {
@@ -53,7 +54,7 @@ export default function PredictPage() {
         
         // Initialize input with default values
         const defaultInput: PredictionInput = {};
-        data.features.forEach((feature: any) => {
+        data.features.forEach((feature: { name: string; type: string }) => {
           defaultInput[feature.name] = feature.type === 'numeric' ? 0 : '';
         });
         setPredictionInput(defaultInput);
@@ -233,17 +234,17 @@ export default function PredictPage() {
                   <div className="mt-2">
                     <span className="text-sm text-gray-600">Confidence: </span>
                     <span className="font-medium">
-                      {(prediction.confidence * 100).toFixed(1)}%
+                      {(Number(prediction.confidence) * 100).toFixed(1)}%
                     </span>
                   </div>
                 )}
                 {prediction.probabilities && (
                   <div className="mt-3 space-y-1">
                     <p className="text-sm text-gray-600">Class Probabilities:</p>
-                    {Object.entries(prediction.probabilities).map(([cls, prob]: [string, any]) => (
+                    {Object.entries(prediction.probabilities).map(([cls, prob]: [string, unknown]) => (
                       <div key={cls} className="flex justify-between text-sm">
                         <span>{cls}:</span>
-                        <span className="font-medium">{(prob * 100).toFixed(1)}%</span>
+                        <span className="font-medium">{(Number(prob) * 100).toFixed(1)}%</span>
                       </div>
                     ))}
                   </div>

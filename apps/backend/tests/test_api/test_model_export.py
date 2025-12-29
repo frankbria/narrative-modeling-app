@@ -2,14 +2,12 @@
 Tests for model export API routes
 """
 import pytest
-import json
 import zipfile
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 from io import BytesIO
 
 from app.main import app
-from app.services.model_export import ModelExportService
 from app.auth.nextauth_auth import get_current_user_id
 
 

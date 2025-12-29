@@ -5,12 +5,10 @@ Test configuration for API tests
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.user_data import UserData
 
 
 @pytest.fixture

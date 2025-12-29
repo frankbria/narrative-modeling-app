@@ -6,7 +6,7 @@ Implements Story 12.2: Data Versioning API.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
-from typing import List, Optional
+from typing import Optional
 import logging
 
 from app.schemas.version import (
@@ -16,10 +16,9 @@ from app.schemas.version import (
     VersionComparisonRequest,
     VersionComparisonResponse,
     VersionListResponse,
-    VersionPinRequest,
-    TransformationStepResponse
+    VersionPinRequest
 )
-from app.models.version import DatasetVersion, TransformationLineage
+from app.models.version import DatasetVersion
 from app.models.dataset import DatasetMetadata
 from app.services.versioning_service import versioning_service
 from app.auth.nextauth_auth import get_current_user_id

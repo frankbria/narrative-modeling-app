@@ -17,7 +17,7 @@ Critical security requirements:
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, patch, Mock
+from unittest.mock import AsyncMock, patch
 import pandas as pd
 
 from app.models.dataset import SchemaField

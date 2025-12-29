@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Any
 from app.models.visualization_cache import (
     HistogramData,
     BoxplotData,

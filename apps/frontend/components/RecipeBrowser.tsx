@@ -11,7 +11,6 @@ import {
   Star,
   Users,
   Clock,
-  Download,
   Play,
   Code,
   ChevronRight,
@@ -39,6 +38,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
       fetchRecipes();
       fetchPopularRecipes();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   const fetchRecipes = async () => {

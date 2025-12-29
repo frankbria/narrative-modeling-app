@@ -3,14 +3,11 @@ Tests for data processing API endpoints
 """
 
 import pytest
-from httpx import AsyncClient
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock
 import pandas as pd
 import io
-from datetime import datetime, timezone
 from bson import ObjectId
 
-from app.main import app
 from app.models.user_data import UserData
 
 

@@ -4,7 +4,6 @@ Integration tests for API documentation endpoints in main.py
 Tests the OpenAPI spec endpoints, client library downloads,
 integration examples, and Postman collection generation.
 """
-import pytest
 import yaml
 from fastapi.testclient import TestClient
 from app.main import app

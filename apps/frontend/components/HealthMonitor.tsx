@@ -79,6 +79,7 @@ export function HealthMonitor({
     fetchHealthData()
     const interval = setInterval(fetchHealthData, refreshInterval)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl, refreshInterval])
 
   const getStatusIcon = () => {

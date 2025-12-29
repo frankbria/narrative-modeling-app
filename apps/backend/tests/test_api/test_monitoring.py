@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime
 
 from app.models.ml_model import MLModel
-from app.models.api_key import APIKey
 
 
 class TestMonitoringAPI:

@@ -7,11 +7,9 @@ Tests cover all version API endpoints with various scenarios and edge cases.
 
 import pytest
 from httpx import AsyncClient
-from datetime import datetime, timezone
 import uuid
-from typing import List, Dict, Any
 
-from app.models.version import DatasetVersion, TransformationLineage, TransformationStep
+from app.models.version import DatasetVersion
 from app.models.dataset import DatasetMetadata, SchemaField
 from app.services.versioning_service import versioning_service
 

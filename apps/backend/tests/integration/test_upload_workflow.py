@@ -9,10 +9,7 @@ rewritten to use existing fixtures.
 """
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
 import io
-import pandas as pd
 from datetime import datetime, timezone
 from unittest.mock import patch, AsyncMock
 

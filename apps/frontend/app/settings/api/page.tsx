@@ -42,11 +42,8 @@ import {
   AlertCircle,
   Info
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-
 export default function APIKeysPage() {
   const { data: session } = useSession()
-  const router = useRouter()
   const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,10 +63,8 @@ export default function APIKeysPage() {
   const [expiryDays, setExpiryDays] = useState([30])
 
   useEffect(() => {
-    if (session) {
-      fetchAPIKeys()
-    }
-  }, [session])
+    fetchAPIKeys()
+  }, [])
 
   const fetchAPIKeys = async () => {
     try {
@@ -131,7 +126,7 @@ export default function APIKeysPage() {
       await navigator.clipboard.writeText(text)
       setCopiedKey(true)
       setTimeout(() => setCopiedKey(false), 2000)
-    } catch (err) {
+    } catch {
       setError('Failed to copy to clipboard')
     }
   }
@@ -283,7 +278,7 @@ export default function APIKeysPage() {
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    Your API key has been created. Copy it now - you won't be able to see it again!
+                    Your API key has been created. Copy it now - you won&apos;t be able to see it again!
                   </AlertDescription>
                 </Alert>
 

@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import io
 
-from app.models.batch_job import BatchJob, JobStatus, JobType
+from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
 from app.auth.nextauth_auth import get_current_user_id
 

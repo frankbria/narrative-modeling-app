@@ -12,7 +12,6 @@ Uses real MongoDB for integration tests (no mocks).
 """
 
 import pytest
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from beanie import PydanticObjectId
 
@@ -21,8 +20,7 @@ from app.services.transformation_engine.recipe_manager import (
     RecipeCompatibilityChecker,
     TransformationRecipe,
     SharedRecipe,
-    TransformationStep,
-    CompatibilityReport
+    TransformationStep
 )
 
 

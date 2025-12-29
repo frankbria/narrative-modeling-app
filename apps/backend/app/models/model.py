@@ -5,7 +5,7 @@ This model focuses on ML model configuration, training parameters, performance m
 and deployment settings. It consolidates and enhances the existing MLModel and TrainedModel.
 """
 
-from beanie import Document, Indexed, Link
+from beanie import Document, Indexed
 from pydantic import BaseModel, Field, field_validator, HttpUrl
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone

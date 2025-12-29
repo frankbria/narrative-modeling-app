@@ -10,14 +10,12 @@ Tests cover:
 
 import pytest
 import pandas as pd
-import numpy as np
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.services.data_processing import PreviewService
 from app.services.data_processing.quality_assessment import (
     QualityAssessmentService,
     QualityReport,
-    QualityDimension,
 )
 from app.schemas.preview import ImpactStatistics
 

@@ -17,7 +17,7 @@ export default function VerifyRequestPage() {
         </CardHeader>
         <CardContent>
           <p className="text-center text-sm text-muted-foreground">
-            Click the link in the email to sign in. If you don't see it, check your spam folder.
+            Click the link in the email to sign in. If you don&apos;t see it, check your spam folder.
           </p>
         </CardContent>
       </Card>

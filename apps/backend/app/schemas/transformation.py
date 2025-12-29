@@ -6,7 +6,7 @@ using TransformationConfig model.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 # Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH

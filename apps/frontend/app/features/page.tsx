@@ -8,13 +8,24 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Sparkles, Brain, TrendingUp, AlertCircle } from 'lucide-react';
 
+interface Feature {
+  name: string;
+  type: string;
+  importance?: number;
+}
+
+interface AiSuggestions {
+  summary?: string;
+  recommendations?: string[];
+}
+
 export default function FeaturesPage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [features, setFeatures] = useState<any[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.FEATURE_ENGINEERING)) {
@@ -23,6 +34,7 @@ export default function FeaturesPage() {
     }
 
     loadFeatures();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessStage, router]);
 
   const loadFeatures = async () => {
@@ -37,7 +49,7 @@ export default function FeaturesPage() {
       if (response.ok) {
         const data = await response.json();
         setFeatures(data.features);
-        setSelectedFeatures(data.features.map((f: any) => f.name));
+        setSelectedFeatures(data.features.map((f: Feature) => f.name));
         
         // Get AI suggestions
         const suggestionsResponse = await fetch(
@@ -147,7 +159,7 @@ export default function FeaturesPage() {
             </h3>
             <p className="text-sm text-gray-700 mb-3">{aiSuggestions.summary}</p>
             <div className="flex flex-wrap gap-2">
-              {aiSuggestions.recommendations?.map((rec: any, idx: number) => (
+              {aiSuggestions.recommendations?.map((rec: string, idx: number) => (
                 <span
                   key={idx}
                   className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"

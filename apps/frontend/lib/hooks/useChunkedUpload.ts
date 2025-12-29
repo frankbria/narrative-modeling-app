@@ -20,7 +20,7 @@ interface ChunkedUploadOptions {
   chunkSize?: number // Default 5MB
   maxRetries?: number // Default 3
   onProgress?: (progress: ChunkUploadProgress) => void
-  onComplete?: (fileId: string, response: any) => void
+  onComplete?: (fileId: string, response: Record<string, unknown>) => void
   onError?: (error: string) => void
 }
 

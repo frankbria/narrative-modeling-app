@@ -2,26 +2,14 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useWorkflow } from '@/lib/contexts/WorkflowContext';
-import { WORKFLOW_STAGES } from '@/lib/types/workflow';
 
 export default function HomePage() {
   const router = useRouter();
-  const { state } = useWorkflow();
 
   useEffect(() => {
-    // Find the first incomplete stage and redirect there
-    const firstIncompleteStage = WORKFLOW_STAGES.find(
-      stage => !state.completedStages.has(stage.id)
-    );
-
-    if (firstIncompleteStage) {
-      router.push(firstIncompleteStage.route);
-    } else {
-      // All stages complete, go to deployment
-      router.push('/deploy');
-    }
-  }, [router, state.completedStages]);
+    // Redirect to dashboard as the central hub for authenticated users
+    router.push('/dashboard');
+  }, [router]);
 
   return (
     <div className="flex items-center justify-center h-full">

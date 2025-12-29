@@ -8,7 +8,7 @@ export interface FeatureNodeData {
   nodeType: 'column' | 'operation' | 'function' | 'constant' | 'conditional';
   value: string | number | boolean | null;
   label: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   onDelete?: (id: string) => void;
   onUpdate?: (id: string, data: Partial<FeatureNodeData>) => void;
   error?: string;
@@ -35,7 +35,7 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNodeData>) =>
     }
   };
 
-  const handleParameterChange = (key: string, value: any) => {
+  const handleParameterChange = (key: string, value: unknown) => {
     if (data.onUpdate) {
       data.onUpdate(id, {
         parameters: { ...data.parameters, [key]: value },

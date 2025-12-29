@@ -220,7 +220,7 @@ export function ChartControls({
                   <Label className="text-xs">Operator</Label>
                   <Select
                     value={filter.operator}
-                    onValueChange={(value: any) => updateFilter(index, { operator: value })}
+                    onValueChange={(value: ChartFilter['operator']) => updateFilter(index, { operator: value })}
                   >
                     <SelectTrigger>
                       <SelectValue />

@@ -5,9 +5,8 @@ Tests for statistics calculation engine
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
-from app.services.data_processing.statistics_engine import StatisticsEngine, ColumnStatistics
+from app.services.data_processing.statistics_engine import StatisticsEngine
 
 
 @pytest.fixture

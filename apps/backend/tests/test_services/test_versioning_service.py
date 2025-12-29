@@ -14,7 +14,6 @@ from app.services.versioning_service import VersioningService
 from app.services.exceptions import (
     NotFoundError,
     ConflictError,
-    OperationError,
     ValidationError
 )
 

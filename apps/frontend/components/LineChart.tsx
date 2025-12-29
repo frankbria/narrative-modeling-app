@@ -23,7 +23,7 @@ interface LineChartProps {
   data: LineChartData
   width?: number
   height?: number
-  onPointClick?: (data: any) => void
+  onPointClick?: (data: Record<string, unknown>) => void
 }
 
 export function LineChart({ 
@@ -34,12 +34,12 @@ export function LineChart({
 }: LineChartProps) {
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#d084d0']
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number | string; color: string }>; label?: string | number }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border rounded shadow-lg">
           <p className="font-medium">{`${data.xLabel}: ${label}`}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry, index: number) => (
             <p key={index} style={{ color: entry.color }} className="text-sm">
               {`${entry.name}: ${typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}`}
             </p>

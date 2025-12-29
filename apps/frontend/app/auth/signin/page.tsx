@@ -13,7 +13,7 @@ import { Mail, Loader2 } from "lucide-react";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 
 export default function SignInPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('test@narrativeml.com');

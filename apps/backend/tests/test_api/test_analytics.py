@@ -1,13 +1,11 @@
 import pytest
 import json
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 from datetime import datetime, timezone
 from beanie import PydanticObjectId, Link
 from app.models.analytics_result import AnalyticsResult
 from app.models.user_data import UserData, SchemaField
 from app.models.plot import Plot
-from app.config import settings
 from app.auth.nextauth_auth import get_current_user_id
 from app.main import app
 

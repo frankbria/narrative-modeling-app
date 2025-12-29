@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
-import { WORKFLOW_STAGES, WorkflowStage } from '@/lib/types/workflow';
+import { WORKFLOW_STAGES } from '@/lib/types/workflow';
 import { cn } from '@/lib/utils';
 import * as Icons from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -16,7 +16,7 @@ export function WorkflowBar() {
         <nav className="flex items-center justify-between py-4 overflow-x-auto scrollbar-hide">
           <div className="flex items-center space-x-2 min-w-0">
             {WORKFLOW_STAGES.map((stage, index) => {
-              const Icon = Icons[stage.icon as keyof typeof Icons] as React.ComponentType<any>;
+              const Icon = Icons[stage.icon as keyof typeof Icons] as React.ComponentType<{ className?: string }>;
               const isCompleted = state.completedStages.has(stage.id);
               const isCurrent = state.currentStage === stage.id;
               const isAccessible = canAccessStage(stage.id);

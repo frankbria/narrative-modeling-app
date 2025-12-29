@@ -15,8 +15,6 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import boto3
 from botocore.exceptions import ClientError
-import pandas as pd
-import io
 import logging
 
 logger = logging.getLogger(__name__)

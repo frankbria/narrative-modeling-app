@@ -3,7 +3,7 @@ Tests for MCP integration service
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 import httpx
 
 from app.services.mcp_integration import (

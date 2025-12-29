@@ -11,16 +11,9 @@ using TransformationService instead of direct UserData queries.
 """
 
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 import pandas as pd
 
-from app.schemas.transformation import (
-    TransformationPreviewRequest,
-    TransformationApplyRequest,
-    TransformationStepRequest
-)
-from app.models.transformation import DATA_LOSS_THRESHOLD_PERCENT
 
 
 @pytest.mark.integration
@@ -108,7 +101,6 @@ class TestTransformationRoutes:
         """
         # ARRANGE: Create dataset
         from app.services.dataset_service import DatasetService
-        from app.models.dataset import SchemaField
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -247,7 +239,6 @@ class TestTransformationRoutes:
         """
         # ARRANGE: Create dataset
         from app.services.dataset_service import DatasetService
-        from app.models.dataset import SchemaField
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -303,7 +294,6 @@ class TestTransformationRoutes:
         """
         # ARRANGE: Create dataset
         from app.services.dataset_service import DatasetService
-        from app.models.dataset import SchemaField
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -372,7 +362,6 @@ class TestTransformationRoutes:
         # ARRANGE: Create dataset and transformation config
         from app.services.dataset_service import DatasetService
         from app.services.transformation_service import TransformationService
-        from app.models.dataset import SchemaField
 
         dataset_service = DatasetService()
         transform_service = TransformationService()

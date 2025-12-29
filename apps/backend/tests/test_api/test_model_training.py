@@ -8,11 +8,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 import io
-import joblib
 
 from app.models.ml_model import MLModel
-from app.models.user_data import UserData
-from app.services.model_training import AutoMLEngine, ProblemType
+from app.services.model_training import ProblemType
 from app.services.model_training.automl_engine import ModelCandidate, AutoMLResult
 
 
@@ -123,7 +121,6 @@ class TestModelTrainingEndpoints:
     async def test_list_models_endpoint(self, async_authorized_client):
         """Test GET /api/v1/ml/"""
         # Create a proper mock model with spec
-        from app.models.ml_model import MLModel
         mock_model = MagicMock(spec=MLModel)
         mock_model.model_id = "model_123"
         mock_model.name = "Test Model"

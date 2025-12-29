@@ -11,22 +11,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   ArrowLeft, 
   Play, 
-  Pause, 
-  CheckCircle, 
-  TrendingUp, 
+  Pause,
+  CheckCircle,
+  TrendingUp,
   TrendingDown,
-  Users,
   Clock,
   Target,
   RefreshCw
 } from "lucide-react";
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -35,7 +32,7 @@ import {
   Cell
 } from "recharts";
 import { abTestingService, ABTest, ExperimentMetrics } from "@/lib/services/abTesting";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 export default function ExperimentDetailsPage() {
   const params = useParams();
@@ -53,6 +50,7 @@ export default function ExperimentDetailsPage() {
       loadExperiment();
       loadMetrics();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [experimentId]);
 
   const loadExperiment = async () => {
@@ -106,7 +104,7 @@ export default function ExperimentDetailsPage() {
   const handleComplete = async () => {
     try {
       setActionLoading(true);
-      const result = await abTestingService.completeExperiment(experimentId);
+      await abTestingService.completeExperiment(experimentId);
       await loadExperiment();
       setError(""); // Show success message instead
     } catch (error) {
@@ -362,7 +360,7 @@ export default function ExperimentDetailsPage() {
 
         <TabsContent value="variants" className="space-y-4">
           <div className="grid gap-4">
-            {metrics.variants.map((variant, index) => (
+            {metrics.variants.map((variant) => (
               <Card key={variant.variant_id} className={
                 variant.variant_id === experiment.winner_variant_id
                   ? 'border-green-500 bg-green-50 dark:bg-green-900/10'

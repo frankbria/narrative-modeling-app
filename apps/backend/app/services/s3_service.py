@@ -3,8 +3,7 @@ import os
 import tempfile
 import logging
 import re
-from urllib.parse import urlparse, unquote
-from typing import Optional
+from urllib.parse import unquote
 from botocore.exceptions import ClientError
 
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
@@ -67,14 +66,14 @@ def download_file_from_s3(s3_url: str) -> str:
         # SECURITY: Prevent path traversal attacks
         if '..' in object_key or object_key.startswith('/'):
             logger.error(f"Path traversal detected in S3 key: {object_key}")
-            raise ValueError(f"Invalid S3 path: path traversal detected")
+            raise ValueError("Invalid S3 path: path traversal detected")
 
         # SECURITY: Validate path structure (datasets/{user_id}/{filename})
         # Allow flexible structure but prevent malicious patterns
         path_pattern = r'^datasets/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$'
         if not re.match(path_pattern, object_key):
             logger.error(f"Invalid S3 path structure: {object_key}")
-            raise ValueError(f"Invalid S3 path structure: must match 'datasets/{{user_id}}/{{filename}}'")
+            raise ValueError("Invalid S3 path structure: must match 'datasets/{user_id}/{filename}'")
 
         # Initialize S3 client
         s3_client = boto3.client(

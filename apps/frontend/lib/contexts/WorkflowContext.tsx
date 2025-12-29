@@ -9,7 +9,7 @@ import { getAuthToken } from '@/lib/auth-helpers';
 const initialState: WorkflowState = {
   currentStage: WorkflowStage.DATA_LOADING,
   completedStages: new Set<WorkflowStage>(),
-  stageData: {} as Record<WorkflowStage, any>,
+  stageData: {} as Record<WorkflowStage, unknown>,
 };
 
 const WorkflowContext = createContext<WorkflowContextType | undefined>(undefined);
@@ -106,14 +106,14 @@ export function WorkflowProvider({
       }
 
       // Update specific IDs based on stage
-      let updates: Partial<WorkflowState> = {};
-      if (stage === WorkflowStage.DATA_LOADING && data?.datasetId) {
-        updates.datasetId = data.datasetId;
-      } else if (stage === WorkflowStage.MODEL_TRAINING && data?.modelId) {
-        updates.modelId = data.modelId;
-      } else if (stage === WorkflowStage.DEPLOYMENT && data?.deploymentId) {
-        updates.deploymentId = data.deploymentId;
-      }
+      const updates: Partial<WorkflowState> =
+        stage === WorkflowStage.DATA_LOADING && data?.datasetId
+          ? { datasetId: data.datasetId }
+          : stage === WorkflowStage.MODEL_TRAINING && data?.modelId
+          ? { modelId: data.modelId }
+          : stage === WorkflowStage.DEPLOYMENT && data?.deploymentId
+          ? { deploymentId: data.deploymentId }
+          : {};
 
       return {
         ...prev,

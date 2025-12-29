@@ -24,7 +24,7 @@ interface VariantConfig {
 export default function NewExperimentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [models, setModels] = useState<any[]>([]);
+  const [models, setModels] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState("");
 
   // Form state
@@ -48,7 +48,7 @@ export default function NewExperimentPage() {
     try {
       const data = await modelService.listModels();
       // Filter only active models
-      setModels(data.filter((model: any) => model.is_active));
+      setModels(data.filter((model: { is_active: boolean }) => model.is_active));
     } catch (error) {
       console.error("Failed to load models:", error);
       setError("Failed to load models");

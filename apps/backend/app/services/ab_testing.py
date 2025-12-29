@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from scipy import stats
 import numpy as np
 
-from app.models.ab_test import ABTest, Variant, ExperimentStatus, VariantStatus
+from app.models.ab_test import ABTest, Variant, ExperimentStatus
 from app.models.ml_model import MLModel
 from beanie import PydanticObjectId
 

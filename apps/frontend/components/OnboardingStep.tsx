@@ -6,16 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  CheckCircle, 
-  Play, 
-  Skip, 
-  Clock, 
-  BookOpen, 
+import {
+  CheckCircle,
+  Play,
+  Skip,
+  Clock,
+  BookOpen,
   Video,
-  Code,
   ArrowRight,
-  ArrowLeft,
   HelpCircle,
   Target,
   FileText
@@ -41,14 +39,17 @@ interface StepInfo {
 
 interface OnboardingStepProps {
   step: StepInfo;
-  onComplete: (stepId: string, completionData?: any) => void;
+  onComplete: (stepId: string, completionData?: Record<string, unknown>) => void;
   onSkip: (stepId: string) => void;
   isCompleting: boolean;
 }
 
 export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: OnboardingStepProps) {
   const [showDetails, setShowDetails] = useState(false);
-  const [completionData, setCompletionData] = useState<any>({});
+  const [completionData] = useState<Record<string, unknown>>({});
+
+  // Prevent unused variable warning - showDetails will be used for sample data modal
+  void showDetails;
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
@@ -101,7 +102,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <div className="prose max-w-none">
               <h3>Welcome to the Platform! 🚀</h3>
               <p>
-                You're about to discover how easy it is to build machine learning models 
+                You&apos;re about to discover how easy it is to build machine learning models 
                 without any coding experience. Our AI-powered platform will guide you 
                 through every step of the process.
               </p>
@@ -124,7 +125,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <FileText className="h-4 w-4" />
               <AlertDescription>
                 Ready to upload your first dataset? We support CSV files with headers.
-                Don't have data? Try our sample datasets below!
+                Don&apos;t have data? Try our sample datasets below!
               </AlertDescription>
             </Alert>
 
@@ -276,13 +277,13 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <div className="prose max-w-none">
               <h3>Make Predictions 🎯</h3>
               <p>
-                Now that your model is trained, it's time to put it to work! 
+                Now that your model is trained, it&apos;s time to put it to work! 
                 You can make predictions on new data and see your model in action.
               </p>
             </div>
 
             <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">What you'll see:</h4>
+              <h4 className="font-medium text-blue-900 mb-2">What you&apos;ll see:</h4>
               <ul className="text-blue-800 text-sm space-y-1">
                 <li>• Prediction values for your inputs</li>
                 <li>• Confidence scores showing model certainty</li>

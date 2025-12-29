@@ -6,7 +6,6 @@ These tests verify that the preview endpoint properly validates inputs.
 """
 
 import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, patch
 
 
@@ -154,7 +153,6 @@ class TestPreviewAPIValidation:
         - Endpoint returns 200 or error if dataset doesn't exist
         """
         # ARRANGE
-        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
         import pandas as pd
 
         request_body = {
@@ -200,7 +198,6 @@ class TestPreviewAPIValidation:
         - Multiple transformation steps in array are accepted
         """
         # ARRANGE
-        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
         import pandas as pd
 
         request_body = {
@@ -244,7 +241,6 @@ class TestPreviewAPIValidation:
         - sample_size=10 is accepted
         """
         # ARRANGE
-        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
         import pandas as pd
 
         request_body = {
@@ -286,7 +282,6 @@ class TestPreviewAPIValidation:
         - sample_size=1000 is accepted
         """
         # ARRANGE
-        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
         import pandas as pd
 
         request_body = {

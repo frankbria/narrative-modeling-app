@@ -6,12 +6,11 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Backgro
 from typing import Dict, Any, Optional
 import pandas as pd
 import io
-from datetime import datetime
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
-from app.models.user_data import UserData, SchemaField
+from app.models.user_data import UserData
 from app.utils.schema_inference import infer_schema, generate_s3_filename
 from app.utils.s3 import upload_file_to_s3
 import logging

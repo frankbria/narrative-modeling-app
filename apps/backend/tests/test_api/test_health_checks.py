@@ -264,7 +264,6 @@ class TestParallelExecution:
     async def test_parallel_execution_performance(self):
         """Test that health checks run concurrently for better performance"""
         import time
-        from app.api.routes.health import check_mongodb_connection, check_s3_access, check_openai_api
 
         # Mock functions with artificial delay
         async def slow_mongo_check():

@@ -2,9 +2,7 @@
 Tests for Monitoring Service
 """
 
-import pytest
 import time
-from unittest.mock import patch
 from app.services.monitoring import ApplicationMonitor
 
 

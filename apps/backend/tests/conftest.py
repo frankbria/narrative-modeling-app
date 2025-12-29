@@ -1,7 +1,6 @@
 import pytest
-import asyncio
 import pytest_asyncio
-from typing import AsyncGenerator, Generator, List
+from typing import AsyncGenerator
 from datetime import datetime, timezone
 
 # Lazy imports to avoid app initialization for unit tests
@@ -377,7 +376,6 @@ def test_s3_file(s3_client, test_s3_bucket):
         yield None
         return
 
-    import io
 
     # Create test CSV content
     csv_content = """id,value,category
@@ -411,7 +409,6 @@ def test_s3_file(s3_client, test_s3_bucket):
 def mock_openai(monkeypatch):
     """Mock OpenAI API responses for testing."""
     from unittest.mock import AsyncMock, MagicMock
-    import openai
 
     # Mock chat completion response
     mock_chat_response = {
@@ -524,7 +521,7 @@ def mock_dataset_id() -> str:
 @pytest_asyncio.fixture
 async def mock_s3_client():
     """Mock S3 client for versioning service tests."""
-    from unittest.mock import MagicMock, AsyncMock
+    from unittest.mock import MagicMock
     from app.services.versioning_service import versioning_service
 
     # Create mock S3 client
@@ -598,7 +595,6 @@ async def async_authorized_client() -> AsyncGenerator:
 def mock_user_data():
     """Create a mock UserData object that matches the current model schema"""
     from app.models.user_data import UserData, SchemaField
-    from bson import ObjectId
     from datetime import datetime, timezone
     from unittest.mock import MagicMock
     

@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.models.ab_test import ABTest, ExperimentStatus
-from app.models.ml_model import MLModel
 from app.services.ab_testing import ABTestingService
 from app.auth.nextauth_auth import get_current_user_id
 

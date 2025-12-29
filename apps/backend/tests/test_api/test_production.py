@@ -2,10 +2,7 @@
 Tests for production API endpoints
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, timedelta
-import hashlib
-from beanie import PydanticObjectId
+from unittest.mock import Mock, patch
 
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
@@ -148,7 +145,7 @@ class TestProductionAPI:
     async def test_verify_api_key_format(self):
         """Test API key format validation"""
         from app.api.routes.production import verify_api_key
-        from fastapi import HTTPException, Header
+        from fastapi import HTTPException
         
         # Test invalid format
         with pytest.raises(HTTPException) as exc_info:

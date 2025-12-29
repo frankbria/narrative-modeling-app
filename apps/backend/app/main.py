@@ -42,7 +42,6 @@ from app.api.routes import (
     user_data,
     analytics_result,
     plot,
-    trained_model,
     models,
     upload,
     secure_upload,
@@ -68,7 +67,6 @@ from app.api.routes import (
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
-from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.models.user_data import UserData
 from app.models.analytics_result import AnalyticsResult
 from app.models.plot import Plot

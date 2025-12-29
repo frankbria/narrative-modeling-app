@@ -7,25 +7,20 @@ It integrates with the TransformationEngine to execute fixes.
 
 import logging
 import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Any, Tuple
 import pandas as pd
-import numpy as np
-from datetime import datetime, timezone
 
 from app.models.data_issue import (
     DataIssue,
-    DataIssueRecord,
     SuggestedFix,
     AppliedFix,
     IssueType,
-    IssueSeverity,
 )
 from app.models.transformation import TransformationType
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
-    TransformationResult,
 )
-from app.services.exceptions import NotFoundError, ValidationError, OperationError
+from app.services.exceptions import ValidationError, OperationError
 
 logger = logging.getLogger(__name__)
 
