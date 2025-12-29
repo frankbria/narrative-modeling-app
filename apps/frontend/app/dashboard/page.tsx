@@ -22,8 +22,7 @@ import {
   Database,
   CheckCircle,
   AlertCircle,
-  Lock,
-  Loader2
+  Lock
 } from 'lucide-react';
 
 // Icon mapping for workflow stages
