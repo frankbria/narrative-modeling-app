@@ -17,7 +17,7 @@ interface ModelConfig {
 }
 
 export default function ModelPage() {
-  useSession();
+  const { data: session } = useSession();
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [training, setTraining] = useState(false);
@@ -269,9 +269,9 @@ export default function ModelPage() {
               </button>
               <button
                 onClick={handleTrainModel}
-                disabled={!modelConfig.target_column || loading}
+                disabled={!modelConfig.target_column || training}
                 className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
-                  modelConfig.target_column && !loading
+                  modelConfig.target_column && !training
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}

@@ -45,7 +45,7 @@ interface PredictionLog {
 
 export default function ModelMonitoringPage() {
   const params = useParams()
-  useSession()
+  const { data: session } = useSession()
   
   const modelId = params?.id as string
   const [model, setModel] = useState<ModelInfo | null>(null)

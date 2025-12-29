@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export interface BarChartData {
   data: Array<{
@@ -22,7 +22,7 @@ interface BarChartProps {
   width?: number
   height?: number
   orientation?: 'vertical' | 'horizontal'
-  onBarClick?: (data: any) => void
+  onBarClick?: (data: Record<string, unknown>) => void
 }
 
 export function BarChart({ 
@@ -51,7 +51,7 @@ export function BarChart({
     return sortedData.reduce((sum, item) => sum + item.value, 0)
   }, [sortedData])
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; color: string }>; label?: string }) => {
     if (active && payload && payload.length) {
       const value = payload[0].value
       const percentage = ((value / total) * 100).toFixed(1)

@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
 import { useSession } from 'next-auth/react'
-import { getAuthToken } from '@/lib/auth-helpers'
 import { Send, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 

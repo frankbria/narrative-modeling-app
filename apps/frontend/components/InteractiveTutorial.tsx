@@ -49,7 +49,6 @@ export function InteractiveTutorial({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isActive, setIsActive] = useState(autoStart);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
-  const [isHighlighting, setIsHighlighting] = useState(false);
 
   const currentStep = steps[currentStepIndex];
   const progress = (currentStepIndex / steps.length) * 100;
@@ -62,6 +61,7 @@ export function InteractiveTutorial({
     }
 
     return () => removeHighlight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, isActive, currentStep]);
 
   useEffect(() => {
@@ -72,15 +72,14 @@ export function InteractiveTutorial({
 
       return () => clearTimeout(timer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, currentStep]);
 
   const highlightElement = (selector: string) => {
     removeHighlight();
-    
+
     const element = document.querySelector(selector);
     if (element) {
-      setIsHighlighting(true);
-      
       // Create overlay
       const overlay = document.createElement('div');
       overlay.id = 'tutorial-overlay';

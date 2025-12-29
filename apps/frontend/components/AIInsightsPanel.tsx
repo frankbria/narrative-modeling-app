@@ -19,13 +19,6 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
-interface AIInsight {
-  type: string
-  title: string
-  description: string
-  details?: any
-}
-
 interface AISummary {
   overview: string
   issues: string[]
@@ -79,6 +72,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
     if (!summary && !loading) {
       generateSummary()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
 
   if (loading && !summary) {

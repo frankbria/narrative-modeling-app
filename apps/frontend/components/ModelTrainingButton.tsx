@@ -43,7 +43,7 @@ export function ModelTrainingButton({
   const [open, setOpen] = useState(false)
   const [isTraining, setIsTraining] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { data: session } = useSession()
+  useSession()
   const router = useRouter()
 
   // Form state
@@ -96,7 +96,7 @@ export function ModelTrainingButton({
         }
       }
 
-      const response = await ModelService.trainModel(request, token)
+      await ModelService.trainModel(request, token)
       
       // Close dialog and redirect to models page
       setOpen(false)

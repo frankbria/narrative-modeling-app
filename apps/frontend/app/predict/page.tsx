@@ -234,7 +234,7 @@ export default function PredictPage() {
                   <div className="mt-2">
                     <span className="text-sm text-gray-600">Confidence: </span>
                     <span className="font-medium">
-                      {(prediction.confidence * 100).toFixed(1)}%
+                      {(Number(prediction.confidence) * 100).toFixed(1)}%
                     </span>
                   </div>
                 )}

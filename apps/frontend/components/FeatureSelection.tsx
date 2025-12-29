@@ -53,7 +53,7 @@ export function FeatureSelection({
           // Show a notification that previous selection exists
           console.log('Previous feature selection found:', previous.selected_features)
         }
-      } catch (err) {
+      } catch {
         // Silently fail - no previous selection
         console.log('No previous selection found')
       }
@@ -179,7 +179,7 @@ export function FeatureSelection({
       )}
 
       {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'configure' | 'results')}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="configure">Configure Selection</TabsTrigger>
           <TabsTrigger value="results" disabled={!result}>

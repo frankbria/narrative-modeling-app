@@ -42,11 +42,8 @@ import {
   AlertCircle,
   Info
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-
 export default function APIKeysPage() {
-  useSession()
-  useRouter()
+  const { data: session } = useSession()
   const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

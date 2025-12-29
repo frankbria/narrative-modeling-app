@@ -25,27 +25,21 @@ interface Column {
 interface InteractiveVisualizationDashboardProps {
   datasetId: string
   columns: Column[]
-  statistics?: any
 }
 
 export function InteractiveVisualizationDashboard({
   datasetId,
-  columns,
-  statistics
+  columns
 }: InteractiveVisualizationDashboardProps) {
   const [activeChart, setActiveChart] = useState('histogram')
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [filters, setFilters] = useState<ChartFilter[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
+
   // Chart configuration state
   const [showGrid, setShowGrid] = useState(true)
   const [showAnimations, setShowAnimations] = useState(true)
   const [binCount, setBinCount] = useState(50)
-  
-  // Sample data for demonstration
-  const [chartData, setChartData] = useState<any>(null)
 
   const numericColumns = columns.filter(col => col.type === 'numeric')
   const categoricalColumns = columns.filter(col => col.type === 'categorical')
@@ -83,7 +77,7 @@ export function InteractiveVisualizationDashboard({
       case 'line':
         const lineData: LineChartData = {
           data: Array.from({ length: 50 }, (_, i) => {
-            const item: any = { x: i }
+            const item: Record<string, string | number> = { x: i }
             selectedColumns.forEach((col, index) => {
               item[col] = Math.sin(i * 0.1 + index) * 50 + 50 + Math.random() * 10
             })

@@ -6,16 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  CheckCircle, 
-  Play, 
-  Skip, 
-  Clock, 
-  BookOpen, 
+import {
+  CheckCircle,
+  Play,
+  Skip,
+  Clock,
+  BookOpen,
   Video,
-  Code,
   ArrowRight,
-  ArrowLeft,
   HelpCircle,
   Target,
   FileText
@@ -41,14 +39,12 @@ interface StepInfo {
 
 interface OnboardingStepProps {
   step: StepInfo;
-  onComplete: (stepId: string, completionData?: any) => void;
+  onComplete: (stepId: string, completionData?: Record<string, unknown>) => void;
   onSkip: (stepId: string) => void;
   isCompleting: boolean;
 }
 
 export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: OnboardingStepProps) {
-  const [showDetails, setShowDetails] = useState(false);
-  const [completionData, setCompletionData] = useState<any>({});
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {

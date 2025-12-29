@@ -8,13 +8,24 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Sparkles, Brain, TrendingUp, AlertCircle } from 'lucide-react';
 
+interface Feature {
+  name: string;
+  type: string;
+  importance?: number;
+}
+
+interface AiSuggestions {
+  summary?: string;
+  recommendations?: string[];
+}
+
 export default function FeaturesPage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [features, setFeatures] = useState<Record<string, unknown>[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<Record<string, unknown> | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.FEATURE_ENGINEERING)) {
@@ -38,7 +49,7 @@ export default function FeaturesPage() {
       if (response.ok) {
         const data = await response.json();
         setFeatures(data.features);
-        setSelectedFeatures(data.features.map((f: { name: string }) => f.name));
+        setSelectedFeatures(data.features.map((f: Feature) => f.name));
         
         // Get AI suggestions
         const suggestionsResponse = await fetch(

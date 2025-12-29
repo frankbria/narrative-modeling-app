@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react'
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -21,7 +20,7 @@ interface DataPreviewTableProps {
 
 interface PreviewData {
   columns: string[]
-  data: Record<string, any>[]
+  data: Record<string, unknown>[]
   total_rows: number
   offset: number
   rows: number
@@ -100,7 +99,7 @@ export function DataPreviewTable({ datasetId, onExport }: DataPreviewTableProps)
 
   const totalPages = previewData ? Math.ceil(previewData.total_rows / rowsPerPage) : 0
 
-  const formatCellValue = (value: any): string => {
+  const formatCellValue = (value: unknown): string => {
     if (value === null || value === undefined) {
       return '<null>'
     }
