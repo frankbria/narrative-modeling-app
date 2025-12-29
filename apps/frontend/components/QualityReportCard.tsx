@@ -17,10 +17,6 @@ import {
   Zap
 } from 'lucide-react'
 
-interface QualityDimensionScore {
-  dimension: string
-  score: number
-}
 
 interface QualityIssue {
   dimension: string
@@ -60,15 +56,6 @@ const getScoreIcon = (score: number) => {
   if (score >= 0.9) return <CheckCircle2 className="h-5 w-5 text-green-600" />
   if (score >= 0.7) return <AlertCircle className="h-5 w-5 text-yellow-600" />
   return <XCircle className="h-5 w-5 text-red-600" />
-}
-
-const getSeverityColor = (severity: string): string => {
-  switch (severity) {
-    case 'high': return 'destructive'
-    case 'medium': return 'secondary'
-    case 'low': return 'outline'
-    default: return 'outline'
-  }
 }
 
 export function QualityReportCard({ report }: QualityReportProps) {
