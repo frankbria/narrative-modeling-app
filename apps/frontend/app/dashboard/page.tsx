@@ -118,7 +118,18 @@ export default function DashboardPage() {
       }
 
       const data = await response.json();
-      setRecentDatasets(data.datasets || []);
+
+      // Validate API response structure
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid API response format');
+      }
+
+      const datasets = data.datasets;
+      if (datasets !== undefined && !Array.isArray(datasets)) {
+        throw new Error('Invalid datasets format: expected array');
+      }
+
+      setRecentDatasets(datasets || []);
     } catch (error) {
       console.error('Error fetching datasets:', error);
       setDatasetsError('Unable to load datasets');
@@ -144,7 +155,18 @@ export default function DashboardPage() {
       }
 
       const data = await response.json();
-      setRecentModels(data.models || []);
+
+      // Validate API response structure
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid API response format');
+      }
+
+      const models = data.models;
+      if (models !== undefined && !Array.isArray(models)) {
+        throw new Error('Invalid models format: expected array');
+      }
+
+      setRecentModels(models || []);
     } catch (error) {
       console.error('Error fetching models:', error);
       setModelsError('Unable to load models');
