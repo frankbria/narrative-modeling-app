@@ -227,3 +227,17 @@ class MethodComparisonResponse(BaseModel):
         ...,
         description="Recommendations based on comparison"
     )
+
+
+class SelectedFeaturesResponse(BaseModel):
+    """Response schema for retrieving previously selected features."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    selected_features: List[str] = Field(
+        default_factory=list,
+        description="List of previously selected feature names"
+    )
+    has_selection: bool = Field(
+        ...,
+        description="Whether any features have been selected"
+    )

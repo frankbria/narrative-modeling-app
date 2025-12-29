@@ -35,7 +35,8 @@ from app.schemas.feature_selection import (
     RedundancyDetectionRequest,
     RedundancyDetectionResponse,
     MethodComparisonRequest,
-    MethodComparisonResponse
+    MethodComparisonResponse,
+    SelectedFeaturesResponse
 )
 from app.services.dataset_service import DatasetService
 from app.services.model_training.feature_selection_service import (
@@ -1121,7 +1122,10 @@ async def compare_selection_methods(
         )
 
 
-@router.get("/datasets/{dataset_id}/features/selected")
+@router.get(
+    "/datasets/{dataset_id}/features/selected",
+    response_model=SelectedFeaturesResponse
+)
 async def get_selected_features(
     dataset_id: str = Path(..., description="Dataset ID"),
     current_user_id: str = Depends(get_current_user_id)
@@ -1137,26 +1141,37 @@ async def get_selected_features(
 
     Returns:
         Previously selected features or empty list
+
+    Raises:
+        HTTPException: 404 if dataset not found, 403 if not authorized
     """
-    try:
-        logger.info(f"Retrieving selected features for dataset {dataset_id}")
+    logger.info(f"Retrieving selected features for dataset {dataset_id}")
 
-        # Get dataset metadata
-        dataset_service = DatasetService()
-        dataset = await dataset_service.get_by_id(dataset_id, current_user_id)
+    # Get dataset
+    dataset_service = DatasetService()
+    dataset = await dataset_service.get_by_id(dataset_id, current_user_id)
 
-        # Check if feature selection results are stored in metadata
-        selected_features = dataset.metadata.get("selected_features", []) if hasattr(dataset, "metadata") else []
-
-        return {
-            "dataset_id": dataset_id,
-            "selected_features": selected_features,
-            "has_selection": len(selected_features) > 0
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to retrieve selected features for dataset {dataset_id}: {e}")
+    # Check if dataset exists
+    if dataset is None:
+        logger.warning(f"Dataset {dataset_id} not found")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve selected features: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
         )
+
+    # Verify ownership
+    if dataset.user_id != current_user_id:
+        logger.warning(f"User {current_user_id} unauthorized to access dataset {dataset_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this dataset"
+        )
+
+    # Check if feature selection results are stored in metadata
+    selected_features = dataset.metadata.get("selected_features", []) if hasattr(dataset, "metadata") else []
+
+    return SelectedFeaturesResponse(
+        dataset_id=dataset_id,
+        selected_features=selected_features,
+        has_selection=len(selected_features) > 0
+    )
