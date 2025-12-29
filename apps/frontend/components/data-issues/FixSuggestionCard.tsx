@@ -42,7 +42,6 @@ interface FixSuggestionCardProps {
 }
 
 export function FixSuggestionCard({
-  issue,
   fix,
   onPreview,
   onApply,

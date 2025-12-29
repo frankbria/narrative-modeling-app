@@ -3,7 +3,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, {
   Node,
-  Edge,
   Controls,
   Background,
   MiniMap,
@@ -23,7 +22,7 @@ import FunctionPalette from './FunctionPalette';
 import FeatureNode from './FeatureNode';
 import FeaturePreview from './FeaturePreview';
 import FeatureMetadata from './FeatureMetadata';
-import { Play, Save, Trash2, Eye } from 'lucide-react';
+import { Save, Trash2, Eye } from 'lucide-react';
 
 interface Column {
   name: string;
@@ -37,7 +36,7 @@ interface FeatureBuilderProps {
   columns: Column[];
   onSave?: (featureId: string) => void;
   onClose?: () => void;
-  initialFeature?: any;
+  initialFeature?: Record<string, unknown>;
 }
 
 const nodeTypes: NodeTypes = {
@@ -57,10 +56,10 @@ export default function FeatureBuilder({
 }: FeatureBuilderProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [preview, setPreview] = useState<any>(null);
+  const [_selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [validationResult, setValidationResult] = useState<any>(null);
+  const [validationResult, setValidationResult] = useState<Record<string, unknown> | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
   const [featureName, setFeatureName] = useState('');
   const [featureDescription, setFeatureDescription] = useState('');
@@ -71,12 +70,13 @@ export default function FeatureBuilder({
   // Load initial feature if editing
   useEffect(() => {
     if (initialFeature) {
-      setFeatureName(initialFeature.name);
-      setFeatureDescription(initialFeature.description || '');
-      setFeatureTags(initialFeature.tags || []);
-      if (initialFeature.canvas_state) {
-        setNodes(initialFeature.canvas_state.nodes || []);
-        setEdges(initialFeature.canvas_state.edges || []);
+      setFeatureName(String(initialFeature.name || ''));
+      setFeatureDescription(String(initialFeature.description || ''));
+      setFeatureTags((initialFeature.tags as string[]) || []);
+      const canvasState = initialFeature.canvas_state as Record<string, unknown> | undefined;
+      if (canvasState) {
+        setNodes((canvasState.nodes as Node[]) || []);
+        setEdges((canvasState.edges as never[]) || []);
       }
     }
   }, [initialFeature, setNodes, setEdges]);
