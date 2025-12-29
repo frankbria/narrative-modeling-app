@@ -70,12 +70,18 @@ class FeatureSelectionService:
     def _generate_cache_key(
         self,
         dataset_id: str,
+        user_id: str,
         method: SelectionMethod,
         target_column: str,
         config: FeatureSelectionConfig,
         prefix: str = "feature_selection"
     ) -> str:
-        """Generate cache key for feature selection results"""
+        """
+        Generate cache key for feature selection results.
+
+        SECURITY: user_id MUST be included to prevent cache poisoning attacks
+        where one user could access another user's cached results.
+        """
         # Create a deterministic hash of the configuration
         config_dict = {
             "method": method,
@@ -91,7 +97,8 @@ class FeatureSelectionService:
         config_str = json.dumps(config_dict, sort_keys=True)
         config_hash = hashlib.md5(config_str.encode()).hexdigest()[:12]
 
-        return f"{prefix}:{dataset_id}:{method}:{config_hash}"
+        # CRITICAL: Include user_id to prevent authorization bypass via cache poisoning
+        return f"{prefix}:{dataset_id}:{user_id}:{method}:{config_hash}"
 
     async def select_features(
         self,
@@ -114,9 +121,9 @@ class FeatureSelectionService:
         Returns:
             Dictionary with selection results
         """
-        # Check cache first
+        # Check cache first (with user_id to prevent cache poisoning)
         cache_key = self._generate_cache_key(
-            dataset_id, method, target_column, config
+            dataset_id, user_id, method, target_column, config
         )
 
         cached_result = await cache_service.get(cache_key)

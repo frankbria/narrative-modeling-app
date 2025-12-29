@@ -440,9 +440,10 @@ class TestFeatureSelectionService:
     # ========== Test Caching ==========
 
     def test_generate_cache_key(self, service, config):
-        """Test cache key generation"""
+        """Test cache key generation and security isolation"""
         cache_key1 = service._generate_cache_key(
             dataset_id="dataset123",
+            user_id="user_A",
             method="correlation",
             target_column="target",
             config=config
@@ -451,6 +452,7 @@ class TestFeatureSelectionService:
         # Same parameters should generate same key
         cache_key2 = service._generate_cache_key(
             dataset_id="dataset123",
+            user_id="user_A",
             method="correlation",
             target_column="target",
             config=config
@@ -468,12 +470,25 @@ class TestFeatureSelectionService:
 
         cache_key3 = service._generate_cache_key(
             dataset_id="dataset123",
+            user_id="user_A",
             method="correlation",
             target_column="target",
             config=config2
         )
 
         assert cache_key1 != cache_key3
+
+        # SECURITY: Different user_ids must generate different keys
+        # to prevent cache poisoning/authorization bypass
+        cache_key4 = service._generate_cache_key(
+            dataset_id="dataset123",
+            user_id="user_B",  # Different user
+            method="correlation",
+            target_column="target",
+            config=config
+        )
+
+        assert cache_key1 != cache_key4, "Cache keys must differ by user_id to prevent authorization bypass"
 
     # ========== Test End-to-End Selection ==========
 
