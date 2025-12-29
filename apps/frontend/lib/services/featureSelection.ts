@@ -135,6 +135,21 @@ export class FeatureSelectionService {
   }
 
   /**
+   * Handle API error responses safely
+   * @param response - Fetch Response object
+   * @param defaultMessage - Default error message if parsing fails
+   */
+  private static async handleErrorResponse(response: Response, defaultMessage: string): Promise<never> {
+    try {
+      const error = await response.json()
+      throw new Error(error.detail || defaultMessage)
+    } catch (parseError) {
+      // If JSON parsing fails, return a generic error with status code
+      throw new Error(`${defaultMessage} (HTTP ${response.status})`)
+    }
+  }
+
+  /**
    * Run feature selection on a dataset
    *
    * Calls: POST /api/datasets/{datasetId}/features/select
@@ -159,8 +174,7 @@ export class FeatureSelectionService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Feature selection failed')
+      await this.handleErrorResponse(response, 'Feature selection failed')
     }
 
     return response.json()
@@ -191,8 +205,7 @@ export class FeatureSelectionService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Importance calculation failed')
+      await this.handleErrorResponse(response, 'Importance calculation failed')
     }
 
     return response.json()
@@ -223,8 +236,7 @@ export class FeatureSelectionService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Redundancy detection failed')
+      await this.handleErrorResponse(response, 'Redundancy detection failed')
     }
 
     return response.json()
@@ -255,8 +267,7 @@ export class FeatureSelectionService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Method comparison failed')
+      await this.handleErrorResponse(response, 'Method comparison failed')
     }
 
     return response.json()
@@ -284,8 +295,7 @@ export class FeatureSelectionService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Failed to retrieve selected features')
+      await this.handleErrorResponse(response, 'Failed to retrieve selected features')
     }
 
     return response.json()

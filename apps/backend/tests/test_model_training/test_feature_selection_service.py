@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.model_training.feature_selection_service import (
     FeatureSelectionService,
@@ -564,7 +564,7 @@ class TestFeatureSelectionService:
             "explanation": "Cached result",
             "metadata": {},
             "execution_time_ms": 100.0,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc)
         }
 
         mock_cache.get = AsyncMock(return_value=cached_result)

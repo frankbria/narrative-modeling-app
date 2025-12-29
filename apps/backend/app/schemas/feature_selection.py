@@ -7,7 +7,7 @@ supporting multiple selection algorithms with importance scoring.
 
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # Enums for selection methods
@@ -118,7 +118,7 @@ class FeatureSelectionResult(BaseModel):
         description="Execution time in milliseconds"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp of selection"
     )
 

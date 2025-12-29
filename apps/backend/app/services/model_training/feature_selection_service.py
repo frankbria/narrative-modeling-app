@@ -14,7 +14,7 @@ import hashlib
 import json
 import asyncio
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sklearn.feature_selection import (
     mutual_info_classif,
@@ -189,7 +189,7 @@ class FeatureSelectionService:
                     "target_column": target_column
                 },
                 "execution_time_ms": execution_time,
-                "created_at": datetime.utcnow()
+                "created_at": datetime.now(timezone.utc)
             }
 
             # Cache the result
@@ -268,14 +268,14 @@ class FeatureSelectionService:
                 correlation = corr_matrix.iloc[i, j]
 
                 if correlation > threshold:
-                    # Determine which to keep (prefer lower variance)
+                    # Determine which to keep (prefer higher variance - more information)
                     var1 = X[feature1].var()
                     var2 = X[feature2].var()
 
-                    if var1 < var2:
-                        recommendation = f"Consider removing '{feature2}' (higher variance)"
+                    if var1 > var2:
+                        recommendation = f"Consider removing '{feature2}' (lower variance)"
                     else:
-                        recommendation = f"Consider removing '{feature1}' (higher variance)"
+                        recommendation = f"Consider removing '{feature1}' (lower variance)"
 
                     redundant_pairs.append(RedundantPair(
                         feature1=feature1,
@@ -689,6 +689,9 @@ class FeatureSelectionService:
             return {}
 
         values = np.array(list(scores.values()))
+
+        # Handle NaN, Inf, and -Inf values that may come from correlation calculations
+        values = np.nan_to_num(values, nan=0.0, posinf=1.0, neginf=0.0)
 
         # Handle edge case where all scores are the same
         if values.max() == values.min():
