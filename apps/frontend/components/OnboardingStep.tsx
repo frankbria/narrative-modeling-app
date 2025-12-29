@@ -45,6 +45,11 @@ interface OnboardingStepProps {
 }
 
 export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: OnboardingStepProps) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [completionData] = useState<Record<string, unknown>>({});
+
+  // Prevent unused variable warning - showDetails will be used for sample data modal
+  void showDetails;
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
