@@ -12,7 +12,7 @@ export default function DeployPage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [deployment, setDeployment] = useState<any>(null);
+  const [deployment, setDeployment] = useState<Record<string, unknown> | null>(null);
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'deployed'>('idle');
 
   useEffect(() => {
@@ -28,6 +28,7 @@ export default function DeployPage() {
 
     // Check if already deployed
     checkDeploymentStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessStage, router, state.modelId]);
 
   const checkDeploymentStatus = async () => {
@@ -226,7 +227,7 @@ export default function DeployPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Keep this key secure. You won't be able to see it again.
+                Keep this key secure. You won&apos;t be able to see it again.
               </p>
             </div>
 

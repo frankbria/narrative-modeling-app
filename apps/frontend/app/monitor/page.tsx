@@ -20,11 +20,10 @@ import {
 import { 
   Activity, 
   Loader2, 
-  Brain, 
-  Key, 
+  Brain,
+  Key,
   TrendingUp,
   Clock,
-  BarChart3,
   AlertCircle,
   Zap
 } from 'lucide-react'

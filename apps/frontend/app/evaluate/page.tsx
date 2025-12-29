@@ -12,7 +12,7 @@ export default function EvaluatePage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<any>(null);
+  const [evaluation, setEvaluation] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.MODEL_EVALUATION)) {
@@ -26,6 +26,7 @@ export default function EvaluatePage() {
     }
 
     loadEvaluation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessStage, router, state.modelId]);
 
   const loadEvaluation = async () => {
@@ -91,7 +92,7 @@ export default function EvaluatePage() {
 
         {/* Performance Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {Object.entries(evaluation.metrics || {}).map(([key, value]: [string, any]) => (
+          {Object.entries(evaluation.metrics || {}).map(([key, value]: [string, unknown]) => (
             <div key={key} className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">
@@ -123,9 +124,9 @@ export default function EvaluatePage() {
             </h3>
             <div className="space-y-2">
               {evaluation.feature_importance
-                .sort((a: any, b: any) => b.importance - a.importance)
+                .sort((a: { importance: number }, b: { importance: number }) => b.importance - a.importance)
                 .slice(0, 10)
-                .map((feature: any) => (
+                .map((feature: { name: string; importance: number }) => (
                   <div key={feature.name} className="flex items-center gap-2">
                     <span className="text-sm text-gray-600 w-32 truncate">
                       {feature.name}

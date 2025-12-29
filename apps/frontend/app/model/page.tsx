@@ -13,14 +13,13 @@ interface ModelConfig {
   problem_type: 'classification' | 'regression';
   target_column: string;
   algorithm: string;
-  hyperparameters: Record<string, any>;
+  hyperparameters: Record<string, unknown>;
 }
 
 export default function ModelPage() {
-  const { data: session } = useSession();
+  useSession();
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     problem_type: 'classification',
@@ -43,6 +42,7 @@ export default function ModelPage() {
     }
 
     loadDatasetColumns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessStage, router, state.datasetId]);
 
   const loadDatasetColumns = async () => {
@@ -56,7 +56,7 @@ export default function ModelPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setColumns(data.columns.map((col: any) => col.name));
+        setColumns(data.columns.map((col: { name: string }) => col.name));
       }
     } catch (error) {
       console.error('Failed to load columns:', error);

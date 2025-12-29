@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -114,7 +113,7 @@ export default function OnboardingPage() {
     }
   };
 
-  const completeStep = async (stepId: string, completionData?: any) => {
+  const completeStep = async (stepId: string, completionData?: Record<string, unknown>) => {
     try {
       setCompletingStep(true);
       
@@ -199,7 +198,7 @@ export default function OnboardingPage() {
               <Trophy className="h-16 w-16 text-yellow-500" />
             </div>
             <CardTitle className="text-2xl">Congratulations! 🎉</CardTitle>
-            <CardDescription>You've completed the onboarding tutorial</CardDescription>
+            <CardDescription>You&apos;ve completed the onboarding tutorial</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-3 gap-4 text-center">
@@ -257,7 +256,7 @@ export default function OnboardingPage() {
         <Alert className="mb-6 border-green-200 bg-green-50">
           <Star className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
-            🎉 Amazing! You've earned new achievements! Keep going!
+            🎉 Amazing! You&apos;ve earned new achievements! Keep going!
           </AlertDescription>
         </Alert>
       )}
@@ -372,7 +371,7 @@ export default function OnboardingPage() {
                   
                   <TabsContent value="overview" className="space-y-4">
                     <div className="prose max-w-none">
-                      <h3>What you'll learn:</h3>
+                      <h3>What you&apos;ll learn:</h3>
                       <ul>
                         <li>How to upload and validate your data</li>
                         <li>Understanding data quality and preparation</li>

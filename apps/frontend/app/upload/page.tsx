@@ -97,7 +97,7 @@ export default function UploadPage() {
       // Handle successful chunked upload
       const previewDataWithPII: PreviewData = {
         headers: Object.keys(response.preview?.[0] || {}),
-        previewData: response.preview?.slice(0, 10).map((row: any) => 
+        previewData: response.preview?.slice(0, 10).map((row: Record<string, unknown>) =>
           Object.values(row)
         ) || [],
         fileName: response.filename || file?.name || '',
@@ -224,7 +224,7 @@ export default function UploadPage() {
         // Successful upload, show preview
         const previewDataWithPII: PreviewData = {
           headers: Object.keys(responseData.preview?.[0] || {}),
-          previewData: responseData.preview?.slice(0, 10).map((row: any) => 
+          previewData: responseData.preview?.slice(0, 10).map((row: Record<string, unknown>) =>
             Object.values(row)
           ) || [],
           fileName: responseData.filename || file.name,
@@ -288,7 +288,7 @@ export default function UploadPage() {
       // Show success and preview
       const previewDataWithPII: PreviewData = {
         headers: Object.keys(result.preview?.[0] || {}),
-        previewData: result.preview?.slice(0, 10).map((row: any) => 
+        previewData: result.preview?.slice(0, 10).map((row: Record<string, unknown>) =>
           Object.values(row)
         ) || [],
         fileName: result.filename || file.name,
@@ -383,7 +383,7 @@ export default function UploadPage() {
               <div>
                 <h3 className="font-bold text-amber-800 text-lg">Sensitive Data Detected</h3>
                 <p className="text-amber-700">
-                  We've detected potentially sensitive information in your file that may require special handling.
+                  We&apos;ve detected potentially sensitive information in your file that may require special handling.
                 </p>
               </div>
             </div>
@@ -568,7 +568,7 @@ export default function UploadPage() {
             </div>
             <p className="text-sm text-orange-700">
               Your file is {formatFileSize(file.size)}, which exceeds our {formatFileSize(CHUNKED_UPLOAD_THRESHOLD)} threshold. 
-              We'll use chunked upload for optimal performance and reliability.
+              We&apos;ll use chunked upload for optimal performance and reliability.
             </p>
             <ul className="text-xs text-orange-600 mt-2 space-y-1">
               <li>• Upload can be resumed if interrupted</li>
@@ -674,8 +674,8 @@ export default function UploadPage() {
           </h3>
           <ol className="text-sm text-gray-700 space-y-1 list-decimal list-inside">
             <li>Your data will be securely uploaded and processed</li>
-            <li>We'll automatically analyze and profile your data</li>
-            <li>You'll be guided through the 8-stage modeling workflow</li>
+            <li>We&apos;ll automatically analyze and profile your data</li>
+            <li>You&apos;ll be guided through the 8-stage modeling workflow</li>
             <li>AI assistance will be available at every step</li>
           </ol>
         </div>

@@ -21,7 +21,7 @@ interface Dataset {
   filename: string;
   num_rows: number;
   num_columns: number;
-  schema?: any;
+  schema?: Record<string, unknown>;
   file_id?: string;
 }
 
@@ -43,8 +43,8 @@ interface Dataset {
 export default function DatasetPreparePage() {
   const params = useParams();
   const router = useRouter();
-  const { data: session } = useSession();
-  const { state, completeStage, canAccessStage } = useWorkflow();
+  useSession();
+  const { completeStage, canAccessStage } = useWorkflow();
 
   const datasetId = params?.id as string;
   const [dataset, setDataset] = useState<Dataset | null>(null);
@@ -57,7 +57,7 @@ export default function DatasetPreparePage() {
   // Edit dialog state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
-  const [transformationTypes, setTransformationTypes] = useState<any[]>([]);
+  const [transformationTypes, setTransformationTypes] = useState<Record<string, unknown>[]>([]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -186,7 +186,7 @@ export default function DatasetPreparePage() {
           if (columnsResponse.ok) {
             const columnsData = await columnsResponse.json();
             if (columnsData.columns && Array.isArray(columnsData.columns)) {
-              const columnNames = columnsData.columns.map((col: any) => col.name);
+              const columnNames = columnsData.columns.map((col: { name: string }) => col.name);
               setAvailableColumns(columnNames);
             }
           }

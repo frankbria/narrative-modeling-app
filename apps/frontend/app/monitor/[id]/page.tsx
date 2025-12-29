@@ -27,19 +27,17 @@ import {
   Clock,
   Zap,
   AlertCircle,
-  BarChart3,
   PieChart,
   Target,
   Brain
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 // Chart imports would go here when implementing charts
 
 interface PredictionLog {
   prediction_id: string
   timestamp: string
-  prediction: any
+  prediction: unknown
   probability?: number
   latency_ms: number
   api_key_id?: string
@@ -47,23 +45,23 @@ interface PredictionLog {
 
 export default function ModelMonitoringPage() {
   const params = useParams()
-  const { data: session } = useSession()
-  const router = useRouter()
+  useSession()
   
   const modelId = params?.id as string
   const [model, setModel] = useState<ModelInfo | null>(null)
   const [metrics, setMetrics] = useState<ModelMetrics | null>(null)
   const [predictionLogs, setPredictionLogs] = useState<PredictionLog[]>([])
-  const [distribution, setDistribution] = useState<any>(null)
+  const [distribution, setDistribution] = useState<Record<string, unknown> | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [timeWindow, setTimeWindow] = useState('24')
 
   useEffect(() => {
-    if (session && modelId) {
+    if (modelId) {
       fetchModelData()
     }
-  }, [session, modelId, timeWindow])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, timeWindow])
 
   const fetchModelData = async () => {
     try {
@@ -94,7 +92,7 @@ export default function ModelMonitoringPage() {
     return `${(ms / 1000).toFixed(2)}s`
   }
 
-  const formatPrediction = (prediction: any) => {
+  const formatPrediction = (prediction: unknown) => {
     if (typeof prediction === 'number') {
       return prediction.toFixed(4)
     }

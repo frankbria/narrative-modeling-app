@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
 import Link from 'next/link'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, ArrowLeft, BarChart3, Database, Brain, CheckCircle2, TrendingUp } from 'lucide-react'
@@ -19,23 +19,22 @@ import { StatisticsDashboard } from '@/components/StatisticsDashboard'
 import { QualityReportCard } from '@/components/QualityReportCard'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
 import { InteractiveVisualizationDashboard } from '@/components/InteractiveVisualizationDashboard'
-import { ModelTrainingButton } from '@/components/ModelTrainingButton'
 
 interface ProcessedDataset {
   id: string
   filename: string
   is_processed: boolean
-  schema: any
-  statistics: any
-  quality_report: any
-  data_preview: any[]
+  schema: Record<string, unknown>
+  statistics: Record<string, unknown>
+  quality_report: Record<string, unknown>
+  data_preview: Record<string, unknown>[]
   processed_at: string
 }
 
 export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
-  const { data: session } = useSession()
+  useSession()
   const { state, completeStage, canAccessStage, loadWorkflow } = useWorkflow()
   const [dataset, setDataset] = useState<ProcessedDataset | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -123,6 +122,7 @@ export default function DatasetAnalysisPage() {
       isMounted = false
       abortController.abort()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params?.id, apiUrl])
 
   const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
@@ -409,7 +409,7 @@ export default function DatasetAnalysisPage() {
             {dataset.schema?.columns ? (
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={dataset.schema.columns.map((col: any) => ({
+                columns={dataset.schema.columns.map((col: { name: string; type: string; unique_count?: number }) => ({
                   name: col.name,
                   type: col.type === 'int64' || col.type === 'float64' || col.type === 'number' ? 'numeric' :
                         col.type === 'object' || col.type === 'string' ? 'categorical' :
