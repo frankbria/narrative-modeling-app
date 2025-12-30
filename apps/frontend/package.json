@@ -61,7 +61,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
+    "@eslint/eslintrc": "^3.3.3",
     "@faker-js/faker": "^10.1.0",
     "@playwright/test": "^1.56.1",
     "@radix-ui/react-progress": "^1.1.8",
