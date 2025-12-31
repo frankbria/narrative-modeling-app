@@ -665,3 +665,42 @@ class FeatureEngineer:
             df[name] = df[col1] * df[col2]
 
         return df
+
+    async def apply_stored_feature(
+        self,
+        df: pd.DataFrame,
+        feature: 'StoredFeature'
+    ) -> pd.DataFrame:
+        """
+        Apply a stored feature definition to a dataframe.
+
+        Args:
+            df: Input dataframe
+            feature: StoredFeature instance from feature store
+
+        Returns:
+            DataFrame with new feature column added
+
+        Raises:
+            ValueError: If feature cannot be applied
+        """
+        try:
+            # Execute the feature definition code
+            # Note: In production, this should use a safe execution environment
+            # For now, we'll use exec with limited scope
+            local_vars = {'df': df, 'pd': pd, 'np': np}
+            exec(feature.definition_code, {}, local_vars)
+
+            # The definition_code should have modified df in place
+            result_df = local_vars['df']
+
+            logger.info(
+                f"Applied stored feature {feature.feature_id} - "
+                f"created column: {feature.output_column_name}"
+            )
+
+            return result_df
+
+        except Exception as e:
+            logger.error(f"Error applying stored feature {feature.feature_id}: {str(e)}")
+            raise ValueError(f"Failed to apply feature: {str(e)}")
