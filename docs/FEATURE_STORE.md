@@ -81,7 +81,7 @@ FeatureCollection
 
 ### Create Feature
 
-**POST** `/api/v1/features/`
+**POST** `/api/v1/feature-store/features/`
 
 Creates a new feature definition and stores it in the feature store.
 
@@ -116,7 +116,7 @@ Creates a new feature definition and stores it in the feature store.
 
 ### List Features
 
-**GET** `/api/v1/features/`
+**GET** `/api/v1/feature-store/features/`
 
 Retrieve all features accessible to the current user.
 
@@ -144,7 +144,7 @@ Retrieve all features accessible to the current user.
 
 ### Get Feature
 
-**GET** `/api/v1/features/{feature_id}`
+**GET** `/api/v1/feature-store/features/{feature_id}`
 
 Retrieve a specific feature by ID.
 
@@ -171,7 +171,7 @@ Retrieve a specific feature by ID.
 
 ### Update Feature
 
-**PUT** `/api/v1/features/{feature_id}`
+**PUT** `/api/v1/feature-store/features/{feature_id}`
 
 Update an existing feature. Creates a new version automatically.
 
@@ -194,7 +194,7 @@ Update an existing feature. Creates a new version automatically.
 
 ### Delete Feature
 
-**DELETE** `/api/v1/features/{feature_id}`
+**DELETE** `/api/v1/feature-store/features/{feature_id}`
 
 Delete a feature and all its versions.
 
@@ -202,7 +202,7 @@ Delete a feature and all its versions.
 
 ### Apply Feature
 
-**POST** `/api/v1/features/{feature_id}/apply`
+**POST** `/api/v1/feature-store/features/{feature_id}/apply`
 
 Apply a feature transformation to a dataset.
 
@@ -226,7 +226,7 @@ Apply a feature transformation to a dataset.
 
 ### Feature Versions
 
-**GET** `/api/v1/features/{feature_id}/versions`
+**GET** `/api/v1/feature-store/features/{feature_id}/versions`
 
 List all versions of a feature.
 
@@ -250,7 +250,7 @@ List all versions of a feature.
 
 ### Feature Collections
 
-**POST** `/api/v1/features/collections`
+**POST** `/api/v1/feature-store/collections`
 
 Create a feature collection.
 

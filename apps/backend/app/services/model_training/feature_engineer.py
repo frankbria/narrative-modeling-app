@@ -2,7 +2,7 @@
 Feature engineering for AutoML
 """
 
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, TYPE_CHECKING
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import (
@@ -15,6 +15,9 @@ from sklearn.feature_selection import (
 )
 from dataclasses import dataclass
 import logging
+
+if TYPE_CHECKING:
+    from app.models.feature_store import StoredFeature
 
 logger = logging.getLogger(__name__)
 
@@ -725,7 +728,7 @@ class FeatureEngineer:
 
             # Execute the feature definition code with restricted scope
             # Note: This uses exec() which is inherently unsafe.
-            # TODO: Replace with a proper sandboxed execution environment or DSL
+            # See GH-132 for sandboxed execution implementation
             local_vars = {'df': df, 'pd': pd, 'np': np}
             exec(feature.definition_code, {}, local_vars)
 

@@ -48,13 +48,25 @@ class Settings(BaseModel):
     def validate_no_dummy_credentials(cls, v: str, info) -> str:
         """Validate that dummy/test credentials aren't used in production."""
         dummy_patterns = ["test-", "dummy-", "sk-test-", "placeholder"]
+        production_envs = {"production", "prod", "staging", "live", "release"}
         env = os.getenv("NODE_ENV", os.getenv("ENVIRONMENT", "development"))
 
-        if env.lower() == "production":
+        # Check for empty/blank credentials in production-like environments
+        if v is None or v.strip() == "":
+            if env.lower() in production_envs:
+                raise ValueError(
+                    f"Empty or blank credential for {info.field_name} in {env} environment. "
+                    f"Please set real credentials."
+                )
+            return v
+
+        # Check for dummy patterns in production-like environments
+        is_production_like = env.lower() in production_envs
+        if is_production_like:
             for pattern in dummy_patterns:
                 if pattern in v.lower():
                     raise ValueError(
-                        f"Dummy credential detected in production environment for {info.field_name}. "
+                        f"Dummy credential detected in production-like environment ({env}) for {info.field_name}. "
                         f"Please set real credentials."
                     )
         elif any(pattern in v.lower() for pattern in dummy_patterns):
