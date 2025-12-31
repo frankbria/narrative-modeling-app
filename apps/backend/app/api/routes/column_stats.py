@@ -90,10 +90,10 @@ async def get_column_stats(
                     df = pd.read_csv(
                         io.BytesIO(file_content), sep=None, engine="python"
                     )
-                except:
+                except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError) as e:
                     raise HTTPException(
                         status_code=400,
-                        detail="Unsupported file format. Please upload a CSV or Excel file.",
+                        detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
                     )
 
             # Calculate and store column stats
@@ -176,10 +176,10 @@ async def recalculate_column_stats(
             # Try to read as CSV with different settings
             try:
                 df = pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
-            except:
+            except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError) as e:
                 raise HTTPException(
                     status_code=400,
-                    detail="Unsupported file format. Please upload a CSV or Excel file.",
+                    detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
                 )
 
         # Calculate and store column stats

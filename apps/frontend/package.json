@@ -69,6 +69,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.26",
     "@types/node-fetch": "^2.6.12",
     "@types/react": "^19.2.6",

@@ -44,7 +44,7 @@ async def get_dataframe_from_s3(s3_url: str, nrows: Optional[int] = None) -> pd.
             # Try to infer format
             try:
                 df = pd.read_csv(temp_file_path, nrows=nrows)
-            except:
+            except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError):
                 df = pd.read_parquet(temp_file_path)
                 if nrows:
                     df = df.head(nrows)
@@ -78,16 +78,19 @@ async def upload_dataframe_to_s3(df: pd.DataFrame, s3_key: str) -> str:
         
         # Upload to S3
         with open(temp_path, 'rb') as file:
-            s3_url = upload_file_to_s3(
-                file=file,
-                filename=os.path.basename(s3_key),
-                file_path=s3_key,
-                user_id=s3_key.split('/')[1] if '/' in s3_key else 'default'
+            file_content = file.read()
+            success, s3_url = upload_file_to_s3(
+                file_content=file_content,
+                s3_filename=s3_key,
+                content_type='application/octet-stream'
             )
-        
+
         # Clean up temp file
         os.unlink(temp_path)
-        
+
+        if not success or s3_url is None:
+            raise Exception("Failed to upload dataframe to S3")
+
         return s3_url
         
     except Exception as e:

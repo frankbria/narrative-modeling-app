@@ -6,11 +6,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params in Next.js 15
+    const { id } = await params;
+
     // Validate ID parameter
-    if (!params.id || params.id === 'undefined') {
+    if (!id || id === 'undefined') {
       return NextResponse.json(
         { error: 'Invalid dataset ID' },
         { status: 400 }
@@ -44,7 +47,7 @@ export async function GET(
 
     // Make request to backend
     const response = await fetch(
-      `${API_URL}/data/${params.id}/preview?rows=${rows}&offset=${offset}`,
+      `${API_URL}/data/${id}/preview?rows=${rows}&offset=${offset}`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken || 'default'}`,

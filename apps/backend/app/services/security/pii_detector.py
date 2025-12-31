@@ -4,7 +4,7 @@ Identifies and helps manage sensitive data in uploaded datasets
 """
 
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
@@ -96,7 +96,7 @@ class PIIDetector:
         
         return detections
     
-    def _check_column_name(self, column_name: str) -> PIIDetection:
+    def _check_column_name(self, column_name: str) -> Optional[PIIDetection]:
         """Check if column name suggests PII"""
         column_lower = column_name.lower()
         
@@ -112,7 +112,7 @@ class PIIDetector:
                     )
         return None
     
-    def _check_patterns(self, column_name: str, data: pd.Series) -> PIIDetection:
+    def _check_patterns(self, column_name: str, data: pd.Series) -> Optional[PIIDetection]:
         """Check data patterns for PII"""
         for pii_type, pattern in self.patterns.items():
             matches = data.apply(lambda x: bool(pattern.match(str(x))))

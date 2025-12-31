@@ -99,5 +99,5 @@ def get_current_user_id_optional(
         token = authorization.split(" ")[1]
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         return get_current_user_id(credentials)
-    except:
+    except (IndexError, ValueError, HTTPException):
         return None

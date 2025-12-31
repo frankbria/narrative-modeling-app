@@ -256,8 +256,8 @@ class RecipeManager:
         include_public: bool = True
     ) -> List[TransformationRecipe]:
         """Get all recipes for a user"""
-        query = {"$or": [{"user_id": user_id}]}
-        
+        query: Dict[str, Any] = {"$or": [{"user_id": user_id}]}
+
         if include_public:
             query["$or"].append({"is_public": True})
         
@@ -270,8 +270,8 @@ class RecipeManager:
         limit: int = 50
     ) -> List[TransformationRecipe]:
         """Get public recipes, optionally filtered by tags"""
-        query = {"is_public": True}
-        
+        query: Dict[str, Any] = {"is_public": True}
+
         if tags:
             query["tags"] = {"$in": tags}
         
@@ -375,13 +375,13 @@ class RecipeManager:
         tags: Optional[List[str]] = None
     ) -> List[TransformationRecipe]:
         """Search recipes by name or description"""
-        search_query = {
+        search_query: Dict[str, Any] = {
             "$or": [
                 {"name": {"$regex": query, "$options": "i"}},
                 {"description": {"$regex": query, "$options": "i"}}
             ]
         }
-        
+
         # Add user filter
         if user_id:
             search_query["$and"] = [
@@ -389,7 +389,7 @@ class RecipeManager:
             ]
         else:
             search_query["is_public"] = True
-        
+
         # Add tag filter
         if tags:
             if "$and" in search_query:

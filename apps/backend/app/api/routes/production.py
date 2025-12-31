@@ -21,8 +21,10 @@ redis_client = None  # Redis is optional for development
 try:
     if hasattr(settings, 'REDIS_URL') and settings.REDIS_URL:
         redis_client = redis.from_url(settings.REDIS_URL)
-except:
-    pass
+except (redis.RedisError, ConnectionError, Exception) as e:
+    # Redis is optional - log but continue without it
+    import logging
+    logging.getLogger(__name__).warning(f"Redis connection failed: {e}. Rate limiting disabled.")
 
 
 # Request/Response Models

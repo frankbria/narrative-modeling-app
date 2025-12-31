@@ -65,7 +65,7 @@ def convert_numpy_types(obj):
         # Handle numpy scalars
         try:
             return obj.item()
-        except:
+        except (AttributeError, ValueError, TypeError):
             return str(obj)
     elif isinstance(obj, (datetime, date)):
         return obj.isoformat()

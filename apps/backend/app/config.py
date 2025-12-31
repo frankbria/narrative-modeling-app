@@ -35,7 +35,7 @@ class Settings(BaseModel):
             import json
             try:
                 return json.loads(cors_origins)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
         # Default to allow all origins in development
         return ["*"]

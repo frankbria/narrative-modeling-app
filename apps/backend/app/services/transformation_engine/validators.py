@@ -207,7 +207,7 @@ class TransformationValidator:
                     non_numeric = pd.to_numeric(df[col], errors='coerce').isnull().sum()
                     if non_numeric < len(df) * 0.1:  # Less than 10% non-numeric
                         suggestions.append(f"Consider converting '{col}' to numeric")
-                except:
+                except (ValueError, TypeError, AttributeError):
                     pass
         
         return suggestions[:10]  # Return top 10 suggestions

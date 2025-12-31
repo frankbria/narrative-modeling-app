@@ -5,7 +5,7 @@ Provides REST endpoints for managing features, versions, and collections.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 
 from app.api.dependencies.auth import get_current_user_id

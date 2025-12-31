@@ -257,7 +257,7 @@ class TransformationService(BaseService[TransformationConfig]):
         """
         return await TransformationConfig.find(
             TransformationConfig.dataset_id == dataset_id,
-            TransformationConfig.is_applied == True
+            TransformationConfig.is_applied
         ).sort(-TransformationConfig.created_at).to_list()
 
     async def preview_transformation(
