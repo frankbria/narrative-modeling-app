@@ -2,10 +2,12 @@
 Tests for Monitoring Service
 """
 
+import pytest
 import time
 from app.services.monitoring import ApplicationMonitor
 
 
+@pytest.mark.unit
 class TestApplicationMonitor:
     """Test cases for monitoring functionality"""
     

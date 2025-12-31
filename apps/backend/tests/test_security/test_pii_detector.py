@@ -2,10 +2,12 @@
 Tests for PII Detection Service
 """
 
+import pytest
 import pandas as pd
 from app.services.security.pii_detector import PIIDetector, PIIType
 
 
+@pytest.mark.unit
 class TestPIIDetector:
     """Test cases for PII detection"""
     

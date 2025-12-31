@@ -14,6 +14,7 @@ This project aims to **democratize modeling** by combining powerful ML automatio
 - **AI-powered model recommendations**
 - **Narrative-driven workflow guidance**
 - **Feature engineering & preprocessing**
+- **Feature Store** - Centralized feature repository with versioning and reusability
 - **Model training and explainability tools**
 
 Future phases will include:

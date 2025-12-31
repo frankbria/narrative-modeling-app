@@ -70,6 +70,7 @@ def excel_data():
     return excel_buffer.getvalue()
 
 
+@pytest.mark.unit
 class TestDataProcessor:
     """Test data processor functionality"""
 
