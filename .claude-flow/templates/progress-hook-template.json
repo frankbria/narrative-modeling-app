@@ -1,0 +1,16 @@
+{
+  "task_id": "<task-id>",
+  "agent_type": "<frontend-specialist|backend-specialist|mcp-specialist|test-engineer|devops-specialist|integration-coordinator>",
+  "status": "<in_progress|completed|blocked>",
+  "started_at": "<ISO 8601 timestamp>",
+  "updated_at": "<ISO 8601 timestamp>",
+  "progress_percentage": 0,
+  "current_step": "<description of what is currently being worked on>",
+  "completed_steps": [
+    "<list of completed tasks>"
+  ],
+  "next_steps": [
+    "<list of planned next tasks>"
+  ],
+  "notes": "<optional additional context>"
+}

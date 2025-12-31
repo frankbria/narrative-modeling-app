@@ -1,0 +1,178 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-26T12:00:00Z",
+  "environment_variables": {
+    "backend": {
+      "required": {
+        "MONGODB_URI": {
+          "description": "MongoDB connection string",
+          "development": "mongodb://localhost:27017/",
+          "production": "MongoDB Atlas connection string",
+          "used_by": ["backend", "mcp"]
+        },
+        "MONGODB_DB": {
+          "description": "MongoDB database name",
+          "development": "narrative-modeling",
+          "production": "Set via environment"
+        },
+        "AWS_ACCESS_KEY_ID": {
+          "description": "AWS IAM access key for S3",
+          "security": "NEVER commit to repository",
+          "used_by": ["backend"]
+        },
+        "AWS_SECRET_ACCESS_KEY": {
+          "description": "AWS IAM secret key for S3",
+          "security": "NEVER commit to repository",
+          "used_by": ["backend"]
+        },
+        "AWS_REGION": {
+          "description": "AWS region for S3 bucket",
+          "default": "us-east-1",
+          "used_by": ["backend"]
+        },
+        "AWS_BUCKET_NAME": {
+          "description": "S3 bucket name for dataset storage",
+          "development": "narrative-modeling-datasets-dev",
+          "production": "narrative-modeling-datasets-prod"
+        },
+        "OPENAI_API_KEY": {
+          "description": "OpenAI API key for AI analysis",
+          "security": "NEVER commit to repository",
+          "used_by": ["backend", "mcp"]
+        },
+        "OPENAI_MODEL": {
+          "description": "OpenAI model to use",
+          "default": "gpt-4-turbo",
+          "alternatives": ["gpt-4", "gpt-3.5-turbo"]
+        },
+        "NEXTAUTH_SECRET": {
+          "description": "NextAuth session encryption key",
+          "security": "Generate with: openssl rand -base64 32",
+          "used_by": ["frontend"]
+        },
+        "AUTH_SECRET": {
+          "description": "Auth secret (NextAuth v5)",
+          "security": "Generate with: openssl rand -base64 32",
+          "used_by": ["frontend"]
+        },
+        "NEXTAUTH_URL": {
+          "description": "NextAuth base URL",
+          "development": "http://localhost:3000",
+          "production": "https://app.narrativemodeling.com (set to actual production URL)"
+        }
+      },
+      "optional": {
+        "SKIP_AUTH": {
+          "description": "Bypass authentication in development",
+          "default": "false",
+          "development": "true",
+          "production": "false (NEVER set to true)",
+          "used_by": ["backend"]
+        },
+        "TEST_MONGODB_URI": {
+          "description": "MongoDB connection for tests",
+          "default": "mongodb://localhost:27017/",
+          "ci_cd": "Set to Atlas test database"
+        },
+        "TEST_MONGODB_DB": {
+          "description": "Test database name",
+          "default": "narrative-modeling-test"
+        }
+      }
+    },
+    "frontend": {
+      "required": {
+        "NEXTAUTH_URL": {
+          "description": "NextAuth base URL",
+          "development": "http://localhost:3000",
+          "production": "Full production URL required"
+        },
+        "NEXTAUTH_SECRET": {
+          "description": "Session encryption secret",
+          "security": "Must match backend AUTH_SECRET"
+        },
+        "NEXT_PUBLIC_API_URL": {
+          "description": "Backend API base URL",
+          "development": "http://localhost:8000",
+          "production": "Production backend URL"
+        }
+      },
+      "oauth_providers": {
+        "google": {
+          "GOOGLE_CLIENT_ID": "Google OAuth client ID",
+          "GOOGLE_CLIENT_SECRET": "Google OAuth secret"
+        },
+        "github": {
+          "GITHUB_CLIENT_ID": "GitHub OAuth app ID",
+          "GITHUB_CLIENT_SECRET": "GitHub OAuth secret"
+        }
+      }
+    }
+  },
+  "aws_resources": {
+    "s3_bucket": {
+      "name_development": "narrative-modeling-datasets-dev",
+      "name_production": "narrative-modeling-datasets-prod",
+      "region": "us-east-1",
+      "purpose": "Store uploaded dataset files and model artifacts",
+      "versioning": "recommended for production",
+      "lifecycle_policy": "Archive old datasets to Glacier after 90 days"
+    }
+  },
+  "mongodb_collections": {
+    "users": {
+      "description": "User accounts from OAuth providers",
+      "indexes": ["email", "created_at"],
+      "estimated_size": "Small (<1000 documents)"
+    },
+    "datasets": {
+      "description": "Dataset metadata (files stored in S3)",
+      "indexes": ["user_id", "created_at", "name"],
+      "estimated_size": "Medium (1000-10000 documents)"
+    },
+    "models": {
+      "description": "Trained ML models metadata",
+      "indexes": ["dataset_id", "user_id", "created_at"],
+      "estimated_size": "Medium (1000-10000 documents)"
+    },
+    "batch_jobs": {
+      "description": "Batch prediction job status",
+      "indexes": ["model_id", "status", "created_at"]
+    },
+    "ab_tests": {
+      "description": "A/B testing configurations",
+      "indexes": ["model_id", "status"]
+    },
+    "analytics_results": {
+      "description": "Cached analytics results",
+      "indexes": ["dataset_id", "created_at"]
+    }
+  },
+  "cors_configuration": {
+    "development": {
+      "origins": ["http://localhost:3000"],
+      "credentials": true
+    },
+    "production": {
+      "origins": ["https://app.narrativemodeling.com"],
+      "credentials": true,
+      "note": "CRITICAL: Verify CORS headers in production environment before deployment"
+    }
+  },
+  "deployment": {
+    "platform": "Shared VPS",
+    "port_considerations": "Common ports likely taken - check for conflicts",
+    "mongodb_setup": "Either local MongoDB or Atlas connection",
+    "redis_setup": "Not yet implemented (future caching layer)",
+    "ci_cd": "Idempotent processes only"
+  },
+  "security_notes": [
+    "NEVER commit .env files to repository",
+    "Use .env.example as template",
+    "Generate secrets with: openssl rand -base64 32",
+    "Rotate API keys regularly",
+    "Use AWS IAM roles in production (not access keys)",
+    "Enable S3 bucket encryption",
+    "Use MongoDB Atlas IP whitelist in production"
+  ]
+}

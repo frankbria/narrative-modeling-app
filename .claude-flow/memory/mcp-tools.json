@@ -1,0 +1,74 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-26T12:00:00Z",
+  "server_info": {
+    "name": "narrative-modeling",
+    "framework": "FastMCP",
+    "location": "apps/mcp/",
+    "entry_point": "apps/mcp/server.py"
+  },
+  "tools": {
+    "note": "MCP tools are defined in apps/mcp/server.py - this file will be populated as tools are implemented"
+  },
+  "installation": {
+    "config_file": "~/.config/claude/claude_desktop_config.json",
+    "server_name": "narrative-modeling",
+    "command": "uv --directory /path/to/narrative-modeling-app/apps/mcp run mcp dev server.py",
+    "setup_instructions": "See CLAUDE.md section 'MCP Server Setup'"
+  },
+  "recommended_mcp_servers": {
+    "context7": {
+      "purpose": "Library documentation lookup",
+      "use_cases": [
+        "Tailwind CSS class reference",
+        "FastAPI best practices",
+        "React/Next.js patterns"
+      ],
+      "command": "npx mcporter call context7.query --args '{\"library\": \"<name>\", \"query\": \"<question>\"}'"
+    },
+    "tavily": {
+      "purpose": "Web search for current information",
+      "use_cases": [
+        "Latest documentation",
+        "Best practices research",
+        "Technology comparisons"
+      ],
+      "command": "npx mcporter call tavily.tavily_search --args '{\"query\": \"<search query>\"}'"
+    },
+    "morph_mcp": {
+      "purpose": "Semantic code search",
+      "use_cases": [
+        "Find authentication logic",
+        "Locate payment processing code",
+        "Discover API endpoints"
+      ],
+      "command": "npx mcporter call morph-mcp.warpgrep_codebase_search --args '{\"query\": \"<semantic query>\"}'"
+    },
+    "sequential_thinking": {
+      "purpose": "Deep reasoning for complex problems",
+      "use_cases": [
+        "Architectural decisions",
+        "Complex debugging",
+        "Feature planning with trade-offs"
+      ],
+      "tool": "mcp__sequential-thinking__sequentialthinking (native MCP, not mcporter)"
+    }
+  },
+  "tool_precedence_rules": {
+    "semantic_search": {
+      "never_use": "Grep tool for exploratory searches",
+      "always_use": "morph-mcp.warpgrep_codebase_search",
+      "example": "npx mcporter call morph-mcp.warpgrep_codebase_search --args '{\"query\": \"authentication logic\"}'"
+    },
+    "web_search": {
+      "never_use": "Built-in WebSearch tool",
+      "always_use": "tavily.tavily_search",
+      "example": "npx mcporter call tavily.tavily_search --args '{\"query\": \"FastAPI background tasks\"}'"
+    },
+    "library_docs": {
+      "never_use": "Assumptions about library APIs",
+      "always_use": "context7.query before implementing",
+      "example": "npx mcporter call context7.query --args '{\"library\": \"tailwindcss\", \"query\": \"responsive grid\"}'"
+    }
+  }
+}

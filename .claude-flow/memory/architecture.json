@@ -1,0 +1,114 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-26T12:00:00Z",
+  "updated_by": "swarm-lead-init",
+  "components": {
+    "frontend": {
+      "framework": "Next.js 14",
+      "routing": "App Router",
+      "auth": "NextAuth v5 (beta)",
+      "providers": ["Google", "GitHub"],
+      "state_management": "React Context + Server Components",
+      "styling": "Tailwind CSS",
+      "location": "apps/frontend/"
+    },
+    "backend": {
+      "framework": "FastAPI",
+      "python_version": "3.11+",
+      "database": "MongoDB + Beanie ODM",
+      "storage": "AWS S3",
+      "async_processing": "FastAPI BackgroundTasks",
+      "location": "apps/backend/"
+    },
+    "mcp": {
+      "framework": "FastMCP",
+      "purpose": "Advanced data processing tools",
+      "location": "apps/mcp/"
+    }
+  },
+  "data_flows": {
+    "file_upload": {
+      "steps": [
+        "Frontend: User selects file",
+        "Frontend: POST to /api/datasets/upload",
+        "Backend: Validate file format and size",
+        "Backend: Upload to S3 bucket",
+        "Backend: Save metadata to MongoDB",
+        "Backend: Trigger background AI analysis",
+        "Frontend: Poll /api/datasets/{id} for status",
+        "Frontend: Display results with visualizations"
+      ],
+      "max_file_size_mb": 100,
+      "supported_formats": ["csv", "xlsx", "json"]
+    },
+    "authentication": {
+      "steps": [
+        "Frontend: User clicks OAuth provider (Google/GitHub)",
+        "NextAuth: Redirect to provider authorization",
+        "NextAuth: Receive callback with user data",
+        "Backend: Validate session token",
+        "Backend: Lookup or create user in MongoDB",
+        "Backend: Return user session",
+        "Frontend: Store session, redirect to dashboard"
+      ],
+      "session_storage": "JWT in httpOnly cookie",
+      "session_duration_days": 30
+    },
+    "model_training": {
+      "steps": [
+        "Frontend: User configures model parameters",
+        "Frontend: POST to /api/models/train",
+        "Backend: Validate parameters",
+        "Backend: Queue background training task",
+        "Backend: Retrieve dataset from S3",
+        "Backend: Run ML pipeline (feature engineering, training, evaluation)",
+        "Backend: Save model artifacts to S3",
+        "Backend: Update model status in MongoDB",
+        "Frontend: Poll for completion, display results"
+      ],
+      "max_training_time_minutes": 60
+    }
+  },
+  "boundaries": {
+    "frontend_backend": {
+      "protocol": "REST API",
+      "base_path": "/api",
+      "authentication": "NextAuth session token in Authorization header",
+      "cors_enabled": true
+    },
+    "backend_storage": {
+      "client": "boto3 (AWS S3 SDK)",
+      "bucket_name": "narrative-modeling-datasets",
+      "region": "us-east-1"
+    },
+    "backend_database": {
+      "orm": "Beanie (async MongoDB ODM)",
+      "connection": "Motor (async MongoDB driver)",
+      "database_name": "narrative_modeling"
+    }
+  },
+  "testing_architecture": {
+    "backend": {
+      "unit_tests": "203 tests, no database required",
+      "integration_tests": "11 tests, require MongoDB",
+      "total": 214,
+      "coverage_percentage": 89
+    },
+    "frontend": {
+      "unit_tests": "Jest",
+      "e2e_tests": "Playwright",
+      "coverage_requirement": 80
+    },
+    "test_documentation": "apps/backend/docs/TEST_INFRASTRUCTURE.md"
+  },
+  "deployment": {
+    "platform": "Shared VPS",
+    "considerations": [
+      "Check for port conflicts (common ports likely taken)",
+      "Verify CORS in remote environment",
+      "Idempotent CI/CD processes only"
+    ]
+  },
+  "current_sprint": 12,
+  "sprint_status": "Sprint 11 complete (214/214 tests passing), Sprint 12 ready"
+}

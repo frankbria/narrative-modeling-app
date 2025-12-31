@@ -1,0 +1,19 @@
+{
+  "task_id": "<task-id>",
+  "agent_type": "<frontend-specialist|backend-specialist|mcp-specialist|test-engineer|devops-specialist|integration-coordinator>",
+  "blocker_type": "<integration_test_failure|architecture_decision_required|security_vulnerability|environment_issue|cross_agent_conflict|dependency_missing>",
+  "severity": "<low|medium|high|critical>",
+  "description": "<detailed description of the blocker>",
+  "error_message": "<actual error message if applicable>",
+  "attempted_fixes": [
+    "<list of attempted solutions>"
+  ],
+  "requires_agent": "<agent type needed to resolve, or 'human' if human intervention required>",
+  "requires_human": false,
+  "created_at": "<ISO 8601 timestamp>",
+  "context": {
+    "relevant_files": ["<file paths>"],
+    "related_tasks": ["<task IDs>"],
+    "environment": "<development|staging|production>"
+  }
+}

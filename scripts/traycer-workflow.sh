@@ -16,7 +16,7 @@ set -euo pipefail
 ################################################################################
 # Check for global claude-flow installation
 if command -v claude-flow &> /dev/null; then
-    CLAUDE_FLOW="claude-flow@alpha"
+    CLAUDE_FLOW="claude-flow"
 else
     CLAUDE_FLOW="npx claude-flow@alpha"
 fi
@@ -27,7 +27,7 @@ TOPOLOGY="${2:-auto}"  # auto, hierarchical, mesh
 MAX_ITERATIONS="${MAX_CODERABBIT_ITERATIONS:-3}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 WORKFLOW_NAMESPACE="workflow/${ISSUE_ID}"
-TRACER_PROMPT_FILE="${PROJECT_ROOT}/prompts/${ISSUE_ID}.txt"
+TRAYCER_PROMPT_FILE="${PROJECT_ROOT}/prompts/${ISSUE_ID}.txt"
 
 # Load environment variables from .env if it exists
 if [[ -f "${PROJECT_ROOT}/.env" ]]; then

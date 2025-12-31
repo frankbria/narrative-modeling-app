@@ -1,0 +1,21 @@
+{
+  "task_id": "<task-id>",
+  "agent_type": "<frontend-specialist|backend-specialist|mcp-specialist|test-engineer|devops-specialist|integration-coordinator>",
+  "artifacts": [
+    {
+      "type": "<api_endpoint|ui_component|database_model|test_suite|configuration|documentation>",
+      "name": "<artifact name>",
+      "location": "<file path relative to project root>",
+      "description": "<brief description>",
+      "tests_passing": true,
+      "coverage_percentage": 0,
+      "metadata": {
+        "additional_info": "optional"
+      }
+    }
+  ],
+  "dependencies_satisfied": true,
+  "ready_for_integration": true,
+  "completed_at": "<ISO 8601 timestamp>",
+  "notes": "<optional additional context>"
+}

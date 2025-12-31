@@ -1,0 +1,337 @@
+{
+  "agent": "frontend-specialist-gh75",
+  "artifact_type": "readiness-assessment",
+  "created_at": "2025-12-26T12:15:00Z",
+  "status": "ready-when-dependencies-resolved",
+  "frontend_infrastructure": {
+    "existing_components": [
+      {
+        "file": "apps/frontend/components/ModelTrainingButton.tsx",
+        "status": "exists",
+        "notes": "Simple dialog-based training - will be replaced by comprehensive training page"
+      }
+    ],
+    "existing_services": [
+      {
+        "file": "apps/frontend/lib/services/model.ts",
+        "status": "exists",
+        "methods": [
+          "trainModel()",
+          "listModels()",
+          "getModel()",
+          "predict()",
+          "deleteModel()",
+          "deactivateModel()"
+        ],
+        "notes": "Needs 6 new methods for GH-75 training workflow"
+      }
+    ],
+    "existing_routes": [
+      {
+        "path": "apps/frontend/app/datasets/[id]/prepare/",
+        "status": "exists",
+        "notes": "Data preparation page exists"
+      }
+    ],
+    "missing_routes": [
+      {
+        "path": "apps/frontend/app/datasets/[id]/train/page.tsx",
+        "status": "needs_creation",
+        "priority": "high"
+      }
+    ],
+    "ui_dependencies": {
+      "shadcn_ui": {
+        "status": "installed",
+        "theme": "unknown - needs verification if Nova theme is configured",
+        "components_available": [
+          "Dialog",
+          "Button",
+          "Select",
+          "Input",
+          "Label",
+          "Textarea",
+          "Switch",
+          "Slider",
+          "Alert"
+        ]
+      },
+      "icons": {
+        "current": "lucide-react (installed)",
+        "required": "@hugeicons/react (NOT installed)",
+        "action_needed": "Install @hugeicons/react and update icon imports",
+        "note": "CLAUDE.md specifies Hugeicons for Nova theme projects"
+      },
+      "charts": {
+        "current": "chart.js (installed)",
+        "required": "recharts (NOT verified)",
+        "action_needed": "Verify or install recharts for visualizations"
+      },
+      "websocket": {
+        "status": "native browser WebSocket API - no library needed",
+        "notes": "Will implement custom useTrainingProgress hook"
+      }
+    }
+  },
+  "implementation_plan": {
+    "phase": "Phase 3: Frontend Training Interface",
+    "total_components": 8,
+    "total_hooks": 1,
+    "service_enhancements": 1,
+    "components_to_create": [
+      {
+        "name": "ProblemTypeDetector",
+        "file": "apps/frontend/components/training/ProblemTypeDetector.tsx",
+        "dependencies": ["Backend API: POST /api/v1/ml/datasets/{dataset_id}/detect-problem-type"],
+        "ui_elements": ["Select (target column)", "Button (detect)", "Badge (confidence)", "Card (reasoning)"]
+      },
+      {
+        "name": "AlgorithmSelector",
+        "file": "apps/frontend/components/training/AlgorithmSelector.tsx",
+        "dependencies": ["Backend API: POST /api/v1/ml/datasets/{dataset_id}/recommend-algorithms"],
+        "ui_elements": ["Select (mode, optimize_for)", "Cards (algorithms)", "Badges (priority)", "Expandable (explanations)"]
+      },
+      {
+        "name": "TrainingConfig",
+        "file": "apps/frontend/components/training/TrainingConfig.tsx",
+        "dependencies": ["None - reuses existing patterns from ModelTrainingButton"],
+        "ui_elements": ["Switch (class balancing)", "Select (balancing method)", "Slider (CV folds, test size, random seed)"]
+      },
+      {
+        "name": "TrainingProgress",
+        "file": "apps/frontend/components/training/TrainingProgress.tsx",
+        "dependencies": [
+          "Backend WebSocket: WS /ws/training/{job_id}",
+          "useTrainingProgress hook"
+        ],
+        "ui_elements": ["Progress bar", "Status badges", "Algorithm list", "CV fold progress", "Time estimates", "Logs terminal"]
+      },
+      {
+        "name": "ModelComparison",
+        "file": "apps/frontend/components/training/ModelComparison.tsx",
+        "dependencies": ["Backend API: GET /api/v1/ml/training-jobs/{job_id}/results"],
+        "ui_elements": ["Table (comparison)", "Charts (bar, scatter, radar)", "Modal (model details)"],
+        "chart_library": "recharts"
+      },
+      {
+        "name": "BestModelCard",
+        "file": "apps/frontend/components/training/BestModelCard.tsx",
+        "dependencies": ["Backend API: GET /api/v1/ml/training-jobs/{job_id}/results"],
+        "ui_elements": ["Card (prominent)", "Trophy icon", "Metrics display", "Action buttons"]
+      },
+      {
+        "name": "TrainingLogs",
+        "file": "apps/frontend/components/training/TrainingLogs.tsx",
+        "dependencies": ["WebSocket progress messages"],
+        "ui_elements": ["ScrollArea (terminal-style)", "Syntax highlighting (optional)"]
+      }
+    ],
+    "main_page": {
+      "file": "apps/frontend/app/datasets/[id]/train/page.tsx",
+      "workflow_states": ["CONFIGURE", "DETECTING", "RECOMMENDING", "TRAINING", "COMPLETED"],
+      "dependencies": ["All 7 components above", "Enhanced model.ts service"]
+    },
+    "hooks_to_create": [
+      {
+        "name": "useTrainingProgress",
+        "file": "apps/frontend/hooks/useTrainingProgress.ts",
+        "purpose": "WebSocket connection management for real-time training progress",
+        "features": [
+          "Connection lifecycle (connect, reconnect, disconnect)",
+          "JWT authentication",
+          "Exponential backoff for reconnection",
+          "Progress state management"
+        ]
+      }
+    ],
+    "service_enhancements": [
+      {
+        "file": "apps/frontend/lib/services/model.ts",
+        "new_methods": [
+          "detectProblemType(datasetId, targetColumn, token)",
+          "recommendAlgorithms(datasetId, request, token)",
+          "startAutoMLTraining(datasetId, config, token)",
+          "getTrainingJobStatus(jobId, token)",
+          "getTrainingJobResults(jobId, token)",
+          "cancelTrainingJob(jobId, token)"
+        ]
+      }
+    ]
+  },
+  "required_backend_apis": {
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/api/v1/ml/datasets/{dataset_id}/detect-problem-type",
+        "request_body": {
+          "target_column": "string"
+        },
+        "response": {
+          "problem_type": "BINARY_CLASSIFICATION | MULTICLASS_CLASSIFICATION | REGRESSION | TIME_SERIES_FORECASTING | TIME_SERIES_CLASSIFICATION",
+          "confidence": "number (0-1)",
+          "reasoning": "string",
+          "metadata": "object"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/ml/datasets/{dataset_id}/recommend-algorithms",
+        "request_body": {
+          "problem_type": "string",
+          "training_mode": "QUICK | BALANCED | COMPREHENSIVE",
+          "optimize_for": "ACCURACY | SPEED | INTERPRETABILITY"
+        },
+        "response": {
+          "recommendations": [
+            {
+              "algorithm": "string",
+              "priority": "number (1-10)",
+              "expected_performance": "string",
+              "training_time_estimate": "string",
+              "interpretability_score": "number (0-1)",
+              "explanation": "string (AI-generated)",
+              "pros": ["string"],
+              "cons": ["string"]
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/v1/ml/datasets/{dataset_id}/train-automl",
+        "request_body": {
+          "target_column": "string",
+          "problem_type": "string",
+          "selected_algorithms": ["string"],
+          "training_mode": "QUICK | BALANCED | COMPREHENSIVE",
+          "optimize_for": "ACCURACY | SPEED | INTERPRETABILITY",
+          "class_balancing": {
+            "enabled": "boolean",
+            "method": "SMOTE | RANDOM_OVERSAMPLE | RANDOM_UNDERSAMPLE | SMOTE_TOMEK"
+          },
+          "advanced_config": {
+            "cv_folds": "number",
+            "test_size": "number",
+            "random_seed": "number"
+          }
+        },
+        "response": {
+          "job_id": "string",
+          "status": "QUEUED | RUNNING",
+          "message": "string"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/ml/training-jobs/{job_id}/status",
+        "response": {
+          "job_id": "string",
+          "status": "QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED",
+          "progress": {
+            "current_algorithm": "string",
+            "completed_algorithms": ["string"],
+            "total_algorithms": "number",
+            "current_cv_fold": "number",
+            "total_cv_folds": "number",
+            "estimated_time_remaining": "string"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/ml/training-jobs/{job_id}/results",
+        "response": {
+          "job_id": "string",
+          "status": "COMPLETED",
+          "best_model_id": "string",
+          "trained_models": [
+            {
+              "model_id": "string",
+              "algorithm": "string",
+              "cv_score": "number",
+              "test_score": "number",
+              "training_time": "number",
+              "model_size": "number",
+              "interpretability_score": "number",
+              "metrics": "object"
+            }
+          ],
+          "comparison": {
+            "ranking": ["string (model_ids)"],
+            "comparison_table": "object",
+            "performance_summary": "string",
+            "recommendation": "string (AI-generated explanation)"
+          }
+        }
+      },
+      {
+        "method": "WebSocket",
+        "path": "/ws/training/{job_id}",
+        "authentication": "JWT token in connection params",
+        "message_format": {
+          "type": "PROGRESS | LOG | ERROR | COMPLETE",
+          "timestamp": "string",
+          "data": {
+            "algorithm": "string (optional)",
+            "cv_fold": "number (optional)",
+            "message": "string",
+            "progress_percent": "number (0-100)"
+          }
+        }
+      }
+    ]
+  },
+  "testing_requirements": {
+    "jest_tests": {
+      "location": "apps/frontend/__tests__/components/training/",
+      "files": [
+        "ProblemTypeDetector.test.tsx",
+        "AlgorithmSelector.test.tsx",
+        "TrainingConfig.test.tsx",
+        "TrainingProgress.test.tsx",
+        "ModelComparison.test.tsx",
+        "BestModelCard.test.tsx",
+        "TrainingLogs.test.tsx",
+        "useTrainingProgress.test.ts"
+      ],
+      "command": "cd apps/frontend && npm test"
+    },
+    "e2e_tests": {
+      "location": "apps/frontend/e2e/workflows/",
+      "file": "train.spec.ts",
+      "scenarios": [
+        "Complete training workflow (configure → detect → recommend → train → compare)",
+        "WebSocket real-time updates",
+        "Training cancellation",
+        "Error handling and retry",
+        "Model deployment after training"
+      ],
+      "command": "cd apps/frontend && npm run test:e2e"
+    },
+    "quality_gates": {
+      "typescript": "npx tsc --noEmit",
+      "eslint": "npm run lint",
+      "test_coverage": ">85%",
+      "test_pass_rate": "100%"
+    }
+  },
+  "dependency_installation_needed": [
+    {
+      "package": "@hugeicons/react",
+      "reason": "Nova theme uses Hugeicons (CLAUDE.md requirement)",
+      "command": "npm install @hugeicons/react"
+    },
+    {
+      "package": "recharts",
+      "reason": "Visualizations for model comparison (bar, scatter, radar charts)",
+      "command": "npm install recharts"
+    }
+  ],
+  "next_steps": [
+    "Wait for Integration Coordinator to finalize API contracts",
+    "Wait for Backend Specialist to implement Phase 2 API endpoints",
+    "Install missing dependencies (@hugeicons/react, recharts)",
+    "Verify Nova theme configuration in shadcn/ui",
+    "Begin implementation once blockers resolved"
+  ]
+}

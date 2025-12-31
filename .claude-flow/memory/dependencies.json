@@ -1,0 +1,159 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-12-26T12:00:00Z",
+  "backend": {
+    "package_manager": "uv",
+    "python_version": "3.11+",
+    "key_dependencies": {
+      "fastapi": {
+        "version": "0.115.12",
+        "purpose": "Web framework for API endpoints"
+      },
+      "beanie": {
+        "version": "1.30.0",
+        "purpose": "Async MongoDB ODM",
+        "notes": "Requires motor 3.x for async operations"
+      },
+      "boto3": {
+        "version": "1.38.35",
+        "purpose": "AWS SDK for S3 operations"
+      },
+      "pytest": {
+        "version": "8.4.0",
+        "purpose": "Testing framework"
+      },
+      "pytest-asyncio": {
+        "version": "1.0.0",
+        "purpose": "Async test support"
+      },
+      "pytest-cov": {
+        "version": "6.1.1",
+        "purpose": "Code coverage reporting"
+      },
+      "pytest-benchmark": {
+        "version": "5.1.0",
+        "purpose": "Performance benchmarking"
+      },
+      "ruff": {
+        "purpose": "Fast Python linter",
+        "notes": "Replaces flake8, black, isort"
+      },
+      "mypy": {
+        "purpose": "Static type checker"
+      }
+    },
+    "dependency_file": "apps/backend/pyproject.toml"
+  },
+  "frontend": {
+    "package_manager": "npm",
+    "node_version": "18.x",
+    "key_dependencies": {
+      "next": {
+        "version": "14.x",
+        "purpose": "React framework with App Router"
+      },
+      "react": {
+        "version": "18.x",
+        "purpose": "UI library"
+      },
+      "next-auth": {
+        "version": "5.0.0-beta.29",
+        "purpose": "Authentication library",
+        "notes": "v5 is BETA - breaking changes from v4"
+      },
+      "@auth/mongodb-adapter": {
+        "version": "3.11.1",
+        "purpose": "NextAuth adapter for MongoDB"
+      },
+      "tailwindcss": {
+        "version": "3.x",
+        "purpose": "CSS framework"
+      },
+      "@radix-ui/react-*": {
+        "purpose": "Headless UI components",
+        "notes": "Multiple packages (dialog, dropdown, select, etc.)"
+      },
+      "@tanstack/react-table": {
+        "version": "8.21.2",
+        "purpose": "Table component library"
+      },
+      "axios": {
+        "version": "1.13.1",
+        "purpose": "HTTP client for API calls"
+      },
+      "chart.js": {
+        "version": "4.4.8",
+        "purpose": "Data visualization library"
+      },
+      "@xyflow/react": {
+        "version": "12.9.2",
+        "purpose": "Flow chart / diagram library"
+      },
+      "xlsx": {
+        "purpose": "Excel file parsing and generation"
+      }
+    },
+    "dev_dependencies": {
+      "typescript": {
+        "purpose": "TypeScript compiler"
+      },
+      "eslint": {
+        "purpose": "JavaScript/TypeScript linter"
+      },
+      "@types/*": {
+        "purpose": "TypeScript type definitions"
+      }
+    },
+    "dependency_file": "apps/frontend/package.json"
+  },
+  "mcp": {
+    "package_manager": "uv",
+    "python_version": "3.11+",
+    "key_dependencies": {
+      "fastmcp": {
+        "purpose": "FastMCP framework for MCP server"
+      },
+      "pytest": {
+        "purpose": "Testing framework"
+      }
+    },
+    "dependency_file": "apps/mcp/pyproject.toml"
+  },
+  "compatibility_notes": {
+    "next_auth_v5": {
+      "status": "BETA",
+      "migration_from_v4": "Breaking changes - significant API differences",
+      "recommendation": "Do NOT migrate legacy NextAuth v4 projects unless explicitly requested",
+      "stable_release": "TBD - monitor next-auth releases"
+    },
+    "beanie_motor": {
+      "requirement": "Beanie requires motor 3.x for MongoDB async operations",
+      "compatibility": "motor 3.x compatible with MongoDB 4.0+"
+    },
+    "fastapi_pydantic": {
+      "note": "FastAPI 0.115.x uses Pydantic v2",
+      "migration": "Pydantic v1 → v2 completed in Sprint 12.1"
+    },
+    "react_18": {
+      "note": "React 18 with Next.js 14 App Router",
+      "server_components": "Extensive use of Server Components pattern"
+    }
+  },
+  "update_policy": {
+    "major_updates": "Requires explicit approval and migration plan",
+    "minor_updates": "Auto-update with CI/CD validation",
+    "security_patches": "Immediate update required",
+    "beta_packages": "Only next-auth (legacy decision), avoid for new packages"
+  },
+  "known_version_conflicts": {
+    "resolved": [
+      "Pydantic v1 → v2 migration (Sprint 12.1)"
+    ],
+    "active": []
+  },
+  "dependency_management_tools": {
+    "backend": "uv (Python package manager)",
+    "frontend": "npm (via nvm for version management)",
+    "security_scanning": "Dependabot (GitHub) for vulnerability detection"
+  }
+}

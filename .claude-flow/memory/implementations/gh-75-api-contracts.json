@@ -1,0 +1,350 @@
+{
+  "version": "1.0",
+  "locked": true,
+  "created": "2025-12-26",
+  "base_url": "http://localhost:8000/api/v1/ml",
+  "authentication": "JWT Bearer token",
+  "endpoints": [
+    {
+      "id": 1,
+      "method": "POST",
+      "path": "/datasets/{dataset_id}/detect-problem-type",
+      "purpose": "Analyze target column and recommend problem type",
+      "request_body": {
+        "target_column": "string"
+      },
+      "response_200": {
+        "problem_type": "REGRESSION | BINARY_CLASSIFICATION | MULTICLASS_CLASSIFICATION | TIME_SERIES_FORECASTING | TIME_SERIES_CLASSIFICATION",
+        "confidence": "number (0.0-1.0)",
+        "reasoning": "string",
+        "metadata": {
+          "unique_values": "number",
+          "data_type": "string",
+          "sample_values": "array",
+          "null_percentage": "number",
+          "recommendations": "array<string>"
+        }
+      },
+      "errors": ["404 (dataset not found)", "422 (invalid column)"]
+    },
+    {
+      "id": 2,
+      "method": "POST",
+      "path": "/datasets/{dataset_id}/recommend-algorithms",
+      "purpose": "Get ranked algorithm recommendations with AI explanations",
+      "request_body": {
+        "problem_type": "enum",
+        "target_column": "string",
+        "training_mode": "QUICK | BALANCED | COMPREHENSIVE (optional)",
+        "optimize_for": "ACCURACY | SPEED | INTERPRETABILITY (optional)",
+        "class_balancing": {
+          "enabled": "boolean",
+          "method": "SMOTE | RANDOM_OVERSAMPLE | RANDOM_UNDERSAMPLE | SMOTE_TOMEK (optional)"
+        }
+      },
+      "response_200": {
+        "recommendations": [
+          {
+            "algorithm": "string",
+            "priority": "number (1-10)",
+            "expected_performance": {
+              "min": "number",
+              "max": "number"
+            },
+            "training_time_estimate": "number (seconds)",
+            "interpretability_score": "number (1-10)",
+            "explanation": "string (AI-generated)",
+            "pros": "array<string>",
+            "cons": "array<string>",
+            "hyperparameters": "object",
+            "requires_scaling": "boolean",
+            "supports_feature_importance": "boolean"
+          }
+        ],
+        "data_profile": {
+          "n_samples": "number",
+          "n_features": "number",
+          "feature_types": {
+            "numeric": "number",
+            "categorical": "number",
+            "datetime": "number"
+          },
+          "class_balance_ratio": "number (optional)",
+          "missing_value_percentage": "number",
+          "high_cardinality_features": "array<string>"
+        },
+        "estimated_total_time": "number (seconds)"
+      },
+      "errors": ["404", "400 (invalid training_mode)"]
+    },
+    {
+      "id": 3,
+      "method": "POST",
+      "path": "/datasets/{dataset_id}/train-automl",
+      "purpose": "Initiate asynchronous AutoML training",
+      "request_body": {
+        "target_column": "string",
+        "name": "string (optional)",
+        "description": "string (optional)",
+        "training_mode": "QUICK | BALANCED | COMPREHENSIVE",
+        "optimize_for": "ACCURACY | SPEED | INTERPRETABILITY",
+        "selected_algorithms": "array<string> (optional)",
+        "feature_config": {
+          "enable_feature_engineering": "boolean",
+          "enable_feature_selection": "boolean",
+          "max_features": "number (optional)",
+          "scaling_method": "standard | minmax | robust (optional)"
+        },
+        "class_balancing": {
+          "enabled": "boolean",
+          "method": "SMOTE | RANDOM_OVERSAMPLE | RANDOM_UNDERSAMPLE | SMOTE_TOMEK (optional)",
+          "sampling_strategy": "auto | number (optional)"
+        },
+        "training_config": {
+          "cv_folds": "number",
+          "test_size": "number",
+          "random_state": "number",
+          "max_parallel_jobs": "number (optional)",
+          "timeout_per_model": "number (seconds, optional)"
+        }
+      },
+      "response_202": {
+        "job_id": "string",
+        "status": "PENDING",
+        "message": "string",
+        "websocket_url": "string",
+        "estimated_completion_time": "string (ISO 8601)"
+      },
+      "errors": ["404", "400 (invalid algorithm)", "409 (concurrent job)"]
+    },
+    {
+      "id": 4,
+      "method": "GET",
+      "path": "/training-jobs/{job_id}/status",
+      "purpose": "Poll current training job status",
+      "response_200": {
+        "job_id": "string",
+        "status": "PENDING | RUNNING | COMPLETED | FAILED | CANCELLED",
+        "progress": {
+          "current_algorithm": "string | null",
+          "completed_algorithms": "array<string>",
+          "total_algorithms": "number",
+          "current_cv_fold": "number",
+          "total_cv_folds": "number",
+          "percentage_complete": "number (0-100)",
+          "estimated_time_remaining": "number (seconds)"
+        },
+        "created_at": "string (ISO 8601)",
+        "started_at": "string | null",
+        "completed_at": "string | null",
+        "error_message": "string | null"
+      },
+      "errors": ["404 (job not found)"]
+    },
+    {
+      "id": 5,
+      "method": "GET",
+      "path": "/training-jobs/{job_id}/results",
+      "purpose": "Retrieve complete training results",
+      "query_params": {
+        "include_model_artifacts": "boolean (default: false)"
+      },
+      "response_200": {
+        "job_id": "string",
+        "status": "COMPLETED | FAILED",
+        "best_model": {
+          "model_id": "string",
+          "algorithm": "string",
+          "cv_score": "number",
+          "cv_std": "number",
+          "test_score": "number",
+          "training_time": "number",
+          "model_size": "number",
+          "feature_importance": "object | null",
+          "hyperparameters": "object",
+          "metrics": "object",
+          "model_path": "string (S3)"
+        },
+        "all_models": [
+          {
+            "model_id": "string",
+            "algorithm": "string",
+            "cv_score": "number",
+            "cv_std": "number",
+            "test_score": "number",
+            "training_time": "number",
+            "model_size": "number",
+            "hyperparameters": "object",
+            "metrics": "object",
+            "model_path": "string",
+            "rank": "number"
+          }
+        ],
+        "model_comparison": {
+          "ranking": "array",
+          "performance_summary": "string (AI-generated)",
+          "recommendation": "string (AI-generated)",
+          "trade_off_analysis": "string (AI-generated)",
+          "statistical_significance": [
+            {
+              "model_a": "string",
+              "model_b": "string",
+              "p_value": "number",
+              "significant": "boolean"
+            }
+          ]
+        },
+        "training_metadata": {
+          "dataset_id": "string",
+          "target_column": "string",
+          "problem_type": "string",
+          "n_samples": "number",
+          "n_features_original": "number",
+          "n_features_engineered": "number",
+          "class_balance_applied": "boolean",
+          "training_mode": "string",
+          "total_training_time": "number",
+          "created_at": "string",
+          "completed_at": "string"
+        }
+      },
+      "errors": ["404", "409 (job not completed)"]
+    }
+  ],
+  "websocket": {
+    "endpoint": "/ws/training/{job_id}",
+    "protocol": "WebSocket",
+    "authentication": "JWT token in query param: ?token={jwt}",
+    "message_types": [
+      {
+        "type": "connection_ack",
+        "direction": "server->client",
+        "fields": ["job_id", "timestamp"]
+      },
+      {
+        "type": "training_started",
+        "direction": "server->client",
+        "fields": ["job_id", "total_algorithms", "estimated_completion", "timestamp"]
+      },
+      {
+        "type": "algorithm_started",
+        "direction": "server->client",
+        "fields": ["job_id", "algorithm", "algorithm_index", "total_algorithms", "timestamp"]
+      },
+      {
+        "type": "cv_fold_progress",
+        "direction": "server->client",
+        "fields": ["job_id", "algorithm", "current_fold", "total_folds", "fold_score", "timestamp"]
+      },
+      {
+        "type": "algorithm_completed",
+        "direction": "server->client",
+        "fields": ["job_id", "algorithm", "cv_score", "cv_std", "test_score", "training_time", "completed_algorithms", "total_algorithms", "percentage_complete", "estimated_time_remaining", "timestamp"]
+      },
+      {
+        "type": "algorithm_failed",
+        "direction": "server->client",
+        "fields": ["job_id", "algorithm", "error", "completed_algorithms", "total_algorithms", "timestamp"]
+      },
+      {
+        "type": "training_completed",
+        "direction": "server->client",
+        "fields": ["job_id", "best_model", "total_algorithms_trained", "total_training_time", "results_url", "timestamp"]
+      },
+      {
+        "type": "training_failed",
+        "direction": "server->client",
+        "fields": ["job_id", "error", "failed_algorithm", "completed_algorithms", "timestamp"]
+      },
+      {
+        "type": "heartbeat",
+        "direction": "server->client",
+        "fields": ["timestamp"],
+        "frequency": "every 30 seconds"
+      },
+      {
+        "type": "ping",
+        "direction": "client->server",
+        "response": "pong"
+      },
+      {
+        "type": "cancel_training",
+        "direction": "client->server",
+        "fields": ["job_id"],
+        "response": "training_cancelled"
+      }
+    ]
+  },
+  "rate_limits": {
+    "detect_problem_type": "10 requests/minute per user",
+    "recommend_algorithms": "5 requests/minute per user",
+    "start_training": "3 requests/minute per user",
+    "get_status": "60 requests/minute per user",
+    "get_results": "20 requests/minute per user"
+  },
+  "caching": {
+    "problem_detection": {
+      "key_pattern": "problem_detection:{dataset_id}:{target_column}",
+      "ttl": 3600
+    },
+    "algorithm_recommendations": {
+      "key_pattern": "algorithm_recommendations:{dataset_id}:{hash(request)}",
+      "ttl": 3600
+    },
+    "training_progress": {
+      "key_pattern": "training_progress:{job_id}",
+      "ttl": 86400
+    },
+    "training_results": {
+      "key_pattern": "training_results:{job_id}",
+      "ttl": 86400
+    },
+    "ai_explanations": {
+      "key_pattern": "explanation:{hash}",
+      "ttl": 3600
+    }
+  },
+  "error_codes": {
+    "200": "Success",
+    "202": "Accepted (async operation queued)",
+    "400": "Bad Request (validation error)",
+    "401": "Unauthorized (invalid JWT)",
+    "404": "Not Found (dataset/job not found)",
+    "409": "Conflict (concurrent job exists)",
+    "422": "Unprocessable Entity (invalid field)",
+    "429": "Rate Limit Exceeded",
+    "500": "Internal Server Error",
+    "503": "Service Unavailable (Redis/MongoDB down)"
+  },
+  "training_modes": {
+    "QUICK": {
+      "algorithms": "3-5",
+      "hyperparameter_tuning": false,
+      "cv_folds": 3,
+      "timeout": "10 minutes"
+    },
+    "BALANCED": {
+      "algorithms": "5-7",
+      "hyperparameter_tuning": "basic GridSearchCV",
+      "cv_folds": 5,
+      "timeout": "30 minutes"
+    },
+    "COMPREHENSIVE": {
+      "algorithms": "8-10",
+      "hyperparameter_tuning": "extensive GridSearchCV",
+      "cv_folds": 10,
+      "timeout": "2 hours"
+    }
+  },
+  "notes": [
+    "All dates are ISO 8601 format",
+    "All durations are in seconds unless specified",
+    "All file sizes are in bytes",
+    "Confidence scores are 0.0 to 1.0",
+    "Priority scores are 1 to 10 (10 = highest)",
+    "Interpretability scores are 1 to 10 (10 = most interpretable)",
+    "WebSocket heartbeat every 30 seconds",
+    "OpenAI failures fall back to rule-based explanations",
+    "Redis unavailable falls back to MongoDB for progress"
+  ]
+}
