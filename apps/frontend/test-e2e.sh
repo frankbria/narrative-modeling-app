@@ -100,6 +100,8 @@ for i in {1..30}; do
   fi
   if [ $i -eq 30 ]; then
     echo -e "${RED}ERROR: Backend failed to start within 30 seconds${NC}"
+    echo -e "${YELLOW}Backend logs:${NC}"
+    cat /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
     kill $BACKEND_PID 2>/dev/null
     exit 1
   fi
