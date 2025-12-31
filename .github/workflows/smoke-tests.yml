@@ -71,6 +71,13 @@ jobs:
           GITHUB_SECRET: dummy-client-secret
           MONGODB_URI: mongodb://localhost:27017
           MONGODB_DB: narrative-modeling-test
+          # AWS credentials for backend S3 service (dummy values for testing)
+          AWS_ACCESS_KEY_ID: test-access-key-id
+          AWS_SECRET_ACCESS_KEY: test-secret-access-key
+          AWS_REGION: us-east-1
+          AWS_BUCKET_NAME: test-bucket
+          # OpenAI API key (dummy value for testing)
+          OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
 
       - name: Upload test results
         if: failure()

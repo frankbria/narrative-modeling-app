@@ -62,6 +62,8 @@ from app.services.transformation_engine.transformation_engine import (
 from app.services.transformation_engine.validators import TransformationValidator
 from app.services.transformation_engine.recipe_manager import RecipeManager, RecipeCompatibilityChecker
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
+from app.services.history_service import HistoryService
+from app.services.bulk_transformation_service import BulkTransformationService
 from app.services.exceptions import (
     NotFoundError,
     OperationError,
@@ -277,7 +279,7 @@ async def apply_transformation_pipeline(
         
         # Save as recipe if requested
         if request.save_as_recipe and request.recipe_name:
-            recipe = await RecipeManager.create_recipe(
+            _ = await RecipeManager.create_recipe(
                 name=request.recipe_name,
                 steps=[{
                     "type": step.type,

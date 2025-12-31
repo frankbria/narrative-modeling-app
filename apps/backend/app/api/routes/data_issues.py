@@ -596,7 +596,6 @@ async def batch_apply_fixes(
             total_rows_affected += applied.rows_affected
 
         # Add error entries for failed fixes
-        successful_ids = {a.issue_id for a in applied_fixes}
         for error in errors:
             # Extract issue_id from error message if possible
             results.append(BatchFixResult(

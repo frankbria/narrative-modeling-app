@@ -345,9 +345,9 @@ class StatisticsEngine:
                     correlation = corr_matrix.loc[col1, col2]
                     if not pd.isna(correlation):
                         result[col1][col2] = float(correlation)
-            
+
             return result
-        except:
+        except (ValueError, KeyError, AttributeError):
             return {}
 
     def _calculate_missing_value_summary(self, df: pd.DataFrame) -> Dict[str, Any]:

@@ -283,7 +283,7 @@ class SchemaInferenceService:
             str_sample = sample.astype(str).str.lower()
             bool_values = {'true', 'false', 'yes', 'no', '1', '0', 't', 'f', 'y', 'n'}
             return all(val in bool_values for val in str_sample.unique())
-        except:
+        except (AttributeError, TypeError, ValueError):
             return False
 
     def _is_integer(self, sample: pd.Series) -> bool:
@@ -300,7 +300,7 @@ class SchemaInferenceService:
             
             # Check if all values are integers
             return (numeric.dropna() == numeric.dropna().astype(int)).all()
-        except:
+        except (AttributeError, TypeError, ValueError):
             return False
 
     def _is_float(self, sample: pd.Series) -> bool:
@@ -312,7 +312,7 @@ class SchemaInferenceService:
             
             numeric = pd.to_numeric(sample, errors='coerce')
             return numeric.isna().sum() <= len(sample) * 0.1  # Less than 10% failed
-        except:
+        except (AttributeError, TypeError, ValueError):
             return False
 
     def _matches_pattern(self, sample: pd.Series, pattern: re.Pattern, threshold: float = 0.9) -> bool:
@@ -320,7 +320,7 @@ class SchemaInferenceService:
         try:
             matches = sample.str.match(pattern)
             return matches.sum() / len(sample) >= threshold
-        except:
+        except (AttributeError, TypeError, ValueError):
             return False
 
     def _detect_datetime_type(self, sample: pd.Series) -> Optional[DataType]:
@@ -333,7 +333,7 @@ class SchemaInferenceService:
                 parsed = pd.to_datetime(str_sample, format=fmt, errors='coerce')
                 if parsed.notna().sum() / len(sample) >= 0.9:
                     return DataType.DATETIME
-            except:
+            except (ValueError, TypeError):
                 continue
         
         # Try date formats
@@ -342,7 +342,7 @@ class SchemaInferenceService:
                 parsed = pd.to_datetime(str_sample, format=fmt, errors='coerce')
                 if parsed.notna().sum() / len(sample) >= 0.9:
                     return DataType.DATE
-            except:
+            except (ValueError, TypeError):
                 continue
         
         # Try time formats
@@ -352,7 +352,7 @@ class SchemaInferenceService:
                 matches = str_sample.apply(lambda x: self._try_parse_time(x, fmt))
                 if matches.sum() / len(sample) >= 0.9:
                     return DataType.TIME
-            except:
+            except (ValueError, TypeError, AttributeError):
                 continue
         
         # Try pandas automatic datetime parsing
@@ -364,7 +364,7 @@ class SchemaInferenceService:
                     return DataType.DATETIME
                 else:
                     return DataType.DATE
-        except:
+        except (ValueError, TypeError):
             pass
         
         return None
@@ -374,7 +374,7 @@ class SchemaInferenceService:
         try:
             datetime.strptime(value, fmt)
             return True
-        except:
+        except (ValueError, TypeError):
             return False
 
     def _clean_numeric_series(self, series: pd.Series, data_type: DataType) -> pd.Series:

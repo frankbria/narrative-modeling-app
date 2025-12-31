@@ -86,7 +86,7 @@ async def get_current_user_id(
         raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
 
 # For backward compatibility during migration
-def get_current_user_id_optional(
+async def get_current_user_id_optional(
     authorization: Optional[str] = Header(None)
 ) -> Optional[str]:
     """
@@ -94,10 +94,12 @@ def get_current_user_id_optional(
     """
     if not authorization or not authorization.startswith("Bearer "):
         return None
-    
+
     try:
         token = authorization.split(" ")[1]
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-        return get_current_user_id(credentials)
-    except:
+        return await get_current_user_id(credentials)
+    except (IndexError, ValueError, HTTPException):
+        # Catch HTTPException from get_current_user_id() - for optional auth,
+        # invalid/expired tokens should return None, not raise to the client
         return None

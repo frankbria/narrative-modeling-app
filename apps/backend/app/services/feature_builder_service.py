@@ -371,7 +371,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             return "numeric"
         elif pd.api.types.is_datetime64_any_dtype(dtype):
             return "datetime"
-        elif pd.api.types.is_string_dtype(dtype) or dtype == object:
+        elif pd.api.types.is_string_dtype(dtype) or dtype is object:
             return "string"
         else:
             return "unknown"

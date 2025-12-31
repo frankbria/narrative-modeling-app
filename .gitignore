@@ -75,3 +75,4 @@ scripts/awscliv2.zip
 memory/claude-flow-data.json
 .claude/logs/
 .swarm/
+.claude-flow/

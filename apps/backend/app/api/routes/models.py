@@ -114,7 +114,7 @@ async def train_model(
         )
 
         # Create model config with TRAINING status
-        model = await model_service.create_model_config(
+        _ = await model_service.create_model_config(
             user_id=current_user_id,
             dataset_id=request.dataset_id,
             model_id=model_id,

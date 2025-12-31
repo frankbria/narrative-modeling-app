@@ -2,7 +2,7 @@
 Feature engineering for AutoML
 """
 
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, TYPE_CHECKING
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import (
@@ -15,6 +15,9 @@ from sklearn.feature_selection import (
 )
 from dataclasses import dataclass
 import logging
+
+if TYPE_CHECKING:
+    from app.models.feature_store import StoredFeature
 
 logger = logging.getLogger(__name__)
 
@@ -665,3 +668,80 @@ class FeatureEngineer:
             df[name] = df[col1] * df[col2]
 
         return df
+
+    def _validate_feature_code(self, code: str) -> None:
+        """
+        Validate feature code for basic security.
+
+        WARNING: This is NOT a complete security solution. In production,
+        use a proper sandboxed execution environment or a safe DSL.
+
+        Args:
+            code: Feature definition code to validate
+
+        Raises:
+            ValueError: If code contains dangerous operations
+        """
+        # List of dangerous operations to block
+        dangerous_patterns = [
+            'import ', 'from ', '__import__',  # Module imports
+            'open(', 'file(',  # File operations
+            'eval(', 'compile(',  # Dynamic code execution
+            'os.', 'sys.', 'subprocess.',  # System operations
+            'pickle.', 'shelve.',  # Serialization
+            '__', 'globals', 'locals', 'vars',  # Introspection
+            'delattr', 'setattr', 'getattr',  # Attribute manipulation
+        ]
+
+        code_lower = code.lower()
+        for pattern in dangerous_patterns:
+            if pattern.lower() in code_lower:
+                raise ValueError(
+                    f"Feature code contains forbidden operation: {pattern}. "
+                    "Only pandas/numpy operations on dataframe columns are allowed."
+                )
+
+        logger.info("Feature code validation passed (basic checks only)")
+
+    async def apply_stored_feature(
+        self,
+        df: pd.DataFrame,
+        feature: 'StoredFeature'
+    ) -> pd.DataFrame:
+        """
+        Apply a stored feature definition to a dataframe.
+
+        Args:
+            df: Input dataframe
+            feature: StoredFeature instance from feature store
+
+        Returns:
+            DataFrame with new feature column added
+
+        Raises:
+            ValueError: If feature cannot be applied
+        """
+        try:
+            # SECURITY: Validate code before execution
+            # This is a basic check - in production, use a proper sandboxing solution
+            self._validate_feature_code(feature.definition_code)
+
+            # Execute the feature definition code with restricted scope
+            # Note: This uses exec() which is inherently unsafe.
+            # See GH-132 for sandboxed execution implementation
+            local_vars = {'df': df, 'pd': pd, 'np': np}
+            exec(feature.definition_code, {}, local_vars)
+
+            # The definition_code should have modified df in place
+            result_df = local_vars['df']
+
+            logger.info(
+                f"Applied stored feature {feature.feature_id} - "
+                f"created column: {feature.output_column_name}"
+            )
+
+            return result_df
+
+        except Exception as e:
+            logger.error(f"Error applying stored feature {feature.feature_id}: {str(e)}")
+            raise ValueError(f"Failed to apply feature: {str(e)}")
