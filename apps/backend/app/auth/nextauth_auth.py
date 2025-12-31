@@ -100,4 +100,6 @@ def get_current_user_id_optional(
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         return get_current_user_id(credentials)
     except (IndexError, ValueError, HTTPException):
+        # Catch HTTPException from get_current_user_id() - for optional auth,
+        # invalid/expired tokens should return None, not raise to the client
         return None

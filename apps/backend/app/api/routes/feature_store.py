@@ -5,7 +5,7 @@ Provides REST endpoints for managing features, versions, and collections.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import List, Optional, Dict
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
@@ -24,10 +24,10 @@ class FeatureCreateRequest(BaseModel):
     name: str = Field(..., description="Feature name")
     description: str = Field(..., description="Feature description")
     category: str = Field(..., description="Feature category")
-    tags: List[str] = Field(default_factory=list, description="Feature tags")
+    tags: list[str] = Field(default_factory=list, description="Feature tags")
     definition_type: str = Field(..., description="transformation, aggregation, encoding, or custom")
     definition_code: str = Field(..., description="Feature definition code")
-    input_requirements: Dict[str, str] = Field(..., description="Required input columns and types")
+    input_requirements: dict[str, str] = Field(..., description="Required input columns and types")
     output_type: str = Field(..., description="Output data type")
     output_column_name: str = Field(..., description="Name of output column")
     is_public: bool = Field(default=False, description="Whether feature is public")
@@ -38,10 +38,10 @@ class FeatureUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
-    tags: Optional[List[str]] = None
+    tags: Optional[list[str]] = None
     definition_code: Optional[str] = None
     definition_type: Optional[str] = None
-    input_requirements: Optional[Dict[str, str]] = None
+    input_requirements: Optional[dict[str, str]] = None
     output_type: Optional[str] = None
     output_column_name: Optional[str] = None
     changes_description: Optional[str] = None

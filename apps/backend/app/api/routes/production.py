@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 import hashlib
+import logging
 import redis
 from beanie import PydanticObjectId
 
@@ -14,6 +15,8 @@ from app.models.ml_model import MLModel
 from app.services.model_storage import ModelStorageService
 from app.auth.nextauth_auth import get_current_user_id
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/production", tags=["production"])
 
 # Initialize Redis for rate limiting
@@ -21,10 +24,9 @@ redis_client = None  # Redis is optional for development
 try:
     if hasattr(settings, 'REDIS_URL') and settings.REDIS_URL:
         redis_client = redis.from_url(settings.REDIS_URL)
-except (redis.RedisError, ConnectionError, Exception) as e:
+except (redis.RedisError, redis.ConnectionError, OSError) as e:
     # Redis is optional - log but continue without it
-    import logging
-    logging.getLogger(__name__).warning(f"Redis connection failed: {e}. Rate limiting disabled.")
+    logger.warning(f"Redis connection failed: {e}. Rate limiting disabled.")
 
 
 # Request/Response Models

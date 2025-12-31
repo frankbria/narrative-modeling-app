@@ -666,6 +666,40 @@ class FeatureEngineer:
 
         return df
 
+    def _validate_feature_code(self, code: str) -> None:
+        """
+        Validate feature code for basic security.
+
+        WARNING: This is NOT a complete security solution. In production,
+        use a proper sandboxed execution environment or a safe DSL.
+
+        Args:
+            code: Feature definition code to validate
+
+        Raises:
+            ValueError: If code contains dangerous operations
+        """
+        # List of dangerous operations to block
+        dangerous_patterns = [
+            'import ', 'from ', '__import__',  # Module imports
+            'open(', 'file(',  # File operations
+            'eval(', 'compile(',  # Dynamic code execution
+            'os.', 'sys.', 'subprocess.',  # System operations
+            'pickle.', 'shelve.',  # Serialization
+            '__', 'globals', 'locals', 'vars',  # Introspection
+            'delattr', 'setattr', 'getattr',  # Attribute manipulation
+        ]
+
+        code_lower = code.lower()
+        for pattern in dangerous_patterns:
+            if pattern.lower() in code_lower:
+                raise ValueError(
+                    f"Feature code contains forbidden operation: {pattern}. "
+                    "Only pandas/numpy operations on dataframe columns are allowed."
+                )
+
+        logger.info("Feature code validation passed (basic checks only)")
+
     async def apply_stored_feature(
         self,
         df: pd.DataFrame,
@@ -685,9 +719,13 @@ class FeatureEngineer:
             ValueError: If feature cannot be applied
         """
         try:
-            # Execute the feature definition code
-            # Note: In production, this should use a safe execution environment
-            # For now, we'll use exec with limited scope
+            # SECURITY: Validate code before execution
+            # This is a basic check - in production, use a proper sandboxing solution
+            self._validate_feature_code(feature.definition_code)
+
+            # Execute the feature definition code with restricted scope
+            # Note: This uses exec() which is inherently unsafe.
+            # TODO: Replace with a proper sandboxed execution environment or DSL
             local_vars = {'df': df, 'pd': pd, 'np': np}
             exec(feature.definition_code, {}, local_vars)
 

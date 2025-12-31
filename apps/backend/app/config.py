@@ -1,8 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List
 import os
+import logging
 from dotenv import load_dotenv
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Get the path to the .env file
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -28,7 +31,7 @@ class Settings(BaseModel):
     S3_BUCKET: str = os.getenv("S3_BUCKET", "narrative-modeling-uploads")
 
     # CORS settings
-    @property 
+    @property
     def BACKEND_CORS_ORIGINS(self) -> List[str]:
         cors_origins = os.getenv("BACKEND_CORS_ORIGINS", '["*"]')
         if cors_origins:
@@ -39,6 +42,28 @@ class Settings(BaseModel):
                 pass
         # Default to allow all origins in development
         return ["*"]
+
+    @field_validator("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+    @classmethod
+    def validate_no_dummy_credentials(cls, v: str, info) -> str:
+        """Validate that dummy/test credentials aren't used in production."""
+        dummy_patterns = ["test-", "dummy-", "sk-test-", "placeholder"]
+        env = os.getenv("NODE_ENV", os.getenv("ENVIRONMENT", "development"))
+
+        if env.lower() == "production":
+            for pattern in dummy_patterns:
+                if pattern in v.lower():
+                    raise ValueError(
+                        f"Dummy credential detected in production environment for {info.field_name}. "
+                        f"Please set real credentials."
+                    )
+        elif any(pattern in v.lower() for pattern in dummy_patterns):
+            logger.warning(
+                f"Dummy credential detected for {info.field_name} in {env} environment. "
+                "This is OK for testing but should not be used in production."
+            )
+
+        return v
 
 
 settings = Settings()
