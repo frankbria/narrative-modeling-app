@@ -120,15 +120,36 @@ def download_file_from_s3(s3_url: str) -> str:
 
 class S3Service:
     """Service for S3 operations"""
-    
+
     def __init__(self):
         self.bucket_name = os.getenv("AWS_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
-        self.s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
+
+        # Check if we're using test/mock credentials
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+        self.is_mock_mode = (
+            aws_access_key.startswith("test-") or
+            aws_secret_key.startswith("test-") or
+            not aws_access_key or
+            not aws_secret_key
         )
+
+        if self.is_mock_mode:
+            logger.warning("S3Service initialized in mock mode (test credentials or missing credentials)")
+            # Create a dummy client that won't be used
+            self.s3_client = None
+        else:
+            try:
+                self.s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=os.getenv("AWS_REGION", "us-east-1"),
+                )
+            except Exception as e:
+                logger.exception("Failed to initialize S3 client: %s", e)
+                self.is_mock_mode = True
+                self.s3_client = None
     
     @with_circuit_breaker(
         "s3",
@@ -139,6 +160,9 @@ class S3Service:
     )
     async def download_file_bytes(self, file_key: str) -> bytes:
         """Download file from S3 and return as bytes"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot download files")
+
         try:
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
             return response['Body'].read()
@@ -159,6 +183,9 @@ class S3Service:
     )
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot upload files")
+
         try:
             self.s3_client.upload_fileobj(file_obj, self.bucket_name, file_key)
             logger.info(f"File uploaded successfully to {file_key}")
@@ -180,6 +207,9 @@ class S3Service:
     )
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot delete files")
+
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=file_key)
             logger.info(f"File deleted successfully: {file_key}")

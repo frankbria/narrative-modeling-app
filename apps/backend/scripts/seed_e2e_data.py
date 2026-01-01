@@ -30,19 +30,34 @@ TEST_USER_ID = os.getenv('TEST_USER_ID', 'test-user-12345')
 TEST_USER_NAME = 'Test User'
 
 def get_db_client():
-    """Create and return MongoDB client."""
-    try:
-        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        # Test connection
-        client.admin.command('ping')
-        return client
-    except Exception as e:
-        print(f"❌ Failed to connect to MongoDB at {MONGODB_URI}")
-        print(f"   Error: {e}")
-        print("\n💡 Make sure MongoDB is running:")
-        print("   - Local: mongod --dbpath /path/to/data")
-        print("   - Docker: docker run -d -p 27017:27017 mongo:latest")
-        sys.exit(1)
+    """Create and return MongoDB client with retry logic."""
+    import time
+
+    max_retries = 5
+    retry_delay = 2  # seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"   Attempt {attempt}/{max_retries}: Connecting to MongoDB...")
+            client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+            # Test connection
+            client.admin.command('ping')
+            print(f"   ✅ Connected to MongoDB successfully")
+            return client
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"   ⚠️  Connection attempt {attempt} failed: {e}")
+                print(f"   Retrying in {retry_delay * attempt} seconds...")
+                time.sleep(retry_delay * attempt)  # Exponential backoff
+            else:
+                print(f"\n❌ Failed to connect to MongoDB after {max_retries} attempts")
+                print(f"   URI: {MONGODB_URI}")
+                print(f"   Error: {e}")
+                print("\n💡 Make sure MongoDB is running:")
+                print("   - Local: mongod --dbpath /path/to/data")
+                print("   - Docker: docker run -d -p 27017:27017 mongo:latest")
+                print("   - CI: Check MongoDB service is started")
+                sys.exit(1)
 
 def seed_nextauth_user(db):
     """

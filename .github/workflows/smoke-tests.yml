@@ -64,13 +64,17 @@ jobs:
           TEST_USER_EMAIL: test@narrativeml.com
           TEST_USER_PASSWORD: test-password-123
           NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
-          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_URL: http://localhost:3010
           GOOGLE_CLIENT_ID: dummy-client-id
           GOOGLE_CLIENT_SECRET: dummy-client-secret
           GITHUB_ID: dummy-client-id
           GITHUB_SECRET: dummy-client-secret
           MONGODB_URI: mongodb://localhost:27017
           MONGODB_DB: narrative-modeling-test
+          # Port configuration
+          PORT: 3010
+          BACKEND_PORT: 8000
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
           # AWS credentials for backend S3 service (dummy values for testing)
           AWS_ACCESS_KEY_ID: test-access-key-id
           AWS_SECRET_ACCESS_KEY: test-secret-access-key

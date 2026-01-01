@@ -2,6 +2,7 @@
 Unit tests for health check endpoints
 Tests Story 7.2: Comprehensive Health Checks
 """
+import asyncio
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
@@ -59,12 +60,12 @@ class TestReadinessChecks:
                     assert data["checks"]["s3"]["status"] == "healthy"
                     assert data["checks"]["openai"]["status"] == "healthy"
 
-    async def test_mongodb_unhealthy_returns_degraded(self):
-        """Test readiness endpoint when MongoDB is unhealthy"""
+    async def test_mongodb_unhealthy_returns_not_ready(self):
+        """Test readiness endpoint when MongoDB is unhealthy (MongoDB is critical)"""
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
             with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
                 with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock MongoDB as unhealthy
+                    # Mock MongoDB as unhealthy (critical service)
                     mock_mongo.return_value = {
                         "status": "unhealthy",
                         "latency_ms": 5000.0,
@@ -83,18 +84,19 @@ class TestReadinessChecks:
                     }
 
                     response = client.get("/health/ready")
+                    # MongoDB is critical, so unhealthy MongoDB = not ready (503)
                     assert response.status_code == 503
                     data = response.json()
-                    assert data["status"] == "degraded"
+                    assert data["status"] == "not_ready"
                     assert data["checks"]["mongodb"]["status"] == "unhealthy"
                     assert "error" in data["checks"]["mongodb"]
 
-    async def test_s3_unhealthy_returns_degraded(self):
-        """Test readiness endpoint when S3 is unhealthy"""
+    async def test_s3_unhealthy_still_ready(self):
+        """Test readiness endpoint when S3 is unhealthy (S3 is optional)"""
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
             with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
                 with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock S3 as unhealthy
+                    # Mock S3 as unhealthy (but MongoDB healthy, so should still be ready)
                     mock_mongo.return_value = {
                         "status": "healthy",
                         "latency_ms": 15.5,
@@ -112,10 +114,40 @@ class TestReadinessChecks:
                     }
 
                     response = client.get("/health/ready")
-                    assert response.status_code == 503
+                    # Backend is ready if MongoDB is healthy, regardless of S3/OpenAI
+                    assert response.status_code == 200
                     data = response.json()
-                    assert data["status"] == "degraded"
+                    assert data["status"] == "ready"
                     assert data["checks"]["s3"]["status"] == "unhealthy"
+
+    async def test_s3_not_configured_still_ready(self):
+        """Test readiness endpoint when S3 is not configured (mock mode)"""
+        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
+            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
+                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+                    # Mock S3 as not_configured (test credentials / mock mode)
+                    mock_mongo.return_value = {
+                        "status": "healthy",
+                        "latency_ms": 15.5,
+                        "database": "test_db"
+                    }
+                    mock_s3.return_value = {
+                        "status": "not_configured",
+                        "latency_ms": 0.5,
+                        "message": "S3 running in mock mode (test credentials or not configured)"
+                    }
+                    mock_openai.return_value = {
+                        "status": "healthy",
+                        "latency_ms": 150.2,
+                        "api_version": "v1"
+                    }
+
+                    response = client.get("/health/ready")
+                    # Backend is ready if MongoDB is healthy, S3 can be not_configured
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["status"] == "ready"
+                    assert data["checks"]["s3"]["status"] == "not_configured"
 
     async def test_openai_not_configured_still_ready(self):
         """Test that app is still ready when OpenAI is not configured"""
@@ -187,9 +219,10 @@ class TestIndividualHealthChecks:
         from app.api.routes.health import check_s3_access
 
         mock_s3_service = MagicMock()
-        mock_s3_service.s3_client.list_buckets.return_value = {
-            "Buckets": [{"Name": "test-bucket"}]
-        }
+        mock_s3_service.is_mock_mode = False  # Not in mock mode
+        mock_s3_service.s3_client = MagicMock()
+        # head_bucket returns None on success (no exception = bucket exists)
+        mock_s3_service.s3_client.head_bucket.return_value = None
 
         with patch("app.api.routes.health.s3_service", mock_s3_service):
             with patch.dict("os.environ", {"AWS_S3_BUCKET_NAME": "test-bucket"}):
@@ -199,20 +232,40 @@ class TestIndividualHealthChecks:
                 assert result["bucket"] == "test-bucket"
                 assert result["accessible"] is True
                 assert "latency_ms" in result
+                # Verify head_bucket was called with correct bucket name
+                mock_s3_service.s3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    async def test_s3_check_mock_mode(self):
+        """Test S3 health check when in mock mode (test credentials)"""
+        from app.api.routes.health import check_s3_access
+
+        mock_s3_service = MagicMock()
+        mock_s3_service.is_mock_mode = True  # In mock mode
+        mock_s3_service.s3_client = None
+
+        with patch("app.api.routes.health.s3_service", mock_s3_service):
+            result = await check_s3_access()
+
+            assert result["status"] == "not_configured"
+            assert "message" in result
+            assert "mock mode" in result["message"].lower()
 
     async def test_s3_check_failure(self):
         """Test S3 health check when access fails"""
         from app.api.routes.health import check_s3_access
 
         mock_s3_service = MagicMock()
-        mock_s3_service.s3_client.list_buckets.side_effect = Exception("Access denied")
+        mock_s3_service.is_mock_mode = False  # Not in mock mode
+        mock_s3_service.s3_client = MagicMock()
+        mock_s3_service.s3_client.head_bucket.side_effect = Exception("Access denied")
 
         with patch("app.api.routes.health.s3_service", mock_s3_service):
-            result = await check_s3_access()
+            with patch.dict("os.environ", {"AWS_S3_BUCKET_NAME": "test-bucket"}):
+                result = await check_s3_access()
 
-            assert result["status"] == "unhealthy"
-            assert "error" in result
-            assert "Access denied" in result["error"]
+                assert result["status"] == "unhealthy"
+                assert "error" in result
+                assert "Access denied" in result["error"]
 
     async def test_openai_check_not_configured(self):
         """Test OpenAI health check when API key is not configured"""
