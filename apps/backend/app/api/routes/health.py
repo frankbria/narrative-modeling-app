@@ -60,12 +60,10 @@ async def check_s3_access() -> Dict[str, Any]:
         }
 
     try:
-        # Test bucket access by listing buckets
-        # We don't need the response, just verifying the connection works
-        _ = s3_service.s3_client.list_buckets()
+        # Test bucket access by checking if our specific bucket exists
+        bucket_name = os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("AWS_BUCKET_NAME", "unknown")
+        s3_service.s3_client.head_bucket(Bucket=bucket_name)
         latency_ms = (time.time() - start_time) * 1000
-
-        bucket_name = os.getenv("AWS_S3_BUCKET_NAME", "unknown")
 
         return {
             "status": "healthy",

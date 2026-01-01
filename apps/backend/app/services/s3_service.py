@@ -147,7 +147,7 @@ class S3Service:
                     region_name=os.getenv("AWS_REGION", "us-east-1"),
                 )
             except Exception as e:
-                logger.error(f"Failed to initialize S3 client: {str(e)}")
+                logger.exception("Failed to initialize S3 client: %s", e)
                 self.is_mock_mode = True
                 self.s3_client = None
     
@@ -160,6 +160,9 @@ class S3Service:
     )
     async def download_file_bytes(self, file_key: str) -> bytes:
         """Download file from S3 and return as bytes"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot download files")
+
         try:
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
             return response['Body'].read()
@@ -180,6 +183,9 @@ class S3Service:
     )
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot upload files")
+
         try:
             self.s3_client.upload_fileobj(file_obj, self.bucket_name, file_key)
             logger.info(f"File uploaded successfully to {file_key}")
@@ -201,6 +207,9 @@ class S3Service:
     )
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot delete files")
+
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=file_key)
             logger.info(f"File deleted successfully: {file_key}")
