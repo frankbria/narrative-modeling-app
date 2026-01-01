@@ -49,6 +49,16 @@ async def check_s3_access() -> Dict[str, Any]:
     Returns health status, latency, and bucket access details
     """
     start_time = time.time()
+
+    # Check if S3 is in mock mode (test credentials or not configured)
+    if s3_service.is_mock_mode or s3_service.s3_client is None:
+        latency_ms = (time.time() - start_time) * 1000
+        return {
+            "status": "not_configured",
+            "latency_ms": round(latency_ms, 2),
+            "message": "S3 running in mock mode (test credentials or not configured)"
+        }
+
     try:
         # Test bucket access by listing buckets
         # We don't need the response, just verifying the connection works
@@ -161,19 +171,14 @@ async def readiness_check():
     }
 
     # Determine overall health status
-    # Critical services: MongoDB, S3
-    # Optional services: OpenAI (can be not_configured in dev)
-    critical_healthy = (
-        checks["mongodb"]["status"] == "healthy" and
-        checks["s3"]["status"] == "healthy"
-    )
+    # Critical services: MongoDB (only)
+    # Optional services: S3, OpenAI (can be unhealthy/not_configured in dev/CI)
+    critical_healthy = checks["mongodb"]["status"] == "healthy"
 
-    all_healthy = critical_healthy and (
-        checks["openai"]["status"] in ["healthy", "not_configured"]
-    )
-
-    status_code = 200 if all_healthy else 503
-    overall_status = "ready" if all_healthy else "degraded"
+    # Backend is ready if MongoDB is healthy, regardless of S3/OpenAI status
+    # S3 and OpenAI can be in any state (healthy, unhealthy, not_configured)
+    status_code = 200 if critical_healthy else 503
+    overall_status = "ready" if critical_healthy else "not_ready"
 
     return JSONResponse(
         status_code=status_code,

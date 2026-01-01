@@ -120,15 +120,36 @@ def download_file_from_s3(s3_url: str) -> str:
 
 class S3Service:
     """Service for S3 operations"""
-    
+
     def __init__(self):
         self.bucket_name = os.getenv("AWS_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
-        self.s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
+
+        # Check if we're using test/mock credentials
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+        self.is_mock_mode = (
+            aws_access_key.startswith("test-") or
+            aws_secret_key.startswith("test-") or
+            not aws_access_key or
+            not aws_secret_key
         )
+
+        if self.is_mock_mode:
+            logger.warning("S3Service initialized in mock mode (test credentials or missing credentials)")
+            # Create a dummy client that won't be used
+            self.s3_client = None
+        else:
+            try:
+                self.s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=os.getenv("AWS_REGION", "us-east-1"),
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize S3 client: {str(e)}")
+                self.is_mock_mode = True
+                self.s3_client = None
     
     @with_circuit_breaker(
         "s3",

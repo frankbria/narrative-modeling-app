@@ -85,6 +85,16 @@ export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
 export SKIP_AUTH=true
 
+# AWS S3 configuration (test/mock values for E2E)
+export AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-test-bucket}
+export AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-test-bucket}
+export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test-access-key-id}
+export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test-secret-access-key}
+export AWS_REGION=${AWS_REGION:-us-east-1}
+
+# OpenAI API configuration (test/mock value for E2E)
+export OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-e2e-testing}
+
 echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
 # Start backend in background using absolute path
