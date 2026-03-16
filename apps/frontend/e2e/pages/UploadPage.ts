@@ -11,18 +11,23 @@ export class UploadPage extends BasePage {
   }
 
   /**
-   * Upload a file
+   * Upload a file and click the upload button
    */
   async uploadFile(filePath: string) {
     const fileInput = this.locator('input[type="file"]');
     await fileInput.setInputFiles(filePath);
+
+    // Wait for the upload button to appear and click it
+    const uploadButton = this.page.getByTestId('upload-button');
+    await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
+    await uploadButton.click();
   }
 
   /**
    * Wait for upload to complete
    */
   async waitForUploadComplete() {
-    await this.waitForElement('text=/Upload (complete|successful)/i');
+    await this.waitForElement('text=/uploaded successfully|File uploaded/i');
   }
 
   /**

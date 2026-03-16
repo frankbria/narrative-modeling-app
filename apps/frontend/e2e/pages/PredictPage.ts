@@ -14,12 +14,16 @@ export class PredictPage extends BasePage {
   }
 
   async fillFeatureValue(featureName: string, value: string) {
-    const input = this.page.locator(`input[name="${featureName}"], [data-feature="${featureName}"]`);
+    // Feature inputs are rendered dynamically. Try name attr, data attr, or label association
+    const input = this.page.locator(
+      `input[name="${featureName}"], [data-feature="${featureName}"], label:has-text("${featureName}") ~ input, label:has-text("${featureName}") + input`
+    ).first();
     await input.fill(value);
   }
 
   async predict() {
-    await this.page.click('button:has-text("Predict"), [data-testid="make-prediction"]');
+    // The predict page uses "Make Prediction" button text
+    await this.page.click('button:has-text("Make Prediction"), button:has-text("Predict"), [data-testid="make-prediction"]');
   }
 
   async waitForPredictionResult(timeout: number = 10000) {

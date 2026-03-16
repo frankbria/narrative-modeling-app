@@ -349,7 +349,7 @@ export default function UploadPage() {
 
         {/* Success Message */}
         {showSuccessMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md" data-testid="upload-status">
             <div className="flex items-center">
               <CheckCircle className="text-green-500 mr-2" size={20} />
               <div>
@@ -358,7 +358,7 @@ export default function UploadPage() {
                   Your data has been processed and stored. You can now use it for analysis.
                 </p>
                 {uploadedFileId && (
-                  <p className="text-xs text-green-600 mt-1">
+                  <p className="text-xs text-green-600 mt-1" data-testid="file-id">
                     File ID: {uploadedFileId}
                   </p>
                 )}
@@ -495,13 +495,14 @@ export default function UploadPage() {
 
         <div
           {...getRootProps()}
+          data-testid="upload-dropzone"
           className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
             isDragActive
               ? 'border-blue-500 bg-blue-50'
               : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
           }`}
         >
-          <input {...getInputProps()} />
+          <input {...getInputProps()} data-testid="file-input" />
           {file ? (
             <div className="flex flex-col items-center space-y-3">
               <div className="flex items-center space-x-2">
@@ -539,6 +540,7 @@ export default function UploadPage() {
             <button
               onClick={handleUpload}
               disabled={isUploading || isChunkUploading || uploadStatus === 'success'}
+              data-testid="upload-button"
               className={`px-6 py-3 rounded-md text-white font-semibold transition-all ${
                 uploadStatus === 'success'
                   ? 'bg-green-500 cursor-default'
