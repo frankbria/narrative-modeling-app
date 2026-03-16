@@ -12,9 +12,11 @@ export class VersioningPage extends BasePage {
 
   /**
    * Navigate to dataset versions page
+   * Note: /datasets/{id}/versions does not exist as a route.
+   * Falls back to /explore/{id} which shows dataset detail and may have versioning controls.
    */
   async gotoVersions(datasetId: string) {
-    await this.goto(`/datasets/${datasetId}/versions`);
+    await this.goto(`/explore/${datasetId}`);
   }
 
   /**

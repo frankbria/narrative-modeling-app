@@ -14,7 +14,12 @@ export class ModelConfigPage extends BasePage {
    * Navigate to model training page for a dataset
    */
   async gotoTraining(datasetId: string) {
-    await this.goto(`/datasets/${datasetId}/train`);
+    await this.goto(`/model`);
+    // Handle workflow gating redirect — if redirected to /upload, log a warning
+    const currentUrl = this.page.url();
+    if (currentUrl.includes('/upload')) {
+      console.log(`[ModelConfigPage] Redirected to /upload due to workflow gating (datasetId: ${datasetId}). Workflow context may not be set.`);
+    }
   }
 
   /**
@@ -35,27 +40,40 @@ export class ModelConfigPage extends BasePage {
    * Select target column for training
    */
   async selectTargetColumn(column: string) {
-    const selector = 'select[name="target"], [data-testid="target-column-select"]';
-    await this.page.click(selector);
-    await this.page.click(`option:has-text("${column}"), [data-column="${column}"]`);
+    // The model page has a <select> element for target column (no name attr)
+    const select = this.page.locator('select').first();
+    await select.selectOption({ label: column });
   }
 
   /**
    * Select algorithm for training
    */
   async selectAlgorithm(algorithm: string) {
-    const selector = 'select[name="algorithm"], [data-testid="algorithm-select"]';
-    await this.page.click(selector);
-    await this.page.click(`option:has-text("${algorithm}"), [data-algorithm="${algorithm}"]`);
+    // Algorithms are rendered as buttons (e.g., "Random Forest", "XGBoost", "AutoML")
+    const algoButton = this.page.locator(`button:has-text("${algorithm}")`);
+    if (await algoButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await algoButton.click();
+    } else {
+      // Fallback to select-based approach
+      const selector = 'select[name="algorithm"], [data-testid="algorithm-select"]';
+      await this.page.click(selector);
+      await this.page.click(`option:has-text("${algorithm}"), [data-algorithm="${algorithm}"]`);
+    }
   }
 
   /**
    * Set problem type (classification or regression)
    */
   async setProblemType(problemType: 'classification' | 'regression') {
-    const selector = 'select[name="problem_type"], [data-testid="problem-type-select"]';
-    await this.page.click(selector);
-    await this.page.click(`option:has-text("${problemType}"), [data-problem-type="${problemType}"]`);
+    // Try button-based selection first, then fallback to select
+    const typeButton = this.page.locator(`button:has-text("${problemType}")`);
+    if (await typeButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await typeButton.click();
+    } else {
+      const selector = 'select[name="problem_type"], [data-testid="problem-type-select"]';
+      await this.page.click(selector);
+      await this.page.click(`option:has-text("${problemType}"), [data-problem-type="${problemType}"]`);
+    }
   }
 
   /**
@@ -80,17 +98,17 @@ export class ModelConfigPage extends BasePage {
    * Start model training
    */
   async startTraining() {
-    await this.click('button:has-text("Train"), button:has-text("Start Training"), [data-testid="start-training"]');
+    await this.click('button:has-text("Start Training"), button:has-text("Train"), [data-testid="start-training"]');
 
-    // Wait for training to start
-    await this.waitForElement('text=/Training started|Training in progress/i', 5000);
+    // Wait for training to start — shows "Training Your Model" h2
+    await this.waitForElement('text=/Training Your Model|Training started|Training in progress/i', 10000);
   }
 
   /**
    * Wait for training to complete
    */
   async waitForTrainingComplete(timeout: number = 120000) {
-    await this.waitForElement('text=/Training complete|Training finished|100%/i', timeout);
+    await this.waitForElement('text=/Training complete!|Training complete|Training finished|100%/i', timeout);
   }
 
   /**

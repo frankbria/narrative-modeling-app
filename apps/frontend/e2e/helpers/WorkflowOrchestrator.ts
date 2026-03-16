@@ -166,7 +166,7 @@ export class WorkflowOrchestrator {
 
     for (const branchPoint of branchPoints) {
       // Navigate to transform page for specific version
-      await this.transformPage.goto(`/datasets/${datasetId}/transform?version=${branchPoint.versionId}`);
+      await this.transformPage.goto(`/datasets/${datasetId}/prepare?version=${branchPoint.versionId}`);
 
       // Apply alternative transformation
       await this.transformPage.addTransformation(branchPoint.transformationType);
@@ -204,7 +204,7 @@ export class WorkflowOrchestrator {
 
     if (interruptAtStep === 'transform') {
       // Go to transform, then simulate browser crash
-      await this.transformPage.goto(`/datasets/${datasetId}/transform`);
+      await this.transformPage.goto(`/datasets/${datasetId}/prepare`);
       await this.transformPage.addTransformation('scale');
 
       // Simulate crash by reloading page

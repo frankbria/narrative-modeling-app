@@ -14,15 +14,22 @@ export class TrainPage extends BasePage {
   }
 
   async selectTargetColumn(column: string) {
-    const selector = 'select[name="target"], [data-testid="target-column"]';
-    await this.page.click(selector);
-    await this.page.click(`option:has-text("${column}"), [data-column="${column}"]`);
+    // The model page has a <select> element for target column (no name attr)
+    const select = this.page.locator('select').first();
+    await select.selectOption({ label: column });
   }
 
   async selectAlgorithm(algorithm: string) {
-    const selector = 'select[name="algorithm"], [data-testid="algorithm-select"]';
-    await this.page.click(selector);
-    await this.page.click(`option:has-text("${algorithm}"), [data-algorithm="${algorithm}"]`);
+    // Algorithms are rendered as buttons (e.g., "Random Forest", "XGBoost", "AutoML")
+    const algoButton = this.page.locator(`button:has-text("${algorithm}")`);
+    if (await algoButton.isVisible({ timeout: 3000 })) {
+      await algoButton.click();
+    } else {
+      // Fallback to select-based approach if buttons not found
+      const selector = 'select[name="algorithm"], [data-testid="algorithm-select"]';
+      await this.page.click(selector);
+      await this.page.click(`option:has-text("${algorithm}"), [data-algorithm="${algorithm}"]`);
+    }
   }
 
   async setHyperparameter(name: string, value: string) {
@@ -31,11 +38,14 @@ export class TrainPage extends BasePage {
   }
 
   async startTraining() {
-    await this.page.click('button:has-text("Train Model"), [data-testid="start-training"]');
+    // The model page uses "Start Training" button text
+    const startButton = this.page.locator('button:has-text("Start Training"), button:has-text("Train Model"), [data-testid="start-training"]');
+    await startButton.click();
   }
 
   async waitForTrainingComplete(timeout: number = 120000) {
-    await this.page.waitForSelector('text=/Training complete|Training successful/i', { timeout });
+    // The model page shows "Training complete!" text at 100% progress
+    await this.page.waitForSelector('text=/Training complete|Training successful|Training finished/i', { timeout });
   }
 
   async waitForTrainingStatus(status: string, timeout: number = 30000) {
