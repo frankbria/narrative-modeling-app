@@ -92,12 +92,17 @@ export AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-test-bucket}
 export AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-test-bucket}
 export AWS_S3_BUCKET=${AWS_S3_BUCKET:-test-bucket}
 export S3_BUCKET=${S3_BUCKET:-test-bucket}
-export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test-access-key-id}
-export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test-secret-access-key}
-export AWS_REGION=${AWS_REGION:-us-east-1}
 if [ -n "${AWS_ENDPOINT_URL:-}" ]; then
+  # Real S3-compatible storage (MinIO/LocalStack): credentials must NOT start
+  # with "test-" or S3Service enters no-op mock mode instead of using MinIO.
   export AWS_ENDPOINT_URL
+  export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-minioadmin}
+  export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-minioadmin}
+else
+  export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test-access-key-id}
+  export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test-secret-access-key}
 fi
+export AWS_REGION=${AWS_REGION:-us-east-1}
 
 # OpenAI API configuration (test/mock value for E2E)
 export OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-e2e-testing}

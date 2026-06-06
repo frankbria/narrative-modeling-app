@@ -3,7 +3,7 @@ import os
 from unittest.mock import Mock, patch
 from botocore.exceptions import ClientError, NoCredentialsError
 import io
-from app.utils.s3 import get_s3_client, upload_file_to_s3, get_file_from_s3
+from app.utils.s3 import get_s3_client, upload_file_to_s3, get_file_from_s3, parse_s3_url
 
 
 @pytest.fixture
@@ -121,6 +121,53 @@ def test_upload_file_to_s3_success(mock_env_vars, mock_s3_client):
         assert call_args[0][1] == "test_bucket"  # bucket name
         assert call_args[0][2] == s3_filename    # key
         assert call_args[1]["ExtraArgs"] == {"ContentType": content_type}
+
+
+class TestParseS3Url:
+    """parse_s3_url must handle every URL shape the app persists."""
+
+    def test_s3_scheme(self, mock_env_vars):
+        assert parse_s3_url("s3://my-bucket/datasets/u1/data.csv") == (
+            "my-bucket", "datasets/u1/data.csv"
+        )
+
+    def test_amazonaws_virtual_hosted(self, mock_env_vars):
+        assert parse_s3_url("https://my-bucket.s3.amazonaws.com/datasets/u1/data.csv") == (
+            "my-bucket", "datasets/u1/data.csv"
+        )
+
+    def test_amazonaws_presigned_query_stripped(self, mock_env_vars):
+        bucket, key = parse_s3_url(
+            "https://my-bucket.s3.amazonaws.com/datasets/u1/data.csv"
+            "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600"
+        )
+        assert bucket == "my-bucket"
+        assert key == "datasets/u1/data.csv"
+
+    def test_endpoint_style(self, mock_env_vars_with_endpoint):
+        assert parse_s3_url("http://localhost:9000/test_bucket/datasets/u1/data.csv") == (
+            "test_bucket", "datasets/u1/data.csv"
+        )
+
+    def test_endpoint_style_with_query(self, mock_env_vars_with_endpoint):
+        bucket, key = parse_s3_url(
+            "http://localhost:9000/test_bucket/datasets/u1/data.csv?X-Amz-Expires=3600"
+        )
+        assert bucket == "test_bucket"
+        assert key == "datasets/u1/data.csv"
+
+    def test_unknown_https_falls_back_to_path(self, mock_env_vars):
+        bucket, key = parse_s3_url("https://example.com/some/path/file.csv")
+        assert bucket is None
+        assert key == "some/path/file.csv"
+
+    def test_missing_key_raises(self, mock_env_vars_with_endpoint):
+        with pytest.raises(ValueError):
+            parse_s3_url("http://localhost:9000/test_bucket")
+
+    def test_empty_url_raises(self, mock_env_vars):
+        with pytest.raises(ValueError):
+            parse_s3_url("")
 
 
 def test_upload_file_to_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_client):

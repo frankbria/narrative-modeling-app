@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from beanie import PydanticObjectId
 from typing import List, Dict, Any
-from urllib.parse import urlparse
 from app.models.user_data import UserData
 from app.schemas.user_data import UserDataResponse
 from app.auth.nextauth_auth import get_current_user_id
@@ -12,7 +11,7 @@ import pandas as pd
 import io
 import os
 import logging
-from app.utils.s3 import create_s3_client
+from app.utils.s3 import create_s3_client, parse_s3_url
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -94,22 +93,11 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
         # Initialize S3 client
         s3_client = create_s3_client()
 
-        # Extract the key from the S3 URL
+        # Extract the key from the S3 URL (handles all persisted URL shapes)
         s3_url = user_data.s3_url
-
-        # Handle different S3 URL formats
-        # Parse the S3 URL to extract the full object key (preserving directory prefixes)
-        parsed_url = urlparse(s3_url)
-        s3_key = parsed_url.path.lstrip("/")
-
-        # Endpoint-style URLs ({AWS_ENDPOINT_URL}/{bucket}/{key}) include the
-        # bucket as the first path segment — strip it to get the object key.
-        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
-        bucket_name = os.getenv("AWS_BUCKET_NAME", "")
-        if endpoint_url and s3_url.startswith(endpoint_url) and s3_key.startswith(f"{bucket_name}/"):
-            s3_key = s3_key[len(bucket_name) + 1:]
-
-        if not s3_key:
+        try:
+            _, s3_key = parse_s3_url(s3_url)
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid S3 URL (missing object key)")
 
         logger.debug(f"Fetching S3 object for preview: {s3_key}")

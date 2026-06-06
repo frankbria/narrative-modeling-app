@@ -1,7 +1,9 @@
 import boto3
 import os
+import re
 from botocore.exceptions import ClientError, NoCredentialsError
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 import logging
 import io
 
@@ -39,6 +41,47 @@ def create_s3_client():
     if endpoint_url:
         client_kwargs["endpoint_url"] = endpoint_url
     return boto3.client("s3", **client_kwargs)
+
+
+def parse_s3_url(s3_url: str) -> Tuple[Optional[str], str]:
+    """
+    Parse any persisted S3 URL shape into (bucket, key).
+
+    Handles every format the app stores or has stored historically:
+    - s3://{bucket}/{key}
+    - {AWS_ENDPOINT_URL}/{bucket}/{key}      (MinIO/LocalStack, path-style)
+    - https://{bucket}.s3.amazonaws.com/{key} (incl. presigned query strings)
+    - any other http(s) URL: bucket is None, key is the URL path
+
+    Returns:
+        (bucket, key) — bucket is None when it cannot be determined from
+        the URL; callers that need a bucket should fall back to the
+        configured bucket name.
+
+    Raises:
+        ValueError: if no object key can be extracted.
+    """
+    bucket: Optional[str] = None
+    key = ""
+
+    if s3_url.startswith("s3://"):
+        bucket, _, key = s3_url[5:].partition("/")
+    else:
+        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
+        if endpoint_url and s3_url.startswith(endpoint_url):
+            path = s3_url[len(endpoint_url):].lstrip("/")
+            bucket, _, key = path.partition("/")
+        else:
+            match = re.match(r"https://([^.]+)\.s3\.amazonaws\.com/([^?]+)", s3_url)
+            if match:
+                bucket, key = match.group(1), match.group(2)
+            elif urlparse(s3_url).scheme in ("http", "https"):
+                key = urlparse(s3_url).path.lstrip("/")
+
+    key = key.split("?")[0]
+    if not key:
+        raise ValueError(f"Invalid S3 URL format: {s3_url}")
+    return bucket, key
 
 
 def get_s3_client():
@@ -150,28 +193,16 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
     if client is None:
         raise Exception("Failed to initialize S3 client")
 
-    # Parse the S3 URL to get bucket and key
-    # AWS format:      https://bucket-name.s3.amazonaws.com/key
-    # Endpoint format: {AWS_ENDPOINT_URL}/bucket-name/key  (MinIO/LocalStack)
+    # Parse the S3 URL to get bucket and key (all persisted URL shapes)
     try:
-        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
-        if endpoint_url and s3_url.startswith(endpoint_url):
-            path = s3_url[len(endpoint_url):].lstrip("/")
-            bucket_name, _, key = path.partition("/")
-            if not bucket_name or not key:
+        bucket_name, key = parse_s3_url(s3_url)
+        if bucket_name is None:
+            # Legacy fallback: derive the bucket from the host's first label
+            # (e.g. "bucket.s3.amazonaws.com" variants parse_s3_url doesn't map)
+            netloc = urlparse(s3_url if "://" in s3_url else f"https://{s3_url}").netloc
+            bucket_name = netloc.split(".")[0]
+            if not bucket_name:
                 raise ValueError(f"Invalid S3 URL format: {s3_url}")
-        else:
-            # Remove the https:// prefix if present
-            if s3_url.startswith("https://"):
-                s3_url = s3_url[8:]
-
-            # Split by the first slash to separate bucket and key
-            parts = s3_url.split("/", 1)
-            if len(parts) != 2:
-                raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-            bucket_name = parts[0].split(".")[0]  # Remove .s3.amazonaws.com
-            key = parts[1]
 
         # Download the file to a BytesIO object
         file_obj = io.BytesIO()
