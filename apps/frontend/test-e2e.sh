@@ -86,8 +86,11 @@ export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-produ
 export SKIP_AUTH=true
 
 # AWS S3 configuration (test/mock values for E2E)
+# When AWS_ENDPOINT_URL is set (e.g. http://localhost:9000 for MinIO in CI),
+# the backend routes all S3 calls to that endpoint instead of real AWS.
 export AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-test-bucket}
 export AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-test-bucket}
+export AWS_S3_BUCKET=${AWS_S3_BUCKET:-test-bucket}
 export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test-access-key-id}
 export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test-secret-access-key}
 export AWS_REGION=${AWS_REGION:-us-east-1}
