@@ -136,16 +136,20 @@ See interactive API documentation at `/docs` for complete details.
 ### Quick Start
 
 ```bash
-# All tests
+# All tests (requires MongoDB on localhost:27017; optional test Redis/LocalStack via docker compose)
 PYTHONPATH=. uv run pytest -v
 
-# Unit tests only (fast, no database required)
-PYTHONPATH=. uv run pytest -m "not integration" -v
+# Service-free tests only (fast, no external services required)
+PYTHONPATH=. uv run pytest -m "not integration and not performance" \
+  tests/test_security/ tests/test_processing/ tests/test_utils/ \
+  tests/test_models/ tests/test_auth/ \
+  tests/test_model_training/test_problem_detector.py \
+  tests/test_model_training/test_feature_engineer.py -v
 
-# Integration tests (requires Docker services)
-docker-compose -f docker-compose.test.yml up -d
-PYTHONPATH=. uv run pytest -m integration -v
-docker-compose -f docker-compose.test.yml down -v
+# Integration tests (requires Redis + LocalStack via docker compose, MongoDB via Atlas)
+docker compose -f docker-compose.test.yml up -d
+PYTHONPATH=. uv run pytest tests/integration/ -m integration -v
+docker compose -f docker-compose.test.yml down -v
 
 # With coverage
 PYTHONPATH=. uv run pytest --cov=app --cov-report=term-missing -v
@@ -153,15 +157,14 @@ PYTHONPATH=. uv run pytest --cov=app --cov-report=term-missing -v
 
 ### Test Coverage Status
 
-- **Unit Tests**: 190 tests passing (>85% coverage)
-- **Integration Tests**: 42 tests passing (~90% coverage)
+- **Service-free tests**: fast, no external dependencies (see [Service Prerequisites](../../docs/testing/guide.md#cicd-pipeline) for the full suite)
 - **Total Coverage**: >85% overall backend coverage
 
 ### Documentation
 
 - **[Testing Guide](/docs/testing/guide.md)** - Comprehensive guide for all test types
 - **[Integration Tests](/tests/integration/README.md)** - Integration test setup and usage
-- **[Test Infrastructure](/docs/TEST_INFRASTRUCTURE.md)** - Test architecture and patterns
+- **[Test Infrastructure](/apps/backend/docs/TEST_INFRASTRUCTURE.md)** - Test architecture and patterns
 
 ## 🏗️ Project Structure
 

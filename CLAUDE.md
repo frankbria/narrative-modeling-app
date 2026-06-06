@@ -26,7 +26,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 
 ## Testing Commands
 - Backend (full suite): `cd apps/backend && uv run pytest` — requires MongoDB on localhost:27017; optional test Redis (6380) and LocalStack (4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when these are absent)
-- Backend (unit tests only, no services): `cd apps/backend && uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -v`
+- Backend (service-free tests, no services): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
 - Frontend: `cd apps/frontend && npm test`
 - MCP: `cd apps/mcp && uv run pytest`
 

@@ -31,8 +31,8 @@ The Narrative Modeling App uses a comprehensive three-tier testing strategy:
 
 ### Test Coverage Goals
 
-- **Backend Unit Tests**: >85% code coverage (currently: 190 tests passing)
-- **Backend Integration Tests**: >90% service integration coverage (currently: 42 tests passing)
+- **Backend Unit Tests**: >85% code coverage
+- **Backend Integration Tests**: >90% service integration coverage
 - **Frontend E2E Tests**: Critical user workflows (currently: 4 workflows across 3 browsers)
 
 ---
@@ -104,12 +104,18 @@ cd apps/backend
 PYTHONPATH=. uv run pytest -v
 ```
 
-#### Unit Tests Only (No Database Required)
+#### Service-Free Tests Only (No External Services Required)
 ```bash
 cd apps/backend
-PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ \
+PYTHONPATH=. uv run pytest \
+  tests/test_security/ \
+  tests/test_processing/ \
+  tests/test_utils/ \
+  tests/test_models/ \
+  tests/test_auth/ \
   tests/test_model_training/test_problem_detector.py \
-  tests/test_model_training/test_feature_engineer.py -v
+  tests/test_model_training/test_feature_engineer.py \
+  -m "not integration and not performance" -v
 ```
 
 #### Integration Tests Only (Requires Services)
@@ -117,13 +123,13 @@ PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/tes
 cd apps/backend
 
 # Start test services
-docker-compose -f docker-compose.test.yml up -d
+docker compose -f docker-compose.test.yml up -d
 
 # Run integration tests
 PYTHONPATH=. uv run pytest tests/integration/ -v -m integration
 
 # Stop services
-docker-compose -f docker-compose.test.yml down -v
+docker compose -f docker-compose.test.yml down -v
 ```
 
 #### With Coverage
@@ -587,7 +593,7 @@ The testing pipeline consists of three workflows that run automatically:
 **Jobs**:
 1. **Backend Unit Tests** (15-minute timeout)
    - Python 3.11, uv package manager
-   - Tests: `test_security/`, `test_processing/`, `test_utils/`
+   - Tests: `test_security/`, `test_processing/`, `test_utils/`, `test_models/`, `test_auth/`, selected `test_model_training/` files — service-free paths only
    - Coverage uploaded to Codecov (backend-unit flag)
    - Artifacts: `coverage.xml` (30-day retention)
 
@@ -641,8 +647,7 @@ The testing pipeline consists of three workflows that run automatically:
 **File**: `.github/workflows/integration-tests.yml`
 
 **Triggers**:
-- Schedule: Nightly at 2 AM UTC (`cron: '0 2 * * *'`)
-- Manual: `workflow_dispatch` (manual trigger)
+- Manual: `workflow_dispatch` (nightly schedule disabled; production not active)
 
 **Configuration**:
 - 30-minute timeout
@@ -662,11 +667,11 @@ The testing pipeline consists of three workflows that run automatically:
 
 **Environment Variables**:
 ```bash
-# MongoDB Atlas connection (from GitHub Secrets)
+# MongoDB Atlas connection (from GitHub Secrets — both TEST and MONGODB vars point at the test cluster)
 TEST_MONGODB_URI=${{ secrets.TEST_MONGODB_URI }}
 TEST_MONGODB_DB=${{ secrets.TEST_MONGODB_DB }}
-MONGODB_URI=${{ secrets.MONGODB_URI }}
-MONGODB_DB=${{ secrets.MONGODB_DB }}
+MONGODB_URI=${{ secrets.TEST_MONGODB_URI }}
+MONGODB_DB=${{ secrets.TEST_MONGODB_DB }}
 
 # Local Docker services
 TEST_REDIS_URL=redis://localhost:6380/0
@@ -690,7 +695,7 @@ OPENAI_API_KEY=sk-test-key-for-mocking
 
 **Cleanup**:
 - Always runs (even on failure)
-- `docker-compose down -v`
+- `docker compose -f docker-compose.test.yml down -v`
 - Removes containers and volumes
 
 **Quality Gates**:
@@ -879,8 +884,8 @@ open htmlcov/index.html
 - **Combined**: >85% overall backend coverage
 
 **Current Coverage**:
-- Unit tests: 190 tests, >85% coverage
-- Integration tests: 42 tests, ~90% coverage
+- Service-free tests: >85% coverage
+- Integration tests: ~90% coverage
 
 ### Frontend Coverage
 
@@ -976,8 +981,13 @@ Coverage is automatically displayed after running tests
 # Backend - All tests
 cd apps/backend && PYTHONPATH=. uv run pytest -v
 
-# Backend - Unit tests only (fast)
-cd apps/backend && PYTHONPATH=. uv run pytest -m "not integration" -v
+# Backend - Service-free tests only (fast, matches CI unit-tests.yml paths)
+cd apps/backend && PYTHONPATH=. uv run pytest \
+  tests/test_security/ tests/test_processing/ tests/test_utils/ \
+  tests/test_models/ tests/test_auth/ \
+  tests/test_model_training/test_problem_detector.py \
+  tests/test_model_training/test_feature_engineer.py \
+  -m "not integration and not performance" -v
 
 # Backend - Integration tests only
 cd apps/backend && PYTHONPATH=. uv run pytest -m integration -v
@@ -1002,18 +1012,17 @@ cd apps/frontend && npm run test:e2e -- --project=chromium
 
 ```bash
 # Start services
-cd apps/backend && docker-compose -f docker-compose.test.yml up -d
+cd apps/backend && docker compose -f docker-compose.test.yml up -d
 
 # Check service status
 docker ps
 
 # View logs
-docker logs narrative-mongodb-test
 docker logs narrative-redis-test
 docker logs narrative-localstack-test
 
 # Stop services
-cd apps/backend && docker-compose -f docker-compose.test.yml down -v
+cd apps/backend && docker compose -f docker-compose.test.yml down -v
 ```
 
 ### CI Workflow Trigger Commands
@@ -1054,5 +1063,5 @@ If you encounter issues not covered in this guide:
 ---
 
 **Last Updated**: Sprint 9 Story 9.5 - Test Documentation
-**Coverage**: Unit Tests (190), Integration Tests (42), E2E Tests (4 workflows × 3 browsers)
+**Coverage**: Unit Tests (service-free paths), Integration Tests (tests/integration/), E2E Tests (4 workflows × 3 browsers)
 **CI Status**: ✅ All tests passing across all test types
