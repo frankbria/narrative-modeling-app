@@ -153,7 +153,10 @@ class TestVisualizationCache:
             mock_viz_class.return_value = mock_viz_cache
 
             result = await cache_visualization(dataset_id, visualization_type, data, column_name)
-            
+
+            # The newly constructed entry is returned
+            assert result is mock_viz_cache
+
             # Verify Redis was updated
             mock_cache.set.assert_called_once_with(
                 f"viz:{dataset_id}:{visualization_type}:{column_name}",

@@ -2,7 +2,7 @@
 Integration tests for Redis cache functionality
 """
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 import pandas as pd
 from datetime import datetime
 

@@ -17,7 +17,6 @@ from app.schemas.transformation import (
     TransformationPreviewResponse,
     TransformationApplyResponse,
     TransformationPipelineRequest,
-    TransformationStepRequest,
     RecipeStepRequest,
     RecipeCreateRequest,
     RecipeResponse,
