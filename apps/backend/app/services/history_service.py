@@ -314,7 +314,8 @@ class HistoryService:
     @staticmethod
     def _describe_step(step) -> str:
         """Build a human-readable description of a transformation step."""
-        label = step.transformation_type.replace("_", " ")
+        # str() guards against transformation_type surfacing as an enum member
+        label = str(step.transformation_type).replace("_", " ")
         columns = [step.column] if step.column else list(step.columns or [])
         if columns:
             return f"Applied {label} to {', '.join(columns)}"

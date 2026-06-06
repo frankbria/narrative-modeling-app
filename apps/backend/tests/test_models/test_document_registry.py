@@ -67,7 +67,12 @@ def test_registry_has_no_duplicates():
 
 
 def test_app_lifespan_uses_registry():
-    """app.main must initialize Beanie from the canonical registry."""
+    """app.main must initialize Beanie from the canonical registry.
+
+    Note: this identity check requires main.py to use the exact import form
+    `from app.models.registry import DOCUMENT_MODELS` — the import form is
+    load-bearing for the assertion.
+    """
     import app.main
     from app.models.registry import DOCUMENT_MODELS
 

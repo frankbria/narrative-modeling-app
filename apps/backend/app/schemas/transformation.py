@@ -184,7 +184,10 @@ class RecipeStepRequest(BaseModel):
         """
         allowed_types = {t.value for t in TransformationType}
         if v not in allowed_types:
-            raise ValueError(f"type must be one of {sorted(allowed_types)}, got: {v}")
+            raise ValueError(
+                f"Unknown transformation type: '{v}'. "
+                f"See TransformationType for supported values."
+            )
         return v
 
 
