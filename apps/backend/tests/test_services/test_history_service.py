@@ -12,6 +12,7 @@ Tests cover:
 """
 
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.services.history_service import HistoryService
@@ -59,11 +60,14 @@ def mock_transformation_config():
     config.current_position = 2
     config.transformation_steps = [
         MagicMock(transformation_type="encode", version_id="v1",
-                  column="col1", columns=None, rows_affected=10),
+                  column="col1", columns=None, rows_affected=10,
+                  applied_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)),
         MagicMock(transformation_type="scale", version_id="v2",
-                  column="col2", columns=None, rows_affected=10),
+                  column="col2", columns=None, rows_affected=10,
+                  applied_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=timezone.utc)),
         MagicMock(transformation_type="remove_duplicates", version_id="v3",
-                  column=None, columns=None, rows_affected=5)
+                  column=None, columns=None, rows_affected=5,
+                  applied_at=datetime(2026, 1, 1, 0, 2, 0, tzinfo=timezone.utc))
     ]
     config.can_undo = MagicMock(return_value=True)
     config.can_redo = MagicMock(return_value=False)
