@@ -50,6 +50,8 @@ jobs:
             tests/test_security/ \
             tests/test_processing/ \
             tests/test_utils/ \
+            tests/test_models/ \
+            tests/test_auth/ \
             tests/test_model_training/test_problem_detector.py \
             tests/test_model_training/test_feature_engineer.py \
             -m "not integration and not performance" \

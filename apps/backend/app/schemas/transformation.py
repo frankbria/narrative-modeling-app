@@ -174,6 +174,19 @@ class RecipeStepRequest(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     description: Optional[str] = None
 
+    @field_validator('type')
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        """Validate type against the canonical TransformationType enum.
+
+        Without this, unsupported types would be silently skipped by the
+        validate endpoint's dispatch and reported as valid.
+        """
+        allowed_types = {t.value for t in TransformationType}
+        if v not in allowed_types:
+            raise ValueError(f"type must be one of {sorted(allowed_types)}, got: {v}")
+        return v
+
 
 class TransformationPipelineRequest(BaseModel):
     """Request schema for transformation pipeline."""

@@ -83,8 +83,10 @@ jobs:
         env:
           TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
           TEST_MONGODB_DB: ${{ secrets.TEST_MONGODB_DB }}
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB: ${{ secrets.MONGODB_DB }}
+          # Deliberately the TEST cluster: no production database handle may
+          # exist in the test job, even as a fallback (issue #160)
+          MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          MONGODB_DB: ${{ secrets.TEST_MONGODB_DB }}
           TEST_REDIS_URL: redis://localhost:6380/0
           S3_ENDPOINT_URL: http://localhost:4566
           AWS_ACCESS_KEY_ID: test

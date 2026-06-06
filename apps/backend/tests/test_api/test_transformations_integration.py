@@ -349,13 +349,32 @@ class TestTransformationValidation:
                 "/api/v1/transformations/validate",
                 json=request
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert "is_valid" in data
             assert "errors" in data
             assert "warnings" in data
             assert "suggestions" in data
+
+    @pytest.mark.asyncio
+    async def test_validate_rejects_unknown_transformation_type(self, authorized_client):
+        """An unsupported transformation type must be rejected at the schema
+        boundary, not silently skipped and reported as valid."""
+        request = {
+            "dataset_id": "ds1",
+            "transformations": [
+                {"type": "not_a_real_transformation", "parameters": {}}
+            ]
+        }
+
+        response = authorized_client.post(
+            "/api/v1/transformations/validate",
+            json=request
+        )
+
+        assert response.status_code == 422
+        assert "not_a_real_transformation" in response.text
 
 
 class TestAutoClean:
