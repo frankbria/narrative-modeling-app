@@ -179,7 +179,15 @@ export class SecurityTester {
   ): Promise<SecurityTestResult> {
     // Try to access protected route without authentication
     await this.page.goto(protectedUrl);
-    await this.page.waitForLoadState('networkidle');
+
+    // Wait for an auth redirect (server-side middleware redirects fast;
+    // client-side React redirects land after hydration). If no redirect
+    // happens within the timeout, fall through to content-based checks.
+    await this.page
+      .waitForURL(/\/auth\/|\/login|\/signin/, { timeout: 5000 })
+      .catch(async () => {
+        await this.page.waitForLoadState('networkidle').catch(() => {});
+      });
 
     const currentUrl = this.page.url();
 
