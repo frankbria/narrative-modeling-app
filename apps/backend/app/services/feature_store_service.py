@@ -14,7 +14,10 @@ from app.models.feature_store import StoredFeature, FeatureVersion, FeatureColle
 from app.models.dataset import DatasetMetadata
 from app.services.base_service import BaseService
 from app.services.exceptions import NotFoundError, PermissionDeniedError, ValidationError
-from app.services.model_training.feature_engineer import FeatureEngineer
+from app.services.model_training.feature_engineer import (
+    FeatureEngineer,
+    parse_feature_definition,
+)
 from app.services.s3_service import get_file_from_s3
 import pandas as pd
 import io
@@ -51,6 +54,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
         Returns:
             Created StoredFeature instance
         """
+        # SECURITY (GH-132): reject definitions that are not safe expression
+        # trees before anything is persisted — raw code is never stored
+        parse_feature_definition(feature_data["definition_code"])
+
         # Generate unique feature ID
         feature_id = f"feat_{uuid.uuid4().hex[:12]}"
 
@@ -239,6 +246,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
         """
         feature = await self.get_by_id_or_raise(feature_id)
         await self._check_ownership(feature, user_id)
+
+        # SECURITY (GH-132): updated definitions must be safe expression trees
+        if updates.get("definition_code") is not None:
+            parse_feature_definition(updates["definition_code"])
 
         # Check if definition changed (requires new version)
         definition_changed = any(

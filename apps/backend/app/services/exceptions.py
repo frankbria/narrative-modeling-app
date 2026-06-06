@@ -130,6 +130,29 @@ class ValidationError(ServiceError):
         super().__init__(message, code or "VALIDATION_ERROR", details)
 
 
+class UnsafeFeatureDefinitionError(ValidationError):
+    """
+    Feature definition is not a safe, serialized expression tree.
+
+    Raised when a Feature Store ``definition_code`` cannot be parsed as a
+    serialized ExpressionNode tree — including raw Python code, which is
+    never executed (see GH-132). Maps to HTTP 422.
+
+    Example:
+        raise UnsafeFeatureDefinitionError(
+            message="Feature definition must be a serialized expression tree"
+        )
+    """
+
+    def __init__(
+        self,
+        message: str = "Feature definition must be a serialized expression tree",
+        code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, code or "UNSAFE_FEATURE_DEFINITION", details)
+
+
 class ConflictError(ServiceError):
     """
     Resource conflict.
