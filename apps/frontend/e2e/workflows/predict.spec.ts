@@ -94,6 +94,8 @@ test.describe('Single Prediction Workflow', () => {
   });
 
   test('should make single prediction with valid feature values @smoke', async ({ authenticatedPage }) => {
+    // Full prediction UI journey is slow on 2-core CI runners
+    test.slow();
     const predictPage = new PredictPage(authenticatedPage);
 
     await predictPage.goto('/predict');

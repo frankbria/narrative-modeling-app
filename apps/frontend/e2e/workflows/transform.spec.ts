@@ -51,6 +51,8 @@ test.describe('Data Transformation Workflow', () => {
   });
 
   test('should apply one-hot encoding transformation @smoke', async ({ authenticatedPage }) => {
+    // Full upload + transformation UI journey is slow on 2-core CI runners
+    test.slow();
     const transformPage = new TransformPage(authenticatedPage);
 
     await transformPage.goto(`/datasets/${datasetId}/prepare`);
@@ -98,6 +100,8 @@ test.describe('Data Transformation Workflow', () => {
   });
 
   test('should apply standard scaling transformation @smoke', async ({ authenticatedPage }) => {
+    // Full upload + transformation UI journey is slow on 2-core CI runners
+    test.slow();
     const transformPage = new TransformPage(authenticatedPage);
 
     await transformPage.goto(`/datasets/${datasetId}/prepare`);
