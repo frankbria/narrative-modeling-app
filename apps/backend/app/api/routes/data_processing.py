@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
+import logging
 import numpy as np
 import json
 
@@ -16,6 +17,8 @@ from app.services.s3_service import s3_service
 from app.utils.s3 import parse_s3_url
 from app.utils.json_encoder import convert_numpy_types, NumpyJSONEncoder
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 data_processor = DataProcessor()
@@ -81,7 +84,10 @@ async def process_uploaded_file(
         try:
             _, file_key = parse_s3_url(user_data.s3_url)
         except ValueError:
-            raise ValueError(f"Could not extract file key from S3 URL: {user_data.s3_url}")
+            # Log the URL server-side only — presigned URLs carry credentials
+            # and the route's error handler echoes exception text to clients
+            logger.error(f"Could not extract file key from S3 URL: {user_data.s3_url}")
+            raise ValueError("Could not extract file key from stored S3 URL")
 
         file_bytes = await s3_service.download_file_bytes(file_key)
         

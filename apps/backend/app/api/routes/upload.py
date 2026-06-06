@@ -181,5 +181,5 @@ async def upload_file(
         }
 
     except Exception as e:
-        logger.exception(f"Error processing file: {str(e)}")
+        logger.exception("Error processing file: %s", e)
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")

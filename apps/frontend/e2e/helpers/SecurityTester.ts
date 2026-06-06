@@ -183,9 +183,13 @@ export class SecurityTester {
     // Wait for an auth redirect (server-side middleware redirects fast;
     // client-side React redirects land after hydration). If no redirect
     // happens within the timeout, fall through to content-based checks.
+    // Only swallow timeouts — real navigation failures must surface.
     await this.page
       .waitForURL(/\/auth\/|\/login|\/signin/, { timeout: 5000 })
-      .catch(async () => {
+      .catch(async (error: Error) => {
+        if (error.name !== 'TimeoutError' && !error.message.includes('Timeout')) {
+          throw error;
+        }
         await this.page.waitForLoadState('networkidle').catch(() => {});
       });
 

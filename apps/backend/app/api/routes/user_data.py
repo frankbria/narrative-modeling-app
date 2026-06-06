@@ -93,12 +93,33 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
         # Initialize S3 client
         s3_client = create_s3_client()
 
-        # Extract the key from the S3 URL (handles all persisted URL shapes)
+        # Extract the key from the S3 URL (handles all persisted URL shapes).
+        # Upload persists placeholders like "s3_not_configured" when S3 is
+        # unavailable — return metadata without preview for those instead of
+        # erroring, matching the S3-failure fallback below.
         s3_url = user_data.s3_url
         try:
             _, s3_key = parse_s3_url(s3_url)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid S3 URL (missing object key)")
+            logger.warning(f"No object key in stored S3 URL for dataset {user_data.id}")
+            return {
+                "headers": [],
+                "previewData": [],
+                "fileName": user_data.filename,
+                "fileType": "text/csv",  # Default to CSV for now
+                "id": str(user_data.id),
+                "s3_url": user_data.s3_url,
+                "schema": user_data.data_schema,
+                "error": "File is not available in storage",
+                "num_rows": user_data.num_rows,
+                "num_columns": user_data.num_columns,
+                "created_at": (
+                    user_data.created_at.isoformat() if user_data.created_at else None
+                ),
+                "updated_at": (
+                    user_data.updated_at.isoformat() if user_data.updated_at else None
+                ),
+            }
 
         logger.debug(f"Fetching S3 object for preview: {s3_key}")
 
