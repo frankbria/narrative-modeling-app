@@ -106,7 +106,10 @@ feature that can never be applied is never persisted.
 Acceptance criterion: <10% overhead versus the previous (unsandboxed)
 implementation, measured at the feature-application operation boundary
 (dataset load + transformation, mirroring `apply_feature`). Enforced by
-`tests/test_security/test_feature_store_execution.py::TestPerformanceOverhead`.
+`tests/test_security/test_feature_store_execution.py::TestPerformanceOverhead`,
+which is marked `@pytest.mark.performance` and excluded from the unit-test CI
+workflow (timing assertions are too noisy for shared runners). Run it
+on demand with `-m performance`.
 
 Notes from benchmarking (300k-row dataset, trivial multiply feature):
 
@@ -125,12 +128,14 @@ Notes from benchmarking (300k-row dataset, trivial multiply feature):
 - Side-effect assertions (sentinel file not created, module not imported)
 - Malformed/legacy definitions rejected with `UnsafeFeatureDefinitionError`
 - Valid expression trees applied correctly
-- The <10% overhead benchmark
+- The <10% overhead benchmark (opt-in via the `performance` marker)
 
 Run with:
 
 ```bash
 cd apps/backend && uv run pytest tests/test_security/test_feature_store_execution.py -v
+# Performance benchmark only (excluded from CI unit runs):
+cd apps/backend && uv run pytest tests/test_security/test_feature_store_execution.py -m performance -v
 ```
 
 ## References

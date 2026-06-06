@@ -306,7 +306,7 @@ class TestSafeExpressionTreeExecution:
         assert list(sample_df.columns) == original_columns
 
 
-@pytest.mark.unit
+@pytest.mark.performance
 class TestPerformanceOverhead:
     """
     Acceptance criterion: <10% overhead vs direct (unsandboxed) execution.
