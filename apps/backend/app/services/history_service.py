@@ -265,7 +265,8 @@ class HistoryService:
             user_id: User identifier (for authorization)
 
         Returns:
-            Dictionary with transformation_steps, current_position, can_undo, can_redo
+            Dictionary matching schemas.HistoryDataResponse: history entries,
+            current_position, can_undo, can_redo
 
         Raises:
             NotFoundError: If transformation config not found
@@ -286,25 +287,38 @@ class HistoryService:
                 message=f"User {user_id} does not own dataset {dataset_id}"
             )
 
-        # Return history
+        # Return history in the API contract shape (schemas.HistoryDataResponse);
+        # previously this returned a transformation_steps list that did not
+        # match the response model, so GET /history always failed validation
         return {
             "dataset_id": dataset_id,
-            "current_position": config.current_position,
-            "transformation_steps": [
+            "history": [
                 {
+                    "position": position,
                     "transformation_type": step.transformation_type,
-                    "column": step.column,
-                    "columns": step.columns,
-                    "parameters": step.parameters,
-                    "applied_at": step.applied_at.isoformat(),
+                    "description": self._describe_step(step),
+                    "timestamp": step.applied_at.isoformat(),
+                    "affected_columns": (
+                        [step.column] if step.column else list(step.columns or [])
+                    ),
                     "rows_affected": step.rows_affected,
-                    "data_loss_percentage": step.data_loss_percentage
+                    "version_id": step.version_id,
                 }
-                for step in config.transformation_steps
+                for position, step in enumerate(config.transformation_steps)
             ],
+            "current_position": config.current_position,
             "can_undo": config.can_undo(),
             "can_redo": config.can_redo()
         }
+
+    @staticmethod
+    def _describe_step(step) -> str:
+        """Build a human-readable description of a transformation step."""
+        label = step.transformation_type.replace("_", " ")
+        columns = [step.column] if step.column else list(step.columns or [])
+        if columns:
+            return f"Applied {label} to {', '.join(columns)}"
+        return f"Applied {label}"
 
     async def clear_history(self, dataset_id: str, user_id: str) -> bool:
         """

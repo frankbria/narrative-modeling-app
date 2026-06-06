@@ -91,9 +91,8 @@ async def test_create_analytics_result(
     mock_plot,
     serializable_analytics_result,
     setup_database):
-    # Create required objects first
-    await mock_dataset.insert()
-    await mock_plot.insert()
+    # mock_dataset and mock_plot are already inserted by the
+    # serializable_analytics_result fixture
 
     # Print the serializable data for debugging
     print(f"Serializable data: {json.dumps(serializable_analytics_result, indent=2)}")
