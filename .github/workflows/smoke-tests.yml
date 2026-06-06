@@ -110,6 +110,7 @@ jobs:
           AWS_REGION: us-east-1
           AWS_BUCKET_NAME: test-bucket
           AWS_S3_BUCKET: test-bucket
+          S3_BUCKET: test-bucket
           AWS_ENDPOINT_URL: http://localhost:9000
           # OpenAI API key (dummy value for testing)
           OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only

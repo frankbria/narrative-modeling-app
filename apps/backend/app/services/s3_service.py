@@ -51,7 +51,7 @@ def download_file_from_s3(s3_url: str) -> str:
         # SECURITY: Validate S3 URL format and bucket whitelist
         # AWS format:      https://{bucket}.s3.amazonaws.com/{path}
         # Endpoint format: {AWS_ENDPOINT_URL}/{bucket}/{path}  (MinIO/LocalStack)
-        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
         if endpoint_url and s3_url.startswith(endpoint_url):
             path = s3_url[len(endpoint_url):].lstrip("/").split("?")[0]
             bucket_name, _, object_key = path.partition("/")

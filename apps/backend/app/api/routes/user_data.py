@@ -104,7 +104,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
 
         # Endpoint-style URLs ({AWS_ENDPOINT_URL}/{bucket}/{key}) include the
         # bucket as the first path segment — strip it to get the object key.
-        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
         bucket_name = os.getenv("AWS_BUCKET_NAME", "")
         if endpoint_url and s3_url.startswith(endpoint_url) and s3_key.startswith(f"{bucket_name}/"):
             s3_key = s3_key[len(bucket_name) + 1:]

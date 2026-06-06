@@ -154,7 +154,7 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
     # AWS format:      https://bucket-name.s3.amazonaws.com/key
     # Endpoint format: {AWS_ENDPOINT_URL}/bucket-name/key  (MinIO/LocalStack)
     try:
-        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
         if endpoint_url and s3_url.startswith(endpoint_url):
             path = s3_url[len(endpoint_url):].lstrip("/")
             bucket_name, _, key = path.partition("/")
