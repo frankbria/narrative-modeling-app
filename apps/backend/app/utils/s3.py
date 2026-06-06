@@ -74,15 +74,19 @@ def parse_s3_url(s3_url: str) -> Tuple[Optional[str], str]:
         bucket, _, key = s3_url[5:].partition("/")
     else:
         endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
-        if endpoint_url and s3_url.startswith(endpoint_url):
-            path = s3_url[len(endpoint_url):].lstrip("/")
+        parsed = urlparse(s3_url)
+        endpoint = urlparse(endpoint_url) if endpoint_url else None
+        # Exact scheme+host+port comparison — a plain prefix check would
+        # also match lookalike hosts (http://localhost:9000.attacker.com).
+        if endpoint and parsed.scheme == endpoint.scheme and parsed.netloc == endpoint.netloc:
+            path = parsed.path.lstrip("/")
             bucket, _, key = path.partition("/")
         else:
             match = re.match(r"https://([^.]+)\.s3\.amazonaws\.com/([^?]+)", s3_url)
             if match:
                 bucket, key = match.group(1), match.group(2)
-            elif urlparse(s3_url).scheme in ("http", "https"):
-                key = urlparse(s3_url).path.lstrip("/")
+            elif parsed.scheme in ("http", "https"):
+                key = parsed.path.lstrip("/")
 
     key = key.split("?")[0]
     if not key:

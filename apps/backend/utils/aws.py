@@ -9,6 +9,8 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# NOTE: created at import time — AWS_ENDPOINT_URL (and credentials) must be
+# set in the environment before this module is imported.
 s3_client = create_s3_client()
 
 

@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from botocore.exceptions import ClientError
 
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
-from app.utils.s3 import create_s3_client
+from app.utils.s3 import create_s3_client, parse_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -48,24 +48,16 @@ def download_file_from_s3(s3_url: str) -> str:
         if not ALLOWED_BUCKET:
             raise ValueError("AWS_S3_BUCKET environment variable not set")
 
-        # SECURITY: Validate S3 URL format and bucket whitelist
-        # AWS format:      https://{bucket}.s3.amazonaws.com/{path}
-        # Endpoint format: {AWS_ENDPOINT_URL}/{bucket}/{path}  (MinIO/LocalStack)
-        endpoint_url = (os.getenv("AWS_ENDPOINT_URL") or "").rstrip("/")
-        if endpoint_url and s3_url.startswith(endpoint_url):
-            path = s3_url[len(endpoint_url):].lstrip("/").split("?")[0]
-            bucket_name, _, object_key = path.partition("/")
-            if not bucket_name or not object_key:
-                raise ValueError(f"Invalid S3 URL format: {s3_url}")
-        else:
-            s3_pattern = r"https://([^\.]+)\.s3\.amazonaws\.com/([^?]+)"
-            match = re.match(s3_pattern, s3_url)
-
-            if not match:
-                raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-            bucket_name = match.group(1)
-            object_key = match.group(2)
+        # SECURITY: Validate S3 URL format and bucket whitelist.
+        # parse_s3_url handles amazonaws and endpoint-style (MinIO/LocalStack)
+        # URLs with exact-origin endpoint matching; URLs it cannot attribute
+        # to a bucket are rejected here.
+        try:
+            bucket_name, object_key = parse_s3_url(s3_url)
+        except ValueError:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        if bucket_name is None:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
 
         # SECURITY: Enforce bucket whitelist
         if bucket_name != ALLOWED_BUCKET:

@@ -108,6 +108,9 @@ jobs:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_REGION: us-east-1
+          # Three names for the same bucket: AWS_BUCKET_NAME (upload paths),
+          # AWS_S3_BUCKET (download whitelist), S3_BUCKET (settings/versioning).
+          # Env-var consolidation is tracked with CI hardening in #150.
           AWS_BUCKET_NAME: test-bucket
           AWS_S3_BUCKET: test-bucket
           S3_BUCKET: test-bucket

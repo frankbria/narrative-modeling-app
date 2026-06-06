@@ -163,6 +163,16 @@ class TestParseS3Url:
         assert bucket is None
         assert key == "some/path/file.csv"
 
+    def test_endpoint_lookalike_host_not_matched(self, mock_env_vars_with_endpoint):
+        """A host that merely starts with the endpoint string must not be
+        parsed as endpoint-style (e.g. http://localhost:9000.attacker.com)."""
+        bucket, key = parse_s3_url(
+            "http://localhost:9000.attacker.com/real-bucket/datasets/u1/data.csv"
+        )
+        # Falls through to the generic http(s) path fallback — no bucket
+        assert bucket is None
+        assert key == "real-bucket/datasets/u1/data.csv"
+
     def test_missing_key_raises(self, mock_env_vars_with_endpoint):
         with pytest.raises(ValueError):
             parse_s3_url("http://localhost:9000/test_bucket")

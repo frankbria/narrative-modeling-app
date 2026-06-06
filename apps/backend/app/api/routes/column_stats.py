@@ -60,6 +60,10 @@ async def get_column_stats(
             bucket, key = parse_s3_url(dataset.s3_url)
             if bucket is None:
                 bucket = os.getenv("AWS_BUCKET_NAME")
+                logger.debug(
+                    "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
+                    dataset.s3_url, bucket,
+                )
 
             # Download the file
             response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -138,6 +142,10 @@ async def recalculate_column_stats(
         bucket, key = parse_s3_url(dataset.s3_url)
         if bucket is None:
             bucket = os.getenv("AWS_BUCKET_NAME")
+            logger.debug(
+                "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
+                dataset.s3_url, bucket,
+            )
 
         # Download the file
         response = s3_client.get_object(Bucket=bucket, Key=key)
