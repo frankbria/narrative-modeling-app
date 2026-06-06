@@ -218,6 +218,24 @@ class TestSafeExpressionTreeExecution:
         assert result["new_col"].tolist() == [1.0, 0.0, 1.0]
 
     @pytest.mark.asyncio
+    async def test_division_by_zero_logs_warning_and_applies(self, sample_df, caplog):
+        tree = {
+            "node_id": "n1",
+            "node_type": "operation",
+            "value": "divide",
+            "children": [
+                {"node_id": "n2", "node_type": "column", "value": "old_col", "children": []},
+                {"node_id": "n3", "node_type": "constant", "value": 0, "children": []},
+            ],
+        }
+        feature = make_feature(json.dumps(tree))
+        with caplog.at_level("WARNING"):
+            result = await self.engineer.apply_stored_feature(sample_df, feature)
+
+        assert "new_col" in result.columns
+        assert any("Division by zero" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_missing_column_raises_validation_error(self, sample_df):
         feature = make_feature(expression_tree_json(column="does_not_exist"))
         with pytest.raises(ValidationError):

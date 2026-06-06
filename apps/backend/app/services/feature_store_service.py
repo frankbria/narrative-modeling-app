@@ -411,9 +411,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
                 details={"file_type": dataset.file_type}
             )
 
-        # Apply feature using FeatureEngineer
+        # Apply feature using FeatureEngineer (validates the definition and
+        # raises if it cannot be applied; result is not persisted here)
         engineer = FeatureEngineer()
-        result_df = await engineer.apply_stored_feature(df, feature)
+        await engineer.apply_stored_feature(df, feature)
 
         # Increment usage count
         feature.increment_usage()

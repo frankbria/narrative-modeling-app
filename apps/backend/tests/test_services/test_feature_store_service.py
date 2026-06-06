@@ -11,9 +11,7 @@ sharing, collections, and version management.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from datetime import datetime, timezone
-from app.models.feature_store import StoredFeature, FeatureVersion, FeatureCollection
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.unit
@@ -201,7 +199,7 @@ class TestFeatureStoreServiceCRUD:
             mock_get.return_value = mock_feature
             MockVersion.find_one = AsyncMock(return_value=mock_version)
 
-            result = await self.service.get_feature(feature_id, user_id, version=version_number)
+            await self.service.get_feature(feature_id, user_id, version=version_number)
 
             # Verify version was queried
             MockVersion.find_one.assert_called_once()
@@ -288,7 +286,7 @@ class TestFeatureStoreServiceCRUD:
             mock_get.return_value = mock_feature
             MockVersion.return_value = mock_version
 
-            result = await self.service.update_feature(feature_id, user_id, updates)
+            await self.service.update_feature(feature_id, user_id, updates)
 
             # Verify version was incremented
             assert mock_feature.version == 2
@@ -458,7 +456,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_feature
 
-            result = await self.service.share_feature(feature_id, user_id, share_with)
+            await self.service.share_feature(feature_id, user_id, share_with)
 
             # Verify users were added to shared_with
             assert "user_1" in mock_feature.shared_with
@@ -482,7 +480,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_feature
 
-            result = await self.service.make_public(feature_id, user_id)
+            await self.service.make_public(feature_id, user_id)
 
             assert mock_feature.is_public is True
             mock_feature.save.assert_called_once()
@@ -536,7 +534,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'save_feature', new_callable=AsyncMock) as mock_save:
             mock_save.return_value = MagicMock()
 
-            result = await self.service.import_feature(feature_data, user_id)
+            await self.service.import_feature(feature_data, user_id)
 
             mock_save.assert_called_once()
 
@@ -574,7 +572,7 @@ class TestFeatureStoreServiceCollections:
             mock_uuid.return_value.hex = "generated"
             MockCollection.return_value = mock_collection
 
-            result = await self.service.create_collection(collection_data, user_id)
+            await self.service.create_collection(collection_data, user_id)
 
             MockCollection.assert_called_once()
             call_kwargs = MockCollection.call_args[1]
@@ -606,7 +604,7 @@ class TestFeatureStoreServiceCollections:
             MockCollection.find_one = AsyncMock(return_value=mock_collection)
             mock_get_feature.return_value = mock_feature
 
-            result = await self.service.add_to_collection(collection_id, feature_id, user_id)
+            await self.service.add_to_collection(collection_id, feature_id, user_id)
 
             mock_collection.add_feature.assert_called_once_with(feature_id)
             mock_collection.save.assert_called_once()
