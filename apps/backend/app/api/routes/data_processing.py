@@ -83,11 +83,12 @@ async def process_uploaded_file(
         # Download file from S3 (parse_s3_url handles all persisted URL shapes)
         try:
             _, file_key = parse_s3_url(user_data.s3_url)
-        except ValueError:
-            # Log the URL server-side only — presigned URLs carry credentials
-            # and the route's error handler echoes exception text to clients
-            logger.error(f"Could not extract file key from S3 URL: {user_data.s3_url}")
-            raise ValueError("Could not extract file key from stored S3 URL")
+        except ValueError as err:
+            # Strip the query string before logging — presigned URLs carry
+            # credentials; the error handler echoes exception text to clients
+            sanitized_url = user_data.s3_url.split("?")[0]
+            logger.error(f"Could not extract file key from S3 URL: {sanitized_url}")
+            raise ValueError("Could not extract file key from stored S3 URL") from err
 
         file_bytes = await s3_service.download_file_bytes(file_key)
         

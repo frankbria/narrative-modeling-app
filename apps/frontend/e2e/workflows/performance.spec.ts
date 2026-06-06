@@ -28,8 +28,8 @@ test.afterEach(() => {
 });
 
 test.describe('Performance - Page Load', () => {
-  // FIXME(#157): threshold flakes across identical runs; re-enable once
-  // perf thresholds are calibrated for CI runners
+  // Disabled pending #157: threshold flakes across identical runs;
+  // re-enable once perf thresholds are calibrated for CI runners
   test.fixme('should load dashboard page within 2s @smoke', async ({ authenticatedPage }) => {
     const metric = await perfMonitor.measurePageLoad(
       authenticatedPage,
@@ -174,8 +174,8 @@ test.describe('Performance - API Response Times', () => {
     expect(metric.value).toBeLessThanOrEqual(30000);
   });
 
-  // FIXME(#156): POST /api/v1/ml/train 404s on valid dataset ids, so no real
-  // model exists to predict against; also #157 for the 100ms threshold
+  // Disabled pending #156: POST /api/v1/ml/train 404s on valid dataset ids,
+  // so no real model exists to predict against; also #157 for the threshold
   test.fixme('should make single prediction within 100ms @smoke', async ({
     request,
     uploadTestDataset,

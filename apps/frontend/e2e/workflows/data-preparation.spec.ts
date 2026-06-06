@@ -47,8 +47,8 @@ test.describe('Data Preparation Page', () => {
     }
   });
 
-  // FIXME(#155): /datasets/{id}/prepare throws a client-side exception —
-  // previously masked by the workflow-gating redirect fixed in PR #154
+  // Disabled pending #155: /datasets/{id}/prepare throws a client-side
+  // exception — previously masked by the gating redirect fixed in PR #154
   test.fixme('should load data preparation page with dataset info @smoke', async ({ authenticatedPage }) => {
     await authenticatedPage.goto(`/datasets/${datasetId}/prepare`);
 
@@ -63,7 +63,7 @@ test.describe('Data Preparation Page', () => {
     await expect(authenticatedPage.locator('button:has-text("Back"), a:has-text("Back")')).toBeVisible();
   });
 
-  // FIXME(#155): same client-side crash as above
+  // Disabled pending #155: same client-side crash as above
   test.fixme('should display view mode toggle buttons @smoke', async ({ authenticatedPage }) => {
     await authenticatedPage.goto(`/datasets/${datasetId}/prepare`);
 
