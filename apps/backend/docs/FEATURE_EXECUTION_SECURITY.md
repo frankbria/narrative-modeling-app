@@ -25,7 +25,7 @@ Python language layer is restricted.
 
 ## Architecture
 
-```
+```text
 POST /features                    POST /features/{id}/apply
       │                                   │
       ▼                                   ▼
@@ -63,6 +63,7 @@ before GH-132 (raw Python strings) are rejected rather than executed.
 | System commands | No process/OS operations in the whitelist. |
 | Dunder/introspection escapes (`__class__.__bases__…`) | Expression trees have no attribute access; node values are column names, constants, or whitelisted operation/function names. |
 | Keyword-filter bypasses (string assembly, encodings, `getattr` chains) | Nothing to bypass — raw strings are rejected at parse time, not scanned for keywords. |
+| Stack-exhaustion via deeply nested trees | Tree depth is capped (`_MAX_TREE_DEPTH = 50`) and parser `RecursionError` is converted to a 422 — crafted deep payloads never surface as a 500. |
 
 ## What the evaluator allows
 

@@ -60,15 +60,18 @@ def parse_feature_definition(definition_code: Optional[str]) -> ExpressionNode:
             serialized expression tree (including legacy raw Python code)
     """
     try:
+        # RecursionError: pathologically deep JSON blows the parser's stack
+        # before any tree validation can run — treat it as an invalid
+        # definition (422), not a server error (500).
         data = json.loads(definition_code)
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError, RecursionError) as e:
         raise UnsafeFeatureDefinitionError(
             message=(
                 "Feature definition must be a JSON-serialized expression tree. "
                 "Raw code is not supported — recreate the feature with the "
                 "Visual Feature Builder."
             )
-        )
+        ) from e
 
     if not isinstance(data, dict):
         raise UnsafeFeatureDefinitionError(
@@ -81,22 +84,38 @@ def parse_feature_definition(definition_code: Optional[str]) -> ExpressionNode:
         raise UnsafeFeatureDefinitionError(
             message="Feature definition is not a valid expression tree",
             details={"errors": [err["msg"] for err in e.errors()]},
-        )
+        ) from e
 
     _validate_tree_whitelist(tree)
     return tree
 
 
+# NOTE: these whitelists must stay in sync with what ExpressionEvaluator
+# actually implements — a new OperationType/FunctionType variant that the
+# evaluator doesn't handle would pass save-time validation here but fail
+# at apply time.
 _ALLOWED_OPERATIONS = frozenset(op.value for op in OperationType)
 _ALLOWED_FUNCTIONS = frozenset(fn.value for fn in FunctionType)
 
+# Far deeper than any legitimate feature expression, far shallower than the
+# Python recursion limit — crafted deep trees get a clean 422, never a 500.
+_MAX_TREE_DEPTH = 50
 
-def _validate_tree_whitelist(node: ExpressionNode) -> None:
+
+def _validate_tree_whitelist(node: ExpressionNode, _depth: int = 0) -> None:
     """
     Reject expression trees referencing operations/functions outside the
     whitelist, so invalid definitions fail at save time rather than at apply
-    time (GH-132 review finding).
+    time (GH-132 review finding). Also bounds tree depth so recursive
+    traversal (here and in ExpressionEvaluator) can never overflow the stack.
     """
+    if _depth > _MAX_TREE_DEPTH:
+        raise UnsafeFeatureDefinitionError(
+            message=(
+                f"Expression tree exceeds maximum allowed depth ({_MAX_TREE_DEPTH})"
+            ),
+            details={"node_id": node.node_id},
+        )
     if node.node_type == NodeType.OPERATION:
         if str(node.value).lower() not in _ALLOWED_OPERATIONS:
             raise UnsafeFeatureDefinitionError(
@@ -110,7 +129,7 @@ def _validate_tree_whitelist(node: ExpressionNode) -> None:
                 details={"node_id": node.node_id},
             )
     for child in node.children:
-        _validate_tree_whitelist(child)
+        _validate_tree_whitelist(child, _depth + 1)
 
 
 @dataclass
@@ -801,7 +820,7 @@ class FeatureEngineer:
             raise ValidationError(
                 message=f"Failed to apply feature: {e.message}",
                 details={"feature_id": feature.feature_id, "node_id": e.node_id},
-            )
+            ) from e
 
         for warning in warnings:
             logger.warning(

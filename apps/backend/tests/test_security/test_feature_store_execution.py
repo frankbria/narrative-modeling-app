@@ -210,6 +210,30 @@ class TestParseFeatureDefinition:
         with pytest.raises(UnsafeFeatureDefinitionError):
             parse_feature_definition(None)
 
+    @staticmethod
+    def _nested_tree_json(depth: int) -> str:
+        """A unary-function chain of the given depth (crafted-input DoS probe).
+
+        Built by string assembly — json.dumps itself recurses, so an attacker
+        crafts this payload as text, and so must this helper.
+        """
+        leaf = '{"node_id": "leaf", "node_type": "column", "value": "old_col", "children": []}'
+        wrapper = '{"node_id": "n", "node_type": "function", "value": "abs", "children": ['
+        return wrapper * depth + leaf + "]}" * depth
+
+    def test_reasonable_depth_accepted(self):
+        """Realistic nesting parses fine — the depth guard must not over-reject."""
+        node = parse_feature_definition(self._nested_tree_json(20))
+        assert node.node_type.value == "function"
+
+    @pytest.mark.parametrize("depth", [60, 300, 5000])
+    def test_excessive_depth_rejected_cleanly(self, depth):
+        """Deeply nested trees must raise UnsafeFeatureDefinitionError (422),
+        never an unhandled RecursionError (500) — at any depth, including past
+        the json/pydantic recursion limits."""
+        with pytest.raises(UnsafeFeatureDefinitionError):
+            parse_feature_definition(self._nested_tree_json(depth))
+
 
 @pytest.mark.unit
 class TestSafeExpressionTreeExecution:
