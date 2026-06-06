@@ -1,6 +1,7 @@
 import boto3
 import os
 import re
+from botocore.config import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 from typing import Optional, Tuple
 from urllib.parse import urlparse
@@ -40,6 +41,11 @@ def create_s3_client():
     endpoint_url = os.getenv("AWS_ENDPOINT_URL")
     if endpoint_url:
         client_kwargs["endpoint_url"] = endpoint_url
+        # Pin path-style addressing for S3-compatible endpoints so bucket
+        # names never become unresolvable host prefixes (e.g.
+        # http://test-bucket.localhost:9000) regardless of boto3 version.
+        # Real AWS keeps the default (virtual-hosted) addressing.
+        client_kwargs["config"] = Config(s3={"addressing_style": "path"})
     return boto3.client("s3", **client_kwargs)
 
 

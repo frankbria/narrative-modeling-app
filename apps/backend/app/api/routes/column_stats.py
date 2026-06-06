@@ -10,7 +10,7 @@ import io
 import os
 import logging
 from app.models.user_data import UserData
-from app.utils.s3 import create_s3_client
+from app.utils.s3 import create_s3_client, parse_s3_url
 
 from app.utils.column_stats import calculate_and_store_column_stats
 
@@ -55,18 +55,11 @@ async def get_column_stats(
             # Download the data from S3
             s3_client = create_s3_client()
 
-            # Extract bucket and key from S3 URL
-            s3_url = dataset.s3_url
-            if s3_url.startswith("http"):
-                # This is a signed URL, we need to get the actual S3 path
-                # For now, we'll use a placeholder
+            # Extract bucket and key from S3 URL (handles all persisted
+            # shapes: s3://, presigned amazonaws, endpoint-style)
+            bucket, key = parse_s3_url(dataset.s3_url)
+            if bucket is None:
                 bucket = os.getenv("AWS_BUCKET_NAME")
-                key = f"user_data/{user_id}/{dataset.filename}"
-            else:
-                # This is a direct S3 path
-                parts = s3_url.replace("s3://", "").split("/", 1)
-                bucket = parts[0]
-                key = parts[1]
 
             # Download the file
             response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -140,18 +133,11 @@ async def recalculate_column_stats(
         # Download the data from S3
         s3_client = create_s3_client()
 
-        # Extract bucket and key from S3 URL
-        s3_url = dataset.s3_url
-        if s3_url.startswith("http"):
-            # This is a signed URL, we need to get the actual S3 path
-            # For now, we'll use a placeholder
+        # Extract bucket and key from S3 URL (handles all persisted
+        # shapes: s3://, presigned amazonaws, endpoint-style)
+        bucket, key = parse_s3_url(dataset.s3_url)
+        if bucket is None:
             bucket = os.getenv("AWS_BUCKET_NAME")
-            key = f"user_data/{user_id}/{dataset.filename}"
-        else:
-            # This is a direct S3 path
-            parts = s3_url.replace("s3://", "").split("/", 1)
-            bucket = parts[0]
-            key = parts[1]
 
         # Download the file
         response = s3_client.get_object(Bucket=bucket, Key=key)

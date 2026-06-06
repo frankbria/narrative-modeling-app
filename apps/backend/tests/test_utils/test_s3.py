@@ -70,13 +70,15 @@ def test_get_s3_client_with_endpoint_url(mock_env_vars_with_endpoint):
         client = get_s3_client()
 
         assert client is not None
-        mock_boto3_client.assert_called_once_with(
-            "s3",
-            aws_access_key_id="test_access_key",
-            aws_secret_access_key="test_secret_key",
-            region_name="us-east-1",
-            endpoint_url="http://localhost:9000",
-        )
+        mock_boto3_client.assert_called_once()
+        args, kwargs = mock_boto3_client.call_args
+        assert args == ("s3",)
+        assert kwargs["aws_access_key_id"] == "test_access_key"
+        assert kwargs["aws_secret_access_key"] == "test_secret_key"
+        assert kwargs["region_name"] == "us-east-1"
+        assert kwargs["endpoint_url"] == "http://localhost:9000"
+        # Path-style addressing must be pinned for S3-compatible endpoints
+        assert kwargs["config"].s3 == {"addressing_style": "path"}
 
 
 def test_get_s3_client_missing_env_vars():
