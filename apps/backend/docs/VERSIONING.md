@@ -341,6 +341,8 @@ Failed S3 operations retry with exponential backoff:
 # S3 Configuration
 AWS_S3_BUCKET=narrative-modeling-datasets
 AWS_REGION=us-east-1
+# Optional: route S3 calls to S3-compatible storage (MinIO, LocalStack)
+# AWS_ENDPOINT_URL=http://localhost:9000
 
 # Versioning Settings
 VERSION_RETENTION_DAYS=90

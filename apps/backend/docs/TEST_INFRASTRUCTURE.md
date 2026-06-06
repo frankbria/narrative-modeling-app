@@ -33,6 +33,11 @@ tests/
 │   ├── test_monitoring.py      # @pytest.mark.unit - Monitoring tests
 │   ├── test_pii_detector.py    # @pytest.mark.unit - PII detection tests
 │   └── test_upload_handler.py  # @pytest.mark.integration - Upload handler tests
+├── test_services/
+│   ├── conftest.py                  # Service test fixtures
+│   ├── test_s3_endpoint_url.py      # AWS_ENDPOINT_URL / S3-compatible storage tests
+│   ├── test_versioning_service.py   # Versioning service tests
+│   └── ...                          # Other service unit/integration tests
 ├── test_processing/
 │   └── ...                     # Data processing unit tests
 └── test_model_training/

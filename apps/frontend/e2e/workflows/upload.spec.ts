@@ -92,7 +92,8 @@ test.describe('Dataset Upload Workflow', () => {
     // Verify success message is displayed
     await expect(authenticatedPage.locator('text=/File uploaded successfully/i')).toBeVisible();
 
-    // Get dataset ID from URL or page
+    // Navigate to the explore page via the Next Step button, then read the ID
+    await uploadPage.continueToExplore();
     const datasetId = await uploadPage.getDatasetId();
 
     // Verify metadata in database via API (graceful - API may not exist)
@@ -186,10 +187,12 @@ test.describe('Dataset Upload Workflow', () => {
     await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
     await uploadButton.click();
 
-    // Verify progress indicator appears (button text changes during upload)
+    // Verify progress indicator appears (button text changes during upload).
+    // Target the button itself — a bare text locator also matches the static
+    // page copy ("Start by uploading...") and trips strict mode.
     await expect(
-      authenticatedPage.locator('text=/Scanning|Uploading|Processing/i')
-    ).toBeVisible({ timeout: 5000 });
+      authenticatedPage.getByTestId('upload-button')
+    ).toHaveText(/Scanning|Uploading|Processing/i, { timeout: 5000 });
 
     // Wait for completion
     await uploadPage.waitForUploadComplete();

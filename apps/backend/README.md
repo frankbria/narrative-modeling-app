@@ -52,6 +52,9 @@ AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 AWS_DEFAULT_REGION=us-east-1
 S3_BUCKET=your-bucket-name
+# Optional: route S3 calls to an S3-compatible service (MinIO, LocalStack).
+# Leave unset to use real AWS. Example: http://localhost:9000
+# AWS_ENDPOINT_URL=
 
 # OpenAI
 OPENAI_API_KEY=sk-your-openai-key

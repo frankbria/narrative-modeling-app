@@ -55,6 +55,33 @@ jobs:
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium
 
+      # GitHub Actions `services:` blocks cannot override a container's command,
+      # and minio/minio requires `server /data` — so MinIO is started manually.
+      - name: Start MinIO (S3-compatible storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          echo "Waiting for MinIO to become healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              echo "MinIO is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO failed to start" >&2
+          docker logs minio >&2
+          exit 1
+
+      - name: Create test bucket in MinIO
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+        run: aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
+
       - name: Run Smoke Tests
         working-directory: apps/frontend
         run: npm run test:e2e:smoke
@@ -75,11 +102,19 @@ jobs:
           PORT: 3010
           BACKEND_PORT: 8000
           NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-          # AWS credentials for backend S3 service (dummy values for testing)
-          AWS_ACCESS_KEY_ID: test-access-key-id
-          AWS_SECRET_ACCESS_KEY: test-secret-access-key
+          # S3 storage backed by the MinIO container (no real AWS credentials).
+          # NOTE: credentials must NOT start with "test-" — that prefix puts
+          # S3Service into no-op mock mode; MinIO mode needs the real client.
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_REGION: us-east-1
+          # Three names for the same bucket: AWS_BUCKET_NAME (upload paths),
+          # AWS_S3_BUCKET (download whitelist), S3_BUCKET (settings/versioning).
+          # Env-var consolidation is tracked with CI hardening in #150.
           AWS_BUCKET_NAME: test-bucket
+          AWS_S3_BUCKET: test-bucket
+          S3_BUCKET: test-bucket
+          AWS_ENDPOINT_URL: http://localhost:9000
           # OpenAI API key (dummy value for testing)
           OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
 

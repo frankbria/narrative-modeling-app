@@ -3,10 +3,10 @@ API routes for data processing functionality
 """
 
 from typing import Optional, Dict, Any
-from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
+import logging
 import numpy as np
 import json
 
@@ -14,8 +14,11 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.s3_service import s3_service
+from app.utils.s3 import parse_s3_url
 from app.utils.json_encoder import convert_numpy_types, NumpyJSONEncoder
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 data_processor = DataProcessor()
@@ -77,22 +80,16 @@ async def process_uploaded_file(
         if not user_data:
             raise HTTPException(status_code=404, detail="File not found")
         
-        # Download file from S3
-        # Extract file key from S3 URL (handle both s3:// and https:// formats)
-        s3_url = user_data.s3_url
-        if s3_url.startswith(f"s3://{s3_service.bucket_name}/"):
-            file_key = s3_url.replace(f"s3://{s3_service.bucket_name}/", "")
-        elif s3_url.startswith(f"https://{s3_service.bucket_name}.s3.amazonaws.com/"):
-            file_key = s3_url.replace(f"https://{s3_service.bucket_name}.s3.amazonaws.com/", "")
-        else:
-            # Try to extract key from any S3 URL format
-            import re
-            match = re.search(r'/([^/]+)$', s3_url)
-            if match:
-                file_key = match.group(1)
-            else:
-                raise ValueError(f"Could not extract file key from S3 URL: {s3_url}")
-        
+        # Download file from S3 (parse_s3_url handles all persisted URL shapes)
+        try:
+            _, file_key = parse_s3_url(user_data.s3_url)
+        except ValueError as err:
+            # Strip the query string before logging — presigned URLs carry
+            # credentials; the error handler echoes exception text to clients
+            sanitized_url = user_data.s3_url.split("?")[0]
+            logger.error(f"Could not extract file key from S3 URL: {sanitized_url}")
+            raise ValueError("Could not extract file key from stored S3 URL") from err
+
         file_bytes = await s3_service.download_file_bytes(file_key)
         
         # Process the file
@@ -255,10 +252,8 @@ async def get_data_preview(
     
     try:
         # Download file from S3 to get actual data
-        # Parse the HTTPS URL to extract the S3 key
-        parsed_url = urlparse(user_data.s3_url)
-        # Strip leading slash from path to get the key
-        file_key = parsed_url.path.lstrip('/')
+        # (parse_s3_url handles all persisted URL shapes)
+        _, file_key = parse_s3_url(user_data.s3_url)
         file_bytes = await s3_service.download_file_bytes(file_key)
         
         # Read the file based on type

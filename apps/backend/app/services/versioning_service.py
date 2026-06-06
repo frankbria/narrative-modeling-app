@@ -13,12 +13,10 @@ Security:
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone
 import uuid
-import boto3
 from botocore.exceptions import ClientError
 import logging
 
-logger = logging.getLogger(__name__)
-
+from app.utils.s3 import create_s3_client
 from app.models.version import (
     DatasetVersion,
     TransformationLineage,
@@ -35,6 +33,8 @@ from app.services.exceptions import (
     ValidationError
 )
 
+logger = logging.getLogger(__name__)
+
 
 class VersioningService(BaseService[DatasetVersion]):
     """Service for managing dataset versions and lineage tracking."""
@@ -44,12 +44,7 @@ class VersioningService(BaseService[DatasetVersion]):
 
     def __init__(self):
         """Initialize versioning service with S3 client."""
-        self.s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
-        )
+        self.s3_client = create_s3_client()
         self.bucket_name = settings.S3_BUCKET
 
     def _get_id_field(self) -> str:

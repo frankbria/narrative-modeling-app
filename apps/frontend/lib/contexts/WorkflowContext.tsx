@@ -25,6 +25,10 @@ export function WorkflowProvider({
     ...initialState,
     datasetId: initialDatasetId
   });
+  // Pages must not run stage-gating redirects until state is restored:
+  // consumer effects fire before this provider's hydration effect, so an
+  // early canAccessStage() check always sees an empty completedStages set.
+  const [isHydrated, setIsHydrated] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -41,7 +45,7 @@ export function WorkflowProvider({
           // Check if the saved state is recent (within 24 hours)
           const stateAge = parsed.lastUpdated ? Date.now() - new Date(parsed.lastUpdated).getTime() : Infinity;
           const oneDayMs = 24 * 60 * 60 * 1000;
-          
+
           if (stateAge < oneDayMs) {
             setState({
               ...parsed,
@@ -58,6 +62,7 @@ export function WorkflowProvider({
         }
       }
     }
+    setIsHydrated(true);
   }, [initialDatasetId]);
 
   // Save workflow state to localStorage when it changes
@@ -248,6 +253,7 @@ export function WorkflowProvider({
 
   const value: WorkflowContextType = {
     state,
+    isHydrated,
     canAccessStage,
     completeStage,
     setCurrentStage,

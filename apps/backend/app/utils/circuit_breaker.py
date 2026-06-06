@@ -232,6 +232,20 @@ class CircuitBreaker:
         with self._lock:
             return self.state
 
+    def reset(self):
+        """
+        Reset the breaker to a closed state with cleared counters.
+
+        Intended for test isolation: decorators capture breaker instances at
+        import time, so tests must reset state in-place rather than clearing
+        the registry.
+        """
+        with self._lock:
+            self._transition_state(CircuitState.CLOSED)
+            self.half_open_calls = 0
+            self.metrics.reset_consecutive_counts()
+            self.metrics.last_failure_time = None
+
 
 # Global circuit breakers for each service
 _circuit_breakers: Dict[str, CircuitBreaker] = {}

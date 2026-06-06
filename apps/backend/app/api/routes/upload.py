@@ -10,13 +10,11 @@ from fastapi import (
 from typing import Dict, Any
 import pandas as pd
 import io
-import traceback
 import os
-import boto3
 from app.models.user_data import UserData
 from app.auth.nextauth_auth import get_current_user_id
 from app.utils.schema_inference import infer_schema, generate_s3_filename
-from app.utils.s3 import upload_file_to_s3
+from app.utils.s3 import upload_file_to_s3, create_s3_client
 from app.utils.ai_summary import generate_dataset_summary
 import logging
 
@@ -116,12 +114,7 @@ async def upload_file(
 
                 # Generate a signed URL for temporary access if needed
                 try:
-                    s3_client = boto3.client(
-                        "s3",
-                        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                        region_name=os.getenv("AWS_REGION", "us-east-1"),
-                    )
+                    s3_client = create_s3_client()
 
                     # Generate a signed URL that expires in 1 hour
                     signed_url = s3_client.generate_presigned_url(
@@ -188,7 +181,5 @@ async def upload_file(
         }
 
     except Exception as e:
-        # Log the full traceback
-        logger.error(f"Error processing file: {str(e)}")
-        traceback.print_exc()
+        logger.exception("Error processing file: %s", e)
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")

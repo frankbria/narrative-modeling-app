@@ -517,12 +517,12 @@ class TestUserDataAPI:
         mock_df.to_csv(csv_buffer, index=False)
         csv_content = csv_buffer.getvalue()
 
-        with patch('app.api.routes.user_data.boto3.client') as mock_boto:
+        with patch('app.api.routes.user_data.create_s3_client') as mock_create_client:
             mock_s3_client = MagicMock()
             mock_s3_client.get_object.return_value = {
                 "Body": MagicMock(read=MagicMock(return_value=csv_content))
             }
-            mock_boto.return_value = mock_s3_client
+            mock_create_client.return_value = mock_s3_client
 
             response = await async_authorized_client.get("/api/v1/user_data/preview")
 
@@ -542,10 +542,10 @@ class TestUserDataAPI:
         sample_user_data: UserData
     ):
         """Test getting preview data when S3 retrieval fails (returns error but not 500)."""
-        with patch('app.api.routes.user_data.boto3.client') as mock_boto:
+        with patch('app.api.routes.user_data.create_s3_client') as mock_create_client:
             mock_s3_client = MagicMock()
             mock_s3_client.get_object.side_effect = Exception("S3 error")
-            mock_boto.return_value = mock_s3_client
+            mock_create_client.return_value = mock_s3_client
 
             response = await async_authorized_client.get("/api/v1/user_data/preview")
 

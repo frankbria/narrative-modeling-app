@@ -35,7 +35,7 @@ export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
   useSession()
-  const { state, completeStage, canAccessStage, loadWorkflow } = useWorkflow()
+  const { state, completeStage, canAccessStage, loadWorkflow, isHydrated } = useWorkflow()
   const [dataset, setDataset] = useState<ProcessedDataset | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +44,12 @@ export default function DatasetAnalysisPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
   useEffect(() => {
+    // Wait for workflow state to hydrate before gating — checking too early
+    // always sees an empty state and wrongly redirects to /upload
+    if (!isHydrated) {
+      return
+    }
+
     // Check workflow access
     if (!canAccessStage(WorkflowStage.DATA_PROFILING)) {
       router.push('/upload')
@@ -123,7 +129,7 @@ export default function DatasetAnalysisPage() {
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.id, apiUrl])
+  }, [params?.id, apiUrl, isHydrated])
 
   const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
     try {

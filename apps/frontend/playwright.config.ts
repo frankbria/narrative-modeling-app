@@ -17,8 +17,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Use 4 workers on CI for better performance (GitHub Actions has 2 cores, 4 workers is optimal) */
-  workers: process.env.CI ? 4 : undefined,
+  /* 2 workers on CI: GitHub runners have 2 cores and each test drives the
+     full stack (Next dev server + FastAPI + MinIO + MongoDB). 4 workers
+     caused cascading navigation/upload timeouts once uploads actually
+     started exercising real storage. */
+  workers: process.env.CI ? 2 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
 

@@ -19,6 +19,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/lib/contexts/WorkflowContext', () => ({
   WorkflowProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useWorkflow: () => ({
+    isHydrated: true,
     state: {
       currentStage: 'DATA_PROFILING',
       completedStages: new Set(['DATA_LOADING']),

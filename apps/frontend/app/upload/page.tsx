@@ -364,6 +364,7 @@ export default function UploadPage() {
                 )}
                 <button
                   onClick={handleNextStep}
+                  data-testid="next-step-button"
                   className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center space-x-2"
                 >
                   <span>Next Step</span>

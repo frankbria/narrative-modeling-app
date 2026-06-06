@@ -3,7 +3,6 @@ API routes for model training and management
 """
 
 from typing import Optional, List, Dict, Any
-from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 import pandas as pd
@@ -16,6 +15,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.models.ml_model import MLModel
 from app.services.s3_service import get_file_from_s3
+from app.utils.s3 import parse_s3_url
 from app.services.model_storage import ModelStorageService
 from app.services.model_training import (
     AutoMLEngine,
@@ -119,9 +119,8 @@ async def train_model_task(
     try:
         logger.info(f"Starting model training for dataset {request.dataset_id}")
 
-        # Extract S3 file key from the HTTPS URL
-        parsed_url = urlparse(user_data.s3_url)
-        file_key = parsed_url.path.lstrip('/')
+        # Extract S3 file key (parse_s3_url handles all persisted URL shapes)
+        _, file_key = parse_s3_url(user_data.s3_url)
 
         # Load data from S3
         file_bytes = await get_file_from_s3(file_key)
