@@ -168,7 +168,13 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   cleanupDataset: async ({ request }, use) => {
     const cleanup = async (datasetId: string) => {
       try {
-        await request.delete(`/api/v1/datasets/${datasetId}`);
+        // Target the backend directly (Next.js does not proxy /api/v1);
+        // a relative URL hits the dev server and burns a 15s timeout per test
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+        await request.delete(`${apiBase}/datasets/${datasetId}`, {
+          headers: { Authorization: 'Bearer e2e-test-token' },
+          timeout: 5000,
+        });
       } catch (error) {
         console.warn(`Failed to cleanup dataset ${datasetId}:`, error);
       }
