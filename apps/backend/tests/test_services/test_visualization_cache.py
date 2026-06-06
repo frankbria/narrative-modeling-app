@@ -125,6 +125,11 @@ async def _cache_new_entry(mock_redis_miss, mock_dataset, payload, viz_type, col
         result = await cache_visualization(str(mock_dataset.id), viz_type, payload, column)
 
     saved_entry.save.assert_called_once()
+    # The existing-entry lookup must be scoped to this dataset — an unscoped
+    # lookup would overwrite OTHER datasets' cache entries (issue #160)
+    lookup_filter = mock_viz_class.find_one.call_args.args[0]
+    assert lookup_filter["dataset_id.$id"] == mock_dataset.id
+    assert lookup_filter["visualization_type"] == viz_type
     constructor_kwargs = mock_viz_class.call_args.kwargs
     assert constructor_kwargs["visualization_type"] == viz_type
     assert constructor_kwargs["data"] == payload
