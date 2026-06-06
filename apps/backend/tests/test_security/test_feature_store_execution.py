@@ -296,6 +296,8 @@ class TestPerformanceOverhead:
 
     @pytest.mark.asyncio
     async def test_overhead_under_ten_percent(self):
+        # Mutation testing impractical: this is a threshold benchmark, not a
+        # behavioral assertion — there is no single branch to flip.
         import io
         import logging
 
