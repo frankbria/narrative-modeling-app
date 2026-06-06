@@ -130,6 +130,18 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       // Click upload button
       await uploadButton.click();
 
+      // The upload page does not auto-navigate: it shows a success panel
+      // with a "Next Step" button that takes the user to /explore/{id}.
+      const nextStepButton = page.getByTestId('next-step-button');
+      try {
+        await nextStepButton.waitFor({ state: 'visible', timeout: 30000 });
+      } catch (error) {
+        throw new Error(
+          `Upload failed: success panel did not appear. Current URL: ${page.url()}`
+        );
+      }
+      await nextStepButton.click();
+
       // Wait for navigation to dataset detail page
       try {
         await page.waitForURL(/\/explore\/[a-zA-Z0-9-]+/, { timeout: 30000 });
@@ -169,13 +181,21 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     const train = async (datasetId: string, targetColumn: string): Promise<string> => {
       const maxRetries = 2;
 
+      // API calls must target the backend directly — Next.js does not proxy
+      // /api/v1/* to the FastAPI server. Backend runs with SKIP_AUTH=true in
+      // E2E, but HTTPBearer still requires some Authorization header.
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+      const headers = { Authorization: 'Bearer e2e-test-token' };
+
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const response = await request.post('/api/v1/models/train', {
+          // The real ML pipeline lives under /api/v1/ml (AutoMLEngine +
+          // ModelStorageService); /api/v1/models only stores config records.
+          const response = await request.post(`${apiBase}/ml/train`, {
+            headers,
             data: {
               dataset_id: datasetId,
               target_column: targetColumn,
-              algorithm: 'random_forest',
             },
             timeout: 30000,
           });
@@ -192,36 +212,29 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
           const data = await response.json();
           const modelId = data.model_id || data.id;
 
-          // Poll for training completion (with timeout and better error handling)
-          let status = 'training';
-          let pollAttempts = 0;
+          // Training runs as a background task; the model becomes retrievable
+          // from GET /api/v1/ml/{id} once the artifact is saved.
+          let trained = false;
           const maxPollAttempts = 30; // 60 seconds max
 
-          while (status === 'training' && pollAttempts < maxPollAttempts) {
+          for (let pollAttempts = 0; pollAttempts < maxPollAttempts; pollAttempts++) {
             await new Promise(resolve => setTimeout(resolve, 2000));
-            pollAttempts++;
 
             try {
-              const statusResponse = await request.get(`/api/v1/models/${modelId}/status`, {
+              const statusResponse = await request.get(`${apiBase}/ml/${modelId}`, {
+                headers,
                 timeout: 5000,
               });
               if (statusResponse.ok()) {
-                const statusData = await statusResponse.json();
-                status = statusData.status;
-
-                if (status === 'failed' || status === 'error') {
-                  throw new Error(`Model training failed with status: ${status}`);
-                }
-              }
-            } catch (error) {
-              // If status endpoint doesn't exist, assume training complete after some attempts
-              if (pollAttempts > 5) {
+                trained = true;
                 break;
               }
+            } catch (error) {
+              // Transient network error — keep polling
             }
           }
 
-          if (status === 'training') {
+          if (!trained) {
             console.warn('Training timed out, but returning model ID anyway');
           }
 

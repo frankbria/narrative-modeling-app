@@ -44,7 +44,7 @@ export default function DatasetPreparePage() {
   const params = useParams();
   const router = useRouter();
   useSession();
-  const { completeStage, canAccessStage } = useWorkflow();
+  const { completeStage, canAccessStage, isHydrated } = useWorkflow();
 
   const datasetId = params?.id as string;
   const [dataset, setDataset] = useState<Dataset | null>(null);
@@ -100,6 +100,12 @@ export default function DatasetPreparePage() {
 
   // Check workflow access and fetch dataset
   useEffect(() => {
+    // Wait for workflow state to hydrate before gating — checking too early
+    // always sees an empty state and wrongly redirects to /upload
+    if (!isHydrated) {
+      return;
+    }
+
     if (!canAccessStage(WorkflowStage.DATA_PREPARATION)) {
       router.push('/upload');
       return;
@@ -148,7 +154,7 @@ export default function DatasetPreparePage() {
     };
 
     fetchDataset();
-  }, [datasetId, apiUrl, canAccessStage, router]);
+  }, [datasetId, apiUrl, canAccessStage, router, isHydrated]);
 
   // Fetch transformation types and available columns for edit dialog
   useEffect(() => {

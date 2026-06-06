@@ -17,9 +17,28 @@ import { join } from 'path';
 test.describe('Data Preparation Page', () => {
   let datasetId: string;
 
-  test.beforeEach(async ({ uploadTestDataset }) => {
+  test.beforeEach(async ({ page, uploadTestDataset }) => {
     // Upload test dataset
     datasetId = await uploadTestDataset();
+
+    // The prepare page is stage-gated behind DATA_PROFILING; these tests
+    // target the preparation UI directly, so seed the workflow state a real
+    // user would have after completing the profiling stage.
+    // addInitScript (not evaluate): the still-open explore page persists its
+    // own in-memory state on changes and would clobber a one-time seed; the
+    // init script re-seeds before app code runs on every navigation.
+    await page.addInitScript((id) => {
+      localStorage.setItem(
+        'workflowState',
+        JSON.stringify({
+          currentStage: 'data_preparation',
+          completedStages: ['data_loading', 'data_profiling'],
+          stageData: {},
+          datasetId: id,
+          lastUpdated: new Date().toISOString(),
+        })
+      );
+    }, datasetId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {

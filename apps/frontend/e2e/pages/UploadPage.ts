@@ -31,6 +31,17 @@ export class UploadPage extends BasePage {
   }
 
   /**
+   * Click the post-upload "Next Step" button and wait for navigation
+   * to the dataset's explore page (/explore/{id}).
+   */
+  async continueToExplore() {
+    const nextStepButton = this.page.getByTestId('next-step-button');
+    await nextStepButton.waitFor({ state: 'visible', timeout: 10000 });
+    await nextStepButton.click();
+    await this.page.waitForURL(/\/explore\/[a-zA-Z0-9-]+/, { timeout: 30000 });
+  }
+
+  /**
    * Get the dataset ID from the current URL
    */
   async getDatasetId(): Promise<string> {

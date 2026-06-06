@@ -180,12 +180,19 @@ test.describe('Performance - API Response Times', () => {
     const datasetId = await uploadTestDataset();
     const modelId = await trainModel(datasetId, 'purchased');
 
+    // Direct backend call (Next.js does not proxy /api/v1); SKIP_AUTH backend
+    // still requires an Authorization header for HTTPBearer.
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
     const metric = await perfMonitor.measureApiCall(
       'Single Prediction API',
       async () => {
-        const response = await request.post(`/api/v1/models/${modelId}/predict`, {
+        // Real prediction endpoint lives under /api/v1/ml and takes a list
+        // of records (PredictRequest.data)
+        const response = await request.post(`${apiBase}/ml/${modelId}/predict`, {
+          headers: { Authorization: 'Bearer e2e-test-token' },
           data: {
-            features: { age: 30, income: 60000 },
+            data: [{ age: 30, income: 60000 }],
           },
         });
         expect(response.ok()).toBeTruthy();

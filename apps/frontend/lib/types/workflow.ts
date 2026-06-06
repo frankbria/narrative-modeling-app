@@ -33,6 +33,12 @@ export interface WorkflowState {
 
 export interface WorkflowContextType {
   state: WorkflowState;
+  /**
+   * True once workflow state has been restored from storage. Stage-gating
+   * redirects must wait for this — checking canAccessStage before hydration
+   * always sees an empty state and wrongly kicks the user back to /upload.
+   */
+  isHydrated: boolean;
   canAccessStage: (stage: WorkflowStage) => boolean;
   completeStage: (stage: WorkflowStage, data?: any) => void;
   setCurrentStage: (stage: WorkflowStage) => void;
