@@ -175,21 +175,23 @@ export BASE_URL=http://localhost:${TEST_PORT}
 export PORT=${TEST_PORT}
 export NEXTAUTH_URL=http://localhost:${TEST_PORT}
 
-# Run Playwright with all arguments passed to this script
-npx playwright test "$@"
-
-# Capture exit code
-EXIT_CODE=$?
+# Run Playwright with all arguments passed to this script.
+# Capture the exit code without letting `set -e` abort the script —
+# cleanup below must always run, and the exit code must propagate.
+EXIT_CODE=0
+npx playwright test "$@" || EXIT_CODE=$?
 
 # Cleanup: Kill both servers
 echo ""
 echo -e "${YELLOW}=== Cleaning up ===${NC}"
+# `|| true` keeps `set -e` from turning an already-exited process
+# (kill returns non-zero) into a spurious script failure on green runs
 if [ ! -z "$FRONTEND_PID" ]; then
-  kill $FRONTEND_PID 2>/dev/null
+  kill $FRONTEND_PID 2>/dev/null || true
   echo "Stopped frontend server (PID: $FRONTEND_PID)"
 fi
 if [ ! -z "$BACKEND_PID" ]; then
-  kill $BACKEND_PID 2>/dev/null
+  kill $BACKEND_PID 2>/dev/null || true
   echo "Stopped backend server (PID: $BACKEND_PID)"
 fi
 
