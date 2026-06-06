@@ -713,8 +713,8 @@ class FeatureEngineer:
         params: Dict[str, Any]
     ) -> pd.DataFrame:
         """Apply generic transformation based on formula (limited support)"""
-        # This is a simplified implementation
-        # In production, you might use a safe expression evaluator
+        # Simplified implementation; complex formulas belong in expression
+        # trees evaluated by ExpressionEvaluator (see apply_stored_feature)
         if len(input_cols) == 1:
             col = input_cols[0]
             # Simple copy with optional modification
