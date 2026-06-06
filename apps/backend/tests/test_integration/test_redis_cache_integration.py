@@ -77,9 +77,14 @@ class TestRedisCacheIntegration:
 
     @pytest.mark.asyncio
     async def test_onboarding_service_cache_integration(self, setup_database):
-        """Test that onboarding service properly uses Redis cache"""
+        """Test that onboarding service properly uses Redis cache.
+
+        Progress persistence lives in _get_or_create_user_progress (the
+        OnboardingUserProgress schema is a plain pydantic model, not a
+        Document — the old update_user_progress/save API no longer exists).
+        """
         user_id = "test_user_123"
-        
+
         # Create initial progress data
         progress_data = OnboardingUserProgress(
             user_id=user_id,
@@ -88,61 +93,66 @@ class TestRedisCacheIntegration:
             started_at=datetime.utcnow(),
             last_activity_at=datetime.utcnow()
         )
-        
+
         # Mock cache service
         mock_cache = AsyncMock()
         mock_cache.get_user_progress = AsyncMock(return_value=None)  # Cache miss
         mock_cache.cache_user_progress = AsyncMock(return_value=True)
-        
-        with patch('app.services.onboarding_service.cache_service', mock_cache):
+
+        with patch('app.services.onboarding_service.cache_service', mock_cache), \
+             patch('app.services.onboarding_service.UserData.find_one', new=AsyncMock(return_value=None)):
             service = OnboardingService()
-            
-            # Mock database save operation
-            with patch.object(OnboardingUserProgress, 'save', new_callable=AsyncMock) as mock_save:
-                # First call should miss cache and save to DB
-                result1 = await service.update_user_progress(user_id, "data_upload", completed_steps=["welcome"])
-                
-                # Verify cache was checked and progress was cached
-                mock_cache.get_user_progress.assert_called_with(user_id)
-                mock_cache.cache_user_progress.assert_called()
-                
-                # Reset mocks for second call
-                mock_cache.reset_mock()
-                mock_cache.get_user_progress = AsyncMock(return_value=progress_data.model_dump())  # Cache hit
-                
-                # Second call should hit cache
-                result2 = await service.get_user_progress(user_id)
-                
-                # Verify cache was checked
-                mock_cache.get_user_progress.assert_called_with(user_id)
-                
-                # Verify returned data matches
-                assert result2.user_id == progress_data.user_id
-                assert result2.current_step_id == progress_data.current_step_id
+
+            # Cache miss: fresh progress is created and written to the cache
+            result1 = await service._get_or_create_user_progress(user_id)
+            mock_cache.get_user_progress.assert_called_with(user_id)
+            mock_cache.cache_user_progress.assert_called_once()
+            assert result1.user_id == user_id
+
+            # Cache hit: cached progress is returned, no new cache write
+            mock_cache.reset_mock()
+            mock_cache.get_user_progress = AsyncMock(return_value=progress_data.model_dump())
+
+            result2 = await service._get_or_create_user_progress(user_id)
+            mock_cache.get_user_progress.assert_called_with(user_id)
+            mock_cache.cache_user_progress.assert_not_called()
+            assert result2.user_id == progress_data.user_id
+            assert result2.current_step_id == progress_data.current_step_id
 
     @pytest.mark.asyncio
     async def test_visualization_cache_integration(self, setup_database):
-        """Test visualization cache service with Redis integration"""
-        dataset_id = str(PydanticObjectId())
-        
-        # Mock dataset and data
-        mock_dataset = Mock()
-        mock_dataset.id = PydanticObjectId(dataset_id)
-        mock_dataset.s3_url = "s3://test-bucket/test-file.csv"
-        
+        """Test visualization cache service against the real test database.
+
+        Uses a real UserData document so the VisualizationCache entry (a
+        Beanie Document with a Link[UserData]) is actually persisted; only
+        Redis and S3 are mocked.
+        """
+        from app.models.user_data import UserData
+
+        user_data = UserData(
+            user_id="test_user_123",
+            filename="test-file.csv",
+            original_filename="test-file.csv",
+            s3_url="s3://test-bucket/test-file.csv",
+            num_rows=10,
+            num_columns=2,
+            data_schema=[],
+        )
+        await user_data.insert()
+        dataset_id = str(user_data.id)
+
         # Create test DataFrame
         test_df = pd.DataFrame({
             'numeric_col': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             'other_col': [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         })
-        
+
         # Mock cache service
         mock_cache = AsyncMock()
         mock_cache.get = AsyncMock(return_value=None)  # Cache miss first time
         mock_cache.set = AsyncMock(return_value=True)
-        
+
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
              patch('pandas.read_csv', return_value=test_df), \
              patch('app.services.visualization_cache.get_file_from_s3', return_value="mock_file_path"):
             
@@ -240,44 +250,48 @@ class TestRedisCacheIntegration:
         
         with patch('app.services.data_processing.statistics_engine.cache_service', mock_cache):
             engine = StatisticsEngine()
-            
+
             # Define column types
             column_types = {
                 'numeric_col': 'numeric',
                 'categorical_col': 'categorical'
             }
-            
-            # Currently cache failure causes method failure
-            with pytest.raises(Exception, match="Redis connection error"):
-                await engine.calculate_statistics(df, column_types)
-            
-            # Verify cache get was attempted
+
+            # Cache misses and failed cache writes must not break computation
+            stats = await engine.calculate_statistics(df, column_types)
+
+            assert stats.row_count == 5
+            assert stats.column_count == 2
+
+            # Verify cache get was attempted and the failed set was tolerated
             mock_cache.get.assert_called()
+            mock_cache.set.assert_called()
 
     @pytest.mark.asyncio
     async def test_cache_ttl_behavior(self):
-        """Test cache TTL behavior with different services"""
-        # Test different TTL values used by different services
-        test_cases = [
-            ("user_progress", 86400),  # 24 hours
-            ("data_stats", 7200),      # 2 hours  
-            ("visualizations", 3600),   # 1 hour
-            ("eda_results", 10800),     # 3 hours
-        ]
-        
-        mock_cache = AsyncMock()
-        mock_cache.set = AsyncMock(return_value=True)
-        
-        with patch('app.services.redis_cache.cache_service', mock_cache):
-            for cache_type, expected_ttl in test_cases:
-                if cache_type == "user_progress":
-                    await mock_cache.cache_user_progress("user123", {"progress": 50})
-                elif cache_type == "data_stats":
-                    await mock_cache.cache_data_stats("data123", {"rows": 1000})
-                elif cache_type == "visualizations":
-                    await mock_cache.set("viz:test", {"chart": "data"}, ttl=expected_ttl)
-                elif cache_type == "eda_results":
-                    await mock_cache.cache_eda_results("data123", {"summary": "complete"})
-                
-                # Verify TTL was set correctly (this would need to be implemented in the actual methods)
-                mock_cache.set.assert_called()
+        """Test that the real cache service helpers apply their documented TTLs.
+
+        Exercises RedisCacheService methods against a mocked redis client
+        (the previous version called methods on its own mock, testing nothing).
+        """
+        from app.services.redis_cache import RedisCacheService
+
+        service = RedisCacheService()
+        service.redis_client = AsyncMock()
+
+        # set()-based helpers use SETEX with (key, ttl, value)
+        await service.cache_data_stats("data123", {"rows": 1000})
+        assert service.redis_client.setex.call_args.args[0] == "data_stats:data123"
+        assert service.redis_client.setex.call_args.args[1] == 7200  # 2 hours
+
+        await service.cache_eda_results("data123", {"summary": "complete"})
+        assert service.redis_client.setex.call_args.args[0] == "eda:data123"
+        assert service.redis_client.setex.call_args.args[1] == 10800  # 3 hours
+
+        await service.set("viz:test", {"chart": "data"}, ttl=3600)
+        assert service.redis_client.setex.call_args.args[1] == 3600  # 1 hour
+
+        # hash-based helper uses HSET + EXPIRE
+        await service.cache_user_progress("user123", {"progress": 50})
+        service.redis_client.hset.assert_called_once()
+        assert service.redis_client.expire.call_args.args[1] == 86400  # 24 hours

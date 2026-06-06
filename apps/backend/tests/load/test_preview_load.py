@@ -7,10 +7,10 @@ These tests verify:
 3. Memory usage with large samples
 4. Rapid sequential request handling
 
-Requirements:
-- Redis running locally (for rate limiting tests when implemented)
-- MongoDB running locally
-- Test dataset uploaded to S3
+Requirements (fixtures in tests/load/conftest.py handle setup):
+- MongoDB running locally (dataset metadata is seeded into the test DB)
+- S3 is stubbed with a locally generated DataFrame (timings measure the
+  preview pipeline, not network throughput)
 
 Run with:
     cd apps/backend
@@ -23,6 +23,12 @@ import time
 from app.schemas.transformation import TransformationStepRequest
 from app.services.data_processing.preview_service_integration import PreviewServiceIntegration
 
+# A minimal cheap operation: generate_preview requires a non-empty operations
+# list, so this stands in wherever the old tests passed operations=[]
+BASELINE_OPERATIONS = [
+    TransformationStepRequest(transformation_type="remove_duplicates", parameters={})
+]
+
 
 @pytest.fixture
 def preview_service():
@@ -30,20 +36,9 @@ def preview_service():
     return PreviewServiceIntegration()
 
 
-@pytest.fixture
-def test_data_config():
-    """Test data configuration"""
-    return {
-        "user_id": "load_test_user_123",
-        "dataset_id": "test_dataset_456",
-        # NOTE: Update with actual test file path
-        "s3_file_path": "s3://test-bucket/test-data.csv",
-    }
-
-
 @pytest.mark.asyncio
 @pytest.mark.load
-async def test_concurrent_preview_requests(preview_service, test_data_config):
+async def test_concurrent_preview_requests(preview_service, test_data_config, stub_s3_dataframe):
     """
     Test that rate limiting works with concurrent requests.
 
@@ -107,7 +102,7 @@ async def test_concurrent_preview_requests(preview_service, test_data_config):
 
 @pytest.mark.asyncio
 @pytest.mark.load
-async def test_preview_performance_by_sample_size(preview_service, test_data_config):
+async def test_preview_performance_by_sample_size(preview_service, test_data_config, stub_s3_dataframe):
     """
     Test preview generation time across different sample sizes.
 
@@ -117,7 +112,8 @@ async def test_preview_performance_by_sample_size(preview_service, test_data_con
     - 500 rows: <2s
     - 1000 rows: <3s
     """
-    operations = []  # No transformations, just data loading
+    # generate_preview requires a non-empty operations list
+    operations = BASELINE_OPERATIONS
 
     test_cases = [
         (10, 500),    # 10 rows, max 500ms
@@ -165,7 +161,7 @@ async def test_preview_performance_by_sample_size(preview_service, test_data_con
 
 @pytest.mark.asyncio
 @pytest.mark.load
-async def test_memory_usage_with_large_sample(preview_service, test_data_config):
+async def test_memory_usage_with_large_sample(preview_service, test_data_config, stub_s3_dataframe):
     """
     Test that memory usage stays reasonable with max sample size.
 
@@ -177,7 +173,7 @@ async def test_memory_usage_with_large_sample(preview_service, test_data_config)
 
     tracemalloc.start()
 
-    operations = []
+    operations = BASELINE_OPERATIONS
     sample_size = 1000
 
     # Get baseline memory
@@ -214,7 +210,7 @@ async def test_memory_usage_with_large_sample(preview_service, test_data_config)
 
 @pytest.mark.asyncio
 @pytest.mark.load
-async def test_rapid_sequential_requests(preview_service, test_data_config):
+async def test_rapid_sequential_requests(preview_service, test_data_config, stub_s3_dataframe):
     """
     Simulate rapid sequential requests (like rapid UI changes).
 
@@ -223,15 +219,14 @@ async def test_rapid_sequential_requests(preview_service, test_data_config):
     """
     # Simulate user rapidly changing operations
     operations_sequence = [
-        [],  # Empty
         [TransformationStepRequest(transformation_type="remove_duplicates", parameters={})],
         [
             TransformationStepRequest(transformation_type="remove_duplicates", parameters={}),
-            TransformationStepRequest(transformation_type="fill_missing", parameters={"method": "mean"})
+            TransformationStepRequest(transformation_type="fill_missing", columns=["value"], parameters={"method": "mean"})
         ],
         [
             TransformationStepRequest(transformation_type="remove_duplicates", parameters={}),
-            TransformationStepRequest(transformation_type="fill_missing", parameters={"method": "median"})
+            TransformationStepRequest(transformation_type="fill_missing", columns=["value"], parameters={"method": "median"})
         ],
     ]
 
@@ -274,7 +269,7 @@ async def test_rapid_sequential_requests(preview_service, test_data_config):
 
 @pytest.mark.asyncio
 @pytest.mark.load
-async def test_transformation_overhead(preview_service, test_data_config):
+async def test_transformation_overhead(preview_service, test_data_config, stub_s3_dataframe):
     """
     Measure overhead of different numbers of transformations.
 
@@ -286,22 +281,23 @@ async def test_transformation_overhead(preview_service, test_data_config):
     """
     sample_size = 100
 
+    # generate_preview requires a non-empty operations list, so the
+    # baseline is a single cheap transformation
     test_cases = [
-        ("No transformations", []),
         ("1 transformation", [
             TransformationStepRequest(transformation_type="remove_duplicates", parameters={})
         ]),
         ("3 transformations", [
             TransformationStepRequest(transformation_type="remove_duplicates", parameters={}),
-            TransformationStepRequest(transformation_type="fill_missing", parameters={"method": "mean"}),
-            TransformationStepRequest(transformation_type="normalize", parameters={"method": "minmax"})
+            TransformationStepRequest(transformation_type="fill_missing", columns=["value"], parameters={"method": "mean"}),
+            TransformationStepRequest(transformation_type="normalize", column="value", parameters={"method": "minmax"})
         ]),
         ("5 transformations", [
             TransformationStepRequest(transformation_type="remove_duplicates", parameters={}),
-            TransformationStepRequest(transformation_type="fill_missing", parameters={"method": "mean"}),
-            TransformationStepRequest(transformation_type="normalize", parameters={"method": "minmax"}),
-            TransformationStepRequest(transformation_type="remove_outliers", parameters={"method": "iqr"}),
-            TransformationStepRequest(transformation_type="encode_categorical", parameters={"method": "onehot"})
+            TransformationStepRequest(transformation_type="fill_missing", columns=["value"], parameters={"method": "mean"}),
+            TransformationStepRequest(transformation_type="normalize", column="value", parameters={"method": "minmax"}),
+            TransformationStepRequest(transformation_type="outlier_removal", columns=["value"], parameters={"method": "iqr"}),
+            TransformationStepRequest(transformation_type="one_hot_encode", column="category", parameters={})
         ]),
     ]
 
