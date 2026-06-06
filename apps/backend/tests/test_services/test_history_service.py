@@ -62,8 +62,8 @@ def mock_transformation_config():
                   column="col1", columns=None, rows_affected=10),
         MagicMock(transformation_type="scale", version_id="v2",
                   column="col2", columns=None, rows_affected=10),
-        MagicMock(transformation_type="impute", version_id="v3",
-                  column=None, columns=["col3", "col4"], rows_affected=5)
+        MagicMock(transformation_type="remove_duplicates", version_id="v3",
+                  column=None, columns=None, rows_affected=5)
     ]
     config.can_undo = MagicMock(return_value=True)
     config.can_redo = MagicMock(return_value=False)

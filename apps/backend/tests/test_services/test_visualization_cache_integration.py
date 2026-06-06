@@ -168,6 +168,43 @@ class TestVisualizationCache:
             mock_viz_cache.save.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_redis_write_failure_degrades_gracefully(self, setup_database):
+        """A failing Redis write must not break reads or MongoDB persistence."""
+        dataset_id = str(PydanticObjectId())
+        mock_dataset = Mock()
+        mock_dataset.id = PydanticObjectId(dataset_id)
+
+        cached_data = {"bins": [1.0], "counts": [1], "bin_edges": [0.5, 1.5]}
+        mock_viz_cache = Mock()
+        mock_viz_cache.data = cached_data
+
+        failing_cache = AsyncMock()
+        failing_cache.get = AsyncMock(return_value=None)
+        failing_cache.set = AsyncMock(side_effect=Exception("Redis write error"))
+
+        # Read path: the MongoDB hit is returned even though the Redis
+        # write-back fails
+        with patch('app.services.visualization_cache.cache_service', failing_cache), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=mock_viz_cache)):
+            result = await get_cached_visualization(dataset_id, "histogram", "numeric_col")
+            assert result == cached_data
+
+        # Write path: the MongoDB entry is still created when the Redis write fails
+        saved_entry = Mock()
+        saved_entry.save = AsyncMock()
+        with patch('app.services.visualization_cache.cache_service', failing_cache), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache') as mock_viz_class:
+            mock_viz_class.find_one = AsyncMock(return_value=None)
+            mock_viz_class.return_value = saved_entry
+
+            result = await cache_visualization(dataset_id, "histogram", cached_data, "numeric_col")
+
+            assert result is saved_entry
+            saved_entry.save.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_generate_and_cache_histogram(self, setup_database):
         """Test histogram generation and caching"""
         dataset_id = str(PydanticObjectId())
