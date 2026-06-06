@@ -21,9 +21,8 @@ from app.services.exceptions import (
 @pytest.fixture
 def versioning_service():
     """Create versioning service instance with mocked S3 client."""
-    with patch('app.services.versioning_service.boto3') as mock_boto:
-        mock_s3 = MagicMock()
-        mock_boto.client.return_value = mock_s3
+    mock_s3 = MagicMock()
+    with patch('app.services.versioning_service.create_s3_client', return_value=mock_s3):
         service = VersioningService()
         service.s3_client = mock_s3
         return service

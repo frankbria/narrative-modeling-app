@@ -8,7 +8,7 @@ from app.utils.s3 import get_s3_client, upload_file_to_s3, get_file_from_s3
 
 @pytest.fixture
 def mock_env_vars():
-    """Fixture to set up mock environment variables."""
+    """Fixture to set up mock environment variables (no custom endpoint)."""
     with patch.dict(
         os.environ,
         {
@@ -16,6 +16,24 @@ def mock_env_vars():
             "AWS_SECRET_ACCESS_KEY": "test_secret_key",
             "AWS_BUCKET_NAME": "test_bucket",
             "AWS_REGION": "us-east-1",
+        },
+    ):
+        # Ensure no endpoint override leaks in from the host environment
+        os.environ.pop("AWS_ENDPOINT_URL", None)
+        yield
+
+
+@pytest.fixture
+def mock_env_vars_with_endpoint():
+    """Fixture with AWS_ENDPOINT_URL set (S3-compatible storage, e.g. MinIO)."""
+    with patch.dict(
+        os.environ,
+        {
+            "AWS_ACCESS_KEY_ID": "test_access_key",
+            "AWS_SECRET_ACCESS_KEY": "test_secret_key",
+            "AWS_BUCKET_NAME": "test_bucket",
+            "AWS_REGION": "us-east-1",
+            "AWS_ENDPOINT_URL": "http://localhost:9000",
         },
     ):
         yield
@@ -42,6 +60,22 @@ def test_get_s3_client_success(mock_env_vars):
             aws_access_key_id="test_access_key",
             aws_secret_access_key="test_secret_key",
             region_name="us-east-1",
+        )
+
+
+def test_get_s3_client_with_endpoint_url(mock_env_vars_with_endpoint):
+    """Test S3 client creation routes to a custom endpoint when AWS_ENDPOINT_URL is set."""
+    with patch("boto3.client") as mock_boto3_client:
+        mock_boto3_client.return_value = Mock()
+        client = get_s3_client()
+
+        assert client is not None
+        mock_boto3_client.assert_called_once_with(
+            "s3",
+            aws_access_key_id="test_access_key",
+            aws_secret_access_key="test_secret_key",
+            region_name="us-east-1",
+            endpoint_url="http://localhost:9000",
         )
 
 
@@ -87,6 +121,48 @@ def test_upload_file_to_s3_success(mock_env_vars, mock_s3_client):
         assert call_args[0][1] == "test_bucket"  # bucket name
         assert call_args[0][2] == s3_filename    # key
         assert call_args[1]["ExtraArgs"] == {"ContentType": content_type}
+
+
+def test_upload_file_to_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_client):
+    """Test uploaded file URL is derived from AWS_ENDPOINT_URL when set."""
+    with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+        file_content = b"test file content"
+        s3_filename = "test_file.txt"
+
+        success, url = upload_file_to_s3(file_content, s3_filename, "text/plain")
+
+        assert success is True
+        assert url == "http://localhost:9000/test_bucket/test_file.txt"
+        mock_s3_client.upload_fileobj.assert_called_once()
+
+
+def test_get_file_from_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_client):
+    """Test downloading a file referenced by an endpoint-style URL (MinIO)."""
+    with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+        s3_url = "http://localhost:9000/test_bucket/test_file.txt"
+        expected_content = b"test file content"
+
+        def mock_download_fileobj(bucket, key, file_obj):
+            file_obj.write(expected_content)
+            file_obj.seek(0)
+
+        mock_s3_client.download_fileobj.side_effect = mock_download_fileobj
+
+        result = get_file_from_s3(s3_url)
+
+        assert result.getvalue() == expected_content
+        mock_s3_client.download_fileobj.assert_called_once_with(
+            "test_bucket", "test_file.txt", result
+        )
+
+
+def test_get_file_from_s3_endpoint_url_missing_key(mock_env_vars_with_endpoint, mock_s3_client):
+    """Test endpoint-style URL without an object key is rejected."""
+    with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+        with pytest.raises(ValueError) as exc_info:
+            get_file_from_s3("http://localhost:9000/test_bucket")
+
+        assert "Invalid S3 URL format" in str(exc_info.value)
 
 
 def test_upload_file_to_s3_no_client(mock_env_vars):

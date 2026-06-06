@@ -1,4 +1,3 @@
-import boto3
 import os
 import tempfile
 import logging
@@ -7,6 +6,7 @@ from urllib.parse import unquote
 from botocore.exceptions import ClientError
 
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
+from app.utils.s3 import create_s3_client
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
     max_attempts=3,
     failure_threshold=5,
     recovery_timeout=60.0,
-    exceptions=(ClientError, ValueError)
+    # Only retry/count transient S3 errors. ValueError means a deterministic
+    # validation failure (bad URL, wrong bucket, path traversal): retrying it
+    # is pointless, and counting it toward the breaker would let malicious
+    # input open the circuit and block legitimate downloads.
+    exceptions=(ClientError,)
 )
 def download_file_from_s3(s3_url: str) -> str:
     """
@@ -45,15 +49,23 @@ def download_file_from_s3(s3_url: str) -> str:
             raise ValueError("AWS_S3_BUCKET environment variable not set")
 
         # SECURITY: Validate S3 URL format and bucket whitelist
-        # Pattern enforces: https://{bucket}.s3.amazonaws.com/{path}
-        s3_pattern = r"https://([^\.]+)\.s3\.amazonaws\.com/([^?]+)"
-        match = re.match(s3_pattern, s3_url)
+        # AWS format:      https://{bucket}.s3.amazonaws.com/{path}
+        # Endpoint format: {AWS_ENDPOINT_URL}/{bucket}/{path}  (MinIO/LocalStack)
+        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+        if endpoint_url and s3_url.startswith(endpoint_url):
+            path = s3_url[len(endpoint_url):].lstrip("/").split("?")[0]
+            bucket_name, _, object_key = path.partition("/")
+            if not bucket_name or not object_key:
+                raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        else:
+            s3_pattern = r"https://([^\.]+)\.s3\.amazonaws\.com/([^?]+)"
+            match = re.match(s3_pattern, s3_url)
 
-        if not match:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+            if not match:
+                raise ValueError(f"Invalid S3 URL format: {s3_url}")
 
-        bucket_name = match.group(1)
-        object_key = match.group(2)
+            bucket_name = match.group(1)
+            object_key = match.group(2)
 
         # SECURITY: Enforce bucket whitelist
         if bucket_name != ALLOWED_BUCKET:
@@ -76,12 +88,7 @@ def download_file_from_s3(s3_url: str) -> str:
             raise ValueError("Invalid S3 path structure: must match 'datasets/{user_id}/{filename}'")
 
         # Initialize S3 client
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-        )
+        s3_client = create_s3_client()
 
         # SECURITY: Check file size before downloading to prevent DoS
         try:
@@ -140,12 +147,7 @@ class S3Service:
             self.s3_client = None
         else:
             try:
-                self.s3_client = boto3.client(
-                    "s3",
-                    aws_access_key_id=aws_access_key,
-                    aws_secret_access_key=aws_secret_key,
-                    region_name=os.getenv("AWS_REGION", "us-east-1"),
-                )
+                self.s3_client = create_s3_client()
             except Exception as e:
                 logger.exception("Failed to initialize S3 client: %s", e)
                 self.is_mock_mode = True

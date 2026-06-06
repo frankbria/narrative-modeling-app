@@ -1,16 +1,12 @@
 # utils/aws.py
-import boto3
 import os
 from dotenv import load_dotenv
 
+from app.utils.s3 import create_s3_client
+
 load_dotenv()
 
-s3_client = boto3.client(
-    "s3",
-    region_name=os.getenv("AWS_REGION"),
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-)
+s3_client = create_s3_client()
 
 
 # utils/aws.py (continued)

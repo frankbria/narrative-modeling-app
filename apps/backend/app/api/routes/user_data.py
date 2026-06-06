@@ -10,9 +10,9 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.services.eda_summary import generate_eda_summary
 import pandas as pd
 import io
-import boto3
 import os
 import logging
+from app.utils.s3 import create_s3_client
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -92,12 +92,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
             raise HTTPException(status_code=404, detail="No data found for user")
 
         # Initialize S3 client
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-        )
+        s3_client = create_s3_client()
 
         # Extract the key from the S3 URL
         s3_url = user_data.s3_url

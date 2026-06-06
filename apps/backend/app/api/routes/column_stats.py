@@ -7,10 +7,10 @@ from app.models.column_stats import ColumnStats
 from app.auth.nextauth_auth import get_current_user_id
 import pandas as pd
 import io
-import boto3
 import os
 import logging
 from app.models.user_data import UserData
+from app.utils.s3 import create_s3_client
 
 from app.utils.column_stats import calculate_and_store_column_stats
 
@@ -53,12 +53,7 @@ async def get_column_stats(
                 )
 
             # Download the data from S3
-            s3_client = boto3.client(
-                "s3",
-                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                region_name=os.getenv("AWS_REGION", "us-east-1"),
-            )
+            s3_client = create_s3_client()
 
             # Extract bucket and key from S3 URL
             s3_url = dataset.s3_url
@@ -143,12 +138,7 @@ async def recalculate_column_stats(
         ).delete()
 
         # Download the data from S3
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1"),
-        )
+        s3_client = create_s3_client()
 
         # Extract bucket and key from S3 URL
         s3_url = dataset.s3_url
