@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 import numpy as np
@@ -10,8 +11,9 @@ from app.models.visualization_cache import (
 )
 from app.models.user_data import UserData
 from app.utils.s3 import get_file_from_s3
-from beanie import Link
 from app.services.redis_cache import cache_service
+
+logger = logging.getLogger(__name__)
 
 
 async def get_cached_visualization(
@@ -22,32 +24,39 @@ async def get_cached_visualization(
     cache_key = f"viz:{dataset_id}:{visualization_type}"
     if column_name:
         cache_key += f":{column_name}"
-    
-    # Try Redis cache first
-    cached_data = await cache_service.get(cache_key)
+
+    # Try Redis cache first (cache failures degrade gracefully to MongoDB)
+    try:
+        cached_data = await cache_service.get(cache_key)
+    except Exception as e:
+        logger.warning(f"Redis cache read failed for {cache_key}: {e}")
+        cached_data = None
     if cached_data:
         return cached_data
-    
+
     # Fall back to MongoDB
     dataset = await UserData.get(dataset_id)
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    # Create a query filter for the dataset_id
+    # Link fields are stored as DBRefs — query by the referenced document id
     query_filter = {
-        "dataset_id": Link(dataset),
+        "dataset_id.$id": dataset.id,
         "visualization_type": visualization_type,
     }
     if column_name:
         query_filter["column_name"] = column_name
 
     # Find the cache entry
-    cache = await VisualizationCache.find_one(**query_filter)
+    cache = await VisualizationCache.find_one(query_filter)
     if cache and cache.data:
-        # Cache in Redis for faster access next time
-        await cache_service.set(cache_key, cache.data, ttl=3600)  # 1 hour
+        # Cache in Redis for faster access next time (best effort)
+        try:
+            await cache_service.set(cache_key, cache.data, ttl=3600)  # 1 hour
+        except Exception as e:
+            logger.warning(f"Redis cache write failed for {cache_key}: {e}")
         return cache.data
-    
+
     return None
 
 
@@ -62,31 +71,37 @@ async def cache_visualization(
     cache_key = f"viz:{dataset_id}:{visualization_type}"
     if column_name:
         cache_key += f":{column_name}"
-    
-    # Cache in Redis for fast access
-    await cache_service.set(cache_key, data, ttl=3600)  # 1 hour
-    
+
+    # Cache in Redis for fast access (best effort)
+    try:
+        await cache_service.set(cache_key, data, ttl=3600)  # 1 hour
+    except Exception as e:
+        logger.warning(f"Redis cache write failed for {cache_key}: {e}")
+
     # Get the dataset to create a proper Link
     dataset = await UserData.get(dataset_id)
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    # Create a query filter for the dataset_id
-    query_filter = {"visualization_type": visualization_type}
+    # Scope the lookup to this dataset (Link fields are stored as DBRefs)
+    query_filter = {
+        "dataset_id.$id": dataset.id,
+        "visualization_type": visualization_type,
+    }
     if column_name:
         query_filter["column_name"] = column_name
 
     # Find the cache entry
-    cache = await VisualizationCache.find_one(**query_filter)
+    cache = await VisualizationCache.find_one(query_filter)
 
     if cache:
         cache.data = data
         cache.updated_at = datetime.utcnow()
         await cache.save()
     else:
-        # Create a new cache entry
+        # Create a new cache entry (Beanie converts the document into a Link)
         cache = VisualizationCache(
-            dataset_id=Link(dataset),  # Create a proper Link to the UserData document
+            dataset_id=dataset,
             visualization_type=visualization_type,
             column_name=column_name,
             data=data,

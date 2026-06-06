@@ -74,10 +74,12 @@ class TestVisualizationCache:
         mock_cache.get = AsyncMock(return_value=None)  # Redis miss
         mock_cache.set = AsyncMock(return_value=True)
         
+        # find_one is a sync classmethod returning an awaitable query object,
+        # so patch() does not auto-detect it as async — use AsyncMock explicitly
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=mock_viz_cache):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=mock_viz_cache)):
+
             result = await get_cached_visualization(dataset_id, visualization_type, column_name)
             
             # Verify Redis was checked first
@@ -108,11 +110,11 @@ class TestVisualizationCache:
         mock_cache.get = AsyncMock(return_value=None)  # Redis miss
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=None)):
+
             result = await get_cached_visualization(dataset_id, visualization_type)
-            
+
             # Verify result is None
             assert result is None
 
@@ -141,11 +143,15 @@ class TestVisualizationCache:
         mock_viz_cache = Mock()
         mock_viz_cache.save = AsyncMock()
         
+        # Patch the class once and configure both the constructor and find_one
+        # on the mock (patching find_one separately would be discarded when the
+        # class itself is replaced)
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None), \
-             patch('app.services.visualization_cache.VisualizationCache', return_value=mock_viz_cache):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache') as mock_viz_class:
+            mock_viz_class.find_one = AsyncMock(return_value=None)
+            mock_viz_class.return_value = mock_viz_cache
+
             result = await cache_visualization(dataset_id, visualization_type, data, column_name)
             
             # Verify Redis was updated
@@ -248,9 +254,9 @@ class TestVisualizationCache:
         mock_dataset.id = PydanticObjectId(dataset_id)
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=None)):
+
             # Should handle Redis errors gracefully
             result = await get_cached_visualization(dataset_id, "histogram", "numeric_col")
             assert result is None
@@ -270,14 +276,14 @@ class TestVisualizationCache:
         mock_cache.set = AsyncMock(return_value=True)
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.visualization_cache.VisualizationCache') as mock_viz_cache_class:
-            
+
             mock_viz_cache = Mock()
             mock_viz_cache.save = AsyncMock()
+            mock_viz_cache_class.find_one = AsyncMock(return_value=None)
             mock_viz_cache_class.return_value = mock_viz_cache
-            
+
             await cache_visualization(dataset_id, "histogram", data, "col1")
             
             # Verify TTL is set to 3600 seconds (1 hour)

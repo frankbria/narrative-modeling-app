@@ -1,24 +1,24 @@
+"""Per-data-type tests for the visualization cache service.
+
+Covers MongoDB-fallback retrieval and new-entry caching for each payload
+shape (histogram, boxplot, correlation matrix). Service-level interaction
+tests (Redis hit/miss, error handling, TTL) live in
+test_visualization_cache_integration.py.
+"""
+
 import pytest
-from datetime import datetime
-from unittest.mock import patch, MagicMock, AsyncMock
-from beanie import Link
+from unittest.mock import patch, Mock, AsyncMock
+from beanie import PydanticObjectId
 
 from app.models.visualization_cache import (
-    VisualizationCache,
     HistogramData,
     BoxplotData,
     CorrelationMatrixData)
-from app.models.user_data import UserData
 from app.services.visualization_cache import (
     get_cached_visualization,
     cache_visualization)
 
-
-@pytest.fixture
-def mock_db_session():
-    """Create a mock database session for testing."""
-    session = MagicMock()
-    return session
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
@@ -46,180 +46,117 @@ def sample_correlation_matrix():
 
 @pytest.fixture
 def mock_dataset():
-    """Create a mock UserData object for testing."""
-    return UserData(
-        id="test-dataset-123",
-        user_id="test-user-123",
-        filename="test.csv",
-        s3_url="https://test-bucket.s3.amazonaws.com/test.csv",
-        num_rows=100,
-        num_columns=5,
-        data_schema=[],
-        created_at=datetime.now(),
-        original_filename="test.csv",
-        updated_at=datetime.now())
+    """A lightweight stand-in for the UserData document."""
+    dataset = Mock()
+    dataset.id = PydanticObjectId()
+    return dataset
 
 
-class TestVisualizationCache:
-    """Test suite for visualization cache functionality."""
+@pytest.fixture
+def mock_redis_miss():
+    """Cache service that misses on get and accepts set."""
+    cache = AsyncMock()
+    cache.get = AsyncMock(return_value=None)
+    cache.set = AsyncMock(return_value=True)
+    return cache
+
+
+async def _get_round_trip(mock_redis_miss, mock_dataset, payload, viz_type, column):
+    """Retrieve `payload` through the MongoDB-fallback path."""
+    mock_cache_entry = Mock()
+    mock_cache_entry.data = payload
+
+    with patch('app.services.visualization_cache.cache_service', mock_redis_miss), \
+         patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+         patch('app.services.visualization_cache.VisualizationCache.find_one',
+               new=AsyncMock(return_value=mock_cache_entry)) as mock_find_one:
+        result = await get_cached_visualization(str(mock_dataset.id), viz_type, column)
+
+    mock_find_one.assert_called_once()
+    # The lookup must be scoped to this dataset's id (DBRef storage)
+    query_filter = mock_find_one.call_args.args[0]
+    assert query_filter["dataset_id.$id"] == mock_dataset.id
+    assert query_filter["visualization_type"] == viz_type
+    return result
+
+
+class TestGetCachedVisualization:
+    """MongoDB-fallback retrieval for each visualization data type."""
 
     @pytest.mark.asyncio
     async def test_get_cached_visualization_histogram(
-        self, sample_histogram_data, mock_dataset
+        self, mock_redis_miss, mock_dataset, sample_histogram_data
     ):
-        """Test retrieving a cached histogram visualization."""
-        # Setup
-        dataset_id = mock_dataset.id
-        column_name = "test_column"
-        visualization_type = "histogram"
-
-        # Create a mock cache entry
-        mock_cache = AsyncMock(spec=VisualizationCache)
-        mock_cache.data = sample_histogram_data.model_dump()
-        mock_cache.dataset_id = Link(mock_dataset, document_class=UserData)
-
-        # Mock the find_one method
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one",
-            new_callable=AsyncMock) as mock_find_one:
-            mock_find_one.return_value = mock_cache
-
-            # Execute
-            result = await get_cached_visualization(
-                dataset_id, visualization_type, column_name
-            )
-
-            # Assert
-            assert result == sample_histogram_data.model_dump()
-            mock_find_one.assert_called_once()
+        payload = sample_histogram_data.model_dump()
+        result = await _get_round_trip(
+            mock_redis_miss, mock_dataset, payload, "histogram", "test_column")
+        assert result == payload
 
     @pytest.mark.asyncio
     async def test_get_cached_visualization_boxplot(
-        self, sample_boxplot_data, mock_dataset
+        self, mock_redis_miss, mock_dataset, sample_boxplot_data
     ):
-        """Test retrieving a cached boxplot visualization."""
-        # Setup
-
-        # Create a mock cache entry
-        mock_cache.data = sample_boxplot_data.model_dump()
-        mock_cache.dataset_id = Link(mock_dataset, document_class=UserData)
-
-        # Mock the find_one method
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one"
-        ) as mock_find_one:
-            mock_find_one.return_value = mock_cache
-
-            # Execute
-            result = await check_cache(
-                dataset_id, visualization_type, column_name
-            )
-
-            # Assert
-            assert result == sample_boxplot_data.model_dump()
-            mock_find_one.assert_called_once()
+        payload = sample_boxplot_data.model_dump()
+        result = await _get_round_trip(
+            mock_redis_miss, mock_dataset, payload, "boxplot", "test_column")
+        assert result == payload
 
     @pytest.mark.asyncio
     async def test_get_cached_visualization_correlation(
-        self, sample_correlation_matrix, mock_dataset
+        self, mock_redis_miss, mock_dataset, sample_correlation_matrix
     ):
-        """Test retrieving a cached correlation matrix visualization."""
-        # Setup
+        payload = sample_correlation_matrix.model_dump()
+        result = await _get_round_trip(
+            mock_redis_miss, mock_dataset, payload, "correlation", None)
+        assert result == payload
 
-        # Create a mock cache entry
-        mock_cache.data = sample_correlation_matrix.model_dump()
-        mock_cache.dataset_id = Link(mock_dataset, document_class=UserData)
 
-        # Mock the find_one method
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one"
-        ) as mock_find_one:
-            mock_find_one.return_value = mock_cache
+async def _cache_new_entry(mock_redis_miss, mock_dataset, payload, viz_type, column):
+    """Store `payload` as a new cache entry and return the saved mock."""
+    saved_entry = Mock()
+    saved_entry.save = AsyncMock()
 
-            # Execute
-            result = await check_cache(
-                dataset_id, "correlation_matrix", None
-            )
+    with patch('app.services.visualization_cache.cache_service', mock_redis_miss), \
+         patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+         patch('app.services.visualization_cache.VisualizationCache') as mock_viz_class:
+        mock_viz_class.find_one = AsyncMock(return_value=None)
+        mock_viz_class.return_value = saved_entry
 
-            # Assert
-            assert result == sample_correlation_matrix.model_dump()
-            mock_find_one.assert_called_once()
+        result = await cache_visualization(str(mock_dataset.id), viz_type, payload, column)
+
+    saved_entry.save.assert_called_once()
+    constructor_kwargs = mock_viz_class.call_args.kwargs
+    assert constructor_kwargs["visualization_type"] == viz_type
+    assert constructor_kwargs["data"] == payload
+    return result
+
+
+class TestCacheVisualization:
+    """New-entry caching for each visualization data type."""
 
     @pytest.mark.asyncio
     async def test_cache_visualization_histogram(
-        self, sample_histogram_data, mock_dataset
+        self, mock_redis_miss, mock_dataset, sample_histogram_data
     ):
-        """Test caching a histogram visualization."""
-        # Setup
-
-        # Mock the database operations
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one",
-            new_callable=AsyncMock) as mock_find_one:
-            mock_find_one.return_value = None
-
-            with patch(
-                "app.services.visualization_cache.VisualizationCache.insert",
-                new_callable=AsyncMock) as mock_insert:
-                mock_insert.return_value = None
-
-                # Execute
-                result = await cache_visualization(
-                    dataset_id, visualization_type, column_name, sample_histogram_data
-                )
-
-                # Assert
-                assert result is not None
-                mock_insert.assert_called_once()
+        result = await _cache_new_entry(
+            mock_redis_miss, mock_dataset,
+            sample_histogram_data.model_dump(), "histogram", "test_column")
+        assert result is not None
 
     @pytest.mark.asyncio
-    async def test_cache_visualization_boxplot(self, sample_boxplot_data, mock_dataset):
-        """Test caching a boxplot visualization."""
-        # Setup
-
-        # Mock the database operations
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one",
-            new_callable=AsyncMock) as mock_find_one:
-            mock_find_one.return_value = None
-
-            with patch(
-                "app.services.visualization_cache.VisualizationCache.insert",
-                new_callable=AsyncMock) as mock_insert:
-                mock_insert.return_value = None
-
-                # Execute
-                result = await cache_visualization(
-                    dataset_id, visualization_type, column_name, sample_boxplot_data
-                )
-
-                # Assert
-                assert result is not None
-                mock_insert.assert_called_once()
+    async def test_cache_visualization_boxplot(
+        self, mock_redis_miss, mock_dataset, sample_boxplot_data
+    ):
+        result = await _cache_new_entry(
+            mock_redis_miss, mock_dataset,
+            sample_boxplot_data.model_dump(), "boxplot", "test_column")
+        assert result is not None
 
     @pytest.mark.asyncio
     async def test_cache_visualization_correlation(
-        self, sample_correlation_matrix, mock_dataset
+        self, mock_redis_miss, mock_dataset, sample_correlation_matrix
     ):
-        """Test caching a correlation matrix visualization."""
-        # Setup
-
-        # Mock the database operations
-        with patch(
-            "app.services.visualization_cache.VisualizationCache.find_one",
-            new_callable=AsyncMock) as mock_find_one:
-            mock_find_one.return_value = None
-
-            with patch(
-                "app.services.visualization_cache.VisualizationCache.insert",
-                new_callable=AsyncMock) as mock_insert:
-                mock_insert.return_value = None
-
-                # Execute
-                result = await cache_visualization(
-                    dataset_id, visualization_type, None, sample_correlation_matrix
-                )
-
-                # Assert
-                assert result is not None
-                mock_insert.assert_called_once()
+        result = await _cache_new_entry(
+            mock_redis_miss, mock_dataset,
+            sample_correlation_matrix.model_dump(), "correlation", None)
+        assert result is not None
