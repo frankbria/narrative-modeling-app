@@ -85,6 +85,15 @@ def parse_feature_definition(definition_code: Optional[str]) -> ExpressionNode:
             message="Feature definition is not a valid expression tree",
             details={"errors": [err["msg"] for err in e.errors()]},
         ) from e
+    except RecursionError as e:
+        # Belt-and-braces: pydantic-core's internal recursion limit (~254)
+        # raises ValidationError long before the stack could overflow, so
+        # this branch is unreachable today — but correctness here must not
+        # depend on pydantic internals.
+        raise UnsafeFeatureDefinitionError(
+            message="Feature definition is not a valid expression tree",
+            details={"errors": ["expression tree is too deeply nested"]},
+        ) from e
 
     _validate_tree_whitelist(tree)
     return tree
