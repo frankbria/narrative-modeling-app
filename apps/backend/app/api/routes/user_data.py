@@ -96,18 +96,23 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
 
         # Extract the key from the S3 URL
         s3_url = user_data.s3_url
-        print(f"Original S3 URL: {s3_url}")
 
         # Handle different S3 URL formats
         # Parse the S3 URL to extract the full object key (preserving directory prefixes)
         parsed_url = urlparse(s3_url)
         s3_key = parsed_url.path.lstrip("/")
 
+        # Endpoint-style URLs ({AWS_ENDPOINT_URL}/{bucket}/{key}) include the
+        # bucket as the first path segment — strip it to get the object key.
+        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+        bucket_name = os.getenv("AWS_BUCKET_NAME", "")
+        if endpoint_url and s3_url.startswith(endpoint_url) and s3_key.startswith(f"{bucket_name}/"):
+            s3_key = s3_key[len(bucket_name) + 1:]
+
         if not s3_key:
             raise HTTPException(status_code=400, detail="Invalid S3 URL (missing object key)")
 
-        print(f"Extracted S3 key: {s3_key}")
-        print(f"Attempting to get S3 object with key: {s3_key}")
+        logger.debug(f"Fetching S3 object for preview: {s3_key}")
 
         # Get the file from S3
         try:
@@ -116,7 +121,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
                 Key=s3_key,
             )
         except Exception as e:
-            print(f"Error getting S3 object: {e}")
+            logger.error(f"Error getting S3 object {s3_key}: {e}")
             # If we can't get the file from S3, return the metadata without preview data
             return {
                 "headers": [],
@@ -175,7 +180,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in get_preview_data: {e}")
+        logger.error(f"Error in get_preview_data: {e}")
         raise HTTPException(
             status_code=500, detail=f"Error getting preview data: {str(e)}"
         )

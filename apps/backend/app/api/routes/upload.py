@@ -10,7 +10,6 @@ from fastapi import (
 from typing import Dict, Any
 import pandas as pd
 import io
-import traceback
 import os
 from app.models.user_data import UserData
 from app.auth.nextauth_auth import get_current_user_id
@@ -182,7 +181,5 @@ async def upload_file(
         }
 
     except Exception as e:
-        # Log the full traceback
-        logger.error(f"Error processing file: {str(e)}")
-        traceback.print_exc()
+        logger.exception(f"Error processing file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
