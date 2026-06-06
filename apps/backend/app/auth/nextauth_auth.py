@@ -81,6 +81,10 @@ async def get_current_user_id(
     except JWTError as e:
         logger.error(f"JWT validation error: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    except HTTPException:
+        # Deliberate auth failures (e.g. missing user id claim -> 401) must not
+        # be converted into 500s by the generic handler below
+        raise
     except Exception as e:
         logger.error(f"Authentication error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
