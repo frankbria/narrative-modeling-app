@@ -34,6 +34,9 @@ test.describe('Dataset Metadata Workflow', () => {
   });
 
   test('should upload CSV and create DatasetMetadata @smoke', async ({ authenticatedPage, uploadTestDataset }) => {
+    // Full UI upload journey (upload -> next-step -> explore -> metadata)
+    // exceeds the default timeout on 2-core CI runners
+    test.slow();
     const uploadPage = new UploadPage(authenticatedPage);
     const datasetPage = new DatasetPage(authenticatedPage);
 

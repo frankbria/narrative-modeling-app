@@ -34,6 +34,8 @@ test.describe('Data Versioning Workflow', () => {
   });
 
   test('should create dataset version @smoke', async ({ authenticatedPage }) => {
+    // Full UI journey is slow on 2-core CI runners (flaky at default timeout)
+    test.slow();
     const versioningPage = new VersioningPage(authenticatedPage);
 
     // Navigate to versions page (goes to /explore/{id} since /datasets/{id}/versions doesn't exist)
