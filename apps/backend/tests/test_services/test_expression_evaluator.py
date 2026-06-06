@@ -83,6 +83,13 @@ class TestConstantEvaluation:
         result, warnings = evaluator.evaluate(node, sample_df)
         assert all(result == "test")
 
+    def test_to_series_none_preserves_object_dtype(self, evaluator, sample_df):
+        """None broadcasts to object dtype (not coerced to float NaN)."""
+        result = evaluator._to_series(None, sample_df)
+        assert result.dtype == object
+        assert result.isna().all()
+        assert len(result) == len(sample_df)
+
 
 class TestArithmeticOperations:
     """Tests for arithmetic operations."""

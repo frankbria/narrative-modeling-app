@@ -11,9 +11,7 @@ sharing, collections, and version management.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from datetime import datetime, timezone
-from app.models.feature_store import StoredFeature, FeatureVersion, FeatureCollection
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.unit
@@ -35,7 +33,11 @@ class TestFeatureStoreServiceCRUD:
             "category": "transformation",
             "tags": ["test"],
             "definition_type": "transformation",
-            "definition_code": "df['new'] = df['old'] * 2",
+            "definition_code": (
+                '{"node_id": "n1", "node_type": "operation", "value": "multiply", "children": ['
+                '{"node_id": "n2", "node_type": "column", "value": "old", "children": []},'
+                '{"node_id": "n3", "node_type": "constant", "value": 2, "children": []}]}'
+            ),
             "input_requirements": {"old": "numeric"},
             "output_type": "numeric",
             "output_column_name": "new",
@@ -197,7 +199,7 @@ class TestFeatureStoreServiceCRUD:
             mock_get.return_value = mock_feature
             MockVersion.find_one = AsyncMock(return_value=mock_version)
 
-            result = await self.service.get_feature(feature_id, user_id, version=version_number)
+            await self.service.get_feature(feature_id, user_id, version=version_number)
 
             # Verify version was queried
             MockVersion.find_one.assert_called_once()
@@ -259,7 +261,13 @@ class TestFeatureStoreServiceCRUD:
         # ARRANGE
         feature_id = "feat_update"
         user_id = "user_123"
-        updates = {"definition_code": "df['new'] = df['old'] * 3"}
+        updates = {
+            "definition_code": (
+                '{"node_id": "n1", "node_type": "operation", "value": "multiply", "children": ['
+                '{"node_id": "n2", "node_type": "column", "value": "old", "children": []},'
+                '{"node_id": "n3", "node_type": "constant", "value": 3, "children": []}]}'
+            )
+        }
 
         mock_feature = MagicMock()
         mock_feature.feature_id = feature_id
@@ -278,7 +286,7 @@ class TestFeatureStoreServiceCRUD:
             mock_get.return_value = mock_feature
             MockVersion.return_value = mock_version
 
-            result = await self.service.update_feature(feature_id, user_id, updates)
+            await self.service.update_feature(feature_id, user_id, updates)
 
             # Verify version was incremented
             assert mock_feature.version == 2
@@ -448,7 +456,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_feature
 
-            result = await self.service.share_feature(feature_id, user_id, share_with)
+            await self.service.share_feature(feature_id, user_id, share_with)
 
             # Verify users were added to shared_with
             assert "user_1" in mock_feature.shared_with
@@ -472,7 +480,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_feature
 
-            result = await self.service.make_public(feature_id, user_id)
+            await self.service.make_public(feature_id, user_id)
 
             assert mock_feature.is_public is True
             mock_feature.save.assert_called_once()
@@ -526,7 +534,7 @@ class TestFeatureStoreServiceSharing:
         with patch.object(self.service, 'save_feature', new_callable=AsyncMock) as mock_save:
             mock_save.return_value = MagicMock()
 
-            result = await self.service.import_feature(feature_data, user_id)
+            await self.service.import_feature(feature_data, user_id)
 
             mock_save.assert_called_once()
 
@@ -564,7 +572,7 @@ class TestFeatureStoreServiceCollections:
             mock_uuid.return_value.hex = "generated"
             MockCollection.return_value = mock_collection
 
-            result = await self.service.create_collection(collection_data, user_id)
+            await self.service.create_collection(collection_data, user_id)
 
             MockCollection.assert_called_once()
             call_kwargs = MockCollection.call_args[1]
@@ -596,7 +604,7 @@ class TestFeatureStoreServiceCollections:
             MockCollection.find_one = AsyncMock(return_value=mock_collection)
             mock_get_feature.return_value = mock_feature
 
-            result = await self.service.add_to_collection(collection_id, feature_id, user_id)
+            await self.service.add_to_collection(collection_id, feature_id, user_id)
 
             mock_collection.add_feature.assert_called_once_with(feature_id)
             mock_collection.save.assert_called_once()
@@ -625,3 +633,87 @@ class TestFeatureStoreServiceCollections:
             result = await self.service.get_version_history(feature_id, user_id)
 
             assert result == mock_versions
+
+
+@pytest.mark.unit
+class TestFeatureDefinitionValidation:
+    """Security (GH-132): definition_code must be a safe expression tree at save/update time."""
+
+    VALID_TREE = (
+        '{"node_id": "n1", "node_type": "operation", "value": "multiply", "children": ['
+        '{"node_id": "n2", "node_type": "column", "value": "old", "children": []},'
+        '{"node_id": "n3", "node_type": "constant", "value": 2, "children": []}]}'
+    )
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from app.services.feature_store_service import FeatureStoreService
+        self.service = FeatureStoreService()
+
+    def _feature_data(self, definition_code):
+        return {
+            "name": "Test Feature",
+            "description": "A test feature",
+            "category": "transformation",
+            "tags": ["test"],
+            "definition_type": "transformation",
+            "definition_code": definition_code,
+            "input_requirements": {"old": "numeric"},
+            "output_type": "numeric",
+            "output_column_name": "new",
+        }
+
+    @pytest.mark.asyncio
+    async def test_save_feature_rejects_raw_python_code(self):
+        """Raw Python code must be rejected at creation time, before persisting."""
+        from app.services.exceptions import UnsafeFeatureDefinitionError
+
+        with patch('app.services.feature_store_service.StoredFeature') as MockFeature:
+            with pytest.raises(UnsafeFeatureDefinitionError):
+                await self.service.save_feature(
+                    self._feature_data("df['new'] = __import__('os').system('id')"),
+                    "user_123",
+                )
+            MockFeature.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_save_feature_accepts_expression_tree(self):
+        """A valid serialized expression tree is accepted."""
+        mock_feature = MagicMock()
+        mock_feature.feature_id = "feat_x"
+        mock_feature.save = AsyncMock()
+        mock_version = MagicMock()
+        mock_version.save = AsyncMock()
+
+        with patch('app.services.feature_store_service.StoredFeature') as MockFeature, \
+             patch('app.services.feature_store_service.FeatureVersion') as MockVersion:
+            MockFeature.return_value = mock_feature
+            MockVersion.return_value = mock_version
+
+            result = await self.service.save_feature(
+                self._feature_data(self.VALID_TREE), "user_123"
+            )
+
+            assert result == mock_feature
+            mock_feature.save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_feature_rejects_raw_python_code(self):
+        """Raw Python code must be rejected at update time, before persisting."""
+        from app.services.exceptions import UnsafeFeatureDefinitionError
+
+        mock_feature = MagicMock()
+        mock_feature.user_id = "user_123"
+        mock_feature.version = 1
+        mock_feature.save = AsyncMock()
+
+        with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_feature
+
+            with pytest.raises(UnsafeFeatureDefinitionError):
+                await self.service.update_feature(
+                    "feat_x", "user_123",
+                    {"definition_code": "import os; os.system('id')"},
+                )
+
+            mock_feature.save.assert_not_called()

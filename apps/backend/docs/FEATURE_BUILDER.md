@@ -266,6 +266,10 @@ cd apps/frontend && npm test -- feature-builder
 4. **Input Validation**: Pydantic schemas validate all request data
 5. **Column Validation**: Verifies columns exist in dataset before evaluation
 
+The same expression-tree model secures the Feature Store: `definition_code`
+must be a serialized `ExpressionNode` tree and is never executed as code.
+See `docs/FEATURE_EXECUTION_SECURITY.md` for the full security model (GH-132).
+
 ## Performance Notes
 
 - Preview operations use sampling (configurable, default 100 rows)

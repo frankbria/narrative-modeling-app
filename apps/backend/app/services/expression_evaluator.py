@@ -575,7 +575,12 @@ class ExpressionEvaluator:
         """Convert a value to a Series if it isn't already."""
         if isinstance(value, pd.Series):
             return value
-        return pd.Series([value] * len(df), index=df.index)
+        if value is None:
+            # Preserve object dtype for None (scalar broadcast would coerce to NaN)
+            return pd.Series([None] * len(df), index=df.index)
+        # Scalar broadcast: C-level fill with proper dtype (avoids building a
+        # len(df) Python list and an object-dtype array)
+        return pd.Series(value, index=df.index)
 
     def validate_expression(
         self,
