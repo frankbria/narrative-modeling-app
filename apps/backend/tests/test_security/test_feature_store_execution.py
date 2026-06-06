@@ -178,6 +178,38 @@ class TestParseFeatureDefinition:
         with pytest.raises(UnsafeFeatureDefinitionError):
             parse_feature_definition('{"node_id": "n1"}')
 
+    def test_unknown_operation_rejected(self):
+        """Operations not in the evaluator whitelist are rejected at parse time."""
+        tree = {
+            "node_id": "n1",
+            "node_type": "operation",
+            "value": "foo",
+            "children": [
+                {"node_id": "n2", "node_type": "column", "value": "old_col", "children": []},
+                {"node_id": "n3", "node_type": "constant", "value": 2, "children": []},
+            ],
+        }
+        with pytest.raises(UnsafeFeatureDefinitionError):
+            parse_feature_definition(json.dumps(tree))
+
+    def test_unknown_function_rejected(self):
+        """Functions not in the evaluator whitelist are rejected at parse time."""
+        tree = {
+            "node_id": "n1",
+            "node_type": "function",
+            "value": "system",
+            "children": [
+                {"node_id": "n2", "node_type": "column", "value": "old_col", "children": []},
+            ],
+        }
+        with pytest.raises(UnsafeFeatureDefinitionError):
+            parse_feature_definition(json.dumps(tree))
+
+    def test_missing_definition_rejected(self):
+        """None (e.g. absent key in an import payload) is rejected, not a KeyError."""
+        with pytest.raises(UnsafeFeatureDefinitionError):
+            parse_feature_definition(None)
+
 
 @pytest.mark.unit
 class TestSafeExpressionTreeExecution:

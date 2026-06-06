@@ -55,8 +55,9 @@ class FeatureStoreService(BaseService[StoredFeature]):
             Created StoredFeature instance
         """
         # SECURITY (GH-132): reject definitions that are not safe expression
-        # trees before anything is persisted — raw code is never stored
-        parse_feature_definition(feature_data["definition_code"])
+        # trees before anything is persisted — raw code is never stored.
+        # .get() so import payloads missing the key get a 422, not a KeyError.
+        parse_feature_definition(feature_data.get("definition_code"))
 
         # Generate unique feature ID
         feature_id = f"feat_{uuid.uuid4().hex[:12]}"

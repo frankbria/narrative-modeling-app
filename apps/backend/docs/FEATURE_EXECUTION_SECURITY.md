@@ -88,6 +88,18 @@ recreate the feature using the Visual Feature Builder. This is intentional:
 those documents are untrusted input and executing them is the vulnerability
 this change removes.
 
+This applies to **every** `definition_type` (`transformation`, `aggregation`,
+`encoding`, `custom`). Before GH-132 all types flowed through the same
+`exec()` call — there was never a separate safe path per type — so all types
+now require a serialized expression tree. Group-by style aggregations are not
+yet representable as expression trees; supporting them safely means adding
+whitelisted, parameterized operations to the evaluator (follow-up work), not
+reintroducing code execution.
+
+Expression trees referencing operations or functions outside the whitelist
+(`OperationType`/`FunctionType` enums) are rejected at save time, so a
+feature that can never be applied is never persisted.
+
 ## Performance
 
 Acceptance criterion: <10% overhead versus the previous (unsandboxed)

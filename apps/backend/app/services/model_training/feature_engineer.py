@@ -18,7 +18,12 @@ from sklearn.feature_selection import (
 from dataclasses import dataclass
 import logging
 
-from app.models.feature import ExpressionNode
+from app.models.feature import (
+    ExpressionNode,
+    FunctionType,
+    NodeType,
+    OperationType,
+)
 from app.services.exceptions import (
     UnsafeFeatureDefinitionError,
     ValidationError,
@@ -34,7 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def parse_feature_definition(definition_code: str) -> ExpressionNode:
+def parse_feature_definition(definition_code: Optional[str]) -> ExpressionNode:
     """
     Parse a Feature Store definition into a safe expression tree.
 
@@ -71,12 +76,41 @@ def parse_feature_definition(definition_code: str) -> ExpressionNode:
         )
 
     try:
-        return ExpressionNode.model_validate(data)
+        tree = ExpressionNode.model_validate(data)
     except PydanticValidationError as e:
         raise UnsafeFeatureDefinitionError(
             message="Feature definition is not a valid expression tree",
             details={"errors": [err["msg"] for err in e.errors()]},
         )
+
+    _validate_tree_whitelist(tree)
+    return tree
+
+
+_ALLOWED_OPERATIONS = frozenset(op.value for op in OperationType)
+_ALLOWED_FUNCTIONS = frozenset(fn.value for fn in FunctionType)
+
+
+def _validate_tree_whitelist(node: ExpressionNode) -> None:
+    """
+    Reject expression trees referencing operations/functions outside the
+    whitelist, so invalid definitions fail at save time rather than at apply
+    time (GH-132 review finding).
+    """
+    if node.node_type == NodeType.OPERATION:
+        if str(node.value).lower() not in _ALLOWED_OPERATIONS:
+            raise UnsafeFeatureDefinitionError(
+                message=f"Operation '{node.value}' is not allowed",
+                details={"node_id": node.node_id},
+            )
+    elif node.node_type == NodeType.FUNCTION:
+        if str(node.value).lower() not in _ALLOWED_FUNCTIONS:
+            raise UnsafeFeatureDefinitionError(
+                message=f"Function '{node.value}' is not allowed",
+                details={"node_id": node.node_id},
+            )
+    for child in node.children:
+        _validate_tree_whitelist(child)
 
 
 @dataclass
