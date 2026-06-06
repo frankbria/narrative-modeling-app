@@ -17,6 +17,7 @@ from app.models.transformation import (
     TransformationConfig,
     TransformationStep,
     TransformationPreview,
+    TransformationType,
     TransformationValidation,
     get_current_time
 )
@@ -87,32 +88,30 @@ class TestTransformationStep:
     def test_step_accepts_no_column_for_some_types(self):
         """Test that some transformation types don't require column."""
         step = TransformationStep(
-            transformation_type="drop_duplicates",
+            transformation_type="remove_duplicates",
             parameters={}
         )
-        assert step.transformation_type == "drop_duplicates"
+        assert step.transformation_type == "remove_duplicates"
         assert step.column is None
 
     def test_step_all_transformation_types(self):
-        """Test all valid transformation_type values."""
-        valid_types = [
-            'encode', 'scale', 'impute', 'drop_missing',
-            'filter', 'aggregate', 'derive', 'normalize',
-            'standardize', 'one_hot_encode', 'label_encode',
-            'fill_missing', 'drop_duplicates', 'outlier_removal'
-        ]
+        """Test all valid transformation_type values (from the canonical enum)."""
+        # Mirror of TransformationStep.validate_column_specification
+        column_required_types = {
+            'encode', 'scale', 'impute', 'fill_missing',
+            'label_encode', 'normalize', 'standardize'
+        }
 
-        for trans_type in valid_types:
-            # Use drop_duplicates pattern for types that don't require column
-            if trans_type in ['drop_duplicates', 'filter', 'aggregate', 'outlier_removal']:
+        for trans_type in (t.value for t in TransformationType):
+            if trans_type in column_required_types:
                 step = TransformationStep(
                     transformation_type=trans_type,
+                    column="test_col",
                     parameters={}
                 )
             else:
                 step = TransformationStep(
                     transformation_type=trans_type,
-                    column="test_col",
                     parameters={}
                 )
             assert step.transformation_type == trans_type
@@ -132,7 +131,7 @@ class TestTransformationStep:
     def test_step_auto_timestamp(self):
         """Test that applied_at auto-generates."""
         step = TransformationStep(
-            transformation_type="drop_duplicates",
+            transformation_type="remove_duplicates",
             parameters={}
         )
 
@@ -441,7 +440,7 @@ class TestTransformationConfigHelperMethods:
         """Test validation detects invalid steps."""
         # Create step with validation errors
         step = TransformationStep(
-            transformation_type="drop_duplicates",
+            transformation_type="remove_duplicates",
             parameters={},
             is_valid=False,
             validation_errors=["Parameter X is invalid"]
@@ -506,7 +505,7 @@ class TestTransformationConfigHelperMethods:
             parameters={}
         )
         step3 = TransformationStep(
-            transformation_type="drop_duplicates",
+            transformation_type="remove_duplicates",
             parameters={}
         )
 
@@ -597,7 +596,7 @@ class TestTransformationConfigEdgeCases:
     def test_get_affected_columns_with_no_columns(self):
         """Test get_affected_columns with no column-specific transformations."""
         step = TransformationStep(
-            transformation_type="drop_duplicates",
+            transformation_type="remove_duplicates",
             parameters={}
         )
 

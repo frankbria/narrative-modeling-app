@@ -23,6 +23,31 @@ def _point_app_at_test_database():
     os.environ["MONGODB_DB"] = settings.TEST_MONGODB_DB
 
 
+@pytest.fixture(scope="module")
+def beanie_models_initialized():
+    """Bind Beanie document models without any database IO.
+
+    Beanie Documents cannot be instantiated (even for pure validation tests)
+    until init_beanie has registered them. skip_indexes=True means no MongoDB
+    connection is made (motor clients are lazy), so unit tests that only
+    construct/validate Document instances stay free of service dependencies.
+    """
+    import asyncio
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from beanie import init_beanie
+    from app.models.registry import DOCUMENT_MODELS
+
+    async def _init():
+        client = AsyncIOMotorClient("mongodb://localhost:27017")
+        await init_beanie(
+            database=client["narrative_modeling_unit_tests"],
+            document_models=DOCUMENT_MODELS,
+            skip_indexes=True,
+        )
+
+    asyncio.run(_init())
+
+
 # Use pytest-asyncio's event_loop fixture instead of defining our own
 # This avoids conflicts with pytest-asyncio's internal event loop management
 @pytest_asyncio.fixture(scope="function")
