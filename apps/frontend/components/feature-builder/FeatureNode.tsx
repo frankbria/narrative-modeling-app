@@ -1,10 +1,10 @@
 'use client';
 
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position, Node, NodeProps } from '@xyflow/react';
 import { Settings, X, AlertCircle } from 'lucide-react';
 
-export interface FeatureNodeData {
+export type FeatureNodeData = {
   nodeType: 'column' | 'operation' | 'function' | 'constant' | 'conditional';
   value: string | number | boolean | null;
   label: string;
@@ -12,7 +12,12 @@ export interface FeatureNodeData {
   onDelete?: (id: string) => void;
   onUpdate?: (id: string, data: Partial<FeatureNodeData>) => void;
   error?: string;
-}
+};
+
+export type FeatureNode = Node<
+  FeatureNodeData,
+  'column' | 'operation' | 'function' | 'constant' | 'conditional'
+>;
 
 const nodeColors: Record<string, { bg: string; border: string; text: string }> = {
   column: { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-800' },
@@ -22,7 +27,7 @@ const nodeColors: Record<string, { bg: string; border: string; text: string }> =
   conditional: { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-800' },
 };
 
-const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNodeData>) => {
+const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
   const [showSettings, setShowSettings] = useState(false);
   const [localValue, setLocalValue] = useState(data.value);
 
@@ -118,7 +123,7 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNodeData>) =>
                   min="0"
                   max="10"
                   className="w-full mt-1 px-2 py-1 text-xs border rounded"
-                  value={data.parameters.decimals ?? 0}
+                  value={(data.parameters.decimals as number | undefined) ?? 0}
                   onChange={(e) => handleParameterChange('decimals', parseInt(e.target.value))}
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -134,7 +139,7 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNodeData>) =>
                 <input
                   type="text"
                   className="w-full mt-1 px-2 py-1 text-xs border rounded"
-                  value={data.parameters.fill_value ?? ''}
+                  value={(data.parameters.fill_value as string | undefined) ?? ''}
                   onChange={(e) => handleParameterChange('fill_value', e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                 />

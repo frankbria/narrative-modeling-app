@@ -1,10 +1,10 @@
 'use client';
 
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Settings, X } from 'lucide-react';
 
-export interface TransformationNodeData {
+export interface TransformationNodeData extends Record<string, unknown> {
   type: string;
   label: string;
   parameters: Record<string, any>;
@@ -12,7 +12,9 @@ export interface TransformationNodeData {
   onUpdate?: (id: string, data: TransformationNodeData) => void;
 }
 
-const TransformationNode = memo(({ id, data, selected }: NodeProps<TransformationNodeData>) => {
+export type TransformationFlowNode = Node<TransformationNodeData, 'transformation'>;
+
+const TransformationNode = memo(({ id, data, selected }: NodeProps<TransformationFlowNode>) => {
   const [showSettings, setShowSettings] = useState(false);
   const [parameters, setParameters] = useState(data.parameters || {});
 
@@ -115,7 +117,7 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
             </button>
             {data.onDelete && (
               <button
-                onClick={() => data.onDelete(id)}
+                onClick={() => data.onDelete?.(id)}
                 className="p-1 hover:bg-gray-100 rounded"
               >
                 <X className="w-4 h-4 text-gray-600" />

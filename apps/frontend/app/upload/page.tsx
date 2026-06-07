@@ -98,7 +98,7 @@ export default function UploadPage() {
       const previewDataWithPII: PreviewData = {
         headers: Object.keys(response.preview?.[0] || {}),
         previewData: response.preview?.slice(0, 10).map((row: Record<string, unknown>) =>
-          Object.values(row)
+          Object.values(row) as Array<string | number | boolean | null>
         ) || [],
         fileName: response.filename || file?.name || '',
         fileType: file?.name.split('.').pop()?.toLowerCase() || '',

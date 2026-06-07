@@ -19,14 +19,15 @@ import { StatisticsDashboard } from '@/components/StatisticsDashboard'
 import { QualityReportCard } from '@/components/QualityReportCard'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
 import { InteractiveVisualizationDashboard } from '@/components/InteractiveVisualizationDashboard'
+import type { DatasetSchema, DatasetStatistics, DatasetQualityReport } from '@/lib/types/api'
 
 interface ProcessedDataset {
   id: string
   filename: string
   is_processed: boolean
-  schema: Record<string, unknown>
-  statistics: Record<string, unknown>
-  quality_report: Record<string, unknown>
+  schema?: DatasetSchema
+  statistics?: DatasetStatistics
+  quality_report?: DatasetQualityReport
   data_preview: Record<string, unknown>[]
   processed_at: string
 }
@@ -102,6 +103,10 @@ export default function DatasetAnalysisPage() {
 
         // If not processed, start processing
         if (!data.is_processed && isMounted) {
+          if (!token) {
+            setError('Authentication required to process this dataset')
+            return
+          }
           await processDataset(datasetId, token, abortController.signal)
         }
       } catch (err) {
@@ -415,11 +420,11 @@ export default function DatasetAnalysisPage() {
             {dataset.schema?.columns ? (
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={dataset.schema.columns.map((col: { name: string; type: string; unique_count?: number }) => ({
+                columns={dataset.schema.columns.map((col) => ({
                   name: col.name,
-                  type: col.type === 'int64' || col.type === 'float64' || col.type === 'number' ? 'numeric' :
+                  type: (col.type === 'int64' || col.type === 'float64' || col.type === 'number' ? 'numeric' :
                         col.type === 'object' || col.type === 'string' ? 'categorical' :
-                        col.type === 'datetime64[ns]' || col.type === 'datetime' ? 'datetime' : 'text',
+                        col.type === 'datetime64[ns]' || col.type === 'datetime' ? 'datetime' : 'text') as 'numeric' | 'categorical' | 'datetime' | 'text',
                   unique_count: col.unique_count,
                   null_count: col.null_count
                 }))}

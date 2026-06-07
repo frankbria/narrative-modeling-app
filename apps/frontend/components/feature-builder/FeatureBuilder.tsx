@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   Node,
+  Edge,
   Controls,
   Background,
   MiniMap,
@@ -19,8 +21,8 @@ import { getAuthToken } from '@/lib/auth-helpers';
 import ColumnPalette from './ColumnPalette';
 import OperationPalette from './OperationPalette';
 import FunctionPalette from './FunctionPalette';
-import FeatureNode from './FeatureNode';
-import FeaturePreview from './FeaturePreview';
+import FeatureNode, { FeatureNode as FeatureNodeType, FeatureNodeData } from './FeatureNode';
+import FeaturePreview, { PreviewData, ValidationResult } from './FeaturePreview';
 import FeatureMetadata from './FeatureMetadata';
 import { Save, Trash2, Eye } from 'lucide-react';
 
@@ -29,6 +31,15 @@ interface Column {
   type: string;
   nullCount?: number;
   uniqueCount?: number;
+}
+
+interface ExpressionTreeNode {
+  node_id: string;
+  node_type: FeatureNodeData['nodeType'];
+  value: FeatureNodeData['value'];
+  children: ExpressionTreeNode[];
+  parameters: Record<string, unknown>;
+  position: { x: number; y: number };
 }
 
 interface FeatureBuilderProps {
@@ -54,12 +65,12 @@ export default function FeatureBuilder({
   onClose,
   initialFeature,
 }: FeatureBuilderProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<FeatureNodeType>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [_selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [validationResult, setValidationResult] = useState<Record<string, unknown> | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
   const [featureName, setFeatureName] = useState('');
   const [featureDescription, setFeatureDescription] = useState('');
@@ -75,8 +86,8 @@ export default function FeatureBuilder({
       setFeatureTags((initialFeature.tags as string[]) || []);
       const canvasState = initialFeature.canvas_state as Record<string, unknown> | undefined;
       if (canvasState) {
-        setNodes((canvasState.nodes as Node[]) || []);
-        setEdges((canvasState.edges as never[]) || []);
+        setNodes((canvasState.nodes as FeatureNodeType[]) || []);
+        setEdges((canvasState.edges as Edge[]) || []);
       }
     }
   }, [initialFeature, setNodes, setEdges]);
@@ -106,7 +117,7 @@ export default function FeatureBuilder({
   }, []);
 
   // Define handleNodeUpdate before onDrop to avoid stale closure
-  const handleNodeUpdate = useCallback((nodeId: string, data: any) => {
+  const handleNodeUpdate = useCallback((nodeId: string, data: Partial<FeatureNodeData>) => {
     setNodes((nds) =>
       nds.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node))
     );
@@ -122,7 +133,7 @@ export default function FeatureBuilder({
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      const nodeType = event.dataTransfer.getData('nodeType');
+      const nodeType = event.dataTransfer.getData('nodeType') as FeatureNodeData['nodeType'];
       const nodeValue = event.dataTransfer.getData('nodeValue');
       const nodeLabel = event.dataTransfer.getData('nodeLabel');
 
@@ -134,7 +145,7 @@ export default function FeatureBuilder({
         y: event.clientY - reactFlowBounds.top,
       };
 
-      const newNode: Node = {
+      const newNode: FeatureNodeType = {
         id: generateNodeId(),
         type: nodeType,
         position,
@@ -174,7 +185,7 @@ export default function FeatureBuilder({
     }
     return null;
 
-    function buildNodeTree(nodeId: string): any {
+    function buildNodeTree(nodeId: string): ExpressionTreeNode | null {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return null;
 
@@ -182,7 +193,7 @@ export default function FeatureBuilder({
       const childEdges = edges.filter(e => e.source === nodeId);
       const children = childEdges
         .map(e => buildNodeTree(e.target))
-        .filter(Boolean);
+        .filter((child): child is ExpressionTreeNode => Boolean(child));
 
       return {
         node_id: node.id,

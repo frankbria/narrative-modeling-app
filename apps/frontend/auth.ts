@@ -83,10 +83,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string
       }
       // Add the JWT token to the session so we can pass it to the backend
-      session.accessToken = token.accessToken
+      session.accessToken = token.accessToken as string | undefined
       return session
     },
-    async signIn({ user, account, profile, isNewUser }) {
+    async signIn() {
       // You can add custom logic here if needed
       // Return true to allow sign in
       return true

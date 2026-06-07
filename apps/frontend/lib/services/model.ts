@@ -2,6 +2,8 @@
  * Model training and management service
  */
 
+import { getAuthToken } from '@/lib/auth-helpers'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface TrainModelRequest {
@@ -39,6 +41,7 @@ export interface ModelInfo {
   feature_names: string[]
   n_samples_train: number
   n_features: number
+  version?: string | number
 }
 
 export interface PredictRequest {
@@ -179,3 +182,47 @@ export class ModelService {
     }
   }
 }
+
+/**
+ * Instance-style facade over {@link ModelService} that resolves the auth token
+ * automatically, matching the convention used by the other client services
+ * (e.g. {@link abTestingService}).
+ */
+class ModelServiceClient {
+  async listModels(datasetId?: string): Promise<ModelInfo[]> {
+    const token = await getAuthToken()
+    return ModelService.listModels(token, datasetId)
+  }
+
+  async getModel(modelId: string): Promise<ModelInfo> {
+    const token = await getAuthToken()
+    return ModelService.getModel(modelId, token)
+  }
+
+  async trainModel(
+    request: TrainModelRequest
+  ): Promise<{ model_id: string; status: string; message: string }> {
+    const token = await getAuthToken()
+    return ModelService.trainModel(request, token)
+  }
+
+  async predict(
+    modelId: string,
+    request: PredictRequest
+  ): Promise<PredictResponse> {
+    const token = await getAuthToken()
+    return ModelService.predict(modelId, request, token)
+  }
+
+  async deleteModel(modelId: string): Promise<void> {
+    const token = await getAuthToken()
+    return ModelService.deleteModel(modelId, token)
+  }
+
+  async deactivateModel(modelId: string): Promise<void> {
+    const token = await getAuthToken()
+    return ModelService.deactivateModel(modelId, token)
+  }
+}
+
+export const modelService = new ModelServiceClient()

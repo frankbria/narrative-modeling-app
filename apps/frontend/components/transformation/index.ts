@@ -18,7 +18,7 @@ export {
 } from './TransformationConfigDialog';
 
 export { default as TransformationPipeline } from './TransformationPipeline';
-export { default as TransformationChainView } from './TransformationChainView';
+export { TransformationChainView } from './TransformationChainView';
 export { default as ColumnSelector } from './ColumnSelector';
 export { default as TransformationNode } from './TransformationNode';
 export { default as TransformationSidebar } from './TransformationSidebar';

@@ -473,23 +473,39 @@ export default function DatasetPreparePage() {
       </div>
 
       {/* Edit Transformation Dialog */}
-      {editingIndex !== null && (
-        <TransformationConfigDialog
-          open={editingIndex !== null}
-          onOpenChange={(open) => {
-            if (!open) handleCancelEdit();
-          }}
-          transformationType={transformations[editingIndex].type}
-          existingConfig={{
-            type: transformations[editingIndex].type,
-            label: transformations[editingIndex].label,
-            parameters: transformations[editingIndex].parameters
-          }}
-          availableColumns={availableColumns}
-          transformationTypes={transformationTypes}
-          onSave={handleSaveEdit}
-        />
-      )}
+      {editingIndex !== null && (() => {
+        const editingType = transformations[editingIndex].type;
+        const typeMeta = transformationTypes.find(
+          (t) => t.type === editingType
+        );
+        return (
+          <TransformationConfigDialog
+            open={editingIndex !== null}
+            onOpenChange={(open) => {
+              if (!open) handleCancelEdit();
+            }}
+            transformationType={editingType}
+            transformationLabel={
+              (typeMeta?.label as string | undefined) ??
+              transformations[editingIndex].label
+            }
+            transformationDescription={
+              (typeMeta?.description as string | undefined) ?? ''
+            }
+            parametersSchema={
+              (typeMeta?.parameters_schema as Record<string, unknown> | undefined) ?? {}
+            }
+            existingConfig={{
+              type: editingType,
+              label: transformations[editingIndex].label,
+              parameters: transformations[editingIndex].parameters
+            }}
+            availableColumns={availableColumns}
+            datasetId={datasetId}
+            onAdd={handleSaveEdit}
+          />
+        );
+      })()}
     </div>
   );
 }

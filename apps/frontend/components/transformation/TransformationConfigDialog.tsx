@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Eye, Plus, Trash2, AlertCircle } from 'lucide-react';
 
-interface TransformationConfigDialogProps {
+export interface TransformationConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transformationType: string | null;
@@ -38,6 +38,7 @@ interface TransformationConfigDialogProps {
 
 export interface TransformationConfig {
   type: string;
+  label?: string;
   parameters: Record<string, any>;
 }
 

@@ -7,12 +7,13 @@ import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { LineChart, BarChart3, Target, TrendingUp, AlertTriangle } from 'lucide-react';
+import type { EvaluationResponse } from '@/lib/types/api';
 
 export default function EvaluatePage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<Record<string, unknown> | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.MODEL_EVALUATION)) {
@@ -39,7 +40,7 @@ export default function EvaluatePage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as EvaluationResponse;
         setEvaluation(data);
       }
     } catch (error) {
@@ -92,7 +93,7 @@ export default function EvaluatePage() {
 
         {/* Performance Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {Object.entries(evaluation.metrics || {}).map(([key, value]: [string, unknown]) => (
+          {Object.entries(evaluation.metrics || {}).map(([key, value]) => (
             <div key={key} className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">

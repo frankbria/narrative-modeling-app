@@ -2,6 +2,7 @@
  * Tests for TransformationService
  */
 import { TransformationService } from '../transformation'
+import type { TransformationPipelineRequest } from '../transformation'
 
 const API_BASE_URL = 'http://localhost:8000'
 const API_VERSION = 'api/v1'
@@ -17,7 +18,7 @@ describe('TransformationService', () => {
   describe('Authentication Token Handling', () => {
     it('should include auth token in headers when provided', async () => {
       const mockResponse = { success: true, suggestions: [], data_quality_score: 0.95, critical_issues: [] }
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -37,7 +38,7 @@ describe('TransformationService', () => {
 
     it('should not include auth header when token is null', async () => {
       const mockResponse = { success: true, suggestions: [], data_quality_score: 0.95, critical_issues: [] }
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -69,7 +70,7 @@ describe('TransformationService', () => {
         warnings: []
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -93,7 +94,7 @@ describe('TransformationService', () => {
         parameters: {}
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 400,
         json: async () => ({ detail: 'Invalid transformation type' })
@@ -144,7 +145,7 @@ describe('TransformationService', () => {
         cache_hit: false
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -182,7 +183,7 @@ describe('TransformationService', () => {
         }
       ]
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 400,
         json: async () => ({ detail: 'Invalid transformation operation' })
@@ -206,7 +207,7 @@ describe('TransformationService', () => {
         }
       ]
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           success: true,
@@ -246,7 +247,7 @@ describe('TransformationService', () => {
       const mockAbortController = new AbortController()
       jest.spyOn(global, 'AbortController' as any).mockImplementation(() => mockAbortController)
 
-      global.fetch.mockImplementationOnce(
+      ;(global.fetch as jest.Mock).mockImplementationOnce(
         (url: string, options: any) => {
           expect(options.signal).toBeDefined()
           return Promise.resolve({
@@ -290,7 +291,7 @@ describe('TransformationService', () => {
         execution_time_ms: 250
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -308,7 +309,7 @@ describe('TransformationService', () => {
     })
 
     it('should apply transformation pipeline', async () => {
-      const request = {
+      const request: TransformationPipelineRequest = {
         dataset_id: mockDatasetId,
         transformations: [
           {
@@ -336,7 +337,7 @@ describe('TransformationService', () => {
         execution_time_ms: 500
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -374,7 +375,7 @@ describe('TransformationService', () => {
         execution_time_ms: 750
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -396,7 +397,7 @@ describe('TransformationService', () => {
         critical_issues: ['High missing data ratio in salary column']
       }
 
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -433,7 +434,7 @@ describe('TransformationService', () => {
           per_page: 20
         }
 
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -474,7 +475,7 @@ describe('TransformationService', () => {
           per_page: 10
         }
 
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -521,7 +522,7 @@ describe('TransformationService', () => {
           ]
         }
 
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -548,7 +549,7 @@ describe('TransformationService', () => {
           rating: 4.0
         }
 
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -573,7 +574,7 @@ describe('TransformationService', () => {
           execution_time_ms: 1000
         }
 
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse
       } as Response)
@@ -592,7 +593,7 @@ describe('TransformationService', () => {
 
       it('should delete a recipe', async () => {
         const recipeId = 'recipe123'
-        global.fetch.mockResolvedValueOnce({
+        ;(global.fetch as jest.Mock).mockResolvedValueOnce({
           ok: true,
           json: async () => ({ message: 'Recipe deleted successfully' })
         } as Response)
@@ -611,7 +612,7 @@ describe('TransformationService', () => {
 
   describe('Error Handling', () => {
     it('should handle 401 unauthorized errors', async () => {
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 401,
         json: async () => ({ detail: 'Invalid authentication token' })
@@ -624,7 +625,7 @@ describe('TransformationService', () => {
 
     it('should handle 403 forbidden errors', async () => {
       const recipeId = 'private_recipe'
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 403,
         json: async () => ({ detail: 'Access denied' })
@@ -636,7 +637,7 @@ describe('TransformationService', () => {
     })
 
     it('should handle 404 not found errors', async () => {
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 404,
         json: async () => ({ detail: 'Dataset not found' })
@@ -648,7 +649,7 @@ describe('TransformationService', () => {
     })
 
     it('should handle network errors', async () => {
-      global.fetch.mockRejectedValueOnce(new Error('Network error'))
+      ;(global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'))
 
       await expect(
         TransformationService.listRecipes(mockToken)
@@ -656,11 +657,11 @@ describe('TransformationService', () => {
     })
 
     it('should handle empty error responses', async () => {
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => { throw new Error('Invalid JSON') }
-      } as Response)
+      })
 
       await expect(
         TransformationService.getTransformationSuggestions(mockDatasetId, mockToken)
@@ -670,7 +671,7 @@ describe('TransformationService', () => {
 
   describe('API Version Handling', () => {
     it('should use correct API version in URLs', async () => {
-      global.fetch.mockResolvedValueOnce({
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ recipes: [], total: 0, page: 1, per_page: 20 })
       } as Response)

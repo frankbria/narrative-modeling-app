@@ -21,7 +21,7 @@ interface DistributionBin {
   label: string;
 }
 
-interface PreviewData {
+export interface PreviewData {
   success: boolean;
   values: any[];
   statistics: Statistics | null;
@@ -34,7 +34,7 @@ interface PreviewData {
   warnings: string[];
 }
 
-interface ValidationResult {
+export interface ValidationResult {
   is_valid: boolean;
   errors: string[];
   warnings: string[];

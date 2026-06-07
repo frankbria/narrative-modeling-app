@@ -32,8 +32,8 @@ describe('RecipeCard', () => {
     description: 'A test recipe for unit testing',
     user_id: 'user-1',
     steps: [
-      { type: 'remove_duplicates', parameters: {} },
-      { type: 'fill_missing', parameters: { method: 'mean' } },
+      { step_id: 'step-1', type: 'remove_duplicates', parameters: {}, description: 'Remove duplicates', order: 0 },
+      { step_id: 'step-2', type: 'fill_missing', parameters: { method: 'mean' }, description: 'Fill missing', order: 1 },
     ],
     tags: ['data-cleaning', 'preprocessing'],
     version: 1,

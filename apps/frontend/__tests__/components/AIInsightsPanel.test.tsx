@@ -27,7 +27,7 @@ const mockAISummary = {
 
 describe('AIInsightsPanel', () => {
   beforeEach(() => {
-    fetch.mockResolvedValue({
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(mockAISummary),
     })
@@ -143,7 +143,7 @@ describe('AIInsightsPanel', () => {
       confidence_score: 0.95
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(newSummary),
     })
@@ -156,7 +156,7 @@ describe('AIInsightsPanel', () => {
   })
 
   it('handles API errors gracefully', async () => {
-    fetch.mockRejectedValueOnce(new Error('AI service unavailable'))
+    ;(global.fetch as jest.Mock).mockRejectedValueOnce(new Error('AI service unavailable'))
     
     render(<AIInsightsPanel datasetId="test-id" />)
     
@@ -200,7 +200,7 @@ describe('AIInsightsPanel', () => {
       confidence_score: 0.5
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(emptySummary),
     })
@@ -250,7 +250,7 @@ describe('AIInsightsPanel', () => {
     const regenerateButton = screen.getByText('Regenerate')
     
     // Set up a delayed response to test loading state
-    fetch.mockImplementationOnce(() => 
+    ;(global.fetch as jest.Mock).mockImplementationOnce(() => 
       new Promise(resolve => 
         setTimeout(() => resolve({
           ok: true,

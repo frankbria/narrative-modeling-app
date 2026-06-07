@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Plus, Trash2, AlertCircle } from "lucide-react";
 import { abTestingService, CreateExperimentRequest } from "@/lib/services/abTesting";
-import { modelService } from "@/lib/services/model";
+import { modelService, ModelInfo } from "@/lib/services/model";
 
 interface VariantConfig {
   modelId: string;
@@ -24,7 +24,7 @@ interface VariantConfig {
 export default function NewExperimentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [models, setModels] = useState<Record<string, unknown>[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [error, setError] = useState("");
 
   // Form state
@@ -48,7 +48,7 @@ export default function NewExperimentPage() {
     try {
       const data = await modelService.listModels();
       // Filter only active models
-      setModels(data.filter((model: { is_active: boolean }) => model.is_active));
+      setModels(data.filter((model) => model.is_active));
     } catch (error) {
       console.error("Failed to load models:", error);
       setError("Failed to load models");

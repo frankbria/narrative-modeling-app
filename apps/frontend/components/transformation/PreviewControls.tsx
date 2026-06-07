@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { RefreshCw, Download } from 'lucide-react';
 
-interface PreviewControlsProps {
+export interface PreviewControlsProps {
   sampleSize: number;
   onSampleSizeChange: (size: number) => void;
   onRefresh?: () => void;

@@ -149,8 +149,8 @@ describe('DatasetAnalysisPage', () => {
     global.localStorage = localStorageMock as any
 
     // Reset fetch mock
-    fetch.mockReset()
-    fetch.mockResolvedValue({
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(mockProcessedDataset),
     })
@@ -181,7 +181,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('shows processing state for unprocessed datasets', async () => {
     // TODO: Fix this test - requires proper component rendering for unprocessed state
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
@@ -245,7 +245,7 @@ describe('DatasetAnalysisPage', () => {
       download_url: 'https://example.com/download/test.csv'
     }
 
-    fetch
+    ;(global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue(mockProcessedDataset),
@@ -282,7 +282,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('starts processing for unprocessed datasets', async () => {
     // TODO: Fix this test - requires proper async processing state handling
-    fetch
+    ;(global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
@@ -315,7 +315,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('handles API errors gracefully', async () => {
-    fetch.mockRejectedValueOnce(new Error('API Error'))
+    ;(global.fetch as jest.Mock).mockRejectedValueOnce(new Error('API Error'))
     
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
@@ -327,7 +327,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('handles dataset not found', async () => {
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       status: 404,
     })
@@ -362,7 +362,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('disables export button for unprocessed datasets', async () => {
     // TODO: Fix this test - button disabled state not working with mocked unprocessed state
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
@@ -384,7 +384,7 @@ describe('DatasetAnalysisPage', () => {
       schema: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutSchema),
     })
@@ -406,7 +406,7 @@ describe('DatasetAnalysisPage', () => {
       statistics: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutStats),
     })
@@ -428,7 +428,7 @@ describe('DatasetAnalysisPage', () => {
       quality_report: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutQuality),
     })

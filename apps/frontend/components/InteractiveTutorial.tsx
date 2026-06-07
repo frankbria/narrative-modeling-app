@@ -49,6 +49,7 @@ export function InteractiveTutorial({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isActive, setIsActive] = useState(autoStart);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
+  const [isHighlighting, setIsHighlighting] = useState(false);
 
   const currentStep = steps[currentStepIndex];
   const progress = (currentStepIndex / steps.length) * 100;
@@ -126,10 +127,12 @@ export function InteractiveTutorial({
       document.body.appendChild(highlight);
 
       // Scroll element into view
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'center' 
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
       });
+
+      setIsHighlighting(true);
     }
   };
 
@@ -254,6 +257,12 @@ export function InteractiveTutorial({
             <Badge variant="secondary" className="bg-blue-100 text-blue-800">
               Step {currentStepIndex + 1} of {steps.length}
             </Badge>
+            {isHighlighting && (
+              <Badge variant="outline" className="flex items-center gap-1 text-blue-600">
+                <Target className="h-3 w-3" />
+                Highlighting
+              </Badge>
+            )}
           </CardTitle>
           <Button 
             variant="ghost" 

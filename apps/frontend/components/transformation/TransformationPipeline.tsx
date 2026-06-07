@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import ReactFlow, {
-  Node,
+import {
+  ReactFlow,
   Edge,
   Controls,
   Background,
@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import TransformationSidebar from './TransformationSidebar';
-import TransformationNode from './TransformationNode';
+import TransformationNode, { TransformationFlowNode, TransformationNodeData } from './TransformationNode';
 import PreviewPanel from './PreviewPanel';
 import RecipeManager from './RecipeManager';
 import { Save, Play, Undo, Redo, Code, CheckCircle } from 'lucide-react';
@@ -29,17 +29,20 @@ interface TransformationPipelineProps {
   onUnsavedChanges?: (hasChanges: boolean) => void;
 }
 
-const nodeTypes: NodeTypes = {
+// React Flow's NodeTypes registry expects components keyed by a generic
+// NodeProps signature; our node component is typed for its specific node data,
+// so the registry object is cast to NodeTypes (xyflow's documented pattern).
+const nodeTypes = {
   transformation: TransformationNode,
-};
+} as NodeTypes;
 
 export default function TransformationPipeline({
   datasetId,
   onComplete,
   onUnsavedChanges
 }: TransformationPipelineProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -109,7 +112,7 @@ export default function TransformationPipeline({
         y: event.clientY - reactFlowBounds.top,
       };
 
-      const newNode: Node = {
+      const newNode: TransformationFlowNode = {
         id: `node-${nodes.length + 1}`,
         type: 'transformation',
         position,
@@ -131,11 +134,11 @@ export default function TransformationPipeline({
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: TransformationFlowNode) => {
     setSelectedNode(node.id);
   }, []);
 
-  const handleNodeUpdate = useCallback((nodeId: string, data: any) => {
+  const handleNodeUpdate = useCallback((nodeId: string, data: TransformationNodeData) => {
     setNodes((nds) =>
       nds.map((node) => (node.id === nodeId ? { ...node, data } : node))
     );
@@ -242,13 +245,13 @@ export default function TransformationPipeline({
 
   const handleLoadRecipe = async (recipe: any) => {
     // Convert recipe transformations to nodes
-    const newNodes: Node[] = recipe.transformations.map((transform: any, index: number) => ({
+    const newNodes: TransformationFlowNode[] = recipe.transformations.map((transform: any, index: number) => ({
       id: `node-${index + 1}`,
       type: 'transformation',
       position: { x: 250, y: 100 + index * 150 },
       data: {
         type: transform.type,
-        label: transform.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        label: transform.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
         parameters: transform.parameters,
       },
     }));

@@ -14,6 +14,8 @@ import { BoxplotChart } from './BoxplotChart'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { ScatterPlotChart, ScatterPlotData } from './ScatterPlotChart'
 import { LineChart, LineChartData } from './LineChart'
+import { HistogramData, BoxPlotData } from '@/lib/services/visualization'
+import { StatItem } from '@/lib/utils'
 
 interface Column {
   name: string
@@ -25,16 +27,19 @@ interface Column {
 interface InteractiveVisualizationDashboardProps {
   datasetId: string
   columns: Column[]
+  statistics?: unknown
 }
 
 export function InteractiveVisualizationDashboard({
   datasetId,
-  columns
+  columns,
+  statistics
 }: InteractiveVisualizationDashboardProps) {
   const [activeChart, setActiveChart] = useState('histogram')
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [filters, setFilters] = useState<ChartFilter[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Chart configuration state
   const [showGrid, setShowGrid] = useState(true)
@@ -77,7 +82,7 @@ export function InteractiveVisualizationDashboard({
       case 'line':
         const lineData: LineChartData = {
           data: Array.from({ length: 50 }, (_, i) => {
-            const item: Record<string, string | number> = { x: i }
+            const item: { x: string | number; [key: string]: string | number } = { x: i }
             selectedColumns.forEach((col, index) => {
               item[col] = Math.sin(i * 0.1 + index) * 50 + 50 + Math.random() * 10
             })
@@ -127,15 +132,16 @@ export function InteractiveVisualizationDashboard({
   const handleExportChart = async () => {
     try {
       // In a real implementation, this would export the chart as PNG/PDF
-      const dataStr = JSON.stringify(chartData, null, 2)
+      const dataStr = JSON.stringify(generateSampleData, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
       const url = URL.createObjectURL(dataBlob)
       const link = document.createElement('a')
       link.href = url
       link.download = `${activeChart}_${datasetId}.json`
       link.click()
-    } catch (error) {
-      console.error('Export failed:', error)
+    } catch (err) {
+      console.error('Export failed:', err)
+      setError(err instanceof Error ? err.message : 'Export failed')
     }
   }
 
@@ -176,6 +182,44 @@ export function InteractiveVisualizationDashboard({
     return recommendations
   }
 
+  // Sample box plot data for the selected column (illustrative values until a
+  // real distribution endpoint is wired up).
+  const sampleBoxPlotData: BoxPlotData = {
+    min: 0,
+    q1: 25,
+    median: 50,
+    q3: 75,
+    max: 100,
+    outliers: []
+  }
+
+  // Derive StatItem entries for the correlation heatmap. Prefer the provided
+  // statistics payload when available, otherwise fall back to the column list.
+  const correlationStats: StatItem[] = (() => {
+    const columnStats = (statistics as { column_statistics?: unknown })?.column_statistics
+    if (Array.isArray(columnStats)) {
+      return columnStats.map((col) => {
+        const c = col as Record<string, unknown>
+        return {
+          field_name: String(c.column_name ?? ''),
+          field_type: ['integer', 'float', 'currency', 'percentage'].includes(String(c.data_type))
+            ? 'numeric'
+            : String(c.data_type ?? ''),
+          count: Number(c.total_count ?? 0),
+          missing_values: Number(c.null_count ?? 0),
+          unique_values: Number(c.unique_count ?? 0)
+        }
+      })
+    }
+    return columns.map((col) => ({
+      field_name: col.name,
+      field_type: col.type === 'numeric' ? 'numeric' : col.type,
+      count: 0,
+      missing_values: col.null_count ?? 0,
+      unique_values: col.unique_count ?? 0
+    }))
+  })()
+
   const renderChart = () => {
     if (loading) {
       return (
@@ -209,19 +253,19 @@ export function InteractiveVisualizationDashboard({
 
     switch (activeChart) {
       case 'histogram':
-        return data ? <HistogramChart data={data} /> : null
+        return data ? <HistogramChart data={data as HistogramData} /> : null
 
       case 'scatter':
-        return data ? <ScatterPlotChart data={data} /> : null
+        return data ? <ScatterPlotChart data={data as ScatterPlotData} /> : null
 
       case 'line':
-        return data ? <LineChart data={data} /> : null
+        return data ? <LineChart data={data as LineChartData} /> : null
 
       case 'boxplot':
-        return <BoxplotChart column={selectedColumns[0]} />
+        return <BoxplotChart data={sampleBoxPlotData} />
 
       case 'correlation':
-        return <CorrelationHeatmap />
+        return <CorrelationHeatmap stats={correlationStats} />
 
       default:
         return <div>Chart type not implemented</div>

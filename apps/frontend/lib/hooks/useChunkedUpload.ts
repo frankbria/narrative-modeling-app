@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
+import type { ChunkedUploadResponse } from '@/lib/types/api'
 
 interface ChunkUploadProgress {
   sessionId: string
@@ -20,7 +21,7 @@ interface ChunkedUploadOptions {
   chunkSize?: number // Default 5MB
   maxRetries?: number // Default 3
   onProgress?: (progress: ChunkUploadProgress) => void
-  onComplete?: (fileId: string, response: Record<string, unknown>) => void
+  onComplete?: (fileId: string, response: ChunkedUploadResponse) => void
   onError?: (error: string) => void
 }
 
@@ -84,7 +85,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/chunk/${chunkNumber}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         },
         body: formData
       })
@@ -105,13 +106,13 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     }
   }
 
-  const completeUpload = async (sessionId: string): Promise<any> => {
+  const completeUpload = async (sessionId: string): Promise<ChunkedUploadResponse> => {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
-    
+
     const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/complete`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${await session?.getToken()}`
+        'Authorization': `Bearer ${await getAuthToken()}`
       }
     })
 
@@ -119,7 +120,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       throw new Error(`Failed to complete upload: ${response.statusText}`)
     }
 
-    return response.json()
+    return (await response.json()) as ChunkedUploadResponse
   }
 
   const uploadFile = useCallback(async (file: File) => {
@@ -220,7 +221,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       
       const response = await fetch(`${backendUrl}/api/v1/upload/chunked/${sessionId}/resume`, {
         headers: {
-          'Authorization': `Bearer ${await session?.getToken()}`
+          'Authorization': `Bearer ${await getAuthToken()}`
         }
       })
 

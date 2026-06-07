@@ -81,7 +81,7 @@ function generateMulticlassClassification() {
     const category = faker.helpers.arrayElement(categories);
 
     // Adjust price based on category
-    const priceRange = {
+    const priceRange: Record<string, { min: number; max: number }> = {
       electronics: { min: 50, max: 1000 },
       clothing: { min: 10, max: 200 },
       food: { min: 2, max: 50 },

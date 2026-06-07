@@ -77,7 +77,7 @@ const mockStatistics = {
 // Mock chart components
 jest.mock('@/components/HistogramChart', () => {
   return {
-    HistogramChart: ({ column }) => <div data-testid={`histogram-${column}`}>Histogram for {column}</div>
+    HistogramChart: ({ column }: { column: string }) => <div data-testid={`histogram-${column}`}>Histogram for {column}</div>
   }
 })
 
@@ -205,7 +205,7 @@ describe('StatisticsDashboard', () => {
   })
 
   it('handles error state gracefully', () => {
-    fetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch'))
     
     render(<StatisticsDashboard datasetId="test-id" />)
     

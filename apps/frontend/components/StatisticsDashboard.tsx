@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { HistogramChart } from './HistogramChart'
+import { StatItem } from '@/lib/utils'
 import {
   BarChart3,
   AlertTriangle,
@@ -109,9 +110,31 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
     ['integer', 'float', 'currency', 'percentage'].includes(col.data_type)
   )
 
-  const categoricalColumns = statistics.column_statistics.filter(col => 
+  const categoricalColumns = statistics.column_statistics.filter(col =>
     ['categorical', 'string', 'boolean'].includes(col.data_type)
   )
+
+  // Map column statistics into the StatItem shape consumed by CorrelationHeatmap
+  const correlationStats: StatItem[] = statistics.column_statistics.map(col => ({
+    field_name: col.column_name,
+    field_type: ['integer', 'float', 'currency', 'percentage'].includes(col.data_type)
+      ? 'numeric'
+      : col.data_type,
+    count: col.total_count,
+    missing_values: col.null_count,
+    unique_values: col.unique_count,
+    numeric_stats:
+      col.mean !== undefined
+        ? {
+            min: col.min_value ?? 0,
+            max: col.max_value ?? 0,
+            mean: col.mean ?? 0,
+            median: col.median ?? 0,
+            mode: col.median ?? 0,
+            std_dev: col.std_dev ?? 0,
+          }
+        : undefined,
+  }))
 
   return (
     <div className="space-y-6">
@@ -269,8 +292,8 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
                       <p className="font-semibold">{col.outlier_count || 0} ({(col.outlier_percentage || 0).toFixed(1)}%)</p>
                     </div>
                   </div>
-                  
-                  {/* Mini histogram would go here */}
+
+                  {/* Mini histogram for this numeric column */}
                   <div className="mt-4">
                     <HistogramChart datasetId={datasetId} column={col.column_name} height={100} />
                   </div>
@@ -330,7 +353,7 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <CorrelationHeatmap datasetId={datasetId} />
+                <CorrelationHeatmap stats={correlationStats} />
               </CardContent>
             </Card>
           ) : (

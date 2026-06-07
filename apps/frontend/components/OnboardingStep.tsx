@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   CheckCircle,
   Play,
-  Skip,
+  SkipForward,
   Clock,
   BookOpen,
   Video,
@@ -487,7 +487,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   onClick={() => onSkip(step.step_id)}
                   disabled={isCompleting}
                 >
-                  <Skip className="mr-2 h-4 w-4" />
+                  <SkipForward className="mr-2 h-4 w-4" />
                   Skip Step
                 </Button>
               )}

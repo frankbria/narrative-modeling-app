@@ -11,7 +11,7 @@ import {
   CheckCircle, 
   Circle, 
   Play, 
-  Skip, 
+  SkipForward, 
   Trophy, 
   Clock, 
   BookOpen, 
@@ -163,7 +163,7 @@ export default function OnboardingPage() {
       case 'in_progress':
         return <Play className="h-5 w-5 text-blue-500" />;
       case 'skipped':
-        return <Skip className="h-5 w-5 text-gray-400" />;
+        return <SkipForward className="h-5 w-5 text-gray-400" />;
       default:
         return <Circle className="h-5 w-5 text-gray-300" />;
     }
