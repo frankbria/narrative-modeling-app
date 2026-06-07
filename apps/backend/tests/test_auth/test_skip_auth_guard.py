@@ -14,6 +14,7 @@ explicitly ``development`` or ``test``:
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -159,3 +160,60 @@ class TestImportTimeGuard:
         result = self._import_auth_module("development")
 
         assert result.returncode == 0, result.stderr
+
+
+class TestMainStartupRespectsRealEnvironment:
+    """A stray .env must not defeat the guard on the app.main startup path.
+
+    Found by cross-family review of #149: app.main loaded .env with
+    override=True before the auth module was imported, so a checked-in
+    .env with SKIP_AUTH=true + ENVIRONMENT=development could clobber a
+    production host's real environment and silently bypass the guard.
+
+    The app/ tree is copied into a sandbox so the .env that app.main
+    resolves (relative to its own __file__) is test-controlled and the
+    developer's real .env is never touched.
+    """
+
+    def test_dotenv_cannot_override_production_environment(self, tmp_path):
+        # app/ plus the top-level packages it imports (utils.aws in routes/s3.py)
+        for package in ("app", "utils"):
+            shutil.copytree(
+                BACKEND_DIR / package,
+                tmp_path / package,
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
+        # The hostile .env a developer might leave behind on a server
+        (tmp_path / ".env").write_text("ENVIRONMENT=development\nSKIP_AUTH=true\n")
+
+        env = os.environ.copy()
+        env.pop("SKIP_AUTH", None)
+        env.pop("NODE_ENV", None)
+        # The host's REAL environment says production; .env disagrees.
+        env["ENVIRONMENT"] = "production"
+        env["PYTHONPATH"] = str(tmp_path)
+        # Non-dummy-looking credentials so the config validator isn't what
+        # aborts the import in a production environment (hyphenated fakes
+        # also keep the pre-commit secret scanner quiet).
+        env["AWS_ACCESS_KEY_ID"] = "real-access-key-id-issue-149"
+        env["AWS_SECRET_ACCESS_KEY"] = "real-secret-access-key-issue-149"
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import app.main"],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            env=env,
+            timeout=120,
+        )
+
+        # .env says SKIP_AUTH=true, real env says production -> must refuse.
+        # Match the guard's RuntimeError specifically — the SKIP_AUTH warning
+        # log also mentions SKIP_AUTH, and an unrelated import error must not
+        # masquerade as a pass.
+        assert result.returncode != 0, (
+            "app.main started with SKIP_AUTH=true from .env despite "
+            f"ENVIRONMENT=production in the real environment\n{result.stderr}"
+        )
+        assert "RuntimeError" in result.stderr, result.stderr
+        assert "SKIP_AUTH=true is only permitted" in result.stderr, result.stderr
