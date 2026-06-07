@@ -1,3 +1,11 @@
+"""Shared pytest fixtures for the backend test suite.
+
+Provides environment declaration (ENVIRONMENT=test, before any app import),
+test-database pointing (never the production URI — issue #160), Beanie model
+initialization (mongomock for unit tests, real MongoDB for integration), and
+authorized HTTP clients with auth dependency overrides.
+"""
+
 import os
 
 # Declare the test environment BEFORE any app module is imported (issue #149):

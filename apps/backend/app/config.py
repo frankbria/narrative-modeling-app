@@ -87,7 +87,7 @@ def validate_skip_auth(
             f"SKIP_AUTH=true is only permitted when ENVIRONMENT (and legacy "
             f"NODE_ENV, if set) is explicitly 'development' or 'test' "
             f"(got {got}). Refusing to start with authentication disabled. "
-            f"Unset SKIP_AUTH or set ENVIRONMENT=development."
+            f"Unset SKIP_AUTH or set ENVIRONMENT=development (or =test)."
         )
 
     logger.warning(
