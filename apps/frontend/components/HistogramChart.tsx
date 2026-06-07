@@ -16,6 +16,7 @@ interface HistogramChartProps {
 
 export function HistogramChart({ data, datasetId, column, height = 300 }: HistogramChartProps) {
   const [fetchedData, setFetchedData] = useState<HistogramData | null>(data ?? null);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -25,6 +26,7 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
 
     if (datasetId && column) {
       let cancelled = false;
+      setFetchError(false);
       // The histogram route requires auth (get_current_user_id) — resolve and
       // forward the bearer token or every request 401s.
       getAuthToken()
@@ -33,13 +35,25 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
           if (!cancelled) setFetchedData(result);
         })
         .catch(() => {
-          if (!cancelled) setFetchedData(null);
+          // A failed request must be distinguishable from a column with no data.
+          if (!cancelled) {
+            setFetchedData(null);
+            setFetchError(true);
+          }
         });
       return () => {
         cancelled = true;
       };
     }
   }, [data, datasetId, column]);
+
+  if (fetchError) {
+    return (
+      <div className="flex items-center justify-center text-sm text-destructive" style={{ height }}>
+        Failed to load histogram data
+      </div>
+    );
+  }
 
   if (!fetchedData) {
     return (

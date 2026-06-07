@@ -79,16 +79,17 @@ describe('HistogramChart', () => {
     expect(mockGetHistogram).toHaveBeenCalledWith('ds-1', 'age', 50, 'tok-123')
   })
 
-  it('shows the empty-state placeholder when the fetch fails', async () => {
+  it('shows a distinct error state when the fetch fails', async () => {
     mockGetHistogram.mockRejectedValue(new Error('boom'))
 
     render(<HistogramChart datasetId="ds-1" column="age" />)
 
+    // A 401/500/network failure must be distinguishable from a column with
+    // genuinely no data (issue #166 review).
     await waitFor(() => {
-      expect(mockGetHistogram).toHaveBeenCalled()
+      expect(screen.getByText('Failed to load histogram data')).toBeInTheDocument()
     })
-
-    expect(screen.getByText('No histogram data available')).toBeInTheDocument()
+    expect(screen.queryByText('No histogram data available')).not.toBeInTheDocument()
     expect(screen.queryByTestId('bar-chart')).not.toBeInTheDocument()
   })
 
