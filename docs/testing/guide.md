@@ -65,7 +65,7 @@ The Narrative Modeling App uses a comprehensive three-tier testing strategy:
 **Characteristics**:
 - Require running services (MongoDB, Redis, S3, OpenAI)
 - Slower execution (~10-15 minutes)
-- Run nightly in CI
+- Run on manual trigger in CI (`workflow_dispatch`; nightly schedule disabled while production is not active)
 - Use Docker Compose for service orchestration
 
 **Backend**: Located in `apps/backend/tests/integration/`
@@ -580,7 +580,7 @@ The testing pipeline consists of three workflows that run automatically:
 
 1. **Unit Tests** - Run on every PR and push to main
 2. **E2E Tests** - Run on every PR and push to main
-3. **Integration Tests** - Run nightly at 2 AM UTC
+3. **Integration Tests** - Manual trigger only (`workflow_dispatch`; nightly schedule disabled while production is not active)
 
 ### Unit Tests Workflow
 
@@ -964,7 +964,7 @@ Coverage is automatically displayed after running tests
 
 ### CI/CD Best Practices
 
-1. **Separation of Concerns**: Unit tests on every PR, integration tests nightly
+1. **Separation of Concerns**: Unit tests on every PR, integration tests on demand (manual trigger)
 2. **Quality Gates**: Test failures block PR merging
 3. **Artifact Management**: Preserve test results and coverage reports
 4. **Resource Efficiency**: Use appropriate timeouts, clean up Docker resources
