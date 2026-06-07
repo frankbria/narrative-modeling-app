@@ -299,10 +299,11 @@ export default function DatasetPreparePage() {
     if (editingIndex === null) return;
 
     const newTransformations = [...transformations];
+    // The dialog cannot change the transformation type during an edit and its
+    // payload carries no label — only the parameters may be updated, otherwise
+    // the formatted label would be clobbered with the raw type string.
     newTransformations[editingIndex] = {
       ...newTransformations[editingIndex],
-      type: config.type,
-      label: config.label || config.type,
       parameters: config.parameters
     };
 
