@@ -144,6 +144,7 @@ OPENAI_API_KEY=your-key
 
 # Authentication (NextAuth)
 NEXTAUTH_SECRET=any-32-character-string-for-dev  # Generate with: openssl rand -base64 32
+ENVIRONMENT=development  # Required for SKIP_AUTH — backend refuses to start otherwise
 SKIP_AUTH=true  # Development mode - bypasses OAuth
 ```
 
@@ -173,6 +174,8 @@ MONGODB_URI=mongodb://localhost:27017/narrative-modeling
 ### Development Mode (SKIP_AUTH)
 For local development without OAuth setup, use `SKIP_AUTH=true` as shown above. You can sign in with any email (e.g., dev@example.com) and all API calls will use "dev-user-default" as the user ID.
 
+The backend only honors `SKIP_AUTH=true` when `ENVIRONMENT` is explicitly `development` or `test`. In any other environment — including when `ENVIRONMENT` is unset — startup fails hard with a `RuntimeError` (issue #149).
+
 ### Production Mode (Real OAuth)
 When ready for production authentication:
 
@@ -196,7 +199,7 @@ When ready for production authentication:
    openssl rand -base64 32
    ```
 
-⚠️ **NEVER use SKIP_AUTH in production!**
+⚠️ **NEVER use SKIP_AUTH in production!** This is now enforced: the backend refuses to start with `SKIP_AUTH=true` unless `ENVIRONMENT` is explicitly `development` or `test`.
 
 ## VS Code Setup
 

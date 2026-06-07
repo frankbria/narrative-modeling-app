@@ -83,7 +83,7 @@ npm run dev
   - Configure AWS S3 credentials for file storage
 - **Frontend**: Copy `.env.local.example` to `.env.local` and configure
   - Set `NEXT_PUBLIC_API_URL` to backend URL
-- **Development**: Set `SKIP_AUTH=true` to bypass authentication
+- **Development**: Set `SKIP_AUTH=true` to bypass authentication (requires `ENVIRONMENT=development` or `test` — backend startup fails hard otherwise)
 
 ---
 

@@ -127,7 +127,9 @@ class TestImportTimeGuard:
     exactly like a real server boot.
     """
 
-    def _import_auth_module(self, environment: str | None) -> subprocess.CompletedProcess:
+    def _import_auth_module(
+        self, environment: str | None
+    ) -> subprocess.CompletedProcess:
         env = os.environ.copy()
         env["SKIP_AUTH"] = "true"
         env["PYTHONPATH"] = str(BACKEND_DIR)

@@ -45,7 +45,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Frontend: `.env.local`
 - Backend: `.env`
 - Required: AWS credentials, MongoDB URI, OpenAI API key, NextAuth secret
-- Development: Set `SKIP_AUTH=true` to bypass authentication
+- Development: Set `SKIP_AUTH=true` to bypass authentication — only honored when `ENVIRONMENT` is explicitly `development`/`test`; backend startup fails hard otherwise (#149)
 
 ## Data Flow
 1. User uploads file → Backend processes → Stores in S3
