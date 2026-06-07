@@ -346,6 +346,20 @@ class TestHistoryServiceGetHistory:
         assert result["can_undo"] is True
         assert result["can_redo"] is False
 
+    def test_describe_step_with_enum_member(self):
+        """Descriptions stay human-readable when transformation_type surfaces
+        as a TransformationType enum member rather than a plain string
+        (str(member) on a str-Enum yields 'TransformationType.X', not the value).
+        """
+        from app.models.transformation import TransformationType
+
+        step = MagicMock(
+            transformation_type=TransformationType.REMOVE_DUPLICATES,
+            column=None, columns=None,
+        )
+
+        assert HistoryService._describe_step(step) == "Applied remove duplicates"
+
     @pytest.mark.asyncio
     async def test_get_history_empty(
         self,

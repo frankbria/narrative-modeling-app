@@ -19,7 +19,16 @@ def _point_app_at_test_database():
     import os
     from app.config import settings
 
-    os.environ["MONGODB_URI"] = settings.TEST_MONGODB_URI
+    uri = settings.TEST_MONGODB_URI
+    # Fail loudly rather than ever pointing tests at something that doesn't
+    # look like a test database (defense-in-depth; see issue #160)
+    assert uri and ("test" in uri.lower() or "localhost" in uri or "127.0.0.1" in uri), (
+        f"TEST_MONGODB_URI does not look like a test database URI: {uri!r}. "
+        "Name the test cluster/database with 'test' (or use localhost) so "
+        "tests can never run against production."
+    )
+
+    os.environ["MONGODB_URI"] = uri
     os.environ["MONGODB_DB"] = settings.TEST_MONGODB_DB
 
 
