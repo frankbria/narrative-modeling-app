@@ -11,19 +11,24 @@ from dotenv import load_dotenv
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv(override=True)
+# Load environment variables (real environment takes precedence over .env,
+# matching app.config — a stray .env must not override production settings)
+load_dotenv()
+
+from app.config import validate_skip_auth  # noqa: E402
 
 # Get NextAuth configuration
 NEXTAUTH_SECRET = os.getenv("NEXTAUTH_SECRET")
 NEXTAUTH_URL = os.getenv("NEXTAUTH_URL", "http://localhost:3000")
 SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"
 
+# Hard gate (issue #149): refuse to start with auth bypassed outside an
+# explicit development/test environment. Raises RuntimeError at import time,
+# which aborts app startup. Logs a warning when the bypass is permitted.
+validate_skip_auth(skip_auth=SKIP_AUTH)
+
 if not NEXTAUTH_SECRET and not SKIP_AUTH:
     logger.error("NEXTAUTH_SECRET environment variable is not set. Authentication will fail.")
-    
-if SKIP_AUTH:
-    logger.warning("⚠️  SKIP_AUTH is enabled! Authentication is bypassed in development mode.")
 
 security = HTTPBearer()
 

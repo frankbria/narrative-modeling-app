@@ -1,6 +1,7 @@
 from pydantic import BaseModel, field_validator
-from typing import List
+from typing import List, Optional
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 from pathlib import Path
@@ -11,6 +12,57 @@ logger = logging.getLogger(__name__)
 env_path = Path(__file__).resolve().parent.parent / ".env"
 print(f"Loading .env file from config.py: {env_path}")
 load_dotenv(dotenv_path=env_path)
+
+# Environments where disabling authentication (SKIP_AUTH=true) is permitted
+ALLOWED_SKIP_AUTH_ENVIRONMENTS = {"development", "test"}
+
+
+def get_environment(default: str = "development") -> str:
+    """Return the canonical deployment environment, normalized to lowercase.
+
+    Reads ``ENVIRONMENT`` first, falling back to the legacy ``NODE_ENV``.
+    When neither is set during a pytest run, the environment counts as
+    ``test``; otherwise ``default`` is returned.
+    """
+    env = os.getenv("ENVIRONMENT") or os.getenv("NODE_ENV")
+    if env is None and "pytest" in sys.modules:
+        env = "test"
+    return (env or default).strip().lower()
+
+
+def validate_skip_auth(
+    skip_auth: Optional[bool] = None, environment: Optional[str] = None
+) -> None:
+    """Fail hard if SKIP_AUTH is enabled outside development/test (issue #149).
+
+    Raises ``RuntimeError`` when ``skip_auth`` is true and the environment is
+    not explicitly one of ``ALLOWED_SKIP_AUTH_ENVIRONMENTS``. An unset
+    environment is treated as unsafe — production hosts often leave
+    ``ENVIRONMENT`` undefined, and authentication must never be silently
+    bypassed there.
+
+    Args default to the ``SKIP_AUTH`` env var and ``get_environment()``.
+    """
+    if skip_auth is None:
+        skip_auth = os.getenv("SKIP_AUTH", "false").strip().lower() == "true"
+    if not skip_auth:
+        return
+
+    env = environment if environment is not None else get_environment(default="")
+    env = env.strip().lower()
+    if env not in ALLOWED_SKIP_AUTH_ENVIRONMENTS:
+        raise RuntimeError(
+            f"SKIP_AUTH=true is only permitted when ENVIRONMENT is explicitly "
+            f"'development' or 'test' (got {env or 'unset'!r}). Refusing to start "
+            f"with authentication disabled. Unset SKIP_AUTH or set "
+            f"ENVIRONMENT=development."
+        )
+
+    logger.warning(
+        "⚠️  SKIP_AUTH is enabled (environment=%s)! All authentication is "
+        "bypassed — never use this outside development/test.",
+        env,
+    )
 
 
 class Settings(BaseModel):
@@ -49,7 +101,7 @@ class Settings(BaseModel):
         """Validate that dummy/test credentials aren't used in production."""
         dummy_patterns = ["test-", "dummy-", "sk-test-", "placeholder"]
         production_envs = {"production", "prod", "staging", "live", "release"}
-        env = os.getenv("NODE_ENV", os.getenv("ENVIRONMENT", "development"))
+        env = get_environment()
 
         # Check for empty/blank credentials in production-like environments
         if v is None or v.strip() == "":
