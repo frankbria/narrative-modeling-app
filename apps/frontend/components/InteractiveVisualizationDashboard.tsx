@@ -265,7 +265,15 @@ export function InteractiveVisualizationDashboard({
         return <BoxplotChart data={sampleBoxPlotData} />
 
       case 'correlation':
-        return <CorrelationHeatmap stats={correlationStats} />
+        return (
+          <CorrelationHeatmap
+            stats={correlationStats}
+            correlationMatrix={
+              (statistics as { correlation_matrix?: Record<string, Record<string, number>> })
+                ?.correlation_matrix ?? null
+            }
+          />
+        )
 
       default:
         return <div>Chart type not implemented</div>

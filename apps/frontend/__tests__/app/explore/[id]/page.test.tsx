@@ -93,8 +93,8 @@ jest.mock('@/components/AIInsightsPanel', () => {
 
 jest.mock('@/components/InteractiveVisualizationDashboard', () => {
   return {
-    InteractiveVisualizationDashboard: () => (
-      <div data-testid="visualization-dashboard">
+    InteractiveVisualizationDashboard: ({ columns }: { columns?: unknown }) => (
+      <div data-testid="visualization-dashboard" data-columns={JSON.stringify(columns ?? null)}>
         Visualizations
       </div>
     )
@@ -344,15 +344,21 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('maps schema column types when rendering the visualizations tab', async () => {
+    // The wire shape is the backend's ColumnSchema (schema_inference.py):
+    // canonical `data_type` (integer/float/currency/.../categorical/datetime),
+    // `cardinality` instead of unique_count, and NO `type` field. Legacy
+    // pandas-style `type` entries must still classify for older documents.
     const datasetWithTypedColumns = {
       ...mockProcessedDataset,
       schema: {
         row_count: 1000,
-        column_count: 3,
+        column_count: 5,
         columns: [
-          { name: 'age', type: 'int64', unique_count: 50, null_count: 0 },
-          { name: 'city', type: 'object', unique_count: 10, null_count: 0 },
-          { name: 'signup', type: 'datetime64[ns]', unique_count: 900, null_count: 0 },
+          { name: 'age', data_type: 'integer', cardinality: 50, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'price', data_type: 'currency', cardinality: 800, null_count: 2, nullable: true, unique: false, null_percentage: 0.2 },
+          { name: 'city', data_type: 'categorical', cardinality: 10, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'signup', data_type: 'datetime', cardinality: 900, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'legacy_score', type: 'int64', unique_count: 42, null_count: 1 },
         ],
       },
     }
@@ -379,6 +385,16 @@ describe('DatasetAnalysisPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('visualization-dashboard')).toBeInTheDocument()
     })
+
+    const dashboard = screen.getByTestId('visualization-dashboard')
+    const passedColumns = JSON.parse(dashboard.getAttribute('data-columns') ?? 'null')
+    expect(passedColumns).toEqual([
+      { name: 'age', type: 'numeric', unique_count: 50, null_count: 0 },
+      { name: 'price', type: 'numeric', unique_count: 800, null_count: 2 },
+      { name: 'city', type: 'categorical', unique_count: 10, null_count: 0 },
+      { name: 'signup', type: 'datetime', unique_count: 900, null_count: 0 },
+      { name: 'legacy_score', type: 'numeric', unique_count: 42, null_count: 1 },
+    ])
   })
 
   it('handles API errors gracefully', async () => {

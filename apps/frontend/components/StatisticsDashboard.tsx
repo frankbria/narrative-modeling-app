@@ -353,7 +353,7 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <CorrelationHeatmap stats={correlationStats} />
+                <CorrelationHeatmap stats={correlationStats} correlationMatrix={statistics.correlation_matrix} />
               </CardContent>
             </Card>
           ) : (

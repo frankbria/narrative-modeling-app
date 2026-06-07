@@ -32,6 +32,33 @@ interface ProcessedDataset {
   processed_at: string
 }
 
+/** Map a backend DataType (schema_inference.py) or legacy pandas dtype to the
+ *  visualization dashboard's column buckets. */
+function classifyColumnType(dataType: string | undefined): 'numeric' | 'categorical' | 'datetime' | 'text' {
+  switch (dataType) {
+    case 'integer':
+    case 'float':
+    case 'currency':
+    case 'percentage':
+    case 'number':
+    case 'int64':
+    case 'float64':
+      return 'numeric'
+    case 'categorical':
+    case 'boolean':
+    case 'string':
+    case 'object':
+      return 'categorical'
+    case 'date':
+    case 'datetime':
+    case 'time':
+    case 'datetime64[ns]':
+      return 'datetime'
+    default:
+      return 'text'
+  }
+}
+
 export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
@@ -422,10 +449,10 @@ export default function DatasetAnalysisPage() {
                 datasetId={dataset.id}
                 columns={dataset.schema.columns.map((col) => ({
                   name: col.name,
-                  type: (col.type === 'int64' || col.type === 'float64' || col.type === 'number' ? 'numeric' :
-                        col.type === 'object' || col.type === 'string' ? 'categorical' :
-                        col.type === 'datetime64[ns]' || col.type === 'datetime' ? 'datetime' : 'text') as 'numeric' | 'categorical' | 'datetime' | 'text',
-                  unique_count: col.unique_count,
+                  // Canonical field is the backend's `data_type` (schema_inference.py
+                  // DataType enum); legacy documents may only carry pandas-style `type`.
+                  type: classifyColumnType(col.data_type ?? col.type),
+                  unique_count: col.unique_count ?? col.cardinality,
                   null_count: col.null_count
                 }))}
                 statistics={dataset.statistics}

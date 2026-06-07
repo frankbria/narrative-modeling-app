@@ -83,8 +83,12 @@ jest.mock('@/components/HistogramChart', () => {
 
 jest.mock('@/components/CorrelationHeatmap', () => {
   return {
-    CorrelationHeatmap: ({ stats }: { stats?: unknown }) => (
-      <div data-testid="correlation-heatmap" data-stats={JSON.stringify(stats ?? null)}>
+    CorrelationHeatmap: ({ stats, correlationMatrix }: { stats?: unknown; correlationMatrix?: unknown }) => (
+      <div
+        data-testid="correlation-heatmap"
+        data-stats={JSON.stringify(stats ?? null)}
+        data-matrix={JSON.stringify(correlationMatrix ?? null)}
+      >
         Correlation Heatmap
       </div>
     )
@@ -199,7 +203,12 @@ describe('StatisticsDashboard', () => {
     
     expect(screen.getByText('Correlation Matrix')).toBeInTheDocument()
     expect(screen.getByText('Correlation between numeric variables')).toBeInTheDocument()
-    expect(screen.getByTestId('correlation-heatmap')).toBeInTheDocument()
+    const heatmap = screen.getByTestId('correlation-heatmap')
+    // The heatmap must receive the backend-computed matrix — it must never
+    // synthesize coefficients itself (issue #166 review regression).
+    expect(JSON.parse(heatmap.getAttribute('data-matrix') ?? 'null')).toEqual(
+      mockStatistics.correlation_matrix
+    )
   })
 
   it('handles loading state when statistics not provided', () => {
