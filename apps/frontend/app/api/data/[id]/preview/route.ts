@@ -33,11 +33,13 @@ export async function GET(
     // Get token from session or use the JWT token with secret
     let accessToken = session.accessToken;
     if (!accessToken) {
-      const token = await getToken({ 
+      const token = await getToken({
         req: request,
-        secret: process.env.NEXTAUTH_SECRET 
+        secret: process.env.NEXTAUTH_SECRET
       });
-      accessToken = token?.accessToken || token?.access_token;
+      // Custom JWT claims are typed as unknown — narrow before assigning
+      const tokenValue = token?.accessToken ?? token?.access_token;
+      accessToken = typeof tokenValue === 'string' ? tokenValue : undefined;
     }
 
     // Get query parameters
