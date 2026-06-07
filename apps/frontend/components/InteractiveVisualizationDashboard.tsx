@@ -59,7 +59,7 @@ export function InteractiveVisualizationDashboard({
   }, [columns, selectedColumns.length, numericColumns])
 
   // Generate sample data based on chart type and columns
-  const generateSampleData = useMemo(() => {
+  const sampleChartData = useMemo(() => {
     if (!selectedColumns.length) return null
 
     switch (activeChart) {
@@ -133,7 +133,7 @@ export function InteractiveVisualizationDashboard({
   const handleExportChart = async () => {
     try {
       // In a real implementation, this would export the chart as PNG/PDF
-      const dataStr = JSON.stringify(generateSampleData, null, 2)
+      const dataStr = JSON.stringify(sampleChartData, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
       const url = URL.createObjectURL(dataBlob)
       const link = document.createElement('a')
@@ -250,7 +250,7 @@ export function InteractiveVisualizationDashboard({
       )
     }
 
-    const data = generateSampleData
+    const data = sampleChartData
 
     switch (activeChart) {
       case 'histogram':

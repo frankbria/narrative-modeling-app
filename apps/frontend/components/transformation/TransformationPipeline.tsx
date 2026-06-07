@@ -244,7 +244,7 @@ export default function TransformationPipeline({
     }
   };
 
-  const handleLoadRecipe = async (recipe: any) => {
+  const handleLoadRecipe = async (recipe: { transformations: TransformationStep[] }) => {
     // Convert recipe transformations to nodes
     const newNodes: TransformationFlowNode[] = recipe.transformations.map((transform: TransformationStep, index: number) => ({
       id: `node-${index + 1}`,
