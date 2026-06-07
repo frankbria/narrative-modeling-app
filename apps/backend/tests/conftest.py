@@ -25,20 +25,22 @@ def _point_app_at_test_database():
 
 @pytest.fixture(scope="module")
 def beanie_models_initialized():
-    """Bind Beanie document models without any database IO.
+    """Bind Beanie document models without any real database.
 
     Beanie Documents cannot be instantiated (even for pure validation tests)
-    until init_beanie has registered them. skip_indexes=True means no MongoDB
-    connection is made (motor clients are lazy), so unit tests that only
-    construct/validate Document instances stay free of service dependencies.
+    until init_beanie has registered them — and init_beanie always performs
+    IO (it runs `buildInfo` against the server, regardless of skip_indexes).
+    An in-memory mongomock client keeps unit tests that only construct or
+    validate Document instances free of service dependencies (verified: a
+    real MongoDB connection here timed out in CI where no Mongo runs).
     """
     import asyncio
-    from motor.motor_asyncio import AsyncIOMotorClient
+    from mongomock_motor import AsyncMongoMockClient
     from beanie import init_beanie
     from app.models.registry import DOCUMENT_MODELS
 
     async def _init():
-        client = AsyncIOMotorClient("mongodb://localhost:27017")
+        client = AsyncMongoMockClient()
         await init_beanie(
             database=client["narrative_modeling_unit_tests"],
             document_models=DOCUMENT_MODELS,
