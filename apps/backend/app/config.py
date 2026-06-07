@@ -28,6 +28,8 @@ def environment_signals() -> List[str]:
     ENVIRONMENT=development must not outvote a deployment's real
     NODE_ENV=production (issue #149 review).
     """
+    # `if v` drops unset (None) and explicitly empty ("") values — both mean
+    # "no signal"; do not weaken this if a default is ever added upstream.
     return [
         v.strip().lower()
         for v in (os.getenv("ENVIRONMENT"), os.getenv("NODE_ENV"))
@@ -94,7 +96,7 @@ def validate_skip_auth(
     logger.warning(
         "⚠️  SKIP_AUTH is enabled (environment=%s)! All authentication is "
         "bypassed — never use this outside development/test.",
-        normalized[0],
+        ", ".join(normalized),
     )
 
 

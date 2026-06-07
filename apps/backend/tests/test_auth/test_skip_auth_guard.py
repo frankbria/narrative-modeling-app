@@ -167,7 +167,7 @@ class TestCredentialValidationStaysProductionSafe:
         with pytest.raises(ValueError, match="[Dd]ummy credential"):
             Settings(
                 AWS_ACCESS_KEY_ID="placeholder",
-                AWS_SECRET_ACCESS_KEY="placeholder",
+                AWS_SECRET_ACCESS_KEY="placeholder",  # noqa: S106 - intentional dummy credential for security-guard test
             )
 
 
@@ -225,10 +225,9 @@ class TestMainStartupRespectsRealEnvironment:
     developer's real .env is never touched.
     """
 
-    @pytest.mark.parametrize("real_env_var", ["ENVIRONMENT", "NODE_ENV"])
-    def test_dotenv_cannot_override_production_environment(
-        self, tmp_path, real_env_var
-    ):
+    def _boot_app_main(
+        self, tmp_path, dotenv_text: str, real_env: dict
+    ) -> subprocess.CompletedProcess:
         # app/ plus the top-level packages it imports (utils.aws in routes/s3.py)
         for package in ("app", "utils"):
             shutil.copytree(
@@ -237,23 +236,23 @@ class TestMainStartupRespectsRealEnvironment:
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
         # The hostile .env a developer might leave behind on a server
-        (tmp_path / ".env").write_text("ENVIRONMENT=development\nSKIP_AUTH=true\n")
+        (tmp_path / ".env").write_text(dotenv_text)
 
         env = os.environ.copy()
         env.pop("SKIP_AUTH", None)
         env.pop("NODE_ENV", None)
         env.pop("ENVIRONMENT", None)
-        # The host's REAL environment says production (modern ENVIRONMENT or
-        # legacy NODE_ENV deployments); .env disagrees.
-        env[real_env_var] = "production"
+        env.update(real_env)
         env["PYTHONPATH"] = str(tmp_path)
         # Non-dummy-looking credentials so the config validator isn't what
         # aborts the import in a production environment (hyphenated fakes
         # also keep the pre-commit secret scanner quiet).
         env["AWS_ACCESS_KEY_ID"] = "real-access-key-id-issue-149"
-        env["AWS_SECRET_ACCESS_KEY"] = "real-secret-access-key-issue-149"
+        env["AWS_SECRET_ACCESS_KEY"] = (
+            "real-secret-access-key-issue-149"  # noqa: S105 - non-sensitive test fixture string
+        )
 
-        result = subprocess.run(
+        return subprocess.run(
             [sys.executable, "-c", "import app.main"],
             capture_output=True,
             text=True,
@@ -262,13 +261,39 @@ class TestMainStartupRespectsRealEnvironment:
             timeout=120,
         )
 
-        # .env says SKIP_AUTH=true, real env says production -> must refuse.
+    def _assert_startup_refused(self, result, scenario: str) -> None:
         # Match the guard's RuntimeError specifically — the SKIP_AUTH warning
         # log also mentions SKIP_AUTH, and an unrelated import error must not
         # masquerade as a pass.
-        assert result.returncode != 0, (
-            "app.main started with SKIP_AUTH=true from .env despite "
-            f"ENVIRONMENT=production in the real environment\n{result.stderr}"
-        )
+        assert (
+            result.returncode != 0
+        ), f"app.main started with SKIP_AUTH=true ({scenario})\n{result.stderr}"
         assert "RuntimeError" in result.stderr, result.stderr
         assert "SKIP_AUTH=true is only permitted" in result.stderr, result.stderr
+
+    @pytest.mark.parametrize("real_env_var", ["ENVIRONMENT", "NODE_ENV"])
+    def test_dotenv_cannot_override_production_environment(
+        self, tmp_path, real_env_var
+    ):
+        # The host's REAL environment says production (modern ENVIRONMENT or
+        # legacy NODE_ENV deployments); .env disagrees.
+        result = self._boot_app_main(
+            tmp_path,
+            dotenv_text="ENVIRONMENT=development\nSKIP_AUTH=true\n",
+            real_env={real_env_var: "production"},
+        )
+
+        self._assert_startup_refused(
+            result, f"from .env despite {real_env_var}=production in the real env"
+        )
+
+    def test_unset_environment_refuses_startup(self, tmp_path):
+        """The most dangerous production scenario: a host with NO environment
+        variable set at all plus a leftover .env enabling SKIP_AUTH."""
+        result = self._boot_app_main(
+            tmp_path,
+            dotenv_text="SKIP_AUTH=true\n",
+            real_env={},
+        )
+
+        self._assert_startup_refused(result, "with ENVIRONMENT/NODE_ENV unset")
