@@ -63,8 +63,10 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
     );
   }
 
+  // binEdges should have bins.length + 1 entries; guard against a malformed
+  // payload so a short edges array degrades the label instead of crashing.
   const chartData = fetchedData.bins.map((count, index) => ({
-    bin: `${fetchedData.binEdges[index].toFixed(2)} - ${fetchedData.binEdges[index + 1].toFixed(2)}`,
+    bin: `${fetchedData.binEdges[index]?.toFixed(2) ?? '?'} - ${fetchedData.binEdges[index + 1]?.toFixed(2) ?? '?'}`,
     count
   }));
 

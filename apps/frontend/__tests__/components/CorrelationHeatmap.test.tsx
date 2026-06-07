@@ -35,6 +35,22 @@ describe('CorrelationHeatmap', () => {
     expect(screen.getAllByText('age').length).toBeGreaterThanOrEqual(2) // row + column header
   })
 
+  it('mirrors symmetric entries when the matrix only has one triangle', () => {
+    render(
+      <CorrelationHeatmap
+        stats={[numericStat('age'), numericStat('income')]}
+        correlationMatrix={{
+          // Upper triangle only: income→age is missing and must mirror 0.42.
+          age: { age: 1.0, income: 0.42 },
+          income: { income: 1.0 },
+        }}
+      />
+    )
+
+    expect(screen.getAllByText('0.42')).toHaveLength(2)
+    expect(screen.queryByText('0.00')).not.toBeInTheDocument()
+  })
+
   it('renders the empty state instead of fabricated values when no matrix is provided', () => {
     render(<CorrelationHeatmap stats={[numericStat('age'), numericStat('income')]} />)
 

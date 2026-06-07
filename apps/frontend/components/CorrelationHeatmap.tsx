@@ -45,7 +45,11 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
     }
 
     const matrix = columns.map((row) =>
-      columns.map((col) => matrixProp[row]?.[col] ?? (row === col ? 1 : 0))
+      columns.map(
+        // Mirror the symmetric entry before defaulting, so a triangle-only
+        // payload doesn't render missing cells as zero correlation.
+        (col) => matrixProp[row]?.[col] ?? matrixProp[col]?.[row] ?? (row === col ? 1 : 0)
+      )
     );
 
     return { columns, matrix } as CorrelationMatrix;

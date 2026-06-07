@@ -119,8 +119,10 @@ export interface DatasetSchema {
   inference_confidence?: number
 }
 
-/** data_type values (schema_inference.py DataType) treated as numeric for
- *  statistics/visualization purposes. */
+/** Canonical data_type values (schema_inference.py DataType) treated as numeric
+ *  for statistics/visualization purposes. Intentionally excludes legacy pandas
+ *  dtypes ('int64', 'float64', ...) — callers tolerating legacy documents add
+ *  those themselves (see classifyColumnType in app/explore/[id]/page.tsx). */
 export const NUMERIC_DATA_TYPES = ['integer', 'float', 'currency', 'percentage'] as const
 
 /** A column statistic entry for the statistics dashboard. */
