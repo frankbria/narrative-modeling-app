@@ -148,6 +148,29 @@ class TestGetEnvironment:
             assert get_environment(default="") == ""
 
 
+class TestCredentialValidationStaysProductionSafe:
+    """The #149 precedence refactor must not soften credential validation.
+
+    If ANY set environment signal is production-like, dummy/blank AWS
+    credentials are rejected — a stray .env ENVIRONMENT=development must
+    not outvote a legacy NODE_ENV=production here either (codex review).
+    """
+
+    def test_dummy_credentials_rejected_when_node_env_is_production(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("NODE_ENV", "production")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "placeholder")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "placeholder")
+
+        from app.config import Settings
+
+        with pytest.raises(ValueError, match="[Dd]ummy credential"):
+            Settings(
+                AWS_ACCESS_KEY_ID="placeholder",
+                AWS_SECRET_ACCESS_KEY="placeholder",
+            )
+
+
 class TestImportTimeGuard:
     """The guard fires at import of app.auth.nextauth_auth (= app startup).
 

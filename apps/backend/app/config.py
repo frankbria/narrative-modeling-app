@@ -16,6 +16,29 @@ load_dotenv(dotenv_path=env_path)
 # Environments where disabling authentication (SKIP_AUTH=true) is permitted
 ALLOWED_SKIP_AUTH_ENVIRONMENTS = {"development", "test"}
 
+# Environments where production-grade safety checks must apply
+PRODUCTION_LIKE_ENVIRONMENTS = {"production", "prod", "staging", "live", "release"}
+
+
+def environment_signals() -> List[str]:
+    """All explicitly set environment signals (ENVIRONMENT, legacy NODE_ENV),
+    normalized to lowercase.
+
+    Security checks must consider every signal: a stray .env supplying
+    ENVIRONMENT=development must not outvote a deployment's real
+    NODE_ENV=production (issue #149 review).
+    """
+    return [
+        v.strip().lower()
+        for v in (os.getenv("ENVIRONMENT"), os.getenv("NODE_ENV"))
+        if v
+    ]
+
+
+def is_production_like() -> bool:
+    """True if ANY set environment signal names a production-like environment."""
+    return any(s in PRODUCTION_LIKE_ENVIRONMENTS for s in environment_signals())
+
 
 def get_environment(default: str = "development") -> str:
     """Return the canonical deployment environment, normalized to lowercase.
@@ -51,10 +74,8 @@ def validate_skip_auth(
     if environment is not None:
         signals = [environment]
     else:
-        # Check EVERY set environment signal, not just the canonical one — a
-        # stray .env supplying ENVIRONMENT=development must not outvote a
-        # legacy deployment's real NODE_ENV=production (issue #149 review).
-        signals = [v for v in (os.getenv("ENVIRONMENT"), os.getenv("NODE_ENV")) if v]
+        # Check EVERY set environment signal, not just the canonical one
+        signals = environment_signals()
         if not signals and "pytest" in sys.modules:
             signals = ["test"]
 
@@ -112,12 +133,14 @@ class Settings(BaseModel):
     def validate_no_dummy_credentials(cls, v: str, info) -> str:
         """Validate that dummy/test credentials aren't used in production."""
         dummy_patterns = ["test-", "dummy-", "sk-test-", "placeholder"]
-        production_envs = {"production", "prod", "staging", "live", "release"}
         env = get_environment()
+        # Fail-safe: production-like if ANY set signal says so (a stray .env
+        # ENVIRONMENT=development must not outvote a real NODE_ENV=production)
+        production_like = is_production_like()
 
         # Check for empty/blank credentials in production-like environments
         if v is None or v.strip() == "":
-            if env.lower() in production_envs:
+            if production_like:
                 raise ValueError(
                     f"Empty or blank credential for {info.field_name} in {env} environment. "
                     f"Please set real credentials."
@@ -125,8 +148,7 @@ class Settings(BaseModel):
             return v
 
         # Check for dummy patterns in production-like environments
-        is_production_like = env.lower() in production_envs
-        if is_production_like:
+        if production_like:
             for pattern in dummy_patterns:
                 if pattern in v.lower():
                     raise ValueError(
