@@ -23,7 +23,7 @@ interface DistributionBin {
 
 export interface PreviewData {
   success: boolean;
-  values: any[];
+  values: unknown[];
   statistics: Statistics | null;
   distribution: DistributionBin[];
   formula: string | null;
