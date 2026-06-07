@@ -16,6 +16,7 @@ import { ScatterPlotChart, ScatterPlotData } from './ScatterPlotChart'
 import { LineChart, LineChartData } from './LineChart'
 import { HistogramData, BoxPlotData } from '@/lib/services/visualization'
 import { StatItem } from '@/lib/utils'
+import { DatasetStatistics, NUMERIC_DATA_TYPES } from '@/lib/types/api'
 
 interface Column {
   name: string
@@ -27,7 +28,7 @@ interface Column {
 interface InteractiveVisualizationDashboardProps {
   datasetId: string
   columns: Column[]
-  statistics?: unknown
+  statistics?: DatasetStatistics
 }
 
 export function InteractiveVisualizationDashboard({
@@ -196,20 +197,20 @@ export function InteractiveVisualizationDashboard({
   // Derive StatItem entries for the correlation heatmap. Prefer the provided
   // statistics payload when available, otherwise fall back to the column list.
   const correlationStats: StatItem[] = (() => {
-    const columnStats = (statistics as { column_statistics?: unknown })?.column_statistics
+    const columnStats = statistics?.column_statistics
     if (Array.isArray(columnStats)) {
-      return columnStats.map((col) => {
-        const c = col as Record<string, unknown>
-        return {
-          field_name: String(c.column_name ?? ''),
-          field_type: ['integer', 'float', 'currency', 'percentage'].includes(String(c.data_type))
+      return columnStats
+        // External API payload: guard against malformed (non-object) entries.
+        .filter((col) => col !== null && typeof col === 'object')
+        .map((col) => ({
+          field_name: col.column_name ?? '',
+          field_type: (NUMERIC_DATA_TYPES as readonly string[]).includes(col.data_type)
             ? 'numeric'
-            : String(c.data_type ?? ''),
-          count: Number(c.total_count ?? 0),
-          missing_values: Number(c.null_count ?? 0),
-          unique_values: Number(c.unique_count ?? 0)
-        }
-      })
+            : col.data_type ?? '',
+          count: col.total_count ?? 0,
+          missing_values: col.null_count ?? 0,
+          unique_values: col.unique_count ?? 0
+        }))
     }
     return columns.map((col) => ({
       field_name: col.name,
@@ -268,10 +269,7 @@ export function InteractiveVisualizationDashboard({
         return (
           <CorrelationHeatmap
             stats={correlationStats}
-            correlationMatrix={
-              (statistics as { correlation_matrix?: Record<string, Record<string, number>> })
-                ?.correlation_matrix ?? null
-            }
+            correlationMatrix={statistics?.correlation_matrix ?? null}
           />
         )
 
