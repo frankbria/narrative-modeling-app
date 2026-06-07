@@ -72,6 +72,33 @@ class TestValidateSkipAuth:
         with pytest.raises(RuntimeError, match="SKIP_AUTH"):
             validate_skip_auth()
 
+    def test_conflicting_environment_signals_raise(self, monkeypatch):
+        """A dev ENVIRONMENT must not outvote a production NODE_ENV.
+
+        Legacy deployments set only NODE_ENV=production; a stray .env
+        supplying ENVIRONMENT=development must not win (codex review #149).
+        """
+        monkeypatch.setenv("SKIP_AUTH", "true")
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("NODE_ENV", "production")
+
+        with pytest.raises(RuntimeError, match="SKIP_AUTH"):
+            validate_skip_auth()
+
+    def test_all_signals_development_allowed(self, monkeypatch):
+        monkeypatch.setenv("SKIP_AUTH", "true")
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("NODE_ENV", "development")
+
+        validate_skip_auth()
+
+    def test_legacy_node_env_alone_allows_test(self, monkeypatch):
+        monkeypatch.setenv("SKIP_AUTH", "true")
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setenv("NODE_ENV", "test")
+
+        validate_skip_auth()
+
     def test_unset_environment_outside_pytest_raises(self, monkeypatch):
         """Without pytest in the process, an unset ENVIRONMENT must fail."""
         monkeypatch.setenv("SKIP_AUTH", "true")
@@ -175,7 +202,10 @@ class TestMainStartupRespectsRealEnvironment:
     developer's real .env is never touched.
     """
 
-    def test_dotenv_cannot_override_production_environment(self, tmp_path):
+    @pytest.mark.parametrize("real_env_var", ["ENVIRONMENT", "NODE_ENV"])
+    def test_dotenv_cannot_override_production_environment(
+        self, tmp_path, real_env_var
+    ):
         # app/ plus the top-level packages it imports (utils.aws in routes/s3.py)
         for package in ("app", "utils"):
             shutil.copytree(
@@ -189,8 +219,10 @@ class TestMainStartupRespectsRealEnvironment:
         env = os.environ.copy()
         env.pop("SKIP_AUTH", None)
         env.pop("NODE_ENV", None)
-        # The host's REAL environment says production; .env disagrees.
-        env["ENVIRONMENT"] = "production"
+        env.pop("ENVIRONMENT", None)
+        # The host's REAL environment says production (modern ENVIRONMENT or
+        # legacy NODE_ENV deployments); .env disagrees.
+        env[real_env_var] = "production"
         env["PYTHONPATH"] = str(tmp_path)
         # Non-dummy-looking credentials so the config validator isn't what
         # aborts the import in a production environment (hyphenated fakes

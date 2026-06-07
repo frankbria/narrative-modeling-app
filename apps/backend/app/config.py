@@ -48,20 +48,32 @@ def validate_skip_auth(
     if not skip_auth:
         return
 
-    env = environment if environment is not None else get_environment(default="")
-    env = env.strip().lower()
-    if env not in ALLOWED_SKIP_AUTH_ENVIRONMENTS:
+    if environment is not None:
+        signals = [environment]
+    else:
+        # Check EVERY set environment signal, not just the canonical one — a
+        # stray .env supplying ENVIRONMENT=development must not outvote a
+        # legacy deployment's real NODE_ENV=production (issue #149 review).
+        signals = [v for v in (os.getenv("ENVIRONMENT"), os.getenv("NODE_ENV")) if v]
+        if not signals and "pytest" in sys.modules:
+            signals = ["test"]
+
+    normalized = [s.strip().lower() for s in signals]
+    if not normalized or any(
+        s not in ALLOWED_SKIP_AUTH_ENVIRONMENTS for s in normalized
+    ):
+        got = ", ".join(repr(s) for s in normalized) or "unset"
         raise RuntimeError(
-            f"SKIP_AUTH=true is only permitted when ENVIRONMENT is explicitly "
-            f"'development' or 'test' (got {env or 'unset'!r}). Refusing to start "
-            f"with authentication disabled. Unset SKIP_AUTH or set "
-            f"ENVIRONMENT=development."
+            f"SKIP_AUTH=true is only permitted when ENVIRONMENT (and legacy "
+            f"NODE_ENV, if set) is explicitly 'development' or 'test' "
+            f"(got {got}). Refusing to start with authentication disabled. "
+            f"Unset SKIP_AUTH or set ENVIRONMENT=development."
         )
 
     logger.warning(
         "⚠️  SKIP_AUTH is enabled (environment=%s)! All authentication is "
         "bypassed — never use this outside development/test.",
-        env,
+        normalized[0],
     )
 
 
