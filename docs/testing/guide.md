@@ -624,7 +624,7 @@ The testing pipeline consists of three workflows that run automatically:
 
 **Environment Variables**:
 - `CI=true`
-- `SKIP_AUTH=true` (auth bypass for CI)
+- `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` (test user credentials for Playwright global setup)
 
 **Artifacts**:
 1. **Test Results** (on failure)
@@ -812,8 +812,9 @@ If tests fail because services aren't running:
 
 #### Authentication Issues
 **Solution**:
-- Set `SKIP_AUTH=true` for development
-- Verify test user credentials
+- Verify `TEST_USER_EMAIL` and `TEST_USER_PASSWORD` env vars are set (or rely on defaults)
+- Check that `e2e/global-setup.ts` runs before tests (configured via `globalSetup` in `playwright.config.ts`)
+- Verify session state file exists at `e2e/.auth/user.json` after global setup runs
 - Check auth UI selectors in `fixtures/auth.ts`
 
 #### Page Not Found

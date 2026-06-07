@@ -11,16 +11,20 @@ APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
-# Get the path to the .env file and load it first
+# Get the path to the .env file and load it first. The real environment takes
+# precedence over .env (no override): a stray .env on a server must never
+# clobber deployment-set variables like ENVIRONMENT/SKIP_AUTH (issue #149).
 env_path = Path(__file__).resolve().parent.parent / ".env"
 print(f"Loading .env file from: {env_path}")
-load_dotenv(dotenv_path=env_path, override=True)
+load_dotenv(dotenv_path=env_path)
 
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+
+logger = logging.getLogger(__name__)
 
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)
@@ -67,7 +71,8 @@ from app.api.routes import (
     feature_store,
 )
 from app.services.api_documentation import APIDocumentationService
-from app.config import settings
+from app.auth.nextauth_auth import SKIP_AUTH
+from app.config import get_environment, settings
 from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -75,7 +80,14 @@ from app.services.redis_cache import init_cache, cleanup_cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: connect to DB (single place, all models via the canonical registry)
+    # Startup: state the auth mode unambiguously (issue #149)
+    logger.info(
+        "Auth mode: %s (environment=%s)",
+        "BYPASSED via SKIP_AUTH" if SKIP_AUTH else "ENFORCED (NextAuth JWT)",
+        get_environment(),
+    )
+
+    # Connect to DB (single place, all models via the canonical registry)
     mongo_uri = os.getenv("MONGODB_URI")
     db_name = os.getenv("MONGODB_DB")
     client = AsyncIOMotorClient(mongo_uri)

@@ -1,3 +1,19 @@
+"""Shared pytest fixtures for the backend test suite.
+
+Provides environment declaration (ENVIRONMENT=test, before any app import),
+test-database pointing (never the production URI — issue #160), Beanie model
+initialization (mongomock for unit tests, real MongoDB for integration), and
+authorized HTTP clients with auth dependency overrides.
+"""
+
+import os
+
+# Declare the test environment BEFORE any app module is imported (issue #149):
+# app.config's SKIP_AUTH guard requires every set environment signal to be
+# explicitly development/test — there is deliberately no implicit pytest
+# detection. setdefault keeps an explicitly exported ENVIRONMENT authoritative.
+os.environ.setdefault("ENVIRONMENT", "test")
+
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator
@@ -11,10 +27,11 @@ def _point_app_at_test_database():
     """Make the app lifespan use the test database.
 
     app/main.py's lifespan reads MONGODB_URI/MONGODB_DB from the environment at
-    startup, and importing app.main runs load_dotenv(override=True) which would
-    clobber values set earlier. So this must be called AFTER `from app.main
-    import app` and BEFORE the lifespan starts (issue #160: the lifespan
-    previously connected to the production Atlas URI during tests).
+    startup, and app/main.py's module-level load_dotenv may have populated them
+    from .env (real env vars win since #149, but during pytest neither is
+    usually exported). So this must be called AFTER `from app.main import app`
+    and BEFORE the lifespan starts (issue #160: the lifespan previously
+    connected to the production Atlas URI during tests).
     """
     import os
     from app.config import settings

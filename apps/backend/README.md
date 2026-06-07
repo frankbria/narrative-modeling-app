@@ -95,7 +95,7 @@ The API uses NextAuth v5 JWT tokens for authentication. Include the token in the
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:8000/api/v1/datasets
 ```
 
-In development, set `SKIP_AUTH=true` to bypass authentication.
+In development, set `SKIP_AUTH=true` to bypass authentication. This requires `ENVIRONMENT` to be explicitly `development` or `test` — the backend refuses to start (raises `RuntimeError`) if `SKIP_AUTH=true` in any other environment, including when `ENVIRONMENT` is unset (issue #149). Startup logs state the active auth mode.
 
 ### Key Endpoints
 
@@ -241,7 +241,8 @@ See `PRODUCTION_DEPLOYMENT.md` in project root for:
 - [ ] Configure production MongoDB URI
 - [ ] Set up AWS S3 bucket with proper permissions
 - [ ] Configure OpenAI API key with rate limits
-- [ ] Set `SKIP_AUTH=false` (authentication enabled)
+- [ ] Set `ENVIRONMENT=production`
+- [ ] Set `SKIP_AUTH=false` or unset (the backend refuses to start with `SKIP_AUTH=true` outside development/test)
 - [ ] Enable HTTPS/SSL
 - [ ] Configure CORS for frontend domain
 - [ ] Set up health check monitoring
