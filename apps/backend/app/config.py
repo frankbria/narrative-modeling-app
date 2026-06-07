@@ -1,7 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
 import os
-import sys
 import logging
 from dotenv import load_dotenv
 from pathlib import Path
@@ -45,13 +44,13 @@ def is_production_like() -> bool:
 def get_environment(default: str = "development") -> str:
     """Return the canonical deployment environment, normalized to lowercase.
 
-    Reads ``ENVIRONMENT`` first, falling back to the legacy ``NODE_ENV``.
-    When neither is set during a pytest run, the environment counts as
-    ``test``; otherwise ``default`` is returned.
+    Reads ``ENVIRONMENT`` first, falling back to the legacy ``NODE_ENV``,
+    then ``default``. No implicit test detection — the test suite sets
+    ENVIRONMENT=test explicitly in tests/conftest.py (a "pytest in
+    sys.modules" heuristic proved spoofable: pytest-cov's subprocess hook
+    imports pytest into child processes).
     """
     env = os.getenv("ENVIRONMENT") or os.getenv("NODE_ENV")
-    if env is None and "pytest" in sys.modules:
-        env = "test"
     return (env or default).strip().lower()
 
 
@@ -78,8 +77,6 @@ def validate_skip_auth(
     else:
         # Check EVERY set environment signal, not just the canonical one
         signals = environment_signals()
-        if not signals and "pytest" in sys.modules:
-            signals = ["test"]
 
     normalized = [s.strip().lower() for s in signals]
     if not normalized or any(

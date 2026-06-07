@@ -7,7 +7,8 @@ explicitly ``development`` or ``test``:
 - ``validate_skip_auth`` raises ``RuntimeError`` for production-like or
   unset environments when SKIP_AUTH is enabled
 - ``get_environment`` standardizes ENVIRONMENT (with legacy NODE_ENV
-  fallback and pytest detection)
+  fallback; the suite itself sets ENVIRONMENT=test in conftest.py — there
+  is deliberately no implicit pytest detection in the guard)
 - importing ``app.auth.nextauth_auth`` in a hostile environment fails
   (verified in a fresh subprocess, simulating real app startup)
 """
@@ -18,7 +19,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -99,16 +99,16 @@ class TestValidateSkipAuth:
 
         validate_skip_auth()
 
-    def test_unset_environment_outside_pytest_raises(self, monkeypatch):
-        """Without pytest in the process, an unset ENVIRONMENT must fail."""
+    def test_unset_environment_vars_raise(self, monkeypatch):
+        """An entirely unset environment must fail — no implicit test
+        detection (a pytest-in-sys.modules heuristic proved spoofable via
+        pytest-cov's subprocess hook)."""
         monkeypatch.setenv("SKIP_AUTH", "true")
         monkeypatch.delenv("ENVIRONMENT", raising=False)
         monkeypatch.delenv("NODE_ENV", raising=False)
 
-        with patch.dict(sys.modules) as modules:
-            modules.pop("pytest", None)
-            with pytest.raises(RuntimeError, match="SKIP_AUTH"):
-                validate_skip_auth()
+        with pytest.raises(RuntimeError, match="SKIP_AUTH"):
+            validate_skip_auth()
 
 
 class TestGetEnvironment:
@@ -131,21 +131,20 @@ class TestGetEnvironment:
 
         assert get_environment() == "production"
 
-    def test_unset_under_pytest_is_test(self, monkeypatch):
-        """A pytest run with no explicit environment counts as test."""
+    def test_unset_uses_default(self, monkeypatch):
+        """No implicit pytest detection — unset means the default."""
         monkeypatch.delenv("ENVIRONMENT", raising=False)
         monkeypatch.delenv("NODE_ENV", raising=False)
 
-        assert get_environment() == "test"
+        assert get_environment() == "development"
+        assert get_environment(default="") == ""
 
-    def test_unset_outside_pytest_uses_default(self, monkeypatch):
-        monkeypatch.delenv("ENVIRONMENT", raising=False)
-        monkeypatch.delenv("NODE_ENV", raising=False)
-
-        with patch.dict(sys.modules) as modules:
-            modules.pop("pytest", None)
-            assert get_environment() == "development"
-            assert get_environment(default="") == ""
+    def test_suite_declares_environment_explicitly(self):
+        """conftest.py exports ENVIRONMENT (default: test) for the whole
+        suite — the guard has no implicit pytest detection to fall back on."""
+        assert os.environ.get(
+            "ENVIRONMENT"
+        ), "conftest.py must set ENVIRONMENT for the test suite"
 
 
 class TestCredentialValidationStaysProductionSafe:
