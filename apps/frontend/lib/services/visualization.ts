@@ -88,9 +88,10 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const response = await fetch(`${apiUrl}/visualizations/histogram/${datasetId}/${column}?bins=${bins}`, {
-    headers
-  });
+  const response = await fetch(
+    `${apiUrl}/visualizations/histogram/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}?bins=${bins}`,
+    { headers }
+  );
   if (!response.ok) {
     throw new Error('Failed to fetch histogram data');
   }

@@ -44,6 +44,18 @@ describe('getHistogram', () => {
     expect(init.headers['Authorization']).toBe('Bearer tok-123')
   })
 
+  it('URL-encodes dataset and column path segments', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ bins: [], counts: [], bin_edges: [] }),
+    })
+
+    await getHistogram('ds 1', 'price/unit #2')
+
+    const [url] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/visualizations/histogram/ds%201/price%2Funit%20%232?bins=50')
+  })
+
   it('throws on a non-ok response', async () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 401 })
 
