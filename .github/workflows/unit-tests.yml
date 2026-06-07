@@ -166,4 +166,6 @@ jobs:
           GOOGLE_CLIENT_SECRET: dummy-client-secret
           GITHUB_ID: dummy-client-id
           GITHUB_SECRET: dummy-client-secret
-          OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
+          # No `sk-` prefix: avoids tripping secret-scanning heuristics; the
+          # build never calls the OpenAI API so any string works.
+          OPENAI_API_KEY: fake-openai-key-for-ci-only

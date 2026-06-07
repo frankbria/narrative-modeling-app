@@ -96,7 +96,8 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
     throw new Error('Failed to fetch histogram data');
   }
   // Normalize to HistogramData: consumers (HistogramChart) read `bins` as the
-  // per-bin counts and `binEdges` for the bucket boundaries.
+  // per-bin counts and `binEdges` for the bucket boundaries. `raw.bins` (bin
+  // CENTERS) is intentionally unused — labels are derived from edges instead.
   const raw = (await response.json()) as HistogramApiResponse;
   return {
     bins: raw.counts,
