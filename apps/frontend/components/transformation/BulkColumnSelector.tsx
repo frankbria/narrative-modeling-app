@@ -367,7 +367,6 @@ export function BulkColumnSelector({
             itemCount={filteredColumns.length}
             itemSize={ITEM_HEIGHT}
             width="100%"
-            role="presentation"
           >
             {ColumnListItem}
           </List>

@@ -5,6 +5,7 @@
  * in various scenarios.
  */
 
+import React from 'react';
 import { ImpactStats } from './ImpactStats';
 
 /**

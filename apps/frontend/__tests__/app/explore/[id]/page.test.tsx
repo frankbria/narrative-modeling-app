@@ -1,6 +1,9 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import DatasetAnalysisPage from '@/app/explore/[id]/page'
+
+const mockGetAuthToken = getAuthToken as jest.Mock
 
 // Mock Next.js navigation
 const mockPush = jest.fn()
@@ -90,8 +93,8 @@ jest.mock('@/components/AIInsightsPanel', () => {
 
 jest.mock('@/components/InteractiveVisualizationDashboard', () => {
   return {
-    InteractiveVisualizationDashboard: () => (
-      <div data-testid="visualization-dashboard">
+    InteractiveVisualizationDashboard: ({ columns }: { columns?: unknown }) => (
+      <div data-testid="visualization-dashboard" data-columns={JSON.stringify(columns ?? null)}>
         Visualizations
       </div>
     )
@@ -149,8 +152,8 @@ describe('DatasetAnalysisPage', () => {
     global.localStorage = localStorageMock as any
 
     // Reset fetch mock
-    fetch.mockReset()
-    fetch.mockResolvedValue({
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(mockProcessedDataset),
     })
@@ -158,6 +161,8 @@ describe('DatasetAnalysisPage', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
+    // Restore the default token resolution mocked globally in jest.setup.js
+    mockGetAuthToken.mockResolvedValue('mock-token')
   })
 
   it('renders loading state initially', () => {
@@ -181,7 +186,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('shows processing state for unprocessed datasets', async () => {
     // TODO: Fix this test - requires proper component rendering for unprocessed state
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
@@ -245,7 +250,7 @@ describe('DatasetAnalysisPage', () => {
       download_url: 'https://example.com/download/test.csv'
     }
 
-    fetch
+    ;(global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue(mockProcessedDataset),
@@ -282,7 +287,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('starts processing for unprocessed datasets', async () => {
     // TODO: Fix this test - requires proper async processing state handling
-    fetch
+    ;(global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
@@ -314,8 +319,86 @@ describe('DatasetAnalysisPage', () => {
     })
   })
 
+  it('shows an auth-required error when an unprocessed dataset is loaded without a token', async () => {
+    // Null token + unprocessed dataset triggers the guard at page.tsx lines 106-108.
+    mockGetAuthToken.mockResolvedValue(null)
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Authentication required to process this dataset')
+      ).toBeInTheDocument()
+    })
+
+    // The guard returns before any /data/process call is made.
+    const processCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+      String(url).includes('/data/process')
+    )
+    expect(processCalls).toHaveLength(0)
+  })
+
+  it('maps schema column types when rendering the visualizations tab', async () => {
+    // The wire shape is the backend's ColumnSchema (schema_inference.py):
+    // canonical `data_type` (integer/float/currency/.../categorical/datetime),
+    // `cardinality` instead of unique_count, and NO `type` field. Legacy
+    // pandas-style `type` entries must still classify for older documents.
+    const datasetWithTypedColumns = {
+      ...mockProcessedDataset,
+      schema: {
+        row_count: 1000,
+        column_count: 5,
+        columns: [
+          { name: 'age', data_type: 'integer', cardinality: 50, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'price', data_type: 'currency', cardinality: 800, null_count: 2, nullable: true, unique: false, null_percentage: 0.2 },
+          { name: 'city', data_type: 'categorical', cardinality: 10, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'signup', data_type: 'datetime', cardinality: 900, null_count: 0, nullable: false, unique: false, null_percentage: 0 },
+          { name: 'legacy_score', type: 'int64', unique_count: 42, null_count: 1 },
+        ],
+      },
+    }
+
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(datasetWithTypedColumns),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // Activate the visualizations tab so its TabsContent (and the column-type
+    // mapping at page.tsx lines 423-427) renders.
+    const vizTab = screen.getByRole('tab', { name: /visualization/i })
+    fireEvent.mouseDown(vizTab)
+    fireEvent.mouseUp(vizTab)
+    fireEvent.click(vizTab)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visualization-dashboard')).toBeInTheDocument()
+    })
+
+    const dashboard = screen.getByTestId('visualization-dashboard')
+    const passedColumns = JSON.parse(dashboard.getAttribute('data-columns') ?? 'null')
+    expect(passedColumns).toEqual([
+      { name: 'age', type: 'numeric', unique_count: 50, null_count: 0 },
+      { name: 'price', type: 'numeric', unique_count: 800, null_count: 2 },
+      { name: 'city', type: 'categorical', unique_count: 10, null_count: 0 },
+      { name: 'signup', type: 'datetime', unique_count: 900, null_count: 0 },
+      { name: 'legacy_score', type: 'numeric', unique_count: 42, null_count: 1 },
+    ])
+  })
+
   it('handles API errors gracefully', async () => {
-    fetch.mockRejectedValueOnce(new Error('API Error'))
+    ;(global.fetch as jest.Mock).mockRejectedValueOnce(new Error('API Error'))
     
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     
@@ -327,7 +410,7 @@ describe('DatasetAnalysisPage', () => {
   })
 
   it('handles dataset not found', async () => {
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       status: 404,
     })
@@ -362,7 +445,7 @@ describe('DatasetAnalysisPage', () => {
 
   it.skip('disables export button for unprocessed datasets', async () => {
     // TODO: Fix this test - button disabled state not working with mocked unprocessed state
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
     })
@@ -384,7 +467,7 @@ describe('DatasetAnalysisPage', () => {
       schema: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutSchema),
     })
@@ -406,7 +489,7 @@ describe('DatasetAnalysisPage', () => {
       statistics: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutStats),
     })
@@ -428,7 +511,7 @@ describe('DatasetAnalysisPage', () => {
       quality_report: null
     }
 
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutQuality),
     })

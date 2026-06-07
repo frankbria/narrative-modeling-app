@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
 import { ProductionService, ModelMetrics } from '@/lib/services/production'
 import { ModelService, ModelInfo } from '@/lib/services/model'
+import type { PredictionDistribution } from '@/lib/types/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -51,7 +52,7 @@ export default function ModelMonitoringPage() {
   const [model, setModel] = useState<ModelInfo | null>(null)
   const [metrics, setMetrics] = useState<ModelMetrics | null>(null)
   const [predictionLogs, setPredictionLogs] = useState<PredictionLog[]>([])
-  const [distribution, setDistribution] = useState<Record<string, unknown> | null>(null)
+  const [distribution, setDistribution] = useState<PredictionDistribution | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [timeWindow, setTimeWindow] = useState('24')

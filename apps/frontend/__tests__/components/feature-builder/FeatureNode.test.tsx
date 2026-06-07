@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import FeatureNode, { FeatureNodeData } from '@/components/feature-builder/FeatureNode';
-import { ReactFlowProvider } from '@xyflow/react';
+import FeatureNode, { FeatureNodeData, FeatureNode as FeatureNodeType } from '@/components/feature-builder/FeatureNode';
+import { ReactFlowProvider, NodeProps } from '@xyflow/react';
 
 // Mock lucide-react icons
 jest.mock('lucide-react', () => ({
@@ -20,10 +20,10 @@ describe('FeatureNode Component', () => {
   const mockOnDelete = jest.fn();
   const mockOnUpdate = jest.fn();
 
-  const createNodeProps = (data: Partial<FeatureNodeData> = {}) => ({
+  const createNodeProps = (data: Partial<FeatureNodeData> = {}): NodeProps<FeatureNodeType> => ({
     id: 'test-node-1',
     data: {
-      nodeType: 'column' as const,
+      nodeType: 'column',
       value: 'test_column',
       label: 'Test Column',
       parameters: {},
@@ -32,12 +32,19 @@ describe('FeatureNode Component', () => {
       ...data,
     },
     selected: false,
-    type: 'featureNode',
+    type: 'column',
     zIndex: 1,
     isConnectable: true,
     positionAbsoluteX: 0,
     positionAbsoluteY: 0,
     dragging: false,
+    selectable: true,
+    deletable: true,
+    draggable: true,
+    width: 120,
+    height: 80,
+    parentId: undefined,
+    dragHandle: undefined,
     targetPosition: undefined,
     sourcePosition: undefined,
   });
@@ -205,6 +212,46 @@ describe('FeatureNode Component', () => {
       fireEvent.click(settingsButton!);
 
       expect(screen.getByText('Decimals')).toBeInTheDocument();
+    });
+
+    it('should default the decimals input to 0 when no parameter is set', () => {
+      const props = createNodeProps({
+        nodeType: 'function',
+        value: 'round',
+        parameters: {}, // no decimals → exercises the `?? 0` fallback (line 126)
+      });
+
+      render(
+        <ReactFlowWrapper>
+          <FeatureNode {...props} />
+        </ReactFlowWrapper>
+      );
+
+      const settingsButton = screen.getByTestId('settings-icon').closest('button');
+      fireEvent.click(settingsButton!);
+
+      const input = screen.getByRole('spinbutton');
+      expect(input).toHaveValue(0);
+    });
+
+    it('should default the fill_value input to empty string when no parameter is set', () => {
+      const props = createNodeProps({
+        nodeType: 'function',
+        value: 'fill_null',
+        parameters: {}, // no fill_value → exercises the `?? ''` fallback (line 142)
+      });
+
+      render(
+        <ReactFlowWrapper>
+          <FeatureNode {...props} />
+        </ReactFlowWrapper>
+      );
+
+      const settingsButton = screen.getByTestId('settings-icon').closest('button');
+      fireEvent.click(settingsButton!);
+
+      const input = screen.getByRole('textbox');
+      expect(input).toHaveValue('');
     });
 
     it('should show fill_value parameter for fill_null function', () => {

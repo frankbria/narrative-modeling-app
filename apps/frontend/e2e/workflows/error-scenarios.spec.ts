@@ -503,7 +503,7 @@ test.describe('System Error Scenarios', () => {
         localStorage.setItem('test', largeData);
       } catch (e) {
         // Expected to fail
-        window.quotaExceeded = true;
+        (window as unknown as { quotaExceeded?: boolean }).quotaExceeded = true;
       }
     });
 

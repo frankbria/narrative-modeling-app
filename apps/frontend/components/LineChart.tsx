@@ -34,6 +34,12 @@ export function LineChart({
 }: LineChartProps) {
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#d084d0']
 
+  // recharts' onClick passes a CategoricalChartState; adapt it to the simpler
+  // Record<string, unknown> shape exposed by this component's onPointClick prop.
+  const handleChartClick = onPointClick
+    ? (state: unknown) => onPointClick((state ?? {}) as Record<string, unknown>)
+    : undefined
+
   const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number | string; color: string }>; label?: string | number }) => {
     if (active && payload && payload.length) {
       return (
@@ -61,7 +67,7 @@ export function LineChart({
           height={height}
           data={data.data}
           margin={{ top: 20, right: 30, left: 60, bottom: 60 }}
-          onClick={onPointClick}
+          onClick={handleChartClick}
         >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis 

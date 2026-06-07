@@ -20,6 +20,23 @@ import type {
   ParameterValue
 } from '@/lib/types/recipe'
 
+// Re-export recipe types so consumers importing the service (which also need
+// the value-level TransformationService) can pull the related types from a
+// single module.
+export type {
+  Recipe,
+  RecipeListResponse,
+  RecipeCompatibilityResponse,
+  RecipeShareResponse,
+  SharedRecipe,
+  SharedRecipeListResponse,
+  RecipeExportJSONResponse,
+  RecipeVersionHistoryResponse,
+  RecipeCreateRequest,
+  TransformationStep,
+  ParameterValue
+} from '@/lib/types/recipe'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface TransformationRequest {

@@ -123,3 +123,49 @@ jobs:
           name: frontend-unit-coverage
           path: apps/frontend/coverage/
           retention-days: 30
+
+  frontend-type-check-and-build:
+    # CI gate for issue #166: Jest does not type-check, so without this job
+    # `tsc --noEmit` / `next build` regressions land silently on main.
+    name: Frontend Type Check & Build
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: |
+          # Try npm ci first (faster), fall back to npm install if lock file is out of sync
+          npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+
+      - name: Type check (tsc --noEmit)
+        # Covers tests/ and e2e/ as well — next build alone excludes them.
+        working-directory: apps/frontend
+        run: npm run type-check
+
+      - name: Production build (next build)
+        # Catches module-resolution and prerender failures that tsc misses.
+        working-directory: apps/frontend
+        run: npm run build
+        env:
+          CI: true
+          # Dummy values mirroring smoke-tests.yml — build must not need real secrets.
+          NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
+          NEXTAUTH_URL: http://localhost:3000
+          GOOGLE_CLIENT_ID: dummy-client-id
+          GOOGLE_CLIENT_SECRET: dummy-client-secret
+          GITHUB_ID: dummy-client-id
+          GITHUB_SECRET: dummy-client-secret
+          # No `sk-` prefix: avoids tripping secret-scanning heuristics; the
+          # build never calls the OpenAI API so any string works.
+          OPENAI_API_KEY: fake-openai-key-for-ci-only

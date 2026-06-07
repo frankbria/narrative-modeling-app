@@ -77,13 +77,21 @@ const mockStatistics = {
 // Mock chart components
 jest.mock('@/components/HistogramChart', () => {
   return {
-    HistogramChart: ({ column }) => <div data-testid={`histogram-${column}`}>Histogram for {column}</div>
+    HistogramChart: ({ column }: { column: string }) => <div data-testid={`histogram-${column}`}>Histogram for {column}</div>
   }
 })
 
 jest.mock('@/components/CorrelationHeatmap', () => {
   return {
-    CorrelationHeatmap: () => <div data-testid="correlation-heatmap">Correlation Heatmap</div>
+    CorrelationHeatmap: ({ stats, correlationMatrix }: { stats?: unknown; correlationMatrix?: unknown }) => (
+      <div
+        data-testid="correlation-heatmap"
+        data-stats={JSON.stringify(stats ?? null)}
+        data-matrix={JSON.stringify(correlationMatrix ?? null)}
+      >
+        Correlation Heatmap
+      </div>
+    )
   }
 })
 
@@ -195,7 +203,12 @@ describe('StatisticsDashboard', () => {
     
     expect(screen.getByText('Correlation Matrix')).toBeInTheDocument()
     expect(screen.getByText('Correlation between numeric variables')).toBeInTheDocument()
-    expect(screen.getByTestId('correlation-heatmap')).toBeInTheDocument()
+    const heatmap = screen.getByTestId('correlation-heatmap')
+    // The heatmap must receive the backend-computed matrix — it must never
+    // synthesize coefficients itself (issue #166 review regression).
+    expect(JSON.parse(heatmap.getAttribute('data-matrix') ?? 'null')).toEqual(
+      mockStatistics.correlation_matrix
+    )
   })
 
   it('handles loading state when statistics not provided', () => {
@@ -205,7 +218,7 @@ describe('StatisticsDashboard', () => {
   })
 
   it('handles error state gracefully', () => {
-    fetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch'))
     
     render(<StatisticsDashboard datasetId="test-id" />)
     
@@ -257,6 +270,69 @@ describe('StatisticsDashboard', () => {
     fireEvent.mouseUp(correlationsTab)
     fireEvent.click(correlationsTab)
     expect(screen.getByText('No correlation data available')).toBeInTheDocument()
+  })
+
+  it('builds correlation stats with zero fallbacks when numeric sub-stats are missing', () => {
+    // A numeric column with `mean` defined but min/max/median/std_dev undefined
+    // exercises the `?? 0` fallback branches when mapping to StatItem shape.
+    const statsWithSparseNumeric = {
+      ...mockStatistics,
+      column_statistics: [
+        {
+          column_name: 'sparse_metric',
+          data_type: 'float',
+          total_count: 1000,
+          null_count: 0,
+          null_percentage: 0.0,
+          unique_count: 500,
+          unique_percentage: 50.0,
+          mean: 7.5,
+          // median, std_dev, min_value, max_value intentionally omitted
+        },
+        {
+          column_name: 'null_mean_metric',
+          data_type: 'float',
+          total_count: 1000,
+          null_count: 1000,
+          null_percentage: 100.0,
+          unique_count: 0,
+          unique_percentage: 0.0,
+          // mean is explicitly null (not undefined) so the numeric_stats block
+          // still runs and the `col.mean ?? 0` fallback (line 131) is exercised.
+          mean: null as unknown as number,
+        },
+      ],
+    }
+
+    render(<StatisticsDashboard datasetId="test-id" statistics={statsWithSparseNumeric} />)
+
+    // The correlations tab consumes the mapped correlationStats: assert the
+    // actual StatItem values produced by the `?? 0` fallback mapping.
+    const correlationsTab = screen.getByRole('tab', { name: 'Correlations' })
+    fireEvent.mouseDown(correlationsTab)
+    fireEvent.mouseUp(correlationsTab)
+    fireEvent.click(correlationsTab)
+    const heatmap = screen.getByTestId('correlation-heatmap')
+    const passedStats = JSON.parse(heatmap.getAttribute('data-stats') ?? 'null')
+    expect(passedStats).toEqual([
+      expect.objectContaining({
+        field_name: 'sparse_metric',
+        field_type: 'numeric',
+        numeric_stats: { min: 0, max: 0, mean: 7.5, median: 0, mode: 0, std_dev: 0 },
+      }),
+      expect.objectContaining({
+        field_name: 'null_mean_metric',
+        numeric_stats: expect.objectContaining({ mean: 0 }),
+      }),
+    ])
+
+    // And the numeric tab still renders the column with N/A for the missing stats.
+    const numericTab = screen.getByRole('tab', { name: 'Numeric' })
+    fireEvent.mouseDown(numericTab)
+    fireEvent.mouseUp(numericTab)
+    fireEvent.click(numericTab)
+    expect(screen.getByText('sparse_metric')).toBeInTheDocument()
+    expect(screen.getByText('7.50')).toBeInTheDocument() // mean rendered
   })
 
   it('handles columns without most frequent values', () => {

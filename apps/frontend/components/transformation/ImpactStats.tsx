@@ -18,7 +18,7 @@ interface ImpactStatistics {
   >;
 }
 
-interface ImpactStatsProps {
+export interface ImpactStatsProps {
   impactStats: ImpactStatistics;
 }
 

@@ -7,12 +7,13 @@ import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy } from 'lucide-react';
+import type { DeployResponse, DeploymentStatusResponse } from '@/lib/types/api';
 
 export default function DeployPage() {
   const { state, completeStage, canAccessStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [deployment, setDeployment] = useState<Record<string, unknown> | null>(null);
+  const [deployment, setDeployment] = useState<DeployResponse | null>(null);
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'deployed'>('idle');
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function DeployPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as DeploymentStatusResponse;
         if (data.deployment) {
           setDeployment(data.deployment);
           setDeploymentStatus('deployed');
@@ -73,7 +74,7 @@ export default function DeployPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as DeployResponse;
         setDeployment(data);
         setDeploymentStatus('deployed');
         

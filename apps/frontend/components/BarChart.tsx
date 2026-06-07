@@ -73,12 +73,18 @@ export function BarChart({
     return null
   }
 
+  // recharts' onClick passes a CategoricalChartState; adapt it to the simpler
+  // Record<string, unknown> shape exposed by this component's onBarClick prop.
+  const handleChartClick = onBarClick
+    ? (state: unknown) => onBarClick((state ?? {}) as Record<string, unknown>)
+    : undefined
+
   const chartProps = {
     width,
     height,
     data: sortedData,
     margin: { top: 20, right: 30, left: 60, bottom: 80 },
-    onClick: onBarClick
+    onClick: handleChartClick
   }
 
   return (

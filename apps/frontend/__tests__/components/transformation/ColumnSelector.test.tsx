@@ -744,7 +744,7 @@ describe('ColumnSelector', () => {
       });
 
       const ageItem = screen.getByText('age').closest('[role="option"]');
-      const numericIndicator = within(ageItem!).getByText('Numeric');
+      const numericIndicator = within(ageItem as HTMLElement).getByText('Numeric');
       expect(numericIndicator).toHaveClass('text-blue-500');
     });
 
@@ -762,7 +762,7 @@ describe('ColumnSelector', () => {
       });
 
       const categoryItem = screen.getByText('category').closest('[role="option"]');
-      const categoricalIndicator = within(categoryItem!).getByText('Categorical');
+      const categoricalIndicator = within(categoryItem as HTMLElement).getByText('Categorical');
       expect(categoricalIndicator).toHaveClass('text-green-500');
     });
 
@@ -780,7 +780,7 @@ describe('ColumnSelector', () => {
       });
 
       const datetimeItem = screen.getByText('created_at').closest('[role="option"]');
-      const datetimeIndicator = within(datetimeItem!).getByText('DateTime');
+      const datetimeIndicator = within(datetimeItem as HTMLElement).getByText('DateTime');
       expect(datetimeIndicator).toHaveClass('text-purple-500');
     });
 
@@ -798,7 +798,7 @@ describe('ColumnSelector', () => {
       });
 
       const textItem = screen.getByText('description').closest('[role="option"]');
-      const textIndicator = within(textItem!).getByText('Text');
+      const textIndicator = within(textItem as HTMLElement).getByText('Text');
       expect(textIndicator).toHaveClass('text-orange-500');
     });
   });
@@ -838,7 +838,7 @@ describe('ColumnSelector', () => {
       });
 
       const createdAtItem = screen.getByText('created_at').closest('[role="option"]');
-      const missingBadges = within(createdAtItem!).queryAllByText(/% missing/);
+      const missingBadges = within(createdAtItem as HTMLElement).queryAllByText(/% missing/);
       expect(missingBadges).toHaveLength(0);
     });
 

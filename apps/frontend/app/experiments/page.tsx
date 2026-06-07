@@ -136,11 +136,11 @@ export default function ExperimentsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {experiments
+              {(experiments
                 .filter(e => e.lift_percentage)
-                .reduce((sum, e) => sum + (e.lift_percentage || 0), 0) / 
+                .reduce((sum, e) => sum + (e.lift_percentage || 0), 0) /
                 Math.max(experiments.filter(e => e.lift_percentage).length, 1)
-                .toFixed(1)}%
+              ).toFixed(1)}%
             </div>
           </CardContent>
         </Card>

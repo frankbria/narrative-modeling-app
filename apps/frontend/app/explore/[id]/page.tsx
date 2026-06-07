@@ -19,16 +19,44 @@ import { StatisticsDashboard } from '@/components/StatisticsDashboard'
 import { QualityReportCard } from '@/components/QualityReportCard'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
 import { InteractiveVisualizationDashboard } from '@/components/InteractiveVisualizationDashboard'
+import type { DatasetSchema, DatasetStatistics, DatasetQualityReport } from '@/lib/types/api'
 
 interface ProcessedDataset {
   id: string
   filename: string
   is_processed: boolean
-  schema: Record<string, unknown>
-  statistics: Record<string, unknown>
-  quality_report: Record<string, unknown>
+  schema?: DatasetSchema
+  statistics?: DatasetStatistics
+  quality_report?: DatasetQualityReport
   data_preview: Record<string, unknown>[]
   processed_at: string
+}
+
+/** Map a backend DataType (schema_inference.py) or legacy pandas dtype to the
+ *  visualization dashboard's column buckets. */
+function classifyColumnType(dataType: string | undefined): 'numeric' | 'categorical' | 'datetime' | 'text' {
+  switch (dataType) {
+    case 'integer':
+    case 'float':
+    case 'currency':
+    case 'percentage':
+    case 'number':
+    case 'int64':
+    case 'float64':
+      return 'numeric'
+    case 'categorical':
+    case 'boolean':
+    case 'string':
+    case 'object':
+      return 'categorical'
+    case 'date':
+    case 'datetime':
+    case 'time':
+    case 'datetime64[ns]':
+      return 'datetime'
+    default:
+      return 'text'
+  }
 }
 
 export default function DatasetAnalysisPage() {
@@ -102,6 +130,10 @@ export default function DatasetAnalysisPage() {
 
         // If not processed, start processing
         if (!data.is_processed && isMounted) {
+          if (!token) {
+            setError('Authentication required to process this dataset')
+            return
+          }
           await processDataset(datasetId, token, abortController.signal)
         }
       } catch (err) {
@@ -415,12 +447,12 @@ export default function DatasetAnalysisPage() {
             {dataset.schema?.columns ? (
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={dataset.schema.columns.map((col: { name: string; type: string; unique_count?: number }) => ({
+                columns={dataset.schema.columns.map((col) => ({
                   name: col.name,
-                  type: col.type === 'int64' || col.type === 'float64' || col.type === 'number' ? 'numeric' :
-                        col.type === 'object' || col.type === 'string' ? 'categorical' :
-                        col.type === 'datetime64[ns]' || col.type === 'datetime' ? 'datetime' : 'text',
-                  unique_count: col.unique_count,
+                  // Canonical field is the backend's `data_type` (schema_inference.py
+                  // DataType enum); legacy documents may only carry pandas-style `type`.
+                  type: classifyColumnType(col.data_type ?? col.type),
+                  unique_count: col.unique_count ?? col.cardinality,
                   null_count: col.null_count
                 }))}
                 statistics={dataset.statistics}

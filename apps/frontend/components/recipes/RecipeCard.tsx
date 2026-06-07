@@ -153,7 +153,7 @@ export function RecipeCard({
           {/* Compatibility Badge */}
           {(compatibility || isLoadingCompatibility) && (
             <RecipeCompatibilityBadge
-              compatibility={compatibility}
+              compatibility={compatibility ?? null}
               isLoading={isLoadingCompatibility}
             />
           )}

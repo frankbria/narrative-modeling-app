@@ -284,7 +284,7 @@ describe('DashboardPage', () => {
 
       // Check for loading skeleton in datasets section
       const datasetsSection = screen.getByTestId('recent-datasets');
-      expect(within(datasetsSection).getAllByClassName ? true : datasetsSection.querySelector('.animate-pulse')).toBeTruthy();
+      expect(datasetsSection.querySelector('.animate-pulse')).toBeTruthy();
 
       // Resolve the promise
       resolvePromise!({

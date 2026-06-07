@@ -160,8 +160,8 @@ test.describe('Production Readiness - Accessibility (WCAG 2.1 AA)', () => {
   }) => {
     await authenticatedPage.goto('/dashboard');
 
-    // Use axe-core for automated accessibility testing
-    const accessibilitySnapshot = await authenticatedPage.accessibility.snapshot();
+    // Capture the accessibility (ARIA) tree for the page
+    const accessibilitySnapshot = await authenticatedPage.locator('body').ariaSnapshot();
 
     expect(accessibilitySnapshot).toBeTruthy();
 

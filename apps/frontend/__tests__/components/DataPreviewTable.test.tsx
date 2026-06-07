@@ -19,7 +19,7 @@ const mockOnExport = jest.fn()
 
 describe('DataPreviewTable', () => {
   beforeEach(() => {
-    fetch.mockResolvedValue({
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(mockPreviewData),
     })
@@ -91,7 +91,7 @@ describe('DataPreviewTable', () => {
   })
 
   it('handles API errors gracefully', async () => {
-    fetch.mockRejectedValueOnce(new Error('API Error'))
+    ;(global.fetch as jest.Mock).mockRejectedValueOnce(new Error('API Error'))
     
     render(<DataPreviewTable datasetId="test-id" onExport={mockOnExport} />)
     
@@ -133,7 +133,7 @@ describe('DataPreviewTable', () => {
     })
 
     // Mock API response for page 2
-    fetch.mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue(page2Data),
     })

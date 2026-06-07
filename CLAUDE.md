@@ -27,15 +27,16 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 ## Testing Commands
 - Backend (full suite): `cd apps/backend && uv run pytest` — requires MongoDB on localhost:27017; optional test Redis (6380) and LocalStack (4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when these are absent)
 - Backend (service-free tests, no services): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
-- Frontend: `cd apps/frontend && npm test`
+- Frontend (unit tests): `cd apps/frontend && npm test`
+- Frontend (type check): `cd apps/frontend && npm run type-check`
 - MCP: `cd apps/mcp && uv run pytest`
 
 ## Test Suite Status
 - Backend: full suite green locally (~1,460 passed, ~39 service-gated/documented skips) ✅ — fixed in issue #160
   - During pytest runs the app lifespan uses the **test** database (never production `MONGODB_URI`)
   - Canonical Beanie model registry: `app/models/registry.py` (shared by app lifespan and `setup_database` fixture)
-- CI: `unit-tests.yml` runs the service-free paths; `integration-tests.yml` (manual) provisions Redis/LocalStack — service requirements documented in each workflow header
-- Frontend: Jest tests configured
+- CI: `unit-tests.yml` runs the service-free backend paths plus a `frontend-type-check-and-build` job (`tsc --noEmit` + `next build`); `integration-tests.yml` (manual) provisions Redis/LocalStack — service requirements documented in each workflow header
+- Frontend: Jest tests configured; TypeScript errors eliminated (#166); `npm run type-check` (`tsc --noEmit`) enforced in CI
 - MCP: Pytest suite available
 - See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for the testing guide and the **Service Prerequisites** table
 - See `apps/backend/docs/TDD_GUIDE.md` for TDD methodology

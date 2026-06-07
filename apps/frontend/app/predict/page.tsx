@@ -8,6 +8,12 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Target, Upload, FileText, Send, CheckCircle } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import type {
+  ModelFeature,
+  ModelFeaturesResponse,
+  PredictionResult,
+  BatchPredictionResult,
+} from '@/lib/types/api';
 
 interface PredictionInput {
   [key: string]: string | number;
@@ -19,9 +25,9 @@ export default function PredictPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
-  const [features, setFeatures] = useState<Record<string, unknown>[]>([]);
+  const [features, setFeatures] = useState<ModelFeature[]>([]);
   const [predictionInput, setPredictionInput] = useState<PredictionInput>({});
-  const [prediction, setPrediction] = useState<Record<string, unknown> | null>(null);
+  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [batchFile, setBatchFile] = useState<File | null>(null);
 
   useEffect(() => {
@@ -49,12 +55,12 @@ export default function PredictPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as ModelFeaturesResponse;
         setFeatures(data.features);
-        
+
         // Initialize input with default values
         const defaultInput: PredictionInput = {};
-        data.features.forEach((feature: { name: string; type: string }) => {
+        data.features.forEach((feature) => {
           defaultInput[feature.name] = feature.type === 'numeric' ? 0 : '';
         });
         setPredictionInput(defaultInput);
@@ -80,9 +86,9 @@ export default function PredictPage() {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        const result = (await response.json()) as PredictionResult;
         setPrediction(result);
-        
+
         // Mark stage as complete
         if (!state.completedStages.has(WorkflowStage.PREDICTION)) {
           completeStage(WorkflowStage.PREDICTION, {
@@ -116,8 +122,8 @@ export default function PredictPage() {
       });
 
       if (response.ok) {
-        const result = await response.json();
-        
+        const result = (await response.json()) as BatchPredictionResult;
+
         // Download results
         window.open(result.download_url, '_blank');
         

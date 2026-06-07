@@ -4,9 +4,12 @@ import { CorrelationMatrix } from '@/lib/services/visualization';
 
 interface CorrelationHeatmapProps {
   stats: StatItem[];
+  /** Backend-computed correlation matrix (statistics.correlation_matrix).
+   *  Without it the heatmap renders an empty state — it never synthesizes values. */
+  correlationMatrix?: Record<string, Record<string, number>> | null;
 }
 
-export function CorrelationHeatmap({ stats }: CorrelationHeatmapProps) {
+export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: CorrelationHeatmapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
@@ -30,49 +33,27 @@ export function CorrelationHeatmap({ stats }: CorrelationHeatmapProps) {
   }, []);
 
   const correlationMatrix = useMemo(() => {
-    console.log('Rendering CorrelationHeatmap with stats:', stats);
-    
-    if (!Array.isArray(stats)) {
-      console.error('Stats is not an array:', stats);
+    // Only the backend-computed matrix is rendered; with none available the
+    // heatmap shows the empty state rather than fabricated coefficients.
+    if (!matrixProp) {
       return null;
     }
 
-    // Filter for numeric columns - only check field_type
-    const numericStats = stats.filter(stat => stat.field_type === 'numeric');
-    
-    console.log('Found numeric stats:', numericStats.length);
-    console.log('Numeric stats:', numericStats);
-
-    if (numericStats.length < 2) {
-      console.log('Not enough numeric columns for correlation matrix');
+    const columns = Object.keys(matrixProp);
+    if (columns.length < 2) {
       return null;
     }
 
-    // Create correlation matrix
-    const matrix: number[][] = [];
-    const columns = numericStats.map(stat => stat.field_name);
+    const matrix = columns.map((row) =>
+      columns.map(
+        // Mirror the symmetric entry before defaulting, so a triangle-only
+        // payload doesn't render missing cells as zero correlation.
+        (col) => matrixProp[row]?.[col] ?? matrixProp[col]?.[row] ?? (row === col ? 1 : 0)
+      )
+    );
 
-    // Initialize matrix with 1s on diagonal
-    for (let i = 0; i < numericStats.length; i++) {
-      matrix[i] = new Array(numericStats.length).fill(0);
-      matrix[i][i] = 1;
-    }
-
-    // Calculate correlations
-    for (let i = 0; i < numericStats.length; i++) {
-      for (let j = i + 1; j < numericStats.length; j++) {
-        // Generate a random correlation between -1 and 1 for demonstration
-        // In a real app, you would calculate this based on actual data
-        const correlation = Math.random() * 2 - 1;
-        
-        matrix[i][j] = correlation;
-        matrix[j][i] = correlation;
-      }
-    }
-
-    console.log('Created correlation matrix:', { columns, matrix });
     return { columns, matrix } as CorrelationMatrix;
-  }, [stats]);
+  }, [matrixProp]);
 
   if (!correlationMatrix) {
     return (

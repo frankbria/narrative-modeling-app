@@ -299,10 +299,11 @@ export default function DatasetPreparePage() {
     if (editingIndex === null) return;
 
     const newTransformations = [...transformations];
+    // The dialog cannot change the transformation type during an edit and its
+    // payload carries no label — only the parameters may be updated, otherwise
+    // the formatted label would be clobbered with the raw type string.
     newTransformations[editingIndex] = {
       ...newTransformations[editingIndex],
-      type: config.type,
-      label: config.label || config.type,
       parameters: config.parameters
     };
 
@@ -473,23 +474,39 @@ export default function DatasetPreparePage() {
       </div>
 
       {/* Edit Transformation Dialog */}
-      {editingIndex !== null && (
-        <TransformationConfigDialog
-          open={editingIndex !== null}
-          onOpenChange={(open) => {
-            if (!open) handleCancelEdit();
-          }}
-          transformationType={transformations[editingIndex].type}
-          existingConfig={{
-            type: transformations[editingIndex].type,
-            label: transformations[editingIndex].label,
-            parameters: transformations[editingIndex].parameters
-          }}
-          availableColumns={availableColumns}
-          transformationTypes={transformationTypes}
-          onSave={handleSaveEdit}
-        />
-      )}
+      {editingIndex !== null && (() => {
+        const editingType = transformations[editingIndex].type;
+        const typeMeta = transformationTypes.find(
+          (t) => t.type === editingType
+        );
+        return (
+          <TransformationConfigDialog
+            open={editingIndex !== null}
+            onOpenChange={(open) => {
+              if (!open) handleCancelEdit();
+            }}
+            transformationType={editingType}
+            transformationLabel={
+              (typeMeta?.label as string | undefined) ??
+              transformations[editingIndex].label
+            }
+            transformationDescription={
+              (typeMeta?.description as string | undefined) ?? ''
+            }
+            parametersSchema={
+              (typeMeta?.parameters_schema as Record<string, unknown> | undefined) ?? {}
+            }
+            existingConfig={{
+              type: editingType,
+              label: transformations[editingIndex].label,
+              parameters: transformations[editingIndex].parameters
+            }}
+            availableColumns={availableColumns}
+            datasetId={datasetId}
+            onAdd={handleSaveEdit}
+          />
+        );
+      })()}
     </div>
   );
 }
