@@ -293,7 +293,6 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
                     </div>
                   </div>
 
-                  {/* Mini histogram for this numeric column */}
                   <div className="mt-4">
                     <HistogramChart datasetId={datasetId} column={col.column_name} height={100} />
                   </div>

@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { API_URL } from '@/lib/constants';
+import type { TransformationStep } from '@/lib/types/recipe';
 import { getAuthToken } from '@/lib/auth-helpers';
 import TransformationSidebar from './TransformationSidebar';
 import TransformationNode, { TransformationFlowNode, TransformationNodeData } from './TransformationNode';
@@ -245,7 +246,7 @@ export default function TransformationPipeline({
 
   const handleLoadRecipe = async (recipe: any) => {
     // Convert recipe transformations to nodes
-    const newNodes: TransformationFlowNode[] = recipe.transformations.map((transform: any, index: number) => ({
+    const newNodes: TransformationFlowNode[] = recipe.transformations.map((transform: TransformationStep, index: number) => ({
       id: `node-${index + 1}`,
       type: 'transformation',
       position: { x: 250, y: 100 + index * 150 },
