@@ -21,6 +21,12 @@ a missing service.
 | OpenAI | n/a | — | never called: AI tests mock the client | n/a |
 
 Notes:
+- `tests/conftest.py` sets `ENVIRONMENT=test` (via `os.environ.setdefault`) at
+  module scope, before any app import. This satisfies the `SKIP_AUTH` guard
+  introduced in issue #149, which requires every set environment signal to be
+  explicitly `development` or `test`. If you export `ENVIRONMENT` in your shell
+  before running pytest, that value takes precedence (setdefault does not
+  override an already-set variable).
 - During pytest runs the app lifespan is pointed at the **test** database
   (`tests/conftest.py::_point_app_at_test_database`); it never touches the
   production `MONGODB_URI`.
