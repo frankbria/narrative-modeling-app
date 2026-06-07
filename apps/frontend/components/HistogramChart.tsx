@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { HistogramData, getHistogram } from '@/lib/services/visualization';
+import { getAuthToken } from '@/lib/auth-helpers';
 
 interface HistogramChartProps {
   /** Pre-computed histogram data. Takes precedence over datasetId/column. */
@@ -24,7 +25,10 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
 
     if (datasetId && column) {
       let cancelled = false;
-      getHistogram(datasetId, column)
+      // The histogram route requires auth (get_current_user_id) — resolve and
+      // forward the bearer token or every request 401s.
+      getAuthToken()
+        .then((token) => getHistogram(datasetId, column, 50, token ?? undefined))
         .then((result) => {
           if (!cancelled) setFetchedData(result);
         })

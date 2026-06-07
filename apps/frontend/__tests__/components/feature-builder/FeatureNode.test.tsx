@@ -214,6 +214,46 @@ describe('FeatureNode Component', () => {
       expect(screen.getByText('Decimals')).toBeInTheDocument();
     });
 
+    it('should default the decimals input to 0 when no parameter is set', () => {
+      const props = createNodeProps({
+        nodeType: 'function',
+        value: 'round',
+        parameters: {}, // no decimals → exercises the `?? 0` fallback (line 126)
+      });
+
+      render(
+        <ReactFlowWrapper>
+          <FeatureNode {...props} />
+        </ReactFlowWrapper>
+      );
+
+      const settingsButton = screen.getByTestId('settings-icon').closest('button');
+      fireEvent.click(settingsButton!);
+
+      const input = screen.getByRole('spinbutton');
+      expect(input).toHaveValue(0);
+    });
+
+    it('should default the fill_value input to empty string when no parameter is set', () => {
+      const props = createNodeProps({
+        nodeType: 'function',
+        value: 'fill_null',
+        parameters: {}, // no fill_value → exercises the `?? ''` fallback (line 142)
+      });
+
+      render(
+        <ReactFlowWrapper>
+          <FeatureNode {...props} />
+        </ReactFlowWrapper>
+      );
+
+      const settingsButton = screen.getByTestId('settings-icon').closest('button');
+      fireEvent.click(settingsButton!);
+
+      const input = screen.getByRole('textbox');
+      expect(input).toHaveValue('');
+    });
+
     it('should show fill_value parameter for fill_null function', () => {
       const props = createNodeProps({
         nodeType: 'function',

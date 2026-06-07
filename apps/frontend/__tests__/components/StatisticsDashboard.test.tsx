@@ -83,7 +83,11 @@ jest.mock('@/components/HistogramChart', () => {
 
 jest.mock('@/components/CorrelationHeatmap', () => {
   return {
-    CorrelationHeatmap: () => <div data-testid="correlation-heatmap">Correlation Heatmap</div>
+    CorrelationHeatmap: ({ stats }: { stats?: unknown }) => (
+      <div data-testid="correlation-heatmap" data-stats={JSON.stringify(stats ?? null)}>
+        Correlation Heatmap
+      </div>
+    )
   }
 })
 
@@ -257,6 +261,69 @@ describe('StatisticsDashboard', () => {
     fireEvent.mouseUp(correlationsTab)
     fireEvent.click(correlationsTab)
     expect(screen.getByText('No correlation data available')).toBeInTheDocument()
+  })
+
+  it('builds correlation stats with zero fallbacks when numeric sub-stats are missing', () => {
+    // A numeric column with `mean` defined but min/max/median/std_dev undefined
+    // exercises the `?? 0` fallback branches when mapping to StatItem shape.
+    const statsWithSparseNumeric = {
+      ...mockStatistics,
+      column_statistics: [
+        {
+          column_name: 'sparse_metric',
+          data_type: 'float',
+          total_count: 1000,
+          null_count: 0,
+          null_percentage: 0.0,
+          unique_count: 500,
+          unique_percentage: 50.0,
+          mean: 7.5,
+          // median, std_dev, min_value, max_value intentionally omitted
+        },
+        {
+          column_name: 'null_mean_metric',
+          data_type: 'float',
+          total_count: 1000,
+          null_count: 1000,
+          null_percentage: 100.0,
+          unique_count: 0,
+          unique_percentage: 0.0,
+          // mean is explicitly null (not undefined) so the numeric_stats block
+          // still runs and the `col.mean ?? 0` fallback (line 131) is exercised.
+          mean: null as unknown as number,
+        },
+      ],
+    }
+
+    render(<StatisticsDashboard datasetId="test-id" statistics={statsWithSparseNumeric} />)
+
+    // The correlations tab consumes the mapped correlationStats: assert the
+    // actual StatItem values produced by the `?? 0` fallback mapping.
+    const correlationsTab = screen.getByRole('tab', { name: 'Correlations' })
+    fireEvent.mouseDown(correlationsTab)
+    fireEvent.mouseUp(correlationsTab)
+    fireEvent.click(correlationsTab)
+    const heatmap = screen.getByTestId('correlation-heatmap')
+    const passedStats = JSON.parse(heatmap.getAttribute('data-stats') ?? 'null')
+    expect(passedStats).toEqual([
+      expect.objectContaining({
+        field_name: 'sparse_metric',
+        field_type: 'numeric',
+        numeric_stats: { min: 0, max: 0, mean: 7.5, median: 0, mode: 0, std_dev: 0 },
+      }),
+      expect.objectContaining({
+        field_name: 'null_mean_metric',
+        numeric_stats: expect.objectContaining({ mean: 0 }),
+      }),
+    ])
+
+    // And the numeric tab still renders the column with N/A for the missing stats.
+    const numericTab = screen.getByRole('tab', { name: 'Numeric' })
+    fireEvent.mouseDown(numericTab)
+    fireEvent.mouseUp(numericTab)
+    fireEvent.click(numericTab)
+    expect(screen.getByText('sparse_metric')).toBeInTheDocument()
+    expect(screen.getByText('7.50')).toBeInTheDocument() // mean rendered
   })
 
   it('handles columns without most frequent values', () => {

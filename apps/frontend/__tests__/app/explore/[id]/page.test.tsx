@@ -1,6 +1,9 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { getAuthToken } from '@/lib/auth-helpers'
 import DatasetAnalysisPage from '@/app/explore/[id]/page'
+
+const mockGetAuthToken = getAuthToken as jest.Mock
 
 // Mock Next.js navigation
 const mockPush = jest.fn()
@@ -158,6 +161,8 @@ describe('DatasetAnalysisPage', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
+    // Restore the default token resolution mocked globally in jest.setup.js
+    mockGetAuthToken.mockResolvedValue('mock-token')
   })
 
   it('renders loading state initially', () => {
@@ -311,6 +316,68 @@ describe('DatasetAnalysisPage', () => {
           body: JSON.stringify({ file_id: 'test-dataset-id' })
         })
       )
+    })
+  })
+
+  it('shows an auth-required error when an unprocessed dataset is loaded without a token', async () => {
+    // Null token + unprocessed dataset triggers the guard at page.tsx lines 106-108.
+    mockGetAuthToken.mockResolvedValue(null)
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Authentication required to process this dataset')
+      ).toBeInTheDocument()
+    })
+
+    // The guard returns before any /data/process call is made.
+    const processCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+      String(url).includes('/data/process')
+    )
+    expect(processCalls).toHaveLength(0)
+  })
+
+  it('maps schema column types when rendering the visualizations tab', async () => {
+    const datasetWithTypedColumns = {
+      ...mockProcessedDataset,
+      schema: {
+        row_count: 1000,
+        column_count: 3,
+        columns: [
+          { name: 'age', type: 'int64', unique_count: 50, null_count: 0 },
+          { name: 'city', type: 'object', unique_count: 10, null_count: 0 },
+          { name: 'signup', type: 'datetime64[ns]', unique_count: 900, null_count: 0 },
+        ],
+      },
+    }
+
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(datasetWithTypedColumns),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // Activate the visualizations tab so its TabsContent (and the column-type
+    // mapping at page.tsx lines 423-427) renders.
+    const vizTab = screen.getByRole('tab', { name: /visualization/i })
+    fireEvent.mouseDown(vizTab)
+    fireEvent.mouseUp(vizTab)
+    fireEvent.click(vizTab)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visualization-dashboard')).toBeInTheDocument()
     })
   })
 

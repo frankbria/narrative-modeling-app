@@ -130,7 +130,8 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
             max: col.max_value ?? 0,
             mean: col.mean ?? 0,
             median: col.median ?? 0,
-            mode: col.median ?? 0,
+            // Backend computes no mode; StatItem requires one and the heatmap ignores it.
+            mode: 0,
             std_dev: col.std_dev ?? 0,
           }
         : undefined,

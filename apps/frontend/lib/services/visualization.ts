@@ -75,18 +75,35 @@ export async function getCorrelationMatrix(datasetId: string, token?: string): P
   return response.json();
 }
 
+/** Raw payload from GET /visualizations/histogram — snake_case, with `bins`
+ *  holding bin CENTERS and `counts` holding the counts (visualization_cache.py). */
+interface HistogramApiResponse {
+  bins: number[];
+  counts: number[];
+  bin_edges: number[];
+}
+
 export async function getHistogram(datasetId: string, column: string, bins: number = 50, token?: string): Promise<HistogramData> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  
+
   const response = await fetch(`${apiUrl}/visualizations/histogram/${datasetId}/${column}?bins=${bins}`, {
     headers
   });
   if (!response.ok) {
     throw new Error('Failed to fetch histogram data');
   }
-  return response.json();
+  // Normalize to HistogramData: consumers (HistogramChart) read `bins` as the
+  // per-bin counts and `binEdges` for the bucket boundaries.
+  const raw = (await response.json()) as HistogramApiResponse;
+  return {
+    bins: raw.counts,
+    counts: raw.counts,
+    binEdges: raw.bin_edges,
+    min: raw.bin_edges[0] ?? 0,
+    max: raw.bin_edges[raw.bin_edges.length - 1] ?? 0,
+  };
 }
 
 export async function getBoxPlot(datasetId: string, column: string, token?: string): Promise<BoxPlotData> {
