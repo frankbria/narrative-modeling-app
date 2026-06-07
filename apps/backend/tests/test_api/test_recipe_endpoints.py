@@ -104,7 +104,7 @@ class TestRecipeCompatibilityEndpoint:
 
     @pytest.mark.asyncio
     async def test_check_compatibility_recipe_not_found(self, async_authorized_client, setup_database):
-        """Test compatibility check with non-existent recipe returns appropriate response."""
+        """Test compatibility check with non-existent recipe returns 404."""
         # ACT
         request_data = {"dataset_schema": {"col1": "int64"}}
 
@@ -113,11 +113,10 @@ class TestRecipeCompatibilityEndpoint:
             json=request_data
         )
 
-        # ASSERT
-        # Should still return 200 but with is_compatible=False
-        assert response.status_code == 200
-        data = response.json()
-        assert data["is_compatible"] is False
+        # ASSERT — current contract: a missing recipe is a 404, not a
+        # 200-with-incompatible response
+        assert response.status_code == 404
+        assert "Recipe not found" in response.json()["detail"]
 
 
 @pytest.mark.integration

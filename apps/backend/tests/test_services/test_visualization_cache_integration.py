@@ -74,10 +74,12 @@ class TestVisualizationCache:
         mock_cache.get = AsyncMock(return_value=None)  # Redis miss
         mock_cache.set = AsyncMock(return_value=True)
         
+        # find_one is a sync classmethod returning an awaitable query object,
+        # so patch() does not auto-detect it as async — use AsyncMock explicitly
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=mock_viz_cache):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=mock_viz_cache)):
+
             result = await get_cached_visualization(dataset_id, visualization_type, column_name)
             
             # Verify Redis was checked first
@@ -108,11 +110,11 @@ class TestVisualizationCache:
         mock_cache.get = AsyncMock(return_value=None)  # Redis miss
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=None)):
+
             result = await get_cached_visualization(dataset_id, visualization_type)
-            
+
             # Verify result is None
             assert result is None
 
@@ -141,13 +143,20 @@ class TestVisualizationCache:
         mock_viz_cache = Mock()
         mock_viz_cache.save = AsyncMock()
         
+        # Patch the class once and configure both the constructor and find_one
+        # on the mock (patching find_one separately would be discarded when the
+        # class itself is replaced)
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None), \
-             patch('app.services.visualization_cache.VisualizationCache', return_value=mock_viz_cache):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache') as mock_viz_class:
+            mock_viz_class.find_one = AsyncMock(return_value=None)
+            mock_viz_class.return_value = mock_viz_cache
+
             result = await cache_visualization(dataset_id, visualization_type, data, column_name)
-            
+
+            # The newly constructed entry is returned
+            assert result is mock_viz_cache
+
             # Verify Redis was updated
             mock_cache.set.assert_called_once_with(
                 f"viz:{dataset_id}:{visualization_type}:{column_name}",
@@ -157,6 +166,43 @@ class TestVisualizationCache:
             
             # Verify new MongoDB entry was created and saved
             mock_viz_cache.save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_write_failure_degrades_gracefully(self, setup_database):
+        """A failing Redis write must not break reads or MongoDB persistence."""
+        dataset_id = str(PydanticObjectId())
+        mock_dataset = Mock()
+        mock_dataset.id = PydanticObjectId(dataset_id)
+
+        cached_data = {"bins": [1.0], "counts": [1], "bin_edges": [0.5, 1.5]}
+        mock_viz_cache = Mock()
+        mock_viz_cache.data = cached_data
+
+        failing_cache = AsyncMock()
+        failing_cache.get = AsyncMock(return_value=None)
+        failing_cache.set = AsyncMock(side_effect=Exception("Redis write error"))
+
+        # Read path: the MongoDB hit is returned even though the Redis
+        # write-back fails
+        with patch('app.services.visualization_cache.cache_service', failing_cache), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=mock_viz_cache)):
+            result = await get_cached_visualization(dataset_id, "histogram", "numeric_col")
+            assert result == cached_data
+
+        # Write path: the MongoDB entry is still created when the Redis write fails
+        saved_entry = Mock()
+        saved_entry.save = AsyncMock()
+        with patch('app.services.visualization_cache.cache_service', failing_cache), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache') as mock_viz_class:
+            mock_viz_class.find_one = AsyncMock(return_value=None)
+            mock_viz_class.return_value = saved_entry
+
+            result = await cache_visualization(dataset_id, "histogram", cached_data, "numeric_col")
+
+            assert result is saved_entry
+            saved_entry.save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_and_cache_histogram(self, setup_database):
@@ -248,9 +294,9 @@ class TestVisualizationCache:
         mock_dataset.id = PydanticObjectId(dataset_id)
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None):
-            
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.visualization_cache.VisualizationCache.find_one', new=AsyncMock(return_value=None)):
+
             # Should handle Redis errors gracefully
             result = await get_cached_visualization(dataset_id, "histogram", "numeric_col")
             assert result is None
@@ -270,14 +316,14 @@ class TestVisualizationCache:
         mock_cache.set = AsyncMock(return_value=True)
         
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('app.services.visualization_cache.VisualizationCache.find_one', return_value=None), \
+             patch('app.services.visualization_cache.UserData.get', new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.visualization_cache.VisualizationCache') as mock_viz_cache_class:
-            
+
             mock_viz_cache = Mock()
             mock_viz_cache.save = AsyncMock()
+            mock_viz_cache_class.find_one = AsyncMock(return_value=None)
             mock_viz_cache_class.return_value = mock_viz_cache
-            
+
             await cache_visualization(dataset_id, "histogram", data, "col1")
             
             # Verify TTL is set to 3600 seconds (1 hour)

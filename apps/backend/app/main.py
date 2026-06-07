@@ -68,54 +68,20 @@ from app.api.routes import (
 )
 from app.services.api_documentation import APIDocumentationService
 from app.config import settings
-from app.models.user_data import UserData
-from app.models.analytics_result import AnalyticsResult
-from app.models.plot import Plot
-from app.models.trained_model import TrainedModel
-from app.models.column_stats import ColumnStats
-from app.models.ml_model import MLModel
-from app.models.api_key import APIKey
-from app.models.ab_test import ABTest
-from app.models.batch_job import BatchJob
-from app.models.dataset import DatasetMetadata
-from app.models.version import DatasetVersion, TransformationLineage
-from app.models.model import ModelConfig
-from app.models.bulk_transformation import BulkTransformationJob
-from app.models.feature import FeatureDefinition
-from app.models.feature_store import StoredFeature, FeatureVersion, FeatureCollection
-from app.services.transformation_engine.recipe_manager import TransformationRecipe, RecipeExecutionHistory
+from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: connect to DB (single place, all models)
+    # Startup: connect to DB (single place, all models via the canonical registry)
     mongo_uri = os.getenv("MONGODB_URI")
     db_name = os.getenv("MONGODB_DB")
     client = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
-        document_models=[UserData,
-                         AnalyticsResult,
-                         Plot,
-                         TrainedModel,
-                         ColumnStats,
-                         MLModel,
-                         ModelConfig,
-                         APIKey,
-                         ABTest,
-                         BatchJob,
-                         DatasetMetadata,
-                         DatasetVersion,
-                         TransformationLineage,
-                         TransformationRecipe,
-                         RecipeExecutionHistory,
-                         BulkTransformationJob,
-                         FeatureDefinition,
-                         StoredFeature,
-                         FeatureVersion,
-                         FeatureCollection],
+        document_models=DOCUMENT_MODELS,
     )
 
     # Initialize OpenAI client

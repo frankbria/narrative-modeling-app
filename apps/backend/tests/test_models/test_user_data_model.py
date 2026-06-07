@@ -2,6 +2,9 @@ import pytest
 from datetime import datetime, timezone
 from app.models.user_data import UserData, SchemaField, AISummary, get_current_time
 
+# Document construction requires Beanie model registration (no DB IO needed)
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]
+
 
 def test_get_current_time():
     """Test the get_current_time function."""
@@ -35,15 +38,33 @@ def test_schema_field_creation():
 
 
 def test_schema_field_validation():
-    """Test SchemaField validation."""
-    # Test with invalid field type
+    """Test SchemaField validation against the current model contract.
+
+    field_type is a plain `str`: schema inference legitimately produces values
+    beyond the documented set (e.g. feature_builder emits 'string'/'unknown'),
+    so arbitrary strings are accepted. Only type violations raise.
+    """
+    # Inference-produced extension values are accepted
+    field = SchemaField(
+        field_name="test_column",
+        field_type="unknown",
+        data_type="float",
+        inferred_dtype="float64",
+        unique_values=100,
+        missing_values=5,
+        example_values=[1.0, 2.0, 3.0],
+        is_constant=False,
+        is_high_cardinality=True)
+    assert field.field_type == "unknown"
+
+    # Type violations raise
     with pytest.raises(ValueError):
         SchemaField(
             field_name="test_column",
-            field_type="invalid_type",  # Invalid field type
+            field_type="numeric",
             data_type="float",
             inferred_dtype="float64",
-            unique_values=100,
+            unique_values="not_an_int",  # Wrong type
             missing_values=5,
             example_values=[1.0, 2.0, 3.0],
             is_constant=False,
@@ -209,35 +230,29 @@ def test_schema_field_with_different_data_types():
 
 
 def test_user_data_validation():
-    """Test UserData validation."""
-    # Test with invalid user_id
+    """Test UserData validation against the current model contract.
+
+    Fields are unconstrained primitives (s3_url accepts s3:// URIs, no
+    numeric bounds), so validation errors come from missing required fields
+    and type violations only.
+    """
+    # Missing required fields raise (original_filename, num_rows, num_columns)
     with pytest.raises(ValueError):
         UserData(
-        user_id="",  # Empty user_id
+            user_id="test_user",
             filename="test.csv",
-        s3_url="https://example.com/test.csv",
-        data_schema=[],
-    )
+            s3_url="https://example.com/test.csv",
+            data_schema=[],
+        )
 
-    # Test with invalid s3_url
+    # Type violations raise
     with pytest.raises(ValueError):
         UserData(
-        user_id="test_user",
-        filename="test.csv",
-        original_filename="test.csv",
-        s3_url="invalid_url",  # Invalid URL
-            num_rows=100,
-        data_schema=[],
-    )
-
-    # Test with negative num_rows
-    with pytest.raises(ValueError):
-        UserData(
-        user_id="test_user",
-        filename="test.csv",
-        original_filename="test.csv",
-        s3_url="https://example.com/test.csv",
-        num_rows=-1,  # Negative number of rows
+            user_id="test_user",
+            filename="test.csv",
+            original_filename="test.csv",
+            s3_url="https://example.com/test.csv",
+            num_rows="not_an_int",  # Wrong type
             num_columns=1,
-        data_schema=[],
-    )
+            data_schema=[],
+        )

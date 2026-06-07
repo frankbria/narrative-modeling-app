@@ -25,21 +25,20 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Tools for advanced data processing and modeling
 
 ## Testing Commands
-- Backend: `cd apps/backend && uv run pytest`
-- Backend (unit tests only): `cd apps/backend && uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -v`
+- Backend (full suite): `cd apps/backend && uv run pytest` — requires MongoDB on localhost:27017; optional test Redis (6380) and LocalStack (4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when these are absent)
+- Backend (service-free tests, no services): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
 - Frontend: `cd apps/frontend && npm test`
 - MCP: `cd apps/mcp && uv run pytest`
 
 ## Test Suite Status
-- Backend: 214/214 tests passing (100%) ✅
-  - Unit tests: 203 passing (no database required)
-    - Service layer tests: 13 tests (DatasetService)
-  - Integration tests: 11 passing (require MongoDB)
+- Backend: full suite green locally (~1,460 passed, ~39 service-gated/documented skips) ✅ — fixed in issue #160
+  - During pytest runs the app lifespan uses the **test** database (never production `MONGODB_URI`)
+  - Canonical Beanie model registry: `app/models/registry.py` (shared by app lifespan and `setup_database` fixture)
+- CI: `unit-tests.yml` runs the service-free paths; `integration-tests.yml` (manual) provisions Redis/LocalStack — service requirements documented in each workflow header
 - Frontend: Jest tests configured
 - MCP: Pytest suite available
-- See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for testing guide
+- See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for the testing guide and the **Service Prerequisites** table
 - See `apps/backend/docs/TDD_GUIDE.md` for TDD methodology
-- See `apps/backend/docs/SPRINT_8_COMPLETION.md` for Sprint 8 details
 
 ## Environment Variables
 - Frontend: `.env.local`

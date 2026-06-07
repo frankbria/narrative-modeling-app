@@ -9,6 +9,9 @@ from app.utils.ai_summary import (
     call_openai_api,
     initialize_openai_client)
 
+# Document construction requires Beanie model registration (no DB IO needed)
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]
+
 
 @pytest.fixture
 def mock_user_data():
@@ -26,6 +29,7 @@ def mock_user_data():
                 field_name="column1",
                 field_type="numeric",
                 data_type="float",
+                inferred_dtype="float64",
                 unique_values=50,
                 missing_values=5,
                 is_constant=False,
@@ -70,7 +74,7 @@ async def test_generate_dataset_summary_success(mock_user_data, mock_ai_summary)
         result = await generate_dataset_summary(str(mock_user_data.id))
 
         assert result == mock_ai_summary
-        mock_get.assert_called_once_with(mock_user_data.id)
+        mock_get.assert_called_once_with(str(mock_user_data.id))
         mock_call_api.assert_called_once()
         mock_save.assert_called_once()
 
@@ -86,9 +90,10 @@ async def test_generate_dataset_summary_existing(mock_user_data, mock_ai_summary
 
         mock_get.return_value = mock_user_data
 
+        result = await generate_dataset_summary(str(mock_user_data.id))
 
         assert result == mock_ai_summary
-        mock_get.assert_called_once_with(mock_user_data.id)
+        mock_get.assert_called_once_with(str(mock_user_data.id))
         mock_call_api.assert_not_called()
 
 
@@ -98,6 +103,7 @@ async def test_generate_dataset_summary_not_found():
     with patch("app.models.user_data.UserData.get") as mock_get:
         mock_get.return_value = None
 
+        result = await generate_dataset_summary("507f1f77bcf86cd799439011")
 
         assert result is None
         mock_get.assert_called_once()
@@ -113,9 +119,10 @@ async def test_generate_dataset_summary_api_error(mock_user_data):
         mock_get.return_value = mock_user_data
         mock_call_api.return_value = None
 
+        result = await generate_dataset_summary(str(mock_user_data.id))
 
         assert result is None
-        mock_get.assert_called_once_with(mock_user_data.id)
+        mock_get.assert_called_once_with(str(mock_user_data.id))
         mock_call_api.assert_called_once()
 
 
@@ -177,16 +184,20 @@ async def test_call_openai_api_success():
 async def test_call_openai_api_client_not_initialized():
     """Test when OpenAI client is not initialized."""
     with patch("app.utils.ai_summary.client", None):
+        result = await call_openai_api({"filename": "test.csv", "columns": []})
         assert result is None
 
 
 @pytest.mark.asyncio
 async def test_call_openai_api_invalid_json():
     """Test when OpenAI returns invalid JSON."""
+    mock_response = MagicMock()
     mock_response.choices = [MagicMock(message=MagicMock(content="Invalid JSON"))]
 
     with patch("app.utils.ai_summary.client") as mock_client:
         mock_client.chat.completions.create.return_value = mock_response
+
+        result = await call_openai_api({"filename": "test.csv", "columns": []})
 
         assert result is None
 
@@ -197,14 +208,18 @@ async def test_call_openai_api_exception():
     with patch("app.utils.ai_summary.client") as mock_client:
         mock_client.chat.completions.create.side_effect = Exception("API Error")
 
+        result = await call_openai_api({"filename": "test.csv", "columns": []})
+
         assert result is None
 
 
 def test_initialize_openai_client():
     """Test OpenAI client initialization."""
+    # Patch the reference imported into the module under test, and restore the
+    # module-level `client` global afterwards so other tests are unaffected
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}), patch(
-        "openai.OpenAI"
-    ) as mock_openai:
+        "app.utils.ai_summary.OpenAI"
+    ) as mock_openai, patch("app.utils.ai_summary.client", None):
 
         initialize_openai_client()
         mock_openai.assert_called_once_with(api_key="test_key")
@@ -213,8 +228,8 @@ def test_initialize_openai_client():
 def test_initialize_openai_client_no_key():
     """Test OpenAI client initialization without API key."""
     with patch.dict("os.environ", {}, clear=True), patch(
-        "openai.OpenAI"
-    ) as mock_openai:
+        "app.utils.ai_summary.OpenAI"
+    ) as mock_openai, patch("app.utils.ai_summary.client", None):
 
         initialize_openai_client()
         mock_openai.assert_not_called()

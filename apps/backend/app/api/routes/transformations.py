@@ -17,7 +17,7 @@ from app.schemas.transformation import (
     TransformationPreviewResponse,
     TransformationApplyResponse,
     TransformationPipelineRequest,
-    TransformationStepRequest,
+    RecipeStepRequest,
     RecipeCreateRequest,
     RecipeResponse,
     RecipeListResponse,
@@ -417,7 +417,7 @@ async def auto_clean_dataset(
         pipeline_request = TransformationPipelineRequest(
             dataset_id=request.dataset_id,
             transformations=[
-                TransformationStepRequest(
+                RecipeStepRequest(
                     type=t["type"],
                     parameters=t["parameters"]
                 ) for t in transformations
@@ -727,7 +727,7 @@ async def apply_recipe(
         pipeline_request = TransformationPipelineRequest(
             dataset_id=request.dataset_id,
             transformations=[
-                TransformationStepRequest(
+                RecipeStepRequest(
                     type=step.transformation_type,
                     parameters=step.parameters,
                     description=step.description

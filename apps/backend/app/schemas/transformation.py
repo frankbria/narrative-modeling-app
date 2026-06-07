@@ -167,22 +167,38 @@ class TransformationDeleteResponse(BaseModel):
 
 # Additional schemas for transformation pipeline
 
-class TransformationPipelineRequest(BaseModel):
-    """Request schema for transformation pipeline."""
-
-    dataset_id: str = Field(..., description="Dataset ID")
-    transformations: List[TransformationStepRequest] = Field(..., description="Transformation steps")
-    save_as_recipe: bool = Field(default=False, description="Save as recipe")
-    recipe_name: Optional[str] = Field(None, description="Recipe name")
-    recipe_description: Optional[str] = Field(None, description="Recipe description")
-
-
 class RecipeStepRequest(BaseModel):
     """Request schema for recipe step."""
 
     type: str = Field(..., description="Transformation type")
     parameters: Dict[str, Any] = Field(default_factory=dict)
     description: Optional[str] = None
+
+    @field_validator('type')
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        """Validate type against the canonical TransformationType enum.
+
+        Without this, unsupported types would be silently skipped by the
+        validate endpoint's dispatch and reported as valid.
+        """
+        allowed_types = {t.value for t in TransformationType}
+        if v not in allowed_types:
+            raise ValueError(
+                f"Unknown transformation type: '{v}'. "
+                f"See TransformationType for supported values."
+            )
+        return v
+
+
+class TransformationPipelineRequest(BaseModel):
+    """Request schema for transformation pipeline."""
+
+    dataset_id: str = Field(..., description="Dataset ID")
+    transformations: List[RecipeStepRequest] = Field(..., description="Transformation steps")
+    save_as_recipe: bool = Field(default=False, description="Save as recipe")
+    recipe_name: Optional[str] = Field(None, description="Recipe name")
+    recipe_description: Optional[str] = Field(None, description="Recipe description")
 
 
 class RecipeCreateRequest(BaseModel):
@@ -333,7 +349,7 @@ class ValidationRequest(BaseModel):
     """Request schema for validation."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    transformations: List[TransformationStepRequest] = Field(..., description="Transformations to validate")
+    transformations: List[RecipeStepRequest] = Field(..., description="Transformations to validate")
 
 
 class ValidationResponse(BaseModel):

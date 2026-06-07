@@ -1,5 +1,14 @@
 name: Integration Tests
 
+# Service requirements (encoded below; see apps/backend/docs/TEST_INFRASTRUCTURE.md):
+#   - MongoDB: Atlas test cluster via TEST_MONGODB_URI/TEST_MONGODB_DB secrets
+#   - Redis:   localhost:6380 via docker-compose.test.yml (narrative-redis-test)
+#   - S3:      LocalStack on localhost:4566 via docker-compose.test.yml
+#   - OpenAI:  mocked (placeholder key)
+# Locally, the same services come from:
+#   docker compose -f apps/backend/docker-compose.test.yml up -d
+# plus a local mongod (default TEST_MONGODB_URI=mongodb://localhost:27017/...).
+
 on:
   # schedule:
   #   # Run nightly at 2 AM UTC - DISABLED (not in production yet)
@@ -74,8 +83,10 @@ jobs:
         env:
           TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
           TEST_MONGODB_DB: ${{ secrets.TEST_MONGODB_DB }}
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB: ${{ secrets.MONGODB_DB }}
+          # Deliberately the TEST cluster: no production database handle may
+          # exist in the test job, even as a fallback (issue #160)
+          MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          MONGODB_DB: ${{ secrets.TEST_MONGODB_DB }}
           TEST_REDIS_URL: redis://localhost:6380/0
           S3_ENDPOINT_URL: http://localhost:4566
           AWS_ACCESS_KEY_ID: test

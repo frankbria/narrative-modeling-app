@@ -78,7 +78,7 @@ class VersioningService(BaseService[DatasetVersion]):
         # Check if base version already exists
         existing_base = await DatasetVersion.find_one(
             DatasetVersion.dataset_id == dataset_metadata.dataset_id,
-            DatasetVersion.is_base_version
+            DatasetVersion.is_base_version == True,  # noqa: E712 — Beanie query expression
         )
         if existing_base:
             raise ConflictError(

@@ -12,6 +12,7 @@ Tests cover:
 """
 
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.services.history_service import HistoryService
@@ -58,9 +59,15 @@ def mock_transformation_config():
     config.user_id = "user1"
     config.current_position = 2
     config.transformation_steps = [
-        MagicMock(transformation_type="encode", version_id="v1"),
-        MagicMock(transformation_type="scale", version_id="v2"),
-        MagicMock(transformation_type="impute", version_id="v3")
+        MagicMock(transformation_type="encode", version_id="v1",
+                  column="col1", columns=None, rows_affected=10,
+                  applied_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)),
+        MagicMock(transformation_type="scale", version_id="v2",
+                  column="col2", columns=None, rows_affected=10,
+                  applied_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=timezone.utc)),
+        MagicMock(transformation_type="remove_duplicates", version_id="v3",
+                  column=None, columns=None, rows_affected=5,
+                  applied_at=datetime(2026, 1, 1, 0, 2, 0, tzinfo=timezone.utc))
     ]
     config.can_undo = MagicMock(return_value=True)
     config.can_redo = MagicMock(return_value=False)
@@ -330,12 +337,28 @@ class TestHistoryServiceGetHistory:
         # Execute
         result = await history_service.get_history("ds1", "user1")
 
-        # Verify
+        # Verify (API contract shape — schemas.HistoryDataResponse)
         assert result["dataset_id"] == "ds1"
         assert result["current_position"] == 2
-        assert len(result["transformation_steps"]) == 3
+        assert len(result["history"]) == 3
+        assert result["history"][0]["position"] == 0
+        assert result["history"][0]["transformation_type"] == "encode"
         assert result["can_undo"] is True
         assert result["can_redo"] is False
+
+    def test_describe_step_with_enum_member(self):
+        """Descriptions stay human-readable when transformation_type surfaces
+        as a TransformationType enum member rather than a plain string
+        (str(member) on a str-Enum yields 'TransformationType.X', not the value).
+        """
+        from app.models.transformation import TransformationType
+
+        step = MagicMock(
+            transformation_type=TransformationType.REMOVE_DUPLICATES,
+            column=None, columns=None,
+        )
+
+        assert HistoryService._describe_step(step) == "Applied remove duplicates"
 
     @pytest.mark.asyncio
     async def test_get_history_empty(
@@ -360,7 +383,7 @@ class TestHistoryServiceGetHistory:
 
         # Verify
         assert result["current_position"] == -1
-        assert len(result["transformation_steps"]) == 0
+        assert len(result["history"]) == 0
         assert result["can_undo"] is False
         assert result["can_redo"] is False
 

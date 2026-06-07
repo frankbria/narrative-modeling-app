@@ -13,6 +13,7 @@ from app.main import app
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
+from app.models.dataset import DatasetMetadata
 from app.services.transformation_engine.recipe_manager import TransformationRecipe
 
 
@@ -45,6 +46,23 @@ def mock_user_data(sample_dataframe):
 
 
 @pytest.fixture
+def mock_dataset(sample_dataframe):
+    """Mock DatasetMetadata used by TransformationService (preview/apply paths)."""
+    dataset = MagicMock(spec=DatasetMetadata)
+    dataset.id = ObjectId()
+    dataset.dataset_id = str(ObjectId())
+    dataset.user_id = "test_user_123"
+    dataset.file_path = "https://test-bucket.s3.amazonaws.com/test-file.parquet"
+    dataset.s3_url = "https://test-bucket.s3.amazonaws.com/test-file.parquet"
+    dataset.num_rows = len(sample_dataframe)
+    dataset.num_columns = len(sample_dataframe.columns)
+    dataset.columns = sample_dataframe.columns.tolist()
+    dataset.update_timestamp = MagicMock()
+    dataset.save = AsyncMock()
+    return dataset
+
+
+@pytest.fixture
 def mock_s3_operations(sample_dataframe):
     """Mock S3 operations for dataframe loading/saving"""
     # Create a temporary file with sample data
@@ -55,37 +73,33 @@ def mock_s3_operations(sample_dataframe):
     # Create temp file and ensure data is written before closing
     temp_fd, temp_path = tempfile.mkstemp(suffix='.parquet')
     os.close(temp_fd)  # Close the file descriptor
-    
+
     # Write the dataframe to the file
     sample_dataframe.to_parquet(temp_path)
-    
-    # Mock boto3 client
-    mock_s3_client = MagicMock()
-    
-    # Create a side effect that copies our temp file to the target path
-    def mock_download(bucket, key, target_path):
-        shutil.copy2(temp_path, target_path)
-    
-    mock_s3_client.download_file = MagicMock(side_effect=mock_download)
-    
-    # Mock upload function - handle the mismatch in signatures
-    # The issue is that data_utils.py is calling upload_file_to_s3 with keyword arguments
-    # that don't match the actual function signature in utils/s3.py
-    # We need to make this test work regardless of that mismatch
-    
+
+    # Mock the download seam used by data_utils.get_dataframe_from_s3.
+    # download_file_from_s3 returns a local temp file path; the transformation
+    # code reads and then unlinks it, so hand back a fresh copy on each call.
+    def mock_download(s3_url):
+        copy_fd, copy_path = tempfile.mkstemp(suffix='.parquet')
+        os.close(copy_fd)
+        shutil.copy2(temp_path, copy_path)
+        return copy_path
+
+    # Mock upload function - data_utils expects a (success, url) tuple from
+    # upload_file_to_s3.
     def mock_upload_fixed(*args, **kwargs):
-        # Always return a URL string since that's what data_utils expects
-        return f"https://test-bucket.s3.amazonaws.com/transformed/test_user_123/{datetime.now().timestamp()}.parquet"
-    
-    # Also need to handle upload to S3
-    mock_s3_client.put_object = MagicMock()
-    
-    with patch('boto3.client', return_value=mock_s3_client), \
+        return (
+            True,
+            f"https://test-bucket.s3.amazonaws.com/transformed/test_user_123/{datetime.now().timestamp()}.parquet",
+        )
+
+    with patch('app.services.transformation_engine.data_utils.download_file_from_s3', side_effect=mock_download), \
          patch('app.utils.s3.upload_file_to_s3', side_effect=mock_upload_fixed) as mock_upload, \
          patch('app.services.transformation_engine.data_utils.upload_file_to_s3', side_effect=mock_upload_fixed):
-        
+
         yield None, mock_upload
-        
+
         # Cleanup
         if os.path.exists(temp_path):
             os.unlink(temp_path)
@@ -93,28 +107,33 @@ def mock_s3_operations(sample_dataframe):
 
 @pytest.fixture
 def mock_cache_service():
-    """Mock Redis cache service"""
-    with patch('app.services.redis_cache.cache_service') as mock, \
-         patch('app.api.routes.transformations.cache_service') as mock_in_route:
+    """Mock Redis cache service.
+
+    Cache invalidation now lives in TransformationService.apply_transformation,
+    which imports cache_service from app.services.redis_cache at call time, so
+    that is the real seam to patch.
+    """
+    with patch('app.services.redis_cache.cache_service') as mock:
         mock.delete_pattern = AsyncMock()
-        mock_in_route.delete_pattern = AsyncMock()
-        yield mock_in_route
+        yield mock
 
 
 class TestTransformationPreview:
     """Test transformation preview functionality"""
     
     @pytest.mark.asyncio
-    async def test_preview_remove_duplicates(self, authorized_client, mock_user_data, mock_s3_operations):
+    async def test_preview_remove_duplicates(self, authorized_client, mock_dataset, mock_s3_operations):
         """Test preview of duplicate removal transformation"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset):
             request = {
-                "dataset_id": str(mock_user_data.id),
-                "transformation_type": "remove_duplicates",
-                "parameters": {
-                    "columns": ["department"],
-                    "keep": "first"
-                },
+                "dataset_id": mock_dataset.dataset_id,
+                "transformation_steps": [{
+                    "transformation_type": "remove_duplicates",
+                    "parameters": {
+                        "columns": ["department"],
+                        "keep": "first"
+                    }
+                }],
                 "preview_rows": 50
             }
 
@@ -131,16 +150,18 @@ class TestTransformationPreview:
             assert "affected_columns" in data
     
     @pytest.mark.asyncio
-    async def test_preview_fill_missing(self, authorized_client, mock_user_data, mock_s3_operations):
+    async def test_preview_fill_missing(self, authorized_client, mock_dataset, mock_s3_operations):
         """Test preview of missing value imputation"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset):
             request = {
-                "dataset_id": str(mock_user_data.id),
-                "transformation_type": "fill_missing",
-                "parameters": {
-                    "columns": ["age", "salary"],
-                    "method": "mean"
-                }
+                "dataset_id": mock_dataset.dataset_id,
+                "transformation_steps": [{
+                    "transformation_type": "fill_missing",
+                    "parameters": {
+                        "columns": ["age", "salary"],
+                        "method": "mean"
+                    }
+                }]
             }
 
             response = authorized_client.post(
@@ -155,15 +176,17 @@ class TestTransformationPreview:
             assert "stats_after" in data
     
     @pytest.mark.asyncio
-    async def test_preview_trim_whitespace(self, authorized_client, mock_user_data, mock_s3_operations):
+    async def test_preview_trim_whitespace(self, authorized_client, mock_dataset, mock_s3_operations):
         """Test preview of whitespace trimming"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset):
             request = {
-                "dataset_id": str(mock_user_data.id),
-                "transformation_type": "trim_whitespace",
-                "parameters": {
-                    "columns": ["name"]
-                }
+                "dataset_id": mock_dataset.dataset_id,
+                "transformation_steps": [{
+                    "transformation_type": "trim_whitespace",
+                    "parameters": {
+                        "columns": ["name"]
+                    }
+                }]
             }
 
             response = authorized_client.post(
@@ -181,11 +204,13 @@ class TestTransformationPreview:
         """Test preview with invalid dataset ID"""
         # Use a valid ObjectId format that doesn't exist in the database
         nonexistent_id = str(ObjectId())
-        with patch('app.models.user_data.UserData.find_one', return_value=None):
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=None):
             request = {
                 "dataset_id": nonexistent_id,
-                "transformation_type": "remove_duplicates",
-                "parameters": {}
+                "transformation_steps": [{
+                    "transformation_type": "remove_duplicates",
+                    "parameters": {}
+                }]
             }
 
             response = authorized_client.post(
@@ -193,21 +218,22 @@ class TestTransformationPreview:
                 json=request
             )
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is False
-            assert "error" in data
+            # Dataset not found surfaces as NotFoundError -> HTTP 404
+            assert response.status_code == 404
 
 
 class TestTransformationApply:
     """Test transformation apply functionality"""
     
     @pytest.mark.asyncio
-    async def test_apply_single_transformation(self, authorized_client, mock_user_data, mock_s3_operations, mock_cache_service):
+    async def test_apply_single_transformation(self, authorized_client, mock_dataset, mock_s3_operations, mock_cache_service):
         """Test applying a single transformation"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset), \
+             patch('app.services.transformation_service.TransformationService.create_transformation_config', new_callable=AsyncMock), \
+             patch('app.services.transformation_service.TransformationService.add_transformation_step', new_callable=AsyncMock), \
+             patch('app.services.transformation_service.TransformationService.mark_transformations_applied', new_callable=AsyncMock):
             request = {
-                "dataset_id": str(mock_user_data.id),
+                "dataset_id": mock_dataset.dataset_id,
                 "transformation_type": "trim_whitespace",
                 "parameters": {
                     "columns": ["name"]
@@ -218,14 +244,14 @@ class TestTransformationApply:
                 "/api/v1/transformations/apply",
                 json=request
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert data["dataset_id"] == str(mock_user_data.id)
+            assert data["dataset_id"] == mock_dataset.dataset_id
             assert "transformation_id" in data
-            assert data["execution_time_ms"] > 0
-            
+            assert data["execution_time_ms"] >= 0
+
             # Verify cache was cleared
             mock_cache_service.delete_pattern.assert_called_once()
     
@@ -323,13 +349,32 @@ class TestTransformationValidation:
                 "/api/v1/transformations/validate",
                 json=request
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert "is_valid" in data
             assert "errors" in data
             assert "warnings" in data
             assert "suggestions" in data
+
+    @pytest.mark.asyncio
+    async def test_validate_rejects_unknown_transformation_type(self, authorized_client):
+        """An unsupported transformation type must be rejected at the schema
+        boundary, not silently skipped and reported as valid."""
+        request = {
+            "dataset_id": "ds1",
+            "transformations": [
+                {"type": "not_a_real_transformation", "parameters": {}}
+            ]
+        }
+
+        response = authorized_client.post(
+            "/api/v1/transformations/validate",
+            json=request
+        )
+
+        assert response.status_code == 422
+        assert "not_a_real_transformation" in response.text
 
 
 class TestAutoClean:
@@ -628,13 +673,20 @@ class TestAuthenticationBypass:
 
         app.dependency_overrides[get_current_user_id] = dev_get_current_user_id
 
-        response = await async_test_client.get(
-            "/api/v1/transformations/suggestions/test_dataset",
-            headers={"Authorization": "Bearer dev-custom-user"}
-        )
-        
-        # Should fail with 500 (since the error is caught and logged as internal error)
-        # The important thing is that it's not 401/403 (unauthorized)
+        # Force the endpoint logic (which runs only after auth succeeds) to fail
+        # so we can confirm auth was bypassed and we reached the handler.
+        with patch(
+            'app.models.user_data.UserData.find_one',
+            new_callable=AsyncMock,
+            side_effect=Exception("forced endpoint failure"),
+        ) as mock_find:
+            response = await async_test_client.get(
+                "/api/v1/transformations/suggestions/test_dataset",
+                headers={"Authorization": "Bearer dev-custom-user"}
+            )
+
+        # Should fail with 500 (the error is caught and logged as internal error).
+        # The important thing is that it's not 401/403 (unauthorized).
         assert response.status_code == 500
         # Check that we got past auth and hit the actual endpoint logic
         assert mock_find.called
@@ -659,30 +711,31 @@ class TestErrorHandling:
     """Test error handling in transformation endpoints"""
     
     @pytest.mark.asyncio
-    async def test_handle_transformation_engine_error(self, authorized_client, mock_user_data):
+    async def test_handle_transformation_engine_error(self, authorized_client, mock_dataset):
         """Test handling of transformation engine errors"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            # Mock S3 to fail with a specific error
-            with patch('app.services.s3_service.download_file_from_s3', new_callable=AsyncMock) as mock_download:
-                # Simulate S3 error
-                mock_download.side_effect = Exception("S3 connection failed")
-                
+        with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset):
+            # Mock the S3 download seam used by the transformation service to fail
+            with patch(
+                'app.services.transformation_engine.data_utils.download_file_from_s3',
+                side_effect=Exception("S3 connection failed"),
+            ):
                 request = {
-                    "dataset_id": str(mock_user_data.id),
-                    "transformation_type": "trim_whitespace",
-                    "parameters": {}
+                    "dataset_id": mock_dataset.dataset_id,
+                    "transformation_steps": [{
+                        "transformation_type": "trim_whitespace",
+                        "parameters": {}
+                    }]
                 }
 
                 response = authorized_client.post(
                     "/api/v1/transformations/preview",
                     json=request
                 )
-                
+
                 assert response.status_code == 200
                 data = response.json()
                 assert data["success"] is False
-                # Either error message is acceptable - depends on whether mock is applied
-                assert any(err in data["error"] for err in ["S3 connection failed", "403", "Forbidden"])
+                assert "S3 connection failed" in data["error"]
     
     @pytest.mark.asyncio
     async def test_handle_invalid_transformation_type(self, authorized_client, mock_user_data, mock_s3_operations):

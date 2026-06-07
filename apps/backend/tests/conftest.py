@@ -7,6 +7,58 @@ from datetime import datetime, timezone
 # Only import these when fixtures are actually used
 
 
+def _point_app_at_test_database():
+    """Make the app lifespan use the test database.
+
+    app/main.py's lifespan reads MONGODB_URI/MONGODB_DB from the environment at
+    startup, and importing app.main runs load_dotenv(override=True) which would
+    clobber values set earlier. So this must be called AFTER `from app.main
+    import app` and BEFORE the lifespan starts (issue #160: the lifespan
+    previously connected to the production Atlas URI during tests).
+    """
+    import os
+    from app.config import settings
+
+    uri = settings.TEST_MONGODB_URI
+    # Fail loudly rather than ever pointing tests at something that doesn't
+    # look like a test database (defense-in-depth; see issue #160)
+    assert uri and ("test" in uri.lower() or "localhost" in uri or "127.0.0.1" in uri), (
+        f"TEST_MONGODB_URI does not look like a test database URI: {uri!r}. "
+        "Name the test cluster/database with 'test' (or use localhost) so "
+        "tests can never run against production."
+    )
+
+    os.environ["MONGODB_URI"] = uri
+    os.environ["MONGODB_DB"] = settings.TEST_MONGODB_DB
+
+
+@pytest.fixture(scope="module")
+def beanie_models_initialized():
+    """Bind Beanie document models without any real database.
+
+    Beanie Documents cannot be instantiated (even for pure validation tests)
+    until init_beanie has registered them — and init_beanie always performs
+    IO (it runs `buildInfo` against the server, regardless of skip_indexes).
+    An in-memory mongomock client keeps unit tests that only construct or
+    validate Document instances free of service dependencies (verified: a
+    real MongoDB connection here timed out in CI where no Mongo runs).
+    """
+    import asyncio
+    from mongomock_motor import AsyncMongoMockClient
+    from beanie import init_beanie
+    from app.models.registry import DOCUMENT_MODELS
+
+    async def _init():
+        client = AsyncMongoMockClient()
+        await init_beanie(
+            database=client["narrative_modeling_unit_tests"],
+            document_models=DOCUMENT_MODELS,
+            skip_indexes=True,
+        )
+
+    asyncio.run(_init())
+
+
 # Use pytest-asyncio's event_loop fixture instead of defining our own
 # This avoids conflicts with pytest-asyncio's internal event loop management
 @pytest_asyncio.fixture(scope="function")
@@ -24,48 +76,16 @@ async def setup_database(request):
     from motor.motor_asyncio import AsyncIOMotorClient
     from beanie import init_beanie
     from app.config import settings
-    from app.models.user_data import UserData
-    from app.models.column_stats import ColumnStats
-    from app.models.visualization_cache import VisualizationCache
-    from app.models.analytics_result import AnalyticsResult
-    from app.models.plot import Plot
-    from app.models.trained_model import TrainedModel
-    from app.models.ab_test import ABTest
-    from app.models.batch_job import BatchJob
-    from app.models.ml_model import MLModel
-    from app.models.revised_data import RevisedData
-    from app.models.dataset import DatasetMetadata
-    from app.models.version import DatasetVersion, TransformationLineage
-    from app.models.model import ModelConfig
-    from app.models.transformation import TransformationConfig
-    from app.services.transformation_engine.recipe_manager import TransformationRecipe, SharedRecipe, RecipeExecutionHistory
+    from app.models.registry import DOCUMENT_MODELS
 
     # Create a test database client
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
 
-    # Initialize Beanie with test database
+    # Initialize Beanie with the test database using the canonical model list
+    # (the same one the app lifespan uses, so the registries can never drift)
     await init_beanie(
         database=client[settings.TEST_MONGODB_DB],
-        document_models=[
-            UserData,
-            ColumnStats,
-            VisualizationCache,
-            AnalyticsResult,
-            Plot,
-            TrainedModel,
-            ModelConfig,
-            TransformationConfig,
-            ABTest,
-            BatchJob,
-            MLModel,
-            RevisedData,
-            DatasetMetadata,
-            DatasetVersion,
-            TransformationLineage,
-            TransformationRecipe,
-            SharedRecipe,
-            RecipeExecutionHistory
-        ],
+        document_models=DOCUMENT_MODELS,
     )
 
     yield
@@ -73,24 +93,8 @@ async def setup_database(request):
     # Clean up after tests
     try:
         # Use find().delete() instead of delete_all()
-        await UserData.find().delete()
-        await ColumnStats.find().delete()
-        await VisualizationCache.find().delete()
-        await AnalyticsResult.find().delete()
-        await Plot.find().delete()
-        await TrainedModel.find().delete()
-        await ModelConfig.find().delete()
-        await TransformationConfig.find().delete()
-        await ABTest.find().delete()
-        await BatchJob.find().delete()
-        await MLModel.find().delete()
-        await RevisedData.find().delete()
-        await DatasetMetadata.find().delete()
-        await DatasetVersion.find().delete()
-        await TransformationLineage.find().delete()
-        await TransformationRecipe.find().delete()
-        await SharedRecipe.find().delete()
-        await RecipeExecutionHistory.find().delete()
+        for model in DOCUMENT_MODELS:
+            await model.find().delete()
     except Exception as e:
         print(f"Error during cleanup: {e}")
     finally:
@@ -489,6 +493,7 @@ async def async_test_client() -> AsyncGenerator:
     from asgi_lifespan import LifespanManager
     from app.main import app
 
+    _point_app_at_test_database()
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -559,6 +564,7 @@ def authorized_client():
     app.dependency_overrides.clear()
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
 
+    _point_app_at_test_database()
     with TestClient(app) as client:
         yield client
 
@@ -582,6 +588,7 @@ async def async_authorized_client() -> AsyncGenerator:
     app.dependency_overrides.clear()
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
 
+    _point_app_at_test_database()
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

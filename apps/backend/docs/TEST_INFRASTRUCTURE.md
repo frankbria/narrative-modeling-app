@@ -6,6 +6,37 @@ This document describes the test infrastructure setup for the backend applicatio
 
 > **📚 For a comprehensive testing guide covering all test types (unit, integration, E2E) and CI/CD workflows, see [Testing Guide](/docs/testing/guide.md).**
 
+## Service Prerequisites
+
+The full backend suite (`uv run pytest`) passes locally with these services
+(issue #160 acceptance criteria). Tests whose optional service is unavailable
+**skip with an explicit reason** naming the prerequisite; they never fail for
+a missing service.
+
+| Service | Endpoint | Needed by | How to start | If absent |
+|---|---|---|---|---|
+| MongoDB | `localhost:27017` (`TEST_MONGODB_URI`) | `tests/test_api/`, `tests/test_integration/`, `tests/integration/`, `tests/load/`, any test using `setup_database` or the app lifespan | local `mongod` (or Docker) | **required** — DB-backed tests error |
+| Redis (test instance) | `localhost:6380` (`TEST_REDIS_URL`) | `tests/integration/test_redis_fixtures.py` and other tests using the `redis_client` fixture | `docker compose -f docker-compose.test.yml up -d` | tests skip with reason |
+| S3 (LocalStack) | `localhost:4566` (`S3_ENDPOINT_URL`) | `tests/integration/test_s3_fixtures.py` and S3-gated integration tests | `docker compose -f docker-compose.test.yml up -d` | tests skip with reason |
+| OpenAI | n/a | — | never called: AI tests mock the client | n/a |
+
+Notes:
+- During pytest runs the app lifespan is pointed at the **test** database
+  (`tests/conftest.py::_point_app_at_test_database`); it never touches the
+  production `MONGODB_URI`.
+- The canonical Beanie model list lives in `app/models/registry.py` and is
+  shared by the app lifespan and the `setup_database` fixture.
+- The dev Redis (6379) is deliberately not used by tests; the test instance
+  runs on **6380** to avoid clobbering dev data.
+
+### CI encoding
+
+- `.github/workflows/unit-tests.yml` — service-free test paths only
+  (no MongoDB/Redis/S3); requirements documented in the workflow header.
+- `.github/workflows/integration-tests.yml` (manual trigger) — provisions
+  Redis + LocalStack via `docker-compose.test.yml` and uses an Atlas test
+  cluster for MongoDB; requirements documented in the workflow header.
+
 ## Test Organization
 
 ### Test Markers
