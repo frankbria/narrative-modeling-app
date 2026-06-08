@@ -126,6 +126,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      # Redis as a service container (not docker-compose) so it is guaranteed
+      # healthy before any step runs — it is a hard requirement for the
+      # redis-gated integration tests. Mapped to 6380 to match TEST_REDIS_URL.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -136,25 +148,19 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
-      - name: Start Redis + LocalStack (S3)
+      - name: Start LocalStack (S3, best-effort)
         working-directory: apps/backend
-        run: docker compose -f docker-compose.test.yml up -d
-      - name: Wait for services to be ready
+        # LocalStack is opportunistic: the S3-marked integration tests skip with a
+        # reason when it is absent, so neither a Docker Hub pull hiccup nor a slow
+        # start may fail the gate. Mongo + Redis (service containers above) are the
+        # hard requirements and are already healthy before this step.
         run: |
-          # Redis is required by the redis-gated integration tests — fail hard.
-          echo "Waiting for Redis (required)..."
-          timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-redis-test 2>/dev/null)" = "healthy" ]; do sleep 2; done'
-          echo "Redis healthy."
-          # LocalStack (S3) is best-effort: S3-dependent tests skip with a reason
-          # when it is unavailable, so a slow/unhealthy LocalStack must not fail
-          # the whole gate. MongoDB readiness is handled by the service container
-          # health check before any step runs.
-          echo "Waiting for LocalStack (best-effort; S3 tests skip if unavailable)..."
-          if timeout 150 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 3; done'; then
+          docker compose -f docker-compose.test.yml up -d localstack \
+            || echo "::warning::LocalStack failed to start; S3-dependent integration tests will skip."
+          if timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 3; done'; then
             echo "LocalStack healthy."
           else
-            echo "::warning::LocalStack did not become healthy in time; S3-dependent integration tests will skip."
-            docker logs narrative-localstack-test --tail 50 2>&1 || true
+            echo "::warning::LocalStack not healthy in time; S3-dependent integration tests will skip."
           fi
       - name: Run integration tests with coverage
         # Scope: the `integration`-marked suite — the DB-backed integration paths
