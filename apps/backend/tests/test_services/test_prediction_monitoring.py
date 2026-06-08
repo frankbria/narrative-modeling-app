@@ -156,7 +156,6 @@ class TestPredictionMonitoringService:
         prediction_log.logs.clear()
         
         # Add predictions from last hour
-        datetime.utcnow()
         for i in range(10):
             await prediction_log.log_prediction(
                 model_id="model_123",
