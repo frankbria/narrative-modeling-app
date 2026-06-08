@@ -603,7 +603,6 @@ class TransformationEngine:
 
                 # Handle NaN comparison: NaN == NaN should be considered "no change"
                 # Create mask where values differ
-                both_nan = original_col.isna() & transformed_col.isna()
                 nan_mismatch = original_col.isna() != transformed_col.isna()
                 neither_nan = ~original_col.isna() & ~transformed_col.isna()
 

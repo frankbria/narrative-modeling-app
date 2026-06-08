@@ -124,7 +124,7 @@ async def test_get_histogram(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         return_value=mock_histogram_data.model_dump(),
-    ) as mock_generate:
+    ):
         print(
             f"DEBUG: Mocked generate_and_cache_histogram to return: {json.dumps(mock_histogram_data.model_dump(), indent=2)}"
         )
@@ -167,7 +167,7 @@ async def test_get_histogram_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         side_effect=ValueError("Invalid number of bins"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_histogram to raise ValueError")
 
         response = await async_authorized_client.get(
@@ -207,7 +207,7 @@ async def test_get_boxplot(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         return_value=mock_boxplot_data.model_dump(),
-    ) as mock_generate:
+    ):
         print(
             f"DEBUG: Mocked generate_and_cache_boxplot to return: {json.dumps(mock_boxplot_data.model_dump(), indent=2)}"
         )
@@ -251,7 +251,7 @@ async def test_get_boxplot_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         side_effect=ValueError("Column not found"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_boxplot to raise ValueError")
 
         response = await async_authorized_client.get(
@@ -288,7 +288,7 @@ async def test_get_correlation_matrix(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         return_value=mock_correlation_data.model_dump(),
-    ) as mock_generate:
+    ):
         print(
             f"DEBUG: Mocked generate_and_cache_correlation_matrix to return: {json.dumps(mock_correlation_data.model_dump(), indent=2)}"
         )
@@ -325,7 +325,7 @@ async def test_get_correlation_matrix_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         side_effect=ValueError("Invalid data for correlation matrix"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise ValueError")
 
         response = await async_authorized_client.get(
@@ -360,7 +360,7 @@ async def test_get_histogram_server_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_histogram",
         side_effect=Exception("Server error"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_histogram to raise Exception")
 
         response = await async_authorized_client.get(
@@ -395,7 +395,7 @@ async def test_get_boxplot_server_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_boxplot",
         side_effect=Exception("Server error"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_boxplot to raise Exception")
 
         response = await async_authorized_client.get(
@@ -427,7 +427,7 @@ async def test_get_correlation_matrix_server_error(
     ), patch(
         "app.api.routes.visualizations.generate_and_cache_correlation_matrix",
         side_effect=Exception("Internal server error"),
-    ) as mock_generate:
+    ):
         print("DEBUG: Mocked generate_and_cache_correlation_matrix to raise Exception")
 
         response = await async_authorized_client.get(

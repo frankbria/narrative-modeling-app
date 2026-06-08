@@ -6,7 +6,6 @@ It integrates with the TransformationEngine to execute fixes.
 """
 
 import logging
-import time
 from typing import Dict, List, Any, Tuple
 import pandas as pd
 
@@ -86,7 +85,6 @@ class FixSuggestionEngine:
             List of suggested fixes
         """
         fixes: List[SuggestedFix] = []
-        col = issue.affected_column
 
         if issue.issue_type == IssueType.MISSING_VALUES:
             fixes = self._suggest_missing_value_fixes(issue, df, column_types)
@@ -521,8 +519,6 @@ class FixSuggestionEngine:
         Returns:
             Tuple of (transformed DataFrame, applied fix record)
         """
-        start_time = time.time()
-
         try:
             # Get transformation type enum
             try:
@@ -538,8 +534,6 @@ class FixSuggestionEngine:
                 transformation_type=trans_type,
                 parameters=fix.parameters,
             )
-
-            execution_time_ms = int((time.time() - start_time) * 1000)
 
             if not result.success:
                 applied_fix = AppliedFix(

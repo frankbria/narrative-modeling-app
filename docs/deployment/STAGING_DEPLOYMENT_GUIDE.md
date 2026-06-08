@@ -154,7 +154,26 @@ docker compose -f docker-compose.staging.yml logs -f
 
 ### Option B: Automated Deployment (via GitHub Actions)
 
-*(To be configured later - requires GitHub Actions workflow)*
+Implemented in `.github/workflows/deploy.yml` (issue #150). On every push to
+`main` (and via manual `workflow_dispatch`), the workflow SSHes into the staging
+server, fast-forwards the deploy checkout to `origin/main`, and rebuilds the
+stack with `docker compose -f docker-compose.staging.yml up -d --build`, then
+polls the backend `/health` endpoint (host port 8010).
+
+**One-time setup** — add these repository secrets
+(Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `STAGING_SSH_PRIVATE_KEY` | Private key authorized for the deploy user (see Step 2) |
+| `STAGING_HOST` | `dev.briaanalytics.com` (or `47.88.89.175`) |
+| `STAGING_USER` | `narrative-deploy` |
+| `STAGING_DEPLOY_PATH` | Optional; defaults to `/opt/narrative-modeling-app/staging` |
+
+Until these are set, the deploy job is a **no-op that succeeds with a warning**,
+so `main` stays green. Application secrets stay in `.env.staging` **on the
+server** and are never passed through CI. The deploy checkout must already exist
+at `STAGING_DEPLOY_PATH` with `origin` pointing at this repo (Step 5, Option A).
 
 ---
 

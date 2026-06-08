@@ -1,1 +1,307 @@
+name: CI
 
+# Primary pull-request gate for the monorepo (issue #150). Supersedes the old
+# unit-tests.yml: it runs the backend, frontend, and MCP checks plus backend
+# integration tests, and exposes a single aggregate `CI Success` status that
+# branch protection on `main` requires.
+#
+# Service requirements (see apps/backend/docs/TEST_INFRASTRUCTURE.md):
+#   - backend-unit / backend-lint / backend-typecheck: NONE (no external services).
+#   - backend-integration: MongoDB (GitHub service container on 27017), Redis
+#     (6380) and LocalStack S3 (4566) via apps/backend/docker-compose.test.yml.
+#       NOTE: MONGODB_URI is pointed at the *container*, never a production
+#       cluster — the test job must never hold a production DB handle (#160).
+#   - frontend-* : NONE (build uses dummy env values; no real secrets).
+#   - mcp-tests  : NONE.
+#
+# Idempotent: every job is read-only against external state; re-running a commit
+# produces the same result. In-progress runs for a branch are cancelled when a
+# new commit is pushed (concurrency group below).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Backend ────────────────────────────────────────────────────────────────
+  backend-lint:
+    name: Backend Lint (ruff)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: uv sync
+      - name: ruff check
+        working-directory: apps/backend
+        run: uv run ruff check .
+
+  backend-typecheck:
+    # Advisory gate: the backend is not yet fully typed (issue #150). mypy runs
+    # for visibility but does not block — continue-on-error keeps it green while
+    # types are added incrementally. Tighten to blocking in a follow-up.
+    name: Backend Type Check (mypy, advisory)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: uv sync
+      - name: mypy (non-blocking)
+        working-directory: apps/backend
+        continue-on-error: true
+        run: uv run mypy app/
+
+  backend-unit:
+    name: Backend Unit Tests
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: uv sync
+      - name: Run unit tests with coverage
+        # Path selection: only suites with zero service dependencies. The marker
+        # filter additionally excludes integration/performance tests in them.
+        working-directory: apps/backend
+        run: |
+          PYTHONPATH=. uv run pytest \
+            tests/test_security/ \
+            tests/test_processing/ \
+            tests/test_utils/ \
+            tests/test_models/ \
+            tests/test_auth/ \
+            tests/test_model_training/test_problem_detector.py \
+            tests/test_model_training/test_feature_engineer.py \
+            -m "not integration and not performance" \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/backend/coverage.xml
+          flags: backend-unit
+          name: backend-unit-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  backend-integration:
+    name: Backend Integration Tests
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: uv sync
+      - name: Start Redis + LocalStack (S3)
+        working-directory: apps/backend
+        run: docker compose -f docker-compose.test.yml up -d
+      - name: Wait for Redis + LocalStack to be healthy
+        run: |
+          echo "Waiting for Redis..."
+          timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-redis-test 2>/dev/null)" = "healthy" ]; do sleep 2; done'
+          echo "Waiting for LocalStack..."
+          timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 2; done'
+          echo "Services ready."
+      - name: Run integration tests with coverage
+        working-directory: apps/backend
+        run: |
+          PYTHONPATH=. uv run pytest \
+            tests/integration/ \
+            -m integration \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+        env:
+          # MongoDB service container (NOT a production cluster — see #160).
+          TEST_MONGODB_URI: mongodb://localhost:27017/narrative_test
+          TEST_MONGODB_DB: narrative_test
+          MONGODB_URI: mongodb://localhost:27017/narrative_test
+          MONGODB_DB: narrative_test
+          TEST_REDIS_URL: redis://localhost:6380/0
+          S3_ENDPOINT_URL: http://localhost:4566
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          OPENAI_API_KEY: sk-test-key-for-mocking
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/backend/coverage.xml
+          flags: backend-integration
+          name: backend-integration-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Stop test services
+        if: always()
+        working-directory: apps/backend
+        run: docker compose -f docker-compose.test.yml down -v
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend-lint:
+    name: Frontend Lint (eslint)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+      - name: Lint
+        working-directory: apps/frontend
+        run: npm run lint
+
+  frontend-typecheck-build:
+    name: Frontend Type Check & Build
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+      - name: Type check (tsc --noEmit)
+        working-directory: apps/frontend
+        run: npm run type-check
+      - name: Production build (next build)
+        working-directory: apps/frontend
+        run: npm run build
+        env:
+          CI: true
+          # Dummy values mirroring smoke-tests.yml — build must not need real secrets.
+          NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
+          NEXTAUTH_URL: http://localhost:3000
+          GOOGLE_CLIENT_ID: dummy-client-id
+          GOOGLE_CLIENT_SECRET: dummy-client-secret
+          GITHUB_ID: dummy-client-id
+          GITHUB_SECRET: dummy-client-secret
+          OPENAI_API_KEY: fake-openai-key-for-ci-only
+
+  frontend-unit:
+    name: Frontend Unit Tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+      - name: Run unit tests with coverage
+        working-directory: apps/frontend
+        run: npm test -- --coverage --watchAll=false
+        env:
+          CI: true
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/frontend/coverage/lcov.info
+          flags: frontend-unit
+          name: frontend-unit-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── MCP ────────────────────────────────────────────────────────────────────
+  mcp-tests:
+    name: MCP Tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        working-directory: apps/mcp
+        run: uv sync
+      - name: Run MCP tests
+        # Scope to the app's own tests/ — the vendored fastmcp/tests are the
+        # upstream library's suite and are not part of this project's gate.
+        working-directory: apps/mcp
+        run: uv run pytest tests/ -v
+
+  # ── Aggregate gate ─────────────────────────────────────────────────────────
+  ci-success:
+    # Single required status for branch protection. Depends on every BLOCKING
+    # job; backend-typecheck (advisory) is intentionally excluded.
+    name: CI Success
+    if: always()
+    needs:
+      - backend-lint
+      - backend-unit
+      - backend-integration
+      - frontend-lint
+      - frontend-typecheck-build
+      - frontend-unit
+      - mcp-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required CI jobs failed."
+            exit 1
+          fi
+          echo "All required CI jobs passed."

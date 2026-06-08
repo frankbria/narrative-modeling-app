@@ -173,8 +173,7 @@ class PreviewService:
             original_col = original_df[col]
             transformed_col = transformed_df[col]
 
-            # Case 1: Both are NaN -> no difference
-            both_nan = original_col.isna() & transformed_col.isna()
+            # Case 1: Both are NaN -> no difference (no action needed; mask stays False)
 
             # Case 2: One is NaN, one isn't -> difference
             nan_mismatch = original_col.isna() != transformed_col.isna()

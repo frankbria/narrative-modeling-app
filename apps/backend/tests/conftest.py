@@ -16,11 +16,17 @@ os.environ.setdefault("ENVIRONMENT", "test")
 
 import pytest
 import pytest_asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, TYPE_CHECKING
 from datetime import datetime, timezone
 
 # Lazy imports to avoid app initialization for unit tests
-# Only import these when fixtures are actually used
+# Only import these when fixtures are actually used. The TYPE_CHECKING block
+# below makes the fixture return annotations resolvable for type checkers and
+# linters without triggering app/model import (and Beanie init) at collection.
+if TYPE_CHECKING:
+    from app.models.user_data import UserData
+    from app.models.trained_model import TrainedModel
+    from app.models.batch_job import BatchJob
 
 
 def _point_app_at_test_database():

@@ -70,7 +70,6 @@ class TransformationValidator:
         result = ValidationResult(is_valid=True)
         
         columns = parameters.get('columns', [])
-        value = parameters.get('value', None)
         method = parameters.get('method', None)
         
         # Check if columns exist
@@ -163,13 +162,10 @@ class TransformationValidator:
         result = ValidationResult(is_valid=True)
         
         # Simulate applying transformations to check compatibility
-        temp_df = df.copy()
-        
         for i, transform in enumerate(transformations):
             # Here we would validate each transformation
-            # This is a simplified version
-            transform_type = transform.get('type')
-            
+            # This is a simplified version (full per-transform validation TBD)
+
             # Check if output of previous transformation is compatible with next
             if i > 0:
                 # Add compatibility checks here

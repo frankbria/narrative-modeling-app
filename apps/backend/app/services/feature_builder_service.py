@@ -690,7 +690,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                     unique=bool(stats["unique_count"] == stats["total_count"])
                 ))
 
-                new_dataset = await self.dataset_service.create_dataset(
+                await self.dataset_service.create_dataset(
                     user_id=user_id,
                     dataset_id=new_dataset_id,
                     filename=f"{dataset.original_filename.rsplit('.', 1)[0]}_with_{column_name}.parquet",

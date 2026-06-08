@@ -238,7 +238,7 @@ class TestFullWorkflow:
                     assert pii_report.get("has_pii") or pii_report.get("contains_pii")
                 elif "pii_detected" in data:
                     # Legacy format
-                    assert data.get("pii_detected") == True
+                    assert data.get("pii_detected")
 
     @pytest.mark.skip(reason="Error handling test needs refactoring for new API structure")
     @pytest.mark.asyncio

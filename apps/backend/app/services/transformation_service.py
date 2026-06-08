@@ -477,7 +477,7 @@ class TransformationService(BaseService[TransformationConfig]):
             )
 
             # Mark as applied
-            config = await self.mark_transformations_applied(
+            await self.mark_transformations_applied(
                 config_id=config_id,
                 file_path=new_file_path
             )

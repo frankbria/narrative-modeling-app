@@ -349,7 +349,7 @@ class TestVolumeMigration:
 
             for user_data in legacy_docs:
                 dataset = migrator.migrate_user_data_to_dataset_metadata(user_data)
-                config = migrator.migrate_user_data_to_transformation_config(user_data, dataset.dataset_id)
+                migrator.migrate_user_data_to_transformation_config(user_data, dataset.dataset_id)
                 total_migrated += 1
 
         duration = time.time() - start_time
@@ -599,7 +599,7 @@ class TestPerformanceImpact:
             start_time = time.time()
             for user_data in legacy_docs:
                 dataset = migrator.migrate_user_data_to_dataset_metadata(user_data)
-                config = migrator.migrate_user_data_to_transformation_config(user_data, dataset.dataset_id)
+                migrator.migrate_user_data_to_transformation_config(user_data, dataset.dataset_id)
             duration = time.time() - start_time
 
             docs_per_second = size / duration

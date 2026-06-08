@@ -357,7 +357,6 @@ class OnboardingService:
         import tempfile
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file:
             df.to_csv(temp_file.name, index=False)
-            temp_file_path = temp_file.name
         
         # For now, create a mock S3 URL (in production this would upload to actual S3)
         s3_url = f"https://sample-bucket.s3.amazonaws.com/{filename}"

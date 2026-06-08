@@ -97,7 +97,7 @@ class TestModelTrainingEndpoints:
             mock_find.return_value = mock_user_data
 
             # Mock the background task function to prevent it from executing
-            with patch('app.api.routes.model_training.train_model_task', new_callable=AsyncMock) as mock_task:
+            with patch('app.api.routes.model_training.train_model_task', new_callable=AsyncMock):
                 request_data = {
                     "dataset_id": "dataset_123",
                     "target_column": "target",
