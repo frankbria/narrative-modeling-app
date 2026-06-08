@@ -1,24 +1,26 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { modelService, TrainingStatus } from '@/lib/services/model';
-import { Brain, Zap, Settings, PlayCircle, AlertCircle } from 'lucide-react';
+import { Brain, Zap, PlayCircle, AlertCircle } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 interface ModelConfig {
-  problem_type: 'classification' | 'regression';
+  // AutoML auto-detects the problem type and chooses the algorithm, so the
+  // target column is the only user-provided training input.
   target_column: string;
-  algorithm: string;
-  hyperparameters: Record<string, unknown>;
 }
 
 // How often to poll the training status endpoint, in milliseconds.
 const STATUS_POLL_INTERVAL_MS = 2000;
+// Stop polling after this many attempts (~20 min) and surface a timeout, so a
+// dead background job doesn't leave the UI polling forever.
+const MAX_STATUS_POLLS = 600;
 
 export default function ModelPage() {
   const { data: session } = useSession();
@@ -26,15 +28,20 @@ export default function ModelPage() {
   const router = useRouter();
   const [training, setTraining] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    problem_type: 'classification',
-    target_column: '',
-    algorithm: 'auto',
-    hyperparameters: {}
+    target_column: ''
   });
   const [columns, setColumns] = useState<string[]>([]);
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
   const [trainingError, setTrainingError] = useState<string | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Stop any in-flight status polling when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.MODEL_TRAINING)) {
@@ -87,8 +94,12 @@ export default function ModelPage() {
       });
 
       // Poll the real status endpoint until the job completes or fails, driving
-      // the progress bar from the job's actual per-algorithm progress.
+      // the progress bar from the job's actual per-algorithm progress. Bounded
+      // by MAX_STATUS_POLLS so a dead job surfaces a timeout instead of polling
+      // forever; the timeout id is tracked for unmount cleanup.
+      let attempts = 0;
       const checkStatus = async () => {
+        attempts += 1;
         try {
           const status = await modelService.getTrainingStatus(result.model_id);
           setTrainingStatus(status);
@@ -106,8 +117,11 @@ export default function ModelPage() {
           } else if (status.status === 'failed') {
             setTrainingError(status.error || 'Training failed');
             setTraining(false);
+          } else if (attempts >= MAX_STATUS_POLLS) {
+            setTrainingError('Training timed out. Please try again.');
+            setTraining(false);
           } else {
-            setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
+            pollTimeoutRef.current = setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
           }
         } catch (error) {
           console.error('Failed to fetch training status:', error);
@@ -118,7 +132,7 @@ export default function ModelPage() {
         }
       };
 
-      setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
+      pollTimeoutRef.current = setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
     } catch (error) {
       console.error('Failed to train model:', error);
       setTrainingError(
@@ -158,36 +172,20 @@ export default function ModelPage() {
 
         {!training ? (
           <div className="space-y-6">
-            {/* Problem Type Selection */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Problem Type</label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setModelConfig(prev => ({ ...prev, problem_type: 'classification' }))}
-                  className={`p-4 border-2 rounded-lg transition-colors ${
-                    modelConfig.problem_type === 'classification'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <h3 className="font-semibold">Classification</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Predict categories or classes
-                  </p>
-                </button>
-                <button
-                  onClick={() => setModelConfig(prev => ({ ...prev, problem_type: 'regression' }))}
-                  className={`p-4 border-2 rounded-lg transition-colors ${
-                    modelConfig.problem_type === 'regression'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <h3 className="font-semibold">Regression</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Predict continuous values
-                  </p>
-                </button>
+            {/* AutoML auto-detects the problem type and compares several
+                algorithms, so the only required input is the target column.
+                (Manual problem-type / single-algorithm selection and Quick/
+                Comprehensive modes are tracked separately — see issues #76/#101.) */}
+            <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200 flex items-start gap-3">
+              <Zap className="w-5 h-5 text-indigo-500 mt-0.5" />
+              <div className="text-sm text-indigo-900">
+                <p className="font-semibold">AI-guided AutoML</p>
+                <p className="mt-1 text-indigo-800">
+                  We automatically detect whether this is a classification or
+                  regression problem, train and cross-validate several algorithms
+                  (Logistic/Linear Regression, Random Forest, XGBoost and more),
+                  and pick the best model — with an explanation of why.
+                </p>
               </div>
             </div>
 
@@ -204,49 +202,9 @@ export default function ModelPage() {
                   <option key={column} value={column}>{column}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Algorithm Selection */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Algorithm</label>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  onClick={() => setModelConfig(prev => ({ ...prev, algorithm: 'auto' }))}
-                  className={`p-3 border rounded-lg transition-colors ${
-                    modelConfig.algorithm === 'auto'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <Zap className="w-5 h-5 mx-auto mb-1 text-yellow-500" />
-                  <p className="text-sm font-medium">AutoML</p>
-                  <p className="text-xs text-gray-500">Let AI choose</p>
-                </button>
-                <button
-                  onClick={() => setModelConfig(prev => ({ ...prev, algorithm: 'random_forest' }))}
-                  className={`p-3 border rounded-lg transition-colors ${
-                    modelConfig.algorithm === 'random_forest'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <Settings className="w-5 h-5 mx-auto mb-1 text-green-500" />
-                  <p className="text-sm font-medium">Random Forest</p>
-                  <p className="text-xs text-gray-500">Robust & accurate</p>
-                </button>
-                <button
-                  onClick={() => setModelConfig(prev => ({ ...prev, algorithm: 'xgboost' }))}
-                  className={`p-3 border rounded-lg transition-colors ${
-                    modelConfig.algorithm === 'xgboost'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <Settings className="w-5 h-5 mx-auto mb-1 text-purple-500" />
-                  <p className="text-sm font-medium">XGBoost</p>
-                  <p className="text-xs text-gray-500">High performance</p>
-                </button>
-              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                The column you want the model to predict.
+              </p>
             </div>
 
             {/* Warning */}
@@ -374,6 +332,35 @@ export default function ModelPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {trainingStatus.algorithm_recommendations.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      Why these algorithms?
+                    </h3>
+                    <div className="space-y-2">
+                      {trainingStatus.algorithm_recommendations.map((rec) => (
+                        <div
+                          key={rec.algorithm_name}
+                          className="border border-gray-200 rounded-lg p-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm">
+                              {rec.algorithm_name}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Priority {rec.priority}/10 · Interpretability{' '}
+                              {rec.interpretability_score}/10
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {rec.explanation}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

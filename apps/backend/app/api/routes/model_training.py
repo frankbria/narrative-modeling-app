@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import io
+import uuid
 from datetime import datetime, timezone
 import logging
 
@@ -115,8 +116,11 @@ async def train_model(
     if not user_data:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    # Create a temporary model entry
-    model_id = f"model_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    # Create a unique model id. A short uuid suffix avoids collisions between
+    # requests made within the same second (the id is the lookup key for the
+    # TrainingJob status endpoint, so it must be unique).
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    model_id = f"model_{timestamp}_{uuid.uuid4().hex[:8]}"
 
     # Persist a pending TrainingJob synchronously so the status endpoint can be
     # polled immediately (before the background task has had a chance to run).
@@ -171,6 +175,12 @@ async def train_model_task(
     try:
         logger.info(f"Starting model training for dataset {request.dataset_id}")
 
+        # Mark RUNNING at task entry so the status reflects real activity during
+        # the (potentially slow) S3 download and dataset parse, not just model fit.
+        if training_job:
+            training_job.mark_started()
+            await training_job.save()
+
         # Extract S3 file key (parse_s3_url handles all persisted URL shapes)
         _, file_key = parse_s3_url(user_data.s3_url)
 
@@ -194,10 +204,6 @@ async def train_model_task(
             df = pd.read_parquet(file_io)
         else:
             raise ValueError(f"Unsupported file type: {user_data.file_type}")
-
-        if training_job:
-            training_job.mark_started()
-            await training_job.save()
 
         # Create feature engineering config
         feature_config = None

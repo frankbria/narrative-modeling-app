@@ -88,7 +88,18 @@ describe('ModelPage training wiring', () => {
         { algorithm: 'XGBoost', cv_score: 0.91, test_score: 0.9, training_time: 1.2 },
         { algorithm: 'Random Forest', cv_score: 0.88, test_score: 0.86, training_time: 0.8 },
       ],
-      algorithm_recommendations: [],
+      algorithm_recommendations: [
+        {
+          algorithm_name: 'XGBoost',
+          priority: 9,
+          expected_performance: '85-95% accuracy',
+          training_time_estimate: '3-10 minutes',
+          interpretability_score: 5,
+          explanation: 'State-of-the-art gradient boosting, often best performance',
+          pros: ['Often best accuracy'],
+          cons: ['Less interpretable'],
+        },
+      ],
     });
 
     render(<ModelPage />);
@@ -114,6 +125,11 @@ describe('ModelPage training wiring', () => {
     expect(screen.getAllByText('XGBoost').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Random Forest')).toBeInTheDocument();
     expect(screen.getByText(/XGBoost won/)).toBeInTheDocument();
+    // Algorithm recommendations are rendered for the analyst (acceptance criterion).
+    expect(screen.getByText('Why these algorithms?')).toBeInTheDocument();
+    expect(
+      screen.getByText(/State-of-the-art gradient boosting/)
+    ).toBeInTheDocument();
     expect(mockCompleteStage).toHaveBeenCalledWith(
       WorkflowStage.MODEL_TRAINING,
       expect.objectContaining({ modelId: 'model_1', bestAlgorithm: 'XGBoost' })

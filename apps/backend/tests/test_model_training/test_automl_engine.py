@@ -429,6 +429,21 @@ class TestAutoMLEngineEnhancements:
         assert by_name["Logistic Regression"].estimator.class_weight == "balanced"
         assert by_name["Random Forest"].estimator.class_weight == "balanced"
 
+    def test_all_candidates_build_with_class_weight(self, engine):
+        """Threading class_weight must not break estimators that don't accept it.
+
+        XGBoost, Gradient Boosting and KNN do not take a ``class_weight``; the
+        full candidate list (small dataset -> includes SVM/KNN) must still build.
+        """
+        candidates = engine._get_candidate_models(
+            ProblemType.BINARY_CLASSIFICATION, (1000, 20), class_weight="balanced"
+        )
+        names = {c.name for c in candidates}
+        # All expected candidates present and constructed without error.
+        assert {"XGBoost", "Gradient Boosting", "K-Nearest Neighbors", "SVM"} <= names
+        for candidate in candidates:
+            assert candidate.estimator is not None
+
     @pytest.mark.asyncio
     async def test_run_reports_progress(self, engine, imbalanced_data):
         mock_detection = ProblemDetectionResult(
