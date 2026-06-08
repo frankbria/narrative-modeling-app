@@ -377,7 +377,140 @@ class TestAutoMLEngine:
                             mock_cv.return_value = np.array([0.9, 0.91, 0.89])
                             
                             result = await engine.run(df, 'target')
-                            
+
                             # Check feature engineering metadata is included
                             assert 'feature_engineering' in result.metadata
                             assert result.metadata['feature_engineering']['original_features'] == ['num1', 'num2']
+
+
+class TestAutoMLEngineEnhancements:
+    """Tests for class-imbalance handling, progress callbacks, and comparison."""
+
+    @pytest.fixture
+    def engine(self):
+        return AutoMLEngine(max_models=3, cv_folds=3, test_size=0.2, random_state=42)
+
+    @pytest.fixture
+    def imbalanced_data(self):
+        np.random.seed(42)
+        n_samples = 200
+        X = pd.DataFrame({
+            'feature1': np.random.randn(n_samples),
+            'feature2': np.random.randn(n_samples),
+        })
+        # 90/10 imbalance -> ratio 9:1, well above the 2:1 threshold
+        y = pd.Series([0] * 180 + [1] * 20)
+        df = pd.concat([X, pd.DataFrame({'target': y})], axis=1)
+        return df
+
+    def test_assess_class_balance_flags_imbalance(self, engine):
+        y = pd.Series([0] * 80 + [1] * 20)  # 4:1
+        ratio, weight = engine._assess_class_balance(y, is_classification=True)
+        assert ratio == 4.0
+        assert weight == "balanced"
+
+    def test_assess_class_balance_balanced_data(self, engine):
+        y = pd.Series([0] * 55 + [1] * 45)  # ~1.2:1
+        ratio, weight = engine._assess_class_balance(y, is_classification=True)
+        assert weight is None
+
+    def test_assess_class_balance_regression(self, engine):
+        y = pd.Series(np.random.randn(100))
+        ratio, weight = engine._assess_class_balance(y, is_classification=False)
+        assert ratio is None
+        assert weight is None
+
+    def test_candidate_models_apply_class_weight(self, engine):
+        candidates = engine._get_candidate_models(
+            ProblemType.BINARY_CLASSIFICATION, (1000, 20), class_weight="balanced"
+        )
+        by_name = {c.name: c for c in candidates}
+        # Estimators that support class_weight should receive it.
+        assert by_name["Logistic Regression"].estimator.class_weight == "balanced"
+        assert by_name["Random Forest"].estimator.class_weight == "balanced"
+
+    @pytest.mark.asyncio
+    async def test_run_reports_progress(self, engine, imbalanced_data):
+        mock_detection = ProblemDetectionResult(
+            problem_type=ProblemType.BINARY_CLASSIFICATION,
+            target_column='target',
+            confidence=0.95,
+            reasoning="Binary classification",
+            metadata={},
+        )
+
+        async def mock_detect(df, target):
+            return mock_detection
+
+        calls = []
+
+        async def on_progress(completed, total, current):
+            calls.append((completed, total, current))
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                imbalanced_data, 'target', progress_callback=on_progress
+            )
+
+        # Callback fired for each candidate plus a final completion tick.
+        assert len(calls) >= 2
+        # Final tick reports all candidates completed with no current algorithm.
+        final_completed, final_total, final_current = calls[-1]
+        assert final_completed == final_total
+        assert final_current is None
+        # class_balance metadata reflects that balancing was applied.
+        assert result.metadata['class_balance']['balancing_applied'] is True
+        assert result.metadata['class_balance']['ratio'] > 2.0
+
+    @pytest.mark.asyncio
+    async def test_run_includes_model_comparison(self, engine, imbalanced_data):
+        mock_detection = ProblemDetectionResult(
+            problem_type=ProblemType.BINARY_CLASSIFICATION,
+            target_column='target',
+            confidence=0.95,
+            reasoning="Binary classification",
+            metadata={},
+        )
+
+        async def mock_detect(df, target):
+            return mock_detection
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(imbalanced_data, 'target')
+
+        comparison = result.metadata['model_comparison']
+        assert len(comparison) == len(result.all_models)
+        # Ranked by CV score descending.
+        scores = [row['cv_score'] for row in comparison]
+        assert scores == sorted(scores, reverse=True)
+        for row in comparison:
+            assert set(row) >= {"algorithm", "cv_score", "test_score", "training_time"}
+
+    @pytest.mark.asyncio
+    async def test_progress_callback_error_does_not_break_training(
+        self, engine, imbalanced_data
+    ):
+        mock_detection = ProblemDetectionResult(
+            problem_type=ProblemType.BINARY_CLASSIFICATION,
+            target_column='target',
+            confidence=0.95,
+            reasoning="Binary classification",
+            metadata={},
+        )
+
+        async def mock_detect(df, target):
+            return mock_detection
+
+        async def bad_callback(completed, total, current):
+            raise RuntimeError("callback exploded")
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                imbalanced_data, 'target', progress_callback=bad_callback
+            )
+
+        # Training still completes despite the failing callback.
+        assert result.best_model is not None

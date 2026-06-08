@@ -2,7 +2,7 @@
 Core AutoML engine for automated model selection and training
 """
 
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Awaitable, Callable, Dict, List, Any, Optional, Tuple
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
@@ -72,16 +72,24 @@ class AutoMLEngine:
         self,
         df: pd.DataFrame,
         target_column: str,
-        feature_config: Optional[FeatureEngineeringConfig] = None
+        feature_config: Optional[FeatureEngineeringConfig] = None,
+        progress_callback: Optional[
+            Callable[[int, int, str], Awaitable[None]]
+        ] = None,
     ) -> AutoMLResult:
         """
         Run the AutoML pipeline
-        
+
         Args:
             df: Input dataframe
             target_column: Name of target column
             feature_config: Feature engineering configuration
-            
+            progress_callback: Optional async callback invoked as
+                ``await progress_callback(completed, total, current_algorithm)``
+                before each candidate is trained and once more when all
+                candidates finish. Callback errors are swallowed so progress
+                reporting never breaks training.
+
         Returns:
             AutoMLResult with best model and metadata
         """
@@ -99,35 +107,52 @@ class AutoMLEngine:
         X = df.drop(columns=[target_column])
         y = df[target_column]
         
+        is_classification = problem_type in [
+            ProblemType.BINARY_CLASSIFICATION,
+            ProblemType.MULTICLASS_CLASSIFICATION,
+        ]
+
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=self.test_size, random_state=self.random_state,
-            stratify=y if problem_type in [
-                ProblemType.BINARY_CLASSIFICATION,
-                ProblemType.MULTICLASS_CLASSIFICATION
-            ] else None
+            stratify=y if is_classification else None
         )
-        
+
+        # Detect class imbalance and enable basic handling (class weighting).
+        # This is the lightweight "basic class-imbalance handling" of the beta
+        # scope: no resampling (SMOTE etc.), just class_weight="balanced" on the
+        # estimators that support it.
+        class_balance_ratio, class_weight = self._assess_class_balance(
+            y_train, is_classification
+        )
+
         # Feature engineering
         if feature_config:
             self.feature_engineer.config = feature_config
-        
+
         feature_result = await self.feature_engineer.fit_transform(
             X_train, y_train, problem_type.value
         )
         X_train_transformed = feature_result.X_transformed
-        
+
         # Transform test data
         X_test_transformed = await self.feature_engineer.transform(X_test)
-        
+
         # Get candidate models
-        candidates = self._get_candidate_models(problem_type, X_train_transformed.shape)
+        candidates = self._get_candidate_models(
+            problem_type, X_train_transformed.shape, class_weight=class_weight
+        )
         
         # Train and evaluate models
+        selected_candidates = candidates[:self.max_models]
+        total_candidates = len(selected_candidates)
         trained_models = []
-        for candidate in candidates[:self.max_models]:
+        for index, candidate in enumerate(selected_candidates):
             logger.info(f"Training {candidate.name}...")
-            
+            await self._report_progress(
+                progress_callback, index, total_candidates, candidate.name
+            )
+
             try:
                 # Train model
                 model_start = datetime.now(timezone.utc)
@@ -157,22 +182,39 @@ class AutoMLEngine:
                 logger.error(f"Error training {candidate.name}: {str(e)}")
                 continue
         
+        # Final progress tick: all candidates processed.
+        await self._report_progress(
+            progress_callback, total_candidates, total_candidates, None
+        )
+
         # Select best model
         if not trained_models:
             raise ValueError("No models were successfully trained")
         best_model = max(trained_models, key=lambda m: m.cv_score)
-        
+        ranked_models = sorted(trained_models, key=lambda m: m.cv_score, reverse=True)
+
         # Get feature importance if available
         feature_importance = self._get_feature_importance(
             best_model.estimator,
             feature_result.feature_names
         )
-        
+
         total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-        
+
+        # Side-by-side comparison of every trained candidate, ranked by CV score.
+        model_comparison = [
+            {
+                "algorithm": m.name,
+                "cv_score": m.cv_score,
+                "test_score": m.test_score,
+                "training_time": m.training_time,
+            }
+            for m in ranked_models
+        ]
+
         return AutoMLResult(
             best_model=best_model,
-            all_models=sorted(trained_models, key=lambda m: m.cv_score, reverse=True),
+            all_models=ranked_models,
             problem_type=problem_type,
             feature_names=feature_result.feature_names,
             feature_importance=feature_importance,
@@ -182,39 +224,89 @@ class AutoMLEngine:
                 "n_features_original": len(X.columns),
                 "n_features_engineered": len(feature_result.feature_names),
                 "feature_engineering": feature_result.metadata,
+                "model_comparison": model_comparison,
+                "class_balance": {
+                    "ratio": class_balance_ratio,
+                    "balancing_applied": class_weight is not None,
+                },
                 "detection_result": {
                     "confidence": detection_result.confidence,
                     "reasoning": detection_result.reasoning
                 }
             }
         )
+
+    @staticmethod
+    async def _report_progress(
+        progress_callback: Optional[Callable[[int, int, str], Awaitable[None]]],
+        completed: int,
+        total: int,
+        current_algorithm: Optional[str],
+    ) -> None:
+        """Invoke the progress callback, swallowing any error it raises."""
+        if progress_callback is None:
+            return
+        try:
+            await progress_callback(completed, total, current_algorithm)
+        except Exception as exc:  # progress reporting must never break training
+            logger.warning(f"Progress callback failed: {exc}")
+
+    @staticmethod
+    def _assess_class_balance(
+        y_train: pd.Series, is_classification: bool
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """Return (majority/minority ratio, class_weight) for the training labels.
+
+        ``class_weight`` is ``"balanced"`` when the ratio exceeds 2:1, otherwise
+        ``None``. For regression both values are ``None``.
+        """
+        if not is_classification:
+            return None, None
+        counts = y_train.value_counts()
+        if len(counts) < 2 or counts.min() == 0:
+            return None, None
+        ratio = float(counts.max() / counts.min())
+        class_weight = "balanced" if ratio > 2.0 else None
+        return ratio, class_weight
     
     def _get_candidate_models(
         self,
         problem_type: ProblemType,
-        data_shape: Tuple[int, int]
+        data_shape: Tuple[int, int],
+        class_weight: Optional[str] = None
     ) -> List[ModelCandidate]:
-        """Get candidate models based on problem type and data characteristics"""
+        """Get candidate models based on problem type and data characteristics.
+
+        ``class_weight`` (e.g. ``"balanced"``) is applied to the classifiers that
+        support it — Logistic Regression, Random Forest, SVM and LightGBM — to
+        provide basic class-imbalance handling. XGBoost, Gradient Boosting and KNN
+        do not take a ``class_weight`` and are left unchanged.
+        """
         n_samples, n_features = data_shape
         candidates = []
-        
+
         if problem_type in [ProblemType.BINARY_CLASSIFICATION, ProblemType.MULTICLASS_CLASSIFICATION]:
             # Logistic Regression
             candidates.append(ModelCandidate(
                 name="Logistic Regression",
-                estimator=LogisticRegression(random_state=self.random_state, max_iter=1000),
-                hyperparameters={"C": 1.0, "penalty": "l2"}
+                estimator=LogisticRegression(
+                    random_state=self.random_state,
+                    max_iter=1000,
+                    class_weight=class_weight
+                ),
+                hyperparameters={"C": 1.0, "penalty": "l2", "class_weight": class_weight}
             ))
-            
+
             # Random Forest
             candidates.append(ModelCandidate(
                 name="Random Forest",
                 estimator=RandomForestClassifier(
                     n_estimators=100,
                     random_state=self.random_state,
-                    n_jobs=-1
+                    n_jobs=-1,
+                    class_weight=class_weight
                 ),
-                hyperparameters={"n_estimators": 100, "max_depth": None}
+                hyperparameters={"n_estimators": 100, "max_depth": None, "class_weight": class_weight}
             ))
             
             # XGBoost
@@ -236,11 +328,12 @@ class AutoMLEngine:
                     n_estimators=100,
                     random_state=self.random_state,
                     n_jobs=-1,
-                    verbosity=-1
+                    verbosity=-1,
+                    class_weight=class_weight
                 ),
-                hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
+                hyperparameters={"n_estimators": 100, "learning_rate": 0.1, "class_weight": class_weight}
             ))
-            
+
             # Gradient Boosting
             if n_samples < 10000:  # Slower for large datasets
                 candidates.append(ModelCandidate(
@@ -259,9 +352,10 @@ class AutoMLEngine:
                     estimator=SVC(
                         kernel='rbf',
                         random_state=self.random_state,
-                        probability=True
+                        probability=True,
+                        class_weight=class_weight
                     ),
-                    hyperparameters={"C": 1.0, "kernel": "rbf"}
+                    hyperparameters={"C": 1.0, "kernel": "rbf", "class_weight": class_weight}
                 ))
             
             # KNN (for smaller datasets)

@@ -332,3 +332,159 @@ class TestModelTrainingBackgroundTask:
                     mock_s3.assert_called_once()
                     mock_run.assert_called_once()
                     mock_save.assert_called_once()
+
+
+class TestTrainingStatusEndpoint:
+    """Test GET /api/v1/ml/{model_id}/status and job lifecycle tracking."""
+
+    @pytest.mark.asyncio
+    async def test_train_creates_pending_job(self, async_authorized_client):
+        """POST /train persists a pending TrainingJob and it is queryable."""
+        from app.models.training_job import TrainingJob
+        from app.models.batch_job import JobStatus
+
+        mock_user_data = MagicMock(
+            id="dataset_123",
+            user_id="test_user_123",
+            file_key="uploads/test_user/test_data.csv",
+        )
+
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            with patch('app.api.routes.model_training.train_model_task', new_callable=AsyncMock):
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/train",
+                    json={"dataset_id": "dataset_123", "target_column": "target"},
+                )
+
+        assert response.status_code == 200
+        model_id = response.json()["model_id"]
+
+        # A pending TrainingJob now exists for this model_id.
+        job = await TrainingJob.find_one(TrainingJob.model_id == model_id)
+        assert job is not None
+        assert job.status == JobStatus.PENDING
+
+        # And the status endpoint reports it.
+        status_resp = await async_authorized_client.get(f"/api/v1/ml/{model_id}/status")
+        assert status_resp.status_code == 200
+        body = status_resp.json()
+        assert body["status"] == "pending"
+        assert body["progress"] == 0.0
+
+        await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_status_returns_completed_results(self, async_authorized_client):
+        """A completed job returns comparison, recommendations, and explanation."""
+        from app.models.training_job import TrainingJob, ModelComparisonEntry
+
+        job = TrainingJob(
+            model_id="model_status_done",
+            user_id="test_user_123",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        job.mark_started(total_algorithms=2)
+        job.mark_completed(
+            best_model_id="model_status_done",
+            best_algorithm="XGBoost",
+            best_model_explanation="XGBoost won.",
+            model_comparison=[
+                ModelComparisonEntry(algorithm="XGBoost", cv_score=0.91, test_score=0.9),
+                ModelComparisonEntry(algorithm="Random Forest", cv_score=0.88),
+            ],
+            algorithm_recommendations=[{"algorithm_name": "XGBoost", "priority": 9}],
+            metrics={"cv_score": 0.91, "test_score": 0.9},
+        )
+        await job.insert()
+
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_status_done/status"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["status"] == "completed"
+            assert body["progress"] == 1.0
+            assert body["best_algorithm"] == "XGBoost"
+            assert body["explanation"] == "XGBoost won."
+            assert len(body["model_comparison"]) == 2
+            assert body["model_comparison"][0]["algorithm"] == "XGBoost"
+            assert body["algorithm_recommendations"][0]["algorithm_name"] == "XGBoost"
+            assert body["metrics"]["cv_score"] == 0.91
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_status_returns_failure(self, async_authorized_client):
+        """A failed job surfaces the error message."""
+        from app.models.training_job import TrainingJob
+
+        job = TrainingJob(
+            model_id="model_status_failed",
+            user_id="test_user_123",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        job.mark_started(total_algorithms=2)
+        job.mark_failed("Unsupported file type: txt")
+        await job.insert()
+
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_status_failed/status"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["status"] == "failed"
+            assert body["error"] == "Unsupported file type: txt"
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_status_not_found(self, async_authorized_client):
+        """Unknown model_id returns 404."""
+        resp = await async_authorized_client.get("/api/v1/ml/does_not_exist/status")
+        assert resp.status_code == 404
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_train_model_task_marks_failure(self, sample_dataset, setup_database):
+        """A task failure transitions the TrainingJob to FAILED with an error."""
+        from app.api.routes.model_training import train_model_task, TrainModelRequest
+        from app.models.training_job import TrainingJob
+        from app.models.batch_job import JobStatus
+
+        job = TrainingJob(
+            model_id="model_task_fail",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+
+        # Force an unsupported file type so the task raises internally.
+        sample_dataset.file_type = "txt"
+
+        try:
+            with patch(
+                'app.services.s3_service.S3Service.download_file_bytes',
+                new_callable=AsyncMock,
+            ) as mock_s3:
+                mock_s3.return_value = b"irrelevant"
+                request = TrainModelRequest(
+                    dataset_id="dataset_123", target_column="target"
+                )
+                # Should NOT raise — failure is recorded on the job.
+                await train_model_task(
+                    sample_dataset, request, "test_user", "model_task_fail"
+                )
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_fail"
+            )
+            assert refreshed.status == JobStatus.FAILED
+            assert refreshed.error is not None
+        finally:
+            await job.delete()
