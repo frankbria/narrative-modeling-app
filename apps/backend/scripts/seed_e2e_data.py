@@ -42,7 +42,7 @@ def get_db_client():
             client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
             # Test connection
             client.admin.command('ping')
-            print(f"   ✅ Connected to MongoDB successfully")
+            print("   ✅ Connected to MongoDB successfully")
             return client
         except Exception as e:
             if attempt < max_retries:

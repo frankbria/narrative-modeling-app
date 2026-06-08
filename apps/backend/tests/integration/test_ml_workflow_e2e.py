@@ -361,8 +361,6 @@ class TestMLWorkflowE2E:
                 )
 
                 assert response.status_code == 200
-                transform_data = response.json()
-                v2_dataset_id = transform_data.get("new_dataset_id", v1_dataset_id)
 
         # Step 4: Verify version lineage
         response = await async_authorized_client.get(f"/api/v1/versions/dataset/{original_dataset_id}")

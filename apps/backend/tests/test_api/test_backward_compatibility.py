@@ -392,7 +392,7 @@ class TestDataConsistency:
         """
         # ARRANGE: Create dataset via service (dual-write)
         service = DatasetService()
-        dataset = await service.create_dataset(
+        await service.create_dataset(
             user_id="test_user_123",
             dataset_id="consistency_test_1",
             filename="consistency1.csv",
@@ -454,7 +454,7 @@ class TestDataConsistency:
         """
         # ARRANGE: Create dataset
         service = DatasetService()
-        dataset = await service.create_dataset(
+        await service.create_dataset(
             user_id="test_user_123",
             dataset_id="timestamp_test",
             filename="timestamp.csv",
@@ -510,7 +510,7 @@ class TestDataConsistency:
             "consistency": 0.92
         }
 
-        dataset = await service.create_dataset(
+        await service.create_dataset(
             user_id="test_user_123",
             dataset_id="stats_test",
             filename="stats.csv",

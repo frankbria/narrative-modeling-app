@@ -212,8 +212,6 @@ class FeatureSelectionService:
         algorithm_params: Optional[Dict[str, Any]] = None
     ) -> List[FeatureScore]:
         """Calculate feature importance scores without selection"""
-        start_time = time.time()
-
         df, _ = await self._load_dataset(dataset_id, user_id)
         X, y, detected_problem_type = await self._prepare_data(
             df, target_column, problem_type, dataset_id=dataset_id
@@ -235,8 +233,6 @@ class FeatureSelectionService:
             normalized_scores,
             selected=None  # All features
         )
-
-        execution_time = (time.time() - start_time) * 1000
 
         return feature_scores
 

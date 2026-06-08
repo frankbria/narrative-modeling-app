@@ -21,7 +21,6 @@ class TestAutoMLIntegration:
     def iris_like_data(self):
         """Create an iris-like classification dataset"""
         np.random.seed(42)
-        n_samples = 150
         
         # Create features with some separability
         class_0 = np.random.randn(50, 4) + [5.0, 3.0, 1.5, 0.2]

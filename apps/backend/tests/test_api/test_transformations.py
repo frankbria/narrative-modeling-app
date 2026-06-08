@@ -541,11 +541,6 @@ class TestTransformationRoutes:
         valid_types = ["encode", "scale", "impute", "drop_missing"]
 
         for transform_type in valid_types:
-            request_data = {
-                "dataset_id": dataset.dataset_id,
-                "transformation_type": transform_type,
-                "parameters": {"column": "a"}
-            }
 
             # Should not raise validation error (may fail for other reasons)
             response = await async_authorized_client.post(

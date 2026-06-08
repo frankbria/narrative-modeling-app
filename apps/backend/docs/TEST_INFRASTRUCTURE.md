@@ -37,11 +37,15 @@ Notes:
 
 ### CI encoding
 
-- `.github/workflows/unit-tests.yml` — service-free test paths only
-  (no MongoDB/Redis/S3); requirements documented in the workflow header.
-- `.github/workflows/integration-tests.yml` (manual trigger) — provisions
-  Redis + LocalStack via `docker-compose.test.yml` and uses an Atlas test
-  cluster for MongoDB; requirements documented in the workflow header.
+- `.github/workflows/ci.yml` — the primary PR gate (issue #150). Runs the
+  service-free backend paths (`backend-unit`) plus `backend-integration`, which
+  provisions a MongoDB **service container** (27017) and Redis + LocalStack via
+  `docker-compose.test.yml`. It also runs frontend (eslint/tsc/build/jest) and
+  MCP pytest, and exposes the aggregate `CI Success` status. Requirements are
+  documented in the workflow header.
+- `.github/workflows/integration-tests.yml` (manual trigger) — the standalone
+  integration run; provisions Redis + LocalStack via `docker-compose.test.yml`
+  and uses an Atlas test cluster for MongoDB. Requirements in the workflow header.
 
 ## Test Organization
 

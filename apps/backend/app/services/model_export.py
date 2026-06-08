@@ -10,7 +10,7 @@ import zipfile
 from io import BytesIO
 
 try:
-    import onnx
+    import onnx  # noqa: F401  # availability probe for the ONNX export path
     import skl2onnx
     from skl2onnx import convert_sklearn
     ONNX_AVAILABLE = True
@@ -53,10 +53,6 @@ class ModelExportService:
         trained_model = model_artifacts["model"]
         
         try:
-            # Create sample input for ONNX conversion
-            import numpy as np
-            sample_input = np.zeros((1, model.n_features), dtype=np.float32)
-            
             # Convert to ONNX
             onnx_model = convert_sklearn(
                 trained_model,
@@ -551,7 +547,7 @@ print(response.json())
         ]
         
         try:
-            import sklearn2pmml
+            import sklearn2pmml  # noqa: F401  # availability probe for PMML export
             formats.append({
                 "name": "PMML",
                 "extension": "pmml",

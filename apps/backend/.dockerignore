@@ -1,0 +1,23 @@
+# Build context hygiene — keep the host venv, caches, and test artifacts out of
+# the image (the 1.6G local .venv is rebuilt inside the container by uv sync).
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+test-results/
+.env
+.env.*
+!.env.example
+*.log
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+docs/

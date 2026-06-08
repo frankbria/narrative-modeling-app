@@ -29,13 +29,13 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Backend (service-free tests, no services): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
 - Frontend (unit tests): `cd apps/frontend && npm test`
 - Frontend (type check): `cd apps/frontend && npm run type-check`
-- MCP: `cd apps/mcp && uv run pytest`
+- MCP: `cd apps/mcp && uv run pytest tests/` (scope to `tests/`; the vendored `fastmcp/tests/` is the upstream library's own suite)
 
 ## Test Suite Status
 - Backend: full suite green locally (~1,460 passed, ~39 service-gated/documented skips) ✅ — fixed in issue #160
   - During pytest runs the app lifespan uses the **test** database (never production `MONGODB_URI`)
   - Canonical Beanie model registry: `app/models/registry.py` (shared by app lifespan and `setup_database` fixture)
-- CI: `unit-tests.yml` runs the service-free backend paths plus a `frontend-type-check-and-build` job (`tsc --noEmit` + `next build`); `integration-tests.yml` (manual) provisions Redis/LocalStack — service requirements documented in each workflow header
+- CI: `ci.yml` is the primary PR gate (issue #150). It runs backend (ruff **blocking**, mypy **advisory**, service-free pytest), frontend (eslint, `tsc --noEmit`, `next build`, jest), MCP pytest, and backend integration tests (MongoDB **service container** on 27017 + Redis/LocalStack from `docker-compose.test.yml`). A single aggregate `CI Success` status is the required check for branch protection on `main`. The old `unit-tests.yml` was consolidated into `ci.yml`; `integration-tests.yml`/`e2e-tests.yml` remain manual (`workflow_dispatch`). `deploy.yml` deploys `main` to staging over SSH (secret-gated; see workflow header) — service requirements documented in each workflow header
 - Frontend: Jest tests configured; TypeScript errors eliminated (#166); `npm run type-check` (`tsc --noEmit`) enforced in CI
 - MCP: Pytest suite available
 - See `apps/backend/docs/TEST_INFRASTRUCTURE.md` for the testing guide and the **Service Prerequisites** table

@@ -1,0 +1,17 @@
+# Keep host node_modules, build output, and local env out of the build context
+# (node_modules is reinstalled inside the image from the lockfile).
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+README.md

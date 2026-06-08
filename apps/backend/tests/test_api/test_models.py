@@ -189,7 +189,7 @@ class TestModelRoutes:
         model_service = ModelService()
         model_id = f"model_{uuid.uuid4().hex[:8]}"
 
-        model = await model_service.create_model_config(
+        await model_service.create_model_config(
             user_id="test_user_123",
             dataset_id="test_dataset",
             model_id=model_id,

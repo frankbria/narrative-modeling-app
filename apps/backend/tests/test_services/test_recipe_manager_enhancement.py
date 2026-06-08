@@ -280,7 +280,7 @@ class TestRecipeSharing:
              patch('app.services.transformation_engine.recipe_manager.SharedRecipe',
                    return_value=mock_shared):
             # ACT
-            result = await RecipeManager.share_recipe(
+            await RecipeManager.share_recipe(
                 recipe_id=str(original_id),
                 owner_id="owner_123",
                 target_user_id="recipient_456"
@@ -351,7 +351,7 @@ class TestRecipeSharing:
         with patch.object(SharedRecipe, 'get', new_callable=AsyncMock, return_value=mock_shared), \
              patch.object(TransformationRecipe, 'get', new_callable=AsyncMock, return_value=mock_original):
             # ACT
-            result = await RecipeManager.update_shared_recipe(
+            await RecipeManager.update_shared_recipe(
                 shared_recipe_id=str(shared_id),
                 user_id="recipient_123",
                 original_recipe_id=str(original_id)
@@ -454,7 +454,7 @@ class TestRecipeImportExport:
         with patch('app.services.transformation_engine.recipe_manager.TransformationRecipe',
                    return_value=mock_imported):
             # ACT
-            result = await RecipeManager.import_recipe_from_json(
+            await RecipeManager.import_recipe_from_json(
                 json_data=json_data,
                 user_id="user_123",
                 name_override=None

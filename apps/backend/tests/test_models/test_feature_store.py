@@ -17,7 +17,6 @@ Tests cover:
 
 import pytest
 from datetime import datetime, timezone
-from pydantic import ValidationError
 from app.models.feature_store import (
     StoredFeature,
     FeatureVersion,

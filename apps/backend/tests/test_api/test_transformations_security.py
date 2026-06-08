@@ -39,7 +39,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="other_user",  # Different from test_user_123 (the authorized client)
             dataset_id="security_test_dataset_1",
             filename="data.csv",
@@ -93,7 +93,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="test_user_123",  # Same as authorized client
             dataset_id="security_test_dataset_2",
             filename="data.csv",
@@ -158,7 +158,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="other_user",  # Different from test_user_123
             dataset_id="security_test_dataset_3",
             filename="data.csv",
@@ -222,7 +222,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="other_user",
             dataset_id="security_test_dataset_4",
             filename="data.csv",
@@ -279,7 +279,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="test_user_123",
             dataset_id="timeout_test_dataset",
             filename="data.csv",
@@ -341,7 +341,7 @@ class TestTransformationSecurityViaAPI:
         from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
-        dataset = await dataset_service.create_dataset(
+        await dataset_service.create_dataset(
             user_id="test_user_123",
             dataset_id="timeout_message_test",
             filename="data.csv",
