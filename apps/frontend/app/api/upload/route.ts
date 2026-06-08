@@ -76,16 +76,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'File is empty' }, { status: 400 })
       }
 
-      // Build a dense, rectangular array-of-arrays (row.values is 1-indexed).
-      const columnCount = worksheet.columnCount
+      // Restrict to the sheet's used column range so a blank leading column
+      // doesn't shift every column (row.values is 1-indexed and pads leading
+      // empties with null). Matches the previous sheet_to_json behavior.
+      const dimensions = worksheet.dimensions
+      const firstCol = dimensions?.left ?? 1
+      const lastCol = dimensions?.right ?? worksheet.columnCount
+
+      // Build a dense, rectangular array-of-arrays, skipping fully-empty rows so
+      // blank separator rows don't consume preview slots.
       const rows: CellPrimitive[][] = []
       worksheet.eachRow({ includeEmpty: true }, (row) => {
         const values = row.values as unknown[]
         const rowData: CellPrimitive[] = []
-        for (let col = 1; col <= columnCount; col++) {
+        for (let col = firstCol; col <= lastCol; col++) {
           rowData.push(normalizeCell(values[col]))
         }
-        rows.push(rowData)
+        if (rowData.some((cell) => cell !== null)) {
+          rows.push(rowData)
+        }
       })
 
       if (rows.length === 0) {

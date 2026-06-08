@@ -94,6 +94,46 @@ describe('POST /api/upload', () => {
       expect(richCell).toBe('Hello World') // rich text -> concatenated text
     })
 
+    it('trims a leading empty column so columns are not shifted', async () => {
+      const workbook = new ExcelJS.Workbook()
+      const sheet = workbook.addWorksheet('Sheet1')
+      // Data starts in column B; column A is entirely blank.
+      sheet.getCell('B1').value = 'h1'
+      sheet.getCell('C1').value = 'h2'
+      sheet.getCell('B2').value = 'x'
+      sheet.getCell('C2').value = 'y'
+      const buffer = await workbook.xlsx.writeBuffer()
+      const file = new File([buffer], 'offset.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+
+      const res = await POST(makeRequest(file))
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.headers).toEqual(['h1', 'h2'])
+      expect(body.previewData).toEqual([['x', 'y']])
+    })
+
+    it('skips fully-blank interior rows', async () => {
+      const file = await makeXlsxFile([
+        ['h1', 'h2'],
+        ['a', 'b'],
+        [], // blank separator row
+        ['c', 'd'],
+      ])
+
+      const res = await POST(makeRequest(file))
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.headers).toEqual(['h1', 'h2'])
+      expect(body.previewData).toEqual([
+        ['a', 'b'],
+        ['c', 'd'],
+      ])
+    })
+
     it('returns 400 for an empty .xlsx file', async () => {
       const workbook = new ExcelJS.Workbook()
       workbook.addWorksheet('Sheet1') // no rows
