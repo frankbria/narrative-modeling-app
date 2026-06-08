@@ -95,9 +95,12 @@ export async function POST(request: Request) {
       }
 
       // Collect rows that carry content, dropping fully-empty separator rows so
-      // they don't consume preview slots.
+      // they don't consume preview slots. We only need 11 rows (header + 10
+      // preview); eachRow can't break, but returning early skips per-row work
+      // once we have enough.
       const rows: CellPrimitive[][] = []
       worksheet.eachRow({ includeEmpty: true }, (row) => {
+        if (rows.length >= 11) return
         const rowData = toRow(row.values as unknown[])
         if (rowData.some((cell) => cell !== null)) {
           rows.push(rowData)
