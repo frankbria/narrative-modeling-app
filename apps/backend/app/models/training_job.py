@@ -31,7 +31,7 @@ class TrainingProgress(BaseModel):
         """Completion as a 0.0-1.0 fraction (0.0 when total is unknown)."""
         if self.total_algorithms <= 0:
             return 0.0
-        return min(self.completed_algorithms / self.total_algorithms, 1.0)
+        return max(0.0, min(self.completed_algorithms / self.total_algorithms, 1.0))
 
     @property
     def percentage(self) -> float:
@@ -103,11 +103,15 @@ class TrainingJob(Document):
         total_algorithms: Optional[int] = None,
         current_algorithm: Optional[str] = None,
     ) -> None:
-        """Update progress counters; only provided fields are changed."""
+        """Update progress counters; only provided fields are changed.
+
+        Counters are floored at 0 so a stray negative value can never surface as
+        negative progress in the status payload.
+        """
         if total_algorithms is not None:
-            self.progress.total_algorithms = total_algorithms
+            self.progress.total_algorithms = max(0, total_algorithms)
         if completed_algorithms is not None:
-            self.progress.completed_algorithms = completed_algorithms
+            self.progress.completed_algorithms = max(0, completed_algorithms)
         if current_algorithm is not None:
             self.progress.current_algorithm = current_algorithm
         self.updated_at = _utcnow()

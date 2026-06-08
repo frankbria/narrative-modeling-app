@@ -145,7 +145,7 @@ async def train_model(
     return TrainModelResponse(
         model_id=model_id,
         status="training",
-        message="Model training started. Poll GET /ml/{model_id}/status for progress."
+        message=f"Model training started. Poll GET /api/v1/ml/{model_id}/status for progress."
     )
 
 
@@ -290,8 +290,15 @@ async def train_model_task(
     except Exception as e:
         logger.error(f"Error training model: {str(e)}")
         if training_job:
-            training_job.mark_failed(str(e))
-            await training_job.save()
+            # Guard the failure-recording itself: a secondary error here (e.g. a
+            # transient DB outage during save) must not escape the background task.
+            try:
+                training_job.mark_failed(str(e))
+                await training_job.save()
+            except Exception as save_exc:
+                logger.error(
+                    f"Failed to persist FAILED status for {model_id}: {save_exc}"
+                )
         # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
         # failure is recorded on the TrainingJob (above) rather than re-raised
         # into a context where nothing can handle it.

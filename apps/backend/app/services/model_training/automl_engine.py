@@ -74,7 +74,7 @@ class AutoMLEngine:
         target_column: str,
         feature_config: Optional[FeatureEngineeringConfig] = None,
         progress_callback: Optional[
-            Callable[[int, int, str], Awaitable[None]]
+            Callable[[int, int, Optional[str]], Awaitable[None]]
         ] = None,
     ) -> AutoMLResult:
         """
