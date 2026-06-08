@@ -6,6 +6,7 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { modelService, TrainingStatus } from '@/lib/services/model';
 import { Brain, Zap, Settings, PlayCircle, AlertCircle } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
@@ -15,6 +16,9 @@ interface ModelConfig {
   algorithm: string;
   hyperparameters: Record<string, unknown>;
 }
+
+// How often to poll the training status endpoint, in milliseconds.
+const STATUS_POLL_INTERVAL_MS = 2000;
 
 export default function ModelPage() {
   const { data: session } = useSession();
@@ -29,6 +33,8 @@ export default function ModelPage() {
   });
   const [columns, setColumns] = useState<string[]>([]);
   const [trainingProgress, setTrainingProgress] = useState(0);
+  const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.MODEL_TRAINING)) {
@@ -64,77 +70,60 @@ export default function ModelPage() {
   };
 
   const handleTrainModel = async () => {
+    if (!state.datasetId) return;
+
     setTraining(true);
     setTrainingProgress(0);
+    setTrainingStatus(null);
+    setTrainingError(null);
 
     try {
-      const token = await getAuthToken();
-      
-      // Start training
-      const response = await fetch(`${API_URL}/models/train`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          dataset_id: state.datasetId,
-          ...modelConfig
-        })
+      // Start real AutoML training. The backend auto-detects the problem type
+      // and the engine compares candidate algorithms, so we only need the
+      // dataset and target column here.
+      const result = await modelService.trainModel({
+        dataset_id: state.datasetId,
+        target_column: modelConfig.target_column,
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Simulate progress updates
-        const progressInterval = setInterval(() => {
-          setTrainingProgress(prev => {
-            if (prev >= 90) {
-              clearInterval(progressInterval);
-              return 100;
-            }
-            return prev + 10;
-          });
-        }, 1000);
+      // Poll the real status endpoint until the job completes or fails, driving
+      // the progress bar from the job's actual per-algorithm progress.
+      const checkStatus = async () => {
+        try {
+          const status = await modelService.getTrainingStatus(result.model_id);
+          setTrainingStatus(status);
+          setTrainingProgress(Math.round(status.progress * 100));
 
-        // Poll for training status
-        const checkStatus = async () => {
-          const statusResponse = await fetch(
-            `${API_URL}/models/${result.model_id}/status`,
-            {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            }
-          );
-
-          if (statusResponse.ok) {
-            const status = await statusResponse.json();
-            if (status.status === 'completed') {
-              clearInterval(progressInterval);
-              setTrainingProgress(100);
-              
-              completeStage(WorkflowStage.MODEL_TRAINING, {
-                modelId: result.model_id,
-                config: modelConfig,
-                metrics: status.metrics,
-                timestamp: new Date().toISOString()
-              });
-            } else if (status.status === 'failed') {
-              clearInterval(progressInterval);
-              setTraining(false);
-              // Handle error
-            } else {
-              // Check again in 2 seconds
-              setTimeout(checkStatus, 2000);
-            }
+          if (status.status === 'completed') {
+            setTrainingProgress(100);
+            completeStage(WorkflowStage.MODEL_TRAINING, {
+              modelId: result.model_id,
+              config: modelConfig,
+              metrics: status.metrics,
+              bestAlgorithm: status.best_algorithm,
+              timestamp: new Date().toISOString(),
+            });
+          } else if (status.status === 'failed') {
+            setTrainingError(status.error || 'Training failed');
+            setTraining(false);
+          } else {
+            setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
           }
-        };
+        } catch (error) {
+          console.error('Failed to fetch training status:', error);
+          setTrainingError(
+            error instanceof Error ? error.message : 'Failed to fetch training status'
+          );
+          setTraining(false);
+        }
+      };
 
-        setTimeout(checkStatus, 2000);
-      }
+      setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
     } catch (error) {
       console.error('Failed to train model:', error);
+      setTrainingError(
+        error instanceof Error ? error.message : 'Failed to start training'
+      );
       setTraining(false);
     }
   };
@@ -154,6 +143,18 @@ export default function ModelPage() {
           <Brain className="w-6 h-6 text-indigo-500" />
           Model Training
         </h1>
+
+        {/* Training errors are shown above the form so they remain visible after
+            a failure returns the user to the configuration view. */}
+        {trainingError && (
+          <div className="mb-6 p-3 bg-red-50 rounded-lg border border-red-200 flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-semibold">Training failed</p>
+              <p>{trainingError}</p>
+            </div>
+          </div>
+        )}
 
         {!training ? (
           <div className="space-y-6">
@@ -295,7 +296,11 @@ export default function ModelPage() {
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Progress</span>
+                <span>
+                  {trainingStatus?.current_algorithm
+                    ? `Training ${trainingStatus.current_algorithm}`
+                    : 'Progress'}
+                </span>
                 <span>{trainingProgress}%</span>
               </div>
               <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
@@ -304,35 +309,73 @@ export default function ModelPage() {
                   style={{ width: `${trainingProgress}%` }}
                 />
               </div>
+              {trainingStatus && trainingStatus.total_algorithms > 0 && (
+                <p className="text-sm text-gray-500 text-right">
+                  {trainingStatus.completed_algorithms} of{' '}
+                  {trainingStatus.total_algorithms} algorithms trained
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {modelConfig.algorithm === 'auto' ? 'AutoML' : modelConfig.algorithm}
-                </p>
-                <p className="text-sm text-gray-500">Algorithm</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {modelConfig.problem_type}
-                </p>
-                <p className="text-sm text-gray-500">Problem Type</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {modelConfig.target_column}
-                </p>
-                <p className="text-sm text-gray-500">Target</p>
-              </div>
-            </div>
+            {trainingStatus?.status === 'completed' && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <p className="text-green-600 font-medium">Training complete!</p>
+                  {trainingStatus.best_algorithm && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      Best model:{' '}
+                      <span className="font-semibold">
+                        {trainingStatus.best_algorithm}
+                      </span>
+                    </p>
+                  )}
+                </div>
 
-            {trainingProgress === 100 && (
-              <div className="text-center">
-                <p className="text-green-600 font-medium">Training complete!</p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Redirecting to evaluation...
-                </p>
+                {trainingStatus.explanation && (
+                  <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                    {trainingStatus.explanation}
+                  </p>
+                )}
+
+                {trainingStatus.model_comparison.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-500 border-b">
+                          <th className="py-2 pr-4">Algorithm</th>
+                          <th className="py-2 pr-4">CV Score</th>
+                          <th className="py-2 pr-4">Test Score</th>
+                          <th className="py-2">Time (s)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trainingStatus.model_comparison.map((row) => (
+                          <tr
+                            key={row.algorithm}
+                            className={
+                              row.algorithm === trainingStatus.best_algorithm
+                                ? 'bg-yellow-50 font-medium'
+                                : ''
+                            }
+                          >
+                            <td className="py-2 pr-4">{row.algorithm}</td>
+                            <td className="py-2 pr-4">
+                              {row.cv_score != null ? row.cv_score.toFixed(3) : '—'}
+                            </td>
+                            <td className="py-2 pr-4">
+                              {row.test_score != null ? row.test_score.toFixed(3) : '—'}
+                            </td>
+                            <td className="py-2">
+                              {row.training_time != null
+                                ? row.training_time.toFixed(1)
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>

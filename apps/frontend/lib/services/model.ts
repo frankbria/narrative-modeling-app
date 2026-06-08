@@ -44,6 +44,40 @@ export interface ModelInfo {
   version?: string | number
 }
 
+export interface ModelComparisonEntry {
+  algorithm: string
+  cv_score?: number | null
+  test_score?: number | null
+  training_time?: number | null
+}
+
+export interface AlgorithmRecommendation {
+  algorithm_name: string
+  priority: number
+  expected_performance: string
+  training_time_estimate: string
+  interpretability_score: number
+  explanation: string
+  pros: string[]
+  cons: string[]
+}
+
+export interface TrainingStatus {
+  model_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number // 0.0 - 1.0
+  current_algorithm?: string | null
+  completed_algorithms: number
+  total_algorithms: number
+  metrics: Record<string, unknown>
+  model_comparison: ModelComparisonEntry[]
+  algorithm_recommendations: AlgorithmRecommendation[]
+  best_model_id?: string | null
+  best_algorithm?: string | null
+  explanation?: string | null
+  error?: string | null
+}
+
 export interface PredictRequest {
   data: Record<string, any>[]
   include_probabilities?: boolean
@@ -126,6 +160,25 @@ export class ModelService {
     return response.json()
   }
 
+  static async getTrainingStatus(
+    modelId: string,
+    token: string | null
+  ): Promise<TrainingStatus> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/status`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch training status')
+    }
+
+    return response.json()
+  }
+
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -197,6 +250,11 @@ class ModelServiceClient {
   async getModel(modelId: string): Promise<ModelInfo> {
     const token = await getAuthToken()
     return ModelService.getModel(modelId, token)
+  }
+
+  async getTrainingStatus(modelId: string): Promise<TrainingStatus> {
+    const token = await getAuthToken()
+    return ModelService.getTrainingStatus(modelId, token)
   }
 
   async trainModel(
