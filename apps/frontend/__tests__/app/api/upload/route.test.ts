@@ -64,6 +64,22 @@ describe('POST /api/upload', () => {
       })
       expect(file.arrayBuffer).not.toHaveBeenCalled()
     })
+
+    it('accepts a preview file exactly at the 100MB limit', async () => {
+      const file = {
+        name: 'limit.csv',
+        size: 100 * 1024 * 1024,
+        arrayBuffer: jest.fn<Promise<ArrayBuffer>, []>().mockResolvedValue(
+          new TextEncoder().encode('name\nAlice\n').buffer as ArrayBuffer
+        ),
+      }
+
+      const res = await POST(makeRequestWithFile(file))
+
+      expect(res.status).toBe(200)
+      expect((await res.json()).previewData).toEqual([['Alice']])
+      expect(file.arrayBuffer).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('.xlsx parsing', () => {
@@ -138,6 +154,42 @@ describe('POST /api/upload', () => {
         expect(worksheet.eachRow).not.toHaveBeenCalled()
         expect(worksheet.getRow).toHaveBeenCalledTimes(11)
         expect(Math.max(...worksheet.getRow.mock.calls.map(([rowNumber]) => rowNumber))).toBe(11)
+      } finally {
+        workbookSpy.mockRestore()
+      }
+    })
+
+    it('does not read past the worksheet row count for small sheets', async () => {
+      const file = {
+        name: 'small.xlsx',
+        size: 1024,
+        arrayBuffer: jest.fn<Promise<ArrayBuffer>, []>().mockResolvedValue(new ArrayBuffer(8)),
+      }
+      const worksheet = {
+        rowCount: 3,
+        columnCount: 1,
+        dimensions: { left: 1, right: 1 },
+        getRow: jest.fn((rowNumber: number) => ({
+          values: [undefined, rowNumber === 1 ? 'col' : `v${rowNumber - 2}`],
+        })),
+      }
+      const workbook = {
+        xlsx: { load: jest.fn().mockResolvedValue(undefined) },
+        worksheets: [worksheet],
+      }
+      const workbookSpy = jest
+        .spyOn(ExcelJS, 'Workbook')
+        .mockImplementation(() => workbook as unknown as ExcelJS.Workbook)
+
+      try {
+        const res = await POST(makeRequestWithFile(file))
+        expect(res.status).toBe(200)
+
+        const body = await res.json()
+        expect(body.headers).toEqual(['col'])
+        expect(body.previewData).toEqual([['v0'], ['v1']])
+        expect(worksheet.getRow).toHaveBeenCalledTimes(3)
+        expect(Math.max(...worksheet.getRow.mock.calls.map(([rowNumber]) => rowNumber))).toBe(3)
       } finally {
         workbookSpy.mockRestore()
       }

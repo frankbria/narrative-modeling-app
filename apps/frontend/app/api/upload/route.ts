@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const PREVIEW_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
-const PREVIEW_UPLOAD_MAX_LABEL = '100MB'
+const PREVIEW_UPLOAD_MAX_LABEL = `${PREVIEW_UPLOAD_MAX_BYTES / (1024 * 1024)}MB`
 const PREVIEW_ROW_LIMIT = 11 // header + 10 preview rows
 
 type CellPrimitive = string | number | boolean | null
@@ -46,6 +46,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // request.formData() has already parsed the multipart body; proxy/platform
+    // request-size limits remain the real memory boundary. This route guard
+    // prevents allocating another ArrayBuffer for oversized preview parsing.
     if (file.size > PREVIEW_UPLOAD_MAX_BYTES) {
       return NextResponse.json(
         { error: `File exceeds the ${PREVIEW_UPLOAD_MAX_LABEL} preview limit. Use chunked upload for larger files.` },
