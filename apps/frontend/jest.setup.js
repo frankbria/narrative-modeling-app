@@ -1,23 +1,27 @@
 import '@testing-library/jest-dom'
 
-// Polyfill for Radix UI pointer capture in JSDOM
-if (!Element.prototype.hasPointerCapture) {
-  Element.prototype.hasPointerCapture = function() {
-    return false;
-  };
-}
+// DOM polyfills only apply under the jsdom environment. Node-environment tests
+// (e.g. API route handlers via `@jest-environment node`) have no `Element`/`window`.
+if (typeof Element !== 'undefined') {
+  // Polyfill for Radix UI pointer capture in JSDOM
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = function() {
+      return false;
+    };
+  }
 
-if (!Element.prototype.setPointerCapture) {
-  Element.prototype.setPointerCapture = function() {};
-}
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = function() {};
+  }
 
-if (!Element.prototype.releasePointerCapture) {
-  Element.prototype.releasePointerCapture = function() {};
-}
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = function() {};
+  }
 
-// Polyfill for scrollIntoView in JSDOM
-if (!Element.prototype.scrollIntoView) {
-  Element.prototype.scrollIntoView = function() {};
+  // Polyfill for scrollIntoView in JSDOM
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = function() {};
+  }
 }
 
 // Mock ResizeObserver for Radix UI components
@@ -75,11 +79,13 @@ jest.mock('react-markdown', () => {
 // Mock fetch
 global.fetch = jest.fn()
 
-// Mock window.open
-Object.defineProperty(window, 'open', {
-  writable: true,
-  value: jest.fn(),
-})
+// Mock window.open (jsdom only)
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'open', {
+    writable: true,
+    value: jest.fn(),
+  })
+}
 
 // Setup mock responses
 beforeEach(() => {
