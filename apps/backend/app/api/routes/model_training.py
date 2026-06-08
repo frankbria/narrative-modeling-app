@@ -8,12 +8,15 @@ from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import io
+import uuid
 from datetime import datetime, timezone
 import logging
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.models.ml_model import MLModel
+from app.models.batch_job import JobStatus
+from app.models.training_job import TrainingJob, ModelComparisonEntry
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
 from app.services.model_storage import ModelStorageService
@@ -21,6 +24,12 @@ from app.services.model_training import (
     AutoMLEngine,
     FeatureEngineeringConfig
 )
+from app.services.model_training.algorithm_selector import AlgorithmSelector
+from app.services.model_training.comparison import (
+    build_best_model_explanation,
+    build_data_profile,
+)
+from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,6 +81,23 @@ class PredictResponse(BaseModel):
     model_info: Dict[str, Any]
 
 
+class TrainingStatusResponse(BaseModel):
+    """Status and results of an async training job"""
+    model_id: str
+    status: str  # pending | running | completed | failed
+    progress: float  # 0.0 - 1.0
+    current_algorithm: Optional[str] = None
+    completed_algorithms: int = 0
+    total_algorithms: int = 0
+    metrics: Dict[str, Any] = {}
+    model_comparison: List[Dict[str, Any]] = []
+    algorithm_recommendations: List[Dict[str, Any]] = []
+    best_model_id: Optional[str] = None
+    best_algorithm: Optional[str] = None
+    explanation: Optional[str] = None
+    error: Optional[str] = None
+
+
 @router.post("/train", response_model=TrainModelResponse)
 async def train_model(
     request: TrainModelRequest,
@@ -89,10 +115,24 @@ async def train_model(
     
     if not user_data:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
-    # Create a temporary model entry
-    model_id = f"model_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-    
+
+    # Create a unique model id. A short uuid suffix avoids collisions between
+    # requests made within the same second (the id is the lookup key for the
+    # TrainingJob status endpoint, so it must be unique).
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    model_id = f"model_{timestamp}_{uuid.uuid4().hex[:8]}"
+
+    # Persist a pending TrainingJob synchronously so the status endpoint can be
+    # polled immediately (before the background task has had a chance to run).
+    training_job = TrainingJob(
+        model_id=model_id,
+        user_id=current_user_id,
+        dataset_id=request.dataset_id,
+        target_column=request.target_column,
+        status=JobStatus.PENDING,
+    )
+    await training_job.insert()
+
     # Start training in background
     background_tasks.add_task(
         train_model_task,
@@ -101,11 +141,11 @@ async def train_model(
         current_user_id,
         model_id
     )
-    
+
     return TrainModelResponse(
         model_id=model_id,
         status="training",
-        message="Model training started. Check status endpoint for progress."
+        message=f"Model training started. Poll GET /api/v1/ml/{model_id}/status for progress."
     )
 
 
@@ -115,9 +155,31 @@ async def train_model_task(
     user_id: str,
     model_id: str
 ):
-    """Background task for model training"""
+    """Background task for model training.
+
+    Tracks lifecycle on the ``TrainingJob`` document (created by ``train_model``)
+    so that ``GET /ml/{model_id}/status`` reflects real progress, the model
+    comparison, the algorithm recommendations, and any failure.
+    """
+    # Best-effort lookup of the tracking job; training proceeds even if it is
+    # missing or the lookup fails (e.g. DB unavailable).
+    try:
+        training_job = await TrainingJob.find_one(
+            TrainingJob.model_id == model_id,
+            TrainingJob.user_id == user_id,
+        )
+    except Exception as exc:
+        logger.warning(f"Could not load TrainingJob {model_id}: {exc}")
+        training_job = None
+
     try:
         logger.info(f"Starting model training for dataset {request.dataset_id}")
+
+        # Mark RUNNING at task entry so the status reflects real activity during
+        # the (potentially slow) S3 download and dataset parse, not just model fit.
+        if training_job:
+            training_job.mark_started()
+            await training_job.save()
 
         # Extract S3 file key (parse_s3_url handles all persisted URL shapes)
         _, file_key = parse_s3_url(user_data.s3_url)
@@ -142,12 +204,12 @@ async def train_model_task(
             df = pd.read_parquet(file_io)
         else:
             raise ValueError(f"Unsupported file type: {user_data.file_type}")
-        
+
         # Create feature engineering config
         feature_config = None
         if request.feature_config:
             feature_config = FeatureEngineeringConfig(**request.feature_config)
-        
+
         # Create AutoML engine
         training_config = request.training_config or {}
         engine = AutoMLEngine(
@@ -156,12 +218,25 @@ async def train_model_task(
             test_size=training_config.get("test_size", 0.2),
             random_state=42
         )
-        
+
+        # Progress callback persists per-algorithm progress to the TrainingJob.
+        async def on_progress(completed: int, total: int, current: Optional[str]):
+            if not training_job:
+                return
+            training_job.update_progress(
+                completed_algorithms=completed,
+                total_algorithms=total,
+                current_algorithm=current,
+            )
+            await training_job.save()
+
         # Run AutoML
-        result = await engine.run(df, request.target_column, feature_config)
-        
+        result = await engine.run(
+            df, request.target_column, feature_config, progress_callback=on_progress
+        )
+
         # Prepare metadata
-        model_metadata = {
+        model_metadata: Dict[str, Any] = {
             "name": request.name or f"{result.best_model.name} on {user_data.filename}",
             "description": request.description,
             "problem_type": result.problem_type.value,
@@ -176,7 +251,7 @@ async def train_model_task(
             },
             "training_config": training_config
         }
-        
+
         # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
@@ -187,13 +262,64 @@ async def train_model_task(
             model_metadata,
             model_id=model_id
         )
-        
+
+        # Persist comparison + recommendations + best-model explanation on the job.
+        if training_job:
+            comparison = [
+                ModelComparisonEntry(**row)
+                for row in result.metadata.get("model_comparison", [])
+            ]
+            recommendations = await _build_algorithm_recommendations(
+                df, request.target_column, result.problem_type
+            )
+            explanation = build_best_model_explanation(
+                result.best_model, result.all_models, result.problem_type
+            )
+            training_job.mark_completed(
+                best_model_id=ml_model.model_id,
+                best_algorithm=result.best_model.name,
+                best_model_explanation=explanation,
+                model_comparison=comparison,
+                algorithm_recommendations=recommendations,
+                metrics=model_metadata["metrics"],
+            )
+            await training_job.save()
+
         logger.info(f"Model training completed: {ml_model.model_id}")
-        
+
     except Exception as e:
         logger.error(f"Error training model: {str(e)}")
-        # In production, you'd want to update a status in the database
-        raise
+        if training_job:
+            # Guard the failure-recording itself: a secondary error here (e.g. a
+            # transient DB outage during save) must not escape the background task.
+            try:
+                training_job.mark_failed(str(e))
+                await training_job.save()
+            except Exception as save_exc:
+                logger.error(
+                    f"Failed to persist FAILED status for {model_id}: {save_exc}"
+                )
+        # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
+        # failure is recorded on the TrainingJob (above) rather than re-raised
+        # into a context where nothing can handle it.
+
+
+async def _build_algorithm_recommendations(
+    df: pd.DataFrame, target_column: str, problem_type
+) -> List[Dict[str, Any]]:
+    """Build plain-language algorithm recommendations for a dataset.
+
+    Uses the rule-based ``AlgorithmSelector`` (no LLM/API call). Returns an empty
+    list and logs on any failure so recommendations never break training.
+    """
+    try:
+        profile = build_data_profile(df, target_column, problem_type)
+        selector = AlgorithmSelector()
+        recommendations = await selector.select_algorithms(problem_type, profile, {})
+        return [asdict(rec) for rec in recommendations]
+    except Exception as exc:
+        logger.warning(f"Failed to build algorithm recommendations: {exc}")
+        return []
 
 
 @router.get("/", response_model=List[ModelInfo])
@@ -228,6 +354,44 @@ async def list_models(
         )
         for model in models
     ]
+
+
+@router.get("/{model_id}/status", response_model=TrainingStatusResponse)
+async def get_training_status(
+    model_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get the status, progress, and results of an async training job.
+
+    The frontend polls this endpoint after starting training. While training is
+    in progress it returns live per-algorithm progress; on completion it returns
+    the model comparison, algorithm recommendations, and the best-model
+    explanation; on failure it returns the error message.
+    """
+    job = await TrainingJob.find_one(
+        TrainingJob.model_id == model_id,
+        TrainingJob.user_id == current_user_id,
+    )
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Training job not found")
+
+    return TrainingStatusResponse(
+        model_id=job.model_id,
+        status=job.status.value,
+        progress=job.progress.fraction,
+        current_algorithm=job.progress.current_algorithm,
+        completed_algorithms=job.progress.completed_algorithms,
+        total_algorithms=job.progress.total_algorithms,
+        metrics=job.metrics,
+        model_comparison=[entry.model_dump() for entry in job.model_comparison],
+        algorithm_recommendations=job.algorithm_recommendations,
+        best_model_id=job.best_model_id,
+        best_algorithm=job.best_algorithm,
+        explanation=job.best_model_explanation,
+        error=job.error,
+    )
 
 
 @router.get("/{model_id}", response_model=MLModel)

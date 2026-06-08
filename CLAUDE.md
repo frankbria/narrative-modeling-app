@@ -19,6 +19,12 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - AWS S3 for file storage
 - Background tasks for AI processing
 
+#### AutoML training (issue #75)
+- `POST /api/v1/ml/train` runs real AutoML training in a FastAPI `BackgroundTasks` job and creates a `TrainingJob` (`app/models/training_job.py`, registered in `app/models/registry.py`).
+- `GET /api/v1/ml/{model_id}/status` returns live progress, the ranked model comparison, rule-based algorithm recommendations, and a plain-language best-model explanation; failures are recorded on the job (status `failed` + `error`) instead of being silently re-raised.
+- The engine (`app/services/model_training/automl_engine.py`) applies basic class-imbalance handling (`class_weight="balanced"` when the majority/minority ratio exceeds 2:1) and accepts a `progress_callback`. Result summaries live in `app/services/model_training/comparison.py`.
+- **Out of scope / deferred:** real-time WebSocket progress (#76), job cancellation, time-series (ARIMA/Prophet), SMOTE resampling, Quick/Comprehensive training modes (#101), hyperparameter tuning (#77).
+
 ### MCP Server
 - Located in `apps/mcp/`
 - FastMCP framework

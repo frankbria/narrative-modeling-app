@@ -21,6 +21,7 @@ from app.models.model import ModelConfig
 from app.models.plot import Plot
 from app.models.revised_data import RevisedData
 from app.models.trained_model import TrainedModel
+from app.models.training_job import TrainingJob
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.models.version import DatasetVersion, TransformationLineage
@@ -52,6 +53,7 @@ DOCUMENT_MODELS = [
     SharedRecipe,
     StoredFeature,
     TrainedModel,
+    TrainingJob,
     TransformationConfig,
     TransformationLineage,
     TransformationRecipe,

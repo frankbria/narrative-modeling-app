@@ -136,4 +136,41 @@ describe('modelService instance export', () => {
 
     await expect(modelService.predict('m6', { data: [] })).rejects.toThrow('bad input');
   });
+
+  it('getTrainingStatus() requests the status endpoint and returns the job state', async () => {
+    const status = {
+      model_id: 'm8',
+      status: 'running',
+      progress: 0.5,
+      current_algorithm: 'XGBoost',
+      completed_algorithms: 1,
+      total_algorithms: 2,
+      metrics: {},
+      model_comparison: [],
+      algorithm_recommendations: [],
+    };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(status),
+    });
+
+    const result = await modelService.getTrainingStatus('m8');
+
+    expect(result).toEqual(status);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('http://localhost:8000/api/v1/ml/m8/status');
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer svc-token');
+  });
+
+  it('getTrainingStatus() throws the backend detail message on error', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      json: jest.fn().mockResolvedValue({ detail: 'Training job not found' }),
+    });
+
+    await expect(modelService.getTrainingStatus('missing')).rejects.toThrow(
+      'Training job not found'
+    );
+  });
 });
