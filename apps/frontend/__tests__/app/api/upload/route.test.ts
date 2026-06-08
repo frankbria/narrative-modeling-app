@@ -37,7 +37,35 @@ function makeRequest(blob?: Blob, filename?: string): Request {
   return new Request('http://localhost/api/upload', { method: 'POST', body: formData })
 }
 
+function makeRequestWithFile(file: {
+  name: string
+  size: number
+  arrayBuffer: jest.Mock<Promise<ArrayBuffer>, []>
+}): Request {
+  return {
+    formData: async () => new Map([['file', file]]),
+  } as unknown as Request
+}
+
 describe('POST /api/upload', () => {
+  describe('file size guard', () => {
+    it('returns 413 before reading an oversized preview file into memory', async () => {
+      const file = {
+        name: 'oversized.csv',
+        size: 100 * 1024 * 1024 + 1,
+        arrayBuffer: jest.fn<Promise<ArrayBuffer>, []>().mockResolvedValue(new ArrayBuffer(0)),
+      }
+
+      const res = await POST(makeRequestWithFile(file))
+
+      expect(res.status).toBe(413)
+      expect(await res.json()).toEqual({
+        error: 'File exceeds the 100MB preview limit. Use chunked upload for larger files.',
+      })
+      expect(file.arrayBuffer).not.toHaveBeenCalled()
+    })
+  })
+
   describe('.xlsx parsing', () => {
     it('parses headers and preview rows from an .xlsx file', async () => {
       const blob = await xlsxBlob([
@@ -71,6 +99,48 @@ describe('POST /api/upload', () => {
       expect(body.previewData).toHaveLength(10)
       expect(body.previewData[0]).toEqual(['v0'])
       expect(body.previewData[9]).toEqual(['v9'])
+    })
+
+    it('collects preview rows with bounded indexed reads instead of walking the whole sheet', async () => {
+      const file = {
+        name: 'many-rows.xlsx',
+        size: 1024,
+        arrayBuffer: jest.fn<Promise<ArrayBuffer>, []>().mockResolvedValue(new ArrayBuffer(8)),
+      }
+      const worksheet = {
+        rowCount: 50000,
+        columnCount: 1,
+        dimensions: { left: 1, right: 1 },
+        getRow: jest.fn((rowNumber: number) => ({
+          values: [undefined, rowNumber === 1 ? 'col' : `v${rowNumber - 2}`],
+        })),
+        eachRow: jest.fn(() => {
+          throw new Error('eachRow should not be used for bounded previews')
+        }),
+      }
+      const workbook = {
+        xlsx: { load: jest.fn().mockResolvedValue(undefined) },
+        worksheets: [worksheet],
+      }
+      const workbookSpy = jest
+        .spyOn(ExcelJS, 'Workbook')
+        .mockImplementation(() => workbook as unknown as ExcelJS.Workbook)
+
+      try {
+        const res = await POST(makeRequestWithFile(file))
+        expect(res.status).toBe(200)
+
+        const body = await res.json()
+        expect(body.headers).toEqual(['col'])
+        expect(body.previewData).toHaveLength(10)
+        expect(body.previewData[0]).toEqual(['v0'])
+        expect(body.previewData[9]).toEqual(['v9'])
+        expect(worksheet.eachRow).not.toHaveBeenCalled()
+        expect(worksheet.getRow).toHaveBeenCalledTimes(11)
+        expect(Math.max(...worksheet.getRow.mock.calls.map(([rowNumber]) => rowNumber))).toBe(11)
+      } finally {
+        workbookSpy.mockRestore()
+      }
     })
 
     it('normalizes complex cell types (date, formula, hyperlink, rich text) to primitives', async () => {
