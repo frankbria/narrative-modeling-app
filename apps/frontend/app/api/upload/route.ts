@@ -77,33 +77,52 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'File is empty' }, { status: 400 })
       }
 
-      // Restrict to the sheet's used column range so a blank leading column
-      // doesn't shift every column (row.values is 1-indexed and pads leading
-      // empties with null). Matches the previous sheet_to_json behavior.
-      const dimensions = worksheet.dimensions
-      const firstCol = dimensions?.left ?? 1
-      const lastCol = dimensions?.right ?? worksheet.columnCount
-
-      // Build a dense, rectangular array-of-arrays, skipping fully-empty rows so
-      // blank separator rows don't consume preview slots.
-      const rows: CellPrimitive[][] = []
+      // Collect non-empty rows as raw 1-indexed value arrays (row.values[0] is
+      // unused). includeEmpty visits blank rows; we drop ones with no content.
+      const rawRows: unknown[][] = []
       worksheet.eachRow({ includeEmpty: true }, (row) => {
         const values = row.values as unknown[]
+        if (values.some((value, index) => index > 0 && value !== null && value !== undefined)) {
+          rawRows.push(values)
+        }
+      })
+
+      if (rawRows.length === 0) {
+        return NextResponse.json({ error: 'File is empty' }, { status: 400 })
+      }
+
+      // The header row (first non-empty row) defines the column window. Keying
+      // both bounds off the header means a blank leading column can't shift the
+      // output and a stray cell in a later row can't add phantom columns —
+      // matching the previous sheet_to_json({ header: 1 }) behavior.
+      const headerValues = rawRows[0]
+      let firstCol = -1
+      let lastCol = -1
+      for (let col = 1; col < headerValues.length; col++) {
+        if (headerValues[col] !== null && headerValues[col] !== undefined) {
+          if (firstCol === -1) firstCol = col
+          lastCol = col
+        }
+      }
+
+      const toRow = (values: unknown[]): CellPrimitive[] => {
         const rowData: CellPrimitive[] = []
         for (let col = firstCol; col <= lastCol; col++) {
           rowData.push(normalizeCell(values[col]))
         }
-        if (rowData.some((cell) => cell !== null)) {
-          rows.push(rowData)
-        }
-      })
-
-      if (rows.length === 0) {
-        return NextResponse.json({ error: 'File is empty' }, { status: 400 })
+        return rowData
       }
 
-      headers = rows[0].map((cell) => (cell === null ? '' : String(cell)))
-      previewData = rows.slice(1, 11)
+      headers = toRow(headerValues).map((cell) => (cell === null ? '' : String(cell)))
+
+      // Preview the first 10 data rows that carry content within the header window.
+      previewData = []
+      for (let i = 1; i < rawRows.length && previewData.length < 10; i++) {
+        const rowData = toRow(rawRows[i])
+        if (rowData.some((cell) => cell !== null)) {
+          previewData.push(rowData)
+        }
+      }
     } else {
       return NextResponse.json(
         { error: 'Unsupported file type' },
