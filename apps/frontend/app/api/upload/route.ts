@@ -6,6 +6,10 @@ import { parse } from 'csv-parse/sync'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const PREVIEW_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+const PREVIEW_UPLOAD_MAX_LABEL = `${PREVIEW_UPLOAD_MAX_BYTES / (1024 * 1024)}MB`
+const PREVIEW_ROW_LIMIT = 11 // header + 10 preview rows
+
 type CellPrimitive = string | number | boolean | null
 
 /**
@@ -40,6 +44,16 @@ export async function POST(request: Request) {
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    }
+
+    // request.formData() has already parsed the multipart body; proxy/platform
+    // request-size limits remain the real memory boundary. This route guard
+    // prevents allocating another ArrayBuffer for oversized preview parsing.
+    if (file.size > PREVIEW_UPLOAD_MAX_BYTES) {
+      return NextResponse.json(
+        { error: `File exceeds the ${PREVIEW_UPLOAD_MAX_LABEL} preview limit. Use chunked upload for larger files.` },
+        { status: 413 }
+      )
     }
 
     // Read the file content
@@ -96,23 +110,22 @@ export async function POST(request: Request) {
 
       // Collect rows that carry content, dropping fully-empty separator rows so
       // they don't consume preview slots. We only need 11 rows (header + 10
-      // preview); eachRow can't break, but returning early skips per-row work
-      // once we have enough.
+      // preview), so read rows by index and stop once the preview is full.
       const rows: CellPrimitive[][] = []
-      worksheet.eachRow({ includeEmpty: true }, (row) => {
-        if (rows.length >= 11) return
+      for (let rowNumber = 1; rowNumber <= worksheet.rowCount && rows.length < PREVIEW_ROW_LIMIT; rowNumber++) {
+        const row = worksheet.getRow(rowNumber)
         const rowData = toRow(row.values as unknown[])
         if (rowData.some((cell) => cell !== null)) {
           rows.push(rowData)
         }
-      })
+      }
 
       if (rows.length === 0) {
         return NextResponse.json({ error: 'File is empty' }, { status: 400 })
       }
 
       headers = rows[0].map((cell) => (cell === null ? '' : String(cell)))
-      previewData = rows.slice(1, 11)
+      previewData = rows.slice(1, PREVIEW_ROW_LIMIT)
     } else {
       return NextResponse.json(
         { error: 'Unsupported file type' },
