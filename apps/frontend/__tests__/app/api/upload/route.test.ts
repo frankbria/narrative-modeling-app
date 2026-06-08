@@ -71,12 +71,13 @@ describe('POST /api/upload', () => {
     it('normalizes complex cell types (date, formula, hyperlink, rich text) to primitives', async () => {
       const workbook = new ExcelJS.Workbook()
       const sheet = workbook.addWorksheet('Sheet1')
-      sheet.addRow(['date', 'formula', 'hyperlink', 'rich'])
+      sheet.addRow(['date', 'formula', 'hyperlink', 'rich', 'uncomputed'])
       const row = sheet.addRow([])
       row.getCell(1).value = new Date('2024-01-15T12:00:00.000Z')
       row.getCell(2).value = { formula: 'A1', result: 99 }
       row.getCell(3).value = { text: 'click here', hyperlink: 'https://example.com' }
       row.getCell(4).value = { richText: [{ text: 'Hello ' }, { text: 'World' }] }
+      row.getCell(5).value = { formula: '1+1' } // formula with no cached result
       const buffer = await workbook.xlsx.writeBuffer()
       const file = new File([buffer], 'complex.xlsx', {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -86,12 +87,13 @@ describe('POST /api/upload', () => {
       expect(res.status).toBe(200)
 
       const body = await res.json()
-      const [dateCell, formulaCell, hyperlinkCell, richCell] = body.previewData[0]
+      const [dateCell, formulaCell, hyperlinkCell, richCell, uncomputedCell] = body.previewData[0]
       expect(typeof dateCell).toBe('string')
       expect(dateCell).toMatch(/^2024-01-15T/) // Date -> ISO string
       expect(formulaCell).toBe(99) // formula -> result
       expect(hyperlinkCell).toBe('click here') // hyperlink -> text
       expect(richCell).toBe('Hello World') // rich text -> concatenated text
+      expect(uncomputedCell).toBeNull() // uncached formula -> null (not "[object Object]")
     })
 
     it('trims a leading empty column so columns are not shifted', async () => {

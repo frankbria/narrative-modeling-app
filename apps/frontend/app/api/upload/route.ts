@@ -21,7 +21,8 @@ function normalizeCell(value: unknown): CellPrimitive {
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>
-    if ('result' in obj) return normalizeCell(obj.result) // formula cell
+    if ('result' in obj) return normalizeCell(obj.result) // formula with cached result
+    if ('formula' in obj || 'sharedFormula' in obj) return null // formula without a cached value
     if ('richText' in obj && Array.isArray(obj.richText)) {
       return (obj.richText as Array<{ text?: string }>).map((rt) => rt.text ?? '').join('')
     }
