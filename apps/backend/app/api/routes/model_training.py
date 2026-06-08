@@ -230,7 +230,7 @@ async def train_model_task(
         )
 
         # Prepare metadata
-        model_metadata = {
+        model_metadata: Dict[str, Any] = {
             "name": request.name or f"{result.best_model.name} on {user_data.filename}",
             "description": request.description,
             "problem_type": result.problem_type.value,

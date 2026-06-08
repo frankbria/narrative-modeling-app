@@ -80,7 +80,7 @@ def build_best_model_explanation(
         (m for m in all_models if m.name != best_model.name and m.cv_score is not None),
         None,
     )
-    if runner_up is not None:
+    if runner_up is not None and runner_up.cv_score is not None:
         margin = best_model.cv_score - runner_up.cv_score
         parts.append(
             f", outperforming the next-best model ({runner_up.name}, "
