@@ -160,6 +160,15 @@ export class ModelService {
     return response.json()
   }
 
+  /**
+   * Fetch the status and results of an async training job.
+   *
+   * @param modelId - The id returned by {@link trainModel}.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @returns The job status: progress while running; comparison, best model,
+   *   explanation and recommendations when completed; or the error when failed.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
   static async getTrainingStatus(
     modelId: string,
     token: string | null
@@ -252,6 +261,7 @@ class ModelServiceClient {
     return ModelService.getModel(modelId, token)
   }
 
+  /** Resolve the auth token automatically and fetch a training job's status. */
   async getTrainingStatus(modelId: string): Promise<TrainingStatus> {
     const token = await getAuthToken()
     return ModelService.getTrainingStatus(modelId, token)

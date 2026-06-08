@@ -22,6 +22,16 @@ const STATUS_POLL_INTERVAL_MS = 2000;
 // dead background job doesn't leave the UI polling forever.
 const MAX_STATUS_POLLS = 600;
 
+/**
+ * Model training page.
+ *
+ * Lets the analyst pick a target column and run AutoML training, then polls
+ * `GET /api/v1/ml/{model_id}/status` and renders live progress followed by the
+ * model comparison, the best-model explanation, and the algorithm
+ * recommendations on completion (or the error on failure). The backend
+ * auto-detects the problem type and compares algorithms, so the target column
+ * is the only required input.
+ */
 export default function ModelPage() {
   const { data: session } = useSession();
   const { state, completeStage, canAccessStage } = useWorkflow();
