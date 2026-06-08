@@ -191,5 +191,15 @@ describe('POST /api/upload', () => {
       expect(res.status).toBe(400)
       expect((await res.json()).error).toBe('Unsupported file type')
     })
+
+    it('returns 500 for a corrupt .xlsx file', async () => {
+      // A .xlsx extension but non-xlsx bytes: ExcelJS throws, caught by the
+      // route's outer try/catch and surfaced as a 500.
+      const blob = new Blob(['this is not a real xlsx file'], { type: XLSX_MIME })
+
+      const res = await POST(makeRequest(blob, 'corrupt.xlsx'))
+      expect(res.status).toBe(500)
+      expect((await res.json()).error).toBe('Internal server error')
+    })
   })
 })
