@@ -77,33 +77,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'File is empty' }, { status: 400 })
       }
 
-      // Collect non-empty rows as raw 1-indexed value arrays (row.values[0] is
-      // unused). includeEmpty visits blank rows; we drop ones with no content.
-      const rawRows: unknown[][] = []
-      worksheet.eachRow({ includeEmpty: true }, (row) => {
-        const values = row.values as unknown[]
-        if (values.some((value, index) => index > 0 && value !== null && value !== undefined)) {
-          rawRows.push(values)
-        }
-      })
-
-      if (rawRows.length === 0) {
-        return NextResponse.json({ error: 'File is empty' }, { status: 400 })
-      }
-
-      // The header row (first non-empty row) defines the column window. Keying
-      // both bounds off the header means a blank leading column can't shift the
-      // output and a stray cell in a later row can't add phantom columns —
-      // matching the previous sheet_to_json({ header: 1 }) behavior.
-      const headerValues = rawRows[0]
-      let firstCol = -1
-      let lastCol = -1
-      for (let col = 1; col < headerValues.length; col++) {
-        if (headerValues[col] !== null && headerValues[col] !== undefined) {
-          if (firstCol === -1) firstCol = col
-          lastCol = col
-        }
-      }
+      // Use the sheet's actual used column range (like the previous
+      // sheet_to_json({ header: 1 }), which keyed off the worksheet's !ref).
+      // This trims genuinely-empty leading/trailing columns while preserving any
+      // column that holds data even when its header cell is blank, so no data is
+      // dropped. row.values is 1-indexed (values[0] is unused).
+      const dimensions = worksheet.dimensions
+      const firstCol = dimensions?.left ?? 1
+      const lastCol = dimensions?.right ?? worksheet.columnCount
 
       const toRow = (values: unknown[]): CellPrimitive[] => {
         const rowData: CellPrimitive[] = []
@@ -113,16 +94,22 @@ export async function POST(request: Request) {
         return rowData
       }
 
-      headers = toRow(headerValues).map((cell) => (cell === null ? '' : String(cell)))
-
-      // Preview the first 10 data rows that carry content within the header window.
-      previewData = []
-      for (let i = 1; i < rawRows.length && previewData.length < 10; i++) {
-        const rowData = toRow(rawRows[i])
+      // Collect rows that carry content, dropping fully-empty separator rows so
+      // they don't consume preview slots.
+      const rows: CellPrimitive[][] = []
+      worksheet.eachRow({ includeEmpty: true }, (row) => {
+        const rowData = toRow(row.values as unknown[])
         if (rowData.some((cell) => cell !== null)) {
-          previewData.push(rowData)
+          rows.push(rowData)
         }
+      })
+
+      if (rows.length === 0) {
+        return NextResponse.json({ error: 'File is empty' }, { status: 400 })
       }
+
+      headers = rows[0].map((cell) => (cell === null ? '' : String(cell)))
+      previewData = rows.slice(1, 11)
     } else {
       return NextResponse.json(
         { error: 'Unsupported file type' },

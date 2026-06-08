@@ -136,16 +136,15 @@ describe('POST /api/upload', () => {
       ])
     })
 
-    it('does not add phantom columns for a stray cell beyond the header width', async () => {
+    it('preserves a populated column even when its header cell is blank', async () => {
       const workbook = new ExcelJS.Workbook()
       const sheet = workbook.addWorksheet('Sheet1')
-      sheet.addRow(['h1', 'h2'])
-      sheet.addRow(['a', 'b'])
-      const strayRow = sheet.addRow([])
-      strayRow.getCell(26).value = 'stray note in Z' // far outside the 2-column header
-      sheet.addRow(['c', 'd'])
+      // Column A has data but no header; column B is fully labelled.
+      sheet.getCell('B1').value = 'name'
+      sheet.getCell('A2').value = 123
+      sheet.getCell('B2').value = 'Alice'
       const buffer = await workbook.xlsx.writeBuffer()
-      const file = new File([buffer], 'stray.xlsx', {
+      const file = new File([buffer], 'blank-header.xlsx', {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
 
@@ -153,11 +152,9 @@ describe('POST /api/upload', () => {
       expect(res.status).toBe(200)
 
       const body = await res.json()
-      expect(body.headers).toEqual(['h1', 'h2']) // not widened to 26 columns
-      expect(body.previewData).toEqual([
-        ['a', 'b'],
-        ['c', 'd'],
-      ])
+      // Column A is kept (blank header -> ''); its data is not dropped.
+      expect(body.headers).toEqual(['', 'name'])
+      expect(body.previewData).toEqual([[123, 'Alice']])
     })
 
     it('returns 400 for an empty .xlsx file', async () => {
