@@ -10,7 +10,7 @@ phases. **Work issues top-to-bottom by phase number** (`gh issue list` sorted by
 | **1 — Unblock & secure** | CI + security, no dependencies | P1.1 #147 (E2E S3 mock), P1.2 #132 (sandboxing), P1.3 #149 (SKIP_AUTH guard), P1.4 #150 (real CI pipeline), P1.5 #165 (replace vulnerable xlsx), P1.6 #164 (staging env + CI deploy — after P1.4) |
 | **2 — Core ML pipeline** | The product | P2.1 #75 (AutoML engine — critical path), P2.2 #76 (training progress), P2.3 #79 (evaluation dashboard), P2.4 #87 (workflow persistence), P2.5 #155 (prepare-page crash), P2.6 #156 (ml/train 404) |
 | **3 — Predictions & trust** | Complete the journey | P3.1 #82 (prediction UI), P3.2 #83 (confidence), P3.3 #80 (SHAP), P3.4 #88 (stage transitions) |
-| **4 — Beta hardening** | Launch readiness | P4.1 #151 (rate limiting), P4.2 #152 (onboarding/docs/feedback), P4.3 #153 (frontend TODOs), P4.4 #157 (flaky perf tests), P4.5 #168 (deploy page contract), P4.6 #170 (real viz data — after P4.5), P4.7 #162 (history type casing) |
+| **4 — Beta hardening** | Launch readiness | P4.1 #151 (rate limiting), P4.2 #152 (onboarding/docs/feedback), P4.3 #153 (frontend TODOs), P4.4 #157 (flaky perf tests), P4.5 #168 (deploy page contract), P4.6 #170 (real viz data — after P4.5), P4.7 #162 (history type casing), P4.8 #176 (CI/Docker hardening follow-ups — after P1.4) |
 | **5 — Post-beta V2** | Deferred enhancements | P5.1 #77, P5.2 #78, P5.3 #81, P5.4 #84, P5.5 #85, P5.6 #86, P5.7 #89, P5.8 #90, P5.9 #101, P5.10 #102 |
 
 **Closed as icebox (V3+, reopen post-V2)**: #91–#100 (RBAC, audit logging, DB
