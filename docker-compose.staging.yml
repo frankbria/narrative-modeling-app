@@ -1,20 +1,22 @@
-version: '3.8'
-
 # ═══════════════════════════════════════════════════════════════
 # Narrative Modeling App - STAGING DEPLOYMENT
-# Server: 47.88.89.175
+# Server: dev.briaanalytics.com (47.88.89.175)
 # Environment: Staging (pre-production)
 # ═══════════════════════════════════════════════════════════════
 #
 # SECURITY NOTICE:
 # This configuration uses authentication and secure settings
 # Suitable for staging/production environments
-# All secrets should be provided via .env.staging file
+# All secrets are provided via .env.staging on the server; run
+# compose with `--env-file .env.staging` (deploy.yml does this).
+#
+# MongoDB is NOT run here — staging uses a MongoDB Atlas cluster.
+# Set MONGODB_URI (mongodb+srv://...) and MONGODB_DB in .env.staging.
 #
 # Port Assignments (to avoid conflicts on shared server):
-# - Frontend: 3010 (internal), proxied via nginx
-# - Backend: 8010 (internal), proxied via nginx
-# - MongoDB: 27018 (host port)
+# - Frontend: 3011 (host), proxied via nginx (3010 is taken by
+#   another app on the shared VPS)
+# - Backend: 8010 (host), proxied via nginx
 # - Redis: 6381 (host port)
 # ═══════════════════════════════════════════════════════════════
 
@@ -34,11 +36,12 @@ services:
       DEBUG: "false"
       LOG_LEVEL: info
 
-      # Database
-      MONGODB_URI: mongodb://narrative_user:${MONGODB_PASSWORD}@mongodb:27017/narrative_staging?authSource=admin
+      # Database (MongoDB Atlas — values come from .env.staging)
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
+      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-staging}
 
       # Redis
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}@redis:6379/0
 
       # S3 Storage (use real AWS S3 for staging)
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
@@ -55,8 +58,6 @@ services:
     volumes:
       - backend_logs:/app/logs
     depends_on:
-      mongodb:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -74,11 +75,13 @@ services:
       context: ./apps/frontend
       dockerfile: Dockerfile
       args:
+        # Full backend base URL INCLUDING the /api/v1 prefix, e.g.
+        # https://dev.briaanalytics.com/api/v1 — baked in at build time.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: narrative-staging-frontend
     restart: unless-stopped
     ports:
-      - "3010:3000"  # Custom port to avoid conflicts
+      - "3011:3000"  # Custom port to avoid conflicts (3010 is taken on the shared VPS)
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
@@ -96,32 +99,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - narrative-network
-
-  # MongoDB Database
-  mongodb:
-    image: mongo:7.0
-    container_name: narrative-staging-mongodb
-    restart: unless-stopped
-    ports:
-      - "27018:27017"  # Custom port to avoid conflicts
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: narrative_staging
-    volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
-      - ./scripts/mongodb-init.js:/docker-entrypoint-initdb.d/init.js:ro
-    command: mongod --auth
-    healthcheck:
-      test: |
-        mongosh --username admin --password ${MONGODB_ROOT_PASSWORD} --eval "db.adminCommand('ping')" --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     networks:
       - narrative-network
 
@@ -144,10 +121,6 @@ services:
       - narrative-network
 
 volumes:
-  mongodb_data:
-    driver: local
-  mongodb_config:
-    driver: local
   redis_data:
     driver: local
   backend_logs:
