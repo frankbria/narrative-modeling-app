@@ -55,6 +55,9 @@ services:
       # Security
       SECRET_KEY: ${BACKEND_SECRET_KEY}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      # The backend validates NextAuth JWTs, so it needs the same secret the
+      # frontend signs them with (app/auth/nextauth_auth.py).
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env.staging}
     volumes:
       - backend_logs:/app/logs
     depends_on:
@@ -85,6 +88,9 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
+      # lib/db.ts throws on startup without this.
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
