@@ -5,9 +5,18 @@ import { OpenAI } from 'openai'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazily constructed: the OpenAI SDK throws when apiKey is undefined, which
+// breaks `next build` page-data collection in environments without secrets
+// (e.g. Docker image builds).
+let openaiClient: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openaiClient
+}
 
 const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
 
@@ -36,7 +45,7 @@ export async function POST(request: Request) {
       { role: 'user', content: message }
     ]
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model,
       messages,
       temperature: 0.7,
