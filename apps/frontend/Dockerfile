@@ -20,7 +20,19 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# Build-time-only dummies, mirroring ci.yml's "Production build" env: `next
+# build` imports route modules for page-data collection, and auth.ts/lib/db.ts
+# need these to exist (CI=true is lib/db.ts's escape hatch for a missing
+# MONGODB_URI). Scoped to this RUN only — the runner stage gets its real
+# environment from docker-compose at runtime.
+RUN CI=true \
+    NEXTAUTH_SECRET=build-time-dummy-not-used-at-runtime \
+    NEXTAUTH_URL=http://localhost:3000 \
+    GOOGLE_CLIENT_ID=dummy-client-id \
+    GOOGLE_CLIENT_SECRET=dummy-client-secret \
+    GITHUB_ID=dummy-client-id \
+    GITHUB_SECRET=dummy-client-secret \
+    npm run build
 
 # ── runner: minimal runtime image ──────────────────────────────────────────
 FROM node:18-alpine AS runner
