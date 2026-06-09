@@ -37,11 +37,11 @@ services:
       LOG_LEVEL: info
 
       # Database (MongoDB Atlas — values come from .env.staging)
-      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
       MONGODB_DB: ${MONGODB_DB:-narrative_modeling-staging}
 
       # Redis
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}@redis:6379/0
 
       # S3 Storage (use real AWS S3 for staging)
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
@@ -75,6 +75,8 @@ services:
       context: ./apps/frontend
       dockerfile: Dockerfile
       args:
+        # Full backend base URL INCLUDING the /api/v1 prefix, e.g.
+        # https://dev.briaanalytics.com/api/v1 — baked in at build time.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: narrative-staging-frontend
     restart: unless-stopped
