@@ -68,9 +68,9 @@ chown -R narrative-deploy:narrative-deploy /opt/narrative-modeling-app
 ```bash
 # On your local machine or staging server, generate secrets:
 
-# MongoDB passwords
-openssl rand -base64 32  # For MONGODB_ROOT_PASSWORD
-openssl rand -base64 32  # For MONGODB_PASSWORD
+# MongoDB: staging uses a managed MongoDB Atlas cluster — no local Mongo
+# container or passwords. Get the mongodb+srv:// connection string from the
+# Atlas UI (Database → Connect → Drivers) for MONGODB_URI.
 
 # Redis password
 openssl rand -base64 32  # For REDIS_PASSWORD
@@ -103,16 +103,16 @@ nano .env.staging
 ```
 
 **Required values**:
-- `MONGODB_ROOT_PASSWORD`: Generated secret
-- `MONGODB_PASSWORD`: Generated secret
-- `REDIS_PASSWORD`: Generated secret
+- `MONGODB_URI`: MongoDB Atlas connection string (`mongodb+srv://...`)
+- `MONGODB_DB`: Staging database name (e.g. `narrative_modeling-staging`)
+- `REDIS_PASSWORD`: Generated secret (do **not** set `REDIS_URL` — compose builds it)
 - `AWS_ACCESS_KEY_ID`: Your AWS key
 - `AWS_SECRET_ACCESS_KEY`: Your AWS secret
 - `S3_BUCKET_NAME`: narrative-staging-uploads
 - `OPENAI_API_KEY`: Your OpenAI key
 - `BACKEND_SECRET_KEY`: Generated secret
 - `NEXTAUTH_SECRET`: Generated secret
-- `NEXT_PUBLIC_API_URL`: https://narrative.yourdomain.com/api
+- `NEXT_PUBLIC_API_URL`: https://narrative.yourdomain.com/api/v1 (must include `/api/v1`)
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
 - `ALLOWED_ORIGINS`: https://narrative.yourdomain.com
 - Google/GitHub OAuth credentials (if using authentication)
@@ -139,17 +139,15 @@ git clone https://github.com/frankbria/narrative-modeling-app.git .
 # Checkout main branch
 git checkout main
 
-# Copy environment file
-cp .env.staging .env
-
-# Build and start services
-docker compose -f docker-compose.staging.yml up -d --build
+# Build and start services (--env-file is required: compose only auto-reads
+# a file literally named .env, and secrets live in .env.staging)
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
 
 # Check status
-docker compose -f docker-compose.staging.yml ps
+docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 
 # View logs
-docker compose -f docker-compose.staging.yml logs -f
+docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f
 ```
 
 ### Option B: Automated Deployment (via GitHub Actions)
@@ -157,7 +155,7 @@ docker compose -f docker-compose.staging.yml logs -f
 Implemented in `.github/workflows/deploy.yml` (issue #150). On every push to
 `main` (and via manual `workflow_dispatch`), the workflow SSHes into the staging
 server, fast-forwards the deploy checkout to `origin/main`, and rebuilds the
-stack with `docker compose -f docker-compose.staging.yml up -d --build`, then
+stack with `docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build`, then
 polls the backend `/health` endpoint (host port 8010).
 
 **One-time setup** — add these repository secrets
@@ -226,11 +224,10 @@ certbot renew --dry-run
 # Check UFW status
 ufw status
 
-# Allow required ports (if not already allowed)
-ufw allow 3010/tcp comment 'Narrative Frontend'
-ufw allow 8010/tcp comment 'Narrative Backend'
-ufw allow 27018/tcp comment 'Narrative MongoDB'
-ufw allow 6381/tcp comment 'Narrative Redis'
+# No app ports need to be opened: nginx (80/443) proxies to the frontend
+# (3011) and backend (8010) on localhost, and Redis (6381) is internal.
+# MongoDB is in Atlas — ensure the server's public IP is in the Atlas
+# project's IP Access List instead.
 
 # Reload firewall
 ufw reload
@@ -245,12 +242,11 @@ ufw status numbered
 
 ```bash
 # Check all containers are running
-docker compose -f docker-compose.staging.yml ps
+docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 
 # Expected output:
 # narrative-staging-backend    Up (healthy)
 # narrative-staging-frontend   Up (healthy)
-# narrative-staging-mongodb    Up (healthy)
 # narrative-staging-redis      Up (healthy)
 
 # Test backend health endpoint
@@ -258,7 +254,7 @@ curl http://localhost:8010/health
 # Expected: {"status": "healthy"}
 
 # Test frontend
-curl http://localhost:3010
+curl http://localhost:3011
 # Expected: HTML response
 
 # Test via nginx (external access)
@@ -291,23 +287,23 @@ Access the application in browser:
 
 ```bash
 # All services
-docker compose -f docker-compose.staging.yml logs -f
+docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f
 
 # Specific service
-docker compose -f docker-compose.staging.yml logs -f backend
+docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f backend
 
 # Last 100 lines
-docker compose -f docker-compose.staging.yml logs --tail=100 backend
+docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 backend
 ```
 
 ### Restart Services
 
 ```bash
 # Restart all
-docker compose -f docker-compose.staging.yml restart
+docker compose -f docker-compose.staging.yml --env-file .env.staging restart
 
 # Restart specific service
-docker compose -f docker-compose.staging.yml restart backend
+docker compose -f docker-compose.staging.yml --env-file .env.staging restart backend
 ```
 
 ### Update Application
@@ -321,28 +317,20 @@ cd /opt/narrative-modeling-app/staging
 git pull origin main
 
 # Rebuild and restart
-docker compose -f docker-compose.staging.yml up -d --build
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
 
 # Verify
-docker compose -f docker-compose.staging.yml ps
+docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 ```
 
 ### Database Backup
 
+MongoDB lives in Atlas — use Atlas's built-in backups (Cloud Backup is on by
+default for M10+; for free/shared tiers run `mongodump` against the Atlas URI):
+
 ```bash
-# Create backup directory
-mkdir -p /opt/narrative-modeling-app/backups
-
-# Backup MongoDB
-docker exec narrative-staging-mongodb mongodump \
-  --username admin \
-  --password YOUR_MONGODB_ROOT_PASSWORD \
-  --authenticationDatabase admin \
-  --out /data/backup
-
-# Copy backup from container
-docker cp narrative-staging-mongodb:/data/backup \
-  /opt/narrative-modeling-app/backups/mongodb-$(date +%Y%m%d-%H%M%S)
+mongodump --uri "$MONGODB_URI" \
+  --out /opt/narrative-modeling-app/backups/mongodb-$(date +%Y%m%d-%H%M%S)
 ```
 
 ---
@@ -353,29 +341,25 @@ docker cp narrative-staging-mongodb:/data/backup \
 
 ```bash
 # Check logs for errors
-docker compose -f docker-compose.staging.yml logs [service-name]
+docker compose -f docker-compose.staging.yml --env-file .env.staging logs [service-name]
 
 # Check container status
-docker compose -f docker-compose.staging.yml ps -a
+docker compose -f docker-compose.staging.yml --env-file .env.staging ps -a
 
 # Inspect specific container
 docker inspect narrative-staging-backend
 ```
 
-### MongoDB authentication issues
+### MongoDB (Atlas) connection issues
 
 ```bash
-# Connect to MongoDB container
-docker exec -it narrative-staging-mongodb mongosh \
-  --username admin \
-  --password YOUR_MONGODB_ROOT_PASSWORD \
-  --authenticationDatabase admin
+# Test the Atlas connection string from the server
+mongosh "$MONGODB_URI" --eval "db.adminCommand('ping')"
 
-# List users
-db.getSiblingDB('admin').getUsers()
-
-# Check application user
-db.getSiblingDB('narrative_staging').getUsers()
+# Common causes:
+# - Server IP missing from the Atlas project's IP Access List
+# - Wrong username/password in MONGODB_URI
+# - DNS: mongodb+srv requires working SRV lookups (dig SRV _mongodb._tcp.<cluster-host>)
 ```
 
 ### Nginx issues
@@ -395,11 +379,10 @@ systemctl restart nginx
 
 ```bash
 # Check if services can communicate
-docker exec narrative-staging-backend ping mongodb
 docker exec narrative-staging-backend ping redis
 
-# Check DNS resolution
-docker exec narrative-staging-backend nslookup mongodb
+# Check Atlas reachability from inside the backend container
+docker exec narrative-staging-backend python -c "import os,pymongo; pymongo.MongoClient(os.environ['MONGODB_URI']).admin.command('ping'); print('atlas ok')"
 ```
 
 ---
@@ -410,17 +393,17 @@ If deployment fails:
 
 ```bash
 # Stop services
-docker compose -f docker-compose.staging.yml down
+docker compose -f docker-compose.staging.yml --env-file .env.staging down
 
 # Checkout previous working commit
 git log --oneline -n 10  # Find previous commit
 git checkout <previous-commit-hash>
 
 # Rebuild and restart
-docker compose -f docker-compose.staging.yml up -d --build
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
 
 # Verify
-docker compose -f docker-compose.staging.yml ps
+docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 ```
 
 ---
@@ -430,7 +413,7 @@ docker compose -f docker-compose.staging.yml ps
 Post-deployment security verification:
 
 - [ ] All services running with authentication enabled
-- [ ] MongoDB requires username/password
+- [ ] Atlas IP Access List restricted to the staging server (no 0.0.0.0/0)
 - [ ] Redis requires password
 - [ ] SSL/TLS certificate installed and valid
 - [ ] Firewall rules configured
@@ -446,9 +429,8 @@ Post-deployment security verification:
 1. **Set up automated backups** (daily MongoDB dumps to S3)
 2. **Configure monitoring** (Prometheus + Grafana or similar)
 3. **Set up log aggregation** (ELK stack or CloudWatch)
-4. **Create GitHub Actions deployment workflow** for automated deployments
-5. **Document production deployment** process
-6. **Set up staging→production promotion** workflow
+4. **Document production deployment** process
+5. **Set up staging→production promotion** workflow
 
 ---
 

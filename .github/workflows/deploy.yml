@@ -7,7 +7,10 @@ name: Deploy (Staging)
 # in as the deploy user, pulls main, and rebuilds the stack with
 # docker-compose.staging.yml (which builds apps/backend/Dockerfile and
 # apps/frontend/Dockerfile). Application secrets live in .env.staging ON THE
-# SERVER and are never passed through CI.
+# SERVER and are never passed through CI; compose is invoked with
+# `--env-file .env.staging` so those values are interpolated. MongoDB is a
+# managed Atlas cluster (MONGODB_URI in .env.staging) — no Mongo container is
+# deployed.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   STAGING_SSH_PRIVATE_KEY  - private key authorized for the deploy user
@@ -80,8 +83,9 @@ jobs:
              git fetch --prune origin
              git checkout main
              git reset --hard origin/main
-             docker compose -f docker-compose.staging.yml up -d --build
-             docker compose -f docker-compose.staging.yml ps"
+             test -f .env.staging || { echo '.env.staging missing on server'; exit 1; }
+             docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
+             docker compose -f docker-compose.staging.yml --env-file .env.staging ps"
 
       - name: Health check
         if: steps.preflight.outputs.configured == 'true'
