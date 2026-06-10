@@ -90,9 +90,10 @@ describe('WorkflowBar layout (issue #185)', () => {
     expect(within(firstButton).queryByText('Data Loading')).toBeNull();
     expect(within(firstButton).getByText('1')).toBeInTheDocument();
 
-    // Every stage stays identifiable via its title attribute
+    // Every stage stays identifiable via its title attribute and accessible name
     WORKFLOW_STAGES.forEach(stage => {
       expect(within(nav).getByTitle(stage.name)).toBeInTheDocument();
+      expect(within(nav).getByRole('button', { name: stage.name })).toBeInTheDocument();
     });
   });
 

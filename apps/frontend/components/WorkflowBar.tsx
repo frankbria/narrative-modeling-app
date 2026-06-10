@@ -28,6 +28,7 @@ export function WorkflowBar() {
                     onClick={() => isAccessible && setCurrentStage(stage.id)}
                     disabled={!isAccessible}
                     title={stage.name}
+                    aria-label={stage.name}
                     className={cn(
                       "flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200",
                       "focus:outline-none focus:ring-2 focus:ring-offset-2",
