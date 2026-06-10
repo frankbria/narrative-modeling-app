@@ -75,6 +75,9 @@ describe('WorkflowBar layout (issue #185)', () => {
 
     expect(container.querySelector('.w-8')).toBeNull();
     expect(container.querySelector('.sm\\:w-12')).toBeNull();
+
+    // ...and the slim connectors actually exist (one per gap between 8 stages)
+    expect(container.querySelectorAll('.w-2.sm\\:w-3')).toHaveLength(WORKFLOW_STAGES.length - 1);
   });
 
   it('shows the full name only on the current stage; other stages show number with a title tooltip', () => {
