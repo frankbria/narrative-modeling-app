@@ -72,8 +72,9 @@ chown -R narrative-deploy:narrative-deploy /opt/narrative-modeling-app
 # container or passwords. Get the mongodb+srv:// connection string from the
 # Atlas UI (Database → Connect → Drivers) for MONGODB_URI.
 
-# Redis password
-openssl rand -base64 32  # For REDIS_PASSWORD
+# Redis password — hex, NOT base64: the password is embedded in a redis:// URL
+# and base64's / + = characters break URL parsing
+openssl rand -hex 32  # For REDIS_PASSWORD
 
 # Backend secret key
 openssl rand -hex 32  # For BACKEND_SECRET_KEY (64 chars)
