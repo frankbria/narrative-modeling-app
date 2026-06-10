@@ -39,7 +39,10 @@ export default async function RootLayout({
             {session ? (
               <>
                 <SidebarWrapper />
-                <main className="flex flex-1 min-h-screen flex-col">
+                {/* min-w-0: as a flex item of <body>, main's default min-width:auto would
+                    adopt the WorkflowBar's intrinsic width and force whole-page horizontal
+                    scroll on narrow viewports instead of letting the stage strip scroll (#185) */}
+                <main className="flex flex-1 min-w-0 min-h-screen flex-col">
                   <WorkflowBar />
                   <div className="flex flex-1">
                     <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
