@@ -13,8 +13,8 @@ export function WorkflowBar() {
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <nav className="flex items-center justify-between py-4 overflow-x-auto scrollbar-hide">
-          <div className="flex items-center space-x-2 min-w-0">
+        <nav className="flex items-center justify-between py-4">
+          <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide flex-1 min-w-0">
             {WORKFLOW_STAGES.map((stage, index) => {
               const Icon = Icons[stage.icon as keyof typeof Icons] as React.ComponentType<{ className?: string }>;
               const isCompleted = state.completedStages.has(stage.id);
@@ -27,6 +27,8 @@ export function WorkflowBar() {
                   <motion.button
                     onClick={() => isAccessible && setCurrentStage(stage.id)}
                     disabled={!isAccessible}
+                    title={stage.name}
+                    aria-label={stage.name}
                     className={cn(
                       "flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200",
                       "focus:outline-none focus:ring-2 focus:ring-offset-2",
@@ -52,11 +54,8 @@ export function WorkflowBar() {
                         </motion.div>
                       )}
                     </div>
-                    <span className="font-medium whitespace-nowrap hidden sm:inline">
-                      {stage.name}
-                    </span>
-                    <span className="font-medium whitespace-nowrap sm:hidden">
-                      {index + 1}
+                    <span className="font-medium whitespace-nowrap">
+                      {isCurrent ? stage.name : index + 1}
                     </span>
                   </motion.button>
 
@@ -64,7 +63,7 @@ export function WorkflowBar() {
                     <div className="flex items-center">
                       <motion.div
                         className={cn(
-                          "h-0.5 w-8 sm:w-12 transition-all duration-500",
+                          "h-0.5 w-2 sm:w-3 transition-all duration-500",
                           {
                             'bg-green-500': isCompleted && state.completedStages.has(WORKFLOW_STAGES[index + 1].id),
                             'bg-gray-300': !isCompleted || !state.completedStages.has(WORKFLOW_STAGES[index + 1].id),
@@ -88,8 +87,8 @@ export function WorkflowBar() {
             })}
           </div>
 
-          {/* Progress indicator */}
-          <div className="ml-4 flex items-center space-x-2 text-sm text-gray-600">
+          {/* Progress indicator — pinned outside the scrollable stage strip */}
+          <div className="ml-4 flex items-center space-x-2 text-sm text-gray-600 shrink-0">
             <span className="hidden lg:inline">Progress:</span>
             <div className="flex items-center space-x-1">
               <span className="font-semibold text-gray-900">
