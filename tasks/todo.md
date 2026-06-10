@@ -1,5 +1,8 @@
 # Issue #185 — WorkflowBar overflow + scrolling Progress counter
 
+> Previous plan (staging deploy fix — Atlas Mongo, ports, nginx, GH secrets) was **completed**
+> across PRs #179–#184 with all follow-ups closed 2026-06-10; see those PRs / `git log tasks/todo.md`.
+
 **Branch**: `fix/185-workflowbar-overflow` | **File**: `apps/frontend/components/WorkflowBar.tsx`
 **Plan source**: CodeRabbit comment on issue, adapted (one significant deviation — see below)
 
