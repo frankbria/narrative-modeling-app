@@ -92,6 +92,10 @@ services:
       # lib/db.ts throws on startup without this.
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # NextAuth v5 rejects requests whose Host it doesn't trust (UntrustedHost
+      # 500s on every /api/auth/* route). Behind the nginx reverse proxy the
+      # host arrives via X-Forwarded-Host, so it must be trusted explicitly.
+      AUTH_TRUST_HOST: "true"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
