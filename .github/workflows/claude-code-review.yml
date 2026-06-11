@@ -4,6 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+# One review run per PR at a time; a new push cancels the in-flight run
+# (third runaway safeguard for issue #188).
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
     runs-on: ubuntu-latest
