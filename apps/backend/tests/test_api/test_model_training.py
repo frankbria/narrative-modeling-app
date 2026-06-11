@@ -86,6 +86,46 @@ class TestModelTrainingEndpoints:
     """Test model training API endpoints"""
 
     @pytest.mark.asyncio
+    async def test_train_model_endpoint_real_lookup(self, async_authorized_client):
+        """The dataset lookup matches a real UserData document by id string.
+
+        Regression (found during #76 demo): UserData.id is an ObjectId, so
+        comparing it to the raw request string never matched and every real
+        train request 404'd. The endpoint must coerce the id.
+        """
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="test_user_123",
+            filename="demo.csv",
+            original_filename="demo.csv",
+            s3_url="s3://test-bucket/demo.csv",
+            num_rows=10,
+            num_columns=2,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            with patch(
+                "app.api.routes.model_training.train_model_task",
+                new_callable=AsyncMock,
+            ):
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/train",
+                    json={
+                        "dataset_id": str(dataset.id),
+                        "target_column": "target",
+                    },
+                )
+            assert response.status_code == 200
+            assert response.json()["status"] == "training"
+        finally:
+            from app.models.training_job import TrainingJob
+
+            await TrainingJob.find(TrainingJob.dataset_id == str(dataset.id)).delete()
+            await dataset.delete()
+
+    @pytest.mark.asyncio
     async def test_train_model_endpoint(self, async_authorized_client):
         """Test POST /api/v1/ml/train"""
         # Mock dataset lookup

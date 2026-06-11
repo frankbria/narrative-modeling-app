@@ -12,8 +12,10 @@ import uuid
 from datetime import datetime, timezone
 import logging
 
+from beanie import PydanticObjectId
 from beanie.odm.operators.update.array import Push
 from beanie.odm.operators.update.general import Set
+from bson.errors import InvalidId
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
@@ -170,9 +172,16 @@ async def train_model(
     """
     Train a new ML model on the specified dataset
     """
-    # Verify dataset access
+    # Verify dataset access. UserData.id is an ObjectId, so the raw string
+    # from the request must be coerced or the comparison never matches; a
+    # non-ObjectId string is passed through and simply matches nothing.
+    dataset_id: Any = request.dataset_id
+    try:
+        dataset_id = PydanticObjectId(request.dataset_id)
+    except (InvalidId, ValueError, TypeError):
+        pass
     user_data = await UserData.find_one(
-        UserData.id == request.dataset_id, UserData.user_id == current_user_id
+        UserData.id == dataset_id, UserData.user_id == current_user_id
     )
 
     if not user_data:
