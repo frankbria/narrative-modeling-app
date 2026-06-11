@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 from app.services.model_training.automl_engine import (
     AutoMLEngine,
     AutoMLResult,
-    ModelCandidate
+    ModelCandidate,
+    TrainingCancelledError,
+    TrainingEvent,
 )
 from app.services.model_training.problem_detector import ProblemType, ProblemDetectionResult
 from app.services.model_training.feature_engineer import FeatureEngineeringResult
@@ -528,4 +530,181 @@ class TestAutoMLEngineEnhancements:
             )
 
         # Training still completes despite the failing callback.
+        assert result.best_model is not None
+
+
+class TestAutoMLEngineMonitoring:
+    """Tests for cancellation checks and log/stage/candidate events (issue #76)."""
+
+    @pytest.fixture
+    def engine(self):
+        return AutoMLEngine(max_models=2, cv_folds=3, test_size=0.2, random_state=42)
+
+    @pytest.fixture
+    def classification_df(self):
+        np.random.seed(42)
+        n_samples = 200
+        df = pd.DataFrame({
+            'feature1': np.random.randn(n_samples),
+            'feature2': np.random.randn(n_samples),
+            'target': np.random.choice([0, 1], n_samples),
+        })
+        return df
+
+    @pytest.fixture
+    def mock_detect(self):
+        mock_detection = ProblemDetectionResult(
+            problem_type=ProblemType.BINARY_CLASSIFICATION,
+            target_column='target',
+            confidence=0.95,
+            reasoning="Binary classification",
+            metadata={},
+        )
+
+        async def _detect(df, target):
+            return mock_detection
+
+        return _detect
+
+    @pytest.mark.asyncio
+    async def test_cancel_check_true_raises_before_training(
+        self, engine, classification_df, mock_detect
+    ):
+        """A truthy cancel_check stops training with TrainingCancelledError."""
+        async def always_cancel():
+            return True
+
+        progress_calls = []
+
+        async def on_progress(completed, total, current):
+            progress_calls.append((completed, total, current))
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            with pytest.raises(TrainingCancelledError):
+                await engine.run(
+                    classification_df, 'target',
+                    progress_callback=on_progress,
+                    cancel_check=always_cancel,
+                )
+
+        # Cancelled before the first candidate even reported progress.
+        assert progress_calls == []
+
+    @pytest.mark.asyncio
+    async def test_cancel_check_after_first_candidate(
+        self, engine, classification_df, mock_detect
+    ):
+        """Cancellation between candidates trains only the earlier ones."""
+        calls = {"n": 0}
+
+        async def cancel_after_first():
+            calls["n"] += 1
+            return calls["n"] > 1  # allow candidate 1, cancel before candidate 2
+
+        candidates_seen = []
+
+        async def on_event(event):
+            if event.candidate is not None:
+                candidates_seen.append(event.candidate["algorithm"])
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            with pytest.raises(TrainingCancelledError):
+                await engine.run(
+                    classification_df, 'target',
+                    event_callback=on_event,
+                    cancel_check=cancel_after_first,
+                )
+
+        assert len(candidates_seen) == 1
+
+    @pytest.mark.asyncio
+    async def test_events_emitted_in_stage_order(
+        self, engine, classification_df, mock_detect
+    ):
+        """Stages flow preprocessing -> training -> finalizing with a summary."""
+        events: list[TrainingEvent] = []
+
+        async def on_event(event):
+            events.append(event)
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                classification_df, 'target', event_callback=on_event
+            )
+
+        stages = [e.stage for e in events if e.stage is not None]
+        assert stages[0] == "preprocessing"
+        assert "training" in stages
+        assert "finalizing" in stages
+        # Ordered: every preprocessing index < training indexes < finalizing.
+        assert max(
+            i for i, s in enumerate(stages) if s == "preprocessing"
+        ) < min(i for i, s in enumerate(stages) if s == "training")
+        assert max(
+            i for i, s in enumerate(stages) if s == "training"
+        ) < min(i for i, s in enumerate(stages) if s == "finalizing")
+        # Final summary names the best model.
+        assert result.best_model.name in events[-1].message
+
+    @pytest.mark.asyncio
+    async def test_candidate_events_include_scores(
+        self, engine, classification_df, mock_detect
+    ):
+        """Each trained candidate emits an event with its scores and timing."""
+        events: list[TrainingEvent] = []
+
+        async def on_event(event):
+            events.append(event)
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                classification_df, 'target', event_callback=on_event
+            )
+
+        candidate_events = [e for e in events if e.candidate is not None]
+        assert len(candidate_events) == len(result.all_models)
+        for event in candidate_events:
+            assert set(event.candidate) >= {
+                "algorithm", "cv_score", "test_score", "training_time"
+            }
+            assert event.candidate["cv_score"] is not None
+            # The human-readable message carries the scores too.
+            assert "cv_score" in event.message
+            assert event.level == "info"
+            assert event.stage == "training"
+
+    @pytest.mark.asyncio
+    async def test_event_callback_error_does_not_break_training(
+        self, engine, classification_df, mock_detect
+    ):
+        """A failing event callback never interrupts the run."""
+        async def bad_event_callback(event):
+            raise RuntimeError("event callback exploded")
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                classification_df, 'target', event_callback=bad_event_callback
+            )
+
+        assert result.best_model is not None
+
+    @pytest.mark.asyncio
+    async def test_cancel_check_error_treated_as_not_cancelled(
+        self, engine, classification_df, mock_detect
+    ):
+        """A failing cancel_check is swallowed and training continues."""
+        async def bad_cancel_check():
+            raise RuntimeError("cancel check exploded")
+
+        with patch.object(engine.problem_detector, 'detect_problem_type',
+                          side_effect=mock_detect):
+            result = await engine.run(
+                classification_df, 'target', cancel_check=bad_cancel_check
+            )
+
         assert result.best_model is not None

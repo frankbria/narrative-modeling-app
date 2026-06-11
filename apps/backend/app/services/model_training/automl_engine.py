@@ -27,6 +27,26 @@ from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
 logger = logging.getLogger(__name__)
 
 
+class TrainingCancelledError(Exception):
+    """Raised when a training run is cancelled via the ``cancel_check`` hook."""
+
+
+@dataclass
+class TrainingEvent:
+    """A monitoring event emitted while the AutoML pipeline runs.
+
+    Carries a log line (``level`` + ``message``), the pipeline ``stage`` it was
+    emitted from (``preprocessing`` | ``training`` | ``finalizing``), and — for
+    per-candidate completion events — the candidate's results in ``candidate``
+    (keys: ``algorithm``, ``cv_score``, ``test_score``, ``training_time``).
+    """
+
+    level: str
+    message: str
+    stage: Optional[str] = None
+    candidate: Optional[Dict[str, Any]] = None
+
+
 @dataclass
 class ModelCandidate:
     """A candidate model for training"""
@@ -76,6 +96,10 @@ class AutoMLEngine:
         progress_callback: Optional[
             Callable[[int, int, Optional[str]], Awaitable[None]]
         ] = None,
+        event_callback: Optional[
+            Callable[[TrainingEvent], Awaitable[None]]
+        ] = None,
+        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ) -> AutoMLResult:
         """
         Run the AutoML pipeline
@@ -89,12 +113,31 @@ class AutoMLEngine:
                 before each candidate is trained and once more when all
                 candidates finish. Callback errors are swallowed so progress
                 reporting never breaks training.
+            event_callback: Optional async callback receiving ``TrainingEvent``
+                log/stage/candidate events as the pipeline runs. Callback
+                errors are swallowed so event reporting never breaks training.
+            cancel_check: Optional async callable awaited before each candidate
+                is trained; returning True aborts the run by raising
+                ``TrainingCancelledError``. Errors raised by the check itself
+                are swallowed and treated as "not cancelled".
 
         Returns:
             AutoMLResult with best model and metadata
+
+        Raises:
+            TrainingCancelledError: When ``cancel_check`` returns True.
         """
         start_time = datetime.now(timezone.utc)
-        
+
+        await self._emit_event(
+            event_callback,
+            TrainingEvent(
+                level="info",
+                message="Preparing data and engineering features",
+                stage="preprocessing",
+            ),
+        )
+
         # Detect problem type
         detection_result = await self.problem_detector.detect_problem_type(
             df, target_column
@@ -147,7 +190,22 @@ class AutoMLEngine:
         selected_candidates = candidates[:self.max_models]
         total_candidates = len(selected_candidates)
         trained_models = []
+
+        await self._emit_event(
+            event_callback,
+            TrainingEvent(
+                level="info",
+                message=f"Training {total_candidates} candidate models",
+                stage="training",
+            ),
+        )
+
         for index, candidate in enumerate(selected_candidates):
+            if await self._is_cancelled(cancel_check):
+                raise TrainingCancelledError(
+                    f"Training cancelled before {candidate.name}"
+                )
+
             logger.info(f"Training {candidate.name}...")
             await self._report_progress(
                 progress_callback, index, total_candidates, candidate.name
@@ -177,14 +235,50 @@ class AutoMLEngine:
                 
                 trained_models.append(candidate)
                 logger.info(f"{candidate.name} - CV Score: {candidate.cv_score:.4f}, Test Score: {candidate.test_score:.4f}")
-                
+                await self._emit_event(
+                    event_callback,
+                    TrainingEvent(
+                        level="info",
+                        message=(
+                            f"{candidate.name} trained: "
+                            f"cv_score={candidate.cv_score:.4f}, "
+                            f"test_score={candidate.test_score:.4f}, "
+                            f"training_time={candidate.training_time:.2f}s"
+                        ),
+                        stage="training",
+                        candidate={
+                            "algorithm": candidate.name,
+                            "cv_score": candidate.cv_score,
+                            "test_score": candidate.test_score,
+                            "training_time": candidate.training_time,
+                        },
+                    ),
+                )
+
             except Exception as e:
                 logger.error(f"Error training {candidate.name}: {str(e)}")
+                await self._emit_event(
+                    event_callback,
+                    TrainingEvent(
+                        level="warning",
+                        message=f"{candidate.name} failed to train: {e}",
+                        stage="training",
+                    ),
+                )
                 continue
-        
+
         # Final progress tick: all candidates processed.
         await self._report_progress(
             progress_callback, total_candidates, total_candidates, None
+        )
+
+        await self._emit_event(
+            event_callback,
+            TrainingEvent(
+                level="info",
+                message="Selecting the best model",
+                stage="finalizing",
+            ),
         )
 
         # Select best model
@@ -200,6 +294,20 @@ class AutoMLEngine:
         )
 
         total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+        await self._emit_event(
+            event_callback,
+            TrainingEvent(
+                level="info",
+                message=(
+                    f"Training complete: best model is {best_model.name} "
+                    f"(cv_score={best_model.cv_score:.4f}, "
+                    f"test_score={best_model.test_score:.4f}) "
+                    f"after {total_time:.2f}s"
+                ),
+                stage="finalizing",
+            ),
+        )
 
         # Side-by-side comparison of every trained candidate, ranked by CV score.
         model_comparison = [
@@ -250,6 +358,32 @@ class AutoMLEngine:
             await progress_callback(completed, total, current_algorithm)
         except Exception as exc:  # progress reporting must never break training
             logger.warning(f"Progress callback failed: {exc}")
+
+    @staticmethod
+    async def _emit_event(
+        event_callback: Optional[Callable[["TrainingEvent"], Awaitable[None]]],
+        event: "TrainingEvent",
+    ) -> None:
+        """Invoke the event callback, swallowing any error it raises."""
+        if event_callback is None:
+            return
+        try:
+            await event_callback(event)
+        except Exception as exc:  # event reporting must never break training
+            logger.warning(f"Event callback failed: {exc}")
+
+    @staticmethod
+    async def _is_cancelled(
+        cancel_check: Optional[Callable[[], Awaitable[bool]]],
+    ) -> bool:
+        """Await the cancellation check; errors are treated as 'not cancelled'."""
+        if cancel_check is None:
+            return False
+        try:
+            return bool(await cancel_check())
+        except Exception as exc:  # a broken check must never break training
+            logger.warning(f"Cancellation check failed: {exc}")
+            return False
 
     @staticmethod
     def _assess_class_balance(
