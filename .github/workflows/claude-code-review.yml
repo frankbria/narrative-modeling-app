@@ -7,6 +7,9 @@ on:
 jobs:
   claude-review:
     runs-on: ubuntu-latest
+    # Runaway-run safeguard (issue #188): normal runs take ~3.5 min; a malfunctioning
+    # run on PR #187 ran 55+ min posting junk comments before manual cancellation.
+    timeout-minutes: 10
 
     # Bump perms so Claude can actually comment on the PR.
     permissions:
@@ -41,8 +44,23 @@ jobs:
             - Performance considerations
             - Security concerns
             - Test coverage
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
-          # Tooling Claude is allowed to run
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+            CONTEXT (reference only): the repository's CLAUDE.md describes project
+            conventions and style. Use it to inform your review, but do NOT include
+            its content (or any other reference file) in your output.
+
+            OUTPUT FORMAT:
+            - Post exactly ONE consolidated review comment on the PR using
+              `gh pr comment` with your Bash tool.
+            - The comment must contain ONLY your review findings, organized by
+              category (e.g. Bugs, Security, Performance, Tests, Style).
+            - Do not echo back reference files, file dumps, test fragments,
+              placeholder text, or debugging output.
+            - Do not post test comments, partial comments, or multiple comments.
+              If a comment fails to post, do not retry with experimental content.
+            Be constructive and helpful in your feedback.
+
+          # Tooling Claude is allowed to run.
+          # --max-turns caps agent iterations (the action has no max_turns input;
+          # CLI flags are passed via claude_args) — second runaway safeguard.
+          claude_args: '--max-turns 20 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
