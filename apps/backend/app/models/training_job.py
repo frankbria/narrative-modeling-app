@@ -106,6 +106,9 @@ class TrainingJob(Document):
             "user_id",
             "status",
             "created_at",
+            # Serves the jobs-list query exactly: filter by owner (+ status),
+            # newest first — the dashboard polls this every 10 seconds.
+            [("user_id", 1), ("status", 1), ("created_at", -1)],
         ]
 
     # -- lifecycle helpers -------------------------------------------------
@@ -179,6 +182,9 @@ class TrainingJob(Document):
         self.completed_at = _utcnow()
         self.updated_at = self.completed_at
         self.progress.current_algorithm = None
+        # A terminal job is not in any pipeline stage; leaving "training" here
+        # would mislead the status endpoint's stage badge.
+        self.progress.current_stage = None
 
     def add_log(
         self, level: LogLevel, message: str, stage: Optional[str] = None

@@ -64,6 +64,7 @@ export default function TrainingJobsPage() {
   const [historySkip, setHistorySkip] = useState(0);
   const [statusFilter, setStatusFilter] = useState<HistoryFilter>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Monotonic id so an out-of-order history response (slow request for a
   // previous filter resolving late) can never overwrite newer rows.
@@ -148,6 +149,18 @@ export default function TrainingJobsPage() {
   }, [fetchInFlight, fetchHistory, statusFilter]);
 
   const hasMoreHistory = historySkip + HISTORY_PAGE_SIZE < historyTotal;
+
+  // Append-mode fetches accumulate rows, so rapid clicks would append the
+  // same page twice; disable the button while a page is in flight.
+  const handleLoadMore = async () => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      await fetchHistory(statusFilter, historySkip + HISTORY_PAGE_SIZE, true);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   if (!session) {
     return (
@@ -282,11 +295,10 @@ export default function TrainingJobsPage() {
             <div className="flex justify-center">
               <Button
                 variant="outline"
-                onClick={() =>
-                  fetchHistory(statusFilter, historySkip + HISTORY_PAGE_SIZE, true)
-                }
+                disabled={isLoadingMore}
+                onClick={handleLoadMore}
               >
-                Load more
+                {isLoadingMore ? 'Loading…' : 'Load more'}
               </Button>
             </div>
           )}

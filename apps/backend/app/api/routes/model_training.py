@@ -318,21 +318,24 @@ async def train_model_task(
             if not training_job:
                 return
             entry = training_job.add_log(event.level, event.message, stage=event.stage)
+            fields_to_set: Dict[Any, Any] = {
+                TrainingJob.progress: training_job.progress,
+                TrainingJob.updated_at: training_job.updated_at,
+            }
             if event.stage:
                 training_job.progress.current_stage = event.stage
             if event.candidate:
                 training_job.model_comparison.append(
                     ModelComparisonEntry(**event.candidate)
                 )
+                # Only candidate events change the comparison; rewriting the
+                # array on every stage/log event is wasted write volume.
+                fields_to_set[TrainingJob.model_comparison] = (
+                    training_job.model_comparison
+                )
             await training_job.update(
                 Push({TrainingJob.logs: entry}),
-                Set(
-                    {
-                        TrainingJob.progress: training_job.progress,
-                        TrainingJob.model_comparison: training_job.model_comparison,
-                        TrainingJob.updated_at: training_job.updated_at,
-                    }
-                ),
+                Set(fields_to_set),
             )
 
         # Cancellation check re-reads the job from MongoDB so a flag set by

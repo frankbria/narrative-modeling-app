@@ -138,11 +138,14 @@ class TestTrainingJobCancellation:
         job = _job()
         job.mark_started(total_algorithms=3)
         job.update_progress(completed_algorithms=1, current_algorithm="XGBoost")
+        job.progress.current_stage = "training"
         job.mark_cancelled()
         assert job.status == JobStatus.CANCELLED
         assert job.completed_at is not None
         assert job.updated_at == job.completed_at
         assert job.progress.current_algorithm is None
+        # A cancelled job is not in any pipeline stage.
+        assert job.progress.current_stage is None
 
 
 class TestTrainingProgressStage:
