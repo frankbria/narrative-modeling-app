@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, LogOut, User } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, ListChecks, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ export default function Sidebar() {
     { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
     { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
     { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
+    { name: 'Training Jobs', icon: <ListChecks size={20} />, href: '/training' },
     { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
     { name: 'A/B Testing', icon: <Beaker size={20} />, href: '/experiments' },
     { name: 'Monitor', icon: <Activity size={20} />, href: '/monitor' },
