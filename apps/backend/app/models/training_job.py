@@ -25,6 +25,11 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Treat a naive datetime as UTC (MongoDB round-trips drop the tzinfo)."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
 class TrainingLogEntry(BaseModel):
     """One timestamped log line emitted during a training run."""
 
@@ -193,8 +198,8 @@ class TrainingJob(Document):
         """Seconds since the job started (frozen at completion; None if unstarted)."""
         if self.started_at is None:
             return None
-        end = self.completed_at or _utcnow()
-        return (end - self.started_at).total_seconds()
+        end = _as_utc(self.completed_at) if self.completed_at else _utcnow()
+        return (end - _as_utc(self.started_at)).total_seconds()
 
     @property
     def estimated_remaining_seconds(self) -> Optional[float]:

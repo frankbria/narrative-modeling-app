@@ -16,7 +16,11 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.models.ml_model import MLModel
 from app.models.batch_job import JobStatus
-from app.models.training_job import TrainingJob, ModelComparisonEntry
+from app.models.training_job import (
+    TrainingJob,
+    TrainingLogEntry,
+    ModelComparisonEntry,
+)
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
 from app.services.model_storage import ModelStorageService
@@ -86,11 +90,15 @@ class PredictResponse(BaseModel):
 class TrainingStatusResponse(BaseModel):
     """Status and results of an async training job"""
     model_id: str
-    status: str  # pending | running | completed | failed
+    status: str  # pending | running | completed | failed | cancelled
     progress: float  # 0.0 - 1.0
     current_algorithm: Optional[str] = None
+    current_stage: Optional[str] = None  # preprocessing | training | finalizing
     completed_algorithms: int = 0
     total_algorithms: int = 0
+    elapsed_seconds: Optional[float] = None
+    estimated_remaining_seconds: Optional[float] = None
+    cancellation_requested: bool = False
     metrics: Dict[str, Any] = {}
     model_comparison: List[Dict[str, Any]] = []
     algorithm_recommendations: List[Dict[str, Any]] = []
@@ -98,6 +106,46 @@ class TrainingStatusResponse(BaseModel):
     best_algorithm: Optional[str] = None
     explanation: Optional[str] = None
     error: Optional[str] = None
+
+
+class TrainingJobSummary(BaseModel):
+    """Condensed view of one training job for the jobs list"""
+    model_id: str
+    dataset_id: str
+    target_column: str
+    status: str
+    progress_percentage: float
+    current_stage: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    best_algorithm: Optional[str] = None
+    best_score: Optional[float] = None
+    elapsed_seconds: Optional[float] = None
+
+
+class TrainingJobListResponse(BaseModel):
+    """Paginated list of the current user's training jobs"""
+    jobs: List[TrainingJobSummary]
+    total_count: int
+    limit: int
+    skip: int
+
+
+class TrainingLogsResponse(BaseModel):
+    """Paginated log entries for one training job"""
+    model_id: str
+    logs: List[TrainingLogEntry]
+    total_count: int
+    has_more: bool
+
+
+class CancelTrainingResponse(BaseModel):
+    """Acknowledgement that cancellation of a training job was requested"""
+    model_id: str
+    status: str
+    cancellation_requested: bool
+    message: str
 
 
 @router.post("/train", response_model=TrainModelResponse)
@@ -432,6 +480,145 @@ async def list_models(
     ]
 
 
+def _best_comparison_score(job: TrainingJob) -> Optional[float]:
+    """Best score across the comparison rows (test_score, else cv_score)."""
+    scores = [
+        row.test_score if row.test_score is not None else row.cv_score
+        for row in job.model_comparison
+    ]
+    scores = [score for score in scores if score is not None]
+    return max(scores) if scores else None
+
+
+# NOTE: registered before the dynamic GET /{model_id} route so "jobs" is never
+# captured as a model id.
+@router.get("/jobs", response_model=TrainingJobListResponse)
+async def list_training_jobs(
+    status: Optional[JobStatus] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    skip: int = Query(0, ge=0),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    List the current user's training jobs, newest first.
+
+    Supports filtering by lifecycle status and skip/limit pagination;
+    ``total_count`` is the size of the filtered result set.
+    """
+    query: Dict[str, Any] = {"user_id": current_user_id}
+    if status is not None:
+        query["status"] = status
+
+    total_count = await TrainingJob.find(query).count()
+    jobs = (
+        await TrainingJob.find(query)
+        .sort("-created_at")
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
+
+    return TrainingJobListResponse(
+        jobs=[
+            TrainingJobSummary(
+                model_id=job.model_id,
+                dataset_id=job.dataset_id,
+                target_column=job.target_column,
+                status=job.status.value,
+                progress_percentage=job.progress.percentage,
+                current_stage=job.progress.current_stage,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                completed_at=job.completed_at,
+                best_algorithm=job.best_algorithm,
+                best_score=_best_comparison_score(job),
+                elapsed_seconds=job.elapsed_seconds,
+            )
+            for job in jobs
+        ],
+        total_count=total_count,
+        limit=limit,
+        skip=skip,
+    )
+
+
+@router.get("/{model_id}/logs", response_model=TrainingLogsResponse)
+async def get_training_logs(
+    model_id: str,
+    level: Optional[str] = Query(None, pattern="^(info|warning|error)$"),
+    limit: int = Query(100, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Get the log entries recorded for a training job, oldest first.
+
+    Supports filtering by level and skip/limit pagination; ``has_more`` flags
+    whether further pages exist beyond the returned window.
+    """
+    job = await TrainingJob.find_one(
+        TrainingJob.model_id == model_id,
+        TrainingJob.user_id == current_user_id,
+    )
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Training job not found")
+
+    entries = job.logs
+    if level is not None:
+        entries = [entry for entry in entries if entry.level == level]
+    total_count = len(entries)
+
+    return TrainingLogsResponse(
+        model_id=job.model_id,
+        logs=entries[skip:skip + limit],
+        total_count=total_count,
+        has_more=skip + limit < total_count,
+    )
+
+
+@router.post("/{model_id}/cancel", response_model=CancelTrainingResponse)
+async def cancel_training(
+    model_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Request cancellation of a running (or pending) training job.
+
+    Cancellation is cooperative: the flag is checked by the training task
+    between candidate models, so the job transitions to ``cancelled`` shortly
+    after, not instantly. Returns 409 if the job is already terminal.
+    """
+    job = await TrainingJob.find_one(
+        TrainingJob.model_id == model_id,
+        TrainingJob.user_id == current_user_id,
+    )
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Training job not found")
+
+    terminal_statuses = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+    if job.status in terminal_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Training job is already {job.status.value} and cannot be cancelled",
+        )
+
+    job.cancellation_requested = True
+    job.add_log("info", "Cancellation requested")
+    await job.save()
+
+    return CancelTrainingResponse(
+        model_id=job.model_id,
+        status=job.status.value,
+        cancellation_requested=True,
+        message=(
+            "Cancellation requested. The job will stop before training the "
+            "next candidate model."
+        ),
+    )
+
+
 @router.get("/{model_id}/status", response_model=TrainingStatusResponse)
 async def get_training_status(
     model_id: str,
@@ -458,8 +645,12 @@ async def get_training_status(
         status=job.status.value,
         progress=job.progress.fraction,
         current_algorithm=job.progress.current_algorithm,
+        current_stage=job.progress.current_stage,
         completed_algorithms=job.progress.completed_algorithms,
         total_algorithms=job.progress.total_algorithms,
+        elapsed_seconds=job.elapsed_seconds,
+        estimated_remaining_seconds=job.estimated_remaining_seconds,
+        cancellation_requested=job.cancellation_requested,
         metrics=job.metrics,
         model_comparison=[entry.model_dump() for entry in job.model_comparison],
         algorithm_recommendations=job.algorithm_recommendations,

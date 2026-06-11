@@ -622,3 +622,350 @@ class TestTrainingStatusEndpoint:
             )
         finally:
             await job.delete()
+
+
+async def _insert_job(
+    model_id: str,
+    *,
+    user_id: str = "test_user_123",
+    status: str = "pending",
+    **kwargs,
+):
+    """Insert a TrainingJob in the given lifecycle state and return it."""
+    from app.models.training_job import TrainingJob
+    from app.models.batch_job import JobStatus
+
+    job = TrainingJob(
+        model_id=model_id,
+        user_id=user_id,
+        dataset_id=kwargs.pop("dataset_id", "dataset_123"),
+        target_column=kwargs.pop("target_column", "target"),
+    )
+    if status in ("running", "completed", "failed", "cancelled"):
+        job.mark_started(total_algorithms=kwargs.pop("total_algorithms", 4))
+    if status == "completed":
+        job.mark_completed(**kwargs)
+    elif status == "failed":
+        job.mark_failed(kwargs.pop("error", "boom"))
+    elif status == "cancelled":
+        job.mark_cancelled()
+    assert job.status == JobStatus(status)
+    await job.insert()
+    return job
+
+
+class TestTrainingJobListEndpoint:
+    """Test GET /api/v1/ml/jobs"""
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_empty(self, async_authorized_client):
+        resp = await async_authorized_client.get("/api/v1/ml/jobs")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["jobs"] == []
+        assert body["total_count"] == 0
+        assert body["limit"] == 20
+        assert body["skip"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_populated(self, async_authorized_client):
+        from app.models.training_job import ModelComparisonEntry
+
+        jobs = [
+            await _insert_job("model_jobs_a", status="running"),
+            await _insert_job(
+                "model_jobs_b",
+                status="completed",
+                best_algorithm="XGBoost",
+                model_comparison=[
+                    ModelComparisonEntry(
+                        algorithm="XGBoost", cv_score=0.91, test_score=0.9
+                    ),
+                    ModelComparisonEntry(algorithm="Random Forest", cv_score=0.88),
+                ],
+            ),
+        ]
+        try:
+            resp = await async_authorized_client.get("/api/v1/ml/jobs")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 2
+            assert len(body["jobs"]) == 2
+            by_id = {j["model_id"]: j for j in body["jobs"]}
+            completed = by_id["model_jobs_b"]
+            assert completed["status"] == "completed"
+            assert completed["best_algorithm"] == "XGBoost"
+            assert completed["best_score"] == 0.9  # best test_score
+            assert completed["dataset_id"] == "dataset_123"
+            assert completed["target_column"] == "target"
+            assert completed["progress_percentage"] == 100.0
+            assert completed["elapsed_seconds"] is not None
+            running = by_id["model_jobs_a"]
+            assert running["status"] == "running"
+            assert running["best_score"] is None
+            assert running["completed_at"] is None
+            # Sorted newest first.
+            assert [j["model_id"] for j in body["jobs"]] == [
+                "model_jobs_b", "model_jobs_a"
+            ]
+        finally:
+            for job in jobs:
+                await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_status_filter(self, async_authorized_client):
+        jobs = [
+            await _insert_job("model_filter_a", status="running"),
+            await _insert_job("model_filter_b", status="failed"),
+        ]
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/jobs", params={"status": "failed"}
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 1
+            assert body["jobs"][0]["model_id"] == "model_filter_b"
+        finally:
+            for job in jobs:
+                await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_invalid_status_rejected(self, async_authorized_client):
+        resp = await async_authorized_client.get(
+            "/api/v1/ml/jobs", params={"status": "not_a_status"}
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_pagination(self, async_authorized_client):
+        jobs = [
+            await _insert_job(f"model_page_{i}", status="pending") for i in range(3)
+        ]
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/jobs", params={"limit": 2, "skip": 2}
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 3
+            assert len(body["jobs"]) == 1
+            assert body["limit"] == 2
+            assert body["skip"] == 2
+        finally:
+            for job in jobs:
+                await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_limit_capped(self, async_authorized_client):
+        resp = await async_authorized_client.get(
+            "/api/v1/ml/jobs", params={"limit": 101}
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_excludes_other_users(self, async_authorized_client):
+        jobs = [
+            await _insert_job("model_mine", status="pending"),
+            await _insert_job(
+                "model_theirs", status="pending", user_id="someone_else"
+            ),
+        ]
+        try:
+            resp = await async_authorized_client.get("/api/v1/ml/jobs")
+            assert resp.status_code == 200
+            body = resp.json()
+            ids = [j["model_id"] for j in body["jobs"]]
+            assert "model_mine" in ids
+            assert "model_theirs" not in ids
+        finally:
+            for job in jobs:
+                await job.delete()
+
+
+class TestTrainingLogsEndpoint:
+    """Test GET /api/v1/ml/{model_id}/logs"""
+
+    @pytest.mark.asyncio
+    async def test_logs_not_found(self, async_authorized_client):
+        resp = await async_authorized_client.get("/api/v1/ml/no_such_model/logs")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_logs_returns_entries(self, async_authorized_client):
+        job = await _insert_job("model_logs_basic", status="running")
+        job.add_log("info", "Training task started")
+        job.add_log("info", "XGBoost trained: cv_score=0.91", stage="training")
+        job.add_log("warning", "SVM failed to train: boom", stage="training")
+        await job.save()
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_logs_basic/logs"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["model_id"] == "model_logs_basic"
+            assert body["total_count"] == 3
+            assert body["has_more"] is False
+            assert len(body["logs"]) == 3
+            first = body["logs"][0]
+            assert first["level"] == "info"
+            assert first["message"] == "Training task started"
+            assert first["stage"] is None
+            assert "timestamp" in first
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_logs_level_filter(self, async_authorized_client):
+        job = await _insert_job("model_logs_level", status="running")
+        job.add_log("info", "fine")
+        job.add_log("error", "bad")
+        await job.save()
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_logs_level/logs", params={"level": "error"}
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 1
+            assert body["logs"][0]["message"] == "bad"
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_logs_pagination(self, async_authorized_client):
+        job = await _insert_job("model_logs_page", status="running")
+        for i in range(5):
+            job.add_log("info", f"line {i}")
+        await job.save()
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_logs_page/logs",
+                params={"limit": 2, "skip": 2},
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 5
+            assert [entry["message"] for entry in body["logs"]] == [
+                "line 2", "line 3"
+            ]
+            assert body["has_more"] is True
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_logs_other_users_job_hidden(self, async_authorized_client):
+        job = await _insert_job(
+            "model_logs_other", status="running", user_id="someone_else"
+        )
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_logs_other/logs"
+            )
+            assert resp.status_code == 404
+        finally:
+            await job.delete()
+
+
+class TestCancelTrainingEndpoint:
+    """Test POST /api/v1/ml/{model_id}/cancel"""
+
+    @pytest.mark.asyncio
+    async def test_cancel_not_found(self, async_authorized_client):
+        resp = await async_authorized_client.post("/api/v1/ml/no_such_model/cancel")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_cancel_running_job(self, async_authorized_client):
+        from app.models.training_job import TrainingJob
+
+        job = await _insert_job("model_cancel_run", status="running")
+        try:
+            resp = await async_authorized_client.post(
+                "/api/v1/ml/model_cancel_run/cancel"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["model_id"] == "model_cancel_run"
+            assert body["cancellation_requested"] is True
+            assert body["status"] == "running"
+            assert "message" in body
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_cancel_run"
+            )
+            assert refreshed.cancellation_requested is True
+            assert any(
+                "Cancellation requested" in entry.message
+                for entry in refreshed.logs
+            )
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_cancel_terminal_job_conflict(self, async_authorized_client):
+        job = await _insert_job("model_cancel_done", status="completed")
+        try:
+            resp = await async_authorized_client.post(
+                "/api/v1/ml/model_cancel_done/cancel"
+            )
+            assert resp.status_code == 409
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_cancel_other_users_job_hidden(self, async_authorized_client):
+        job = await _insert_job(
+            "model_cancel_other", status="running", user_id="someone_else"
+        )
+        try:
+            resp = await async_authorized_client.post(
+                "/api/v1/ml/model_cancel_other/cancel"
+            )
+            assert resp.status_code == 404
+        finally:
+            await job.delete()
+
+
+class TestExtendedStatusFields:
+    """The status endpoint exposes stage, timing, and cancellation fields."""
+
+    @pytest.mark.asyncio
+    async def test_status_includes_monitoring_fields(self, async_authorized_client):
+        from datetime import timedelta
+        from app.models.training_job import _utcnow
+
+        job = await _insert_job("model_status_ext", status="running")
+        job.update_progress(completed_algorithms=2, current_algorithm="XGBoost")
+        job.progress.current_stage = "training"
+        job.started_at = _utcnow() - timedelta(seconds=20)
+        await job.save()
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_status_ext/status"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["current_stage"] == "training"
+            assert body["cancellation_requested"] is False
+            assert body["elapsed_seconds"] >= 19.0
+            # Running at 50% with ~20s elapsed -> ~20s remaining.
+            assert body["estimated_remaining_seconds"] == pytest.approx(20.0, abs=5.0)
+        finally:
+            await job.delete()
+
+    @pytest.mark.asyncio
+    async def test_status_timing_none_when_pending(self, async_authorized_client):
+        job = await _insert_job("model_status_pending_ext", status="pending")
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/model_status_pending_ext/status"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["current_stage"] is None
+            assert body["elapsed_seconds"] is None
+            assert body["estimated_remaining_seconds"] is None
+        finally:
+            await job.delete()
