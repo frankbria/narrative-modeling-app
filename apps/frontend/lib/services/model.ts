@@ -69,8 +69,6 @@ export type TrainingJobStatus =
   | 'failed'
   | 'cancelled'
 
-export type TrainingStage = 'preprocessing' | 'training' | 'finalizing'
-
 export interface TrainingStatus {
   model_id: string
   status: TrainingJobStatus

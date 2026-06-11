@@ -14,11 +14,7 @@ from pydantic import Field, BaseModel
 
 from app.models.batch_job import JobStatus
 
-# Allowed severities for a training log entry.
 LogLevel = Literal["info", "warning", "error"]
-
-# Coarse pipeline stages reported by the AutoML engine.
-TrainingStage = Literal["preprocessing", "training", "finalizing"]
 
 
 def _utcnow() -> datetime:

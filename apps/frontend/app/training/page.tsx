@@ -126,10 +126,6 @@ export default function TrainingJobsPage() {
     fetchHistory(statusFilter, 0, false);
   }, [isAuthenticated, statusFilter, fetchHistory]);
 
-  const handleFilterChange = (value: HistoryFilter) => {
-    setStatusFilter(value);
-  };
-
   // A card's job finished (completed/failed/cancelled): move it from the
   // in-flight section into the history table.
   const handleJobSettled = useCallback(() => {
@@ -212,7 +208,7 @@ export default function TrainingJobsPage() {
             <select
               aria-label="Filter by status"
               value={statusFilter}
-              onChange={(e) => handleFilterChange(e.target.value as HistoryFilter)}
+              onChange={(e) => setStatusFilter(e.target.value as HistoryFilter)}
               className="p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">All</option>
