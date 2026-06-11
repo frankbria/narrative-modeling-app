@@ -57,7 +57,8 @@ jobs:
             - Do not echo back reference files, file dumps, test fragments,
               placeholder text, or debugging output.
             - Do not post test comments, partial comments, or multiple comments.
-              If a comment fails to post, do not retry with experimental content.
+              If a comment fails to post, retrying the IDENTICAL comment after a
+              transient error is fine — but never retry with experimental content.
             - Compose the complete review BEFORE posting and post it in one
               `gh pr comment` call — never post a placeholder and edit it later.
             Be constructive and helpful in your feedback.
