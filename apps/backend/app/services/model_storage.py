@@ -3,11 +3,15 @@ Model storage service for saving and loading ML models
 """
 
 import joblib
-from typing import Any, Optional, Tuple
+import json
+import math
+from typing import Any, Dict, List, Optional, Tuple
 import io
 from datetime import datetime, timezone
 import logging
 import uuid
+
+import numpy as np
 
 from app.services.s3_service import S3Service
 from app.models.ml_model import MLModel
@@ -15,6 +19,54 @@ from app.services.model_training.automl_engine import ModelCandidate
 from app.services.model_training.feature_engineer import FeatureEngineer
 
 logger = logging.getLogger(__name__)
+
+
+def _to_json_safe(value: Any) -> Any:
+    """Recursively convert numpy types to JSON-safe Python builtins.
+
+    Non-finite floats (NaN/inf) become ``None`` so the output is always
+    strictly valid JSON (``json.dumps(..., allow_nan=False)`` safe).
+    """
+    if value is None:
+        return None
+    if isinstance(value, (np.bool_, bool)):
+        return bool(value)
+    if isinstance(value, (np.integer, int)):
+        return int(value)
+    if isinstance(value, (np.floating, float)):
+        as_float = float(value)
+        return as_float if math.isfinite(as_float) else None
+    if isinstance(value, np.ndarray):
+        return [_to_json_safe(item) for item in value.tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_to_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _to_json_safe(val) for key, val in value.items()}
+    return str(value) if not isinstance(value, str) else value
+
+
+def build_evaluation_payload(
+    problem_type: str,
+    y_test: Any,
+    y_pred: Any,
+    y_proba: Optional[Any],
+    class_labels: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Build the JSON-safe evaluation-artifact payload persisted to S3.
+
+    Arrays may be numpy arrays, pandas Series, or plain lists; all values are
+    converted to JSON-safe builtins (issue #79).
+    """
+    return {
+        "problem_type": problem_type,
+        "y_test": _to_json_safe(np.asarray(y_test)),
+        "y_pred": _to_json_safe(np.asarray(y_pred)),
+        "y_proba": _to_json_safe(np.asarray(y_proba)) if y_proba is not None else None,
+        "class_labels": (
+            [str(label) for label in class_labels] if class_labels is not None else None
+        ),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 class ModelStorageService:
@@ -31,7 +83,8 @@ class ModelStorageService:
         user_id: str,
         dataset_id: str,
         model_metadata: dict,
-        model_id: Optional[str] = None
+        model_id: Optional[str] = None,
+        evaluation_data: Optional[Dict[str, Any]] = None,
     ) -> MLModel:
         """
         Save a trained model and its metadata
@@ -43,6 +96,9 @@ class ModelStorageService:
             dataset_id: Dataset used for training
             model_metadata: Additional metadata
             model_id: Optional pre-generated model ID (if None, generates new one)
+            evaluation_data: Optional JSON-safe evaluation-artifact payload
+                (see ``build_evaluation_payload``). Uploaded best-effort: a
+                failure is logged and never fails the save (issue #79).
 
         Returns:
             MLModel document
@@ -71,7 +127,28 @@ class ModelStorageService:
             transformer_key = f"{self.models_prefix}{user_id}/{model_id}/feature_transformer.pkl"
             await self.s3_service.upload_file_obj(transformer_buffer, transformer_key)
             feature_transformer_path = f"s3://{self.s3_service.bucket_name}/{transformer_key}"
-        
+
+        # Upload evaluation artifacts (best-effort — issue #79). A failure
+        # here must never fail the training job; the evaluation endpoint
+        # degrades to partial results when the path is absent.
+        evaluation_data_path = None
+        if evaluation_data is not None:
+            evaluation_key = (
+                f"{self.models_prefix}{user_id}/{model_id}/evaluation_data.json"
+            )
+            try:
+                evaluation_buffer = io.BytesIO(
+                    json.dumps(evaluation_data, allow_nan=False).encode("utf-8")
+                )
+                await self.s3_service.upload_file_obj(evaluation_buffer, evaluation_key)
+                evaluation_data_path = (
+                    f"s3://{self.s3_service.bucket_name}/{evaluation_key}"
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to upload evaluation artifacts for {model_id}: {exc}"
+                )
+
         # Create model document
         ml_model = MLModel(
             user_id=user_id,
@@ -92,6 +169,7 @@ class ModelStorageService:
             n_features=len(model_metadata["feature_names"]),
             model_path=f"s3://{self.s3_service.bucket_name}/{model_key}",
             feature_transformer_path=feature_transformer_path,
+            evaluation_data_path=evaluation_data_path,
             feature_importance=model_metadata.get("feature_importance"),
             training_config=model_metadata.get("training_config", {})
         )
@@ -176,6 +254,13 @@ class ModelStorageService:
                     f"s3://{self.s3_service.bucket_name}/", ""
                 )
                 await self.s3_service.delete_file(transformer_key)
+
+            # Delete evaluation artifacts if present (issue #79)
+            if ml_model.evaluation_data_path:
+                evaluation_key = ml_model.evaluation_data_path.replace(
+                    f"s3://{self.s3_service.bucket_name}/", ""
+                )
+                await self.s3_service.delete_file(evaluation_key)
         except Exception as e:
             logger.error(f"Error deleting model files: {str(e)}")
         

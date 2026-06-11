@@ -28,7 +28,7 @@ from app.models.training_job import (
 )
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
-from app.services.model_storage import ModelStorageService
+from app.services.model_storage import ModelStorageService, build_evaluation_payload
 from app.services.model_training import (
     AutoMLEngine,
     FeatureEngineeringConfig,
@@ -374,6 +374,23 @@ async def train_model_task(
             "training_config": training_config,
         }
 
+        # Held-out evaluation artifacts for the dashboard (issue #79).
+        # Built best-effort: a payload problem must never fail training.
+        evaluation_data = None
+        if result.y_test is not None and result.y_pred is not None:
+            try:
+                evaluation_data = build_evaluation_payload(
+                    problem_type=result.problem_type.value,
+                    y_test=result.y_test,
+                    y_pred=result.y_pred,
+                    y_proba=result.y_proba,
+                    class_labels=result.class_labels,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to build evaluation payload for {model_id}: {exc}"
+                )
+
         # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
@@ -383,6 +400,7 @@ async def train_model_task(
             request.dataset_id,
             model_metadata,
             model_id=model_id,
+            evaluation_data=evaluation_data,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.

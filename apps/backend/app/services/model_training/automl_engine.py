@@ -64,7 +64,16 @@ class ModelCandidate:
 
 @dataclass
 class AutoMLResult:
-    """Result of AutoML process"""
+    """Result of AutoML process.
+
+    ``y_test``/``y_pred``/``y_proba``/``class_labels`` are the BEST model's
+    held-out evaluation artifacts (issue #79). The FeatureEngineer never
+    transforms the target, so labels are in the original label space and
+    ``class_labels`` follows the estimator's ``classes_`` ordering — the same
+    ordering as the columns of ``y_proba``. ``y_proba`` and ``class_labels``
+    are ``None`` for regression (and ``y_proba`` also when the best estimator
+    has no ``predict_proba``).
+    """
 
     best_model: ModelCandidate
     all_models: List[ModelCandidate]
@@ -73,6 +82,10 @@ class AutoMLResult:
     feature_importance: Optional[Dict[str, float]]
     training_time: float
     metadata: Dict[str, Any]
+    y_test: Optional[np.ndarray] = None
+    y_pred: Optional[np.ndarray] = None
+    y_proba: Optional[np.ndarray] = None
+    class_labels: Optional[List[str]] = None
 
 
 class AutoMLEngine:
@@ -320,6 +333,13 @@ class AutoMLEngine:
             best_model.estimator, feature_result.feature_names
         )
 
+        # Capture the best model's held-out evaluation artifacts (issue #79).
+        # Re-predicting here (instead of keeping every candidate's arrays from
+        # the training loop) holds at most one set of arrays in memory.
+        y_pred_best, y_proba_best, class_labels = await self._capture_evaluation_arrays(
+            best_model.estimator, X_test_transformed, is_classification
+        )
+
         total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         await self._emit_event(
@@ -354,6 +374,10 @@ class AutoMLEngine:
             feature_names=feature_result.feature_names,
             feature_importance=feature_importance,
             training_time=total_time,
+            y_test=np.asarray(y_test),
+            y_pred=y_pred_best,
+            y_proba=y_proba_best,
+            class_labels=class_labels,
             metadata={
                 "n_samples": len(df),
                 "n_features_original": len(X.columns),
@@ -411,6 +435,39 @@ class AutoMLEngine:
         except Exception as exc:  # a broken check must never break training
             logger.warning(f"Cancellation check failed: {exc}")
             return False
+
+    @staticmethod
+    async def _capture_evaluation_arrays(
+        estimator: Any,
+        X_test_transformed: pd.DataFrame,
+        is_classification: bool,
+    ) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[List[str]]]:
+        """Predict on the held-out set for evaluation-artifact capture.
+
+        Returns ``(y_pred, y_proba, class_labels)``. ``class_labels`` are the
+        estimator's ``classes_`` rendered as strings (original label space —
+        the target is never transformed by the FeatureEngineer), in the same
+        order as the columns of ``y_proba``. Probability capture is
+        best-effort: ``None`` when the estimator has no ``predict_proba`` or
+        the call fails.
+        """
+        y_pred = await asyncio.to_thread(estimator.predict, X_test_transformed)
+
+        y_proba: Optional[np.ndarray] = None
+        class_labels: Optional[List[str]] = None
+        if is_classification:
+            classes = getattr(estimator, "classes_", None)
+            if classes is not None:
+                class_labels = [str(c) for c in classes]
+            if hasattr(estimator, "predict_proba"):
+                try:
+                    y_proba = await asyncio.to_thread(
+                        estimator.predict_proba, X_test_transformed
+                    )
+                except Exception as exc:  # probabilities are optional
+                    logger.warning(f"predict_proba failed during capture: {exc}")
+                    y_proba = None
+        return np.asarray(y_pred), y_proba, class_labels
 
     @staticmethod
     def _assess_class_balance(
