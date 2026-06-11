@@ -12,6 +12,9 @@ import uuid
 from datetime import datetime, timezone
 import logging
 
+from beanie.odm.operators.update.array import Push
+from beanie.odm.operators.update.general import Set
+
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.models.ml_model import MLModel
@@ -281,9 +284,10 @@ async def train_model_task(
         )
 
         # Progress callback persists per-algorithm progress to the TrainingJob.
-        # Partial ($set) updates are used here and in on_event so a concurrent
-        # cancellation flag written by POST /{model_id}/cancel is never clobbered
-        # by saving this (stale) in-memory document wholesale.
+        # Partial updates are used here and in on_event so concurrent writes by
+        # POST /{model_id}/cancel (the cancellation flag and its log entry) are
+        # never clobbered by saving this (stale) in-memory document wholesale:
+        # scalars/embedded docs go through $set, log appends through $push.
         async def on_progress(completed: int, total: int, current: Optional[str]):
             if not training_job:
                 return
@@ -304,20 +308,22 @@ async def train_model_task(
         async def on_event(event: TrainingEvent):
             if not training_job:
                 return
-            training_job.add_log(event.level, event.message, stage=event.stage)
+            entry = training_job.add_log(event.level, event.message, stage=event.stage)
             if event.stage:
                 training_job.progress.current_stage = event.stage
             if event.candidate:
                 training_job.model_comparison.append(
                     ModelComparisonEntry(**event.candidate)
                 )
-            await training_job.set(
-                {
-                    TrainingJob.logs: training_job.logs,
-                    TrainingJob.progress: training_job.progress,
-                    TrainingJob.model_comparison: training_job.model_comparison,
-                    TrainingJob.updated_at: training_job.updated_at,
-                }
+            await training_job.update(
+                Push({TrainingJob.logs: entry}),
+                Set(
+                    {
+                        TrainingJob.progress: training_job.progress,
+                        TrainingJob.model_comparison: training_job.model_comparison,
+                        TrainingJob.updated_at: training_job.updated_at,
+                    }
+                ),
             )
 
         # Cancellation check re-reads the job from MongoDB so a flag set by
@@ -379,6 +385,7 @@ async def train_model_task(
             explanation = build_best_model_explanation(
                 result.best_model, result.all_models, result.problem_type
             )
+            training_job = await _refreshed_job(training_job)
             training_job.mark_completed(
                 best_model_id=ml_model.model_id,
                 best_algorithm=result.best_model.name,
@@ -404,6 +411,7 @@ async def train_model_task(
             # Guarded like the failure path: persisting the cancellation must
             # never raise out of the background task.
             try:
+                training_job = await _refreshed_job(training_job)
                 training_job.mark_cancelled()
                 training_job.add_log("info", "Training cancelled by user")
                 await training_job.save()
@@ -418,6 +426,7 @@ async def train_model_task(
             # Guard the failure-recording itself: a secondary error here (e.g. a
             # transient DB outage during save) must not escape the background task.
             try:
+                training_job = await _refreshed_job(training_job)
                 training_job.mark_failed(str(e))
                 training_job.add_log("error", f"Training failed: {e}")
                 await training_job.save()
@@ -428,6 +437,25 @@ async def train_model_task(
         # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
         # failure is recorded on the TrainingJob (above) rather than re-raised
         # into a context where nothing can handle it.
+
+
+async def _refreshed_job(job: TrainingJob) -> TrainingJob:
+    """Re-read a training job before a terminal full-document save.
+
+    The cancel endpoint may have appended a log entry (and set the
+    cancellation flag) after the background task loaded its copy; saving the
+    stale in-memory document wholesale would silently drop those writes.
+    Falls back to the in-memory copy if the re-read fails.
+    """
+    try:
+        fresh = await TrainingJob.find_one(
+            TrainingJob.model_id == job.model_id,
+            TrainingJob.user_id == job.user_id,
+        )
+        return fresh or job
+    except Exception as exc:
+        logger.warning(f"Could not refresh TrainingJob {job.model_id}: {exc}")
+        return job
 
 
 async def _build_algorithm_recommendations(
@@ -494,7 +522,13 @@ def _best_comparison_score(job: TrainingJob) -> Optional[float]:
 # captured as a model id.
 @router.get("/jobs", response_model=TrainingJobListResponse)
 async def list_training_jobs(
-    status: Optional[JobStatus] = Query(None),
+    status: Optional[str] = Query(
+        None,
+        description=(
+            "Lifecycle status filter; accepts a single status or a "
+            "comma-separated list (e.g. 'completed,failed,cancelled')"
+        ),
+    ),
     limit: int = Query(20, ge=1, le=100),
     skip: int = Query(0, ge=0),
     current_user_id: str = Depends(get_current_user_id),
@@ -502,12 +536,24 @@ async def list_training_jobs(
     """
     List the current user's training jobs, newest first.
 
-    Supports filtering by lifecycle status and skip/limit pagination;
-    ``total_count`` is the size of the filtered result set.
+    Supports filtering by one or more lifecycle statuses (comma-separated, so
+    the history view can paginate over exactly the terminal statuses) and
+    skip/limit pagination; ``total_count`` is the size of the filtered result
+    set.
     """
     query: Dict[str, Any] = {"user_id": current_user_id}
     if status is not None:
-        query["status"] = status
+        try:
+            statuses = [JobStatus(s.strip()) for s in status.split(",") if s.strip()]
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid status filter: {status}"
+            )
+        if not statuses:
+            raise HTTPException(
+                status_code=422, detail="Status filter must not be empty"
+            )
+        query["status"] = statuses[0] if len(statuses) == 1 else {"$in": statuses}
 
     total_count = await TrainingJob.find(query).count()
     jobs = (

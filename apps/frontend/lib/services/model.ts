@@ -112,7 +112,8 @@ export interface TrainingJobListResponse {
 }
 
 export interface ListTrainingJobsOptions {
-  status?: TrainingJobStatus
+  /** Single status, or a comma-separated list (e.g. 'completed,failed,cancelled'). */
+  status?: TrainingJobStatus | string
   limit?: number
   skip?: number
 }

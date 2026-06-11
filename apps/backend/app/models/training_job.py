@@ -182,10 +182,16 @@ class TrainingJob(Document):
 
     def add_log(
         self, level: LogLevel, message: str, stage: Optional[str] = None
-    ) -> None:
-        """Append a timestamped log entry and bump ``updated_at``."""
-        self.logs.append(TrainingLogEntry(level=level, message=message, stage=stage))
+    ) -> TrainingLogEntry:
+        """Append a timestamped log entry and bump ``updated_at``.
+
+        Returns the entry so callers persisting with a partial update can
+        ``$push`` exactly this entry instead of rewriting the whole array.
+        """
+        entry = TrainingLogEntry(level=level, message=message, stage=stage)
+        self.logs.append(entry)
         self.updated_at = _utcnow()
+        return entry
 
     # -- timing ------------------------------------------------------------
 

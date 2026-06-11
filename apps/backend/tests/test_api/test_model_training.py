@@ -574,6 +574,88 @@ class TestTrainingStatusEndpoint:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
+    async def test_concurrent_cancel_log_survives_event_writes(
+        self, sample_dataset, sample_dataframe, setup_database
+    ):
+        """A log written by the cancel endpoint mid-training is never clobbered.
+
+        Reproduces the race: the task holds a stale in-memory job; the cancel
+        endpoint appends "Cancellation requested" and saves; the engine then
+        emits another event (which the task persists) and the run is
+        cancelled (a terminal full-document save). Both the endpoint's log
+        and the flag must survive — the task $push-es log appends and
+        re-reads the job before terminal saves.
+        """
+        from app.api.routes.model_training import train_model_task, TrainModelRequest
+        from app.models.training_job import TrainingJob
+        from app.models.batch_job import JobStatus
+        from app.services.model_training.automl_engine import (
+            TrainingCancelledError,
+            TrainingEvent,
+        )
+
+        job = TrainingJob(
+            model_id="model_task_race",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+
+        csv_buffer = io.BytesIO()
+        sample_dataframe.to_csv(csv_buffer, index=False)
+
+        async def run_side_effect(*args, **kwargs):
+            # Cancel endpoint writes through its own document instance while
+            # the background task still holds its stale copy.
+            endpoint_copy = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_race"
+            )
+            endpoint_copy.cancellation_requested = True
+            endpoint_copy.add_log("info", "Cancellation requested")
+            await endpoint_copy.save()
+
+            # The engine then reports one more event via the stale copy...
+            await kwargs["event_callback"](
+                TrainingEvent(
+                    level="info", message="Candidate finished", stage="training"
+                )
+            )
+            # ...and the cooperative check finally sees the flag.
+            raise TrainingCancelledError("cancelled")
+
+        try:
+            with patch(
+                "app.services.s3_service.S3Service.download_file_bytes",
+                new_callable=AsyncMock,
+            ) as mock_s3:
+                mock_s3.return_value = csv_buffer.getvalue()
+                with patch(
+                    "app.services.model_training.AutoMLEngine.run",
+                    new_callable=AsyncMock,
+                ) as mock_run:
+                    mock_run.side_effect = run_side_effect
+                    request = TrainModelRequest(
+                        dataset_id="dataset_123", target_column="target"
+                    )
+                    await train_model_task(
+                        sample_dataset, request, "test_user", "model_task_race"
+                    )
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_race"
+            )
+            assert refreshed.status == JobStatus.CANCELLED
+            assert refreshed.cancellation_requested is True
+            messages = [entry.message for entry in refreshed.logs]
+            assert "Cancellation requested" in messages
+            assert "Candidate finished" in messages
+            assert "Training cancelled by user" in messages
+        finally:
+            await job.delete()
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
     async def test_train_model_task_emits_lifecycle_logs(
         self, sample_dataset, sample_dataframe, setup_database
     ):
@@ -756,9 +838,45 @@ class TestTrainingJobListEndpoint:
                 await job.delete()
 
     @pytest.mark.asyncio
+    async def test_list_jobs_multi_status_filter(self, async_authorized_client):
+        """Comma-separated statuses paginate over exactly those statuses.
+
+        The history "All" view relies on this so terminal runs are never
+        hidden behind pages of in-flight jobs.
+        """
+        jobs = [
+            await _insert_job("model_multi_a", status="running"),
+            await _insert_job("model_multi_b", status="completed"),
+            await _insert_job("model_multi_c", status="failed"),
+            await _insert_job("model_multi_d", status="cancelled"),
+        ]
+        try:
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/jobs",
+                params={"status": "completed,failed,cancelled"},
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["total_count"] == 3
+            returned = {job["model_id"] for job in body["jobs"]}
+            assert returned == {"model_multi_b", "model_multi_c", "model_multi_d"}
+        finally:
+            for job in jobs:
+                await job.delete()
+
+    @pytest.mark.asyncio
     async def test_list_jobs_invalid_status_rejected(self, async_authorized_client):
         resp = await async_authorized_client.get(
             "/api/v1/ml/jobs", params={"status": "not_a_status"}
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_list_jobs_invalid_status_in_list_rejected(
+        self, async_authorized_client
+    ):
+        resp = await async_authorized_client.get(
+            "/api/v1/ml/jobs", params={"status": "completed,bogus"}
         )
         assert resp.status_code == 422
 

@@ -659,6 +659,43 @@ class TestAutoMLEngineMonitoring:
         assert len(candidates_seen) == 1
 
     @pytest.mark.asyncio
+    async def test_cancel_check_honored_before_finalization(
+        self, engine, classification_df, mock_detect
+    ):
+        """A cancel arriving while the LAST candidate trains is still honored.
+
+        The pre-candidate checks all pass; the flag flips only once every
+        candidate has finished, so only the finalization check can see it.
+        Without that check the run would complete despite the API having
+        acknowledged the cancellation.
+        """
+        total = {"value": None}
+        candidates_seen = []
+
+        async def on_event(event):
+            if event.candidate is not None:
+                candidates_seen.append(event.candidate["algorithm"])
+            elif event.message.endswith("candidate models"):
+                total["value"] = int(event.message.split()[1])
+
+        async def cancel_after_last_candidate():
+            return total["value"] is not None and len(candidates_seen) == total["value"]
+
+        with patch.object(
+            engine.problem_detector, "detect_problem_type", side_effect=mock_detect
+        ):
+            with pytest.raises(TrainingCancelledError):
+                await engine.run(
+                    classification_df,
+                    "target",
+                    event_callback=on_event,
+                    cancel_check=cancel_after_last_candidate,
+                )
+
+        # Every candidate trained; cancellation was honored at finalization.
+        assert len(candidates_seen) == total["value"]
+
+    @pytest.mark.asyncio
     async def test_events_emitted_in_stage_order(
         self, engine, classification_df, mock_detect
     ):

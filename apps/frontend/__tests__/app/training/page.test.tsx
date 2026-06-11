@@ -95,10 +95,14 @@ function setupDefaultJobLists() {
       if (options?.status === 'failed') {
         return Promise.resolve(listResponse([failedJob]));
       }
-      // No status filter: history "All" — terminal jobs mixed with in-flight.
-      return Promise.resolve(
-        listResponse([runningJob, completedJob, failedJob, cancelledJob])
-      );
+      // History "All" sends the terminal statuses as an explicit filter so
+      // the backend paginates over exactly the terminal jobs.
+      if (options?.status === 'completed,failed,cancelled') {
+        return Promise.resolve(
+          listResponse([completedJob, failedJob, cancelledJob])
+        );
+      }
+      return Promise.resolve(listResponse([]));
     }
   );
 }
@@ -134,8 +138,12 @@ describe('TrainingJobsPage', () => {
       screen.getAllByRole('button', { name: /Cancel Training/i }).length
     ).toBeGreaterThanOrEqual(1);
 
-    // History section: terminal jobs only (the running job is filtered out).
+    // History section: "All" paginates over exactly the terminal statuses
+    // backend-side (filtering client-side would hide older terminal runs).
     expect(await screen.findByText('tenure')).toBeInTheDocument();
+    expect(mockListTrainingJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'completed,failed,cancelled', skip: 0 })
+    );
     expect(screen.getByText('sales')).toBeInTheDocument();
     expect(screen.getByText('fraud')).toBeInTheDocument();
     expect(screen.getByText('XGBoost')).toBeInTheDocument();

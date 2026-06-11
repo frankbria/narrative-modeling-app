@@ -26,7 +26,12 @@ const IN_FLIGHT_FETCH_LIMIT = 50;
 
 type HistoryFilter = 'all' | 'completed' | 'failed' | 'cancelled';
 
-const TERMINAL_STATUSES: TrainingJobStatus[] = ['completed', 'failed', 'cancelled'];
+/**
+ * "All" history sends the terminal statuses as an explicit backend filter so
+ * pagination and total_count apply AFTER filtering — dropping in-flight rows
+ * client-side would hide older terminal runs behind pages of running jobs.
+ */
+const ALL_TERMINAL_FILTER = 'completed,failed,cancelled';
 
 function statusBadgeVariant(
   status: TrainingJobStatus
@@ -78,17 +83,13 @@ export default function TrainingJobsPage() {
     async (filter: HistoryFilter, skip: number, append: boolean) => {
       try {
         const response = await modelService.listTrainingJobs({
-          ...(filter !== 'all' && { status: filter }),
+          status: filter === 'all' ? ALL_TERMINAL_FILTER : filter,
           limit: HISTORY_PAGE_SIZE,
           skip,
         });
-        // "All" has no multi-status backend filter, so drop in-flight jobs
-        // client-side; they are already shown in the section above.
-        const rows =
-          filter === 'all'
-            ? response.jobs.filter((j) => TERMINAL_STATUSES.includes(j.status))
-            : response.jobs;
-        setHistoryJobs((prev) => (append ? [...prev, ...rows] : rows));
+        setHistoryJobs((prev) =>
+          append ? [...prev, ...response.jobs] : response.jobs
+        );
         setHistoryTotal(response.total_count);
         setHistorySkip(skip);
         setError(null);

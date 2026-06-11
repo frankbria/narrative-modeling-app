@@ -121,9 +121,10 @@ class AutoMLEngine:
                 log/stage/candidate events as the pipeline runs. Callback
                 errors are swallowed so event reporting never breaks training.
             cancel_check: Optional async callable awaited before each candidate
-                is trained; returning True aborts the run by raising
-                ``TrainingCancelledError``. Errors raised by the check itself
-                are swallowed and treated as "not cancelled".
+                is trained and once more before finalization; returning True
+                aborts the run by raising ``TrainingCancelledError``. Errors
+                raised by the check itself are swallowed and treated as "not
+                cancelled".
 
         Returns:
             AutoMLResult with best model and metadata
@@ -277,6 +278,12 @@ class AutoMLEngine:
                     ),
                 )
                 continue
+
+        # Final cancellation check: a cancel that arrived while the last
+        # candidate was fitting would otherwise be acknowledged by the API
+        # but silently ignored, completing the job anyway.
+        if await self._is_cancelled(cancel_check):
+            raise TrainingCancelledError("Training cancelled before finalization")
 
         # Final progress tick: all candidates processed.
         await self._report_progress(
