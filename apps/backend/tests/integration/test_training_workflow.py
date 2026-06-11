@@ -107,5 +107,27 @@ async def test_train_workflow_completes_with_comparison(
 
         # Progress shows full completion.
         assert refreshed.progress.fraction == 1.0
+
+        # Live monitoring (issue #76): logs were recorded throughout the run...
+        assert len(refreshed.logs) >= 3
+        messages = [entry.message for entry in refreshed.logs]
+        assert any("Training task started" in m for m in messages)
+        assert any("Dataset downloaded" in m for m in messages)
+        assert any("Training completed" in m for m in messages)
+
+        # ...covering every pipeline stage...
+        stages_seen = {entry.stage for entry in refreshed.logs if entry.stage}
+        assert {"preprocessing", "training", "finalizing"} <= stages_seen
+        assert refreshed.progress.current_stage == "finalizing"
+
+        # ...with one per-candidate completion log per comparison row (these are
+        # the incremental model_comparison appends, later replaced by the final
+        # ranked list on completion).
+        candidate_logs = [
+            entry
+            for entry in refreshed.logs
+            if entry.stage == "training" and "cv_score" in entry.message
+        ]
+        assert len(candidate_logs) == len(refreshed.model_comparison)
     finally:
         await job.delete()

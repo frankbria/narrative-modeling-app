@@ -486,5 +486,139 @@ class TestTrainingStatusEndpoint:
             )
             assert refreshed.status == JobStatus.FAILED
             assert refreshed.error is not None
+            # The failure is also surfaced as an error-level log entry.
+            assert any(entry.level == "error" for entry in refreshed.logs)
+        finally:
+            await job.delete()
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_train_model_task_cancellation(
+        self, sample_dataset, sample_dataframe, setup_database
+    ):
+        """TrainingCancelledError transitions the job to CANCELLED, not FAILED."""
+        from app.api.routes.model_training import train_model_task, TrainModelRequest
+        from app.models.training_job import TrainingJob
+        from app.models.batch_job import JobStatus
+        from app.services.model_training.automl_engine import TrainingCancelledError
+
+        job = TrainingJob(
+            model_id="model_task_cancel",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+
+        csv_buffer = io.BytesIO()
+        sample_dataframe.to_csv(csv_buffer, index=False)
+
+        try:
+            with patch(
+                'app.services.s3_service.S3Service.download_file_bytes',
+                new_callable=AsyncMock,
+            ) as mock_s3:
+                mock_s3.return_value = csv_buffer.getvalue()
+                with patch(
+                    'app.services.model_training.AutoMLEngine.run',
+                    new_callable=AsyncMock,
+                ) as mock_run:
+                    mock_run.side_effect = TrainingCancelledError("cancelled")
+                    request = TrainModelRequest(
+                        dataset_id="dataset_123", target_column="target"
+                    )
+                    # Should NOT raise — cancellation is recorded on the job.
+                    await train_model_task(
+                        sample_dataset, request, "test_user", "model_task_cancel"
+                    )
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_cancel"
+            )
+            assert refreshed.status == JobStatus.CANCELLED
+            assert refreshed.error is None
+            assert refreshed.completed_at is not None
+            assert any(
+                "Training cancelled by user" in entry.message
+                for entry in refreshed.logs
+            )
+        finally:
+            await job.delete()
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_train_model_task_emits_lifecycle_logs(
+        self, sample_dataset, sample_dataframe, setup_database
+    ):
+        """A successful task records task-start, download, and completion logs."""
+        from app.api.routes.model_training import train_model_task, TrainModelRequest
+        from app.models.training_job import TrainingJob
+        from app.models.batch_job import JobStatus
+
+        job = TrainingJob(
+            model_id="model_task_logs",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+
+        csv_buffer = io.BytesIO()
+        sample_dataframe.to_csv(csv_buffer, index=False)
+
+        mock_result = AutoMLResult(
+            best_model=ModelCandidate(
+                name="Random Forest",
+                estimator=MagicMock(),
+                hyperparameters={},
+                cv_score=0.85,
+                test_score=0.83,
+                training_time=10.5,
+            ),
+            all_models=[],
+            problem_type=ProblemType.BINARY_CLASSIFICATION,
+            feature_names=["feature1", "feature2", "feature3"],
+            feature_importance=None,
+            training_time=15.0,
+            metadata={},
+        )
+
+        try:
+            with patch(
+                'app.services.s3_service.S3Service.download_file_bytes',
+                new_callable=AsyncMock,
+            ) as mock_s3:
+                mock_s3.return_value = csv_buffer.getvalue()
+                with patch(
+                    'app.services.model_training.AutoMLEngine.run',
+                    new_callable=AsyncMock,
+                ) as mock_run:
+                    mock_run.return_value = mock_result
+                    with patch(
+                        'app.services.model_storage.ModelStorageService.save_model',
+                        new_callable=AsyncMock,
+                    ) as mock_save:
+                        mock_save.return_value = MagicMock(
+                            model_id="model_task_logs"
+                        )
+                        request = TrainModelRequest(
+                            dataset_id="dataset_123", target_column="target"
+                        )
+                        await train_model_task(
+                            sample_dataset, request, "test_user", "model_task_logs"
+                        )
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_logs"
+            )
+            assert refreshed.status == JobStatus.COMPLETED
+            messages = [entry.message for entry in refreshed.logs]
+            assert any("Training task started" in m for m in messages)
+            assert any("Dataset downloaded" in m for m in messages)
+            # Completion log names the best algorithm.
+            assert any(
+                "Training completed" in m and "Random Forest" in m
+                for m in messages
+            )
         finally:
             await job.delete()

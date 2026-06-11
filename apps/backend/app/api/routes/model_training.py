@@ -22,7 +22,9 @@ from app.utils.s3 import parse_s3_url
 from app.services.model_storage import ModelStorageService
 from app.services.model_training import (
     AutoMLEngine,
-    FeatureEngineeringConfig
+    FeatureEngineeringConfig,
+    TrainingCancelledError,
+    TrainingEvent,
 )
 from app.services.model_training.algorithm_selector import AlgorithmSelector
 from app.services.model_training.comparison import (
@@ -179,6 +181,9 @@ async def train_model_task(
         # the (potentially slow) S3 download and dataset parse, not just model fit.
         if training_job:
             training_job.mark_started()
+            training_job.add_log(
+                "info", f"Training task started for dataset {request.dataset_id}"
+            )
             await training_job.save()
 
         # Extract S3 file key (parse_s3_url handles all persisted URL shapes)
@@ -186,6 +191,12 @@ async def train_model_task(
 
         # Load data from S3
         file_bytes = await get_file_from_s3(file_key)
+
+        if training_job:
+            training_job.add_log(
+                "info", f"Dataset downloaded ({len(file_bytes)} bytes)"
+            )
+            await training_job.save()
 
         # Convert to dataframe based on file type, wrapping bytes in proper file-like objects
         if user_data.file_type == "csv":
@@ -220,6 +231,9 @@ async def train_model_task(
         )
 
         # Progress callback persists per-algorithm progress to the TrainingJob.
+        # Partial ($set) updates are used here and in on_event so a concurrent
+        # cancellation flag written by POST /{model_id}/cancel is never clobbered
+        # by saving this (stale) in-memory document wholesale.
         async def on_progress(completed: int, total: int, current: Optional[str]):
             if not training_job:
                 return
@@ -228,11 +242,51 @@ async def train_model_task(
                 total_algorithms=total,
                 current_algorithm=current,
             )
-            await training_job.save()
+            await training_job.set(
+                {
+                    TrainingJob.progress: training_job.progress,
+                    TrainingJob.updated_at: training_job.updated_at,
+                }
+            )
+
+        # Event callback persists engine logs, the pipeline stage, and
+        # incremental model-comparison rows as candidates finish training.
+        async def on_event(event: TrainingEvent):
+            if not training_job:
+                return
+            training_job.add_log(event.level, event.message, stage=event.stage)
+            if event.stage:
+                training_job.progress.current_stage = event.stage
+            if event.candidate:
+                training_job.model_comparison.append(
+                    ModelComparisonEntry(**event.candidate)
+                )
+            await training_job.set(
+                {
+                    TrainingJob.logs: training_job.logs,
+                    TrainingJob.progress: training_job.progress,
+                    TrainingJob.model_comparison: training_job.model_comparison,
+                    TrainingJob.updated_at: training_job.updated_at,
+                }
+            )
+
+        # Cancellation check re-reads the job from MongoDB so a flag set by
+        # POST /{model_id}/cancel after this task loaded its copy is seen.
+        async def is_cancellation_requested() -> bool:
+            fresh = await TrainingJob.find_one(
+                TrainingJob.model_id == model_id,
+                TrainingJob.user_id == user_id,
+            )
+            return bool(fresh and fresh.cancellation_requested)
 
         # Run AutoML
         result = await engine.run(
-            df, request.target_column, feature_config, progress_callback=on_progress
+            df,
+            request.target_column,
+            feature_config,
+            progress_callback=on_progress,
+            event_callback=on_event,
+            cancel_check=is_cancellation_requested,
         )
 
         # Prepare metadata
@@ -283,9 +337,30 @@ async def train_model_task(
                 algorithm_recommendations=recommendations,
                 metrics=model_metadata["metrics"],
             )
+            training_job.add_log(
+                "info",
+                (
+                    f"Training completed: best algorithm {result.best_model.name} "
+                    f"(cv_score={result.best_model.cv_score:.4f})"
+                ),
+            )
             await training_job.save()
 
         logger.info(f"Model training completed: {ml_model.model_id}")
+
+    except TrainingCancelledError:
+        logger.info(f"Model training cancelled by user: {model_id}")
+        if training_job:
+            # Guarded like the failure path: persisting the cancellation must
+            # never raise out of the background task.
+            try:
+                training_job.mark_cancelled()
+                training_job.add_log("info", "Training cancelled by user")
+                await training_job.save()
+            except Exception as save_exc:
+                logger.error(
+                    f"Failed to persist CANCELLED status for {model_id}: {save_exc}"
+                )
 
     except Exception as e:
         logger.error(f"Error training model: {str(e)}")
@@ -294,6 +369,7 @@ async def train_model_task(
             # transient DB outage during save) must not escape the background task.
             try:
                 training_job.mark_failed(str(e))
+                training_job.add_log("error", f"Training failed: {e}")
                 await training_job.save()
             except Exception as save_exc:
                 logger.error(
