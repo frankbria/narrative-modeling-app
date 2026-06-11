@@ -19,6 +19,9 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
 
     runs-on: ubuntu-latest
+    # Runaway-run safeguard (issue #188). Higher budget than claude-review:
+    # @claude tasks are open-ended (may write code), reviews are not.
+    timeout-minutes: 30
 
     permissions:
       contents: read          # read the repo code if needed
@@ -47,6 +50,9 @@ jobs:
           additional_permissions: |
             actions: read
 
-          # (optional) custom prompt or claude_args here if you want
+          # --max-turns caps agent iterations (issue #188 runaway safeguard; the
+          # action has no max_turns input — CLI flags are passed via claude_args)
+          claude_args: '--max-turns 50'
+
+          # (optional) custom prompt here if you want
           # prompt: 'Update the pull request description to include a summary of changes.'
-          # claude_args: '--allowed-tools Bash(gh pr:*)'
