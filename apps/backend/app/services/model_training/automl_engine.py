@@ -13,8 +13,10 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score, r2_score
 from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge
 from sklearn.ensemble import (
-    RandomForestClassifier, RandomForestRegressor,
-    GradientBoostingClassifier, GradientBoostingRegressor
+    RandomForestClassifier,
+    RandomForestRegressor,
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
 )
 from sklearn.svm import SVC, SVR
 from sklearn.neighbors import KNeighborsClassifier
@@ -50,6 +52,7 @@ class TrainingEvent:
 @dataclass
 class ModelCandidate:
     """A candidate model for training"""
+
     name: str
     estimator: Any
     hyperparameters: Dict[str, Any]
@@ -61,6 +64,7 @@ class ModelCandidate:
 @dataclass
 class AutoMLResult:
     """Result of AutoML process"""
+
     best_model: ModelCandidate
     all_models: List[ModelCandidate]
     problem_type: ProblemType
@@ -72,22 +76,24 @@ class AutoMLResult:
 
 class AutoMLEngine:
     """Main AutoML engine for automated machine learning"""
-    
-    def __init__(self, 
-                 max_models: int = 10,
-                 time_limit: Optional[int] = None,
-                 cv_folds: int = 5,
-                 test_size: float = 0.2,
-                 random_state: int = 42):
+
+    def __init__(
+        self,
+        max_models: int = 10,
+        time_limit: Optional[int] = None,
+        cv_folds: int = 5,
+        test_size: float = 0.2,
+        random_state: int = 42,
+    ):
         self.max_models = max_models
         self.time_limit = time_limit
         self.cv_folds = cv_folds
         self.test_size = test_size
         self.random_state = random_state
-        
+
         self.problem_detector = ProblemDetector()
         self.feature_engineer = FeatureEngineer()
-    
+
     async def run(
         self,
         df: pd.DataFrame,
@@ -96,9 +102,7 @@ class AutoMLEngine:
         progress_callback: Optional[
             Callable[[int, int, Optional[str]], Awaitable[None]]
         ] = None,
-        event_callback: Optional[
-            Callable[[TrainingEvent], Awaitable[None]]
-        ] = None,
+        event_callback: Optional[Callable[[TrainingEvent], Awaitable[None]]] = None,
         cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ) -> AutoMLResult:
         """
@@ -143,13 +147,13 @@ class AutoMLEngine:
             df, target_column
         )
         problem_type = detection_result.problem_type
-        
+
         logger.info(f"Detected problem type: {problem_type.value}")
-        
+
         # Prepare data
         X = df.drop(columns=[target_column])
         y = df[target_column]
-        
+
         is_classification = problem_type in [
             ProblemType.BINARY_CLASSIFICATION,
             ProblemType.MULTICLASS_CLASSIFICATION,
@@ -157,8 +161,11 @@ class AutoMLEngine:
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=self.test_size, random_state=self.random_state,
-            stratify=y if is_classification else None
+            X,
+            y,
+            test_size=self.test_size,
+            random_state=self.random_state,
+            stratify=y if is_classification else None,
         )
 
         # Detect class imbalance and enable basic handling (class weighting).
@@ -185,9 +192,9 @@ class AutoMLEngine:
         candidates = self._get_candidate_models(
             problem_type, X_train_transformed.shape, class_weight=class_weight
         )
-        
+
         # Train and evaluate models
-        selected_candidates = candidates[:self.max_models]
+        selected_candidates = candidates[: self.max_models]
         total_candidates = len(selected_candidates)
         trained_models = []
 
@@ -215,26 +222,30 @@ class AutoMLEngine:
                 # Train model
                 model_start = datetime.now(timezone.utc)
                 candidate.estimator.fit(X_train_transformed, y_train)
-                candidate.training_time = (datetime.now(timezone.utc) - model_start).total_seconds()
-                
+                candidate.training_time = (
+                    datetime.now(timezone.utc) - model_start
+                ).total_seconds()
+
                 # Cross-validation score
                 cv_scores = cross_val_score(
                     candidate.estimator,
                     X_train_transformed,
                     y_train,
                     cv=self.cv_folds,
-                    scoring=self._get_scoring_metric(problem_type)
+                    scoring=self._get_scoring_metric(problem_type),
                 )
                 candidate.cv_score = np.mean(cv_scores)
-                
+
                 # Test score
                 y_pred = candidate.estimator.predict(X_test_transformed)
                 candidate.test_score = self._calculate_test_score(
                     y_test, y_pred, problem_type
                 )
-                
+
                 trained_models.append(candidate)
-                logger.info(f"{candidate.name} - CV Score: {candidate.cv_score:.4f}, Test Score: {candidate.test_score:.4f}")
+                logger.info(
+                    f"{candidate.name} - CV Score: {candidate.cv_score:.4f}, Test Score: {candidate.test_score:.4f}"
+                )
                 await self._emit_event(
                     event_callback,
                     TrainingEvent(
@@ -289,8 +300,7 @@ class AutoMLEngine:
 
         # Get feature importance if available
         feature_importance = self._get_feature_importance(
-            best_model.estimator,
-            feature_result.feature_names
+            best_model.estimator, feature_result.feature_names
         )
 
         total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -339,9 +349,9 @@ class AutoMLEngine:
                 },
                 "detection_result": {
                     "confidence": detection_result.confidence,
-                    "reasoning": detection_result.reasoning
-                }
-            }
+                    "reasoning": detection_result.reasoning,
+                },
+            },
         )
 
     @staticmethod
@@ -402,12 +412,12 @@ class AutoMLEngine:
         ratio = float(counts.max() / counts.min())
         class_weight = "balanced" if ratio > 2.0 else None
         return ratio, class_weight
-    
+
     def _get_candidate_models(
         self,
         problem_type: ProblemType,
         data_shape: Tuple[int, int],
-        class_weight: Optional[str] = None
+        class_weight: Optional[str] = None,
     ) -> List[ModelCandidate]:
         """Get candidate models based on problem type and data characteristics.
 
@@ -419,157 +429,202 @@ class AutoMLEngine:
         n_samples, n_features = data_shape
         candidates = []
 
-        if problem_type in [ProblemType.BINARY_CLASSIFICATION, ProblemType.MULTICLASS_CLASSIFICATION]:
+        if problem_type in [
+            ProblemType.BINARY_CLASSIFICATION,
+            ProblemType.MULTICLASS_CLASSIFICATION,
+        ]:
             # Logistic Regression
-            candidates.append(ModelCandidate(
-                name="Logistic Regression",
-                estimator=LogisticRegression(
-                    random_state=self.random_state,
-                    max_iter=1000,
-                    class_weight=class_weight
-                ),
-                hyperparameters={"C": 1.0, "penalty": "l2", "class_weight": class_weight}
-            ))
+            candidates.append(
+                ModelCandidate(
+                    name="Logistic Regression",
+                    estimator=LogisticRegression(
+                        random_state=self.random_state,
+                        max_iter=1000,
+                        class_weight=class_weight,
+                    ),
+                    hyperparameters={
+                        "C": 1.0,
+                        "penalty": "l2",
+                        "class_weight": class_weight,
+                    },
+                )
+            )
 
             # Random Forest
-            candidates.append(ModelCandidate(
-                name="Random Forest",
-                estimator=RandomForestClassifier(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                    class_weight=class_weight
-                ),
-                hyperparameters={"n_estimators": 100, "max_depth": None, "class_weight": class_weight}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="Random Forest",
+                    estimator=RandomForestClassifier(
+                        n_estimators=100,
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                        class_weight=class_weight,
+                    ),
+                    hyperparameters={
+                        "n_estimators": 100,
+                        "max_depth": None,
+                        "class_weight": class_weight,
+                    },
+                )
+            )
+
             # XGBoost
-            candidates.append(ModelCandidate(
-                name="XGBoost",
-                estimator=xgb.XGBClassifier(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                    eval_metric='logloss' if problem_type == ProblemType.BINARY_CLASSIFICATION else 'mlogloss'
-                ),
-                hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="XGBoost",
+                    estimator=xgb.XGBClassifier(
+                        n_estimators=100,
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                        eval_metric=(
+                            "logloss"
+                            if problem_type == ProblemType.BINARY_CLASSIFICATION
+                            else "mlogloss"
+                        ),
+                    ),
+                    hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                )
+            )
+
             # LightGBM
-            candidates.append(ModelCandidate(
-                name="LightGBM",
-                estimator=lgb.LGBMClassifier(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                    verbosity=-1,
-                    class_weight=class_weight
-                ),
-                hyperparameters={"n_estimators": 100, "learning_rate": 0.1, "class_weight": class_weight}
-            ))
+            candidates.append(
+                ModelCandidate(
+                    name="LightGBM",
+                    estimator=lgb.LGBMClassifier(
+                        n_estimators=100,
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                        verbosity=-1,
+                        class_weight=class_weight,
+                    ),
+                    hyperparameters={
+                        "n_estimators": 100,
+                        "learning_rate": 0.1,
+                        "class_weight": class_weight,
+                    },
+                )
+            )
 
             # Gradient Boosting
             if n_samples < 10000:  # Slower for large datasets
-                candidates.append(ModelCandidate(
-                    name="Gradient Boosting",
-                    estimator=GradientBoostingClassifier(
-                        n_estimators=100,
-                        random_state=self.random_state
-                    ),
-                    hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
-                ))
-            
+                candidates.append(
+                    ModelCandidate(
+                        name="Gradient Boosting",
+                        estimator=GradientBoostingClassifier(
+                            n_estimators=100, random_state=self.random_state
+                        ),
+                        hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                    )
+                )
+
             # SVM (for smaller datasets)
             if n_samples < 5000:
-                candidates.append(ModelCandidate(
-                    name="SVM",
-                    estimator=SVC(
-                        kernel='rbf',
-                        random_state=self.random_state,
-                        probability=True,
-                        class_weight=class_weight
-                    ),
-                    hyperparameters={"C": 1.0, "kernel": "rbf", "class_weight": class_weight}
-                ))
-            
+                candidates.append(
+                    ModelCandidate(
+                        name="SVM",
+                        estimator=SVC(
+                            kernel="rbf",
+                            random_state=self.random_state,
+                            probability=True,
+                            class_weight=class_weight,
+                        ),
+                        hyperparameters={
+                            "C": 1.0,
+                            "kernel": "rbf",
+                            "class_weight": class_weight,
+                        },
+                    )
+                )
+
             # KNN (for smaller datasets)
             if n_samples < 10000:
-                candidates.append(ModelCandidate(
-                    name="K-Nearest Neighbors",
-                    estimator=KNeighborsClassifier(n_neighbors=5, n_jobs=-1),
-                    hyperparameters={"n_neighbors": 5}
-                ))
-            
+                candidates.append(
+                    ModelCandidate(
+                        name="K-Nearest Neighbors",
+                        estimator=KNeighborsClassifier(n_neighbors=5, n_jobs=-1),
+                        hyperparameters={"n_neighbors": 5},
+                    )
+                )
+
         elif problem_type == ProblemType.REGRESSION:
             # Linear Regression
-            candidates.append(ModelCandidate(
-                name="Linear Regression",
-                estimator=LinearRegression(n_jobs=-1),
-                hyperparameters={}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="Linear Regression",
+                    estimator=LinearRegression(n_jobs=-1),
+                    hyperparameters={},
+                )
+            )
+
             # Ridge Regression
-            candidates.append(ModelCandidate(
-                name="Ridge Regression",
-                estimator=Ridge(random_state=self.random_state),
-                hyperparameters={"alpha": 1.0}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="Ridge Regression",
+                    estimator=Ridge(random_state=self.random_state),
+                    hyperparameters={"alpha": 1.0},
+                )
+            )
+
             # Random Forest
-            candidates.append(ModelCandidate(
-                name="Random Forest Regressor",
-                estimator=RandomForestRegressor(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1
-                ),
-                hyperparameters={"n_estimators": 100}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="Random Forest Regressor",
+                    estimator=RandomForestRegressor(
+                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                    ),
+                    hyperparameters={"n_estimators": 100},
+                )
+            )
+
             # XGBoost
-            candidates.append(ModelCandidate(
-                name="XGBoost Regressor",
-                estimator=xgb.XGBRegressor(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1
-                ),
-                hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="XGBoost Regressor",
+                    estimator=xgb.XGBRegressor(
+                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                    ),
+                    hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                )
+            )
+
             # LightGBM
-            candidates.append(ModelCandidate(
-                name="LightGBM Regressor",
-                estimator=lgb.LGBMRegressor(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                    verbosity=-1
-                ),
-                hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
-            ))
-            
+            candidates.append(
+                ModelCandidate(
+                    name="LightGBM Regressor",
+                    estimator=lgb.LGBMRegressor(
+                        n_estimators=100,
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                        verbosity=-1,
+                    ),
+                    hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                )
+            )
+
             # Gradient Boosting
             if n_samples < 10000:
-                candidates.append(ModelCandidate(
-                    name="Gradient Boosting Regressor",
-                    estimator=GradientBoostingRegressor(
-                        n_estimators=100,
-                        random_state=self.random_state
-                    ),
-                    hyperparameters={"n_estimators": 100, "learning_rate": 0.1}
-                ))
-            
+                candidates.append(
+                    ModelCandidate(
+                        name="Gradient Boosting Regressor",
+                        estimator=GradientBoostingRegressor(
+                            n_estimators=100, random_state=self.random_state
+                        ),
+                        hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                    )
+                )
+
             # SVR (for smaller datasets)
             if n_samples < 5000:
-                candidates.append(ModelCandidate(
-                    name="Support Vector Regressor",
-                    estimator=SVR(kernel='rbf'),
-                    hyperparameters={"C": 1.0, "kernel": "rbf"}
-                ))
-        
+                candidates.append(
+                    ModelCandidate(
+                        name="Support Vector Regressor",
+                        estimator=SVR(kernel="rbf"),
+                        hyperparameters={"C": 1.0, "kernel": "rbf"},
+                    )
+                )
+
         return candidates
-    
+
     def _get_scoring_metric(self, problem_type: ProblemType) -> str:
         """Get appropriate scoring metric for problem type"""
         if problem_type == ProblemType.BINARY_CLASSIFICATION:
@@ -580,38 +635,36 @@ class AutoMLEngine:
             return "neg_mean_squared_error"
         else:
             return "accuracy"
-    
+
     def _calculate_test_score(
-        self,
-        y_true: pd.Series,
-        y_pred: np.ndarray,
-        problem_type: ProblemType
+        self, y_true: pd.Series, y_pred: np.ndarray, problem_type: ProblemType
     ) -> float:
         """Calculate test score based on problem type"""
-        if problem_type in [ProblemType.BINARY_CLASSIFICATION, ProblemType.MULTICLASS_CLASSIFICATION]:
+        if problem_type in [
+            ProblemType.BINARY_CLASSIFICATION,
+            ProblemType.MULTICLASS_CLASSIFICATION,
+        ]:
             return accuracy_score(y_true, y_pred)
         elif problem_type == ProblemType.REGRESSION:
             return r2_score(y_true, y_pred)
         else:
             return 0.0
-    
+
     def _get_feature_importance(
-        self,
-        model: Any,
-        feature_names: List[str]
+        self, model: Any, feature_names: List[str]
     ) -> Optional[Dict[str, float]]:
         """Extract feature importance from model if available"""
         importance = None
-        
+
         # Tree-based models
-        if hasattr(model, 'feature_importances_'):
+        if hasattr(model, "feature_importances_"):
             importance = model.feature_importances_
         # Linear models
-        elif hasattr(model, 'coef_'):
+        elif hasattr(model, "coef_"):
             importance = np.abs(model.coef_).flatten()
         else:
             return None
-        
+
         # Create importance dictionary
         if importance is not None:
             feature_importance = {
@@ -622,5 +675,5 @@ class AutoMLEngine:
                 sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
             )
             return feature_importance
-        
+
         return None

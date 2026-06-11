@@ -43,6 +43,7 @@ router = APIRouter()
 
 class TrainModelRequest(BaseModel):
     """Request for training a model"""
+
     dataset_id: str
     target_column: str
     name: Optional[str] = None
@@ -53,6 +54,7 @@ class TrainModelRequest(BaseModel):
 
 class TrainModelResponse(BaseModel):
     """Response after initiating model training"""
+
     model_id: str
     status: str = "training"
     message: str
@@ -60,6 +62,7 @@ class TrainModelResponse(BaseModel):
 
 class ModelInfo(BaseModel):
     """Model information response"""
+
     model_id: str
     name: str
     description: Optional[str]
@@ -75,12 +78,14 @@ class ModelInfo(BaseModel):
 
 class PredictRequest(BaseModel):
     """Request for making predictions"""
+
     data: List[Dict[str, Any]]
     include_probabilities: bool = False
 
 
 class PredictResponse(BaseModel):
     """Response with predictions"""
+
     predictions: List[Any]
     probabilities: Optional[List[List[float]]] = None
     feature_names: List[str]
@@ -89,6 +94,7 @@ class PredictResponse(BaseModel):
 
 class TrainingStatusResponse(BaseModel):
     """Status and results of an async training job"""
+
     model_id: str
     status: str  # pending | running | completed | failed | cancelled
     progress: float  # 0.0 - 1.0
@@ -110,6 +116,7 @@ class TrainingStatusResponse(BaseModel):
 
 class TrainingJobSummary(BaseModel):
     """Condensed view of one training job for the jobs list"""
+
     model_id: str
     dataset_id: str
     target_column: str
@@ -126,6 +133,7 @@ class TrainingJobSummary(BaseModel):
 
 class TrainingJobListResponse(BaseModel):
     """Paginated list of the current user's training jobs"""
+
     jobs: List[TrainingJobSummary]
     total_count: int
     limit: int
@@ -134,6 +142,7 @@ class TrainingJobListResponse(BaseModel):
 
 class TrainingLogsResponse(BaseModel):
     """Paginated log entries for one training job"""
+
     model_id: str
     logs: List[TrainingLogEntry]
     total_count: int
@@ -142,6 +151,7 @@ class TrainingLogsResponse(BaseModel):
 
 class CancelTrainingResponse(BaseModel):
     """Acknowledgement that cancellation of a training job was requested"""
+
     model_id: str
     status: str
     cancellation_requested: bool
@@ -152,24 +162,23 @@ class CancelTrainingResponse(BaseModel):
 async def train_model(
     request: TrainModelRequest,
     background_tasks: BackgroundTasks,
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """
     Train a new ML model on the specified dataset
     """
     # Verify dataset access
     user_data = await UserData.find_one(
-        UserData.id == request.dataset_id,
-        UserData.user_id == current_user_id
+        UserData.id == request.dataset_id, UserData.user_id == current_user_id
     )
-    
+
     if not user_data:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     # Create a unique model id. A short uuid suffix avoids collisions between
     # requests made within the same second (the id is the lookup key for the
     # TrainingJob status endpoint, so it must be unique).
-    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     model_id = f"model_{timestamp}_{uuid.uuid4().hex[:8]}"
 
     # Persist a pending TrainingJob synchronously so the status endpoint can be
@@ -185,25 +194,18 @@ async def train_model(
 
     # Start training in background
     background_tasks.add_task(
-        train_model_task,
-        user_data,
-        request,
-        current_user_id,
-        model_id
+        train_model_task, user_data, request, current_user_id, model_id
     )
 
     return TrainModelResponse(
         model_id=model_id,
         status="training",
-        message=f"Model training started. Poll GET /api/v1/ml/{model_id}/status for progress."
+        message=f"Model training started. Poll GET /api/v1/ml/{model_id}/status for progress.",
     )
 
 
 async def train_model_task(
-    user_data: UserData,
-    request: TrainModelRequest,
-    user_id: str,
-    model_id: str
+    user_data: UserData, request: TrainModelRequest, user_id: str, model_id: str
 ):
     """Background task for model training.
 
@@ -275,7 +277,7 @@ async def train_model_task(
             max_models=training_config.get("max_models", 5),
             cv_folds=training_config.get("cv_folds", 5),
             test_size=training_config.get("test_size", 0.2),
-            random_state=42
+            random_state=42,
         )
 
         # Progress callback persists per-algorithm progress to the TrainingJob.
@@ -349,9 +351,9 @@ async def train_model_task(
             "metrics": {
                 "cv_score": result.best_model.cv_score,
                 "test_score": result.best_model.test_score,
-                "training_time": result.training_time
+                "training_time": result.training_time,
             },
-            "training_config": training_config
+            "training_config": training_config,
         }
 
         # Save model with the pre-generated model_id
@@ -362,7 +364,7 @@ async def train_model_task(
             user_id,
             request.dataset_id,
             model_metadata,
-            model_id=model_id
+            model_id=model_id,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.
@@ -450,18 +452,16 @@ async def _build_algorithm_recommendations(
 async def list_models(
     dataset_id: Optional[str] = Query(None),
     is_active: bool = Query(True),
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """
     List all models for the current user
     """
     storage_service = ModelStorageService()
     models = await storage_service.list_models(
-        current_user_id,
-        dataset_id=dataset_id,
-        is_active=is_active
+        current_user_id, dataset_id=dataset_id, is_active=is_active
     )
-    
+
     return [
         ModelInfo(
             model_id=model.model_id,
@@ -474,7 +474,7 @@ async def list_models(
             test_score=model.test_score,
             created_at=model.created_at,
             last_used_at=model.last_used_at,
-            is_active=model.is_active
+            is_active=model.is_active,
         )
         for model in models
     ]
@@ -571,7 +571,7 @@ async def get_training_logs(
 
     return TrainingLogsResponse(
         model_id=job.model_id,
-        logs=entries[skip:skip + limit],
+        logs=entries[skip : skip + limit],
         total_count=total_count,
         has_more=skip + limit < total_count,
     )
@@ -621,8 +621,7 @@ async def cancel_training(
 
 @router.get("/{model_id}/status", response_model=TrainingStatusResponse)
 async def get_training_status(
-    model_id: str,
-    current_user_id: str = Depends(get_current_user_id)
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Get the status, progress, and results of an async training job.
@@ -662,21 +661,17 @@ async def get_training_status(
 
 
 @router.get("/{model_id}", response_model=MLModel)
-async def get_model(
-    model_id: str,
-    current_user_id: str = Depends(get_current_user_id)
-):
+async def get_model(model_id: str, current_user_id: str = Depends(get_current_user_id)):
     """
     Get detailed information about a specific model
     """
     model = await MLModel.find_one(
-        MLModel.model_id == model_id,
-        MLModel.user_id == current_user_id
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
     )
-    
+
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     return model
 
 
@@ -684,7 +679,7 @@ async def get_model(
 async def predict(
     model_id: str,
     request: PredictRequest,
-    current_user_id: str = Depends(get_current_user_id)
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """
     Make predictions using a trained model
@@ -692,36 +687,37 @@ async def predict(
     # Load model
     storage_service = ModelStorageService()
     try:
-        model, feature_engineer = await storage_service.load_model(model_id, current_user_id)
+        model, feature_engineer = await storage_service.load_model(
+            model_id, current_user_id
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    
+
     # Get model metadata
     ml_model = await MLModel.find_one(
-        MLModel.model_id == model_id,
-        MLModel.user_id == current_user_id
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
     )
-    
+
     # Convert input data to DataFrame
     input_df = pd.DataFrame(request.data)
-    
+
     # Apply feature engineering if available
     if feature_engineer:
         input_df = await feature_engineer.transform(input_df)
-    
+
     # Make predictions
     predictions = model.predict(input_df)
-    
+
     # Get probabilities if requested and available
     probabilities = None
-    if request.include_probabilities and hasattr(model, 'predict_proba'):
+    if request.include_probabilities and hasattr(model, "predict_proba"):
         prob_array = model.predict_proba(input_df)
         probabilities = prob_array.tolist()
-    
+
     # Convert predictions to list
     if isinstance(predictions, np.ndarray):
         predictions = predictions.tolist()
-    
+
     return PredictResponse(
         predictions=predictions,
         probabilities=probabilities,
@@ -730,46 +726,43 @@ async def predict(
             "model_id": model_id,
             "algorithm": ml_model.algorithm,
             "problem_type": ml_model.problem_type,
-            "target_column": ml_model.target_column
-        }
+            "target_column": ml_model.target_column,
+        },
     )
 
 
 @router.delete("/{model_id}")
 async def delete_model(
-    model_id: str,
-    current_user_id: str = Depends(get_current_user_id)
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Delete a model
     """
     storage_service = ModelStorageService()
     deleted = await storage_service.delete_model(model_id, current_user_id)
-    
+
     if not deleted:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     return {"message": f"Model {model_id} deleted successfully"}
 
 
 @router.put("/{model_id}/deactivate")
 async def deactivate_model(
-    model_id: str,
-    current_user_id: str = Depends(get_current_user_id)
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Deactivate a model (soft delete)
     """
     model = await MLModel.find_one(
-        MLModel.model_id == model_id,
-        MLModel.user_id == current_user_id
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
     )
-    
+
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     model.is_active = False
     model.updated_at = datetime.now(timezone.utc)
     await model.save()
-    
+
     return {"message": f"Model {model_id} deactivated"}

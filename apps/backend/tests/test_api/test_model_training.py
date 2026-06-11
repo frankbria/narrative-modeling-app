@@ -72,17 +72,19 @@ def sample_ml_model():
 def sample_dataframe():
     """Create a sample dataframe"""
     np.random.seed(42)
-    return pd.DataFrame({
-        'feature1': np.random.randn(100),
-        'feature2': np.random.randn(100),
-        'feature3': np.random.choice(['A', 'B', 'C'], 100),
-        'target': np.random.choice([0, 1], 100)
-    })
+    return pd.DataFrame(
+        {
+            "feature1": np.random.randn(100),
+            "feature2": np.random.randn(100),
+            "feature3": np.random.choice(["A", "B", "C"], 100),
+            "target": np.random.choice([0, 1], 100),
+        }
+    )
 
 
 class TestModelTrainingEndpoints:
     """Test model training API endpoints"""
-    
+
     @pytest.mark.asyncio
     async def test_train_model_endpoint(self, async_authorized_client):
         """Test POST /api/v1/ml/train"""
@@ -90,25 +92,29 @@ class TestModelTrainingEndpoints:
         mock_user_data = MagicMock(
             id="dataset_123",
             user_id="test_user",
-            file_key="uploads/test_user/test_data.csv"
+            file_key="uploads/test_user/test_data.csv",
         )
 
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+        with patch(
+            "app.models.user_data.UserData.find_one", new_callable=AsyncMock
+        ) as mock_find:
             mock_find.return_value = mock_user_data
 
             # Mock the background task function to prevent it from executing
-            with patch('app.api.routes.model_training.train_model_task', new_callable=AsyncMock):
+            with patch(
+                "app.api.routes.model_training.train_model_task", new_callable=AsyncMock
+            ):
                 request_data = {
                     "dataset_id": "dataset_123",
                     "target_column": "target",
                     "name": "My Model",
-                    "description": "Test model"
+                    "description": "Test model",
                 }
 
                 response = await async_authorized_client.post(
                     "/api/v1/ml/train",
                     json=request_data,
-                    headers={"Authorization": "Bearer test_token"}
+                    headers={"Authorization": "Bearer test_token"},
                 )
 
                 assert response.status_code == 200
@@ -116,7 +122,7 @@ class TestModelTrainingEndpoints:
                 assert "model_id" in data
                 assert data["status"] == "training"
                 assert "message" in data
-    
+
     @pytest.mark.asyncio
     async def test_list_models_endpoint(self, async_authorized_client):
         """Test GET /api/v1/ml/"""
@@ -135,12 +141,14 @@ class TestModelTrainingEndpoints:
         mock_model.is_active = True
 
         # Mock model listing
-        with patch('app.services.model_storage.ModelStorageService.list_models', new_callable=AsyncMock) as mock_list:
+        with patch(
+            "app.services.model_storage.ModelStorageService.list_models",
+            new_callable=AsyncMock,
+        ) as mock_list:
             mock_list.return_value = [mock_model]
 
             response = await async_authorized_client.get(
-                "/api/v1/ml/",
-                headers={"Authorization": "Bearer test_token"}
+                "/api/v1/ml/", headers={"Authorization": "Bearer test_token"}
             )
 
             assert response.status_code == 200
@@ -148,36 +156,43 @@ class TestModelTrainingEndpoints:
             assert len(data) == 1
             assert data[0]["model_id"] == "model_123"
             assert data[0]["name"] == "Test Model"
-    
+
     @pytest.mark.asyncio
     async def test_get_model_endpoint(self, async_authorized_client, sample_ml_model):
         """Test GET /api/v1/ml/{model_id}"""
-        with patch('app.models.ml_model.MLModel.find_one', new_callable=AsyncMock) as mock_find:
+        with patch(
+            "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+        ) as mock_find:
             mock_find.return_value = sample_ml_model
 
-            response = await async_authorized_client.get(
-                "/api/v1/ml/model_123"
-            )
+            response = await async_authorized_client.get("/api/v1/ml/model_123")
 
             assert response.status_code == 200
             data = response.json()
             assert data["model_id"] == "model_123"
             assert data["name"] == "Test Model"
             assert data["algorithm"] == "Random Forest"
-    
+
     @pytest.mark.asyncio
     async def test_predict_endpoint(self, async_authorized_client):
         """Test POST /api/v1/ml/{model_id}/predict"""
         # Mock model loading
         mock_model = MagicMock()
         mock_model.predict.return_value = np.array([0, 1, 0])
-        mock_model.predict_proba.return_value = np.array([[0.8, 0.2], [0.3, 0.7], [0.9, 0.1]])
+        mock_model.predict_proba.return_value = np.array(
+            [[0.8, 0.2], [0.3, 0.7], [0.9, 0.1]]
+        )
 
-        with patch('app.services.model_storage.ModelStorageService.load_model', new_callable=AsyncMock) as mock_load:
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
             mock_load.return_value = (mock_model, None)
 
             # Mock model metadata
-            with patch('app.models.ml_model.MLModel.find_one', new_callable=AsyncMock) as mock_find:
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
                 mock_find.return_value = MagicMock(
                     feature_names=["feature1", "feature2", "feature3"]
                 )
@@ -186,14 +201,13 @@ class TestModelTrainingEndpoints:
                     "data": [
                         {"feature1": 1.0, "feature2": 2.0, "feature3": "A"},
                         {"feature1": 1.5, "feature2": 2.5, "feature3": "B"},
-                        {"feature1": 2.0, "feature2": 3.0, "feature3": "C"}
+                        {"feature1": 2.0, "feature2": 3.0, "feature3": "C"},
                     ],
-                    "include_probabilities": True
+                    "include_probabilities": True,
                 }
 
                 response = await async_authorized_client.post(
-                    "/api/v1/ml/model_123/predict",
-                    json=request_data
+                    "/api/v1/ml/model_123/predict", json=request_data
                 )
                 data = response.json()
 
@@ -201,28 +215,33 @@ class TestModelTrainingEndpoints:
                 assert data["predictions"] == [0, 1, 0]
                 assert len(data["probabilities"]) == 3
                 assert data["feature_names"] == ["feature1", "feature2", "feature3"]
-    
+
     @pytest.mark.asyncio
     async def test_delete_model_endpoint(self, async_authorized_client):
         """Test DELETE /api/v1/ml/{model_id}"""
-        with patch('app.services.model_storage.ModelStorageService.delete_model', new_callable=AsyncMock) as mock_delete:
+        with patch(
+            "app.services.model_storage.ModelStorageService.delete_model",
+            new_callable=AsyncMock,
+        ) as mock_delete:
             mock_delete.return_value = True
 
-            response = await async_authorized_client.delete(
-                "/api/v1/ml/model_123"
-            )
+            response = await async_authorized_client.delete("/api/v1/ml/model_123")
 
             assert response.status_code == 200
             data = response.json()
             assert "message" in data
             assert "deleted successfully" in data["message"]
-    
+
     @pytest.mark.asyncio
-    async def test_deactivate_model_endpoint(self, async_authorized_client, sample_ml_model):
+    async def test_deactivate_model_endpoint(
+        self, async_authorized_client, sample_ml_model
+    ):
         """Test PUT /api/v1/ml/{model_id}/deactivate"""
         sample_ml_model.save = AsyncMock()
 
-        with patch('app.models.ml_model.MLModel.find_one', new_callable=AsyncMock) as mock_find:
+        with patch(
+            "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+        ) as mock_find:
             mock_find.return_value = sample_ml_model
 
             response = await async_authorized_client.put(
@@ -234,55 +253,55 @@ class TestModelTrainingEndpoints:
             assert "message" in data
             assert "deactivated" in data["message"]
             assert sample_ml_model.is_active is False
-    
+
     @pytest.mark.asyncio
     async def test_train_model_not_found(self, async_authorized_client):
         """Test training with non-existent dataset"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+        with patch(
+            "app.models.user_data.UserData.find_one", new_callable=AsyncMock
+        ) as mock_find:
             mock_find.return_value = None
 
-            request_data = {
-                "dataset_id": "non_existent",
-                "target_column": "target"
-            }
+            request_data = {"dataset_id": "non_existent", "target_column": "target"}
 
             response = await async_authorized_client.post(
-                "/api/v1/ml/train",
-                json=request_data
+                "/api/v1/ml/train", json=request_data
             )
 
             assert response.status_code == 404
             assert "Dataset not found" in response.json()["detail"]
-    
+
     @pytest.mark.asyncio
     async def test_predict_model_not_found(self, async_authorized_client):
         """Test prediction with non-existent model"""
-        with patch('app.services.model_storage.ModelStorageService.load_model') as mock_load:
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model"
+        ) as mock_load:
             mock_load.side_effect = ValueError("Model not found")
-            
-            request_data = {
-                "data": [{"feature1": 1.0}]
-            }
-            
+
+            request_data = {"data": [{"feature1": 1.0}]}
+
             response = await async_authorized_client.post(
-                "/api/v1/ml/non_existent/predict",
-                json=request_data
+                "/api/v1/ml/non_existent/predict", json=request_data
             )
-            
+
             assert response.status_code == 404
             assert "Model not found" in response.json()["detail"]
 
 
 class TestModelTrainingBackgroundTask:
     """Test the background training task"""
-    
+
     @pytest.mark.asyncio
     async def test_train_model_task_success(self, sample_dataset, sample_dataframe):
         """Test successful model training task"""
         from app.api.routes.model_training import train_model_task, TrainModelRequest
 
         # Mock S3 file loading
-        with patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock) as mock_s3:
+        with patch(
+            "app.services.s3_service.S3Service.download_file_bytes",
+            new_callable=AsyncMock,
+        ) as mock_s3:
             # Return CSV data as bytes (not BytesIO - the code expects raw bytes)
             csv_buffer = io.BytesIO()
             sample_dataframe.to_csv(csv_buffer, index=False)
@@ -297,35 +316,37 @@ class TestModelTrainingBackgroundTask:
                     hyperparameters={},
                     cv_score=0.85,
                     test_score=0.83,
-                    training_time=10.5
+                    training_time=10.5,
                 ),
                 all_models=[],
                 problem_type=ProblemType.BINARY_CLASSIFICATION,
                 feature_names=["feature1", "feature2", "feature3"],
                 feature_importance={"feature1": 0.5, "feature2": 0.3, "feature3": 0.2},
                 training_time=15.0,
-                metadata={}
+                metadata={},
             )
 
-            with patch('app.services.model_training.AutoMLEngine.run', new_callable=AsyncMock) as mock_run:
+            with patch(
+                "app.services.model_training.AutoMLEngine.run", new_callable=AsyncMock
+            ) as mock_run:
                 mock_run.return_value = mock_result
 
                 # Mock model storage
-                with patch('app.services.model_storage.ModelStorageService.save_model', new_callable=AsyncMock) as mock_save:
+                with patch(
+                    "app.services.model_storage.ModelStorageService.save_model",
+                    new_callable=AsyncMock,
+                ) as mock_save:
                     mock_save.return_value = MagicMock(model_id="model_123")
 
                     request = TrainModelRequest(
                         dataset_id="dataset_123",
                         target_column="target",
-                        name="Test Model"
+                        name="Test Model",
                     )
 
                     # Run the task
                     await train_model_task(
-                        sample_dataset,
-                        request,
-                        "test_user",
-                        "model_123"
+                        sample_dataset, request, "test_user", "model_123"
                     )
 
                     # Verify calls
@@ -349,9 +370,13 @@ class TestTrainingStatusEndpoint:
             file_key="uploads/test_user/test_data.csv",
         )
 
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+        with patch(
+            "app.models.user_data.UserData.find_one", new_callable=AsyncMock
+        ) as mock_find:
             mock_find.return_value = mock_user_data
-            with patch('app.api.routes.model_training.train_model_task', new_callable=AsyncMock):
+            with patch(
+                "app.api.routes.model_training.train_model_task", new_callable=AsyncMock
+            ):
                 response = await async_authorized_client.post(
                     "/api/v1/ml/train",
                     json={"dataset_id": "dataset_123", "target_column": "target"},
@@ -391,7 +416,9 @@ class TestTrainingStatusEndpoint:
             best_algorithm="XGBoost",
             best_model_explanation="XGBoost won.",
             model_comparison=[
-                ModelComparisonEntry(algorithm="XGBoost", cv_score=0.91, test_score=0.9),
+                ModelComparisonEntry(
+                    algorithm="XGBoost", cv_score=0.91, test_score=0.9
+                ),
                 ModelComparisonEntry(algorithm="Random Forest", cv_score=0.88),
             ],
             algorithm_recommendations=[{"algorithm_name": "XGBoost", "priority": 9}],
@@ -469,7 +496,7 @@ class TestTrainingStatusEndpoint:
 
         try:
             with patch(
-                'app.services.s3_service.S3Service.download_file_bytes',
+                "app.services.s3_service.S3Service.download_file_bytes",
                 new_callable=AsyncMock,
             ) as mock_s3:
                 mock_s3.return_value = b"irrelevant"
@@ -515,12 +542,12 @@ class TestTrainingStatusEndpoint:
 
         try:
             with patch(
-                'app.services.s3_service.S3Service.download_file_bytes',
+                "app.services.s3_service.S3Service.download_file_bytes",
                 new_callable=AsyncMock,
             ) as mock_s3:
                 mock_s3.return_value = csv_buffer.getvalue()
                 with patch(
-                    'app.services.model_training.AutoMLEngine.run',
+                    "app.services.model_training.AutoMLEngine.run",
                     new_callable=AsyncMock,
                 ) as mock_run:
                     mock_run.side_effect = TrainingCancelledError("cancelled")
@@ -585,22 +612,20 @@ class TestTrainingStatusEndpoint:
 
         try:
             with patch(
-                'app.services.s3_service.S3Service.download_file_bytes',
+                "app.services.s3_service.S3Service.download_file_bytes",
                 new_callable=AsyncMock,
             ) as mock_s3:
                 mock_s3.return_value = csv_buffer.getvalue()
                 with patch(
-                    'app.services.model_training.AutoMLEngine.run',
+                    "app.services.model_training.AutoMLEngine.run",
                     new_callable=AsyncMock,
                 ) as mock_run:
                     mock_run.return_value = mock_result
                     with patch(
-                        'app.services.model_storage.ModelStorageService.save_model',
+                        "app.services.model_storage.ModelStorageService.save_model",
                         new_callable=AsyncMock,
                     ) as mock_save:
-                        mock_save.return_value = MagicMock(
-                            model_id="model_task_logs"
-                        )
+                        mock_save.return_value = MagicMock(model_id="model_task_logs")
                         request = TrainModelRequest(
                             dataset_id="dataset_123", target_column="target"
                         )
@@ -617,8 +642,7 @@ class TestTrainingStatusEndpoint:
             assert any("Dataset downloaded" in m for m in messages)
             # Completion log names the best algorithm.
             assert any(
-                "Training completed" in m and "Random Forest" in m
-                for m in messages
+                "Training completed" in m and "Random Forest" in m for m in messages
             )
         finally:
             await job.delete()
@@ -706,7 +730,8 @@ class TestTrainingJobListEndpoint:
             assert running["completed_at"] is None
             # Sorted newest first.
             assert [j["model_id"] for j in body["jobs"]] == [
-                "model_jobs_b", "model_jobs_a"
+                "model_jobs_b",
+                "model_jobs_a",
             ]
         finally:
             for job in jobs:
@@ -767,9 +792,7 @@ class TestTrainingJobListEndpoint:
     async def test_list_jobs_excludes_other_users(self, async_authorized_client):
         jobs = [
             await _insert_job("model_mine", status="pending"),
-            await _insert_job(
-                "model_theirs", status="pending", user_id="someone_else"
-            ),
+            await _insert_job("model_theirs", status="pending", user_id="someone_else"),
         ]
         try:
             resp = await async_authorized_client.get("/api/v1/ml/jobs")
@@ -799,9 +822,7 @@ class TestTrainingLogsEndpoint:
         job.add_log("warning", "SVM failed to train: boom", stage="training")
         await job.save()
         try:
-            resp = await async_authorized_client.get(
-                "/api/v1/ml/model_logs_basic/logs"
-            )
+            resp = await async_authorized_client.get("/api/v1/ml/model_logs_basic/logs")
             assert resp.status_code == 200
             body = resp.json()
             assert body["model_id"] == "model_logs_basic"
@@ -847,9 +868,7 @@ class TestTrainingLogsEndpoint:
             assert resp.status_code == 200
             body = resp.json()
             assert body["total_count"] == 5
-            assert [entry["message"] for entry in body["logs"]] == [
-                "line 2", "line 3"
-            ]
+            assert [entry["message"] for entry in body["logs"]] == ["line 2", "line 3"]
             assert body["has_more"] is True
         finally:
             await job.delete()
@@ -860,9 +879,7 @@ class TestTrainingLogsEndpoint:
             "model_logs_other", status="running", user_id="someone_else"
         )
         try:
-            resp = await async_authorized_client.get(
-                "/api/v1/ml/model_logs_other/logs"
-            )
+            resp = await async_authorized_client.get("/api/v1/ml/model_logs_other/logs")
             assert resp.status_code == 404
         finally:
             await job.delete()
@@ -897,8 +914,7 @@ class TestCancelTrainingEndpoint:
             )
             assert refreshed.cancellation_requested is True
             assert any(
-                "Cancellation requested" in entry.message
-                for entry in refreshed.logs
+                "Cancellation requested" in entry.message for entry in refreshed.logs
             )
         finally:
             await job.delete()

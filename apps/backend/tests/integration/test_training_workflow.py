@@ -29,9 +29,7 @@ def sample_classification_csv() -> bytes:
     x2 = np.concatenate([rng.randn(n) - 1.0, rng.randn(n) + 1.0])
     cat = rng.choice(["A", "B", "C"], size=2 * n)
     target = np.array([0] * n + [1] * n)
-    df = pd.DataFrame(
-        {"x1": x1, "x2": x2, "category": cat, "target": target}
-    )
+    df = pd.DataFrame({"x1": x1, "x2": x2, "category": cat, "target": target})
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     return buf.getvalue().encode("utf-8")
