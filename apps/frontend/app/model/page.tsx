@@ -66,7 +66,10 @@ export default function ModelPage() {
   const loadDatasetColumns = async () => {
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/datasets/${state.datasetId}/schema`, {
+      // state.datasetId is a UserData id (set by the upload flow), so read the
+      // column list from the UserData record. The /datasets/{id}/schema
+      // endpoint expects a DatasetMetadata id and 404s for uploads.
+      const response = await fetch(`${API_URL}/user_data/${state.datasetId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -74,7 +77,11 @@ export default function ModelPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setColumns(data.columns.map((col: { name: string }) => col.name));
+        setColumns(
+          (data.data_schema ?? []).map(
+            (field: { field_name: string }) => field.field_name
+          )
+        );
       }
     } catch (error) {
       console.error('Failed to load columns:', error);

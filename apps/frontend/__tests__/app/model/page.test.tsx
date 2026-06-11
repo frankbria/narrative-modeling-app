@@ -61,14 +61,17 @@ jest.mock('@/lib/services/model', () => ({
   },
 }));
 
-// Schema endpoint for column loading.
+// UserData endpoint for column loading (the model page reads the column list
+// from the UserData record's data_schema).
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
 
 function mockColumnsLoaded() {
   mockFetch.mockResolvedValue({
     ok: true,
-    json: async () => ({ columns: [{ name: 'target' }, { name: 'x1' }] }),
+    json: async () => ({
+      data_schema: [{ field_name: 'target' }, { field_name: 'x1' }],
+    }),
   });
 }
 
