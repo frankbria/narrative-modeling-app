@@ -7,16 +7,32 @@ updated as the background training task runs. It is the source of truth for the
 the model comparison table, the selected best model, and any error.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Literal, Optional
 from datetime import datetime, timezone
 from beanie import Document, Indexed
 from pydantic import Field, BaseModel
 
 from app.models.batch_job import JobStatus
 
+LogLevel = Literal["info", "warning", "error"]
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Treat a naive datetime as UTC (MongoDB round-trips drop the tzinfo)."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+class TrainingLogEntry(BaseModel):
+    """One timestamped log line emitted during a training run."""
+
+    timestamp: datetime = Field(default_factory=_utcnow)
+    level: LogLevel
+    message: str
+    stage: Optional[str] = None
 
 
 class TrainingProgress(BaseModel):
@@ -25,6 +41,7 @@ class TrainingProgress(BaseModel):
     completed_algorithms: int = Field(default=0)
     total_algorithms: int = Field(default=0)
     current_algorithm: Optional[str] = None
+    current_stage: Optional[str] = None
 
     @property
     def fraction(self) -> float:
@@ -69,6 +86,10 @@ class TrainingJob(Document):
     best_model_explanation: Optional[str] = None
     metrics: Dict[str, Any] = Field(default_factory=dict)
 
+    # Live monitoring (issue #76)
+    logs: List[TrainingLogEntry] = Field(default_factory=list)
+    cancellation_requested: bool = False
+
     # Error handling
     error: Optional[str] = None
 
@@ -85,6 +106,9 @@ class TrainingJob(Document):
             "user_id",
             "status",
             "created_at",
+            # Serves the jobs-list query exactly: filter by owner (+ status),
+            # newest first — the dashboard polls this every 10 seconds.
+            [("user_id", 1), ("status", 1), ("created_at", -1)],
         ]
 
     # -- lifecycle helpers -------------------------------------------------
@@ -151,3 +175,51 @@ class TrainingJob(Document):
         self.completed_at = _utcnow()
         self.updated_at = self.completed_at
         self.error = error
+
+    def mark_cancelled(self) -> None:
+        """Transition the job to CANCELLED and freeze its progress."""
+        self.status = JobStatus.CANCELLED
+        self.completed_at = _utcnow()
+        self.updated_at = self.completed_at
+        self.progress.current_algorithm = None
+        # A terminal job is not in any pipeline stage; leaving "training" here
+        # would mislead the status endpoint's stage badge.
+        self.progress.current_stage = None
+
+    def add_log(
+        self, level: LogLevel, message: str, stage: Optional[str] = None
+    ) -> TrainingLogEntry:
+        """Append a timestamped log entry and bump ``updated_at``.
+
+        Returns the entry so callers persisting with a partial update can
+        ``$push`` exactly this entry instead of rewriting the whole array.
+        """
+        entry = TrainingLogEntry(level=level, message=message, stage=stage)
+        self.logs.append(entry)
+        self.updated_at = _utcnow()
+        return entry
+
+    # -- timing ------------------------------------------------------------
+
+    @property
+    def elapsed_seconds(self) -> Optional[float]:
+        """Seconds since the job started (frozen at completion; None if unstarted)."""
+        if self.started_at is None:
+            return None
+        end = _as_utc(self.completed_at) if self.completed_at else _utcnow()
+        return (end - _as_utc(self.started_at)).total_seconds()
+
+    @property
+    def estimated_remaining_seconds(self) -> Optional[float]:
+        """Naive linear time-remaining estimate for a running job.
+
+        Extrapolates from elapsed time and the completed-algorithm fraction;
+        ``None`` unless the job is RUNNING with progress strictly between 0 and 1.
+        """
+        if self.status != JobStatus.RUNNING:
+            return None
+        elapsed = self.elapsed_seconds
+        fraction = self.progress.fraction
+        if elapsed is None or not 0.0 < fraction < 1.0:
+            return None
+        return elapsed / fraction - elapsed

@@ -173,4 +173,162 @@ describe('modelService instance export', () => {
       'Training job not found'
     );
   });
+
+  describe('listTrainingJobs()', () => {
+    const jobList = {
+      jobs: [
+        {
+          model_id: 'm1',
+          dataset_id: 'ds-1',
+          target_column: 'y',
+          status: 'running',
+          progress_percentage: 42.5,
+          current_stage: 'training',
+          created_at: '2026-06-10T10:00:00Z',
+          started_at: '2026-06-10T10:00:05Z',
+          completed_at: null,
+          best_algorithm: null,
+          best_score: null,
+          elapsed_seconds: 95.2,
+        },
+      ],
+      total_count: 1,
+      limit: 20,
+      skip: 0,
+    };
+
+    it('requests the jobs endpoint with the resolved token and returns the list', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(jobList),
+      });
+
+      const result = await modelService.listTrainingJobs();
+
+      expect(result).toEqual(jobList);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/jobs');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer svc-token');
+    });
+
+    it('forwards status, limit and skip as query parameters', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ ...jobList, jobs: [] }),
+      });
+
+      await modelService.listTrainingJobs({ status: 'running', limit: 5, skip: 10 });
+
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/ml/jobs?');
+      expect(url).toContain('status=running');
+      expect(url).toContain('limit=5');
+      expect(url).toContain('skip=10');
+    });
+
+    it('throws the backend detail message on error', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ detail: 'boom' }),
+      });
+
+      await expect(modelService.listTrainingJobs()).rejects.toThrow('boom');
+    });
+  });
+
+  describe('getTrainingLogs()', () => {
+    const logsResponse = {
+      model_id: 'm9',
+      logs: [
+        {
+          timestamp: '2026-06-10T10:00:00Z',
+          level: 'info',
+          message: 'Training started',
+          stage: 'preprocessing',
+        },
+      ],
+      total_count: 1,
+      has_more: false,
+    };
+
+    it('requests the logs endpoint with the resolved token and returns the logs', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(logsResponse),
+      });
+
+      const result = await modelService.getTrainingLogs('m9');
+
+      expect(result).toEqual(logsResponse);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m9/logs');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer svc-token');
+    });
+
+    it('forwards level, limit and skip as query parameters', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(logsResponse),
+      });
+
+      await modelService.getTrainingLogs('m9', { level: 'error', limit: 50, skip: 100 });
+
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/ml/m9/logs?');
+      expect(url).toContain('level=error');
+      expect(url).toContain('limit=50');
+      expect(url).toContain('skip=100');
+    });
+
+    it('throws the backend detail message when the job is not found', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ detail: 'Training job not found' }),
+      });
+
+      await expect(modelService.getTrainingLogs('missing')).rejects.toThrow(
+        'Training job not found'
+      );
+    });
+  });
+
+  describe('cancelTraining()', () => {
+    it('POSTs to the cancel endpoint and returns the cancellation response', async () => {
+      const response = {
+        model_id: 'm10',
+        status: 'running',
+        cancellation_requested: true,
+        message: 'Cancellation requested',
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(response),
+      });
+
+      const result = await modelService.cancelTraining('m10');
+
+      expect(result).toEqual(response);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m10/cancel');
+      expect(init?.method).toBe('POST');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer svc-token');
+    });
+
+    it('throws the backend detail message on a 409 terminal-job conflict', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: jest.fn().mockResolvedValue({
+          detail: 'Training job already completed',
+        }),
+      });
+
+      await expect(modelService.cancelTraining('m10')).rejects.toThrow(
+        'Training job already completed'
+      );
+    });
+  });
 });

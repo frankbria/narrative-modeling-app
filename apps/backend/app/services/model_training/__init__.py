@@ -4,12 +4,14 @@ Model training services for AutoML functionality
 
 from .problem_detector import ProblemDetector, ProblemType
 from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
-from .automl_engine import AutoMLEngine
+from .automl_engine import AutoMLEngine, TrainingCancelledError, TrainingEvent
 
 __all__ = [
     "ProblemDetector",
-    "ProblemType", 
+    "ProblemType",
     "FeatureEngineer",
     "FeatureEngineeringConfig",
     "AutoMLEngine",
+    "TrainingCancelledError",
+    "TrainingEvent",
 ]

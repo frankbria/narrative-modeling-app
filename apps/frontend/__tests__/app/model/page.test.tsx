@@ -45,31 +45,55 @@ jest.mock('@/lib/contexts/WorkflowContext', () => ({
   useWorkflow: () => mockWorkflowContext,
 }));
 
-// Model service: trainModel + getTrainingStatus are driven per-test.
+// Model service: training endpoints are driven per-test. The same mock feeds
+// the page and the embedded TrainingProgress/TrainingLogs/CancelTrainingButton
+// components, which all import modelService from this module.
 const mockTrainModel = jest.fn();
 const mockGetTrainingStatus = jest.fn();
+const mockGetTrainingLogs = jest.fn();
+const mockCancelTraining = jest.fn();
 jest.mock('@/lib/services/model', () => ({
   modelService: {
     trainModel: (...args: unknown[]) => mockTrainModel(...args),
     getTrainingStatus: (...args: unknown[]) => mockGetTrainingStatus(...args),
+    getTrainingLogs: (...args: unknown[]) => mockGetTrainingLogs(...args),
+    cancelTraining: (...args: unknown[]) => mockCancelTraining(...args),
   },
 }));
 
-// Schema endpoint for column loading.
+// UserData endpoint for column loading (the model page reads the column list
+// from the UserData record's data_schema).
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
 
 function mockColumnsLoaded() {
   mockFetch.mockResolvedValue({
     ok: true,
-    json: async () => ({ columns: [{ name: 'target' }, { name: 'x1' }] }),
+    json: async () => ({
+      data_schema: [{ field_name: 'target' }, { field_name: 'x1' }],
+    }),
   });
+}
+
+async function startTraining() {
+  await waitFor(() =>
+    expect(screen.getByRole('option', { name: 'target' })).toBeInTheDocument()
+  );
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'target' } });
+  fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
+  await waitFor(() => expect(mockTrainModel).toHaveBeenCalled());
 }
 
 describe('ModelPage training wiring', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockColumnsLoaded();
+    mockGetTrainingLogs.mockResolvedValue({
+      model_id: 'model_1',
+      logs: [],
+      total_count: 0,
+      has_more: false,
+    });
   });
 
   it('starts real training and shows the comparison on completion', async () => {
@@ -103,26 +127,20 @@ describe('ModelPage training wiring', () => {
     });
 
     render(<ModelPage />);
-
-    // Wait for columns to load and select the target.
-    await waitFor(() => expect(screen.getByRole('option', { name: 'target' })).toBeInTheDocument());
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'target' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
+    await startTraining();
 
     // trainModel called with the correct real payload.
-    await waitFor(() => expect(mockTrainModel).toHaveBeenCalled());
     expect(mockTrainModel).toHaveBeenCalledWith({
       dataset_id: 'ds-1',
       target_column: 'target',
     });
 
-    // Status is polled after ~2s; allow time for the first poll to resolve.
+    // TrainingProgress polls the status and surfaces completion.
     expect(
-      await screen.findByText('Training complete!', {}, { timeout: 5000 })
+      await screen.findByText(/Training complete/i, {}, { timeout: 5000 })
     ).toBeInTheDocument();
     // 'XGBoost' appears both as the best-model label and in the comparison table.
-    expect(screen.getAllByText('XGBoost').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/XGBoost/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Random Forest')).toBeInTheDocument();
     expect(screen.getByText(/XGBoost won/)).toBeInTheDocument();
     // Algorithm recommendations are rendered for the analyst (acceptance criterion).
@@ -151,16 +169,85 @@ describe('ModelPage training wiring', () => {
     });
 
     render(<ModelPage />);
-
-    await waitFor(() => expect(screen.getByRole('option', { name: 'target' })).toBeInTheDocument());
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'target' } });
-    fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
-
-    await waitFor(() => expect(mockTrainModel).toHaveBeenCalled());
+    await startTraining();
 
     expect(
       await screen.findByText('Training failed', {}, { timeout: 5000 })
     ).toBeInTheDocument();
     expect(screen.getByText('Unsupported file type: txt')).toBeInTheDocument();
+    // The page returns to the configuration view so training can be retried.
+    expect(
+      screen.getByRole('button', { name: /Start Training/i })
+    ).toBeInTheDocument();
+  }, 15000);
+
+  it('shows a cancel button and a collapsible logs panel while training runs', async () => {
+    mockTrainModel.mockResolvedValue({ model_id: 'model_3', status: 'training', message: 'ok' });
+    mockGetTrainingStatus.mockResolvedValue({
+      model_id: 'model_3',
+      status: 'running',
+      progress: 0.25,
+      current_algorithm: 'Random Forest',
+      completed_algorithms: 1,
+      total_algorithms: 4,
+      metrics: {},
+      model_comparison: [],
+      algorithm_recommendations: [],
+      current_stage: 'training',
+      elapsed_seconds: 30,
+      estimated_remaining_seconds: 90,
+    });
+    mockGetTrainingLogs.mockResolvedValue({
+      model_id: 'model_3',
+      logs: [
+        {
+          timestamp: '2026-06-10T10:00:00Z',
+          level: 'info',
+          message: 'Training started',
+          stage: 'preprocessing',
+        },
+      ],
+      total_count: 1,
+      has_more: false,
+    });
+
+    render(<ModelPage />);
+    await startTraining();
+
+    expect(await screen.findByText('25%', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Cancel Training/i })
+    ).toBeInTheDocument();
+
+    // Logs are collapsed by default and toggle open on demand.
+    expect(screen.queryByText('Training started')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Show Logs/i }));
+    expect(await screen.findByText('Training started')).toBeInTheDocument();
+  }, 15000);
+
+  it('returns to the configuration view with a notice when training is cancelled', async () => {
+    mockTrainModel.mockResolvedValue({ model_id: 'model_4', status: 'training', message: 'ok' });
+    mockGetTrainingStatus.mockResolvedValue({
+      model_id: 'model_4',
+      status: 'cancelled',
+      progress: 0.5,
+      completed_algorithms: 2,
+      total_algorithms: 4,
+      metrics: {},
+      model_comparison: [],
+      algorithm_recommendations: [],
+    });
+
+    render(<ModelPage />);
+    await startTraining();
+
+    expect(
+      await screen.findByText(/Training cancelled/i, {}, { timeout: 5000 })
+    ).toBeInTheDocument();
+    // Back on the configuration view, ready for a new run.
+    expect(
+      screen.getByRole('button', { name: /Start Training/i })
+    ).toBeInTheDocument();
+    expect(mockCompleteStage).not.toHaveBeenCalled();
   }, 15000);
 });

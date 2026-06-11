@@ -57,10 +57,11 @@ See [Recipe System Documentation](RECIPE_SYSTEM.md) for recipe API details.
 
 ### Model Training
 
-- `POST /models/train` - Train ML model on dataset
-- `GET /models/{id}` - Get model details
-- `GET /models/{id}/metrics` - Get model performance metrics
-- `GET /models/{id}/download` - Download trained model
+- `POST /ml/train` - Start AutoML training job on dataset
+- `GET /ml/{model_id}/status` - Get training status with progress, stage, timing, and ranked model comparison
+- `GET /ml/jobs` - List training jobs (query: `status` filter, pagination)
+- `GET /ml/{model_id}/logs` - Get training log entries (query: `level` filter, pagination)
+- `POST /ml/{model_id}/cancel` - Request cooperative cancellation (409 if job already in terminal state)
 
 ## Response Formats
 

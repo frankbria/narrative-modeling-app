@@ -62,9 +62,16 @@ export interface AlgorithmRecommendation {
   cons: string[]
 }
 
+export type TrainingJobStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
 export interface TrainingStatus {
   model_id: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: TrainingJobStatus
   progress: number // 0.0 - 1.0
   current_algorithm?: string | null
   completed_algorithms: number
@@ -76,6 +83,66 @@ export interface TrainingStatus {
   best_algorithm?: string | null
   explanation?: string | null
   error?: string | null
+  current_stage?: string | null
+  elapsed_seconds?: number | null
+  estimated_remaining_seconds?: number | null
+  cancellation_requested?: boolean
+}
+
+export interface TrainingJobSummary {
+  model_id: string
+  dataset_id: string
+  target_column: string
+  status: TrainingJobStatus
+  progress_percentage: number // 0 - 100
+  current_stage: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  best_algorithm: string | null
+  best_score: number | null
+  elapsed_seconds: number | null
+}
+
+export interface TrainingJobListResponse {
+  jobs: TrainingJobSummary[]
+  total_count: number
+  limit: number
+  skip: number
+}
+
+export interface ListTrainingJobsOptions {
+  /** Single status, or a comma-separated list (e.g. 'completed,failed,cancelled'). */
+  status?: TrainingJobStatus | string
+  limit?: number
+  skip?: number
+}
+
+export interface TrainingLogEntry {
+  timestamp: string
+  level: 'info' | 'warning' | 'error'
+  message: string
+  stage?: string | null
+}
+
+export interface TrainingLogsResponse {
+  model_id: string
+  logs: TrainingLogEntry[]
+  total_count: number
+  has_more: boolean
+}
+
+export interface GetTrainingLogsOptions {
+  level?: 'info' | 'warning' | 'error'
+  limit?: number
+  skip?: number
+}
+
+export interface CancelTrainingResponse {
+  model_id: string
+  status: TrainingJobStatus
+  cancellation_requested: boolean
+  message: string
 }
 
 export interface PredictRequest {
@@ -188,6 +255,101 @@ export class ModelService {
     return response.json()
   }
 
+  /**
+   * List training jobs for the current user, newest first.
+   *
+   * @param options - Optional `status` filter plus `limit`/`skip` pagination.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async listTrainingJobs(
+    options: ListTrainingJobsOptions | undefined,
+    token: string | null
+  ): Promise<TrainingJobListResponse> {
+    const params = new URLSearchParams()
+    if (options?.status) params.append('status', options.status)
+    if (options?.limit !== undefined) params.append('limit', String(options.limit))
+    if (options?.skip !== undefined) params.append('skip', String(options.skip))
+    const query = params.toString()
+
+    const response = await fetch(
+      `${API_BASE_URL}/ml/jobs${query ? `?${query}` : ''}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch training jobs')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Fetch the persisted log entries for a training job, oldest first.
+   *
+   * @param modelId - The id returned by {@link trainModel}.
+   * @param options - Optional `level` filter plus `limit`/`skip` pagination.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async getTrainingLogs(
+    modelId: string,
+    options: GetTrainingLogsOptions | undefined,
+    token: string | null
+  ): Promise<TrainingLogsResponse> {
+    const params = new URLSearchParams()
+    if (options?.level) params.append('level', options.level)
+    if (options?.limit !== undefined) params.append('limit', String(options.limit))
+    if (options?.skip !== undefined) params.append('skip', String(options.skip))
+    const query = params.toString()
+
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/logs${query ? `?${query}` : ''}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch training logs')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Request cancellation of a running training job. The current algorithm
+   * finishes before the job stops.
+   *
+   * @param modelId - The id returned by {@link trainModel}.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response
+   *   (404 unknown job, 409 already terminal).
+   */
+  static async cancelTraining(
+    modelId: string,
+    token: string | null
+  ): Promise<CancelTrainingResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/cancel`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to cancel training')
+    }
+
+    return response.json()
+  }
+
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -265,6 +427,29 @@ class ModelServiceClient {
   async getTrainingStatus(modelId: string): Promise<TrainingStatus> {
     const token = await getAuthToken()
     return ModelService.getTrainingStatus(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and list training jobs. */
+  async listTrainingJobs(
+    options?: ListTrainingJobsOptions
+  ): Promise<TrainingJobListResponse> {
+    const token = await getAuthToken()
+    return ModelService.listTrainingJobs(options, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a job's log entries. */
+  async getTrainingLogs(
+    modelId: string,
+    options?: GetTrainingLogsOptions
+  ): Promise<TrainingLogsResponse> {
+    const token = await getAuthToken()
+    return ModelService.getTrainingLogs(modelId, options, token)
+  }
+
+  /** Resolve the auth token automatically and request job cancellation. */
+  async cancelTraining(modelId: string): Promise<CancelTrainingResponse> {
+    const token = await getAuthToken()
+    return ModelService.cancelTraining(modelId, token)
   }
 
   async trainModel(

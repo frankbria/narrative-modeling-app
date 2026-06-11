@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { modelService, TrainingStatus } from '@/lib/services/model';
-import { Brain, Zap, PlayCircle, AlertCircle } from 'lucide-react';
+import { TrainingProgress } from '@/components/training/TrainingProgress';
+import { TrainingLogs } from '@/components/training/TrainingLogs';
+import { CancelTrainingButton } from '@/components/training/CancelTrainingButton';
+import { Brain, Zap, PlayCircle, AlertCircle, Info, Loader2 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 interface ModelConfig {
@@ -16,21 +19,18 @@ interface ModelConfig {
   target_column: string;
 }
 
-// How often to poll the training status endpoint, in milliseconds.
-const STATUS_POLL_INTERVAL_MS = 2000;
-// Stop polling after this many attempts (~20 min) and surface a timeout, so a
-// dead background job doesn't leave the UI polling forever.
-const MAX_STATUS_POLLS = 600;
-
 /**
  * Model training page.
  *
- * Lets the analyst pick a target column and run AutoML training, then polls
- * `GET /api/v1/ml/{model_id}/status` and renders live progress followed by the
- * model comparison, the best-model explanation, and the algorithm
- * recommendations on completion (or the error on failure). The backend
- * auto-detects the problem type and compares algorithms, so the target column
- * is the only required input.
+ * Lets the analyst pick a target column and run AutoML training. The
+ * `TrainingProgress` component owns the status polling and renders the live
+ * progress (stage, algorithm, timing, comparison) plus the terminal success /
+ * failure / cancellation alerts; this page reacts to its callbacks: on
+ * completion it records the stage data in the workflow and renders the
+ * best-model explanation and algorithm recommendations, on failure or
+ * cancellation it returns to the configuration view with a notice. A
+ * collapsible `TrainingLogs` panel and a `CancelTrainingButton` accompany the
+ * progress display while the job runs.
  */
 export default function ModelPage() {
   const { data: session } = useSession();
@@ -41,17 +41,12 @@ export default function ModelPage() {
     target_column: ''
   });
   const [columns, setColumns] = useState<string[]>([]);
-  const [trainingProgress, setTrainingProgress] = useState(0);
-  const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
+  const [trainingModelId, setTrainingModelId] = useState<string | null>(null);
+  const [completedStatus, setCompletedStatus] = useState<TrainingStatus | null>(null);
   const [trainingError, setTrainingError] = useState<string | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Stop any in-flight status polling when the component unmounts.
-  useEffect(() => {
-    return () => {
-      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-    };
-  }, []);
+  const [cancelledNotice, setCancelledNotice] = useState(false);
+  const [cancellationRequested, setCancellationRequested] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   useEffect(() => {
     if (!canAccessStage(WorkflowStage.MODEL_TRAINING)) {
@@ -71,7 +66,10 @@ export default function ModelPage() {
   const loadDatasetColumns = async () => {
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/datasets/${state.datasetId}/schema`, {
+      // state.datasetId is a UserData id (set by the upload flow), so read the
+      // column list from the UserData record. The /datasets/{id}/schema
+      // endpoint expects a DatasetMetadata id and 404s for uploads.
+      const response = await fetch(`${API_URL}/user_data/${state.datasetId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -79,7 +77,11 @@ export default function ModelPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setColumns(data.columns.map((col: { name: string }) => col.name));
+        setColumns(
+          (data.data_schema ?? []).map(
+            (field: { field_name: string }) => field.field_name
+          )
+        );
       }
     } catch (error) {
       console.error('Failed to load columns:', error);
@@ -90,59 +92,24 @@ export default function ModelPage() {
     if (!state.datasetId) return;
 
     setTraining(true);
-    setTrainingProgress(0);
-    setTrainingStatus(null);
+    setTrainingModelId(null);
+    setCompletedStatus(null);
     setTrainingError(null);
+    setCancelledNotice(false);
+    setCancellationRequested(false);
+    setShowLogs(false);
 
     try {
       // Start real AutoML training. The backend auto-detects the problem type
       // and the engine compares candidate algorithms, so we only need the
-      // dataset and target column here.
+      // dataset and target column here. TrainingProgress takes over polling
+      // once the job id is known.
       const result = await modelService.trainModel({
         dataset_id: state.datasetId,
         target_column: modelConfig.target_column,
       });
 
-      // Poll the real status endpoint until the job completes or fails, driving
-      // the progress bar from the job's actual per-algorithm progress. Bounded
-      // by MAX_STATUS_POLLS so a dead job surfaces a timeout instead of polling
-      // forever; the timeout id is tracked for unmount cleanup.
-      let attempts = 0;
-      const checkStatus = async () => {
-        attempts += 1;
-        try {
-          const status = await modelService.getTrainingStatus(result.model_id);
-          setTrainingStatus(status);
-          setTrainingProgress(Math.round(status.progress * 100));
-
-          if (status.status === 'completed') {
-            setTrainingProgress(100);
-            completeStage(WorkflowStage.MODEL_TRAINING, {
-              modelId: result.model_id,
-              config: modelConfig,
-              metrics: status.metrics,
-              bestAlgorithm: status.best_algorithm,
-              timestamp: new Date().toISOString(),
-            });
-          } else if (status.status === 'failed') {
-            setTrainingError(status.error || 'Training failed');
-            setTraining(false);
-          } else if (attempts >= MAX_STATUS_POLLS) {
-            setTrainingError('Training timed out. Please try again.');
-            setTraining(false);
-          } else {
-            pollTimeoutRef.current = setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
-          }
-        } catch (error) {
-          console.error('Failed to fetch training status:', error);
-          setTrainingError(
-            error instanceof Error ? error.message : 'Failed to fetch training status'
-          );
-          setTraining(false);
-        }
-      };
-
-      pollTimeoutRef.current = setTimeout(checkStatus, STATUS_POLL_INTERVAL_MS);
+      setTrainingModelId(result.model_id);
     } catch (error) {
       console.error('Failed to train model:', error);
       setTrainingError(
@@ -150,6 +117,29 @@ export default function ModelPage() {
       );
       setTraining(false);
     }
+  };
+
+  const handleTrainingComplete = (status: TrainingStatus) => {
+    setCompletedStatus(status);
+    completeStage(WorkflowStage.MODEL_TRAINING, {
+      modelId: status.model_id,
+      config: modelConfig,
+      metrics: status.metrics,
+      bestAlgorithm: status.best_algorithm,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  const handleTrainingError = (status: TrainingStatus) => {
+    setTrainingError(status.error || 'Training failed');
+    setTraining(false);
+    setTrainingModelId(null);
+  };
+
+  const handleTrainingCancelled = () => {
+    setCancelledNotice(true);
+    setTraining(false);
+    setTrainingModelId(null);
   };
 
   if (!session) {
@@ -180,12 +170,24 @@ export default function ModelPage() {
           </div>
         )}
 
+        {/* A cancelled run returns the analyst to the configuration view with a
+            notice so they can adjust the setup and start a new run. */}
+        {cancelledNotice && !training && (
+          <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-start gap-2">
+            <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p className="font-semibold">Training cancelled</p>
+              <p>The training run was stopped. You can start a new run below.</p>
+            </div>
+          </div>
+        )}
+
         {!training ? (
           <div className="space-y-6">
             {/* AutoML auto-detects the problem type and compares several
                 algorithms, so the only required input is the target column.
                 (Manual problem-type / single-algorithm selection and Quick/
-                Comprehensive modes are tracked separately — see issues #76/#101.) */}
+                Comprehensive modes are tracked separately — see issue #101.) */}
             <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200 flex items-start gap-3">
               <Zap className="w-5 h-5 text-indigo-500 mt-0.5" />
               <div className="text-sm text-indigo-900">
@@ -250,108 +252,79 @@ export default function ModelPage() {
               </button>
             </div>
           </div>
+        ) : !trainingModelId ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-gray-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Starting training…</span>
+          </div>
         ) : (
           <div className="space-y-6">
-            <div className="text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                <Brain className="w-8 h-8 text-blue-600 animate-pulse" />
-              </div>
-              <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>
-              <p className="text-gray-600">
-                This may take a few minutes depending on your data size
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>
-                  {trainingStatus?.current_algorithm
-                    ? `Training ${trainingStatus.current_algorithm}`
-                    : 'Progress'}
-                </span>
-                <span>{trainingProgress}%</span>
-              </div>
-              <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full transition-all duration-500"
-                  style={{ width: `${trainingProgress}%` }}
-                />
-              </div>
-              {trainingStatus && trainingStatus.total_algorithms > 0 && (
-                <p className="text-sm text-gray-500 text-right">
-                  {trainingStatus.completed_algorithms} of{' '}
-                  {trainingStatus.total_algorithms} algorithms trained
+            {!completedStatus && (
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                  <Brain className="w-8 h-8 text-blue-600 animate-pulse" />
+                </div>
+                <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>
+                <p className="text-gray-600">
+                  This may take a few minutes depending on your data size
                 </p>
+              </div>
+            )}
+
+            <TrainingProgress
+              modelId={trainingModelId}
+              onComplete={handleTrainingComplete}
+              onError={handleTrainingError}
+              onCancelled={handleTrainingCancelled}
+            />
+
+            {!completedStatus && (
+              <div className="flex flex-col items-center gap-2">
+                <CancelTrainingButton
+                  modelId={trainingModelId}
+                  disabled={cancellationRequested}
+                  onCancelled={() => setCancellationRequested(true)}
+                />
+                {cancellationRequested && (
+                  <p className="text-sm text-gray-500">
+                    Cancellation requested — finishing the current algorithm…
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Collapsible live log viewer; keeps polling while the job runs and
+                does a final fetch once it completes. */}
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowLogs((show) => !show)}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                {showLogs ? 'Hide Logs' : 'Show Logs'}
+              </button>
+              {showLogs && (
+                <TrainingLogs
+                  modelId={trainingModelId}
+                  isActive={!completedStatus}
+                />
               )}
             </div>
 
-            {trainingStatus?.status === 'completed' && (
+            {completedStatus && (
               <div className="space-y-4">
-                <div className="text-center">
-                  <p className="text-green-600 font-medium">Training complete!</p>
-                  {trainingStatus.best_algorithm && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      Best model:{' '}
-                      <span className="font-semibold">
-                        {trainingStatus.best_algorithm}
-                      </span>
-                    </p>
-                  )}
-                </div>
-
-                {trainingStatus.explanation && (
+                {completedStatus.explanation && (
                   <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
-                    {trainingStatus.explanation}
+                    {completedStatus.explanation}
                   </p>
                 )}
 
-                {trainingStatus.model_comparison.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-gray-500 border-b">
-                          <th className="py-2 pr-4">Algorithm</th>
-                          <th className="py-2 pr-4">CV Score</th>
-                          <th className="py-2 pr-4">Test Score</th>
-                          <th className="py-2">Time (s)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trainingStatus.model_comparison.map((row) => (
-                          <tr
-                            key={row.algorithm}
-                            className={
-                              row.algorithm === trainingStatus.best_algorithm
-                                ? 'bg-yellow-50 font-medium'
-                                : ''
-                            }
-                          >
-                            <td className="py-2 pr-4">{row.algorithm}</td>
-                            <td className="py-2 pr-4">
-                              {row.cv_score != null ? row.cv_score.toFixed(3) : '—'}
-                            </td>
-                            <td className="py-2 pr-4">
-                              {row.test_score != null ? row.test_score.toFixed(3) : '—'}
-                            </td>
-                            <td className="py-2">
-                              {row.training_time != null
-                                ? row.training_time.toFixed(1)
-                                : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {trainingStatus.algorithm_recommendations.length > 0 && (
+                {completedStatus.algorithm_recommendations.length > 0 && (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold text-gray-700">
                       Why these algorithms?
                     </h3>
                     <div className="space-y-2">
-                      {trainingStatus.algorithm_recommendations.map((rec) => (
+                      {completedStatus.algorithm_recommendations.map((rec) => (
                         <div
                           key={rec.algorithm_name}
                           className="border border-gray-200 rounded-lg p-3"
