@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import asyncio
 import logging
 
 from sklearn.model_selection import train_test_split, cross_val_score
@@ -220,15 +221,22 @@ class AutoMLEngine:
             )
 
             try:
-                # Train model
+                # Train model. The fit/CV/predict calls are CPU-bound and run
+                # in a worker thread: executed inline they block the event
+                # loop for the whole fit, freezing every API request —
+                # including the status polls and the cancel endpoint this
+                # feature depends on.
                 model_start = datetime.now(timezone.utc)
-                candidate.estimator.fit(X_train_transformed, y_train)
+                await asyncio.to_thread(
+                    candidate.estimator.fit, X_train_transformed, y_train
+                )
                 candidate.training_time = (
                     datetime.now(timezone.utc) - model_start
                 ).total_seconds()
 
                 # Cross-validation score
-                cv_scores = cross_val_score(
+                cv_scores = await asyncio.to_thread(
+                    cross_val_score,
                     candidate.estimator,
                     X_train_transformed,
                     y_train,
@@ -238,7 +246,9 @@ class AutoMLEngine:
                 candidate.cv_score = np.mean(cv_scores)
 
                 # Test score
-                y_pred = candidate.estimator.predict(X_test_transformed)
+                y_pred = await asyncio.to_thread(
+                    candidate.estimator.predict, X_test_transformed
+                )
                 candidate.test_score = self._calculate_test_score(
                     y_test, y_pred, problem_type
                 )
