@@ -58,6 +58,8 @@ jobs:
               placeholder text, or debugging output.
             - Do not post test comments, partial comments, or multiple comments.
               If a comment fails to post, do not retry with experimental content.
+            - Compose the complete review BEFORE posting and post it in one
+              `gh pr comment` call — never post a placeholder and edit it later.
             Be constructive and helpful in your feedback.
 
           # Tooling Claude is allowed to run.

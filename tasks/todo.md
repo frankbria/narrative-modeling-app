@@ -30,11 +30,11 @@ Plan source: CodeRabbit comment on issue #188, adapted to codebase findings.
 - Delete via `gh api -X DELETE /repos/.../issues/comments/{id}`; document deleted IDs in an issue #188 comment for audit
 
 ## Acceptance Criteria
-- [ ] `claude-review` job self-terminates via `timeout-minutes: 10`
-- [ ] Agent turn limit configured via `claude_args --max-turns` (design choice resolved: no native input)
-- [ ] Review prompt separates reference context from output; single consolidated comment mandated; anti-dumping instruction present
-- [ ] `claude.yml` has equivalent safeguards
-- [ ] PR #187 junk comments deleted; Final Triage Summary preserved; deleted IDs documented on issue #188
+- [x] `claude-review` job self-terminates via `timeout-minutes: 10`
+- [x] Agent turn limit configured via `claude_args --max-turns` (design choice resolved: no native input)
+- [x] Review prompt separates reference context from output; single consolidated comment mandated; anti-dumping instruction present
+- [x] `claude.yml` has equivalent safeguards
+- [x] PR #187 junk comments deleted; Final Triage Summary preserved; deleted IDs documented on issue #188
 
 ## Test/Validation Strategy
 - YAML workflows have no unit tests — validate with `actionlint` (or yamllint fallback) + CI green
