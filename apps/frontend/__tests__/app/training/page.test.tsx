@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { flushPromises } from '../../utils/mock-helpers';
 import TrainingJobsPage from '@/app/training/page';
 import type { TrainingJobSummary } from '@/lib/services/model';
 
@@ -186,6 +187,56 @@ describe('TrainingJobsPage', () => {
     );
     expect(screen.getByText('sales')).toBeInTheDocument();
     expect(screen.queryByText('fraud')).not.toBeInTheDocument();
+  });
+
+  it('dedupes a job returned by both the pending and running queries', async () => {
+    // A job can transition pending->running between the two in-flight
+    // queries and appear in both responses.
+    mockListTrainingJobs.mockImplementation((options?: { status?: string }) => {
+      if (options?.status === 'running' || options?.status === 'pending') {
+        return Promise.resolve(listResponse([runningJob]));
+      }
+      return Promise.resolve(listResponse([]));
+    });
+
+    render(<TrainingJobsPage />);
+
+    expect(await screen.findByText('churn')).toBeInTheDocument();
+    expect(screen.getAllByText('churn')).toHaveLength(1);
+  });
+
+  it('ignores a stale history response that resolves after a newer one', async () => {
+    let resolveSlowAll: (value: unknown) => void = () => {};
+    mockListTrainingJobs.mockImplementation(
+      (options?: { status?: string }) => {
+        if (options?.status === 'running' || options?.status === 'pending') {
+          return Promise.resolve(listResponse([]));
+        }
+        if (options?.status === 'failed') {
+          return Promise.resolve(listResponse([failedJob]));
+        }
+        // Initial "All" request: deliberately slow.
+        return new Promise((resolve) => {
+          resolveSlowAll = resolve;
+        });
+      }
+    );
+
+    render(<TrainingJobsPage />);
+
+    // Switch to "failed" while the initial "All" request is still pending.
+    fireEvent.change(await screen.findByLabelText(/Filter by status/i), {
+      target: { value: 'failed' },
+    });
+    expect(await screen.findByText('sales')).toBeInTheDocument();
+
+    // The stale "All" response resolves late and must NOT replace the rows.
+    await act(async () => {
+      resolveSlowAll(listResponse([completedJob, cancelledJob]));
+      await flushPromises();
+    });
+    expect(screen.queryByText('tenure')).not.toBeInTheDocument();
+    expect(screen.getByText('sales')).toBeInTheDocument();
   });
 
   it('loads more history rows with skip-based pagination', async () => {

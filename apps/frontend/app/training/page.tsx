@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { modelService, TrainingJobStatus, TrainingJobSummary } from '@/lib/services/model';
 import { TrainingProgress, formatDuration } from '@/components/training/TrainingProgress';
@@ -65,6 +65,9 @@ export default function TrainingJobsPage() {
   const [statusFilter, setStatusFilter] = useState<HistoryFilter>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Monotonic id so an out-of-order history response (slow request for a
+  // previous filter resolving late) can never overwrite newer rows.
+  const historyRequestSeq = useRef(0);
 
   const fetchInFlight = useCallback(async () => {
     try {
@@ -72,7 +75,14 @@ export default function TrainingJobsPage() {
         modelService.listTrainingJobs({ status: 'pending', limit: IN_FLIGHT_FETCH_LIMIT }),
         modelService.listTrainingJobs({ status: 'running', limit: IN_FLIGHT_FETCH_LIMIT }),
       ]);
-      setInFlightJobs([...running.jobs, ...pending.jobs]);
+      // A job can transition pending->running between the two queries and
+      // show up in both lists; dedupe by model_id (running wins).
+      const deduped = Array.from(
+        new Map(
+          [...pending.jobs, ...running.jobs].map((job) => [job.model_id, job])
+        ).values()
+      );
+      setInFlightJobs(deduped);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch training jobs');
@@ -81,12 +91,14 @@ export default function TrainingJobsPage() {
 
   const fetchHistory = useCallback(
     async (filter: HistoryFilter, skip: number, append: boolean) => {
+      const requestId = ++historyRequestSeq.current;
       try {
         const response = await modelService.listTrainingJobs({
           status: filter === 'all' ? ALL_TERMINAL_FILTER : filter,
           limit: HISTORY_PAGE_SIZE,
           skip,
         });
+        if (requestId !== historyRequestSeq.current) return;
         setHistoryJobs((prev) =>
           append ? [...prev, ...response.jobs] : response.jobs
         );
@@ -94,6 +106,7 @@ export default function TrainingJobsPage() {
         setHistorySkip(skip);
         setError(null);
       } catch (err) {
+        if (requestId !== historyRequestSeq.current) return;
         setError(err instanceof Error ? err.message : 'Failed to fetch training history');
       }
     },
