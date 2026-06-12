@@ -2,12 +2,13 @@
 API routes for model training and management
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import io
+import math
 import uuid
 from datetime import datetime, timezone
 import logging
@@ -28,7 +29,17 @@ from app.models.training_job import (
 )
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
-from app.services.model_storage import ModelStorageService
+from app.schemas.evaluation import (
+    ClassificationMetrics,
+    ModelComparisonRequest,
+    ModelComparisonResponse,
+    ModelEvaluationResponse,
+    ModelEvaluationSummary,
+    RegressionMetrics,
+)
+from app.services.evaluation_explanation_service import evaluation_explanation_service
+from app.services.metrics_service import MetricsService
+from app.services.model_storage import ModelStorageService, build_evaluation_payload
 from app.services.model_training import (
     AutoMLEngine,
     FeatureEngineeringConfig,
@@ -374,6 +385,23 @@ async def train_model_task(
             "training_config": training_config,
         }
 
+        # Held-out evaluation artifacts for the dashboard (issue #79).
+        # Built best-effort: a payload problem must never fail training.
+        evaluation_data = None
+        if result.y_test is not None and result.y_pred is not None:
+            try:
+                evaluation_data = build_evaluation_payload(
+                    problem_type=result.problem_type.value,
+                    y_test=result.y_test,
+                    y_pred=result.y_pred,
+                    y_proba=result.y_proba,
+                    class_labels=result.class_labels,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to build evaluation payload for {model_id}: {exc}"
+                )
+
         # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
@@ -383,6 +411,7 @@ async def train_model_task(
             request.dataset_id,
             model_metadata,
             model_id=model_id,
+            evaluation_data=evaluation_data,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.
@@ -600,6 +629,74 @@ async def list_training_jobs(
     )
 
 
+# NOTE: registered before the dynamic /{model_id} routes so "compare" is never
+# captured as a model id (same precedent as GET /jobs above).
+@router.post("/compare", response_model=ModelComparisonResponse)
+async def compare_models(
+    request: ModelComparisonRequest,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Compare 2-5 of the current user's models side by side (issue #79).
+
+    All models must belong to the same dataset and share a problem type so
+    their scores are actually comparable. Returns 404 when any id is unknown
+    (or owned by another user) and 400 on mixed datasets/problem types.
+    """
+    models: List[MLModel] = []
+    missing: List[str] = []
+    for model_id in request.model_ids:
+        model = await MLModel.find_one(
+            MLModel.model_id == model_id, MLModel.user_id == current_user_id
+        )
+        if model is None:
+            missing.append(model_id)
+        else:
+            models.append(model)
+
+    if missing:
+        raise HTTPException(
+            status_code=404, detail=f"Models not found: {', '.join(missing)}"
+        )
+
+    problem_types = {model.problem_type for model in models}
+    if len(problem_types) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Models must share the same problem type to be compared "
+                f"(got: {', '.join(sorted(problem_types))})"
+            ),
+        )
+    dataset_ids = {model.dataset_id for model in models}
+    if len(dataset_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Models must be trained on the same dataset to be compared "
+                f"(got: {', '.join(sorted(dataset_ids))})"
+            ),
+        )
+
+    return ModelComparisonResponse(
+        problem_type=models[0].problem_type,
+        dataset_id=models[0].dataset_id,
+        models=[
+            ModelEvaluationSummary(
+                model_id=model.model_id,
+                name=model.name,
+                algorithm=model.algorithm,
+                problem_type=model.problem_type,
+                cv_score=model.cv_score,
+                test_score=model.test_score,
+                metrics=_stored_scalar_metrics(model),
+                created_at=model.created_at,
+            )
+            for model in models
+        ],
+    )
+
+
 @router.get("/{model_id}/logs", response_model=TrainingLogsResponse)
 async def get_training_logs(
     model_id: str,
@@ -716,6 +813,142 @@ async def get_training_status(
         explanation=job.best_model_explanation,
         error=job.error,
     )
+
+
+def _stored_scalar_metrics(model: MLModel) -> Dict[str, float]:
+    """Scalar metrics persisted at training time, as a plain float dict.
+
+    Non-finite values are dropped: NaN/inf would serialize as invalid JSON
+    (the artifact path is NaN-safe via _to_json_safe; keep this path symmetric).
+    """
+    stored: Dict[str, float] = {}
+    for key, value in (model.metrics or {}).items():
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        ):
+            stored[key] = float(value)
+    if model.cv_score is not None and math.isfinite(float(model.cv_score)):
+        stored.setdefault("cv_score", float(model.cv_score))
+    if model.test_score is not None and math.isfinite(float(model.test_score)):
+        stored.setdefault("test_score", float(model.test_score))
+    return stored
+
+
+def _partial_evaluation_response(model: MLModel) -> ModelEvaluationResponse:
+    """Stored-scalars-only payload for models without evaluation artifacts."""
+    return ModelEvaluationResponse(
+        model_id=model.model_id,
+        model_name=model.name,
+        algorithm=model.algorithm,
+        problem_type=model.problem_type,
+        partial=True,
+        metrics=None,
+        stored_metrics=_stored_scalar_metrics(model),
+        confusion_matrix=None,
+        roc_curve=None,
+        pr_curve=None,
+        feature_importance=model.feature_importance,
+        ai_explanation=None,
+        evaluated_at=datetime.now(timezone.utc),
+    )
+
+
+async def _full_evaluation_response(
+    model: MLModel, artifacts: Dict[str, Any]
+) -> ModelEvaluationResponse:
+    """Compute the full evaluation payload from persisted held-out arrays."""
+    problem_type = artifacts.get("problem_type") or model.problem_type
+    y_test = artifacts["y_test"]
+    y_pred = artifacts["y_pred"]
+    y_proba = artifacts.get("y_proba")
+    class_labels = artifacts.get("class_labels")
+    is_classification = "classification" in str(problem_type).lower()
+
+    metrics: Union[ClassificationMetrics, RegressionMetrics]
+    if is_classification:
+        metrics = MetricsService.compute_classification_metrics(
+            y_test, y_pred, y_proba, class_labels
+        )
+        confusion = MetricsService.compute_confusion_matrix(
+            y_test, y_pred, class_labels
+        )
+        labels = class_labels or confusion.labels
+        roc = MetricsService.compute_roc_curves(y_test, y_proba, labels)
+        pr = MetricsService.compute_pr_curves(y_test, y_proba, labels)
+    else:
+        metrics = MetricsService.compute_regression_metrics(y_test, y_pred)
+        confusion = None
+        roc = None
+        pr = None
+
+    # The explanation must never break the evaluation: the service already
+    # degrades to its rule-based fallback internally, and this guard covers
+    # anything unexpected beyond that.
+    ai_explanation = None
+    try:
+        ai_explanation = await evaluation_explanation_service.generate_report_card(
+            problem_type=str(problem_type),
+            metrics=metrics,
+            confusion_matrix=confusion,
+            feature_importance=model.feature_importance,
+            n_test_samples=len(y_test),
+            model_name=model.name,
+            algorithm=model.algorithm,
+        )
+    except Exception as exc:
+        logger.warning(f"Report-card generation failed for {model.model_id}: {exc}")
+
+    return ModelEvaluationResponse(
+        model_id=model.model_id,
+        model_name=model.name,
+        algorithm=model.algorithm,
+        problem_type=model.problem_type,
+        partial=False,
+        metrics=metrics,
+        stored_metrics=_stored_scalar_metrics(model),
+        confusion_matrix=confusion,
+        roc_curve=roc,
+        pr_curve=pr,
+        feature_importance=model.feature_importance,
+        ai_explanation=ai_explanation,
+        evaluated_at=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/{model_id}/evaluation", response_model=ModelEvaluationResponse)
+async def get_model_evaluation(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Full evaluation payload for one model (issue #79).
+
+    Computes detailed metrics, the confusion matrix, and ROC/PR curves from
+    the held-out arrays persisted at training time, plus a plain-language AI
+    report card (rule-based fallback when OpenAI is unavailable). For models
+    without artifacts — trained before #79, or whose artifact load fails —
+    returns ``partial=true`` with the stored scalar metrics; an owned,
+    existing model never yields a 500.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    artifacts = await MetricsService.load_evaluation_artifacts(model)
+    if not artifacts or artifacts.get("y_test") is None or artifacts.get("y_pred") is None:
+        return _partial_evaluation_response(model)
+
+    try:
+        return await _full_evaluation_response(model, artifacts)
+    except Exception as exc:
+        logger.error(
+            f"Evaluation computation failed for {model_id}; "
+            f"degrading to partial results: {exc}"
+        )
+        return _partial_evaluation_response(model)
 
 
 @router.get("/{model_id}", response_model=MLModel)

@@ -105,7 +105,10 @@ class TestSimpleUploadWorkflow:
         csv_file = io.BytesIO(csv_data.encode('utf-8'))
 
         # Mock S3 upload
-        with patch('app.utils.s3.upload_file_to_s3') as mock_upload:
+        # Patch the route module's bound name (datasets.py does
+        # `from app.utils.s3 import upload_file_to_s3`, so patching the
+        # app.utils.s3 attribute never reaches the call site)
+        with patch('app.api.routes.datasets.upload_file_to_s3') as mock_upload:
             mock_upload.return_value = (True, "https://test-bucket.s3.amazonaws.com/test.csv")
 
             # Mock DatasetMetadata operations
