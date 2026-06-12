@@ -257,7 +257,6 @@ def main():
         if '--clear' in sys.argv:
             clear_test_data(db)
 
-        # Upload workflows need working S3-compatible storage
         ensure_s3_bucket()
 
         # Seed test user

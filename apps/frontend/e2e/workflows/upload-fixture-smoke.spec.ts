@@ -31,7 +31,6 @@ test.describe('Upload fixture smoke', () => {
     // A real stored ID (Mongo ObjectId / UUID shape), not a placeholder
     expect(datasetId).toMatch(/^[a-zA-Z0-9-]{8,}$/);
 
-    // Final URL is the explore page for exactly that dataset
     expect(page.url()).toContain(`/explore/${datasetId}`);
 
     // Explore page actually rendered (no stage-gate redirect back to /upload)

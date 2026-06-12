@@ -171,7 +171,6 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         return fail(`parsing file ID from success panel ("${fileIdText.trim()}")`);
       }
 
-      // Click "Next Step" and wait for navigation to the explore page.
       const nextStepButton = page.getByTestId('next-step-button');
       await nextStepButton
         .waitFor({ state: 'visible', timeout: 10000 })

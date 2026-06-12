@@ -258,7 +258,6 @@ test.describe('Dataset Upload Workflow', () => {
 
     await uploadPage.goto('/upload');
 
-    // Upload file and continue to the dataset's explore page
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
