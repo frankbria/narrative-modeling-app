@@ -77,6 +77,21 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     await use(csvBuffer);
   },
 
+  /**
+   * Shared upload fixture: drives the full upload flow through the real UI
+   * and returns the stored dataset's file ID.
+   *
+   * Provides `upload(fileName?: string): Promise<string>` — flow: navigate to
+   * /upload → wait for dropzone → attach file (from e2e/test-data, falling
+   * back to an inline CSV) → click upload → wait for the success panel or the
+   * inline error → parse the file ID from the success panel → click Next Step
+   * → verify landing on /explore/{fileId}.
+   *
+   * Failure mode: any step that fails throws via the internal `fail` helper,
+   * which includes the failing step name, the current URL, and any visible
+   * upload-error text — so UI drift or a broken backend is diagnosable from
+   * the test output alone (issue #191).
+   */
   uploadTestDataset: async ({ page }, use) => {
     const upload = async (fileName: string = 'sample.csv'): Promise<string> => {
       // Every step failure reports the current URL plus any visible upload
@@ -168,6 +183,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       const fileIdText = (await fileIdLabel.textContent()) ?? '';
       const fileId = fileIdText.match(/File ID:\s*([a-zA-Z0-9-]+)/)?.[1];
       if (!fileId) {
+        // return (not await): TS only narrows fileId to string when this
+        // branch provably exits the function
         return fail(`parsing file ID from success panel ("${fileIdText.trim()}")`);
       }
 

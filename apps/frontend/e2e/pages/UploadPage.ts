@@ -44,7 +44,13 @@ export class UploadPage extends BasePage {
     await nextStepButton.waitFor({ state: 'visible', timeout: 10000 });
     await nextStepButton.click();
     await this.page.waitForURL(/\/explore\/[a-zA-Z0-9-]+/, { timeout: 30000 });
-    await this.page.locator('h1').first().waitFor({ state: 'visible', timeout: 15000 });
+    // The explore page's h1 is the dataset filename; excluding the upload
+    // heading keeps this wait from matching /upload after a gating redirect
+    await this.page
+      .locator('h1')
+      .filter({ hasNotText: 'Upload Your Data' })
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
     if (this.page.url().includes('/upload')) {
       throw new Error('continueToExplore: redirected back to /upload by workflow stage gating');
     }

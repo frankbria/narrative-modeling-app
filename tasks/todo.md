@@ -48,11 +48,11 @@ Plan source: CodeRabbit Coding Plan comment (2026-06-12), adapted after codebase
 
 ## Acceptance Criteria (from issue)
 
-- [ ] `uploadTestDataset` fixture works against the current upload UI
-- [ ] `upload.spec.ts`: fixture-caused beforeEach failures eliminated (previously 3 passed / 8 failed)
-- [ ] `evaluate.spec.ts`: all 6 tests reach the dashboard (no longer blocked in beforeEach)
-- [ ] Smoke assertion that the fixture itself works runs as an early spec
-- [ ] Error state assertable via data-testid
+- [x] `uploadTestDataset` fixture works against the current upload UI
+- [x] `upload.spec.ts`: fixture-caused beforeEach failures eliminated (previously 3 passed / 8 failed)
+- [x] `evaluate.spec.ts`: all 6 tests reach the dashboard (no longer blocked in beforeEach)
+- [x] Smoke assertion that the fixture itself works runs as an early spec
+- [x] Error state assertable via data-testid
 
 ## Deviations from CodeRabbit plan
 

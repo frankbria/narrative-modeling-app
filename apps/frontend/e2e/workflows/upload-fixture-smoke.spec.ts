@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from '../fixtures';
+import { UploadPage } from '../pages/UploadPage';
 import { join } from 'path';
 
 test.describe('Upload fixture smoke', () => {
@@ -63,5 +64,8 @@ test.describe('Upload fixture smoke', () => {
     // No success affordances, and we never left the upload page
     expect(page.url()).toContain('/upload');
     await expect(page.getByTestId('next-step-button')).not.toBeVisible();
+
+    // The POM helper detects the same state
+    expect(await new UploadPage(page).hasUploadError()).toBe(true);
   });
 });
