@@ -6,6 +6,7 @@ shared OpenAI circuit breaker, and a deterministic rule-based fallback so
 GET /api/v1/ml/{model_id}/evaluation works fully without an API key.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -117,7 +118,10 @@ class EvaluationExplanationService:
         max_attempts=3,
         failure_threshold=5,
         recovery_timeout=60.0,
-        exceptions=(OpenAIError, Exception),
+        # OpenAIError only: parse/shape errors from a successful API response
+        # should not count toward opening the circuit (the caller's catch in
+        # generate_report_card still routes them to the rule-based fallback)
+        exceptions=(OpenAIError,),
         fallback_value=None,
     )
     async def _generate_openai_explanation(
@@ -130,7 +134,10 @@ class EvaluationExplanationService:
         the decorator's fallback_value=None then routes callers to the
         deterministic fallback.
         """
-        response = self.client.chat.completions.create(
+        # to_thread: the OpenAI client is synchronous; calling it inline would
+        # block the event loop for the whole network round-trip
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
             model=self.model,
             messages=[
                 {"role": "system", "content": self._create_system_prompt()},
@@ -150,9 +157,7 @@ class EvaluationExplanationService:
             },
             strengths=[str(item) for item in (data.get("strengths") or [])],
             concerns=[str(item) for item in (data.get("concerns") or [])],
-            recommendations=[
-                str(item) for item in (data.get("recommendations") or [])
-            ],
+            recommendations=[str(item) for item in (data.get("recommendations") or [])],
             generated_by="openai",
         )
 

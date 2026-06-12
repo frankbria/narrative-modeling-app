@@ -9,6 +9,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from openai import OpenAIError
 
 from app.schemas.evaluation import (
     AIExplanation,
@@ -159,8 +160,11 @@ class TestFallbackPath:
 
         service = EvaluationExplanationService()
         mock_client = MagicMock()
+        # Must be an OpenAIError: the breaker deliberately counts only API
+        # failures, not parse/programming errors (which still fall back via
+        # the caller's catch without opening the circuit)
         mock_client.chat.completions.create = MagicMock(
-            side_effect=RuntimeError("OpenAI unavailable")
+            side_effect=OpenAIError("OpenAI unavailable")
         )
         service.client = mock_client
 
