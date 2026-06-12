@@ -26,6 +26,7 @@ from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.models.version import DatasetVersion, TransformationLineage
 from app.models.visualization_cache import VisualizationCache
+from app.models.workflow import WorkflowState
 from app.services.transformation_engine.recipe_manager import (
     RecipeExecutionHistory,
     SharedRecipe,
@@ -59,4 +60,5 @@ DOCUMENT_MODELS = [
     TransformationRecipe,
     UserData,
     VisualizationCache,
+    WorkflowState,
 ]
