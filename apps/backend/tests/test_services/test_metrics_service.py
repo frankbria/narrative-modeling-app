@@ -317,6 +317,23 @@ class TestLoadEvaluationArtifacts:
         )
 
     @pytest.mark.asyncio
+    async def test_returns_none_on_bucket_mismatch(self, monkeypatch):
+        """A path stored under a different bucket degrades cleanly, no S3 call."""
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = "configured-bucket"
+        mock_s3.download_file_obj = AsyncMock()
+        monkeypatch.setattr("app.services.metrics_service.s3_service", mock_s3)
+
+        ml_model = MagicMock()
+        ml_model.model_id = "m_other_bucket"
+        ml_model.evaluation_data_path = (
+            "s3://other-bucket/models/u/m/evaluation_data.json"
+        )
+
+        assert await MetricsService.load_evaluation_artifacts(ml_model) is None
+        mock_s3.download_file_obj.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_returns_none_on_download_failure(self, monkeypatch):
         mock_s3 = MagicMock()
         mock_s3.bucket_name = "test-bucket"

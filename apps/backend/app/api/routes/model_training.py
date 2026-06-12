@@ -829,9 +829,9 @@ def _stored_scalar_metrics(model: MLModel) -> Dict[str, float]:
             and math.isfinite(float(value))
         ):
             stored[key] = float(value)
-    if math.isfinite(float(model.cv_score)):
+    if model.cv_score is not None and math.isfinite(float(model.cv_score)):
         stored.setdefault("cv_score", float(model.cv_score))
-    if math.isfinite(float(model.test_score)):
+    if model.test_score is not None and math.isfinite(float(model.test_score)):
         stored.setdefault("test_score", float(model.test_score))
     return stored
 

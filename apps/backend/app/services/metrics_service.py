@@ -285,6 +285,14 @@ class MetricsService:
         if not path:
             return None
         key = path.replace(f"s3://{s3_service.bucket_name}/", "")
+        if key.startswith("s3://"):
+            # Stored under a different bucket (environment mismatch) — degrade
+            # with a clear reason instead of a confusing S3 NoSuchKey error
+            logger.warning(
+                f"Evaluation artifact path for {ml_model.model_id} points at a "
+                f"different bucket than the configured one: {path}"
+            )
+            return None
         try:
             raw = await s3_service.download_file_obj(key)
             payload = json.loads(raw)
