@@ -22,6 +22,21 @@ e2e/
     └── sample.csv     # Sample CSV for testing
 ```
 
+## Prerequisites
+
+The harness (`test-e2e.sh`) starts the backend and frontend itself, but two services must already be running:
+
+- **MongoDB** on `localhost:27017`
+- **S3-compatible storage** — upload workflows hard-require it (issue #191). Start LocalStack first:
+  ```bash
+  docker compose -f ../backend/docker-compose.test.yml up -d localstack
+  ```
+  `test-e2e.sh` auto-detects LocalStack on `:4566` and exports `AWS_ENDPOINT_URL`; the seed script creates the `test-bucket` bucket. To use other S3-compatible storage (e.g. MinIO), set `AWS_ENDPOINT_URL` (and real credentials — values starting with `test-` put parts of the backend in mock mode) before running.
+
+Without storage the harness prints a loud warning and every upload-dependent spec fails in `beforeEach` with a `uploadTestDataset failed at "upload ..."` error naming the backend failure.
+
+If the upload flow's UI changes, run `workflows/upload-fixture-smoke.spec.ts` first — it validates the shared upload fixture in isolation and fails with a precise step-level error before other specs die opaquely.
+
 ## Running Tests
 
 ### Smoke Tests (Fast - ~5-7 minutes)
