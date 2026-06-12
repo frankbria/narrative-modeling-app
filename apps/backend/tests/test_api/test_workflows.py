@@ -157,6 +157,29 @@ class TestUpdateWorkflow:
         assert history.json()["total_versions"] == 2
 
     @pytest.mark.asyncio
+    async def test_put_with_explicit_null_preserves_model_id(
+        self, async_authorized_client, setup_database
+    ):
+        """Documented contract: explicit null is a no-op (forward-only beta) —
+        a full-state PUT including nulls must not clear stored ids."""
+        await async_authorized_client.post(
+            f"/api/v1/workflows/{DATASET_ID}", json=CREATE_PAYLOAD
+        )
+        await async_authorized_client.put(
+            f"/api/v1/workflows/{DATASET_ID}", json={"model_id": "model_1"}
+        )
+
+        response = await async_authorized_client.put(
+            f"/api/v1/workflows/{DATASET_ID}",
+            json={"current_stage": "model_evaluation", "model_id": None},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["current_stage"] == "model_evaluation"
+        assert data["model_id"] == "model_1"
+
+    @pytest.mark.asyncio
     async def test_put_missing_returns_404(
         self, async_authorized_client, setup_database
     ):
@@ -188,6 +211,9 @@ class TestWorkflowHistory:
         data = response.json()
         assert data["dataset_id"] == DATASET_ID
         assert data["total_versions"] == 3
+        # latest_version lets clients detect cap truncation (kept entries vs
+        # lifetime version counter)
+        assert data["latest_version"] == 3
         versions = [entry["version"] for entry in data["entries"]]
         assert versions == [1, 2, 3]
         assert data["entries"][-1]["current_stage"] == "feature_engineering"

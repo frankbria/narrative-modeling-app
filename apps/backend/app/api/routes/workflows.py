@@ -33,17 +33,7 @@ router = APIRouter()
 
 
 def _to_response(workflow: WorkflowState) -> WorkflowResponse:
-    return WorkflowResponse(
-        workflow_id=workflow.workflow_id,
-        dataset_id=workflow.dataset_id,
-        current_stage=workflow.current_stage,
-        completed_stages=workflow.completed_stages,
-        stage_data=workflow.stage_data,
-        model_id=workflow.model_id,
-        deployment_id=workflow.deployment_id,
-        created_at=workflow.created_at,
-        updated_at=workflow.updated_at,
-    )
+    return WorkflowResponse.model_validate(workflow)
 
 
 @router.post(
@@ -157,6 +147,7 @@ async def get_workflow_history(
         return WorkflowHistoryResponse(
             dataset_id=dataset_id,
             total_versions=len(history),
+            latest_version=history[-1].version if history else 0,
             entries=[
                 StateHistoryEntryResponse(
                     version=entry.version,

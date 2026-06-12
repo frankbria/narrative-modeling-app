@@ -237,8 +237,10 @@ export function WorkflowProvider({
         setState(prev => ({ ...prev, ...restored }));
       } else if (response.status === 404) {
         // New dataset with no backend workflow yet; if the local cache is for
-        // a different dataset, start this one from a clean slate
+        // a different dataset, start this one from a clean slate. Reset the
+        // saved-signature so the first save for this dataset is never skipped.
         workflowExistsRef.current = false;
+        lastSavedRef.current = null;
         if (!restoreFromLocal()) {
           setState({ ...initialState, datasetId });
         }

@@ -41,7 +41,12 @@ class WorkflowCreateRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    _stage_data_size = field_validator("stage_data")(_check_stage_data_size)
+    @field_validator("stage_data")
+    @classmethod
+    def check_stage_data_size(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        return _check_stage_data_size(v)
 
 
 class WorkflowUpdateRequest(BaseModel):
@@ -63,7 +68,12 @@ class WorkflowUpdateRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    _stage_data_size = field_validator("stage_data")(_check_stage_data_size)
+    @field_validator("stage_data")
+    @classmethod
+    def check_stage_data_size(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        return _check_stage_data_size(v)
 
 
 class WorkflowResponse(BaseModel):
@@ -79,7 +89,7 @@ class WorkflowResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "from_attributes": True}
 
 
 class StateHistoryEntryResponse(BaseModel):
@@ -97,10 +107,19 @@ class StateHistoryEntryResponse(BaseModel):
 
 
 class WorkflowHistoryResponse(BaseModel):
-    """Version history for recovery/audit."""
+    """Version history for recovery/audit.
+
+    History is capped server-side (latest 50 snapshots kept), so
+    `total_versions` counts the returned entries while `latest_version`
+    is the lifetime version counter — when they diverge, older entries
+    have been dropped.
+    """
 
     dataset_id: str
     total_versions: int
+    latest_version: int = Field(
+        0, description="Lifetime version counter (0 when history is empty)"
+    )
     entries: List[StateHistoryEntryResponse]
 
     model_config = {"populate_by_name": True}
