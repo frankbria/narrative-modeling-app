@@ -16,6 +16,7 @@
 import { test, expect } from '../fixtures';
 import { UploadPage } from '../pages/UploadPage';
 import { join } from 'path';
+import { readFileSync } from 'fs';
 
 test.describe('Dataset Upload Workflow', () => {
   test('should upload valid CSV file successfully @smoke', async ({ authenticatedPage }) => {
@@ -125,19 +126,15 @@ test.describe('Dataset Upload Workflow', () => {
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
 
-    // Wait for schema inference to complete
-    await authenticatedPage.waitForTimeout(2000);
-
-    // Verify schema information is displayed
-    // Looking for column names from sample.csv (age, income, purchased)
-    await expect(
-      authenticatedPage.locator('text=/age|income|purchased/').first()
-    ).toBeVisible({ timeout: 10000 });
-
-    // Verify data types are inferred
-    await expect(
-      authenticatedPage.locator('text=/numeric|integer|float|categorical|text/').first()
-    ).toBeVisible({ timeout: 5000 });
+    // The current upload UI surfaces the inferred schema as the Preview Data
+    // table: column headers from the file plus example rows. It does not
+    // render dtype labels (numeric/categorical/...) on this page.
+    await expect(authenticatedPage.locator('text=Preview Data')).toBeVisible({ timeout: 10000 });
+    for (const column of ['age', 'income', 'purchased']) {
+      await expect(
+        authenticatedPage.locator('th', { hasText: column })
+      ).toBeVisible();
+    }
   });
 
   test('should handle concurrent uploads', async ({ context, request }) => {
@@ -208,23 +205,27 @@ test.describe('Dataset Upload Workflow', () => {
 
     await uploadPage.goto('/upload');
 
-    // Find the drop zone
-    const dropZone = authenticatedPage.locator('[data-testid="drop-zone"], .drop-zone, [class*="upload"]').first();
+    const dropzone = authenticatedPage.getByTestId('upload-dropzone');
+    await dropzone.waitFor({ state: 'visible', timeout: 10000 });
 
-    if (await dropZone.isVisible()) {
-      const csvPath = join(__dirname, '../test-data/sample.csv');
+    // Simulate a real drag-and-drop: react-dropzone's onDrop fires on the
+    // drop event with a DataTransfer payload (not on input file selection).
+    const csvPath = join(__dirname, '../test-data/sample.csv');
+    const csvContent = readFileSync(csvPath).toString();
+    const dataTransfer = await authenticatedPage.evaluateHandle(
+      ({ data, name }) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([data], name, { type: 'text/csv' }));
+        return dt;
+      },
+      { data: csvContent, name: 'sample.csv' }
+    );
+    await dropzone.dispatchEvent('drop', { dataTransfer });
 
-      // Simulate drag and drop
-      await dropZone.setInputFiles(csvPath);
-
-      // Wait for upload to complete
-      await uploadPage.waitForUploadComplete();
-
-      // Verify upload succeeded
-      await expect(authenticatedPage.locator('text=/sample.csv|Upload complete/')).toBeVisible();
-    } else {
-      console.log('Drag and drop not implemented yet');
-    }
+    // Dropped file is reflected in the dropzone, then upload proceeds
+    await expect(authenticatedPage.locator('text=sample.csv').first()).toBeVisible({ timeout: 5000 });
+    await authenticatedPage.getByTestId('upload-button').click();
+    await uploadPage.waitForUploadComplete();
   });
 
   test('should allow canceling an in-progress upload', async ({ authenticatedPage }) => {
@@ -257,22 +258,24 @@ test.describe('Dataset Upload Workflow', () => {
 
     await uploadPage.goto('/upload');
 
-    // Upload file
+    // Upload file and continue to the dataset's explore page
     const csvPath = join(__dirname, '../test-data/sample.csv');
     await uploadPage.uploadFile(csvPath);
     await uploadPage.waitForUploadComplete();
+    await uploadPage.continueToExplore();
 
-    // Get dataset ID
+    // The post-upload URL (/explore/{id}) is where the dataset ID lives;
+    // there is no standalone /datasets/{id} detail route in the current app
     const datasetId = await uploadPage.getDatasetId();
 
-    // Refresh the page
+    // Refresh: workflow state persists in localStorage, so the explore page
+    // must not stage-gate back to /upload and the dataset must reload
     await authenticatedPage.reload();
 
-    // Navigate to dataset
-    await authenticatedPage.goto(`/datasets/${datasetId}`);
-
-    // Verify dataset still exists and displays correctly
-    await expect(authenticatedPage.locator('text=/sample.csv|Upload complete/')).toBeVisible({ timeout: 5000 });
+    await expect(
+      authenticatedPage.locator('h1', { hasText: 'sample.csv' })
+    ).toBeVisible({ timeout: 15000 });
+    expect(authenticatedPage.url()).toContain(`/explore/${datasetId}`);
   });
 
   test('should display data preview after successful upload', async ({ authenticatedPage }) => {
