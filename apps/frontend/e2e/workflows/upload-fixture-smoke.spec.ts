@@ -7,6 +7,10 @@
  *
  * If these tests fail, fix the fixture (or the upload flow) before chasing
  * failures in other specs: they all funnel through this fixture.
+ *
+ * (Integration tests against the live stack — mutation testing is
+ * impractical here; these assertions demonstrably failed against the
+ * pre-#191 broken harness and pass after the fix.)
  */
 
 import { test, expect } from '../fixtures';
@@ -50,7 +54,9 @@ test.describe('Upload fixture smoke', () => {
     await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
     await uploadButton.click();
 
-    // Backend rejects the unsupported format; the inline error panel renders
+    // The dropzone advertises .json, but the secure upload endpoint only
+    // accepts CSV/Excel content types and returns 400 — a deterministic
+    // backend rejection that must surface as the inline error panel
     await expect(page.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId('upload-error-message')).toBeVisible();
 
