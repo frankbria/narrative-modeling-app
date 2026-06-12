@@ -50,7 +50,7 @@ class TestDualWriteValidation:
         }
 
         # Mock S3 upload
-        with patch('app.utils.s3.upload_file_to_s3', return_value=(True, 's3://bucket/test_dual_write.csv')):
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, 's3://bucket/test_dual_write.csv')):
             # ACT: Upload file through new endpoint
             response = await async_authorized_client.post(
                 "/api/v1/datasets/upload",
@@ -235,7 +235,7 @@ class TestLegacyEndpointCompatibility:
             'file': ('legacy_list_test.csv', io.BytesIO(csv_content), 'text/csv')
         }
 
-        with patch('app.utils.s3.upload_file_to_s3', return_value=(True, 's3://bucket/legacy_list_test.csv')):
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, 's3://bucket/legacy_list_test.csv')):
             upload_response = await async_authorized_client.post(
                 "/api/v1/datasets/upload",
                 files=files
@@ -278,7 +278,7 @@ class TestLegacyEndpointCompatibility:
             'file': ('legacy_retrieve_test.csv', io.BytesIO(csv_content), 'text/csv')
         }
 
-        with patch('app.utils.s3.upload_file_to_s3', return_value=(True, 's3://bucket/legacy_retrieve_test.csv')):
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, 's3://bucket/legacy_retrieve_test.csv')):
             upload_response = await async_authorized_client.post(
                 "/api/v1/datasets/upload",
                 files=files
@@ -319,7 +319,7 @@ class TestLegacyEndpointCompatibility:
             'file': ('format_test.csv', io.BytesIO(csv_content), 'text/csv')
         }
 
-        with patch('app.utils.s3.upload_file_to_s3', return_value=(True, 's3://bucket/format_test.csv')):
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, 's3://bucket/format_test.csv')):
             await async_authorized_client.post(
                 "/api/v1/datasets/upload",
                 files=files
@@ -357,7 +357,7 @@ class TestLegacyEndpointCompatibility:
                 'file': (f'latest_test_{i}.csv', io.BytesIO(csv_content), 'text/csv')
             }
 
-            with patch('app.utils.s3.upload_file_to_s3', return_value=(True, f's3://bucket/latest_test_{i}.csv')):
+            with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, f's3://bucket/latest_test_{i}.csv')):
                 response = await async_authorized_client.post(
                     "/api/v1/datasets/upload",
                     files=files
