@@ -7,6 +7,7 @@ switches. Each saved change is also appended to an embedded version history of
 full state snapshots for recovery/audit.
 """
 
+import copy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -107,7 +108,9 @@ class WorkflowState(Document):
             version=version,
             current_stage=self.current_stage,
             completed_stages=list(self.completed_stages),
-            stage_data=dict(self.stage_data),
+            # Deep copy: stage_data nests dicts/lists, and a shared reference
+            # would let later mutations silently rewrite history entries
+            stage_data=copy.deepcopy(self.stage_data),
             model_id=self.model_id,
             deployment_id=self.deployment_id,
         )

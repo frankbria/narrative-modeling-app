@@ -6,10 +6,24 @@ Mirrors the frontend workflow state shape in
 as a string array; stage values are the lowercase WorkflowStage enum values).
 """
 
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# stage_data is user-controlled and snapshotted into up to 50 history entries
+# per document; cap its serialized size so a workflow document can never
+# approach MongoDB's 16MB limit (50 × 256KB = 12.8MB worst case).
+MAX_STAGE_DATA_BYTES = 256 * 1024
+
+
+def _check_stage_data_size(v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if v is not None and len(json.dumps(v, default=str)) > MAX_STAGE_DATA_BYTES:
+        raise ValueError(
+            f"stage_data exceeds {MAX_STAGE_DATA_BYTES} bytes when serialized"
+        )
+    return v
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -27,6 +41,8 @@ class WorkflowCreateRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    _stage_data_size = field_validator("stage_data")(_check_stage_data_size)
+
 
 class WorkflowUpdateRequest(BaseModel):
     """Body for PUT /workflows/{dataset_id} — all fields optional (partial update)."""
@@ -34,10 +50,20 @@ class WorkflowUpdateRequest(BaseModel):
     current_stage: Optional[str] = None
     completed_stages: Optional[List[str]] = None
     stage_data: Optional[Dict[str, Any]] = None
-    model_id: Optional[str] = None
-    deployment_id: Optional[str] = None
+    model_id: Optional[str] = Field(
+        None,
+        description="Trained model id. Explicit null is a no-op (cannot unset); "
+        "workflow progress is forward-only in beta.",
+    )
+    deployment_id: Optional[str] = Field(
+        None,
+        description="Deployment id. Explicit null is a no-op (cannot unset); "
+        "workflow progress is forward-only in beta.",
+    )
 
     model_config = {"populate_by_name": True}
+
+    _stage_data_size = field_validator("stage_data")(_check_stage_data_size)
 
 
 class WorkflowResponse(BaseModel):

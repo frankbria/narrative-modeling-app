@@ -56,6 +56,22 @@ class TestCreateWorkflow:
         assert duplicate.status_code == 409
 
     @pytest.mark.asyncio
+    async def test_oversized_stage_data_is_rejected(
+        self, async_authorized_client, setup_database
+    ):
+        """stage_data is user-controlled and snapshotted up to 50 times per
+        document; unbounded payloads would brick saves at Mongo's 16MB doc
+        limit, so the API rejects them at the boundary (422)."""
+        from app.schemas.workflow import MAX_STAGE_DATA_BYTES
+
+        oversized = {"blob": "x" * (MAX_STAGE_DATA_BYTES + 1)}
+        response = await async_authorized_client.post(
+            f"/api/v1/workflows/{DATASET_ID}",
+            json={"current_stage": "data_loading", "stage_data": oversized},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_create_requires_auth(self, async_test_client, setup_database):
         response = await async_test_client.post(
             f"/api/v1/workflows/{DATASET_ID}", json=CREATE_PAYLOAD
