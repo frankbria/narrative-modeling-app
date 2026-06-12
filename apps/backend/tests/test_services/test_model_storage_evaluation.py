@@ -201,6 +201,64 @@ class TestSaveModelEvaluationData:
         await ml_model.delete()
 
 
+class TestSaveModelEvaluationDataLocalStack:
+    """Round-trip through a real S3 API (skips when LocalStack is absent)."""
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_round_trip_via_localstack(
+        self, monkeypatch, s3_client, test_s3_bucket, setup_database
+    ):
+        import os
+
+        monkeypatch.setenv(
+            "AWS_ENDPOINT_URL", os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
+        )
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "localstack")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "localstack")
+        monkeypatch.setenv("AWS_BUCKET_NAME", test_s3_bucket)
+
+        storage = ModelStorageService()
+        assert not storage.s3_service.is_mock_mode
+
+        payload = build_evaluation_payload(
+            problem_type="binary_classification",
+            y_test=np.array([0, 1, 1]),
+            y_pred=np.array([0, 1, 0]),
+            y_proba=np.array([[0.9, 0.1], [0.2, 0.8], [0.6, 0.4]]),
+            class_labels=["0", "1"],
+        )
+        ml_model = await storage.save_model(
+            _trained_candidate(),
+            FeatureEngineer(),
+            user_id="user_ls",
+            dataset_id="ds_ls",
+            model_metadata=_metadata(),
+            model_id="model_ls",
+            evaluation_data=payload,
+        )
+
+        expected_key = "models/user_ls/model_ls/evaluation_data.json"
+        assert ml_model.evaluation_data_path == f"s3://{test_s3_bucket}/{expected_key}"
+
+        # The object actually landed in S3 with the exact payload
+        body = s3_client.get_object(Bucket=test_s3_bucket, Key=expected_key)[
+            "Body"
+        ].read()
+        assert json.loads(body) == payload
+
+        # And the MetricsService loader round-trips it
+        from app.services.metrics_service import MetricsService
+
+        monkeypatch.setattr(
+            "app.services.metrics_service.s3_service", storage.s3_service
+        )
+        loaded = await MetricsService.load_evaluation_artifacts(ml_model)
+        assert loaded == payload
+
+        await ml_model.delete()
+
+
 class TestMLModelBackwardCompatibility:
     @pytest.mark.unit
     def test_old_documents_without_evaluation_path_validate(self):
