@@ -9,6 +9,8 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from pymongo.errors import DuplicateKeyError
+
 from app.models.workflow import StateHistoryEntry, WorkflowState
 from app.services.base_service import BaseService
 from app.services.exceptions import ConflictError, NotFoundError
@@ -88,7 +90,14 @@ class WorkflowService(BaseService[WorkflowState]):
             deployment_id=deployment_id,
         )
         workflow.state_history = [workflow.snapshot(version=1)]
-        await workflow.save()
+        try:
+            await workflow.save()
+        except DuplicateKeyError:
+            # Lost a concurrent-create race past the explicit check; the
+            # unique (user_id, dataset_id) index is the backstop
+            raise ConflictError(
+                message=f"Workflow already exists for dataset '{dataset_id}'"
+            )
 
         logger.info(
             "Created workflow %s for user %s dataset %s",

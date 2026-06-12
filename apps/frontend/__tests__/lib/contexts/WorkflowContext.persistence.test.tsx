@@ -221,6 +221,30 @@ describe('saveWorkflow', () => {
     });
   });
 
+  it('persists a current-stage change so refresh restores the right stage', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(201, backendState));
+
+    const { result } = renderHook(() => useWorkflow(), { wrapper });
+
+    await act(async () => {
+      result.current.completeStage(WorkflowStage.DATA_LOADING, { datasetId: DATASET_ID });
+    });
+    await waitFor(() => expect(workflowCalls().length).toBe(1));
+
+    // User navigates into the next stage (no completion yet) — must still save
+    await act(async () => {
+      result.current.setCurrentStage(WorkflowStage.DATA_PROFILING);
+    });
+
+    await waitFor(() => {
+      const saves = workflowCalls();
+      expect(saves.length).toBe(2);
+      const [, init] = saves[1];
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body).current_stage).toBe('data_profiling');
+    });
+  });
+
   it('does not re-save unchanged state (no redundant history versions)', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(201, backendState));
 

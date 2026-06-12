@@ -59,6 +59,32 @@ class TestWorkflowServiceCreate:
             await _create_default_workflow(service)
 
     @pytest.mark.asyncio
+    async def test_concurrent_create_race_raises_conflict(self, setup_database):
+        """When two creates race past the find_one check, the unique index
+        rejects the loser; the resulting DuplicateKeyError must surface as
+        ConflictError (409), not an unhandled 500.
+
+        Both tasks await their duplicate-check I/O before either saves, so
+        the loser always hits the index rather than the explicit check.
+        """
+        import asyncio
+
+        from app.models.workflow import WorkflowState
+
+        service = _make_service()
+
+        results = await asyncio.gather(
+            _create_default_workflow(service),
+            _create_default_workflow(service),
+            return_exceptions=True,
+        )
+
+        created = [r for r in results if isinstance(r, WorkflowState)]
+        conflicts = [r for r in results if isinstance(r, ConflictError)]
+        assert len(created) == 1, f"expected exactly one winner, got {results!r}"
+        assert len(conflicts) == 1, f"expected ConflictError for the loser, got {results!r}"
+
+    @pytest.mark.asyncio
     async def test_same_dataset_different_users_both_allowed(self, setup_database):
         service = _make_service()
         first = await _create_default_workflow(service)

@@ -279,16 +279,18 @@ export function WorkflowProvider({
     }
   }, [state]);
 
-  // Auto-save to the backend at stage boundaries (completedStages only grows).
+  // Auto-save to the backend at stage boundaries: when a stage completes
+  // (completedStages only grows) and when the user moves to a different
+  // stage — otherwise a refresh mid-stage would restore the previous stage.
   // localStorage (effect above) remains the offline cache layer.
   const completedCount = state.completedStages.size;
   useEffect(() => {
     if (!isHydrated || !state.datasetId || completedCount === 0) return;
     saveWorkflow();
     // saveWorkflow identity changes with every state update; keying on
-    // completedCount limits backend writes to stage-boundary transitions
+    // completedCount + currentStage limits backend writes to stage boundaries
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completedCount, state.datasetId, isHydrated]);
+  }, [completedCount, state.currentStage, state.datasetId, isHydrated]);
 
   const updateHistoryPosition = useCallback((position: number) => {
     setState(prev => ({
