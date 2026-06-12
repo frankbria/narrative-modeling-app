@@ -74,23 +74,32 @@ export function WorkflowProvider({
   const router = useRouter();
   const pathname = usePathname();
 
-  // Load workflow state from backend (with localStorage fallback) or localStorage
+  // Load workflow state from backend (with localStorage fallback) or localStorage.
+  // The backend load must finish BEFORE isHydrated flips: gated pages redirect
+  // on canAccessStage() as soon as isHydrated is true, so recovery state has to
+  // be in place by then (crash/new-device loads have no localStorage to lean on).
   useEffect(() => {
     const hydrate = async () => {
-      if (initialDatasetId) {
-        await loadWorkflow(initialDatasetId);
-      } else {
-        const localState = readLocalState();
-        if (localState) {
-          setState({
-            ...localState,
-            completedStages: new Set(localState.completedStages)
-          });
-          // Refresh from backend when the cached state names a dataset
-          if (localState.datasetId) {
-            await loadWorkflow(localState.datasetId);
-          }
-        }
+      const localState = readLocalState();
+      // Dataset id sources, in priority order: explicit prop, localStorage
+      // cache, the URL of a direct stage-page load (/explore/{id} after a
+      // crash or on a new device, where no local cache exists)
+      const pathSegments = (pathname ?? '').split('/').filter(Boolean);
+      const pathDatasetId =
+        pathSegments.length === 2 &&
+        WORKFLOW_STAGES.some(stage => stage.route === `/${pathSegments[0]}`)
+          ? pathSegments[1]
+          : undefined;
+      const datasetId = initialDatasetId ?? localState?.datasetId ?? pathDatasetId;
+
+      if (localState) {
+        setState({
+          ...localState,
+          completedStages: new Set(localState.completedStages)
+        });
+      }
+      if (datasetId) {
+        await loadWorkflow(datasetId);
       }
       setIsHydrated(true);
     };

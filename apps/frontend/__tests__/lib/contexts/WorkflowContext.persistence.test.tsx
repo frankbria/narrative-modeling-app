@@ -12,13 +12,15 @@ import { WorkflowProvider, useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 
+// '/' matches no stage route, so the route-sync effect never overrides
+// the currentStage restored from the backend in these tests; individual
+// tests override mockPathname to simulate direct page loads
+let mockPathname = '/';
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn(), back: jest.fn() }),
   useParams: () => ({ id: 'test-dataset-id' }),
   useSearchParams: () => new URLSearchParams(),
-  // '/' matches no stage route, so the route-sync effect never overrides
-  // the currentStage restored from the backend in these tests
-  usePathname: () => '/',
+  usePathname: () => mockPathname,
 }));
 
 const DATASET_ID = 'ds-123';
@@ -55,6 +57,7 @@ function workflowCalls() {
 
 beforeEach(() => {
   localStorage.clear();
+  mockPathname = '/';
   (global.fetch as jest.Mock).mockReset();
 });
 
@@ -265,6 +268,21 @@ describe('saveWorkflow', () => {
 });
 
 describe('recovery on mount', () => {
+  it('recovers from backend on a direct stage-page load with empty localStorage (crash/new device)', async () => {
+    // Simulates: browser cache cleared (or new device), user reopens
+    // /explore/{datasetId}. Provider must restore from backend BEFORE
+    // isHydrated flips, or the page's stage gate redirects to /upload.
+    mockPathname = `/explore/${DATASET_ID}`;
+    (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(200, backendState));
+
+    const { result } = renderHook(() => useWorkflow(), { wrapper });
+
+    await waitFor(() => expect(result.current.isHydrated).toBe(true));
+    expect(result.current.state.datasetId).toBe(DATASET_ID);
+    expect(result.current.state.completedStages.has(WorkflowStage.DATA_LOADING)).toBe(true);
+    expect(result.current.state.completedStages.has(WorkflowStage.DATA_PROFILING)).toBe(true);
+  });
+
   it('loads backend state on mount when initialDatasetId is provided', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(200, backendState));
 
