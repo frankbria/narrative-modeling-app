@@ -120,6 +120,15 @@ describe('buildEvaluationCSV', () => {
     )
   })
 
+  it('quotes fields containing carriage returns (RFC 4180)', () => {
+    const evaluation = {
+      ...classificationEvaluation,
+      model_name: 'line one\rline two',
+    }
+    const csv = buildEvaluationCSV(evaluation)
+    expect(csv).toContain('Name,"line one\rline two"')
+  })
+
   it('builds the regression CSV without classification-only sections', () => {
     const csv = buildEvaluationCSV(regressionEvaluation)
 

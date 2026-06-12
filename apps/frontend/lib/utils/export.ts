@@ -13,7 +13,7 @@ import {
 
 /** Escape a CSV field per RFC 4180 (SelectedFeatureSet precedent). */
 function escapeCsvField(field: string): string {
-  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+  if (/[,"\n\r]/.test(field)) {
     return `"${field.replace(/"/g, '""')}"`
   }
   return field
