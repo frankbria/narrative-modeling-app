@@ -69,6 +69,7 @@ from app.api.routes import (
     feature_engineering,
     features,
     feature_store,
+    workflows,
 )
 from app.services.api_documentation import APIDocumentationService
 from app.auth.nextauth_auth import SKIP_AUTH
@@ -253,6 +254,11 @@ app.include_router(
     feature_store.router,
     prefix=f"{settings.API_V1_STR}/feature-store",
     tags=["feature-store"],
+)
+app.include_router(
+    workflows.router,
+    prefix=f"{settings.API_V1_STR}",
+    tags=["workflows"],
 )
 
 
