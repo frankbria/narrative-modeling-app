@@ -3,6 +3,10 @@
  */
 
 import { getAuthToken } from '@/lib/auth-helpers'
+import type {
+  ModelComparisonResponse,
+  ModelEvaluationResponse
+} from '@/lib/types/evaluation'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
@@ -350,6 +354,63 @@ export class ModelService {
     return response.json()
   }
 
+  /**
+   * Fetch the full evaluation artifacts for a trained model (issue #79):
+   * metrics, confusion matrix, ROC/PR curves, feature importance and the
+   * AI-generated explanation. `partial: true` responses carry only the
+   * scalar metrics stored at training time.
+   *
+   * @param modelId - The id returned by {@link trainModel}.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async getEvaluation(
+    modelId: string,
+    token: string | null
+  ): Promise<ModelEvaluationResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/evaluation`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch model evaluation')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Compare 2-5 models trained on the same dataset (issue #79).
+   *
+   * @param modelIds - Ids of the models to compare.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async compareModels(
+    modelIds: string[],
+    token: string | null
+  ): Promise<ModelComparisonResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/compare`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token),
+        body: JSON.stringify({ model_ids: modelIds })
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to compare models')
+    }
+
+    return response.json()
+  }
+
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -450,6 +511,18 @@ class ModelServiceClient {
   async cancelTraining(modelId: string): Promise<CancelTrainingResponse> {
     const token = await getAuthToken()
     return ModelService.cancelTraining(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a model's evaluation. */
+  async getEvaluation(modelId: string): Promise<ModelEvaluationResponse> {
+    const token = await getAuthToken()
+    return ModelService.getEvaluation(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and compare models. */
+  async compareModels(modelIds: string[]): Promise<ModelComparisonResponse> {
+    const token = await getAuthToken()
+    return ModelService.compareModels(modelIds, token)
   }
 
   async trainModel(
