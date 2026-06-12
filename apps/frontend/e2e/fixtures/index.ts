@@ -77,19 +77,52 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     await use(csvBuffer);
   },
 
+  /**
+   * Shared upload fixture: drives the full upload flow through the real UI
+   * and returns the stored dataset's file ID.
+   *
+   * Provides `upload(fileName?: string): Promise<string>` — flow: navigate to
+   * /upload → wait for dropzone → attach file (from e2e/test-data, falling
+   * back to an inline CSV) → click upload → wait for the success panel or the
+   * inline error → parse the file ID from the success panel → click Next Step
+   * → verify landing on /explore/{fileId}.
+   *
+   * Failure mode: any step that fails throws via the internal `fail` helper,
+   * which includes the failing step name, the current URL, and any visible
+   * upload-error text — so UI drift or a broken backend is diagnosable from
+   * the test output alone (issue #191).
+   */
   uploadTestDataset: async ({ page }, use) => {
     const upload = async (fileName: string = 'sample.csv'): Promise<string> => {
+      // Every step failure reports the current URL plus any visible upload
+      // error so a drifted UI or a broken backend is diagnosable from the
+      // test output alone (issue #191).
+      const fail = async (step: string, cause?: unknown): Promise<never> => {
+        const errorText = await page
+          .getByTestId('upload-error')
+          .textContent({ timeout: 1000 })
+          .catch(() => null);
+        throw new Error(
+          `uploadTestDataset failed at "${step}". Current URL: ${page.url()}` +
+            (errorText ? `. Upload error shown: ${errorText.trim()}` : '') +
+            (cause instanceof Error ? `. Cause: ${cause.message}` : '')
+        );
+      };
+
       // Navigate to upload page
       await page.goto('/upload');
-      await page.waitForLoadState('networkidle');
 
       // Wait for dropzone container to be visible (react-dropzone needs this)
       const dropzone = page.getByTestId('upload-dropzone');
-      await dropzone.waitFor({ state: 'visible', timeout: 10000 });
+      await dropzone
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch((e) => fail('waiting for upload dropzone', e));
 
       // Locate hidden file input using data-testid
       const fileInput = page.getByTestId('file-input');
-      await fileInput.waitFor({ state: 'attached', timeout: 10000 });
+      await fileInput
+        .waitFor({ state: 'attached', timeout: 10000 })
+        .catch((e) => fail('waiting for file input', e));
 
       // Prepare file buffer
       const csvPath = join(__dirname, '../test-data', fileName);
@@ -116,50 +149,68 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
       // Wait for upload button to be visible and enabled
       const uploadButton = page.getByTestId('upload-button');
-      await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
-
-      // Verify button is enabled before clicking
-      await page.waitForFunction(
-        () => {
-          const element = document.querySelector('[data-testid="upload-button"]');
-          return element && !element.hasAttribute('disabled');
-        },
-        { timeout: 5000 }
-      );
+      await uploadButton
+        .waitFor({ state: 'visible', timeout: 5000 })
+        .catch((e) => fail('waiting for upload button', e));
+      await uploadButton
+        .and(page.locator(':not([disabled])'))
+        .waitFor({ state: 'visible', timeout: 5000 })
+        .catch((e) => fail('waiting for upload button to be enabled', e));
 
       // Click upload button
       await uploadButton.click();
 
       // The upload page does not auto-navigate: it shows a success panel
-      // with a "Next Step" button that takes the user to /explore/{id}.
+      // (with the new file's ID) or an inline error. Wait for whichever
+      // appears first so backend failures surface immediately with their
+      // message instead of as an opaque 30s timeout.
+      const successPanel = page.getByTestId('upload-status');
+      const errorPanel = page.getByTestId('upload-error');
+      await successPanel
+        .or(errorPanel)
+        .waitFor({ state: 'visible', timeout: 30000 })
+        .catch((e) => fail('waiting for upload success or error panel', e));
+      if (await errorPanel.isVisible()) {
+        await fail('upload (backend rejected or request failed)');
+      }
+
+      // The success panel must carry the stored file ID — this is what the
+      // explore page is keyed on.
+      const fileIdLabel = page.getByTestId('file-id');
+      await fileIdLabel
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch((e) => fail('waiting for file ID in success panel', e));
+      const fileIdText = (await fileIdLabel.textContent()) ?? '';
+      const fileId = fileIdText.match(/File ID:\s*([a-zA-Z0-9-]+)/)?.[1];
+      if (!fileId) {
+        // return (not await): TS only narrows fileId to string when this
+        // branch provably exits the function
+        return fail(`parsing file ID from success panel ("${fileIdText.trim()}")`);
+      }
+
       const nextStepButton = page.getByTestId('next-step-button');
-      try {
-        await nextStepButton.waitFor({ state: 'visible', timeout: 30000 });
-      } catch (error) {
-        throw new Error(
-          `Upload failed: success panel did not appear. Current URL: ${page.url()}`
-        );
-      }
+      await nextStepButton
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch((e) => fail('waiting for next-step button', e));
       await nextStepButton.click();
+      await page
+        .waitForURL(new RegExp(`/explore/${fileId}`), { timeout: 30000 })
+        .catch((e) => fail('navigating to explore page', e));
 
-      // Wait for navigation to dataset detail page
+      // Stability check: the explore page stage-gates on workflow state and
+      // redirects back to /upload when DATA_LOADING isn't marked complete.
+      // Waiting for the dataset heading proves we actually landed.
+      const exploreHeading = page.locator('h1', { hasText: fileName });
       try {
-        await page.waitForURL(/\/explore\/[a-zA-Z0-9-]+/, { timeout: 30000 });
-      } catch (error) {
-        throw new Error(
-          `Upload failed: did not navigate to explore page. Current URL: ${page.url()}`
-        );
+        await exploreHeading.waitFor({ state: 'visible', timeout: 15000 });
+      } catch (e) {
+        if (page.url().includes('/upload')) {
+          await fail('explore page redirected back to /upload (workflow state not persisted)');
+        }
+        await fail('waiting for explore page content', e);
       }
 
-      // Extract dataset ID from URL
-      const url = page.url();
-      const match = url.match(/\/explore\/([a-zA-Z0-9-]+)/);
-
-      if (!match) {
-        throw new Error(`Failed to extract dataset ID from URL: ${url}`);
-      }
-
-      return match[1];
+      return fileId;
     };
 
     await use(upload);

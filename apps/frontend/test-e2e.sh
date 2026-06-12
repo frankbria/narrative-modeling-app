@@ -92,6 +92,21 @@ export AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-test-bucket}
 export AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-test-bucket}
 export AWS_S3_BUCKET=${AWS_S3_BUCKET:-test-bucket}
 export S3_BUCKET=${S3_BUCKET:-test-bucket}
+
+# Upload workflows hard-require S3-compatible storage (issue #191): without
+# AWS_ENDPOINT_URL the backend targets real AWS with dummy credentials and
+# every upload-dependent spec fails (or hangs in boto3 retries) in beforeEach.
+# Auto-detect a running LocalStack so a plain ./test-e2e.sh just works.
+if [ -z "${AWS_ENDPOINT_URL:-}" ] && curl -sf http://localhost:4566/_localstack/health >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Detected LocalStack on :4566 — using it for S3${NC}"
+    export AWS_ENDPOINT_URL=http://localhost:4566
+fi
+if [ -z "${AWS_ENDPOINT_URL:-}" ]; then
+    echo -e "${YELLOW}⚠ No S3-compatible storage configured (AWS_ENDPOINT_URL unset, LocalStack not on :4566).${NC}"
+    echo -e "${YELLOW}  Upload-dependent specs WILL fail. Start storage first:${NC}"
+    echo -e "${YELLOW}  docker compose -f ${BACKEND_DIR}/docker-compose.test.yml up -d localstack${NC}"
+fi
+
 if [ -n "${AWS_ENDPOINT_URL:-}" ]; then
   # Real S3-compatible storage (MinIO/LocalStack): credentials must NOT start
   # with "test-" or S3Service enters no-op mock mode instead of using MinIO.

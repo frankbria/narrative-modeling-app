@@ -44,13 +44,15 @@ services:
     environment:
       SERVICES: s3
       DEBUG: 1
-      DATA_DIR: /tmp/localstack/data
       AWS_DEFAULT_REGION: us-east-1
       # LocalStack accepts any credentials - these are placeholders for local testing
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     volumes:
-      - localstack_data:/tmp/localstack
+      # LocalStack >=1.0 persists under /var/lib/localstack; mounting a volume at
+      # /tmp/localstack (legacy DATA_DIR layout) breaks 3.x startup ("Device or
+      # resource busy" while it clears its tmp dir)
+      - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]

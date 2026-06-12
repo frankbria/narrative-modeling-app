@@ -584,12 +584,12 @@ export default function UploadPage() {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md" data-testid="upload-error">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
               <div className="text-sm text-red-800">
                 <p className="font-semibold">Upload Error</p>
-                <p>{errorMessage}</p>
+                <p data-testid="upload-error-message">{errorMessage}</p>
               </div>
             </div>
           </div>
