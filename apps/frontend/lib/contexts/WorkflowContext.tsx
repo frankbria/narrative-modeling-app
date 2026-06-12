@@ -29,7 +29,6 @@ function readLocalState(): CachedWorkflowState | null {
     if (stateAge < oneDayMs) {
       return parsed;
     }
-    console.log('Clearing old workflow state');
     localStorage.removeItem('workflowState');
   } catch (e) {
     console.error('Failed to load workflow state:', e);
