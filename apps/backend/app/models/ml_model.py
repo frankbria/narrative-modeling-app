@@ -38,6 +38,9 @@ class MLModel(Document):
     # Storage information
     model_path: str  # S3 path to serialized model
     feature_transformer_path: Optional[str] = None  # S3 path to feature transformer
+    # S3 path to held-out evaluation arrays (issue #79); None for models
+    # trained before the evaluation dashboard existed (backward compatible)
+    evaluation_data_path: Optional[str] = None
     
     # Versioning
     version: str = Field(default="1.0.0", description="Semantic version (major.minor.patch)")

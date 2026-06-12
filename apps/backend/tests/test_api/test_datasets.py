@@ -148,7 +148,7 @@ class TestDatasetRoutes:
         }
 
         # Mock S3 upload
-        with patch('app.utils.s3.upload_file_to_s3', return_value=(True, 's3://bucket/test.csv')):
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(True, 's3://bucket/test.csv')):
             # ACT: Upload file
             response = await async_authorized_client.post(
                 "/api/v1/datasets/upload",
