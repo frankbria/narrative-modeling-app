@@ -56,6 +56,7 @@ def sample_ml_model():
     mock_model.n_features = 3
     mock_model.model_path = "s3://bucket/models/model_123.pkl"
     mock_model.feature_transformer_path = "s3://bucket/transformers/transformer_123.pkl"
+    mock_model.evaluation_data_path = None
     mock_model.metrics = {"accuracy": 0.85, "f1": 0.83}
     mock_model.feature_importance = {"feature1": 0.5, "feature2": 0.3, "feature3": 0.2}
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
