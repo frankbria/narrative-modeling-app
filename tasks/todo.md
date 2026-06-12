@@ -1,61 +1,78 @@
-# Issue #191 — Fix drifted e2e upload fixture (uploadTestDataset)
+# Issue #87 — Backend workflow persistence (replace localStorage-only state)
 
-> Previous plan (issue #79 — model evaluation dashboard) was **completed** and merged in PR #190
-> (commit 78e5f7d); see `git log tasks/todo.md`.
+> Previous plan (issue #191 — e2e upload fixture) was **completed** and merged in PR #192
+> (commit f4d77b9); see `git log tasks/todo.md`.
 
-Plan source: CodeRabbit Coding Plan comment (2026-06-12), adapted after codebase exploration.
+**Plan source**: CodeRabbit plan comment (2026-06-06), adapted to current codebase.
+**Branch**: `feature/87-workflow-persistence`
 
 ## Adapted Plan
 
-1. **Reproduce & diagnose (evidence first)**
-   - Start backend (port 8000, SKIP_AUTH=true) + frontend (port 3010) per `scripts/test-e2e.sh` env
-   - Run `e2e/workflows/upload.spec.ts` happy-path test; capture the actual failure: network response of POST /upload/secure, page state (error toast text vs stuck "Scanning for PII...")
-   - Evidence so far: stale test artifact shows the upload POST never resolving (button stuck "Scanning for PII..."); issue body reports 200 + error toast. Root cause NOT yet confirmed — CodeRabbit's assumed workflow-state race is unsupported.
-   - Files: none (diagnosis)
+### Step 1 — Backend data layer (TDD: tests first)
+- [x] Create `apps/backend/tests/test_services/test_workflow_service.py` (RED)
+  - create_workflow: generates workflow_id, initial history entry (version=1)
+  - update_workflow: appends history entry with incremented version, updates `updated_at`
+  - get_by_dataset: returns workflow; raises NotFoundError when absent
+  - duplicate create raises ConflictError
+  - history accumulation over multiple updates; history cap (keep latest 50)
+- [x] Create `apps/backend/app/models/workflow.py`
+  - `StateHistoryEntry(BaseModel)`: version, current_stage, completed_stages, stage_data, model_id, deployment_id, timestamp
+  - `WorkflowState(Document)`: workflow_id (str UUID), user_id `Indexed(str)`, dataset_id `Indexed(str)`, current_stage, completed_stages (List[str]), stage_data (Dict[str, Any]), model_id, deployment_id, state_history, created_at/updated_at via `get_current_time()`
+  - `Settings`: collection `workflow_states`; indexes incl. compound unique `[("user_id",1),("dataset_id",1)]`
+  - Follow `dataset.py` patterns (Field descriptions, model_config json_encoders)
+- [x] Create `apps/backend/app/services/workflow_service.py`
+  - `WorkflowService(BaseService[WorkflowState])`, `_get_id_field() -> "workflow_id"`
+  - `get_by_dataset`, `create_workflow` (app-level duplicate check → ConflictError), `update_workflow` (append history, cap 50), `get_history`
+  - Exceptions from `app.services.exceptions`
+- [x] Register model in `apps/backend/app/models/registry.py` (NOT main.py — registry is canonical)
 
-2. **Fix the actual root cause (app bug, if present)** — bug-ownership rule
-   - Candidates: backend hang/slow path in `/upload/secure` (S3 upload, PII scan), invalid JSON from NaN in `df.head(5).to_dict('records')`, frontend response handling in `app/upload/page.tsx`, workflow gating race in `WorkflowContext`/explore page
-   - TDD: write a failing test capturing the bug before fixing
-   - Files: TBD by diagnosis (`apps/backend/app/api/routes/secure_upload.py`, `apps/frontend/app/upload/page.tsx`, `apps/frontend/lib/contexts/WorkflowContext.tsx`)
+### Step 2 — Backend API layer (TDD: tests first)
+- [x] Create `apps/backend/tests/test_api/test_workflows.py` (RED) — `@pytest.mark.integration`, `async_authorized_client` + `setup_database`, user `test_user_123`
+  - POST → 201; duplicate POST → 409
+  - GET → 200 with state; missing → 404; other user's workflow → 404 (user-scoped lookup; deviation from plan's 403, see below)
+  - PUT → 200, appends history; missing → 404
+  - GET /history → entries + total_versions
+  - Recovery: create at stage N → new client session → GET returns stage N; history checkpoints reconstructable
+- [x] Create `apps/backend/app/schemas/workflow.py`
+  - `WorkflowCreateRequest`, `WorkflowUpdateRequest` (all-optional), `WorkflowResponse`, `StateHistoryEntryResponse`, `WorkflowHistoryResponse`
+- [x] Create `apps/backend/app/api/routes/workflows.py`
+  - `GET/POST/PUT /workflows/{dataset_id}`, `GET /workflows/{dataset_id}/history`
+  - Auth via `Depends(get_current_user_id)` (`app.auth.nextauth_auth`); HTTPException mapping; logging per `datasets.py`
+- [x] Register router in `apps/backend/app/main.py`: `app.include_router(workflows.router, prefix=f"{settings.API_V1_STR}", tags=["workflows"])`
 
-3. **Add error-state testids to upload page**
-   - `data-testid="upload-error"` on error container, `data-testid="upload-error-message"` on error text
-   - Files: `apps/frontend/app/upload/page.tsx`
+### Step 3 — Frontend integration (TDD: tests first)
+- [x] Create `apps/frontend/lib/contexts/__tests__/WorkflowContext.persistence.test.tsx` (RED) — mock fetch + getAuthToken
+  - loadWorkflow: backend 200 → state hydrated + localStorage cache refreshed; 404 → localStorage fallback; network error → localStorage fallback
+  - saveWorkflow: POST first time, PUT after exists (and PUT after POST→409)
+  - completeStage triggers saveWorkflow
+- [x] Modify `apps/frontend/lib/contexts/WorkflowContext.tsx`
+  - Remove stub early-return in `loadWorkflow()` (~line 158); URL `${API_URL}/workflows/${datasetId}` (API_URL already includes /api/v1)
+  - Auth via existing `getAuthToken()` helper, conditional Bearer header (ModelService pattern)
+  - `saveWorkflow()`: POST when not yet created, PUT thereafter; 409 → PUT; failure → localStorage fallback (existing useEffect stays as cache layer)
+  - `completeStage()` fires saveWorkflow after state update (stage boundaries are infrequent — no debounce; YAGNI)
+  - Page-load recovery: backend state wins; 404/network error → keep localStorage state
+  - Set ↔ Array serialization preserved (completedStages)
 
-4. **Harden `uploadTestDataset` fixture**
-   - Wait for success text + `file-id` visibility before next-step click
-   - Post-navigation stability check: URL stays on `/explore/{id}` (not redirected back to `/upload`), explore page content visible
-   - Contextual failure messages: capture current URL + visible `upload-error` text in thrown errors
-   - NO `networkidle` waits (Playwright anti-pattern) — explicit signals only
-   - Retry-click fallback ONLY if diagnosis proves an unfixable race
-   - Files: `apps/frontend/e2e/fixtures/index.ts`
-
-5. **Sync UploadPage POM**
-   - `waitForUploadComplete()` mirrors fixture success detection (file-id)
-   - `continueToExplore()` gets the same stability check
-   - New `hasUploadError()` via `[data-testid="upload-error"]`
-   - Files: `apps/frontend/e2e/pages/UploadPage.ts`
-
-6. **Fixture smoke spec (early drift detection)**
-   - `apps/frontend/e2e/workflows/upload-fixture-smoke.spec.ts` (named/tagged to run early)
-   - Happy path: valid dataset ID returned, URL contains `/explore/{id}` matching ID, explore content renders
-   - Error path: invalid file → `upload-error` visible, stays on `/upload`, no `next-step-button`
-   - Files: new spec
-
-7. **Verify**
-   - Run `upload.spec.ts` (expect the 8 fixture-blocked tests recovered), `evaluate.spec.ts` (6 tests reach dashboard), smoke spec green
-   - `npm run type-check`, lint
+### Step 4 — Quality gates & docs
+- [x] Backend: `cd apps/backend && uv run pytest tests/test_services/test_workflow_service.py tests/test_api/test_workflows.py -v` then full relevant suite; ruff
+- [x] Frontend: `npm test`, `npm run type-check`
+- [x] Update CLAUDE.md (issue #87 section), e2e README if seeding behavior affected
+- [x] Demo (Phase 11), PR, CI, merge
 
 ## Acceptance Criteria (from issue)
+- [x] Workflow state stored in MongoDB per user/dataset: current stage, completion flags, key selections (stage_data)
+- [x] State saved at each stage boundary; restored on login/page load
+- [x] Automatic recovery after browser crash/refresh mid-stage
+- [x] Version history of workflow state changes (append log)
+- [x] Endpoints: POST/GET/PUT `/api/v1/workflows/{id}` (+ `/history`)
+- [x] Frontend WorkflowContext reads/writes backend state with localStorage offline fallback
+- [x] Integration tests for save/restore/recovery paths
 
-- [x] `uploadTestDataset` fixture works against the current upload UI
-- [x] `upload.spec.ts`: fixture-caused beforeEach failures eliminated (previously 3 passed / 8 failed)
-- [x] `evaluate.spec.ts`: all 6 tests reach the dashboard (no longer blocked in beforeEach)
-- [x] Smoke assertion that the fixture itself works runs as an early spec
-- [x] Error state assertable via data-testid
-
-## Deviations from CodeRabbit plan
-
-- Added Step 1 (reproduce/diagnose) — CodeRabbit chose "workflow-state race" without evidence; the stale failure artifact instead shows the upload request never resolving
-- Added Step 2 (fix app root cause) — the issue may be an app bug, not just fixture drift; hardening the fixture alone could mask it
-- Dropped `networkidle` waits and made the retry-click fallback conditional on proven need
+## Deviations from the CodeRabbit plan
+1. **Model registration via `app/models/registry.py`**, not `init_beanie()` in `main.py` — registry became canonical in issue #160; main.py already consumes `DOCUMENT_MODELS`.
+2. **Wrong-user GET returns 404, not 403** — lookups are scoped by `(user_id, dataset_id)`, so another user's workflow is simply not found; avoids leaking existence. Plan's 403 test becomes a 404 test.
+3. **App-level duplicate check (ConflictError → 409) in addition to the unique index** — unit tests run on mongomock with `skip_indexes=True`, so the index alone can't be relied on in tests.
+4. **History capped at 50 entries** (keep latest) — full-snapshot entries with unbounded growth risk the 16MB Mongo doc limit; cap is one line and satisfies "simple append log".
+5. **`StateHistoryEntry` also snapshots `model_id`/`deployment_id`** so a history entry can fully reconstruct state (plan's recovery test demands full reconstruction but omitted these fields).
+6. **No debounce on auto-save** — stage boundaries are infrequent user actions; plan said "if needed". YAGNI.
+7. **Frontend URL is `${API_URL}/workflows/…`** — `API_URL` constant already contains `/api/v1`.
