@@ -65,7 +65,16 @@ class EvaluationExplanationService:
             algorithm,
         )
         if self.client is not None:
-            explanation = await self._generate_openai_explanation(context)
+            try:
+                explanation = await self._generate_openai_explanation(context)
+            except Exception as exc:
+                # Includes CircuitBreakerOpen fail-fast. Catching HERE (not inside
+                # the breaker-wrapped method) keeps the breaker's failure counting
+                # intact while preserving this method's never-raises contract.
+                logger.warning(
+                    f"OpenAI report card unavailable, using rule-based fallback: {exc}"
+                )
+                explanation = None
             if explanation is not None:
                 return explanation
         return self._generate_fallback_explanation(context)
@@ -114,36 +123,38 @@ class EvaluationExplanationService:
     async def _generate_openai_explanation(
         self, context: Dict[str, Any]
     ) -> Optional[AIExplanation]:
-        """Call OpenAI in JSON mode; returns None on any failure (fallback kicks in)."""
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._create_system_prompt()},
-                    {"role": "user", "content": self._create_user_prompt(context)},
-                ],
-                temperature=0.4,
-                max_tokens=1200,
-                response_format={"type": "json_object"},
-            )
-            content = response.choices[0].message.content
-            data = json.loads(content)
-            return AIExplanation(
-                overall_assessment=str(data.get("overall_assessment", "")),
-                metric_explanations={
-                    str(key): str(value)
-                    for key, value in (data.get("metric_explanations") or {}).items()
-                },
-                strengths=[str(item) for item in (data.get("strengths") or [])],
-                concerns=[str(item) for item in (data.get("concerns") or [])],
-                recommendations=[
-                    str(item) for item in (data.get("recommendations") or [])
-                ],
-                generated_by="openai",
-            )
-        except Exception as exc:
-            logger.error(f"OpenAI report-card generation failed: {exc}")
-            return None
+        """Call OpenAI in JSON mode.
+
+        Exceptions must propagate so the circuit breaker records the failure
+        (a swallowed exception reads as success and the breaker never opens);
+        the decorator's fallback_value=None then routes callers to the
+        deterministic fallback.
+        """
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self._create_system_prompt()},
+                {"role": "user", "content": self._create_user_prompt(context)},
+            ],
+            temperature=0.4,
+            max_tokens=1200,
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        return AIExplanation(
+            overall_assessment=str(data.get("overall_assessment", "")),
+            metric_explanations={
+                str(key): str(value)
+                for key, value in (data.get("metric_explanations") or {}).items()
+            },
+            strengths=[str(item) for item in (data.get("strengths") or [])],
+            concerns=[str(item) for item in (data.get("concerns") or [])],
+            recommendations=[
+                str(item) for item in (data.get("recommendations") or [])
+            ],
+            generated_by="openai",
+        )
 
     @staticmethod
     def _create_system_prompt() -> str:

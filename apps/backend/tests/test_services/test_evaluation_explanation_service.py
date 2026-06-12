@@ -18,8 +18,24 @@ from app.schemas.evaluation import (
     RegressionMetrics,
 )
 from app.services.evaluation_explanation_service import EvaluationExplanationService
+from app.utils.circuit_breaker import get_circuit_breaker
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def reset_openai_breaker():
+    """Isolate the shared 'openai' circuit breaker.
+
+    Failure-path tests now genuinely record breaker failures (the service no
+    longer swallows exceptions before the decorator can count them), so state
+    must be reset around each test to avoid opening the circuit for other
+    suites that share the 'openai' breaker.
+    """
+    breaker = get_circuit_breaker("openai")
+    breaker.reset()
+    yield breaker
+    breaker.reset()
 
 
 @pytest.fixture
@@ -127,6 +143,33 @@ class TestFallbackPath:
 
         assert result.generated_by == "fallback"
         assert result.overall_assessment
+
+    @pytest.mark.asyncio
+    async def test_failures_are_recorded_by_circuit_breaker(
+        self, reset_openai_breaker, classification_metrics, confusion
+    ):
+        """A failing OpenAI call must count toward opening the circuit.
+
+        Guards against the swallowed-exception bug where the method's own
+        try/except returned None, the decorator recorded a success, and the
+        breaker could never open.
+        """
+        breaker = reset_openai_breaker
+        assert breaker.metrics.consecutive_failures == 0
+
+        service = EvaluationExplanationService()
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = MagicMock(
+            side_effect=RuntimeError("OpenAI unavailable")
+        )
+        service.client = mock_client
+
+        result = await service.generate_report_card(
+            **_report_card_kwargs(classification_metrics, confusion)
+        )
+
+        assert result.generated_by == "fallback"
+        assert breaker.metrics.consecutive_failures >= 1
 
     @pytest.mark.asyncio
     async def test_fallback_when_response_not_json(self, classification_metrics):

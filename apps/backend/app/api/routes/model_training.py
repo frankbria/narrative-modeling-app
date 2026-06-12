@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import io
+import math
 import uuid
 from datetime import datetime, timezone
 import logging
@@ -815,13 +816,23 @@ async def get_training_status(
 
 
 def _stored_scalar_metrics(model: MLModel) -> Dict[str, float]:
-    """Scalar metrics persisted at training time, as a plain float dict."""
+    """Scalar metrics persisted at training time, as a plain float dict.
+
+    Non-finite values are dropped: NaN/inf would serialize as invalid JSON
+    (the artifact path is NaN-safe via _to_json_safe; keep this path symmetric).
+    """
     stored: Dict[str, float] = {}
     for key, value in (model.metrics or {}).items():
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        ):
             stored[key] = float(value)
-    stored.setdefault("cv_score", float(model.cv_score))
-    stored.setdefault("test_score", float(model.test_score))
+    if math.isfinite(float(model.cv_score)):
+        stored.setdefault("cv_score", float(model.cv_score))
+    if math.isfinite(float(model.test_score)):
+        stored.setdefault("test_score", float(model.test_score))
     return stored
 
 

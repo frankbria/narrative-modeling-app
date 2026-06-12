@@ -202,6 +202,8 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
         </svg>
       </div>
 
+      {/* aria-live wrapper stays mounted so the panel's appearance is announced */}
+      <div aria-live="polite">
       {selected !== null && (
         <div
           data-testid="confusion-cell-detail"
@@ -230,6 +232,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
           </dl>
         </div>
       )}
+      </div>
     </div>
   )
 }
