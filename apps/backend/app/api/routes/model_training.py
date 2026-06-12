@@ -2,7 +2,7 @@
 API routes for model training and management
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 import pandas as pd
@@ -29,10 +29,12 @@ from app.models.training_job import (
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
 from app.schemas.evaluation import (
+    ClassificationMetrics,
     ModelComparisonRequest,
     ModelComparisonResponse,
     ModelEvaluationResponse,
     ModelEvaluationSummary,
+    RegressionMetrics,
 )
 from app.services.evaluation_explanation_service import evaluation_explanation_service
 from app.services.metrics_service import MetricsService
@@ -853,6 +855,7 @@ async def _full_evaluation_response(
     class_labels = artifacts.get("class_labels")
     is_classification = "classification" in str(problem_type).lower()
 
+    metrics: Union[ClassificationMetrics, RegressionMetrics]
     if is_classification:
         metrics = MetricsService.compute_classification_metrics(
             y_test, y_pred, y_proba, class_labels
