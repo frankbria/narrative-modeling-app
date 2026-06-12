@@ -132,11 +132,20 @@ async def upload_file(
                     logger.error(f"Failed to generate signed URL: {e}")
                     # Continue with the regular URL if signed URL generation fails
 
+        # Derive file_type from the extension — model training routes on it
+        # (values it understands: csv, xls, xlsx, parquet)
+        file_type = (
+            file.filename.rsplit(".", 1)[-1].lower()
+            if file.filename and "." in file.filename
+            else None
+        )
+
         # Create a new UserData document
         user_data = UserData(
             user_id=current_user_id,
             filename=file.filename,
             original_filename=file.filename,
+            file_type=file_type,
             s3_url=s3_url,
             num_rows=num_rows,
             num_columns=num_columns,
