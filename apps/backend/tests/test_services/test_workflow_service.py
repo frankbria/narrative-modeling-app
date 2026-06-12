@@ -82,7 +82,9 @@ class TestWorkflowServiceCreate:
         created = [r for r in results if isinstance(r, WorkflowState)]
         conflicts = [r for r in results if isinstance(r, ConflictError)]
         assert len(created) == 1, f"expected exactly one winner, got {results!r}"
-        assert len(conflicts) == 1, f"expected ConflictError for the loser, got {results!r}"
+        assert len(conflicts) == 1, (
+            f"expected ConflictError for the loser, got {results!r}"
+        )
 
     @pytest.mark.asyncio
     async def test_same_dataset_different_users_both_allowed(self, setup_database):

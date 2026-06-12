@@ -9,6 +9,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from beanie.exceptions import RevisionIdWasChanged
 from pymongo.errors import DuplicateKeyError
 
 from app.models.workflow import StateHistoryEntry, WorkflowState
@@ -92,9 +93,10 @@ class WorkflowService(BaseService[WorkflowState]):
         workflow.state_history = [workflow.snapshot(version=1)]
         try:
             await workflow.save()
-        except DuplicateKeyError:
+        except (DuplicateKeyError, RevisionIdWasChanged):
             # Lost a concurrent-create race past the explicit check; the
-            # unique (user_id, dataset_id) index is the backstop
+            # unique (user_id, dataset_id) index is the backstop. Beanie
+            # surfaces the index violation from save() as RevisionIdWasChanged.
             raise ConflictError(
                 message=f"Workflow already exists for dataset '{dataset_id}'"
             )
