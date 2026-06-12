@@ -200,6 +200,43 @@ def verify_seed(db):
 
     return True
 
+def ensure_s3_bucket():
+    """Create the test S3 bucket on the configured S3-compatible endpoint.
+
+    Upload workflows hard-require working storage: without it the backend's
+    /upload/secure call fails (or hangs in boto3 retries against real AWS) and
+    every upload-dependent E2E spec dies in beforeEach (issue #191). Only runs
+    when AWS_ENDPOINT_URL points at LocalStack/MinIO — never against real AWS.
+    """
+    endpoint_url = os.getenv('AWS_ENDPOINT_URL')
+    if not endpoint_url:
+        print("\n⚠️  AWS_ENDPOINT_URL is not set — no S3-compatible storage configured.")
+        print("   Upload-dependent E2E specs WILL fail. Start LocalStack first:")
+        print("   docker compose -f ../backend/docker-compose.test.yml up -d localstack")
+        return
+
+    bucket = os.getenv('AWS_BUCKET_NAME', 'test-bucket')
+    try:
+        import boto3
+        client = boto3.client(
+            's3',
+            endpoint_url=endpoint_url,
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID', 'test'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
+            region_name=os.getenv('AWS_REGION', 'us-east-1'),
+        )
+        existing = {b['Name'] for b in client.list_buckets().get('Buckets', [])}
+        if bucket not in existing:
+            client.create_bucket(Bucket=bucket)
+            print(f"\n✅ Created S3 bucket '{bucket}' at {endpoint_url}")
+        else:
+            print(f"\n✅ S3 bucket '{bucket}' already exists at {endpoint_url}")
+    except Exception as e:
+        print(f"\n❌ Could not ensure S3 bucket '{bucket}' at {endpoint_url}: {e}")
+        print("   Upload-dependent E2E specs will fail without working storage.")
+        sys.exit(1)
+
+
 def main():
     """Main seeding logic."""
     print("=" * 60)
@@ -219,6 +256,9 @@ def main():
         # Optional: Clear existing test data for fresh start
         if '--clear' in sys.argv:
             clear_test_data(db)
+
+        # Upload workflows need working S3-compatible storage
+        ensure_s3_bucket()
 
         # Seed test user
         user_id = seed_nextauth_user(db)
