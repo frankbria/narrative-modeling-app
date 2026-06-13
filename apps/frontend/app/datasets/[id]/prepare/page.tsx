@@ -474,7 +474,10 @@ export default function DatasetPreparePage() {
       </div>
 
       {/* Edit Transformation Dialog */}
-      {editingIndex !== null && (() => {
+      {/* Guard on transformations[editingIndex]: the index can briefly outlive
+          its array entry (e.g. a delete while the dialog is open), and accessing
+          .type on undefined would crash the page. */}
+      {editingIndex !== null && transformations[editingIndex] && (() => {
         const editingType = transformations[editingIndex].type;
         const typeMeta = transformationTypes.find(
           (t) => t.type === editingType

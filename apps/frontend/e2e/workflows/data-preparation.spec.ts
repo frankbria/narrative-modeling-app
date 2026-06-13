@@ -12,33 +12,74 @@
  */
 
 import { test, expect } from '../fixtures';
-import { join } from 'path';
+import type { Page, APIRequestContext } from '@playwright/test';
+
+/**
+ * Seed the workflow state a real user would have after completing profiling,
+ * so the DATA_PROFILING-gated prepare page is reachable.
+ *
+ * Since #87 the backend is the source of truth during hydration: the upload
+ * flow persists a backend workflow at the data_loading stage, which would
+ * override a localStorage-only seed and re-gate the page. So seed the real
+ * backend workflow (no mocking — E2E uses the live API). With SKIP_AUTH the
+ * backend maps `Bearer dev-user-default` to the same user the frontend session
+ * resolves to, which owns the just-uploaded dataset. The localStorage seed is
+ * kept as the offline fallback layer the app reads when the backend is down.
+ */
+async function seedPreparationWorkflow(
+  page: Page,
+  request: APIRequestContext,
+  datasetId: string
+): Promise<void> {
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const headers = {
+    Authorization: 'Bearer dev-user-default',
+    'Content-Type': 'application/json',
+  };
+  const workflow = {
+    current_stage: 'data_preparation',
+    completed_stages: ['data_loading', 'data_profiling'],
+    stage_data: {},
+  };
+  // PUT updates the workflow the upload flow already created; fall back to POST
+  // if no workflow exists yet (upload didn't persist one).
+  const put = await request.put(`${apiBase}/workflows/${datasetId}`, {
+    headers,
+    data: workflow,
+  });
+  if (put.status() === 404) {
+    await request.post(`${apiBase}/workflows/${datasetId}`, {
+      headers,
+      data: workflow,
+    });
+  }
+
+  // addInitScript (not evaluate): a still-open page persists its own in-memory
+  // state on changes and would clobber a one-time seed; the init script
+  // re-seeds before app code runs on every navigation.
+  await page.addInitScript((id) => {
+    localStorage.setItem(
+      'workflowState',
+      JSON.stringify({
+        currentStage: 'data_preparation',
+        completedStages: ['data_loading', 'data_profiling'],
+        stageData: {},
+        datasetId: id,
+        lastUpdated: new Date().toISOString(),
+      })
+    );
+  }, datasetId);
+}
 
 test.describe('Data Preparation Page', () => {
   let datasetId: string;
 
-  test.beforeEach(async ({ page, uploadTestDataset }) => {
-    // Upload test dataset
+  test.beforeEach(async ({ page, request, uploadTestDataset }) => {
+    // Upload test dataset, then seed the profiling-complete workflow state so
+    // the DATA_PROFILING-gated prepare page is reachable (see helper).
     datasetId = await uploadTestDataset();
-
-    // The prepare page is stage-gated behind DATA_PROFILING; these tests
-    // target the preparation UI directly, so seed the workflow state a real
-    // user would have after completing the profiling stage.
-    // addInitScript (not evaluate): the still-open explore page persists its
-    // own in-memory state on changes and would clobber a one-time seed; the
-    // init script re-seeds before app code runs on every navigation.
-    await page.addInitScript((id) => {
-      localStorage.setItem(
-        'workflowState',
-        JSON.stringify({
-          currentStage: 'data_preparation',
-          completedStages: ['data_loading', 'data_profiling'],
-          stageData: {},
-          datasetId: id,
-          lastUpdated: new Date().toISOString(),
-        })
-      );
-    }, datasetId);
+    await seedPreparationWorkflow(page, request, datasetId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {
@@ -47,34 +88,44 @@ test.describe('Data Preparation Page', () => {
     }
   });
 
-  // Disabled pending #155: /datasets/{id}/prepare throws a client-side
-  // exception — previously masked by the gating redirect fixed in PR #154
-  test.fixme('should load data preparation page with dataset info @smoke', async ({ authenticatedPage }) => {
+  test('should load data preparation page with dataset info @smoke', async ({ authenticatedPage }) => {
     await authenticatedPage.goto(`/datasets/${datasetId}/prepare`);
 
     // Verify page title
     await expect(authenticatedPage.locator('h1:has-text("Prepare Data")')).toBeVisible({ timeout: 10000 });
 
-    // Verify dataset metadata is displayed
-    await expect(authenticatedPage.locator('text=/rows/')).toBeVisible();
-    await expect(authenticatedPage.locator('text=/columns/')).toBeVisible();
+    // Verify dataset metadata is displayed. Scope to the "<n> rows"/"<n> columns"
+    // shape: a bare /rows/ also matches transformation descriptions in the
+    // sidebar ("Remove rows with missing values") and trips strict mode.
+    await expect(authenticatedPage.locator('text=/\\d+ rows/')).toBeVisible();
+    await expect(authenticatedPage.locator('text=/\\d+ columns/')).toBeVisible();
 
-    // Verify back button exists
-    await expect(authenticatedPage.locator('button:has-text("Back"), a:has-text("Back")')).toBeVisible();
+    // Verify back button exists. The Back control is an <a> wrapping a <button>,
+    // so the combined selector matches two nodes — assert on the first.
+    await expect(
+      authenticatedPage.locator('button:has-text("Back"), a:has-text("Back")').first()
+    ).toBeVisible();
   });
 
-  // Disabled pending #155: same client-side crash as above
-  test.fixme('should display view mode toggle buttons @smoke', async ({ authenticatedPage }) => {
+  test('should display view mode toggle buttons @smoke', async ({ authenticatedPage }) => {
     await authenticatedPage.goto(`/datasets/${datasetId}/prepare`);
 
     // Verify both view mode buttons exist
     await expect(authenticatedPage.locator('button:has-text("Visual")')).toBeVisible({ timeout: 5000 });
     await expect(authenticatedPage.locator('button:has-text("Chain")')).toBeVisible({ timeout: 5000 });
 
-    // Visual mode should be active by default
-    const visualButton = authenticatedPage.locator('button:has-text("Visual")');
-    const visualButtonClass = await visualButton.getAttribute('class');
-    expect(visualButtonClass).toContain('default'); // Active variant
+    // Visual mode should be active by default. The active toggle uses the
+    // Button "default" variant, which renders `bg-primary` (the inactive
+    // "ghost" variant does not) — the literal token "default" never appears
+    // in the resolved class string.
+    const visualButtonClass = await authenticatedPage
+      .locator('button:has-text("Visual")')
+      .getAttribute('class');
+    expect(visualButtonClass).toContain('bg-primary'); // Active variant
+    const chainButtonClass = await authenticatedPage
+      .locator('button:has-text("Chain")')
+      .getAttribute('class');
+    expect(chainButtonClass).not.toContain('bg-primary'); // Inactive variant
   });
 
   test('should switch between visual and chain view modes', async ({ authenticatedPage }) => {
@@ -84,10 +135,12 @@ test.describe('Data Preparation Page', () => {
     await authenticatedPage.locator('button:has-text("Chain")').click();
     await authenticatedPage.waitForTimeout(500); // Wait for view switch
 
-    // Verify chain view is displayed
+    // Verify chain view is displayed. The active toggle uses the Button
+    // "default" variant, which renders `bg-primary` (the literal token
+    // "default" never appears in the resolved class string).
     const chainButton = authenticatedPage.locator('button:has-text("Chain")');
     const chainButtonClass = await chainButton.getAttribute('class');
-    expect(chainButtonClass).toContain('default'); // Active variant
+    expect(chainButtonClass).toContain('bg-primary'); // Active variant
 
     // Verify card title changed
     await expect(authenticatedPage.locator('text=/Transformation Chain/')).toBeVisible();
@@ -107,9 +160,10 @@ test.describe('Data Preparation Page', () => {
     await authenticatedPage.locator('button:has-text("Chain")').click();
     await authenticatedPage.waitForTimeout(500);
 
-    // Verify empty state message
+    // Verify empty state message. A single text regex — the comma form is not
+    // a valid "or" for the text engine and matched nothing.
     await expect(
-      authenticatedPage.locator('text=/No transformations added yet/i, text=/Add transformations/i')
+      authenticatedPage.getByText(/No transformations added yet/i)
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -180,8 +234,10 @@ test.describe('Data Preparation Page', () => {
     await authenticatedPage.locator('button:has-text("Chain")').click();
     await authenticatedPage.waitForTimeout(500);
 
-    // Verify main heading has proper structure
-    const heading = authenticatedPage.locator('h1');
+    // Verify main heading has proper structure. Scope to the page heading —
+    // the app shell renders its own <h1> ("Modeling App"), so a bare h1 matches
+    // two nodes and trips strict mode.
+    const heading = authenticatedPage.locator('h1:has-text("Prepare Data")');
     await expect(heading).toBeVisible();
 
     // Verify buttons have accessible names
@@ -197,13 +253,19 @@ test.describe('Data Preparation Page', () => {
 
     await authenticatedPage.goto(`/datasets/${invalidDatasetId}/prepare`);
 
-    // Verify error state displayed
+    // Verify error state displayed. The error card renders both a heading and a
+    // detail paragraph that match this regex, so assert on the first match.
     await expect(
-      authenticatedPage.locator('text=/Error Loading Dataset|Dataset Not Found|Failed to fetch/i')
+      authenticatedPage
+        .locator('text=/Error Loading Dataset|Dataset Not Found|Failed to fetch/i')
+        .first()
     ).toBeVisible({ timeout: 10000 });
 
-    // Verify back to datasets button exists
-    await expect(authenticatedPage.locator('button:has-text("Back to Datasets"), a:has-text("Back")')).toBeVisible();
+    // Verify back to datasets button exists. The control is an <a> wrapping a
+    // <button>, so the combined selector matches two nodes — assert on the first.
+    await expect(
+      authenticatedPage.locator('button:has-text("Back to Datasets"), a:has-text("Back")').first()
+    ).toBeVisible();
   });
 
   test('should handle loading state properly', async ({ authenticatedPage }) => {
@@ -227,8 +289,9 @@ test.describe('Data Preparation Page', () => {
 test.describe('Chain View Functionality', () => {
   let datasetId: string;
 
-  test.beforeEach(async ({ uploadTestDataset }) => {
+  test.beforeEach(async ({ page, request, uploadTestDataset }) => {
     datasetId = await uploadTestDataset();
+    await seedPreparationWorkflow(page, request, datasetId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {
@@ -244,11 +307,14 @@ test.describe('Chain View Functionality', () => {
     await authenticatedPage.locator('button:has-text("Chain")').click();
     await authenticatedPage.waitForTimeout(500);
 
-    // Check for listbox role (TransformationChainView uses role="list")
+    // TransformationChainView exposes role="list" with a descriptive aria-label
     const chainList = authenticatedPage.locator('[role="list"][aria-label*="Transformation"]');
+    await expect(chainList).toBeVisible();
 
-    // Empty state should show dashed border
-    const emptyState = authenticatedPage.locator('text=/No transformations/');
+    // Empty state should show dashed border. Scope to the visible message — a
+    // bare /No transformations/ also matches the sr-only live-region copy
+    // ("No transformations in pipeline") and trips strict mode.
+    const emptyState = authenticatedPage.getByText(/No transformations added yet/i);
     await expect(emptyState).toBeVisible();
   });
 
@@ -284,8 +350,9 @@ test.describe('Chain View Functionality', () => {
 test.describe('Responsive Design', () => {
   let datasetId: string;
 
-  test.beforeEach(async ({ uploadTestDataset }) => {
+  test.beforeEach(async ({ page, request, uploadTestDataset }) => {
     datasetId = await uploadTestDataset();
+    await seedPreparationWorkflow(page, request, datasetId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {
