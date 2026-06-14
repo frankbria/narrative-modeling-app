@@ -243,10 +243,12 @@ class PredictionConfidence(BaseModel):
         None, description="Calibration method used ('sigmoid' or 'isotonic')"
     )
     is_low_confidence: bool = Field(
-        ..., description="True when below the low-confidence threshold"
+        ...,
+        description="True when confidence is strictly below the threshold "
+        "(a value equal to the threshold is NOT flagged)",
     )
     confidence_threshold: float = Field(
-        ..., description="Threshold used to flag low confidence"
+        ..., description="Threshold used to flag low confidence (strict less-than)"
     )
 
 

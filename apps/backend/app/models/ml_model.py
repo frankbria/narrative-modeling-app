@@ -62,7 +62,9 @@ class MLModel(Document):
     # prediction interval (residual_std=None).
     is_calibrated: bool = False  # persisted model yields calibrated probabilities
     calibration_method: Optional[str] = None  # "sigmoid" or "isotonic"
-    calibration_score: Optional[float] = None  # Brier (binary) / log loss (multiclass)
+    # Brier (binary) / log loss (multiclass) — an IN-SAMPLE diagnostic measured
+    # on the calibration-fit split, so optimistic (see ConfidenceService).
+    calibration_score: Optional[float] = None
     residual_std: Optional[float] = (
         None  # held-out residual std for regression intervals
     )

@@ -37,3 +37,40 @@ class TestPredictionIntervals:
         low, high = intervals[0]
         assert low == pytest.approx(10.0 - 1.96 * 2.0)
         assert high == pytest.approx(10.0 + 1.96 * 2.0)
+
+
+class TestExplanations:
+    def test_returns_schema_objects_for_explainable_model(self, enricher):
+        import numpy as np
+        from sklearn.datasets import make_classification
+        from sklearn.linear_model import LogisticRegression
+
+        X, y = make_classification(
+            n_samples=60, n_features=2, n_informative=2, n_redundant=0, random_state=0
+        )
+        model = LogisticRegression().fit(X, y)
+        preds = model.predict(X[:2]).tolist()
+
+        out = enricher.explanations(
+            model, np.asarray(X[:2]), ["f1", "f2"], preds, "binary_classification"
+        )
+        assert out is not None and len(out) == 2
+        assert out[0].method == "linear_coefficients"
+        assert out[0].explanation_text
+        assert out[0].top_features[0].feature_name in {"f1", "f2"}
+
+    def test_unexplainable_model_returns_none(self, enricher):
+        import numpy as np
+        from sklearn.datasets import make_classification
+        from sklearn.neighbors import KNeighborsClassifier
+
+        X, y = make_classification(
+            n_samples=60, n_features=2, n_informative=2, n_redundant=0, random_state=0
+        )
+        model = KNeighborsClassifier().fit(X, y)  # no coef_/feature_importances_
+
+        # any_explained guard: not one row could be explained -> None, not [None]
+        out = enricher.explanations(
+            model, np.asarray(X[:2]), ["f1", "f2"], [0, 1], "binary_classification"
+        )
+        assert out is None

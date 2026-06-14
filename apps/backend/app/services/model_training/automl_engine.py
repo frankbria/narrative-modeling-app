@@ -30,6 +30,9 @@ from app.services.confidence_service import ConfidenceService
 
 logger = logging.getLogger(__name__)
 
+# Stateless — one shared instance avoids reconstructing it during training (#83).
+_confidence_service = ConfidenceService()
+
 
 class TrainingCancelledError(Exception):
     """Raised when a training run is cancelled via the ``cancel_check`` hook."""
@@ -379,7 +382,7 @@ class AutoMLEngine:
             None
             if is_classification
             else await asyncio.to_thread(
-                ConfidenceService().residual_std, y_test, y_pred_best
+                _confidence_service.residual_std, y_test, y_pred_best
             )
         )
 
@@ -536,7 +539,7 @@ class AutoMLEngine:
             return False, None, None
 
         calibrated, method, score = await asyncio.to_thread(
-            ConfidenceService().calibrate_classifier,
+            _confidence_service.calibrate_classifier,
             best_model.estimator,
             X_test_transformed,
             y_test,

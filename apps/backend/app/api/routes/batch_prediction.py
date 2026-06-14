@@ -4,10 +4,13 @@ Batch prediction API routes
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import io
+import os
+import tempfile
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-import io
 
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
@@ -28,6 +31,10 @@ class CreateBatchJobRequest(BaseModel):
         default=True, description="Include prediction probabilities"
     )
     include_metadata: bool = Field(default=False, description="Include model metadata")
+    include_explanations: bool = Field(
+        default=False,
+        description="Include per-prediction feature contributions (#83)",
+    )
     chunk_size: int = Field(
         default=1000, ge=100, le=10000, description="Records per processing chunk"
     )
@@ -92,9 +99,6 @@ async def create_batch_job(
         content = await file.read()
 
         # Save to temporary file
-        import tempfile
-        import os
-
         with tempfile.NamedTemporaryFile(
             mode="wb", delete=False, suffix=".csv"
         ) as temp_file:
