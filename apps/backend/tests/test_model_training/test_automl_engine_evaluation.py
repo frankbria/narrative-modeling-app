@@ -182,3 +182,30 @@ class TestEvaluationArtifactCapture:
             r for r in comparison if r["algorithm"] == result.best_model.name
         )
         assert best_row["test_score"] == pytest.approx(expected_score)
+
+
+class TestGlobalShapCapture:
+    """AutoMLResult carries the best model's global SHAP summary (issue #80)."""
+
+    @pytest.mark.asyncio
+    async def test_classification_shap_summary(self, binary_df):
+        engine = _engine()
+        result = await _run(
+            engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+        )
+
+        # Default candidates (LogReg/RF) are SHAP-supported, so the best model
+        # always yields a summary over the engineered feature space.
+        assert result.shap_global is not None
+        assert result.shap_explainer_type in {"tree", "linear"}
+        assert set(result.shap_global.shap_importance) == set(result.feature_names)
+        assert all(v >= 0 for v in result.shap_global.shap_importance.values())
+
+    @pytest.mark.asyncio
+    async def test_regression_shap_summary(self, regression_df):
+        engine = _engine()
+        result = await _run(engine, regression_df, "target", ProblemType.REGRESSION)
+
+        assert result.shap_global is not None
+        assert result.shap_explainer_type in {"tree", "linear"}
+        assert set(result.shap_global.shap_importance) == set(result.feature_names)

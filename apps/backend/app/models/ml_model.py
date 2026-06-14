@@ -56,6 +56,15 @@ class MLModel(Document):
     # Feature importance
     feature_importance: Optional[Dict[str, float]] = None
 
+    # SHAP interpretability (issue #80). All optional so pre-#80 models degrade
+    # gracefully: the interpretability endpoints return native feature
+    # importance and report SHAP as unavailable. ``shap_values_path`` is the S3
+    # path to the global SHAP summary (mean |SHAP| per feature) computed at
+    # training time; ``shap_explainer_type`` is "tree" or "linear" (None when
+    # the model type isn't SHAP-supported).
+    shap_values_path: Optional[str] = None
+    shap_explainer_type: Optional[str] = None
+
     # Confidence & uncertainty (issue #83). All optional/defaulted so models
     # trained before #83 keep working: classification degrades to raw
     # max-probability confidence (is_calibrated=False) and regression has no

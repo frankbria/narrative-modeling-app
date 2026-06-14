@@ -41,7 +41,11 @@ from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.evaluation_explanation_service import evaluation_explanation_service
 from app.services.metrics_service import MetricsService
-from app.services.model_storage import ModelStorageService, build_evaluation_payload
+from app.services.model_storage import (
+    ModelStorageService,
+    build_evaluation_payload,
+    build_shap_payload,
+)
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.model_training import (
     AutoMLEngine,
@@ -434,6 +438,8 @@ async def train_model_task(
             "calibration_method": result.calibration_method,
             "calibration_score": result.calibration_score,
             "residual_std": result.residual_std,
+            # SHAP interpretability (issue #80).
+            "shap_explainer_type": result.shap_explainer_type,
             "training_config": training_config,
         }
 
@@ -454,6 +460,14 @@ async def train_model_task(
                     f"Failed to build evaluation payload for {model_id}: {exc}"
                 )
 
+        # Global SHAP summary for the interpretability dashboard (issue #80).
+        # Built best-effort; ``None`` for unsupported model types.
+        shap_data = None
+        try:
+            shap_data = build_shap_payload(result.shap_global)
+        except Exception as exc:
+            logger.warning(f"Failed to build SHAP payload for {model_id}: {exc}")
+
         # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
@@ -464,6 +478,7 @@ async def train_model_task(
             model_metadata,
             model_id=model_id,
             evaluation_data=evaluation_data,
+            shap_data=shap_data,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.

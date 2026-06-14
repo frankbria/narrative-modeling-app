@@ -69,6 +69,24 @@ def build_evaluation_payload(
     }
 
 
+def build_shap_payload(shap_global: Any) -> Optional[Dict[str, Any]]:
+    """Build the JSON-safe global-SHAP summary payload persisted to S3 (#80).
+
+    ``shap_global`` is a ``GlobalShapResult`` (from ``InterpretabilityService``)
+    or ``None`` — returns ``None`` for unsupported model types so the caller
+    skips the upload and leaves ``shap_values_path`` unset.
+    """
+    if shap_global is None:
+        return None
+    return {
+        "explainer_type": shap_global.explainer_type,
+        "shap_importance": _to_json_safe(shap_global.shap_importance),
+        "base_value": _to_json_safe(shap_global.base_value),
+        "n_samples": int(shap_global.n_samples),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 class ModelStorageService:
     """Service for storing and retrieving ML models"""
     
@@ -85,6 +103,7 @@ class ModelStorageService:
         model_metadata: dict,
         model_id: Optional[str] = None,
         evaluation_data: Optional[Dict[str, Any]] = None,
+        shap_data: Optional[Dict[str, Any]] = None,
     ) -> MLModel:
         """
         Save a trained model and its metadata
@@ -99,6 +118,9 @@ class ModelStorageService:
             evaluation_data: Optional JSON-safe evaluation-artifact payload
                 (see ``build_evaluation_payload``). Uploaded best-effort: a
                 failure is logged and never fails the save (issue #79).
+            shap_data: Optional JSON-safe global-SHAP summary payload (see
+                ``build_shap_payload``). Uploaded best-effort like
+                ``evaluation_data`` (issue #80).
 
         Returns:
             MLModel document
@@ -149,6 +171,23 @@ class ModelStorageService:
                     f"Failed to upload evaluation artifacts for {model_id}: {exc}"
                 )
 
+        # Upload the global SHAP summary (best-effort — issue #80). Mirrors the
+        # evaluation-artifact path: a failure here must never fail training; the
+        # interpretability endpoint reports SHAP as unavailable when absent.
+        shap_values_path = None
+        if shap_data is not None:
+            shap_key = f"{self.models_prefix}{user_id}/{model_id}/shap_data.json"
+            try:
+                shap_buffer = io.BytesIO(
+                    json.dumps(shap_data, allow_nan=False).encode("utf-8")
+                )
+                await self.s3_service.upload_file_obj(shap_buffer, shap_key)
+                shap_values_path = f"s3://{self.s3_service.bucket_name}/{shap_key}"
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to upload SHAP summary for {model_id}: {exc}"
+                )
+
         # Create model document
         ml_model = MLModel(
             user_id=user_id,
@@ -171,6 +210,9 @@ class ModelStorageService:
             feature_transformer_path=feature_transformer_path,
             evaluation_data_path=evaluation_data_path,
             feature_importance=model_metadata.get("feature_importance"),
+            # SHAP interpretability (issue #80).
+            shap_values_path=shap_values_path,
+            shap_explainer_type=model_metadata.get("shap_explainer_type"),
             # Confidence/uncertainty metadata (issue #83).
             is_calibrated=model_metadata.get("is_calibrated", False),
             calibration_method=model_metadata.get("calibration_method"),
@@ -266,6 +308,13 @@ class ModelStorageService:
                     f"s3://{self.s3_service.bucket_name}/", ""
                 )
                 await self.s3_service.delete_file(evaluation_key)
+
+            # Delete SHAP summary if present (issue #80)
+            if getattr(ml_model, "shap_values_path", None):
+                shap_key = ml_model.shap_values_path.replace(
+                    f"s3://{self.s3_service.bucket_name}/", ""
+                )
+                await self.s3_service.delete_file(shap_key)
         except Exception as e:
             logger.error(f"Error deleting model files: {str(e)}")
         
