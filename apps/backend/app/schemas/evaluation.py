@@ -121,6 +121,52 @@ class ModelEvaluationResponse(BaseModel):
     evaluated_at: datetime
 
 
+class RankedFeature(BaseModel):
+    """One feature's importance, for a ranked importance list (issue #80)."""
+
+    feature_name: str
+    importance: float
+
+
+class FeatureImportanceResponse(BaseModel):
+    """Global feature importance for one model (issue #80).
+
+    Carries both the model-native importance (always available when the model
+    exposed coef_/feature_importances_/SelectKBest at training) and, when the
+    model type is SHAP-supported, SHAP-based importance. ``partial`` is True
+    only when neither is available.
+    """
+
+    model_id: str
+    partial: bool = False
+    explainer_type: Optional[str] = Field(
+        None, description='"tree", "linear", or None when SHAP is unavailable'
+    )
+    native_importance: List[RankedFeature] = Field(default_factory=list)
+    shap_importance: Optional[List[RankedFeature]] = None
+    message: Optional[str] = None
+
+
+class ShapSummaryResponse(BaseModel):
+    """SHAP summary-plot data for one model (issue #80).
+
+    ``feature_importance`` is the mean |SHAP| per feature, ranked. For models
+    trained before #80 or whose type isn't SHAP-supported, ``partial`` is True,
+    the lists are empty, and ``message`` explains the fallback to native
+    importance — the endpoint never 500s for an owned model.
+    """
+
+    model_id: str
+    partial: bool = False
+    explainer_type: Optional[str] = None
+    problem_type: str
+    feature_importance: List[RankedFeature] = Field(default_factory=list)
+    base_value: Optional[float] = None
+    plain_language: str = ""
+    message: Optional[str] = None
+    evaluated_at: datetime
+
+
 class ModelComparisonRequest(BaseModel):
     """Request body for POST /api/v1/ml/compare."""
 

@@ -307,3 +307,37 @@ class MetricsService:
             )
             return None
         return payload
+
+    @staticmethod
+    async def load_shap_artifacts(ml_model: MLModel) -> Optional[Dict[str, Any]]:
+        """Download and parse the model's shap_data.json from S3 (issue #80).
+
+        Returns ``None`` when the model has no ``shap_values_path`` (models
+        trained before #80, or whose type isn't SHAP-supported) or when the
+        download/parse fails — callers degrade to a partial response rather
+        than erroring. Mirrors ``load_evaluation_artifacts``.
+        """
+        path = getattr(ml_model, "shap_values_path", None)
+        if not path:
+            return None
+        key = path.replace(f"s3://{s3_service.bucket_name}/", "")
+        if key.startswith("s3://"):
+            logger.warning(
+                f"SHAP artifact path for {ml_model.model_id} points at a "
+                f"different bucket than the configured one: {path}"
+            )
+            return None
+        try:
+            raw = await s3_service.download_file_obj(key)
+            payload = json.loads(raw)
+        except Exception as exc:
+            logger.warning(
+                f"Could not load SHAP artifacts for {ml_model.model_id}: {exc}"
+            )
+            return None
+        if not isinstance(payload, dict):
+            logger.warning(
+                f"SHAP artifacts for {ml_model.model_id} are not a JSON object"
+            )
+            return None
+        return payload
