@@ -189,9 +189,11 @@ test.describe('Performance - API Response Times', () => {
     test.setTimeout(120000);
 
     // A genuinely trainable dataset (the 6-row sample.csv makes AutoML detect
-    // problem type "unknown" and fail). binary-classification.csv has 999 rows
-    // with a clean binary `churned` target.
-    const datasetId = await uploadTestDataset('ai-test-datasets/binary-classification.csv');
+    // problem type "unknown" and fail). Use the compact 200-row subset (both
+    // `churned` classes present) so AutoML training stays light — the full
+    // 999-row fit pegs a core long enough to starve the parallel worker and
+    // flake other timing-sensitive smoke tests on 2-core CI (see #157).
+    const datasetId = await uploadTestDataset('ai-test-datasets/binary-classification-small.csv');
     const modelId = await trainModel(datasetId, 'churned');
 
     // Direct backend call (Next.js does not proxy /api/v1); SKIP_AUTH backend
