@@ -65,6 +65,9 @@ def sample_ml_model():
     mock_model.calibration_method = None
     mock_model.calibration_score = None
     mock_model.residual_std = None
+    # SHAP interpretability metadata (issue #80) — defaults for a pre-#80 model.
+    mock_model.shap_values_path = None
+    mock_model.shap_explainer_type = None
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
     mock_model.version = "1.0.0"
     mock_model.created_at = datetime.now(timezone.utc)
