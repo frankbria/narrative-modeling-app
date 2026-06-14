@@ -43,16 +43,27 @@ async function seedPreparationWorkflow(
     stage_data: {},
   };
   // PUT updates the workflow the upload flow already created; fall back to POST
-  // if no workflow exists yet (upload didn't persist one).
+  // if no workflow exists yet (upload didn't persist one). Fail loudly on any
+  // other status so a broken seed surfaces as a clear error here instead of a
+  // confusing "element not found" once the page redirects away from /prepare.
   const put = await request.put(`${apiBase}/workflows/${datasetId}`, {
     headers,
     data: workflow,
   });
   if (put.status() === 404) {
-    await request.post(`${apiBase}/workflows/${datasetId}`, {
+    const post = await request.post(`${apiBase}/workflows/${datasetId}`, {
       headers,
       data: workflow,
     });
+    if (!post.ok()) {
+      throw new Error(
+        `seedPreparationWorkflow POST failed (${post.status()}): ${await post.text()}`
+      );
+    }
+  } else if (!put.ok()) {
+    throw new Error(
+      `seedPreparationWorkflow PUT failed (${put.status()}): ${await put.text()}`
+    );
   }
 
   // addInitScript (not evaluate): a still-open page persists its own in-memory
