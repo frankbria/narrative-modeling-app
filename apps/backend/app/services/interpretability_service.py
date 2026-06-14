@@ -223,6 +223,65 @@ class InterpretabilityService:
             explainer_type="tree",
         )
 
+    def compute_instance_shap_batch(
+        self,
+        estimator: Any,
+        X: Any,
+        feature_names: Sequence[str],
+        predictions: Optional[Sequence[Any]] = None,
+        problem_type: str = "classification",
+    ) -> Optional[list]:
+        """Per-row SHAP contributions for a whole matrix, building once.
+
+        Tree-only (like ``compute_instance_shap``). Builds a single
+        ``TreeExplainer`` and computes SHAP for every row in one call — far
+        cheaper than rebuilding the explainer per row when explaining many
+        predictions. Returns a list (length == n_rows) of per-row contribution
+        arrays, or ``None`` if the model isn't tree-supported or on any failure.
+        """
+        try:
+            return self._compute_instance_shap_batch(
+                estimator, X, feature_names, predictions
+            )
+        except Exception as exc:  # noqa: BLE001 - interpretability is best-effort
+            logger.warning("Batch instance SHAP computation failed: %s", exc)
+            return None
+
+    def _compute_instance_shap_batch(
+        self,
+        estimator: Any,
+        X: Any,
+        feature_names: Sequence[str],
+        predictions: Optional[Sequence[Any]],
+    ) -> Optional[list]:
+        base = unwrap_estimator(estimator)
+        if not hasattr(base, "feature_importances_"):
+            return None
+
+        arr = np.asarray(X.to_numpy() if hasattr(X, "to_numpy") else X, dtype=float)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+
+        import shap  # lazy
+
+        explainer = shap.TreeExplainer(base)  # built once for the whole matrix
+        explanation = explainer(arr)
+        vals = np.asarray(explanation.values, dtype=float)
+
+        rows: list = []
+        for i in range(arr.shape[0]):
+            if vals.ndim == 3:  # (n, features, classes)
+                prediction = (
+                    predictions[i]
+                    if predictions is not None and i < len(predictions)
+                    else None
+                )
+                idx = self._class_index(base, prediction, vals.shape[2])
+                rows.append(vals[i, :, idx])
+            else:  # (n, features)
+                rows.append(vals[i])
+        return rows
+
     # -- plain language -----------------------------------------------------
 
     def top_drivers_text(

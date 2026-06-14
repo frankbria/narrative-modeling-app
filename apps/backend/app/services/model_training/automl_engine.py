@@ -374,6 +374,12 @@ class AutoMLEngine:
             event_callback,
         )
 
+        # SHAP can take noticeable time on tree/linear models, so honour a
+        # cancellation requested while it ran before doing the remaining
+        # finalization work (calibration + persistence).
+        if await self._is_cancelled(cancel_check):
+            raise TrainingCancelledError("Training cancelled during finalization")
+
         # Confidence calibration for issue #83 — classification only. The best
         # estimator is swapped in place for its calibrated wrapper so the
         # *deployed* model yields calibrated probabilities. Best-effort: a

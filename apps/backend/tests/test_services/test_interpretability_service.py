@@ -178,6 +178,31 @@ def test_instance_shap_never_raises_on_garbage(service):
     assert service.compute_instance_shap(object(), [1, 2, 3, 4], FEATURES) is None
 
 
+# --- compute_instance_shap_batch -------------------------------------------
+
+
+def test_instance_shap_batch_tree(service):
+    X, y = _classification_frame()
+    model = RandomForestClassifier(n_estimators=15, random_state=0).fit(X, y)
+    preds = model.predict(X.iloc[:3]).tolist()
+    rows = service.compute_instance_shap_batch(model, X.iloc[:3], FEATURES, preds)
+    assert rows is not None
+    assert len(rows) == 3
+    assert all(len(r) == len(FEATURES) for r in rows)
+    # Per-row SHAP: different rows yield different contributions
+    assert list(rows[0]) != list(rows[1])
+
+
+def test_instance_shap_batch_unsupported_returns_none(service):
+    X, y = _classification_frame()
+    model = KNeighborsClassifier().fit(X, y)
+    assert service.compute_instance_shap_batch(model, X.iloc[:3], FEATURES) is None
+
+
+def test_instance_shap_batch_never_raises_on_garbage(service):
+    assert service.compute_instance_shap_batch(object(), None, FEATURES) is None
+
+
 # --- top_drivers_text ------------------------------------------------------
 
 

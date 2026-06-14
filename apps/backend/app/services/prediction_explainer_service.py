@@ -60,6 +60,40 @@ class PredictionExplainerService:
         # Stateless collaborator; shap is imported lazily inside it.
         self._interpretability = interpretability or InterpretabilityService()
 
+    def assemble(
+        self,
+        contributions: Sequence[float],
+        feature_names: Sequence[str],
+        x_row: Optional[Sequence[float]],
+        prediction: Any = None,
+        problem_type: str = "classification",
+        method: str = "shap_tree",
+        top_n: int = DEFAULT_TOP_N,
+    ) -> Optional[ExplanationResult]:
+        """Build an ``ExplanationResult`` from precomputed per-feature contributions.
+
+        Used by callers (e.g. ``PredictionEnricher``) that compute SHAP
+        contributions for many rows in one batch and then need the same
+        top-N ranking + plain-language text as ``explain``. Best-effort.
+        """
+        try:
+            contrib = np.asarray(contributions, dtype=float)
+            values = (
+                np.asarray(list(x_row), dtype=float).ravel()
+                if x_row is not None
+                else None
+            )
+            top = self._top_features(contrib, feature_names, values, top_n)
+            if not top:
+                return None
+            text = self._explanation_text(top, prediction, problem_type)
+            return ExplanationResult(
+                top_features=top, explanation_text=text, method=method
+            )
+        except Exception as exc:  # noqa: BLE001 - explanations are best-effort
+            logger.warning("Explanation assembly failed: %s", exc)
+            return None
+
     def explain(
         self,
         estimator: Any,
