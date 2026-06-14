@@ -4,7 +4,7 @@ API routes for model training and management
 
 from typing import Optional, List, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import pandas as pd
 import numpy as np
 import io
@@ -56,6 +56,10 @@ from dataclasses import asdict
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Upper bound on records accepted by the synchronous single-prediction endpoint;
+# larger workloads must go through the async batch path (issue #82 hardening).
+MAX_PREDICT_RECORDS = 1000
+
 
 class TrainModelRequest(BaseModel):
     """Request for training a model"""
@@ -95,7 +99,7 @@ class ModelInfo(BaseModel):
 class PredictRequest(BaseModel):
     """Request for making predictions"""
 
-    data: List[Dict[str, Any]]
+    data: List[Dict[str, Any]] = Field(..., max_length=MAX_PREDICT_RECORDS)
     include_probabilities: bool = False
 
 
@@ -1148,23 +1152,30 @@ async def predict(
     # Convert input data to DataFrame
     input_df = pd.DataFrame(request.data)
 
-    # Apply feature engineering if available
-    if feature_engineer:
-        input_df = await feature_engineer.transform(input_df)
+    # Apply the fitted pipeline and run inference. A bad feature value (e.g. an
+    # unknown category the encoder was never fitted on) surfaces as a sklearn
+    # ValueError — return it as a clear 422 rather than a 500 traceback leak.
+    try:
+        if feature_engineer:
+            input_df = await feature_engineer.transform(input_df)
 
-    # Make predictions
-    predictions = model.predict(input_df)
+        # Make predictions
+        predictions = model.predict(input_df)
 
-    # Get probabilities if requested and available
-    probabilities = None
-    confidence = None
-    if request.include_probabilities and hasattr(model, "predict_proba"):
-        prob_array = model.predict_proba(input_df)
-        probabilities = prob_array.tolist()
-        try:
-            confidence = [float(max(row)) for row in probabilities]
-        except Exception:
-            confidence = None
+        # Get probabilities if requested and available
+        probabilities = None
+        confidence = None
+        if request.include_probabilities and hasattr(model, "predict_proba"):
+            prob_array = model.predict_proba(input_df)
+            probabilities = prob_array.tolist()
+            try:
+                confidence = [float(max(row)) for row in probabilities]
+            except Exception:
+                confidence = None
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid feature value(s): {exc}"
+        )
 
     # Convert predictions to list
     if isinstance(predictions, np.ndarray):

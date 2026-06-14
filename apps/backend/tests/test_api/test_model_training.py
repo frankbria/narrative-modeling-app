@@ -361,6 +361,33 @@ class TestModelTrainingEndpoints:
                 mock_model.predict.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_predict_invalid_value_returns_422(self, async_authorized_client):
+        """An unknown categorical value (sklearn ValueError) becomes a clean
+        422, not a 500 traceback leak (issue #82 hardening)."""
+        mock_model = MagicMock()
+        mock_model.predict.side_effect = ValueError(
+            "Found unknown categories ['weird'] in column 0"
+        )
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
+            mock_load.return_value = (mock_model, None)
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
+                mock_find.return_value = MagicMock(feature_names=["feature1"])
+
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/model_123/predict",
+                    json={"data": [{"feature1": "weird"}]},
+                )
+
+                assert response.status_code == 422
+                assert "Invalid feature value" in response.json()["detail"]
+
+    @pytest.mark.asyncio
     async def test_predict_returns_confidence_and_class_labels(
         self, async_authorized_client
     ):

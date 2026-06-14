@@ -19,6 +19,7 @@ interface PredictionInput {
 }
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const BATCH_POLL_INTERVAL_MS = 2000;
 
 export default function PredictPage() {
   const { data: session } = useSession();
@@ -183,7 +184,7 @@ export default function PredictPage() {
           setLoading(false);
           setError('Lost connection to the batch job. Please refresh.');
         }
-      }, 2000);
+      }, BATCH_POLL_INTERVAL_MS);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start batch prediction');
       setLoading(false);
