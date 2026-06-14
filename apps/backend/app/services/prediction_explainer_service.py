@@ -161,8 +161,10 @@ class PredictionExplainerService:
         classes = list(getattr(base, "classes_", []))
         if prediction is not None and prediction in classes:
             return coef[classes.index(prediction)]
-        # fall back to the mean absolute contribution direction
-        return np.mean(np.abs(coef), axis=0)
+        # Unresolvable predicted class: signed mean across classes keeps a
+        # direction (so the "increased/decreased" wording stays consistent)
+        # while abs() ranking still surfaces the most influential features.
+        return np.mean(coef, axis=0)
 
     def _from_importance_dict(
         self, importance: Dict[str, float], feature_names: Sequence[str]

@@ -57,8 +57,15 @@ class PredictionEnricher:
         flags: List[bool] = []
         for row in probabilities:
             score = self.confidence.confidence_from_proba(row)
-            scores.append(score if score is not None else 0.0)
-            flags.append(self.confidence.is_low_confidence(score, self.threshold))
+            if score is None:
+                # An un-computable row (empty/malformed proba) is treated as
+                # 0 confidence AND flagged low-confidence, so clients never see
+                # the impossible "0% but not flagged" combination.
+                scores.append(0.0)
+                flags.append(True)
+            else:
+                scores.append(score)
+                flags.append(self.confidence.is_low_confidence(score, self.threshold))
         return scores, flags
 
     def prediction_intervals(

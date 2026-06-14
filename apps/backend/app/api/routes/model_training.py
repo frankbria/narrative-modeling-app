@@ -63,6 +63,9 @@ router = APIRouter()
 # larger workloads must go through the async batch path (issue #82 hardening).
 MAX_PREDICT_RECORDS = 1000
 
+# Stateless — reuse one instance instead of constructing it per request (#83).
+_prediction_enricher = PredictionEnricher()
+
 
 class TrainModelRequest(BaseModel):
     """Request for training a model"""
@@ -1203,7 +1206,7 @@ async def predict(
         predictions = predictions.tolist()
 
     # Confidence / uncertainty / explanation enrichment (issue #83).
-    enricher = PredictionEnricher()
+    enricher = _prediction_enricher
     confidence, low_confidence = enricher.per_record_confidence(proba_list)
     prediction_intervals = enricher.prediction_intervals(
         predictions, ml_model.residual_std

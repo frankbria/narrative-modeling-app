@@ -169,8 +169,10 @@ class TestEvaluationArtifactCapture:
             engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
         )
 
-        if not result.is_calibrated:
-            pytest.skip("calibration did not run for this dataset")
+        # The fixed binary fixture reliably triggers calibration; assert it
+        # directly rather than skipping, so a calibration regression fails loudly.
+        assert result.is_calibrated is True
+        assert result.calibration_method in {"sigmoid", "isotonic"}
 
         expected_score = accuracy_score(result.y_test, result.y_pred)
         assert result.best_model.test_score == pytest.approx(expected_score)

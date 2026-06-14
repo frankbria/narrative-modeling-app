@@ -7,8 +7,9 @@ calibration step:
 * ``confidence_from_proba`` / ``is_low_confidence`` — derive a 0-1 confidence
   score from a ``predict_proba`` row and flag low-confidence predictions.
 * ``calibrate_classifier`` — wrap an already-fitted classifier in
-  scikit-learn's ``CalibratedClassifierCV(cv="prefit")`` using a held-out
-  split, so the persisted model yields *calibrated* probabilities (AC1).
+  ``CalibratedClassifierCV(FrozenEstimator(...))`` (the forward-compatible
+  replacement for the removed ``cv="prefit"``) using a held-out split, so the
+  persisted model yields *calibrated* probabilities (AC1).
 * ``regression_interval`` / ``residual_std`` — express regression uncertainty
   as a symmetric prediction interval derived from held-out residuals (AC2).
 
@@ -83,12 +84,16 @@ class ConfidenceService:
         """Calibrate a fitted classifier on a held-out split.
 
         Wraps ``estimator`` (already fitted) in
-        ``CalibratedClassifierCV(cv="prefit")`` so its probabilities are
-        calibrated. ``method`` defaults to ``"isotonic"`` for large
-        calibration sets and ``"sigmoid"`` (Platt scaling) otherwise.
+        ``CalibratedClassifierCV(FrozenEstimator(estimator))`` so its
+        probabilities are calibrated without refitting the base model.
+        ``method`` defaults to ``"isotonic"`` for large calibration sets and
+        ``"sigmoid"`` (Platt scaling) otherwise.
 
-        Returns ``(calibrated_estimator, method, brier_score)``. On any
-        failure (e.g. a degenerate single-class calibration set) returns
+        Returns ``(calibrated_estimator, method, brier_score)``. **The Brier /
+        log-loss score is an in-sample diagnostic** — it is measured on the
+        same ``X_cal`` the calibrator was fit on, so it is optimistic and is
+        only meant for rough relative comparison, not as an unbiased estimate.
+        On any failure (e.g. a degenerate single-class calibration set) returns
         ``(None, None, None)`` and never raises — calibration is best-effort.
         """
         try:
@@ -121,7 +126,11 @@ class ConfidenceService:
     def _calibration_brier(
         self, calibrated: CalibratedClassifierCV, X_cal: Any, y_arr: np.ndarray
     ) -> Optional[float]:
-        """Calibration quality: Brier score (binary) or log loss (multiclass)."""
+        """Calibration quality: Brier score (binary) or log loss (multiclass).
+
+        Measured in-sample on ``X_cal`` (the calibration-fit data), so it is an
+        optimistic diagnostic — see ``calibrate_classifier``.
+        """
         try:
             proba = calibrated.predict_proba(X_cal)
             classes = list(calibrated.classes_)

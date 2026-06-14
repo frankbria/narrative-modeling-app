@@ -23,6 +23,9 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/production", tags=["production"])
 
+# Stateless — reuse one instance instead of constructing it per request (#83).
+_prediction_enricher = PredictionEnricher()
+
 # Initialize Redis for rate limiting
 redis_client = None  # Redis is optional for development
 try:
@@ -294,7 +297,7 @@ async def production_predict(
         predictions_list = predictions.tolist()
 
         # Confidence / uncertainty / explanation enrichment (issue #83).
-        enricher = PredictionEnricher()
+        enricher = _prediction_enricher
         confidence, low_confidence = enricher.per_record_confidence(proba_list)
         prediction_intervals = enricher.prediction_intervals(
             predictions_list, getattr(model, "residual_std", None)
