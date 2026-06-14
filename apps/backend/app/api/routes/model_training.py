@@ -1040,8 +1040,9 @@ async def get_model_evaluation(
         return _partial_evaluation_response(model)
 
 
-# Interpretability endpoints (issue #80). Registered before the dynamic
-# GET /{model_id} so "feature-importance" / "shap" are never captured as ids.
+# Interpretability endpoints (issue #80). These are two-segment paths, so the
+# one-segment GET /{model_id} never captures them regardless of order; they are
+# kept here next to the evaluation endpoint for readability.
 @router.get(
     "/{model_id}/feature-importance", response_model=FeatureImportanceResponse
 )

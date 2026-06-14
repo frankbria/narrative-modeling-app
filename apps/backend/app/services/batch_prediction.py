@@ -17,6 +17,7 @@ from io import StringIO, BytesIO
 from app.models.batch_job import BatchJob, JobStatus, JobType, BatchPredictionConfig
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
+from app.services.interpretability_service import InterpretabilityService
 from app.services.model_storage import ModelStorageService
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
@@ -31,9 +32,12 @@ class BatchPredictionService:
     def __init__(self):
         self.s3_service = S3Service()
         self.model_storage = ModelStorageService()
-        # Confidence / explanation helpers (issue #83).
+        # Confidence / explanation helpers (issue #83 + #80). Share one
+        # InterpretabilityService so chunk-level batched SHAP and the explainer
+        # reuse a single instance.
         self.confidence = ConfidenceService()
-        self.explainer = PredictionExplainerService()
+        self.interpretability = InterpretabilityService()
+        self.explainer = PredictionExplainerService(self.interpretability)
         # Hold strong references to background tasks: asyncio only keeps a weak
         # reference, so an un-retained task can be garbage-collected mid-run.
         self._background_tasks: set = set()
@@ -285,6 +289,9 @@ class BatchPredictionService:
         """Make predictions for a chunk of data"""
 
         predictions = []
+        # Rows needing a per-prediction explanation, explained in one batched
+        # pass after the loop (issue #80).
+        to_explain: List[Dict[str, Any]] = []
         is_classification = str(model.problem_type).endswith("classification")
 
         for index, row in chunk_df.iterrows():
@@ -346,29 +353,17 @@ class BatchPredictionService:
                     if interval is not None:
                         result["prediction_interval"] = interval
 
-                # Per-prediction explanation (opt-in — issue #83).
+                # Per-prediction explanation (opt-in — issue #83/#80). Collected
+                # here and computed in one batched pass after the loop so the
+                # TreeExplainer is built once per chunk, not once per row.
                 if getattr(config, "include_explanations", False):
-                    explanation = self.explainer.explain(
-                        trained_model,
-                        np.asarray(X_transformed)[0],
-                        model.feature_names,
-                        prediction=prediction_value,
-                        problem_type=model.problem_type,
-                        feature_importance=model.feature_importance,
-                    )
-                    if explanation is not None:
-                        result["explanation_text"] = explanation.explanation_text
-                        result["explanation"] = {
-                            "method": explanation.method,
-                            "top_features": [
-                                {
-                                    "feature_name": f.feature_name,
-                                    "contribution": f.contribution,
-                                    "feature_value": f.feature_value,
-                                }
-                                for f in explanation.top_features
-                            ],
+                    to_explain.append(
+                        {
+                            "result": result,
+                            "x_row": np.asarray(X_transformed)[0],
+                            "prediction": prediction_value,
                         }
+                    )
 
                 if config.include_metadata:
                     result["metadata"] = {
@@ -385,7 +380,65 @@ class BatchPredictionService:
                     {"row_index": index, "error": str(e), "input_data": row.to_dict()}
                 )
 
+        self._attach_explanations(to_explain, trained_model, model)
         return predictions
+
+    def _attach_explanations(
+        self,
+        to_explain: List[Dict[str, Any]],
+        trained_model: Any,
+        model: MLModel,
+    ) -> None:
+        """Attach per-prediction explanations to collected results (issue #80).
+
+        Tree models get per-row SHAP via a single explainer build for the whole
+        chunk (``compute_instance_shap_batch``); others fall back to the native
+        per-row explainer. Best-effort: a failure leaves rows unexplained.
+        """
+        if not to_explain:
+            return
+
+        matrix = np.asarray([item["x_row"] for item in to_explain])
+        preds = [item["prediction"] for item in to_explain]
+        shap_rows = self.interpretability.compute_instance_shap_batch(
+            trained_model, matrix, model.feature_names, preds, model.problem_type
+        )
+
+        for i, item in enumerate(to_explain):
+            explanation = None
+            if shap_rows is not None and i < len(shap_rows) and shap_rows[i] is not None:
+                explanation = self.explainer.assemble(
+                    shap_rows[i],
+                    model.feature_names,
+                    item["x_row"],
+                    prediction=item["prediction"],
+                    problem_type=model.problem_type,
+                    method="shap_tree",
+                )
+            if explanation is None:
+                explanation = self.explainer.explain(
+                    trained_model,
+                    item["x_row"],
+                    model.feature_names,
+                    prediction=item["prediction"],
+                    problem_type=model.problem_type,
+                    feature_importance=model.feature_importance,
+                )
+            if explanation is None:
+                continue
+            result = item["result"]
+            result["explanation_text"] = explanation.explanation_text
+            result["explanation"] = {
+                "method": explanation.method,
+                "top_features": [
+                    {
+                        "feature_name": f.feature_name,
+                        "contribution": f.contribution,
+                        "feature_value": f.feature_value,
+                    }
+                    for f in explanation.top_features
+                ],
+            }
 
     def _calculate_summary_statistics(
         self,
