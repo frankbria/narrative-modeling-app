@@ -271,9 +271,7 @@ def test_results_to_dataframe_includes_low_confidence_column():
     df = svc._results_to_dataframe(predictions)
 
     assert "low_confidence" in df.columns
-    assert (
-        df.iloc[0]["low_confidence"] is False or df.iloc[0]["low_confidence"] == False
-    )  # noqa: E712
+    assert not bool(df.iloc[0]["low_confidence"])
     assert json.loads(df.iloc[0]["prediction_interval"]) == [6.0, 14.0]
     assert df.iloc[0]["explanation"] == "driven by age"
 

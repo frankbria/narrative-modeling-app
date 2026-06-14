@@ -364,6 +364,15 @@ class AutoMLEngine:
             best_model.estimator, X_test_transformed, is_classification
         )
 
+        # Calibration can shift held-out predictions, so recompute the best
+        # model's test score from the deployed model's predictions — otherwise
+        # the persisted `test_score` / model-comparison row would describe the
+        # pre-calibration estimator (issue #83 review fix).
+        if is_calibrated:
+            best_model.test_score = self._calculate_test_score(
+                y_test, y_pred_best, problem_type
+            )
+
         # Regression uncertainty: held-out residual std powers prediction
         # intervals (issue #83). ``None`` for classification.
         residual_std = (

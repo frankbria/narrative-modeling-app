@@ -61,6 +61,7 @@ class BatchPredictionService:
         output_format: str = "csv",
         include_probabilities: bool = True,
         include_metadata: bool = False,
+        include_explanations: bool = False,
         chunk_size: int = 1000,
         priority: int = 0,
         auto_start: bool = True,
@@ -91,6 +92,7 @@ class BatchPredictionService:
             output_format=output_format,
             include_probabilities=include_probabilities,
             include_metadata=include_metadata,
+            include_explanations=include_explanations,
             chunk_size=chunk_size,
         ).dict()
 

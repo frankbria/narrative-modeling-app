@@ -135,8 +135,12 @@ async def test_train_predict_single_and_batch_roundtrip(
         user_id=user_id,
         model_id=model_id,
         input_data=batch_df,
+        include_explanations=True,
         auto_start=False,
     )
+    # The flag must survive into the saved job config, else explanations are
+    # unreachable through normal job creation (issue #83 review fix).
+    assert job.config["include_explanations"] is True
     await svc._process_batch_job(job)
 
     refreshed = await svc.get_job_status(job.job_id, user_id)
@@ -155,3 +159,5 @@ async def test_train_predict_single_and_batch_roundtrip(
     # Confidence column (issue #82) + low-confidence column (issue #83).
     assert "confidence" in out.columns
     assert "low_confidence" in out.columns
+    # Explanations were requested, so the CSV carries an explanation column (#83).
+    assert "explanation" in out.columns

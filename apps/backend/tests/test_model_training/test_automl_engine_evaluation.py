@@ -153,3 +153,30 @@ class TestEvaluationArtifactCapture:
 
         assert list(result.y_pred) == list(expected)
         assert list(result.y_test) == list(y_test)
+
+    @pytest.mark.asyncio
+    async def test_calibrated_test_score_matches_deployed_model(self, binary_df):
+        """When calibration runs, test_score reflects the deployed model (#83).
+
+        Calibration can shift held-out predictions, so the persisted
+        ``test_score`` must be recomputed from the calibrated model's actual
+        predictions rather than the pre-calibration estimator's.
+        """
+        from sklearn.metrics import accuracy_score
+
+        engine = _engine()
+        result = await _run(
+            engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+        )
+
+        if not result.is_calibrated:
+            pytest.skip("calibration did not run for this dataset")
+
+        expected_score = accuracy_score(result.y_test, result.y_pred)
+        assert result.best_model.test_score == pytest.approx(expected_score)
+        # The model-comparison row for the best model agrees too.
+        comparison = result.metadata["model_comparison"]
+        best_row = next(
+            r for r in comparison if r["algorithm"] == result.best_model.name
+        )
+        assert best_row["test_score"] == pytest.approx(expected_score)
