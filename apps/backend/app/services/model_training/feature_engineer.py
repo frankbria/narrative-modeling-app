@@ -193,7 +193,8 @@ class FeatureEngineer:
             FeatureEngineeringResult with transformed features
         """
         X_transformed = X.copy()
-        
+        X_transformed = self._coerce_booleans(X_transformed)
+
         # Identify feature types
         self._identify_feature_types(X_transformed)
         
@@ -239,7 +240,8 @@ class FeatureEngineer:
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Transform new data using fitted transformers"""
         X_transformed = X.copy()
-        
+        X_transformed = self._coerce_booleans(X_transformed)
+
         # Apply transformations in the same order
         # Handle missing values
         if "imputer_numeric" in self.transformers:
@@ -300,11 +302,28 @@ class FeatureEngineer:
         
         return X_transformed
     
+    @staticmethod
+    def _coerce_booleans(df: pd.DataFrame) -> pd.DataFrame:
+        """Cast boolean columns to strings so they are handled as ordinary
+        categoricals (issue #82).
+
+        pandas parses ``true``/``false`` CSV values to ``bool`` dtype, which is
+        neither numeric nor object — such columns would otherwise be dropped
+        from both feature lists, silently passing through the training matrix
+        while the prediction form/contract never collects them. Coercing to
+        ``str`` at both fit and transform time keeps the encoder's categories
+        ("True"/"False") consistent with what the form submits.
+        """
+        bool_cols = list(df.select_dtypes(include=["bool"]).columns)
+        for col in bool_cols:
+            df[col] = df[col].astype(str)
+        return df
+
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""
         self.numeric_features = list(df.select_dtypes(include=[np.number]).columns)
         self.categorical_features = list(df.select_dtypes(include=["object", "category"]).columns)
-        
+
         # Check for numeric columns that might be categorical
         for col in self.numeric_features.copy():
             if df[col].nunique() < 10 and df[col].nunique() / len(df) < 0.05:

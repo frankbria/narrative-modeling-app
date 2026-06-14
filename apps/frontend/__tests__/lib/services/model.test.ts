@@ -331,4 +331,155 @@ describe('modelService instance export', () => {
       );
     });
   });
+
+  describe('prediction interfaces (#82)', () => {
+    it('getModelFeatures() GETs the features endpoint and returns the schema', async () => {
+      const schema = {
+        features: [
+          { name: 'age', type: 'number' },
+          { name: 'gender', type: 'categorical', options: ['m', 'f'] },
+        ],
+        class_labels: ['no', 'yes'],
+        problem_type: 'binary_classification',
+        target_column: 'churned',
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(schema),
+      });
+
+      const result = await modelService.getModelFeatures('m1');
+
+      expect(result).toEqual(schema);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m1/features');
+      expect(init?.method).toBe('GET');
+    });
+
+    it('predict() returns confidence and class_labels for classification', async () => {
+      const response = {
+        predictions: [1],
+        probabilities: [[0.1, 0.9]],
+        confidence: [0.9],
+        class_labels: ['0', '1'],
+        feature_names: ['age'],
+        model_info: {
+          model_id: 'm1',
+          algorithm: 'rf',
+          problem_type: 'binary_classification',
+          target_column: 'y',
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(response),
+      });
+
+      const result = await modelService.predict('m1', {
+        data: [{ age: 30 }],
+        include_probabilities: true,
+      });
+
+      expect(result.confidence).toEqual([0.9]);
+      expect(result.class_labels).toEqual(['0', '1']);
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m1/predict');
+    });
+
+    it('createBatchJob() POSTs multipart form data to the batch endpoint', async () => {
+      const job = { job_id: 'batch_1', status: 'pending' };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(job),
+      });
+
+      // Node 18 (CI): build the file as a Blob + filename, not new File().
+      const blob = new Blob(['age\n30\n'], { type: 'text/csv' });
+      const file = Object.assign(blob, { name: 'data.csv' }) as unknown as File;
+
+      const result = await modelService.createBatchJob('m1', file, {
+        include_probabilities: true,
+      });
+
+      expect(result).toEqual(job);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/batch/jobs');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      expect(form.get('model_id')).toBe('m1');
+      expect(form.get('include_probabilities')).toBe('true');
+      // No explicit Content-Type — the browser sets the multipart boundary.
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers['Content-Type']).toBeUndefined();
+      expect(headers.Authorization).toBe('Bearer svc-token');
+    });
+
+    it('getBatchJobProgress() GETs the progress endpoint', async () => {
+      const progress = {
+        job_id: 'batch_1',
+        status: 'running',
+        percentage_complete: 50,
+        processed_records: 5,
+        total_records: 10,
+        success_count: 5,
+        error_count: 0,
+        success_rate: 100,
+        current_chunk: 1,
+        total_chunks: 1,
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(progress),
+      });
+
+      const result = await modelService.getBatchJobProgress('batch_1');
+
+      expect(result.percentage_complete).toBe(50);
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/batch/jobs/batch_1/progress');
+    });
+
+    it('downloadBatchResults() returns the response Blob', async () => {
+      const blob = new Blob(['age,prediction\n30,1\n'], { type: 'text/csv' });
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        blob: jest.fn().mockResolvedValue(blob),
+      });
+
+      const result = await modelService.downloadBatchResults('batch_1');
+
+      expect(result).toBe(blob);
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/batch/jobs/batch_1/download');
+    });
+
+    it('cancelBatchJob() POSTs to the cancel endpoint', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ message: 'Job cancelled successfully' }),
+      });
+
+      await modelService.cancelBatchJob('batch_1');
+
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/batch/jobs/batch_1/cancel');
+      expect(init?.method).toBe('POST');
+    });
+
+    it('createBatchJob() throws the backend detail on failure', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: jest.fn().mockResolvedValue({ detail: 'Only CSV files are supported' }),
+      });
+
+      const blob = new Blob(['x'], { type: 'text/plain' });
+      const file = Object.assign(blob, { name: 'data.txt' }) as unknown as File;
+
+      await expect(
+        modelService.createBatchJob('m1', file, {})
+      ).rejects.toThrow('Only CSV files are supported');
+    });
+  });
 });

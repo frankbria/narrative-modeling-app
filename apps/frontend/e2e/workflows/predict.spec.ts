@@ -1,73 +1,130 @@
 /**
- * Prediction Workflow E2E Tests
+ * Prediction Workflow E2E Tests (issue #82)
  *
- * Tests prediction operations including:
- * - Single predictions with trained models
- * - Batch predictions with CSV upload
- * - Prediction result display and confidence scores
- * - Feature value validation
- * - Prediction export and download
- * - Error handling for invalid inputs
- * - Prediction history tracking
+ * Drives the real, wired prediction page end to end through the live stack:
+ *   upload trainable dataset -> train model -> seed workflow to PREDICTION ->
+ *   auto-generated single-prediction form -> batch CSV -> downloadable results.
  *
- * Coverage Target: >85%
+ * These tests FAIL LOUDLY. The previous version wrapped every assertion in
+ * try/catch + console.log + return, so it passed even when nothing worked
+ * (the masking anti-pattern fixed for the train fixture in #156). If the
+ * prediction feature regresses, this spec must go red.
  */
 
-import { test, expect } from '../fixtures';
-import { PredictPage } from '../pages/PredictPage';
-import { TrainPage } from '../pages/TrainPage';
-import { UploadPage } from '../pages/UploadPage';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { test, expect } from '../fixtures';
+import type { Page, APIRequestContext } from '@playwright/test';
+import { PredictPage } from '../pages/PredictPage';
 
-test.describe('Single Prediction Workflow', () => {
+const TRAINABLE_DATASET = 'ai-test-datasets/binary-classification-small.csv';
+const TARGET_COLUMN = 'churned';
+
+/**
+ * Seed the backend workflow (source of truth since #87) up to a completed
+ * MODEL_EVALUATION with the trained model id, so the MODEL_EVALUATION-gated
+ * /predict page is reachable instead of redirecting to /upload. Mirrors the
+ * seed helper proven for the prepare page (data-preparation.spec.ts).
+ */
+async function seedPredictionWorkflow(
+  page: Page,
+  request: APIRequestContext,
+  datasetId: string,
+  modelId: string
+): Promise<void> {
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const headers = {
+    Authorization: 'Bearer dev-user-default',
+    'Content-Type': 'application/json',
+  };
+  const completed = [
+    'data_loading',
+    'data_profiling',
+    'data_preparation',
+    'feature_engineering',
+    'model_training',
+    'model_evaluation',
+  ];
+  const workflow = {
+    current_stage: 'prediction',
+    completed_stages: completed,
+    stage_data: {},
+    model_id: modelId,
+  };
+
+  const put = await request.put(`${apiBase}/workflows/${datasetId}`, {
+    headers,
+    data: workflow,
+  });
+  if (put.status() === 404) {
+    const post = await request.post(`${apiBase}/workflows/${datasetId}`, {
+      headers,
+      data: workflow,
+    });
+    if (!post.ok()) {
+      throw new Error(
+        `seedPredictionWorkflow POST failed (${post.status()}): ${await post.text()}`
+      );
+    }
+  } else if (!put.ok()) {
+    throw new Error(
+      `seedPredictionWorkflow PUT failed (${put.status()}): ${await put.text()}`
+    );
+  }
+
+  await page.addInitScript(
+    ({ id, model }) => {
+      localStorage.setItem(
+        'workflowState',
+        JSON.stringify({
+          currentStage: 'prediction',
+          completedStages: [
+            'data_loading',
+            'data_profiling',
+            'data_preparation',
+            'feature_engineering',
+            'model_training',
+            'model_evaluation',
+          ],
+          stageData: {},
+          datasetId: id,
+          modelId: model,
+          lastUpdated: new Date().toISOString(),
+        })
+      );
+    },
+    { id: datasetId, model: modelId }
+  );
+}
+
+/** Build a batch CSV (feature columns only — the target is dropped so the
+ *  fitted pipeline gets exactly the columns it was trained on) from the first
+ *  few rows of the training dataset, guaranteeing valid categorical values. */
+function buildBatchCsv(rows = 3): { name: string; mimeType: string; buffer: Buffer } {
+  const csvPath = join(__dirname, '../test-data', TRAINABLE_DATASET);
+  const lines = readFileSync(csvPath, 'utf-8').trim().split(/\r?\n/);
+  const header = lines[0].split(',');
+  const targetIdx = header.indexOf(TARGET_COLUMN);
+  const keep = (cols: string[]) => cols.filter((_, i) => i !== targetIdx).join(',');
+  const out = [keep(header), ...lines.slice(1, 1 + rows).map((l) => keep(l.split(',')))];
+  return {
+    name: 'batch-input.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(out.join('\n')),
+  };
+}
+
+test.describe('Prediction Workflow (#82)', () => {
   let datasetId: string;
   let modelId: string;
 
-  test.beforeEach(async ({ authenticatedPage, uploadTestDataset }) => {
-    // Upload dataset and train model before each test
-    datasetId = await uploadTestDataset();
-
-    // Navigate to model page (upload fixture leaves us at /explore/{id})
-    const trainPage = new TrainPage(authenticatedPage);
-    await trainPage.goto('/model');
-
-    // Handle workflow gating redirect
-    const currentUrl = authenticatedPage.url();
-    if (currentUrl.includes('/upload')) {
-      console.log('[predict beforeEach] Redirected to /upload due to workflow gating.');
-      modelId = 'test-model-id';
-      return;
-    }
-
-    try {
-      await trainPage.selectTargetColumn('purchased');
-    } catch {
-      console.log('[predict beforeEach] Could not select target column');
-      modelId = 'test-model-id';
-      return;
-    }
-
-    try {
-      await trainPage.selectAlgorithm('Decision Tree');
-    } catch {
-      try {
-        await trainPage.selectAlgorithm('Logistic Regression');
-      } catch {
-        console.log('[predict beforeEach] Could not select algorithm');
-        modelId = 'test-model-id';
-        return;
-      }
-    }
-
-    await trainPage.startTraining();
-
-    try {
-      await trainPage.waitForTrainingComplete(120000);
-      modelId = await trainPage.getModelId();
-    } catch (error) {
-      console.log('Training not complete, using mock model ID');
-      modelId = 'test-model-id';
-    }
+  test.beforeEach(async ({ page, request, uploadTestDataset, trainModel }) => {
+    // Real AutoML training + artifact-save poll is slow on 2-core CI runners.
+    test.setTimeout(180000);
+    datasetId = await uploadTestDataset(TRAINABLE_DATASET);
+    modelId = await trainModel(datasetId, TARGET_COLUMN);
+    await seedPredictionWorkflow(page, request, datasetId, modelId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {
@@ -76,517 +133,56 @@ test.describe('Single Prediction Workflow', () => {
     }
   });
 
-  test('should navigate to prediction page for trained model', async ({ authenticatedPage }) => {
+  test('single + batch prediction through the wired UI @smoke', async ({
+    authenticatedPage,
+  }) => {
     const predictPage = new PredictPage(authenticatedPage);
+    await authenticatedPage.goto(`/predict/${datasetId}`);
 
-    // Navigate to prediction page
-    await predictPage.goto(`/models/${modelId}/predict`);
+    // The page must NOT redirect to /upload — that means workflow gating or the
+    // model id was not satisfied, which is a real failure, not a skip.
+    await expect(authenticatedPage).not.toHaveURL(/\/upload/, { timeout: 15000 });
 
-    // Verify prediction form is visible
-    await expect(
-      authenticatedPage.locator('form, [data-testid="prediction-form"]')
-    ).toBeVisible({ timeout: 10000 });
+    // The auto-generated form loads its fields from GET /ml/{id}/features.
+    const featureInputs = authenticatedPage.locator('input[data-feature]');
+    await expect(featureInputs.first()).toBeVisible({ timeout: 15000 });
 
-    // Verify feature input fields are present
-    await expect(
-      authenticatedPage.locator('input[type="number"], input[type="text"], [data-testid*="feature"]')
-    ).toBeVisible({ timeout: 5000 });
-  });
+    // ---- AC3: missing-feature handling -> predict is gated until filled. ----
+    await featureInputs.first().fill('');
+    await expect(authenticatedPage.getByTestId('make-prediction')).toBeDisabled();
 
-  test('should make single prediction with valid feature values @smoke', async ({ authenticatedPage }) => {
-    // Full prediction UI journey is slow on 2-core CI runners
-    test.slow();
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto('/predict');
-
-    // Handle workflow gating redirect
-    const currentUrl = authenticatedPage.url();
-    if (currentUrl.includes('/upload')) {
-      console.log('[smoke] Redirected to /upload due to workflow gating. Predict page requires trained model in workflow context.');
-      return;
+    // ---- AC1: fill every numeric field, then make a single prediction. ----
+    const count = await featureInputs.count();
+    for (let i = 0; i < count; i++) {
+      await featureInputs.nth(i).fill('1');
     }
-
-    // Fill in feature values (based on sample.csv schema: age, income)
-    try {
-      await predictPage.fillFeatureValue('age', '35');
-      await predictPage.fillFeatureValue('income', '75000');
-    } catch (error) {
-      console.log('[smoke] Could not fill feature values - predict form may not be loaded');
-      return;
-    }
-
-    // Make prediction
-    await predictPage.predict();
-
-    // Wait for prediction result
-    try {
-      await predictPage.waitForPredictionResult(15000);
-
-      // Verify prediction value is displayed
-      const predictionValue = await predictPage.getPredictionValue();
-      expect(predictionValue).toBeTruthy();
-      expect(predictionValue.length).toBeGreaterThan(0);
-    } catch (error) {
-      console.log('Prediction feature not yet fully implemented');
-    }
-  });
-
-  test('should display confidence score with prediction @smoke', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto('/predict');
-
-    // Handle workflow gating redirect
-    const currentUrl = authenticatedPage.url();
-    if (currentUrl.includes('/upload')) {
-      console.log('[smoke] Redirected to /upload due to workflow gating. Predict page requires trained model in workflow context.');
-      return;
-    }
-
-    // Fill in feature values
-    try {
-      await predictPage.fillFeatureValue('age', '28');
-      await predictPage.fillFeatureValue('income', '52000');
-    } catch (error) {
-      console.log('[smoke] Could not fill feature values');
-      return;
-    }
-
-    // Make prediction
-    await predictPage.predict();
-
-    try {
-      await predictPage.waitForPredictionResult(15000);
-
-      // Verify confidence score is displayed
-      const confidenceScore = await predictPage.getConfidenceScore();
-      expect(confidenceScore).toBeGreaterThanOrEqual(0);
-      expect(confidenceScore).toBeLessThanOrEqual(1);
-
-      // Verify confidence is displayed as percentage
-      await expect(
-        authenticatedPage.locator('text=/confidence|probability|%/i')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Confidence score display not yet fully implemented');
-    }
-  });
-
-  test('should validate feature value types before prediction', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Try to enter invalid data type (text in numeric field)
-    const ageInput = authenticatedPage.locator('input[name="age"], [data-feature="age"]');
-
-    if (await ageInput.isVisible({ timeout: 5000 })) {
-      await ageInput.fill('invalid');
-
-      // Try to make prediction
-      await predictPage.predict();
-
-      // Should show validation error
-      try {
-        await expect(
-          authenticatedPage.locator('text=/Invalid input|must be a number|numeric value required/i')
-        ).toBeVisible({ timeout: 5000 });
-      } catch {
-        console.log('Client-side validation may have prevented submission');
-      }
-    }
-  });
-
-  test('should handle missing required feature values', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Try to predict without filling all fields
-    await predictPage.predict();
-
-    // Should show validation error
-    try {
-      await expect(
-        authenticatedPage.locator('text=/Required field|Please fill|all fields required/i')
-      ).toBeVisible({ timeout: 5000 });
-    } catch {
-      console.log('Prediction button may be disabled when fields are empty');
-    }
-  });
-
-  test('should display prediction result in appropriate format', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Fill in feature values
-    await predictPage.fillFeatureValue('age', '45');
-    await predictPage.fillFeatureValue('income', '85000');
-
-    // Make prediction
-    await predictPage.predict();
-
-    try {
-      await predictPage.waitForPredictionResult(15000);
-
-      // Verify result section is visible
-      await expect(
-        authenticatedPage.locator('[data-testid="prediction-result"], .prediction-output')
-      ).toBeVisible({ timeout: 5000 });
-
-      // Verify prediction is formatted (e.g., "Yes", "No", "0", "1", etc.)
-      const predictionValue = await predictPage.getPredictionValue();
-      expect(['yes', 'no', '0', '1', 'true', 'false']).toContain(predictionValue.toLowerCase());
-    } catch (error) {
-      console.log('Prediction result formatting not yet fully implemented');
-    }
-  });
-});
-
-test.describe('Batch Prediction Workflow', () => {
-  let datasetId: string;
-  let modelId: string;
-
-  test.beforeEach(async ({ authenticatedPage, uploadTestDataset }) => {
-    // Upload dataset and train model
-    datasetId = await uploadTestDataset();
-
-    const trainPage = new TrainPage(authenticatedPage);
-    await trainPage.goto(`/datasets/${datasetId}/train`);
-    await trainPage.selectTargetColumn('purchased');
-
-    try {
-      await trainPage.selectAlgorithm('Decision Tree');
-    } catch {
-      await trainPage.selectAlgorithm('Logistic Regression');
-    }
-
-    await trainPage.startTraining();
-
-    try {
-      await trainPage.waitForTrainingComplete(120000);
-      modelId = await trainPage.getModelId();
-    } catch {
-      modelId = 'test-model-id';
-    }
-  });
-
-  test.afterEach(async ({ cleanupDataset }) => {
-    if (datasetId) {
-      await cleanupDataset(datasetId);
-    }
-  });
-
-  test('should navigate to batch prediction mode', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Navigate to batch prediction
-    try {
-      await predictPage.navigateToBatchPrediction();
-
-      // Verify batch prediction interface is visible
-      await expect(
-        authenticatedPage.locator('[data-testid="batch-prediction"], text=/batch/i')
-      ).toBeVisible({ timeout: 10000 });
-
-      // Verify file upload input is present
-      await expect(
-        authenticatedPage.locator('input[type="file"]')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Batch prediction mode not yet implemented');
-    }
-  });
-
-  test('should upload CSV file for batch predictions', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    try {
-      await predictPage.navigateToBatchPrediction();
-
-      // Upload batch prediction file
-      const batchPath = join(__dirname, '../test-data/batch-predictions.csv');
-      await predictPage.uploadBatchFile(batchPath);
-
-      // Verify file upload success
-      await expect(
-        authenticatedPage.locator('text=/batch-predictions.csv|File uploaded|Ready to predict/i')
-      ).toBeVisible({ timeout: 10000 });
-    } catch (error) {
-      console.log('Batch file upload not yet implemented');
-    }
-  });
-
-  test('should process batch predictions and display results', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    try {
-      await predictPage.navigateToBatchPrediction();
-
-      // Upload and start batch prediction
-      const batchPath = join(__dirname, '../test-data/batch-predictions.csv');
-      await predictPage.uploadBatchFile(batchPath);
-      await predictPage.startBatchPrediction();
-
-      // Wait for batch processing to complete
-      await predictPage.waitForBatchComplete(60000);
-
-      // Verify results are displayed
-      const resultCount = await predictPage.getBatchResultCount();
-      expect(resultCount).toBeGreaterThan(0);
-
-      // Verify results table is visible
-      await expect(
-        authenticatedPage.locator('table, [data-testid="batch-results"]')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Batch prediction processing not yet fully implemented');
-    }
-  });
-
-  test('should allow downloading batch prediction results', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    try {
-      await predictPage.navigateToBatchPrediction();
-
-      // Upload and process batch predictions
-      const batchPath = join(__dirname, '../test-data/batch-predictions.csv');
-      await predictPage.uploadBatchFile(batchPath);
-      await predictPage.startBatchPrediction();
-      await predictPage.waitForBatchComplete(60000);
-
-      // Download results
-      const download = await predictPage.downloadPredictions();
-
-      // Verify download occurred
-      expect(download).toBeTruthy();
-      expect(download.suggestedFilename()).toContain('.csv');
-    } catch (error) {
-      console.log('Batch prediction download not yet fully implemented');
-    }
-  });
-
-  test('should validate batch file format', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    try {
-      await predictPage.navigateToBatchPrediction();
-
-      // Try to upload invalid file (JSON instead of CSV)
-      const invalidPath = join(__dirname, '../test-data/invalid.json');
-      await predictPage.uploadBatchFile(invalidPath);
-
-      // Should show validation error
-      await expect(
-        authenticatedPage.locator('text=/Invalid format|CSV required|Please upload CSV/i')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Batch file validation not yet implemented');
-    }
-  });
-});
-
-test.describe('Prediction Error Handling', () => {
-  let modelId: string;
-
-  test.beforeEach(() => {
-    modelId = 'test-model-id';
-  });
-
-  test('should handle prediction API errors gracefully', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    // Mock API error
-    await authenticatedPage.route('**/api/*/predict', (route) => {
-      route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'Prediction service unavailable' }),
-      });
+    // Click the button by test id directly: the shared PredictPage.predict()
+    // selector matches `button:has-text("Predict")`, which also matches the
+    // "Single Prediction" mode toggle (substring) and would mis-click.
+    await authenticatedPage.getByTestId('make-prediction').click();
+
+    await predictPage.waitForPredictionResult(20000);
+    const predictionValue = await predictPage.getPredictionValue();
+    expect(predictionValue.trim().length).toBeGreaterThan(0);
+    // Classification model -> a confidence score is rendered.
+    await expect(authenticatedPage.getByTestId('confidence-score')).toBeVisible();
+
+    // ---- AC4: batch prediction -> progress -> summary -> download. ----
+    await authenticatedPage.getByTestId('batch-prediction-link').click();
+    await authenticatedPage
+      .getByTestId('batch-file-input')
+      .setInputFiles(buildBatchCsv(3));
+    await authenticatedPage.getByTestId('start-batch-prediction').click();
+
+    // Job runs as a background task; the page polls progress to completion.
+    await expect(authenticatedPage.getByTestId('batch-summary')).toBeVisible({
+      timeout: 60000,
     });
 
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Try to make prediction
-    try {
-      await predictPage.fillFeatureValue('age', '30');
-      await predictPage.fillFeatureValue('income', '60000');
-      await predictPage.predict();
-
-      // Should show error message
-      await expect(
-        authenticatedPage.locator('text=/Prediction failed|Error|service unavailable/i')
-      ).toBeVisible({ timeout: 10000 });
-    } catch (error) {
-      console.log('Error handling UI not yet implemented');
-    }
-  });
-
-  test('should handle network timeout during prediction', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    // Mock network timeout
-    await authenticatedPage.route('**/api/*/predict', (route) => {
-      // Delay response beyond timeout
-      setTimeout(() => {
-        route.abort('timedout');
-      }, 30000);
-    });
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    try {
-      await predictPage.fillFeatureValue('age', '35');
-      await predictPage.fillFeatureValue('income', '70000');
-      await predictPage.predict();
-
-      // Should show timeout error
-      await expect(
-        authenticatedPage.locator('text=/Timeout|Request timed out|Taking too long/i')
-      ).toBeVisible({ timeout: 35000 });
-    } catch (error) {
-      console.log('Timeout handling not yet implemented');
-    }
-  });
-
-  test('should handle invalid model ID', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    // Try to navigate to prediction page with invalid model ID
-    await predictPage.goto('/models/invalid-model-id/predict');
-
-    // Should show error or redirect
-    try {
-      await expect(
-        authenticatedPage.locator('text=/Model not found|Invalid model|Does not exist/i')
-      ).toBeVisible({ timeout: 10000 });
-    } catch {
-      // May redirect to models list instead
-      await expect(authenticatedPage).toHaveURL(/\/models/);
-    }
-  });
-});
-
-test.describe('Prediction History and Tracking', () => {
-  let datasetId: string;
-  let modelId: string;
-
-  test.beforeEach(async ({ authenticatedPage, uploadTestDataset }) => {
-    datasetId = await uploadTestDataset();
-
-    const trainPage = new TrainPage(authenticatedPage);
-    await trainPage.goto(`/datasets/${datasetId}/train`);
-    await trainPage.selectTargetColumn('purchased');
-
-    try {
-      await trainPage.selectAlgorithm('Decision Tree');
-      await trainPage.startTraining();
-      await trainPage.waitForTrainingComplete(120000);
-      modelId = await trainPage.getModelId();
-    } catch {
-      modelId = 'test-model-id';
-    }
-  });
-
-  test.afterEach(async ({ cleanupDataset }) => {
-    if (datasetId) {
-      await cleanupDataset(datasetId);
-    }
-  });
-
-  test('should track prediction history', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Make multiple predictions
-    const testCases = [
-      { age: '25', income: '50000' },
-      { age: '35', income: '75000' },
-      { age: '45', income: '90000' },
-    ];
-
-    for (const testCase of testCases) {
-      try {
-        await predictPage.fillFeatureValue('age', testCase.age);
-        await predictPage.fillFeatureValue('income', testCase.income);
-        await predictPage.predict();
-        await predictPage.waitForPredictionResult(15000);
-        await authenticatedPage.waitForTimeout(1000);
-      } catch {
-        console.log('Prediction not yet fully implemented');
-        break;
-      }
-    }
-
-    // Check for prediction history
-    const historyButton = authenticatedPage.locator(
-      'button:has-text("History"), [data-testid="prediction-history"], a:has-text("Past predictions")'
-    );
-
-    if (await historyButton.isVisible({ timeout: 5000 })) {
-      await historyButton.click();
-
-      // Verify history list is displayed
-      await expect(
-        authenticatedPage.locator('[data-testid="history-list"], .history-item, .prediction-record')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('Prediction history feature not yet implemented');
-    }
-  });
-
-  test('should allow comparing multiple predictions', async ({ authenticatedPage }) => {
-    const predictPage = new PredictPage(authenticatedPage);
-
-    await predictPage.goto(`/models/${modelId}/predict`);
-
-    // Look for comparison feature
-    const compareButton = authenticatedPage.locator(
-      'button:has-text("Compare"), [data-testid="compare-predictions"]'
-    );
-
-    if (await compareButton.isVisible({ timeout: 5000 })) {
-      // Make multiple predictions
-      await predictPage.fillFeatureValue('age', '30');
-      await predictPage.fillFeatureValue('income', '60000');
-      await predictPage.predict();
-
-      try {
-        await predictPage.waitForPredictionResult(15000);
-
-        await authenticatedPage.waitForTimeout(1000);
-
-        await predictPage.fillFeatureValue('age', '40');
-        await predictPage.fillFeatureValue('income', '80000');
-        await predictPage.predict();
-        await predictPage.waitForPredictionResult(15000);
-
-        // Click compare
-        await compareButton.click();
-
-        // Verify comparison view is displayed
-        await expect(
-          authenticatedPage.locator('[data-testid="comparison-view"], text=/comparison/i')
-        ).toBeVisible({ timeout: 5000 });
-      } catch {
-        console.log('Prediction comparison not yet fully implemented');
-      }
-    } else {
-      console.log('Prediction comparison feature not yet implemented');
-    }
+    // The completed summary offers a downloadable results CSV.
+    const downloadPromise = authenticatedPage.waitForEvent('download');
+    await authenticatedPage.getByTestId('download-predictions').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain('batch_results');
   });
 });

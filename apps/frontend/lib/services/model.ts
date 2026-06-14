@@ -157,6 +157,10 @@ export interface PredictRequest {
 export interface PredictResponse {
   predictions: any[]
   probabilities?: number[][]
+  /** Per-record confidence (max class probability) for classification (#82). */
+  confidence?: number[]
+  /** Ordered class labels matching each probability vector (#82). */
+  class_labels?: string[]
   feature_names: string[]
   model_info: {
     model_id: string
@@ -164,6 +168,63 @@ export interface PredictResponse {
     problem_type: string
     target_column: string
   }
+}
+
+/** A raw input feature the prediction form must collect (#82). */
+export interface ModelFeatureDescriptor {
+  name: string
+  /** "number" for numeric inputs, "categorical" for a constrained choice. */
+  type: string
+  /** Allowed values for a categorical feature, when recoverable. */
+  options?: string[] | null
+}
+
+/** Input schema used to auto-generate the single-prediction form (#82). */
+export interface ModelFeaturesResponse {
+  features: ModelFeatureDescriptor[]
+  class_labels?: string[] | null
+  problem_type: string
+  target_column: string
+}
+
+/** Options for creating a batch prediction job (#82). */
+export interface CreateBatchJobOptions {
+  output_format?: 'csv' | 'json'
+  include_probabilities?: boolean
+  include_metadata?: boolean
+  chunk_size?: number
+}
+
+/** A batch prediction job record returned by the batch endpoints (#82). */
+export interface BatchJobResponse {
+  job_id: string
+  job_type: string
+  status: string
+  progress: Record<string, any>
+  config: Record<string, any>
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+  duration_seconds?: number | null
+  error_message?: string | null
+  results: Record<string, any>
+  input_size_bytes?: number | null
+  output_path?: string | null
+}
+
+/** Real-time batch job progress (#82). */
+export interface BatchJobProgressResponse {
+  job_id: string
+  status: string
+  percentage_complete: number
+  processed_records: number
+  total_records: number
+  success_count: number
+  error_count: number
+  success_rate: number
+  current_chunk: number
+  total_chunks: number
+  estimated_completion?: string | null
 }
 
 export class ModelService {
@@ -433,6 +494,141 @@ export class ModelService {
     return response.json()
   }
 
+  /** Fetch the raw input feature schema for the prediction form (#82). */
+  static async getModelFeatures(
+    modelId: string,
+    token: string | null
+  ): Promise<ModelFeaturesResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/features`,
+      {
+        method: 'GET',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to load model features')
+    }
+
+    return response.json()
+  }
+
+  /** Create a batch prediction job from an uploaded CSV file (#82). */
+  static async createBatchJob(
+    modelId: string,
+    file: File,
+    options: CreateBatchJobOptions,
+    token: string | null
+  ): Promise<BatchJobResponse> {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('model_id', modelId)
+    form.append('output_format', options.output_format ?? 'csv')
+    form.append(
+      'include_probabilities',
+      String(options.include_probabilities ?? true)
+    )
+    form.append('include_metadata', String(options.include_metadata ?? false))
+    if (options.chunk_size != null) {
+      form.append('chunk_size', String(options.chunk_size))
+    }
+
+    // Note: no Content-Type header — the browser sets the multipart boundary.
+    const response = await fetch(`${API_BASE_URL}/batch/jobs`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to create batch job')
+    }
+
+    return response.json()
+  }
+
+  /** Fetch a batch job's full record (#82). */
+  static async getBatchJob(
+    jobId: string,
+    token: string | null
+  ): Promise<BatchJobResponse> {
+    const response = await fetch(`${API_BASE_URL}/batch/jobs/${jobId}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token)
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch batch job')
+    }
+
+    return response.json()
+  }
+
+  /** Poll a batch job's real-time progress (#82). */
+  static async getBatchJobProgress(
+    jobId: string,
+    token: string | null
+  ): Promise<BatchJobProgressResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/batch/jobs/${jobId}/progress`,
+      {
+        method: 'GET',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch batch progress')
+    }
+
+    return response.json()
+  }
+
+  /** Download a completed batch job's results as a Blob (#82). */
+  static async downloadBatchResults(
+    jobId: string,
+    token: string | null
+  ): Promise<Blob> {
+    const response = await fetch(
+      `${API_BASE_URL}/batch/jobs/${jobId}/download`,
+      {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to download batch results')
+    }
+
+    return response.blob()
+  }
+
+  /** Cancel a pending or running batch job (#82). */
+  static async cancelBatchJob(
+    jobId: string,
+    token: string | null
+  ): Promise<void> {
+    const response = await fetch(
+      `${API_BASE_URL}/batch/jobs/${jobId}/cancel`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to cancel batch job')
+    }
+  }
+
   static async deleteModel(
     modelId: string,
     token: string | null
@@ -538,6 +734,46 @@ class ModelServiceClient {
   ): Promise<PredictResponse> {
     const token = await getAuthToken()
     return ModelService.predict(modelId, request, token)
+  }
+
+  /** Resolve the auth token automatically and fetch the input feature schema. */
+  async getModelFeatures(modelId: string): Promise<ModelFeaturesResponse> {
+    const token = await getAuthToken()
+    return ModelService.getModelFeatures(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and create a batch prediction job. */
+  async createBatchJob(
+    modelId: string,
+    file: File,
+    options: CreateBatchJobOptions = {}
+  ): Promise<BatchJobResponse> {
+    const token = await getAuthToken()
+    return ModelService.createBatchJob(modelId, file, options, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a batch job. */
+  async getBatchJob(jobId: string): Promise<BatchJobResponse> {
+    const token = await getAuthToken()
+    return ModelService.getBatchJob(jobId, token)
+  }
+
+  /** Resolve the auth token automatically and poll batch job progress. */
+  async getBatchJobProgress(jobId: string): Promise<BatchJobProgressResponse> {
+    const token = await getAuthToken()
+    return ModelService.getBatchJobProgress(jobId, token)
+  }
+
+  /** Resolve the auth token automatically and download batch results. */
+  async downloadBatchResults(jobId: string): Promise<Blob> {
+    const token = await getAuthToken()
+    return ModelService.downloadBatchResults(jobId, token)
+  }
+
+  /** Resolve the auth token automatically and cancel a batch job. */
+  async cancelBatchJob(jobId: string): Promise<void> {
+    const token = await getAuthToken()
+    return ModelService.cancelBatchJob(jobId, token)
   }
 
   async deleteModel(modelId: string): Promise<void> {

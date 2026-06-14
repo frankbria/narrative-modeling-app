@@ -4,7 +4,7 @@ API routes for model training and management
 
 from typing import Optional, List, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import pandas as pd
 import numpy as np
 import io
@@ -56,6 +56,10 @@ from dataclasses import asdict
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Upper bound on records accepted by the synchronous single-prediction endpoint;
+# larger workloads must go through the async batch path (issue #82 hardening).
+MAX_PREDICT_RECORDS = 1000
+
 
 class TrainModelRequest(BaseModel):
     """Request for training a model"""
@@ -95,7 +99,7 @@ class ModelInfo(BaseModel):
 class PredictRequest(BaseModel):
     """Request for making predictions"""
 
-    data: List[Dict[str, Any]]
+    data: List[Dict[str, Any]] = Field(..., max_length=MAX_PREDICT_RECORDS)
     include_probabilities: bool = False
 
 
@@ -104,8 +108,34 @@ class PredictResponse(BaseModel):
 
     predictions: List[Any]
     probabilities: Optional[List[List[float]]] = None
+    # Per-record confidence (max class probability) for classification; None
+    # for regression or when probabilities are unavailable (issue #82).
+    confidence: Optional[List[float]] = None
+    # Ordered class labels matching each probability vector, so the UI can map
+    # probabilities to human-readable classes (issue #82).
+    class_labels: Optional[List[str]] = None
     feature_names: List[str]
     model_info: Dict[str, Any]
+
+
+class FeatureDescriptor(BaseModel):
+    """One raw input feature the prediction form must collect (issue #82)."""
+
+    name: str
+    # "number" for numeric inputs, "categorical" for a constrained choice.
+    type: str
+    # Allowed values for categorical features (from the fitted encoder), when
+    # recoverable; None otherwise.
+    options: Optional[List[str]] = None
+
+
+class ModelFeaturesResponse(BaseModel):
+    """The input schema needed to auto-generate a prediction form (issue #82)."""
+
+    features: List[FeatureDescriptor]
+    class_labels: Optional[List[str]] = None
+    problem_type: str
+    target_column: str
 
 
 class TrainingStatusResponse(BaseModel):
@@ -966,6 +996,119 @@ async def get_model(model_id: str, current_user_id: str = Depends(get_current_us
     return model
 
 
+def _required_input_features(feature_engineer, ml_model) -> List[str]:
+    """The raw input columns a record must supply.
+
+    When a feature engineer was fitted at training time, the model consumes the
+    *engineered* columns but callers supply the *raw* columns the engineer was
+    fitted on (numeric + categorical). Without a feature engineer the model was
+    trained directly on ``feature_names``.
+    """
+    if feature_engineer is not None:
+        raw = list(getattr(feature_engineer, "numeric_features", []) or []) + list(
+            getattr(feature_engineer, "categorical_features", []) or []
+        )
+        if raw:
+            return raw
+    return list(ml_model.feature_names)
+
+
+def _categorical_options(feature_engineer, column: str) -> Optional[List[str]]:
+    """Recover the allowed values for a categorical column from the fitted
+    encoder, so the form can render a dropdown. Returns None if unrecoverable."""
+    try:
+        transformers = getattr(feature_engineer, "transformers", {}) or {}
+        if getattr(feature_engineer.config, "encoding_method", None) == "onehot":
+            encoder = transformers.get("encoder")
+            idx = feature_engineer.categorical_features.index(column)
+            return [str(c) for c in encoder.categories_[idx]]
+        label_encoders = transformers.get("label_encoders", {}) or {}
+        encoder = label_encoders.get(column)
+        if encoder is not None:
+            return [str(c) for c in encoder.classes_]
+    except Exception:
+        return None
+    return None
+
+
+def _extract_class_labels(model, problem_type: str) -> Optional[List[str]]:
+    """Ordered class labels from the fitted estimator (classification only)."""
+    try:
+        if "classification" not in str(problem_type):
+            return None
+        raw = getattr(model, "classes_", None)
+        if raw is None:
+            return None
+        return [str(c) for c in raw]
+    except Exception:
+        return None
+
+
+@router.get("/{model_id}/features", response_model=ModelFeaturesResponse)
+async def get_model_features(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Return the raw input feature schema for a model (issue #82).
+
+    Drives the auto-generated single-prediction form: numeric fields, the
+    categorical fields with their allowed values (when recoverable from the
+    fitted encoder), plus class labels and problem type. Degrades to the stored
+    ``feature_names`` when the model artifacts cannot be loaded.
+    """
+    ml_model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not ml_model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    feature_engineer = None
+    class_labels: Optional[List[str]] = None
+    storage_service = ModelStorageService()
+    try:
+        model, feature_engineer = await storage_service.load_model(
+            model_id, current_user_id
+        )
+        class_labels = _extract_class_labels(model, ml_model.problem_type)
+    except Exception as exc:  # noqa: BLE001 - degrade, never 500 on the form
+        logger.warning(
+            "Could not load artifacts for %s features; "
+            "falling back to stored feature_names: %s",
+            model_id,
+            exc,
+        )
+
+    features: List[FeatureDescriptor] = []
+    if feature_engineer is not None and (
+        getattr(feature_engineer, "numeric_features", None)
+        or getattr(feature_engineer, "categorical_features", None)
+    ):
+        for name in feature_engineer.numeric_features or []:
+            features.append(FeatureDescriptor(name=name, type="number"))
+        for name in feature_engineer.categorical_features or []:
+            features.append(
+                FeatureDescriptor(
+                    name=name,
+                    type="categorical",
+                    options=_categorical_options(feature_engineer, name),
+                )
+            )
+    else:
+        # No fitted engineer (or none persisted): the model was trained directly
+        # on feature_names. Types are unknown, default to numeric inputs.
+        features = [
+            FeatureDescriptor(name=name, type="number")
+            for name in ml_model.feature_names
+        ]
+
+    return ModelFeaturesResponse(
+        features=features,
+        class_labels=class_labels,
+        problem_type=ml_model.problem_type,
+        target_column=ml_model.target_column,
+    )
+
+
 @router.post("/{model_id}/predict", response_model=PredictResponse)
 async def predict(
     model_id: str,
@@ -973,7 +1116,10 @@ async def predict(
     current_user_id: str = Depends(get_current_user_id),
 ):
     """
-    Make predictions using a trained model
+    Make predictions using a trained model.
+
+    Reuses the exact feature pipeline fitted at training time (issue #82) and
+    rejects records missing required input features with a clear 422.
     """
     # Load model
     storage_service = ModelStorageService()
@@ -989,21 +1135,47 @@ async def predict(
         MLModel.model_id == model_id, MLModel.user_id == current_user_id
     )
 
+    if not request.data:
+        raise HTTPException(status_code=422, detail="No input records provided")
+
+    # Validate that every record carries the required raw input features.
+    required = _required_input_features(feature_engineer, ml_model)
+    missing = sorted(
+        {f for record in request.data for f in required if f not in record}
+    )
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required feature(s): {', '.join(missing)}",
+        )
+
     # Convert input data to DataFrame
     input_df = pd.DataFrame(request.data)
 
-    # Apply feature engineering if available
-    if feature_engineer:
-        input_df = await feature_engineer.transform(input_df)
+    # Apply the fitted pipeline and run inference. A bad feature value (e.g. an
+    # unknown category the encoder was never fitted on) surfaces as a sklearn
+    # ValueError — return it as a clear 422 rather than a 500 traceback leak.
+    try:
+        if feature_engineer:
+            input_df = await feature_engineer.transform(input_df)
 
-    # Make predictions
-    predictions = model.predict(input_df)
+        # Make predictions
+        predictions = model.predict(input_df)
 
-    # Get probabilities if requested and available
-    probabilities = None
-    if request.include_probabilities and hasattr(model, "predict_proba"):
-        prob_array = model.predict_proba(input_df)
-        probabilities = prob_array.tolist()
+        # Get probabilities if requested and available
+        probabilities = None
+        confidence = None
+        if request.include_probabilities and hasattr(model, "predict_proba"):
+            prob_array = model.predict_proba(input_df)
+            probabilities = prob_array.tolist()
+            try:
+                confidence = [float(max(row)) for row in probabilities]
+            except Exception:
+                confidence = None
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid feature value(s): {exc}"
+        )
 
     # Convert predictions to list
     if isinstance(predictions, np.ndarray):
@@ -1012,6 +1184,8 @@ async def predict(
     return PredictResponse(
         predictions=predictions,
         probabilities=probabilities,
+        confidence=confidence,
+        class_labels=_extract_class_labels(model, ml_model.problem_type),
         feature_names=ml_model.feature_names,
         model_info={
             "model_id": model_id,

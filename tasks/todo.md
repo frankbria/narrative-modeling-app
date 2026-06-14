@@ -1,45 +1,34 @@
-# Issue #156 — /api/v1/ml/train 404 + trainModel fixture masking
+# Issue #82 — Prediction Interfaces (single + batch)
 
-> Previous plan (issue #155 — prepare-page crash / data-preparation spec) was
-> completed and merged in PR #194.
+**Source plan**: Traycer comment (heavily adapted — it misdescribes current state).
+**Branch**: `feature/82-prediction-interfaces`
 
-## Verify-before-fix findings
-- **AC1 (train 404) — already fixed by #76.** `model_training.py:186-199` coerces
-  the dataset id string to `PydanticObjectId` before lookup. Live e2e confirms
-  `POST /api/v1/ml/train → 200`.
-- **AC2 (fixture masking) — still valid.** `trainModel` returned `'mock-model-id'`
-  on any failure, so downstream tests broke at predict with a misleading error.
-- **AC3 (perf single-prediction smoke test) — still valid.** Was `test.fixme`.
-  Re-enabling exposed a deeper issue: the 6-row `sample.csv` makes AutoML detect
-  problem type "unknown" and fail (`ufunc 'divide' not supported`), so no model
-  is ever saved. The fixme also referenced #157 (unrealistic 100ms threshold).
+## Verified current state (Phase 2)
+- `POST /api/v1/ml/{model_id}/predict` (`model_training.py:969`) — **already real inference**; loads model + persisted `FeatureEngineer`, `await transform()`, predicts, returns probabilities. AC2 (pipeline reuse) already satisfied here.
+- `BatchPredictionService` (`services/batch_prediction.py`) — **broken**: `load_model(model.model_path)` wrong (sig is `load_model(model_id, user_id)` → tuple), `feature_engineer.transform()` not awaited (it's async), calls non-existent S3 methods (`upload_file`/`upload_file_content`/`download_file_content`), no summary stats.
+- AC6 round-trip coverage lives in `apps/backend/tests/integration/test_prediction_roundtrip.py` (real Mongo + LocalStack).
+- `production.py` predict — same `load_model` bug.
+- Frontend `app/predict/page.tsx` — calls non-existent `/models/{id}/features` & `/models/{id}/predict/batch`, wrong base path (`/models/` vs `/ml/` + `/batch/`), shape mismatch.
+- Form must use **raw** input columns (from `FeatureEngineer.numeric_features`/`categorical_features`), not engineered `MLModel.feature_names`.
 
-## Done
-1. [x] **trainModel fixture fails loudly** (`e2e/fixtures/index.ts`): submit with
-   bounded retries; throw with status+body on non-ok train, missing model id, or
-   a ~60s poll timeout. No more `mock-model-id`.
-2. [x] **Use a trainable dataset**: `uploadTestDataset` now accepts a relative
-   path and uploads under its basename; the single-prediction test trains on
-   `ai-test-datasets/binary-classification-small.csv` (200-row stratified subset
-   of the 999-row binary `churned` set — the full file pegs a CI core and flakes
-   neighbors, see #157). Fixed the `uploadTestDataset` fixture **type** to accept
-   the optional filename.
-3. [x] **Re-enable the perf single-prediction @smoke test** with a real predict
-   payload (full feature record), a functional assertion (predictions array of
-   length 1), a CI-safe 2000ms latency ceiling (~180ms observed locally; tight
-   tuning deferred to #157), and `test.setTimeout(120000)` for train+poll.
-4. [x] **Verified**: passes in `chromium-smoke` and `chromium-full`, stable across
-   runs; `tsc --noEmit` clean; `next lint` (CI) clean.
+## Backend
+- [ ] **B1** `GET /api/v1/ml/{model_id}/features` → `{features:[{name,type,options?}], class_labels, problem_type, target_column}`. Derive from persisted FeatureEngineer (raw numeric→number, categorical→categorical w/ encoder categories as options); fallback to `MLModel.feature_names` when no FE. (AC1)
+- [ ] **B2** Enhance `POST /ml/{model_id}/predict`: missing-feature validation → clear 422 (AC3); add backward-compatible `class_labels` + per-record `confidence` (max proba) to `PredictResponse`. (AC1/AC3)
+- [ ] **B3** Fix `BatchPredictionService`: correct `load_model(model_id,user_id)` + tuple unpack; `await transform()`; real S3 via `upload_file_obj`/`download_file_obj`; compute `prediction_distribution` + `confidence_stats` into `job.results`; download returns predictions CSV. Surface stats in `BatchJobResponse.results`. (AC4)
+- [ ] **B4** Fix identical `load_model` bug in `production.py` predict (bug ownership).
+- [ ] **B5** Tests (TDD): features endpoint; predict validation + class_labels/confidence; batch service unit tests (mock S3/model); integration round-trip train→predict-single→predict-batch (enable skipped `integration/test_ml_workflow_e2e.py`). (AC6)
 
-## Acceptance criteria
-- [x] `POST /api/v1/ml/train` accepts the upload dataset id string (coerce to ObjectId) — #76
-- [x] `trainModel` E2E fixture fails loudly instead of returning a mock id
-- [x] The fixme'd perf single-prediction smoke test is re-enabled and passes
+## Frontend
+- [ ] **F1** `lib/services/model.ts` + `lib/types`: add `getModelFeatures`, batch methods (`createBatchJob`,`getBatchJobStatus`,`getBatchJobProgress`,`downloadBatchResults`,`cancelBatchJob`); fix paths to `/ml/` & `/batch/`; mirror backend schemas.
+- [ ] **F2** Rewire `app/predict/page.tsx`: features→form w/ real-time validation; single predict via `/ml/{id}/predict` showing prediction + confidence + class probs; batch via `/batch/jobs` create→poll progress→summary stats→download CSV; add `data-testid`s; keep workflow stage completion. (AC1/AC3/AC4/AC5)
+- [ ] **F3** Add `app/predict/[datasetId]/page.tsx` re-export (workflow nav pushes `/predict/{datasetId}`). (AC5)
+- [ ] **F4** Jest: model.ts new methods; predict page.
+- [ ] **F5** E2E: repair/enable `e2e/workflows/predict.spec.ts` @smoke (single + batch) with real backend seed. (AC5)
 
-## Out of scope (follow-up filed)
-The loud fixture surfaces that other **manual `chromium-full`** tests
-(error-scenarios, model-config, other performance tests) still train on the
-un-trainable `sample.csv` and were vacuously passing / now fail loudly at train.
-Not in the PR gate (those aren't @smoke). Follow-up issue: migrate them to a
-trainable dataset. The batch-prediction test also targets a separate
-`/api/v1/models/{id}/predict-batch` endpoint — left untouched.
+## Acceptance Criteria (gate)
+- [ ] Single prediction: auto-generated form from feature schema, real-time validation, prediction value shown
+- [ ] Input preprocessing reuses training-time pipeline (single + batch)
+- [ ] Missing-feature handling with clear errors
+- [ ] Batch: CSV upload → BatchPredictionService → progress → downloadable results CSV w/ summary stats
+- [ ] `app/predict/page.tsx` wired to real endpoints; E2E predict workflow passes
+- [ ] Integration test: train → predict single → predict batch round-trip

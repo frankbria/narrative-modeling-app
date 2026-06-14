@@ -329,6 +329,159 @@ class TestModelTrainingEndpoints:
             assert response.status_code == 404
             assert "Model not found" in response.json()["detail"]
 
+    @pytest.mark.asyncio
+    async def test_predict_missing_feature_returns_422(self, async_authorized_client):
+        """A record missing a required raw input feature is rejected (issue #82)."""
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([0])
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
+            mock_load.return_value = (mock_model, None)
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
+                mock_find.return_value = MagicMock(
+                    feature_names=["feature1", "feature2", "feature3"]
+                )
+
+                request_data = {
+                    # feature3 is missing
+                    "data": [{"feature1": 1.0, "feature2": 2.0}],
+                }
+
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/model_123/predict", json=request_data
+                )
+
+                assert response.status_code == 422
+                assert "feature3" in response.json()["detail"]
+                mock_model.predict.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_predict_invalid_value_returns_422(self, async_authorized_client):
+        """An unknown categorical value (sklearn ValueError) becomes a clean
+        422, not a 500 traceback leak (issue #82 hardening)."""
+        mock_model = MagicMock()
+        mock_model.predict.side_effect = ValueError(
+            "Found unknown categories ['weird'] in column 0"
+        )
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
+            mock_load.return_value = (mock_model, None)
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
+                mock_find.return_value = MagicMock(feature_names=["feature1"])
+
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/model_123/predict",
+                    json={"data": [{"feature1": "weird"}]},
+                )
+
+                assert response.status_code == 422
+                assert "Invalid feature value" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_predict_returns_confidence_and_class_labels(
+        self, async_authorized_client
+    ):
+        """Classification predictions expose per-record confidence + labels (#82)."""
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([1, 0])
+        mock_model.predict_proba.return_value = np.array([[0.1, 0.9], [0.7, 0.3]])
+        mock_model.classes_ = np.array([0, 1])
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
+            mock_load.return_value = (mock_model, None)
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
+                mock_find.return_value = MagicMock(
+                    feature_names=["feature1"],
+                    problem_type="binary_classification",
+                    algorithm="Random Forest",
+                    target_column="target",
+                )
+
+                request_data = {
+                    "data": [{"feature1": 1.0}, {"feature1": 2.0}],
+                    "include_probabilities": True,
+                }
+
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/model_123/predict", json=request_data
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["predictions"] == [1, 0]
+                assert data["confidence"] == [0.9, 0.7]
+                assert data["class_labels"] == ["0", "1"]
+
+    @pytest.mark.asyncio
+    async def test_get_model_features_endpoint(self, async_authorized_client):
+        """GET /features returns the raw input schema for form generation (#82)."""
+        mock_model = MagicMock()
+        mock_model.classes_ = np.array(["no", "yes"])
+
+        mock_fe = MagicMock()
+        mock_fe.numeric_features = ["age", "income"]
+        mock_fe.categorical_features = ["gender"]
+        mock_fe.transformers = {}
+        mock_fe.config.encoding_method = "onehot"
+
+        with patch(
+            "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = MagicMock(
+                feature_names=["age", "income", "gender_male"],
+                problem_type="binary_classification",
+                target_column="churned",
+            )
+            with patch(
+                "app.services.model_storage.ModelStorageService.load_model",
+                new_callable=AsyncMock,
+            ) as mock_load:
+                mock_load.return_value = (mock_model, mock_fe)
+
+                response = await async_authorized_client.get(
+                    "/api/v1/ml/model_123/features"
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                names = [f["name"] for f in data["features"]]
+                assert names == ["age", "income", "gender"]
+                types = {f["name"]: f["type"] for f in data["features"]}
+                assert types["age"] == "number"
+                assert types["gender"] == "categorical"
+                assert data["class_labels"] == ["no", "yes"]
+                assert data["problem_type"] == "binary_classification"
+                assert data["target_column"] == "churned"
+
+    @pytest.mark.asyncio
+    async def test_get_model_features_not_found(self, async_authorized_client):
+        """Unknown model id yields 404 from the features endpoint (#82)."""
+        with patch(
+            "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+        ) as mock_find:
+            mock_find.return_value = None
+
+            response = await async_authorized_client.get(
+                "/api/v1/ml/nope/features"
+            )
+
+            assert response.status_code == 404
+
 
 class TestModelTrainingBackgroundTask:
     """Test the background training task"""
