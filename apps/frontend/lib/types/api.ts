@@ -33,28 +33,10 @@ export interface EvaluationResponse {
   warnings?: string[]
 }
 
-/** A feature descriptor returned by the model features endpoint. */
-export interface ModelFeature {
-  name: string
-  type: string
-}
-
-/** Response from the model features endpoint. */
-export interface ModelFeaturesResponse {
-  features: ModelFeature[]
-}
-
-/** Response from a single prediction request. */
-export interface PredictionResult {
-  prediction: string | number
-  confidence?: number
-  probabilities?: Record<string, number>
-}
-
-/** Response from a batch prediction request. */
-export interface BatchPredictionResult {
-  download_url: string
-}
+/**
+ * Prediction request/response shapes live in `lib/services/model.ts`
+ * (the canonical contract for the prediction endpoints, issue #82).
+ */
 
 /** Response from a successful chunked upload completion. */
 export interface ChunkedUploadResponse {
