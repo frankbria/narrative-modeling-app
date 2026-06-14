@@ -6,6 +6,7 @@
 ## Verified current state (Phase 2)
 - `POST /api/v1/ml/{model_id}/predict` (`model_training.py:969`) — **already real inference**; loads model + persisted `FeatureEngineer`, `await transform()`, predicts, returns probabilities. AC2 (pipeline reuse) already satisfied here.
 - `BatchPredictionService` (`services/batch_prediction.py`) — **broken**: `load_model(model.model_path)` wrong (sig is `load_model(model_id, user_id)` → tuple), `feature_engineer.transform()` not awaited (it's async), calls non-existent S3 methods (`upload_file`/`upload_file_content`/`download_file_content`), no summary stats.
+- AC6 round-trip coverage lives in `apps/backend/tests/integration/test_prediction_roundtrip.py` (real Mongo + LocalStack).
 - `production.py` predict — same `load_model` bug.
 - Frontend `app/predict/page.tsx` — calls non-existent `/models/{id}/features` & `/models/{id}/predict/batch`, wrong base path (`/models/` vs `/ml/` + `/batch/`), shape mismatch.
 - Form must use **raw** input columns (from `FeatureEngineer.numeric_features`/`categorical_features`), not engineered `MLModel.feature_names`.

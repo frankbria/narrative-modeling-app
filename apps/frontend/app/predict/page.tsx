@@ -37,6 +37,7 @@ export default function PredictPage() {
   const [batchJob, setBatchJob] = useState<BatchJobResponse | null>(null);
   const [batchProgress, setBatchProgress] = useState<BatchJobProgressResponse | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
   const loadModelFeatures = useCallback(async () => {
     try {
@@ -76,6 +77,7 @@ export default function PredictPage() {
   // Clean up the progress poller on unmount.
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
@@ -156,10 +158,12 @@ export default function PredictPage() {
       pollRef.current = setInterval(async () => {
         try {
           const progress = await modelService.getBatchJobProgress(job.job_id);
+          if (!isMountedRef.current) return;
           setBatchProgress(progress);
           if (TERMINAL_STATUSES.has(progress.status)) {
             stopPolling();
             const finished = await modelService.getBatchJob(job.job_id);
+            if (!isMountedRef.current) return;
             setBatchJob(finished);
             setLoading(false);
             if (
@@ -175,6 +179,7 @@ export default function PredictPage() {
           }
         } catch {
           stopPolling();
+          if (!isMountedRef.current) return;
           setLoading(false);
           setError('Lost connection to the batch job. Please refresh.');
         }

@@ -96,6 +96,8 @@ class TestFeatureEngineer:
 
         assert 'flag' in engineer.categorical_features
         assert 'flag' not in engineer.numeric_features
+        # The raw bool column is encoded away in the engineered feature set.
+        assert 'flag' not in result.feature_names
 
         # The form submits categorical values as strings; transform must accept
         # "True"/"False" and match the encoder categories fitted from bools.
@@ -103,7 +105,6 @@ class TestFeatureEngineer:
         assert len(out) == 1
         # Engineered output should not still carry a raw bool 'flag' column.
         assert 'flag' not in out.columns
-        _ = result
     
     @pytest.mark.asyncio
     async def test_handle_missing_values(self, engineer, mixed_data):

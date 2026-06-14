@@ -3,6 +3,7 @@ Batch prediction service for processing large datasets
 """
 import asyncio
 import json
+import logging
 import statistics
 import pandas as pd
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
@@ -17,6 +18,8 @@ from app.services.model_storage import ModelStorageService
 from app.services.s3_service import S3Service
 from beanie import PydanticObjectId
 
+logger = logging.getLogger(__name__)
+
 
 class BatchPredictionService:
     """Service for managing batch prediction jobs"""
@@ -24,6 +27,24 @@ class BatchPredictionService:
     def __init__(self):
         self.s3_service = S3Service()
         self.model_storage = ModelStorageService()
+        # Hold strong references to background tasks: asyncio only keeps a weak
+        # reference, so an un-retained task can be garbage-collected mid-run.
+        self._background_tasks: set = set()
+
+    def _spawn_processing(self, job: BatchJob) -> None:
+        """Schedule background processing, retaining a reference and observing
+        the task's outcome so a failure can never be silently lost (#82)."""
+        task = asyncio.create_task(self._process_batch_job(job))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: "asyncio.Task") -> None:
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Unhandled exception in batch job task", exc_info=exc)
 
     async def create_batch_prediction_job(
         self,
@@ -86,7 +107,7 @@ class BatchPredictionService:
 
         # Start processing asynchronously
         if auto_start:
-            asyncio.create_task(self._process_batch_job(job))
+            self._spawn_processing(job)
 
         return job
 
@@ -499,7 +520,7 @@ class BatchPredictionService:
         await job.save()
 
         # Start processing again
-        asyncio.create_task(self._process_batch_job(job))
+        self._spawn_processing(job)
 
         return True
 
