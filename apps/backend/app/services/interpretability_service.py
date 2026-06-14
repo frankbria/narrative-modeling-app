@@ -249,8 +249,7 @@ class InterpretabilityService:
         """Down-sample ``X`` to at most ``max_samples`` rows as a float ndarray."""
         if X is None:
             return None
-        values = getattr(X, "to_numpy", None)
-        arr = np.asarray(X.to_numpy() if values is not None else X, dtype=float)
+        arr = np.asarray(X.to_numpy() if hasattr(X, "to_numpy") else X, dtype=float)
         if arr.ndim == 1:
             arr = arr.reshape(1, -1)
         if arr.shape[0] > max_samples:
@@ -289,4 +288,6 @@ class InterpretabilityService:
         classes = list(classes_attr) if classes_attr is not None else []
         if prediction is not None and prediction in classes:
             return classes.index(prediction)
-        return 1 if n_classes > 1 else 0
+        # Default to the positive class for binary; index 0 only if somehow
+        # called with a single column.
+        return 1 if n_classes >= 2 else 0

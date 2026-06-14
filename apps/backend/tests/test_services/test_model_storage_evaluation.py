@@ -13,6 +13,7 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 
 from app.models.ml_model import MLModel
+from app.services.interpretability_service import GlobalShapResult
 from app.services.model_storage import (
     ModelStorageService,
     build_evaluation_payload,
@@ -205,16 +206,6 @@ class TestSaveModelEvaluationData:
         await ml_model.delete()
 
 
-class _ShapGlobal:
-    """Minimal GlobalShapResult stand-in for build_shap_payload tests."""
-
-    def __init__(self, explainer_type, shap_importance, base_value, n_samples):
-        self.explainer_type = explainer_type
-        self.shap_importance = shap_importance
-        self.base_value = base_value
-        self.n_samples = n_samples
-
-
 class TestBuildShapPayload:
     """The global-SHAP payload builder produces JSON-safe output (issue #80)."""
 
@@ -224,7 +215,7 @@ class TestBuildShapPayload:
 
     @pytest.mark.unit
     def test_payload_is_json_safe(self):
-        result = _ShapGlobal(
+        result = GlobalShapResult(
             explainer_type="tree",
             shap_importance={"f1": np.float64(0.5), "f2": 0.25},
             base_value=np.float64(0.1),
@@ -247,7 +238,7 @@ class TestSaveModelShapData:
     async def test_uploads_shap_data_and_sets_fields(self):
         storage = _mock_storage()
         payload = build_shap_payload(
-            _ShapGlobal("tree", {"f1": 0.5, "f2": 0.25, "f3": 0.1}, 0.1, 30)
+            GlobalShapResult("tree", {"f1": 0.5, "f2": 0.25, "f3": 0.1}, 0.1, 30)
         )
         metadata = {**_metadata(), "shap_explainer_type": "tree"}
 

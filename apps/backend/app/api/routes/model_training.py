@@ -1129,7 +1129,7 @@ async def get_shap_summary(
             evaluated_at=datetime.now(timezone.utc),
         )
 
-    importance = shap_artifacts.get("shap_importance") or {}
+    importance = shap_artifacts.get("shap_importance")
     return ShapSummaryResponse(
         model_id=model_id,
         partial=False,

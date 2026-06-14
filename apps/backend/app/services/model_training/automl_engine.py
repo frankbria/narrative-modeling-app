@@ -607,8 +607,9 @@ class AutoMLEngine:
                 TrainingEvent(
                     level="info",
                     message=(
-                        "SHAP interpretability is unavailable for this model type; "
-                        "falling back to model-native feature importance."
+                        "SHAP interpretability was not computed for this model "
+                        "(unsupported algorithm or computation skipped); falling "
+                        "back to model-native feature importance."
                     ),
                     stage="finalizing",
                 ),

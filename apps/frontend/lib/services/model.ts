@@ -4,7 +4,6 @@
 
 import { getAuthToken } from '@/lib/auth-helpers'
 import type {
-  FeatureImportanceResponse,
   ModelComparisonResponse,
   ModelEvaluationResponse,
   ShapSummaryResponse
@@ -529,31 +528,6 @@ export class ModelService {
     return response.json()
   }
 
-  /**
-   * Fetch global feature importance (model-native + SHAP-based) for a model
-   * (issue #80).
-   *
-   * @throws Error with the backend `detail` message on a non-OK response.
-   */
-  static async getFeatureImportance(
-    modelId: string,
-    token: string | null
-  ): Promise<FeatureImportanceResponse> {
-    const response = await fetch(
-      `${API_BASE_URL}/ml/${modelId}/feature-importance`,
-      {
-        headers: await this.getHeaders(token)
-      }
-    )
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch feature importance')
-    }
-
-    return response.json()
-  }
-
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -807,14 +781,6 @@ class ModelServiceClient {
   async getShapSummary(modelId: string): Promise<ShapSummaryResponse> {
     const token = await getAuthToken()
     return ModelService.getShapSummary(modelId, token)
-  }
-
-  /** Resolve the auth token automatically and fetch feature importance. */
-  async getFeatureImportance(
-    modelId: string
-  ): Promise<FeatureImportanceResponse> {
-    const token = await getAuthToken()
-    return ModelService.getFeatureImportance(modelId, token)
   }
 
   async trainModel(
