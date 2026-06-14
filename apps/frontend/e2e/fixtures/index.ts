@@ -244,6 +244,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       // E2E, but HTTPBearer still requires some Authorization header.
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       const headers = { Authorization: 'Bearer e2e-test-token' };
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
       // Fail loudly (issue #156): the old fixture swallowed every failure and
       // returned 'mock-model-id', so downstream tests broke at the predict step
@@ -254,7 +256,6 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       //    ModelStorageService); /api/v1/models only stores config records.
       const maxSubmitRetries = 2;
       let modelId: string | undefined;
-      let lastError: unknown;
       for (let attempt = 0; attempt <= maxSubmitRetries; attempt++) {
         try {
           const response = await request.post(`${apiBase}/ml/train`, {
@@ -263,14 +264,10 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
             timeout: 30000,
           });
           if (!response.ok()) {
-            lastError = new Error(
+            // Throw so the single catch below owns all retry/abort decisions.
+            throw new Error(
               `POST /ml/train failed (${response.status()}): ${await response.text()}`
             );
-            if (attempt < maxSubmitRetries) {
-              await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
-              continue;
-            }
-            throw lastError;
           }
           const data = await response.json();
           modelId = data.model_id || data.id;
@@ -279,31 +276,35 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
           }
           break;
         } catch (error) {
-          lastError = error;
           if (attempt < maxSubmitRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+            await delay(2000 * (attempt + 1));
             continue;
           }
           throw new Error(
-            `trainModel: submitting training failed after ${maxSubmitRetries + 1} attempts: ${lastError}`
+            `trainModel: submitting training failed after ${maxSubmitRetries + 1} attempts: ${describe(error)}`
           );
         }
+      }
+      // The loop only `break`s once modelId is set, and otherwise throws on the
+      // final attempt — this guard makes that invariant explicit for the poll.
+      if (!modelId) {
+        throw new Error('trainModel: no model id after submit loop (unreachable)');
       }
 
       // 2. Training runs as a background task; poll until the model artifact is
       //    retrievable from GET /api/v1/ml/{id} (200 only once it is saved).
       const maxPollAttempts = 30; // ~60 seconds
       for (let pollAttempts = 0; pollAttempts < maxPollAttempts; pollAttempts++) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await delay(2000);
         try {
           const statusResponse = await request.get(`${apiBase}/ml/${modelId}`, {
             headers,
             timeout: 5000,
           });
           if (statusResponse.ok()) {
-            return modelId as string;
+            return modelId;
           }
-        } catch (error) {
+        } catch {
           // Transient network error — keep polling
         }
       }

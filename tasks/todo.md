@@ -20,8 +20,10 @@
    a ~60s poll timeout. No more `mock-model-id`.
 2. [x] **Use a trainable dataset**: `uploadTestDataset` now accepts a relative
    path and uploads under its basename; the single-prediction test trains on
-   `ai-test-datasets/binary-classification.csv` (999 rows, binary `churned`).
-   Fixed the `uploadTestDataset` fixture **type** to accept the optional filename.
+   `ai-test-datasets/binary-classification-small.csv` (200-row stratified subset
+   of the 999-row binary `churned` set — the full file pegs a CI core and flakes
+   neighbors, see #157). Fixed the `uploadTestDataset` fixture **type** to accept
+   the optional filename.
 3. [x] **Re-enable the perf single-prediction @smoke test** with a real predict
    payload (full feature record), a functional assertion (predictions array of
    length 1), a CI-safe 2000ms latency ceiling (~180ms observed locally; tight

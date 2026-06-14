@@ -206,7 +206,9 @@ test.describe('Performance - API Response Times', () => {
       async () => {
         // Real prediction endpoint lives under /api/v1/ml and takes a list of
         // records (PredictRequest.data); the record must carry the training
-        // feature columns so the feature engineer can transform it.
+        // feature columns so the feature engineer can transform it. These keys
+        // mirror the non-target columns of binary-classification-small.csv — if
+        // that dataset's header changes, update this payload to match.
         const response = await request.post(`${apiBase}/ml/${modelId}/predict`, {
           headers: { Authorization: 'Bearer e2e-test-token' },
           data: {
