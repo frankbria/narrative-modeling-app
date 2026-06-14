@@ -288,16 +288,16 @@ class InterpretabilityService:
         self, shap_importance: Dict[str, float], top_n: int = 3
     ) -> str:
         """Plain-language summary of the most influential features."""
-        if not shap_importance:
+        if not isinstance(shap_importance, dict) or not shap_importance:
             return "No SHAP-based feature drivers are available for this model."
         ranked = sorted(shap_importance.items(), key=lambda kv: kv[1], reverse=True)
         top = [name for name, _ in ranked[: max(top_n, 1)]]
         if len(top) == 1:
-            drivers = top[0]
+            drivers, verb = top[0], "accounts"
         else:
-            drivers = ", ".join(top[:-1]) + f" and {top[-1]}"
+            drivers, verb = ", ".join(top[:-1]) + f" and {top[-1]}", "account"
         return (
-            f"{drivers} account for most of this model's decisions, ranked by "
+            f"{drivers} {verb} for most of this model's decisions, ranked by "
             f"their average impact on the model's output."
         )
 

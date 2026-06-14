@@ -380,10 +380,10 @@ class BatchPredictionService:
                     {"row_index": index, "error": str(e), "input_data": row.to_dict()}
                 )
 
-        self._attach_explanations(to_explain, trained_model, model)
+        await self._attach_explanations(to_explain, trained_model, model)
         return predictions
 
-    def _attach_explanations(
+    async def _attach_explanations(
         self,
         to_explain: List[Dict[str, Any]],
         trained_model: Any,
@@ -393,15 +393,22 @@ class BatchPredictionService:
 
         Tree models get per-row SHAP via a single explainer build for the whole
         chunk (``compute_instance_shap_batch``); others fall back to the native
-        per-row explainer. Best-effort: a failure leaves rows unexplained.
+        per-row explainer. The CPU-bound SHAP work is offloaded to a worker
+        thread so a large chunk doesn't stall the event loop. Best-effort: a
+        failure leaves rows unexplained.
         """
         if not to_explain:
             return
 
         matrix = np.asarray([item["x_row"] for item in to_explain])
         preds = [item["prediction"] for item in to_explain]
-        shap_rows = self.interpretability.compute_instance_shap_batch(
-            trained_model, matrix, model.feature_names, preds, model.problem_type
+        shap_rows = await asyncio.to_thread(
+            self.interpretability.compute_instance_shap_batch,
+            trained_model,
+            matrix,
+            model.feature_names,
+            preds,
+            model.problem_type,
         )
 
         for i, item in enumerate(to_explain):

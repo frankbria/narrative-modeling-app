@@ -215,3 +215,30 @@ def test_top_drivers_text_mentions_top_feature(service):
 def test_top_drivers_text_empty(service):
     text = service.top_drivers_text({})
     assert isinstance(text, str) and text
+
+
+def test_top_drivers_text_non_dict_is_safe(service):
+    """A corrupted (non-dict) payload must not raise (never-500 contract)."""
+    assert isinstance(service.top_drivers_text("not-a-dict"), str)
+    assert isinstance(service.top_drivers_text(None), str)
+
+
+def test_top_drivers_text_single_feature_grammar(service):
+    """Singular subject uses 'accounts', not 'account'."""
+    text = service.top_drivers_text({"income": 0.9})
+    assert "income accounts for" in text
+
+
+# --- _class_index ----------------------------------------------------------
+
+
+def test_class_index_falls_back_to_positive_class(service):
+    """An unresolvable predicted class defaults to the positive class (1)."""
+
+    class _Stub:
+        classes_ = [10, 20, 30]
+
+    # prediction 99 isn't in classes_ → fall back to index 1
+    assert service._class_index(_Stub(), 99, 3) == 1
+    # a resolvable prediction maps to its position
+    assert service._class_index(_Stub(), 30, 3) == 2

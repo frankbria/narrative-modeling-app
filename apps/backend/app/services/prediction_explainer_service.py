@@ -198,7 +198,7 @@ class PredictionExplainerService:
         feature_names: Sequence[str],
         prediction: Any,
         problem_type: str,
-    ):
+    ) -> tuple[Optional[np.ndarray], str]:
         """Return ``(shap_contributions, "shap_tree")`` or ``(None, "")``.
 
         Per-row SHAP is only computed for tree/ensemble models (TreeExplainer

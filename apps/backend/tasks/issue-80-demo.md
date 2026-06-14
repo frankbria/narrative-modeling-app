@@ -46,8 +46,8 @@ Fallback — unsupported model type returns None (native fallback)
 ========================================================================
 KNN global SHAP        = None
 KNN per-instance SHAP  = None
-Loading .env file from: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
-Loading .env file from config.py: /home/frankbria/projects/narrative-modeling-app/apps/backend/.env
+Loading .env file from: <repo>/apps/backend/.env
+Loading .env file from config.py: <repo>/apps/backend/.env
 
 ========================================================================
 AC6 — GET /api/v1/ml/{id}/feature-importance (native + SHAP)

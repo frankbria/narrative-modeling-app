@@ -78,8 +78,12 @@ _interpretability_service = InterpretabilityService()
 
 
 def _rank_importance(importance: Optional[Dict[str, float]]) -> List[RankedFeature]:
-    """Convert an importance dict into a list ranked by descending importance."""
-    if not importance:
+    """Convert an importance dict into a list ranked by descending importance.
+
+    Tolerates a non-dict (e.g. corrupted S3 payload) by returning an empty list,
+    preserving the endpoints' never-500 contract.
+    """
+    if not isinstance(importance, dict) or not importance:
         return []
     return [
         RankedFeature(feature_name=name, importance=float(value))
@@ -1066,7 +1070,7 @@ async def get_feature_importance(
     native = _rank_importance(model.feature_importance)
 
     shap_importance = None
-    explainer_type = getattr(model, "shap_explainer_type", None)
+    explainer_type = model.shap_explainer_type
     shap_artifacts = await MetricsService.load_shap_artifacts(model)
     if shap_artifacts:
         shap_importance = _rank_importance(shap_artifacts.get("shap_importance"))
@@ -1119,7 +1123,7 @@ async def get_shap_summary(
         return ShapSummaryResponse(
             model_id=model_id,
             partial=True,
-            explainer_type=getattr(model, "shap_explainer_type", None),
+            explainer_type=model.shap_explainer_type,
             problem_type=model.problem_type,
             message=(
                 "SHAP interpretability is unavailable for this model. Tree and "

@@ -230,6 +230,20 @@ class TestBuildShapPayload:
         assert round_tripped["n_samples"] == 120
         assert isinstance(round_tripped["created_at"], str)
 
+    @pytest.mark.unit
+    def test_non_finite_importance_is_json_safe(self):
+        """NaN/Inf importances become None so json.dumps(allow_nan=False) works."""
+        result = GlobalShapResult(
+            explainer_type="tree",
+            shap_importance={"f1": float("nan"), "f2": float("inf"), "f3": 0.25},
+            base_value=float("nan"),
+            n_samples=10,
+        )
+        payload = build_shap_payload(result)
+        round_tripped = json.loads(json.dumps(payload, allow_nan=False))
+        assert round_tripped["shap_importance"] == {"f1": None, "f2": None, "f3": 0.25}
+        assert round_tripped["base_value"] is None
+
 
 class TestSaveModelShapData:
     """save_model uploads shap_data.json and records its path (issue #80)."""
