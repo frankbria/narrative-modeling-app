@@ -386,6 +386,50 @@ describe('modelService instance export', () => {
       expect(url).toBe('http://localhost:8000/api/v1/ml/m1/predict');
     });
 
+    it('predict() forwards include_explanations and parses #83 enrichment', async () => {
+      const response = {
+        predictions: [1],
+        confidence: [0.55],
+        low_confidence: [true],
+        is_calibrated: true,
+        calibration_method: 'sigmoid',
+        confidence_threshold: 0.7,
+        explanations: [
+          {
+            method: 'linear_coefficients',
+            explanation_text: 'driven by age',
+            top_features: [
+              { feature_name: 'age', contribution: 0.42, feature_value: 1.2 },
+            ],
+          },
+        ],
+        feature_names: ['age'],
+        model_info: {
+          model_id: 'm1',
+          algorithm: 'lr',
+          problem_type: 'binary_classification',
+          target_column: 'y',
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(response),
+      });
+
+      const result = await modelService.predict('m1', {
+        data: [{ age: 30 }],
+        include_probabilities: true,
+        include_explanations: true,
+      });
+
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(JSON.parse(init.body).include_explanations).toBe(true);
+      expect(result.low_confidence).toEqual([true]);
+      expect(result.is_calibrated).toBe(true);
+      expect(result.explanations?.[0]?.method).toBe('linear_coefficients');
+      expect(result.explanations?.[0]?.top_features[0].feature_name).toBe('age');
+    });
+
     it('createBatchJob() POSTs multipart form data to the batch endpoint', async () => {
       const job = { job_id: 'batch_1', status: 'pending' };
       (global.fetch as jest.Mock).mockResolvedValue({

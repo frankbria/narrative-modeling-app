@@ -13,6 +13,7 @@ from app.models.model import ProblemType
 
 # Request Schemas
 
+
 class ModelTrainRequest(BaseModel):
     """Request schema for model training."""
 
@@ -55,10 +56,13 @@ class ModelDeployRequest(BaseModel):
 class ModelPredictionRequest(BaseModel):
     """Request schema for making predictions."""
 
-    input_data: List[Dict[str, Any]] = Field(..., description="Input data for prediction")
+    input_data: List[Dict[str, Any]] = Field(
+        ..., description="Input data for prediction"
+    )
 
 
 # Response Schemas
+
 
 class FeatureConfigResponse(BaseModel):
     """Response schema for feature configuration."""
@@ -216,7 +220,62 @@ class ModelPredictionResponse(BaseModel):
 
     model_id: str = Field(..., description="Model used for prediction")
     predictions: List[Any] = Field(..., description="Prediction results")
-    prediction_time_ms: float = Field(..., description="Prediction time in milliseconds")
+    prediction_time_ms: float = Field(
+        ..., description="Prediction time in milliseconds"
+    )
+
+
+# Confidence & explainability schemas (issue #83). All fields on the
+# prediction responses that carry these are optional, so older clients and
+# pre-#83 models keep working unchanged.
+
+
+class PredictionConfidence(BaseModel):
+    """Confidence metadata for a single prediction."""
+
+    confidence_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Confidence in [0, 1] (max class probability)"
+    )
+    is_calibrated: bool = Field(
+        ..., description="Whether the score comes from a calibrated model"
+    )
+    calibration_method: Optional[str] = Field(
+        None, description="Calibration method used ('sigmoid' or 'isotonic')"
+    )
+    is_low_confidence: bool = Field(
+        ..., description="True when below the low-confidence threshold"
+    )
+    confidence_threshold: float = Field(
+        ..., description="Threshold used to flag low confidence"
+    )
+
+
+class FeatureContribution(BaseModel):
+    """A single feature's contribution to a prediction."""
+
+    feature_name: str = Field(..., description="Engineered feature name")
+    contribution: float = Field(
+        ..., description="Signed contribution (positive raises the prediction)"
+    )
+    feature_value: Optional[float] = Field(
+        None, description="Engineered feature value for this prediction"
+    )
+
+
+class PredictionExplanation(BaseModel):
+    """Per-prediction, model-native explanation (no SHAP — see issue #80)."""
+
+    top_features: List[FeatureContribution] = Field(
+        default_factory=list, description="Top contributing features"
+    )
+    explanation_text: str = Field(
+        ..., description="Plain-language summary of what drove the prediction"
+    )
+    method: str = Field(
+        ...,
+        description="How contributions were derived: linear_coefficients, "
+        "tree_importance, or stored_importance",
+    )
 
 
 class ModelDeleteResponse(BaseModel):

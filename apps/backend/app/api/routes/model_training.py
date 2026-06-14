@@ -37,9 +37,12 @@ from app.schemas.evaluation import (
     ModelEvaluationSummary,
     RegressionMetrics,
 )
+from app.schemas.model import PredictionExplanation
+from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.evaluation_explanation_service import evaluation_explanation_service
 from app.services.metrics_service import MetricsService
 from app.services.model_storage import ModelStorageService, build_evaluation_payload
+from app.services.prediction_enrichment import PredictionEnricher
 from app.services.model_training import (
     AutoMLEngine,
     FeatureEngineeringConfig,
@@ -101,6 +104,9 @@ class PredictRequest(BaseModel):
 
     data: List[Dict[str, Any]] = Field(..., max_length=MAX_PREDICT_RECORDS)
     include_probabilities: bool = False
+    # Per-prediction feature-contribution breakdowns are off by default to keep
+    # responses light; opt in for explainability (issue #83).
+    include_explanations: bool = False
 
 
 class PredictResponse(BaseModel):
@@ -116,6 +122,14 @@ class PredictResponse(BaseModel):
     class_labels: Optional[List[str]] = None
     feature_names: List[str]
     model_info: Dict[str, Any]
+    # Confidence & explainability enrichment (issue #83). All optional:
+    # pre-#83 models report is_calibrated=False and omit intervals/explanations.
+    low_confidence: Optional[List[bool]] = None  # per-record warning flags
+    is_calibrated: bool = False
+    calibration_method: Optional[str] = None
+    confidence_threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD
+    prediction_intervals: Optional[List[Optional[List[float]]]] = None  # regression
+    explanations: Optional[List[Optional[PredictionExplanation]]] = None
 
 
 class FeatureDescriptor(BaseModel):
@@ -412,6 +426,11 @@ async def train_model_task(
                 "test_score": result.best_model.test_score,
                 "training_time": result.training_time,
             },
+            # Confidence/uncertainty metadata (issue #83).
+            "is_calibrated": result.is_calibrated,
+            "calibration_method": result.calibration_method,
+            "calibration_score": result.calibration_score,
+            "residual_std": result.residual_std,
             "training_config": training_config,
         }
 
@@ -968,7 +987,11 @@ async def get_model_evaluation(
         raise HTTPException(status_code=404, detail="Model not found")
 
     artifacts = await MetricsService.load_evaluation_artifacts(model)
-    if not artifacts or artifacts.get("y_test") is None or artifacts.get("y_pred") is None:
+    if (
+        not artifacts
+        or artifacts.get("y_test") is None
+        or artifacts.get("y_pred") is None
+    ):
         return _partial_evaluation_response(model)
 
     try:
@@ -1162,28 +1185,43 @@ async def predict(
         # Make predictions
         predictions = model.predict(input_df)
 
-        # Get probabilities if requested and available
-        probabilities = None
-        confidence = None
-        if request.include_probabilities and hasattr(model, "predict_proba"):
-            prob_array = model.predict_proba(input_df)
-            probabilities = prob_array.tolist()
+        # Compute probabilities whenever the (now calibrated) classifier
+        # supports them — they drive confidence + low-confidence flags even if
+        # the caller didn't ask to see the full probability vectors (#83). The
+        # `probabilities` field itself is only returned when requested (#82).
+        proba_list = None
+        if hasattr(model, "predict_proba"):
             try:
-                confidence = [float(max(row)) for row in probabilities]
-            except Exception:
-                confidence = None
+                proba_list = model.predict_proba(input_df).tolist()
+            except Exception:  # noqa: BLE001 - probabilities are optional
+                proba_list = None
     except (ValueError, KeyError) as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Invalid feature value(s): {exc}"
-        )
+        raise HTTPException(status_code=422, detail=f"Invalid feature value(s): {exc}")
 
     # Convert predictions to list
     if isinstance(predictions, np.ndarray):
         predictions = predictions.tolist()
 
+    # Confidence / uncertainty / explanation enrichment (issue #83).
+    enricher = PredictionEnricher()
+    confidence, low_confidence = enricher.per_record_confidence(proba_list)
+    prediction_intervals = enricher.prediction_intervals(
+        predictions, ml_model.residual_std
+    )
+    explanations = None
+    if request.include_explanations:
+        explanations = enricher.explanations(
+            model,
+            input_df,
+            ml_model.feature_names,
+            predictions,
+            ml_model.problem_type,
+            feature_importance=ml_model.feature_importance,
+        )
+
     return PredictResponse(
         predictions=predictions,
-        probabilities=probabilities,
+        probabilities=proba_list if request.include_probabilities else None,
         confidence=confidence,
         class_labels=_extract_class_labels(model, ml_model.problem_type),
         feature_names=ml_model.feature_names,
@@ -1193,6 +1231,12 @@ async def predict(
             "problem_type": ml_model.problem_type,
             "target_column": ml_model.target_column,
         },
+        low_confidence=low_confidence,
+        is_calibrated=bool(getattr(ml_model, "is_calibrated", False)),
+        calibration_method=getattr(ml_model, "calibration_method", None),
+        confidence_threshold=enricher.threshold,
+        prediction_intervals=prediction_intervals,
+        explanations=explanations,
     )
 
 

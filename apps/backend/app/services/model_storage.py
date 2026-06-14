@@ -171,6 +171,11 @@ class ModelStorageService:
             feature_transformer_path=feature_transformer_path,
             evaluation_data_path=evaluation_data_path,
             feature_importance=model_metadata.get("feature_importance"),
+            # Confidence/uncertainty metadata (issue #83).
+            is_calibrated=model_metadata.get("is_calibrated", False),
+            calibration_method=model_metadata.get("calibration_method"),
+            calibration_score=model_metadata.get("calibration_score"),
+            residual_std=model_metadata.get("residual_std"),
             training_config=model_metadata.get("training_config", {})
         )
         

@@ -60,6 +60,11 @@ def sample_ml_model():
     mock_model.evaluation_data_path = None
     mock_model.metrics = {"accuracy": 0.85, "f1": 0.83}
     mock_model.feature_importance = {"feature1": 0.5, "feature2": 0.3, "feature3": 0.2}
+    # Confidence/uncertainty metadata (issue #83) — defaults for a pre-#83-style model.
+    mock_model.is_calibrated = False
+    mock_model.calibration_method = None
+    mock_model.calibration_score = None
+    mock_model.residual_std = None
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
     mock_model.version = "1.0.0"
     mock_model.created_at = datetime.now(timezone.utc)
@@ -236,7 +241,14 @@ class TestModelTrainingEndpoints:
                 "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
             ) as mock_find:
                 mock_find.return_value = MagicMock(
-                    feature_names=["feature1", "feature2", "feature3"]
+                    feature_names=["feature1", "feature2", "feature3"],
+                    problem_type="binary_classification",
+                    algorithm="Random Forest",
+                    target_column="target",
+                    is_calibrated=False,
+                    calibration_method=None,
+                    residual_std=None,
+                    feature_importance=None,
                 )
 
                 request_data = {
@@ -411,6 +423,10 @@ class TestModelTrainingEndpoints:
                     problem_type="binary_classification",
                     algorithm="Random Forest",
                     target_column="target",
+                    is_calibrated=False,
+                    calibration_method=None,
+                    residual_std=None,
+                    feature_importance=None,
                 )
 
                 request_data = {
@@ -427,6 +443,61 @@ class TestModelTrainingEndpoints:
                 assert data["predictions"] == [1, 0]
                 assert data["confidence"] == [0.9, 0.7]
                 assert data["class_labels"] == ["0", "1"]
+                # Low-confidence flags present; threshold (0.7) is strict, so
+                # neither 0.9 nor exactly-0.7 is flagged.
+                assert data["low_confidence"] == [False, False]
+                assert data["is_calibrated"] is False
+                assert data["confidence_threshold"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_predict_with_explanations(self, async_authorized_client):
+        """include_explanations returns model-native feature contributions (#83)."""
+        from sklearn.datasets import make_classification
+        from sklearn.linear_model import LogisticRegression
+
+        X, y = make_classification(
+            n_samples=80,
+            n_features=2,
+            n_informative=2,
+            n_redundant=0,
+            random_state=0,
+        )
+        real_model = LogisticRegression().fit(X, y)
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        ) as mock_load:
+            mock_load.return_value = (real_model, None)
+            with patch(
+                "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
+            ) as mock_find:
+                mock_find.return_value = MagicMock(
+                    feature_names=["feature1", "feature2"],
+                    problem_type="binary_classification",
+                    algorithm="Logistic Regression",
+                    target_column="target",
+                    is_calibrated=False,
+                    calibration_method=None,
+                    residual_std=None,
+                    feature_importance=None,
+                )
+
+                request_data = {
+                    "data": [{"feature1": float(X[0][0]), "feature2": float(X[0][1])}],
+                    "include_explanations": True,
+                }
+
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/model_123/predict", json=request_data
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                explanation = data["explanations"][0]
+                assert explanation["method"] == "linear_coefficients"
+                assert explanation["explanation_text"]
+                assert len(explanation["top_features"]) >= 1
 
     @pytest.mark.asyncio
     async def test_get_model_features_endpoint(self, async_authorized_client):
@@ -477,9 +548,7 @@ class TestModelTrainingEndpoints:
         ) as mock_find:
             mock_find.return_value = None
 
-            response = await async_authorized_client.get(
-                "/api/v1/ml/nope/features"
-            )
+            response = await async_authorized_client.get("/api/v1/ml/nope/features")
 
             assert response.status_code == 404
 

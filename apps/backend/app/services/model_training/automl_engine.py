@@ -26,6 +26,7 @@ import lightgbm as lgb
 
 from .problem_detector import ProblemDetector, ProblemType
 from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
+from app.services.confidence_service import ConfidenceService
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,14 @@ class AutoMLResult:
     y_pred: Optional[np.ndarray] = None
     y_proba: Optional[np.ndarray] = None
     class_labels: Optional[List[str]] = None
+    # Confidence/uncertainty metadata (issue #83). ``best_model.estimator`` is
+    # swapped for its calibrated wrapper when ``is_calibrated`` is True, so the
+    # persisted model yields calibrated probabilities. ``residual_std`` powers
+    # regression prediction intervals; both are ``None`` when unavailable.
+    is_calibrated: bool = False
+    calibration_method: Optional[str] = None
+    calibration_score: Optional[float] = None
+    residual_std: Optional[float] = None
 
 
 class AutoMLEngine:
@@ -328,16 +337,41 @@ class AutoMLEngine:
         best_model = max(trained_models, key=lambda m: m.cv_score)
         ranked_models = sorted(trained_models, key=lambda m: m.cv_score, reverse=True)
 
-        # Get feature importance if available
+        # Get feature importance if available. Extracted from the RAW estimator
+        # *before* calibration, because the calibrated wrapper hides
+        # ``feature_importances_`` / ``coef_``.
         feature_importance = self._get_feature_importance(
             best_model.estimator, feature_result.feature_names
         )
 
-        # Capture the best model's held-out evaluation artifacts (issue #79).
-        # Re-predicting here (instead of keeping every candidate's arrays from
-        # the training loop) holds at most one set of arrays in memory.
+        # Confidence calibration for issue #83 — classification only. The best
+        # estimator is swapped in place for its calibrated wrapper so the
+        # *deployed* model yields calibrated probabilities. Best-effort: a
+        # failure leaves the raw model untouched.
+        (
+            is_calibrated,
+            calibration_method,
+            calibration_score,
+        ) = await self._calibrate_best_model(
+            best_model, X_test_transformed, y_test, is_classification
+        )
+
+        # Capture the (now possibly calibrated) best model's held-out
+        # evaluation artifacts (issue #79) AFTER calibration so the dashboard
+        # metrics describe exactly the model that gets deployed. Calibration is
+        # fit on this same held-out split (a documented beta limitation).
         y_pred_best, y_proba_best, class_labels = await self._capture_evaluation_arrays(
             best_model.estimator, X_test_transformed, is_classification
+        )
+
+        # Regression uncertainty: held-out residual std powers prediction
+        # intervals (issue #83). ``None`` for classification.
+        residual_std = (
+            None
+            if is_classification
+            else await asyncio.to_thread(
+                ConfidenceService().residual_std, y_test, y_pred_best
+            )
         )
 
         total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -378,6 +412,10 @@ class AutoMLEngine:
             y_pred=y_pred_best,
             y_proba=y_proba_best,
             class_labels=class_labels,
+            is_calibrated=is_calibrated,
+            calibration_method=calibration_method,
+            calibration_score=calibration_score,
+            residual_std=residual_std,
             metadata={
                 "n_samples": len(df),
                 "n_features_original": len(X.columns),
@@ -468,6 +506,37 @@ class AutoMLEngine:
                     logger.warning(f"predict_proba failed during capture: {exc}")
                     y_proba = None
         return np.asarray(y_pred), y_proba, class_labels
+
+    async def _calibrate_best_model(
+        self,
+        best_model: ModelCandidate,
+        X_test_transformed: pd.DataFrame,
+        y_test: Any,
+        is_classification: bool,
+    ) -> Tuple[bool, Optional[str], Optional[float]]:
+        """Calibrate the best classifier and swap it in place (issue #83).
+
+        Wraps ``best_model.estimator`` in a calibrated model fit on the
+        held-out split so the persisted model yields calibrated probabilities,
+        then mutates ``best_model.estimator`` to the wrapper. Returns
+        ``(is_calibrated, calibration_method, calibration_score)``. No-op for
+        regression or estimators without ``predict_proba``; best-effort — any
+        failure leaves the raw model untouched.
+        """
+        if not is_classification or not hasattr(best_model.estimator, "predict_proba"):
+            return False, None, None
+
+        calibrated, method, score = await asyncio.to_thread(
+            ConfidenceService().calibrate_classifier,
+            best_model.estimator,
+            X_test_transformed,
+            y_test,
+        )
+        if calibrated is None:
+            return False, None, None
+
+        best_model.estimator = calibrated
+        return True, method, score
 
     @staticmethod
     def _assess_class_balance(
