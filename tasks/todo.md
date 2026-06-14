@@ -1,78 +1,42 @@
-# Issue #87 — Backend workflow persistence (replace localStorage-only state)
+# Issue #155 — Fix client-side crash on /datasets/{id}/prepare
 
-> Previous plan (issue #191 — e2e upload fixture) was **completed** and merged in PR #192
-> (commit f4d77b9); see `git log tasks/todo.md`.
+> Previous plan (issue #87 — backend workflow persistence) was **completed** and merged in PR #193
+> (commit ea58249); see `git log tasks/todo.md`.
 
-**Plan source**: CodeRabbit plan comment (2026-06-06), adapted to current codebase.
-**Branch**: `feature/87-workflow-persistence`
+## Verify-before-fix finding
+Reproduced live against current `main`: the prepare page **already renders without crashing**.
+The crash described in the issue was fixed by intervening PRs (notably **#166**, which corrected the
+`TransformationConfigDialog` props contract). The CodeRabbit plan's "Phase 1: fix dialog props" is a
+no-op today, and the dialog never rendered on initial load anyway (`editingIndex` is `null`).
 
-## Adapted Plan
+Confirmed working in browser (churn.csv dataset, seeded `data_loading`+`data_profiling`):
+- h1 "Prepare Data" + metadata + Visual/Chain toggles render
+- both view modes render; chain view lists transformations
+- edit dialog (`TransformationConfigDialog`) opens cleanly — the path CodeRabbit flagged
 
-### Step 1 — Backend data layer (TDD: tests first)
-- [x] Create `apps/backend/tests/test_services/test_workflow_service.py` (RED)
-  - create_workflow: generates workflow_id, initial history entry (version=1)
-  - update_workflow: appends history entry with incremented version, updates `updated_at`
-  - get_by_dataset: returns workflow; raises NotFoundError when absent
-  - duplicate create raises ConflictError
-  - history accumulation over multiple updates; history cap (keep latest 50)
-- [x] Create `apps/backend/app/models/workflow.py`
-  - `StateHistoryEntry(BaseModel)`: version, current_stage, completed_stages, stage_data, model_id, deployment_id, timestamp
-  - `WorkflowState(Document)`: workflow_id (str UUID), user_id `Indexed(str)`, dataset_id `Indexed(str)`, current_stage, completed_stages (List[str]), stage_data (Dict[str, Any]), model_id, deployment_id, state_history, created_at/updated_at via `get_current_time()`
-  - `Settings`: collection `workflow_states`; indexes incl. compound unique `[("user_id",1),("dataset_id",1)]`
-  - Follow `dataset.py` patterns (Field descriptions, model_config json_encoders)
-- [x] Create `apps/backend/app/services/workflow_service.py`
-  - `WorkflowService(BaseService[WorkflowState])`, `_get_id_field() -> "workflow_id"`
-  - `get_by_dataset`, `create_workflow` (app-level duplicate check → ConflictError), `update_workflow` (append history, cap 50), `get_history`
-  - Exceptions from `app.services.exceptions`
-- [x] Register model in `apps/backend/app/models/registry.py` (NOT main.py — registry is canonical)
+## Adapted plan (done)
+1. [x] **Re-enable the two `test.fixme` @smoke tests** (removed `.fixme` + the
+   "Disabled pending #155" comments).
+2. [x] **Add a defensive guard** on the edit-dialog render block (page.tsx) so the IIFE
+   only runs when `transformations[editingIndex]` exists.
+3. [x] **Repair the whole data-preparation spec** — re-enabling the tests surfaced two
+   classes of pre-existing breakage, both fixed:
+   - **#87 gating regression**: the backend became the hydration source of truth, so a
+     localStorage-only seed no longer grants access. Added a `seedPreparationWorkflow`
+     helper that seeds the real backend workflow (live API, no mocking) + localStorage
+     fallback, applied to all three `describe` blocks.
+   - **Masked broad locators**: while the page crashed/redirected these never ran. Fixed
+     `toContain('default')` → `toContain('bg-primary')` (active Button variant), scoped
+     bare `h1`/`text=/rows/`/`text=/No transformations/` and `.first()`'d the
+     link-wrapping-button Back controls, fixed the invalid comma `text=` OR.
+4. [x] **Verified**: `chromium-smoke` @smoke (2 passed) and full `chromium-full` spec
+   (16 passed); type-check clean; eslint clean; 313 transformation jest tests pass.
 
-### Step 2 — Backend API layer (TDD: tests first)
-- [x] Create `apps/backend/tests/test_api/test_workflows.py` (RED) — `@pytest.mark.integration`, `async_authorized_client` + `setup_database`, user `test_user_123`
-  - POST → 201; duplicate POST → 409
-  - GET → 200 with state; missing → 404; other user's workflow → 404 (user-scoped lookup; deviation from plan's 403, see below)
-  - PUT → 200, appends history; missing → 404
-  - GET /history → entries + total_versions
-  - Recovery: create at stage N → new client session → GET returns stage N; history checkpoints reconstructable
-- [x] Create `apps/backend/app/schemas/workflow.py`
-  - `WorkflowCreateRequest`, `WorkflowUpdateRequest` (all-optional), `WorkflowResponse`, `StateHistoryEntryResponse`, `WorkflowHistoryResponse`
-- [x] Create `apps/backend/app/api/routes/workflows.py`
-  - `GET/POST/PUT /workflows/{dataset_id}`, `GET /workflows/{dataset_id}/history`
-  - Auth via `Depends(get_current_user_id)` (`app.auth.nextauth_auth`); HTTPException mapping; logging per `datasets.py`
-- [x] Register router in `apps/backend/app/main.py`: `app.include_router(workflows.router, prefix=f"{settings.API_V1_STR}", tags=["workflows"])`
+## Acceptance criteria
+- [x] `/datasets/{id}/prepare` renders (h1 "Prepare Data", view-mode toggles) for a valid dataset
+- [x] The two fixme'd smoke tests are re-enabled and pass
 
-### Step 3 — Frontend integration (TDD: tests first)
-- [x] Create `apps/frontend/lib/contexts/__tests__/WorkflowContext.persistence.test.tsx` (RED) — mock fetch + getAuthToken
-  - loadWorkflow: backend 200 → state hydrated + localStorage cache refreshed; 404 → localStorage fallback; network error → localStorage fallback
-  - saveWorkflow: POST first time, PUT after exists (and PUT after POST→409)
-  - completeStage triggers saveWorkflow
-- [x] Modify `apps/frontend/lib/contexts/WorkflowContext.tsx`
-  - Remove stub early-return in `loadWorkflow()` (~line 158); URL `${API_URL}/workflows/${datasetId}` (API_URL already includes /api/v1)
-  - Auth via existing `getAuthToken()` helper, conditional Bearer header (ModelService pattern)
-  - `saveWorkflow()`: POST when not yet created, PUT thereafter; 409 → PUT; failure → localStorage fallback (existing useEffect stays as cache layer)
-  - `completeStage()` fires saveWorkflow after state update (stage boundaries are infrequent — no debounce; YAGNI)
-  - Page-load recovery: backend state wins; 404/network error → keep localStorage state
-  - Set ↔ Array serialization preserved (completedStages)
-
-### Step 4 — Quality gates & docs
-- [x] Backend: `cd apps/backend && uv run pytest tests/test_services/test_workflow_service.py tests/test_api/test_workflows.py -v` then full relevant suite; ruff
-- [x] Frontend: `npm test`, `npm run type-check`
-- [x] Update CLAUDE.md (issue #87 section), e2e README if seeding behavior affected
-- [x] Demo (Phase 11), PR, CI, merge
-
-## Acceptance Criteria (from issue)
-- [x] Workflow state stored in MongoDB per user/dataset: current stage, completion flags, key selections (stage_data)
-- [x] State saved at each stage boundary; restored on login/page load
-- [x] Automatic recovery after browser crash/refresh mid-stage
-- [x] Version history of workflow state changes (append log)
-- [x] Endpoints: POST/GET/PUT `/api/v1/workflows/{id}` (+ `/history`)
-- [x] Frontend WorkflowContext reads/writes backend state with localStorage offline fallback
-- [x] Integration tests for save/restore/recovery paths
-
-## Deviations from the CodeRabbit plan
-1. **Model registration via `app/models/registry.py`**, not `init_beanie()` in `main.py` — registry became canonical in issue #160; main.py already consumes `DOCUMENT_MODELS`.
-2. **Wrong-user GET returns 404, not 403** — lookups are scoped by `(user_id, dataset_id)`, so another user's workflow is simply not found; avoids leaking existence. Plan's 403 test becomes a 404 test.
-3. **App-level duplicate check (ConflictError → 409) in addition to the unique index** — unit tests run on mongomock with `skip_indexes=True`, so the index alone can't be relied on in tests.
-4. **History capped at 50 entries** (keep latest) — full-snapshot entries with unbounded growth risk the 16MB Mongo doc limit; cap is one line and satisfies "simple append log".
-5. **`StateHistoryEntry` also snapshots `model_id`/`deployment_id`** so a history entry can fully reconstruct state (plan's recovery test demands full reconstruction but omitted these fields).
-6. **No debounce on auto-save** — stage boundaries are infrequent user actions; plan said "if needed". YAGNI.
-7. **Frontend URL is `${API_URL}/workflows/…`** — `API_URL` constant already contains `/api/v1`.
+## Deviation from original (CodeRabbit) plan
+- Original Phase 1 (fix dialog props `onSave`→`onAdd`, add missing props, metadata helper) is
+  **already implemented** by #166 — dropped.
+- Keeping only CodeRabbit's "Task 2" defensive guard + the test re-enable + verification.
