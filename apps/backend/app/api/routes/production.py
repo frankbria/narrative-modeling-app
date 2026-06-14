@@ -247,16 +247,18 @@ async def production_predict(
     storage_service = ModelStorageService()
     
     try:
-        model_artifacts = await storage_service.load_model(model.model_path)
-        trained_model = model_artifacts["model"]
-        feature_engineer = model_artifacts.get("feature_engineer")
-        
+        # load_model returns a (model, feature_engineer) tuple keyed by
+        # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
+        trained_model, feature_engineer = await storage_service.load_model(
+            model_id, api_key.user_id
+        )
+
         # Transform input data if feature engineer exists
         import pandas as pd
         df = pd.DataFrame(request.data)
-        
+
         if feature_engineer:
-            X_transformed = feature_engineer.transform(df)
+            X_transformed = await feature_engineer.transform(df)
         else:
             X_transformed = df[model.feature_names]
         
