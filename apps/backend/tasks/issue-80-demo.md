@@ -78,7 +78,7 @@ All acceptance criteria demonstrated with live outputs.
 AC7 — Frontend SHAP visualization on the evaluate page (Recharts, same library as the #79 ROC/PR/feature-importance charts). The ShapSummaryChart renders mean |SHAP| per feature + the plain-language drivers; the evaluate page Overview tab renders it best-effort below native importance (omitted when SHAP is partial/unavailable). Evidence: the component test suite below, plus the page wiring in app/evaluate/page.tsx.
 
 ```bash
-cd /home/frankbria/projects/narrative-modeling-app/apps/frontend && npx jest __tests__/components/ShapSummaryChart.test.tsx 2>&1 | grep -E 'PASS|✓|Tests:' 
+cd <repo>/apps/frontend && npx jest __tests__/components/ShapSummaryChart.test.tsx 2>&1 | grep -E 'PASS|✓|Tests:' 
 ```
 
 ```output
