@@ -3,6 +3,7 @@ Tests for model training API endpoints
 """
 
 import pytest
+import pytest_asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 import pandas as pd
 import numpy as np
@@ -955,6 +956,26 @@ async def _insert_job(
 
 
 class TestTrainingJobListEndpoint:
+    """Tests for GET /api/v1/ml/jobs.
+
+    These assert on absolute job counts, so each one needs a clean
+    ``training_jobs`` collection. They don't use ``setup_database`` (they only
+    need the app's lifespan DB from ``async_authorized_client``), and a training
+    test's fire-and-forget background task can leak a job past its own cleanup
+    window. The autouse fixture below clears the collection at the start of each
+    test so the suite is order-independent (issue #198).
+    """
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def _isolate_training_jobs(self, async_authorized_client):
+        from app.models.training_job import TrainingJob
+
+        # Clean slate before the test (drops anything leaked from earlier tests)
+        # and after, so a job created here never bleeds into the next test.
+        await TrainingJob.find().delete()
+        yield
+        await TrainingJob.find().delete()
+
     """Test GET /api/v1/ml/jobs"""
 
     @pytest.mark.asyncio
