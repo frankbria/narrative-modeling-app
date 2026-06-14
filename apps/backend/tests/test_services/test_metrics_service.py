@@ -358,3 +358,61 @@ class TestLoadEvaluationArtifacts:
             "s3://test-bucket/models/u/m/evaluation_data.json"
         )
         assert await MetricsService.load_evaluation_artifacts(ml_model) is None
+
+
+class TestLoadShapArtifacts:
+    """MetricsService.load_shap_artifacts mirrors the evaluation loader (#80)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_without_path(self):
+        ml_model = MagicMock()
+        ml_model.shap_values_path = None
+        assert await MetricsService.load_shap_artifacts(ml_model) is None
+
+    @pytest.mark.asyncio
+    async def test_downloads_and_parses_payload(self, monkeypatch):
+        payload = {
+            "explainer_type": "tree",
+            "shap_importance": {"f1": 0.6, "f2": 0.4},
+            "base_value": 0.5,
+            "n_samples": 120,
+            "created_at": "2026-06-14T00:00:00+00:00",
+        }
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = "test-bucket"
+        mock_s3.download_file_obj = AsyncMock(
+            return_value=json.dumps(payload).encode("utf-8")
+        )
+        monkeypatch.setattr("app.services.metrics_service.s3_service", mock_s3)
+
+        ml_model = MagicMock()
+        ml_model.shap_values_path = "s3://test-bucket/models/u/m/shap_data.json"
+        result = await MetricsService.load_shap_artifacts(ml_model)
+
+        assert result == payload
+        mock_s3.download_file_obj.assert_awaited_once_with("models/u/m/shap_data.json")
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_bucket_mismatch(self, monkeypatch):
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = "configured-bucket"
+        mock_s3.download_file_obj = AsyncMock()
+        monkeypatch.setattr("app.services.metrics_service.s3_service", mock_s3)
+
+        ml_model = MagicMock()
+        ml_model.model_id = "m_other_bucket"
+        ml_model.shap_values_path = "s3://other-bucket/models/u/m/shap_data.json"
+
+        assert await MetricsService.load_shap_artifacts(ml_model) is None
+        mock_s3.download_file_obj.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_download_failure(self, monkeypatch):
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = "test-bucket"
+        mock_s3.download_file_obj = AsyncMock(side_effect=RuntimeError("S3 down"))
+        monkeypatch.setattr("app.services.metrics_service.s3_service", mock_s3)
+
+        ml_model = MagicMock()
+        ml_model.shap_values_path = "s3://test-bucket/models/u/m/shap_data.json"
+        assert await MetricsService.load_shap_artifacts(ml_model) is None

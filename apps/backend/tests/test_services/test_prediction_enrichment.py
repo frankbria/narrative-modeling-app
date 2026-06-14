@@ -59,6 +59,28 @@ class TestExplanations:
         assert out[0].explanation_text
         assert out[0].top_features[0].feature_name in {"f1", "f2"}
 
+    def test_tree_model_uses_batched_shap(self, enricher):
+        """Tree models get per-row SHAP (method shap_tree), batched once (#80)."""
+        import numpy as np
+        from sklearn.datasets import make_classification
+        from sklearn.ensemble import RandomForestClassifier
+
+        X, y = make_classification(
+            n_samples=120, n_features=3, n_informative=3, n_redundant=0, random_state=0
+        )
+        model = RandomForestClassifier(n_estimators=15, random_state=0).fit(X, y)
+        preds = model.predict(X[:3]).tolist()
+
+        out = enricher.explanations(
+            model, np.asarray(X[:3]), ["f1", "f2", "f3"], preds, "classification"
+        )
+        assert out is not None and len(out) == 3
+        assert all(o is not None and o.method == "shap_tree" for o in out)
+        # Per-row SHAP: contributions vary across rows (unlike global importance)
+        c0 = {f.feature_name: f.contribution for f in out[0].top_features}
+        c1 = {f.feature_name: f.contribution for f in out[1].top_features}
+        assert c0 != c1
+
     def test_unexplainable_model_returns_none(self, enricher):
         import numpy as np
         from sklearn.datasets import make_classification

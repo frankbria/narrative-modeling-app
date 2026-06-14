@@ -27,11 +27,17 @@ import lightgbm as lgb
 from .problem_detector import ProblemDetector, ProblemType
 from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
 from app.services.confidence_service import ConfidenceService
+from app.services.interpretability_service import (
+    GlobalShapResult,
+    InterpretabilityService,
+)
 
 logger = logging.getLogger(__name__)
 
 # Stateless — one shared instance avoids reconstructing it during training (#83).
 _confidence_service = ConfidenceService()
+# SHAP interpretability (issue #80). Stateless; shap is imported lazily inside it.
+_interpretability_service = InterpretabilityService()
 
 
 class TrainingCancelledError(Exception):
@@ -98,6 +104,13 @@ class AutoMLResult:
     calibration_method: Optional[str] = None
     calibration_score: Optional[float] = None
     residual_std: Optional[float] = None
+    # SHAP global interpretability summary (issue #80). ``shap_global`` is a
+    # ``GlobalShapResult`` for the best model, computed on the held-out set from
+    # the RAW estimator *before* calibration (the calibrated wrapper hides the
+    # tree/linear internals SHAP needs). ``None`` for unsupported model types
+    # (KNN, kernel SVM), which fall back to model-native importance.
+    shap_global: Optional["GlobalShapResult"] = None
+    shap_explainer_type: Optional[str] = None
 
 
 class AutoMLEngine:
@@ -347,6 +360,26 @@ class AutoMLEngine:
             best_model.estimator, feature_result.feature_names
         )
 
+        # SHAP global summary (issue #80). Computed on the held-out set from the
+        # RAW estimator *before* calibration, for the same reason as
+        # feature_importance: the calibrated wrapper hides the tree/linear
+        # internals SHAP introspects. Best-effort — unsupported models and any
+        # SHAP failure simply leave ``shap_global`` as ``None`` and the system
+        # falls back to model-native importance.
+        shap_global = await self._compute_global_shap(
+            best_model.estimator,
+            X_test_transformed,
+            feature_result.feature_names,
+            problem_type,
+            event_callback,
+        )
+
+        # SHAP can take noticeable time on tree/linear models, so honour a
+        # cancellation requested while it ran before doing the remaining
+        # finalization work (calibration + persistence).
+        if await self._is_cancelled(cancel_check):
+            raise TrainingCancelledError("Training cancelled during finalization")
+
         # Confidence calibration for issue #83 — classification only. The best
         # estimator is swapped in place for its calibrated wrapper so the
         # *deployed* model yields calibrated probabilities. Best-effort: a
@@ -428,6 +461,8 @@ class AutoMLEngine:
             calibration_method=calibration_method,
             calibration_score=calibration_score,
             residual_std=residual_std,
+            shap_global=shap_global,
+            shap_explainer_type=shap_global.explainer_type if shap_global else None,
             metadata={
                 "n_samples": len(df),
                 "n_features_original": len(X.columns),
@@ -549,6 +584,43 @@ class AutoMLEngine:
 
         best_model.estimator = calibrated
         return True, method, score
+
+    async def _compute_global_shap(
+        self,
+        estimator: Any,
+        X_test_transformed: pd.DataFrame,
+        feature_names: List[str],
+        problem_type: ProblemType,
+        event_callback: Optional[Callable[["TrainingEvent"], Awaitable[None]]] = None,
+    ) -> Optional[GlobalShapResult]:
+        """Compute the best model's global SHAP summary off the event loop (#80).
+
+        SHAP is CPU-bound, so it runs in a worker thread. Best-effort: the
+        service swallows its own errors and returns ``None``; we additionally
+        emit an informational event when a model type isn't SHAP-supported so
+        the fallback to native importance is visible in the training logs.
+        """
+        result = await asyncio.to_thread(
+            _interpretability_service.compute_global_shap,
+            estimator,
+            X_test_transformed,
+            feature_names,
+            problem_type.value,
+        )
+        if result is None:
+            await self._emit_event(
+                event_callback,
+                TrainingEvent(
+                    level="info",
+                    message=(
+                        "SHAP interpretability was not computed for this model "
+                        "(unsupported algorithm or computation skipped); falling "
+                        "back to model-native feature importance."
+                    ),
+                    stage="finalizing",
+                ),
+            )
+        return result
 
     @staticmethod
     def _assess_class_balance(

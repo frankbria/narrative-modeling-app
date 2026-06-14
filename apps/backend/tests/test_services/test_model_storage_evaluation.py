@@ -13,7 +13,12 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 
 from app.models.ml_model import MLModel
-from app.services.model_storage import ModelStorageService, build_evaluation_payload
+from app.services.interpretability_service import GlobalShapResult
+from app.services.model_storage import (
+    ModelStorageService,
+    build_evaluation_payload,
+    build_shap_payload,
+)
 from app.services.model_training.automl_engine import ModelCandidate
 from app.services.model_training.feature_engineer import FeatureEngineer
 
@@ -197,6 +202,133 @@ class TestSaveModelEvaluationData:
         # Model is saved; the evaluation path is simply absent
         assert ml_model.model_id == "model_eval_fail"
         assert ml_model.evaluation_data_path is None
+
+        await ml_model.delete()
+
+
+class TestBuildShapPayload:
+    """The global-SHAP payload builder produces JSON-safe output (issue #80)."""
+
+    @pytest.mark.unit
+    def test_none_input_returns_none(self):
+        assert build_shap_payload(None) is None
+
+    @pytest.mark.unit
+    def test_payload_is_json_safe(self):
+        result = GlobalShapResult(
+            explainer_type="tree",
+            shap_importance={"f1": np.float64(0.5), "f2": 0.25},
+            base_value=np.float64(0.1),
+            n_samples=120,
+        )
+        payload = build_shap_payload(result)
+        round_tripped = json.loads(json.dumps(payload, allow_nan=False))
+
+        assert round_tripped["explainer_type"] == "tree"
+        assert round_tripped["shap_importance"] == {"f1": 0.5, "f2": 0.25}
+        assert round_tripped["base_value"] == 0.1
+        assert round_tripped["n_samples"] == 120
+        assert isinstance(round_tripped["created_at"], str)
+
+    @pytest.mark.unit
+    def test_non_finite_importance_is_json_safe(self):
+        """NaN/Inf importances become None so json.dumps(allow_nan=False) works."""
+        result = GlobalShapResult(
+            explainer_type="tree",
+            shap_importance={"f1": float("nan"), "f2": float("inf"), "f3": 0.25},
+            base_value=float("nan"),
+            n_samples=10,
+        )
+        payload = build_shap_payload(result)
+        round_tripped = json.loads(json.dumps(payload, allow_nan=False))
+        assert round_tripped["shap_importance"] == {"f1": None, "f2": None, "f3": 0.25}
+        assert round_tripped["base_value"] is None
+
+
+class TestSaveModelShapData:
+    """save_model uploads shap_data.json and records its path (issue #80)."""
+
+    @pytest.mark.asyncio
+    async def test_uploads_shap_data_and_sets_fields(self):
+        storage = _mock_storage()
+        payload = build_shap_payload(
+            GlobalShapResult("tree", {"f1": 0.5, "f2": 0.25, "f3": 0.1}, 0.1, 30)
+        )
+        metadata = {**_metadata(), "shap_explainer_type": "tree"}
+
+        ml_model = await storage.save_model(
+            _trained_candidate(),
+            FeatureEngineer(),
+            user_id="user_1",
+            dataset_id="ds_1",
+            model_metadata=metadata,
+            model_id="model_shap",
+            shap_data=payload,
+        )
+
+        expected_key = "models/user_1/model_shap/shap_data.json"
+        uploaded_keys = [
+            call.args[1] for call in storage.s3_service.upload_file_obj.call_args_list
+        ]
+        assert expected_key in uploaded_keys
+        assert ml_model.shap_values_path == f"s3://test-bucket/{expected_key}"
+        assert ml_model.shap_explainer_type == "tree"
+
+        shap_call = next(
+            call
+            for call in storage.s3_service.upload_file_obj.call_args_list
+            if call.args[1] == expected_key
+        )
+        assert json.loads(shap_call.args[0].read()) == payload
+
+        await ml_model.delete()
+
+    @pytest.mark.asyncio
+    async def test_no_shap_data_keeps_fields_none(self):
+        storage = _mock_storage()
+        ml_model = await storage.save_model(
+            _trained_candidate(),
+            FeatureEngineer(),
+            user_id="user_1",
+            dataset_id="ds_1",
+            model_metadata=_metadata(),
+            model_id="model_no_shap",
+        )
+
+        assert ml_model.shap_values_path is None
+        assert ml_model.shap_explainer_type is None
+        uploaded_keys = [
+            call.args[1] for call in storage.s3_service.upload_file_obj.call_args_list
+        ]
+        assert not any(key.endswith("shap_data.json") for key in uploaded_keys)
+
+        await ml_model.delete()
+
+    @pytest.mark.asyncio
+    async def test_shap_upload_failure_does_not_fail_save(self):
+        storage = _mock_storage()
+
+        async def upload(obj, key):
+            if key.endswith("shap_data.json"):
+                raise RuntimeError("S3 unavailable")
+            return f"s3://test-bucket/{key}"
+
+        storage.s3_service.upload_file_obj = AsyncMock(side_effect=upload)
+
+        ml_model = await storage.save_model(
+            _trained_candidate(),
+            FeatureEngineer(),
+            user_id="user_1",
+            dataset_id="ds_1",
+            model_metadata={**_metadata(), "shap_explainer_type": "tree"},
+            model_id="model_shap_fail",
+            shap_data={"explainer_type": "tree"},
+        )
+
+        # Model is saved; the SHAP path is simply absent (explainer_type still
+        # records what would have been computed).
+        assert ml_model.model_id == "model_shap_fail"
+        assert ml_model.shap_values_path is None
 
         await ml_model.delete()
 

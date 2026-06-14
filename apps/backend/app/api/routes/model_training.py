@@ -31,17 +31,25 @@ from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
 from app.schemas.evaluation import (
     ClassificationMetrics,
+    FeatureImportanceResponse,
     ModelComparisonRequest,
     ModelComparisonResponse,
     ModelEvaluationResponse,
     ModelEvaluationSummary,
+    RankedFeature,
     RegressionMetrics,
+    ShapSummaryResponse,
 )
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.evaluation_explanation_service import evaluation_explanation_service
+from app.services.interpretability_service import InterpretabilityService
 from app.services.metrics_service import MetricsService
-from app.services.model_storage import ModelStorageService, build_evaluation_payload
+from app.services.model_storage import (
+    ModelStorageService,
+    build_evaluation_payload,
+    build_shap_payload,
+)
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.model_training import (
     AutoMLEngine,
@@ -65,6 +73,24 @@ MAX_PREDICT_RECORDS = 1000
 
 # Stateless — reuse one instance instead of constructing it per request (#83).
 _prediction_enricher = PredictionEnricher()
+# Stateless SHAP interpretability helper (issue #80).
+_interpretability_service = InterpretabilityService()
+
+
+def _rank_importance(importance: Optional[Dict[str, float]]) -> List[RankedFeature]:
+    """Convert an importance dict into a list ranked by descending importance.
+
+    Tolerates a non-dict (e.g. corrupted S3 payload) by returning an empty list,
+    preserving the endpoints' never-500 contract.
+    """
+    if not isinstance(importance, dict) or not importance:
+        return []
+    return [
+        RankedFeature(feature_name=name, importance=float(value))
+        for name, value in sorted(
+            importance.items(), key=lambda kv: kv[1], reverse=True
+        )
+    ]
 
 
 class TrainModelRequest(BaseModel):
@@ -434,6 +460,8 @@ async def train_model_task(
             "calibration_method": result.calibration_method,
             "calibration_score": result.calibration_score,
             "residual_std": result.residual_std,
+            # SHAP interpretability (issue #80).
+            "shap_explainer_type": result.shap_explainer_type,
             "training_config": training_config,
         }
 
@@ -454,6 +482,14 @@ async def train_model_task(
                     f"Failed to build evaluation payload for {model_id}: {exc}"
                 )
 
+        # Global SHAP summary for the interpretability dashboard (issue #80).
+        # Built best-effort; ``None`` for unsupported model types.
+        shap_data = None
+        try:
+            shap_data = build_shap_payload(result.shap_global)
+        except Exception as exc:
+            logger.warning(f"Failed to build SHAP payload for {model_id}: {exc}")
+
         # Save model with the pre-generated model_id
         storage_service = ModelStorageService()
         ml_model = await storage_service.save_model(
@@ -464,6 +500,7 @@ async def train_model_task(
             model_metadata,
             model_id=model_id,
             evaluation_data=evaluation_data,
+            shap_data=shap_data,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.
@@ -1005,6 +1042,109 @@ async def get_model_evaluation(
             f"degrading to partial results: {exc}"
         )
         return _partial_evaluation_response(model)
+
+
+# Interpretability endpoints (issue #80). These are two-segment paths, so the
+# one-segment GET /{model_id} never captures them regardless of order; they are
+# kept here next to the evaluation endpoint for readability.
+@router.get(
+    "/{model_id}/feature-importance", response_model=FeatureImportanceResponse
+)
+async def get_feature_importance(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """Global feature importance for a model (issue #80).
+
+    Returns model-native importance (ranked) plus SHAP-based importance when
+    the model type is SHAP-supported and a summary was computed at training
+    time. ``partial=true`` only when neither is available (e.g. an unsupported
+    model trained before any importance was captured). 404 for unknown/foreign
+    models; never 500 for an owned model.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    native = _rank_importance(model.feature_importance)
+
+    shap_importance = None
+    explainer_type = model.shap_explainer_type
+    shap_artifacts = await MetricsService.load_shap_artifacts(model)
+    if shap_artifacts:
+        shap_importance = _rank_importance(shap_artifacts.get("shap_importance"))
+        explainer_type = shap_artifacts.get("explainer_type", explainer_type)
+
+    partial = not native and not shap_importance
+    message = None
+    if partial:
+        message = (
+            "No feature importance is available for this model. It may have been "
+            "trained before interpretability was added, or its algorithm exposes "
+            "no importance scores."
+        )
+    elif not shap_importance:
+        message = (
+            "SHAP-based importance is unavailable for this model; showing "
+            "model-native feature importance."
+        )
+
+    return FeatureImportanceResponse(
+        model_id=model_id,
+        partial=partial,
+        explainer_type=explainer_type,
+        native_importance=native,
+        shap_importance=shap_importance,
+        message=message,
+    )
+
+
+@router.get("/{model_id}/shap", response_model=ShapSummaryResponse)
+async def get_shap_summary(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """SHAP summary-plot data for a model (issue #80).
+
+    Returns the mean |SHAP| per feature (ranked) plus a plain-language summary
+    of the top drivers, computed at training time on the held-out set. For
+    models trained before #80 or whose algorithm isn't SHAP-supported,
+    ``partial=true`` with an explanatory message and empty importance — the
+    endpoint never 500s for an owned model. 404 for unknown/foreign models.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    shap_artifacts = await MetricsService.load_shap_artifacts(model)
+    if not shap_artifacts or not shap_artifacts.get("shap_importance"):
+        return ShapSummaryResponse(
+            model_id=model_id,
+            partial=True,
+            explainer_type=model.shap_explainer_type,
+            problem_type=model.problem_type,
+            message=(
+                "SHAP interpretability is unavailable for this model. Tree and "
+                "linear models compute SHAP at training time; other algorithms "
+                "(and models trained before this feature) fall back to "
+                "model-native feature importance."
+            ),
+            evaluated_at=datetime.now(timezone.utc),
+        )
+
+    importance = shap_artifacts.get("shap_importance")
+    return ShapSummaryResponse(
+        model_id=model_id,
+        partial=False,
+        explainer_type=shap_artifacts.get("explainer_type"),
+        problem_type=model.problem_type,
+        feature_importance=_rank_importance(importance),
+        base_value=shap_artifacts.get("base_value"),
+        plain_language=_interpretability_service.top_drivers_text(importance),
+        evaluated_at=datetime.now(timezone.utc),
+    )
 
 
 @router.get("/{model_id}", response_model=MLModel)

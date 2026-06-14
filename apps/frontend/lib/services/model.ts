@@ -5,7 +5,8 @@
 import { getAuthToken } from '@/lib/auth-helpers'
 import type {
   ModelComparisonResponse,
-  ModelEvaluationResponse
+  ModelEvaluationResponse,
+  ShapSummaryResponse
 } from '@/lib/types/evaluation'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
@@ -501,6 +502,32 @@ export class ModelService {
     return response.json()
   }
 
+  /**
+   * Fetch the SHAP summary (mean |SHAP| per feature + plain-language drivers)
+   * for a model (issue #80). Degrades to `partial: true` for models trained
+   * before #80 or whose algorithm isn't SHAP-supported.
+   *
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async getShapSummary(
+    modelId: string,
+    token: string | null
+  ): Promise<ShapSummaryResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/shap`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch SHAP summary')
+    }
+
+    return response.json()
+  }
+
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -748,6 +775,12 @@ class ModelServiceClient {
   async compareModels(modelIds: string[]): Promise<ModelComparisonResponse> {
     const token = await getAuthToken()
     return ModelService.compareModels(modelIds, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a model's SHAP summary. */
+  async getShapSummary(modelId: string): Promise<ShapSummaryResponse> {
+    const token = await getAuthToken()
+    return ModelService.getShapSummary(modelId, token)
   }
 
   async trainModel(

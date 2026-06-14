@@ -115,7 +115,9 @@ async def test_train_predict_single_and_batch_roundtrip(
     assert body["low_confidence"] is not None and len(body["low_confidence"]) == 1
     assert body["is_calibrated"] is False
 
-    # 2b) Explanations are opt-in; a tree model yields model-native importance.
+    # 2b) Explanations are opt-in; a tree model yields per-row SHAP
+    # contributions (issue #80), or the native importance fallback if SHAP
+    # is unavailable in the environment.
     explained = await async_authorized_client.post(
         f"/api/v1/ml/{model_id}/predict",
         json={"data": [record], "include_explanations": True},
@@ -124,7 +126,7 @@ async def test_train_predict_single_and_batch_roundtrip(
     exp_body = explained.json()
     assert exp_body["explanations"] is not None
     explanation = exp_body["explanations"][0]
-    assert explanation["method"] == "tree_importance"
+    assert explanation["method"] in {"shap_tree", "tree_importance"}
     assert explanation["explanation_text"]
     assert len(explanation["top_features"]) >= 1
 

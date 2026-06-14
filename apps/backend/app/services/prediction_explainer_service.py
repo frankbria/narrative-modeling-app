@@ -1,14 +1,17 @@
-"""Per-prediction explainability using model-native importance (issue #83).
+"""Per-prediction explainability (issues #83 + #80).
 
-This deliberately does **not** use SHAP — the SHAP machinery is issue #80
-(P3.3) and is not yet available. Per the acceptance criteria, #83 *falls back
-to model-native importance*:
+Produces a per-prediction feature-contribution breakdown, preferring SHAP
+(issue #80) and falling back to model-native importance (issue #83):
 
-* **Linear models** (``coef_``): the contribution of feature *i* to a single
-  prediction is ``coef_i * value_i`` — a genuinely per-row breakdown.
-* **Tree / ensemble models** (``feature_importances_``): only *global*
-  importance is available, so we surface that as the contribution magnitude
-  (the same for every row). This is the documented fallback.
+* **Tree / ensemble models** (``feature_importances_``): per-row SHAP
+  contributions via ``TreeExplainer`` (issue #80, method ``"shap_tree"``) —
+  genuinely per-prediction, waterfall-style. If SHAP is unavailable, falls back
+  to *global* ``feature_importances_`` (method ``"tree_importance"``, the same
+  for every row — the documented #83 fallback).
+* **Linear models** (``coef_``): the contribution of feature *i* is
+  ``coef_i * value_i`` — already a genuinely per-row breakdown (method
+  ``"linear_coefficients"``). ``LinearExplainer`` SHAP needs background data
+  not available at prediction time, so the equivalent coef·value form is kept.
 * **Otherwise**: an optionally-supplied stored ``feature_importance`` dict
   (persisted on ``MLModel`` at training time) is used; if none is available
   the model is simply not explainable and ``explain`` returns ``None``.
@@ -26,6 +29,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
+
+from app.services.interpretability_service import InterpretabilityService
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +52,47 @@ class ExplanationResult:
 
 
 class PredictionExplainerService:
-    """Generate model-native, per-prediction feature-contribution breakdowns."""
+    """Generate per-prediction feature-contribution breakdowns (SHAP + native)."""
+
+    def __init__(
+        self, interpretability: Optional[InterpretabilityService] = None
+    ) -> None:
+        # Stateless collaborator; shap is imported lazily inside it.
+        self._interpretability = interpretability or InterpretabilityService()
+
+    def assemble(
+        self,
+        contributions: Sequence[float],
+        feature_names: Sequence[str],
+        x_row: Optional[Sequence[float]],
+        prediction: Any = None,
+        problem_type: str = "classification",
+        method: str = "shap_tree",
+        top_n: int = DEFAULT_TOP_N,
+    ) -> Optional[ExplanationResult]:
+        """Build an ``ExplanationResult`` from precomputed per-feature contributions.
+
+        Used by callers (e.g. ``PredictionEnricher``) that compute SHAP
+        contributions for many rows in one batch and then need the same
+        top-N ranking + plain-language text as ``explain``. Best-effort.
+        """
+        try:
+            contrib = np.asarray(contributions, dtype=float)
+            values = (
+                np.asarray(list(x_row), dtype=float).ravel()
+                if x_row is not None
+                else None
+            )
+            top = self._top_features(contrib, feature_names, values, top_n)
+            if not top:
+                return None
+            text = self._explanation_text(top, prediction, problem_type)
+            return ExplanationResult(
+                top_features=top, explanation_text=text, method=method
+            )
+        except Exception as exc:  # noqa: BLE001 - explanations are best-effort
+            logger.warning("Explanation assembly failed: %s", exc)
+            return None
 
     def explain(
         self,
@@ -95,7 +140,17 @@ class PredictionExplainerService:
             values = None
 
         base = self._unwrap_estimator(estimator)
-        contributions, method = self._native_contributions(base, values, prediction)
+
+        # Prefer per-row SHAP (issue #80) — for tree/ensemble models this gives
+        # a genuine per-prediction breakdown instead of the global importance
+        # fallback. Returns None for linear/unsupported models (and on any SHAP
+        # failure), so the native path below still applies.
+        contributions, method = self._instance_shap(
+            estimator, values, feature_names, prediction, problem_type
+        )
+
+        if contributions is None:
+            contributions, method = self._native_contributions(base, values, prediction)
 
         if contributions is None and feature_importance:
             contributions = self._from_importance_dict(
@@ -135,6 +190,29 @@ class PredictionExplainerService:
                 continue
             break
         return obj
+
+    def _instance_shap(
+        self,
+        estimator: Any,
+        values: Optional[np.ndarray],
+        feature_names: Sequence[str],
+        prediction: Any,
+        problem_type: str,
+    ) -> tuple[Optional[np.ndarray], str]:
+        """Return ``(shap_contributions, "shap_tree")`` or ``(None, "")``.
+
+        Per-row SHAP is only computed for tree/ensemble models (TreeExplainer
+        needs no background data); everything else falls through to the native
+        path. Best-effort: the service swallows its own errors and returns None.
+        """
+        if values is None:
+            return None, ""
+        instance = self._interpretability.compute_instance_shap(
+            estimator, values, feature_names, prediction, problem_type
+        )
+        if instance is None:
+            return None, ""
+        return np.asarray(instance.contributions, dtype=float), "shap_tree"
 
     def _native_contributions(
         self, base: Any, values: Optional[np.ndarray], prediction: Any

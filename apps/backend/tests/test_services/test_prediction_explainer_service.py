@@ -65,12 +65,43 @@ class TestExplainLinear:
 
 
 class TestExplainTree:
-    def test_tree_uses_global_importance_fallback(self, service, tree_classifier):
+    def test_tree_uses_per_row_shap(self, service, tree_classifier):
+        """Tree models get per-row SHAP contributions (issue #80)."""
         model, row = tree_classifier
         result = service.explain(model, row, FEATURES, prediction=1)
         assert result is not None
-        assert result.method == "tree_importance"
+        assert result.method == "shap_tree"
         assert len(result.top_features) <= 5
+
+    def test_tree_shap_contributions_differ_per_row(self, service, tree_classifier):
+        """Unlike global importance, SHAP contributions depend on the row."""
+        model, _ = tree_classifier
+        X, _y = make_classification(
+            n_samples=200, n_features=4, n_informative=3, n_redundant=0, random_state=1
+        )
+        c0 = {
+            f.feature_name: f.contribution
+            for f in service.explain(model, X[0], FEATURES, prediction=1).top_features
+        }
+        c5 = {
+            f.feature_name: f.contribution
+            for f in service.explain(model, X[5], FEATURES, prediction=1).top_features
+        }
+        assert c0 != c5
+
+    def test_tree_falls_back_to_global_importance_without_shap(
+        self, service, tree_classifier, monkeypatch
+    ):
+        """If SHAP is unavailable, trees fall back to #83 global importance."""
+        model, row = tree_classifier
+        monkeypatch.setattr(
+            service._interpretability,
+            "compute_instance_shap",
+            lambda *a, **k: None,
+        )
+        result = service.explain(model, row, FEATURES, prediction=1)
+        assert result is not None
+        assert result.method == "tree_importance"
 
 
 class TestExplainRegression:

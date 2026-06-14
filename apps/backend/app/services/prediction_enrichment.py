@@ -28,6 +28,7 @@ from app.services.confidence_service import (
     DEFAULT_LOW_CONFIDENCE_THRESHOLD,
     ConfidenceService,
 )
+from app.services.interpretability_service import InterpretabilityService
 from app.services.prediction_explainer_service import PredictionExplainerService
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,10 @@ class PredictionEnricher:
     ) -> None:
         self.threshold = low_confidence_threshold
         self.confidence = ConfidenceService()
-        self.explainer = PredictionExplainerService()
+        # Share one InterpretabilityService so the explainer and the batch
+        # SHAP path below don't construct duplicate instances.
+        self.interpretability = InterpretabilityService()
+        self.explainer = PredictionExplainerService(self.interpretability)
 
     def per_record_confidence(
         self, probabilities: Optional[Sequence[Sequence[float]]]
@@ -102,6 +106,14 @@ class PredictionEnricher:
         if matrix.ndim == 1:
             matrix = matrix.reshape(1, -1)
 
+        # For tree models, compute SHAP for every row with a single explainer
+        # build (issue #80) instead of rebuilding TreeExplainer per row inside
+        # this loop — important for multi-row / batch prediction. ``None`` for
+        # non-tree models (handled per-row below) or on any failure.
+        shap_rows = self.interpretability.compute_instance_shap_batch(
+            estimator, matrix, feature_names, predictions, problem_type
+        )
+
         results: List[Optional[PredictionExplanation]] = []
         any_explained = False
         for i, pred in enumerate(predictions):
@@ -109,15 +121,29 @@ class PredictionEnricher:
             if row is None:
                 results.append(None)
                 continue
-            result = self.explainer.explain(
-                estimator,
-                row,
-                feature_names,
-                prediction=pred,
-                problem_type=problem_type,
-                feature_importance=feature_importance,
-                top_n=top_n,
-            )
+            result = None
+            if shap_rows is not None and i < len(shap_rows) and shap_rows[i] is not None:
+                result = self.explainer.assemble(
+                    shap_rows[i],
+                    feature_names,
+                    row,
+                    prediction=pred,
+                    problem_type=problem_type,
+                    method="shap_tree",
+                    top_n=top_n,
+                )
+            if result is None:
+                # Non-tree models (cheap, no explainer rebuild) or a SHAP-batch
+                # failure fall back to the model-native per-row explanation.
+                result = self.explainer.explain(
+                    estimator,
+                    row,
+                    feature_names,
+                    prediction=pred,
+                    problem_type=problem_type,
+                    feature_importance=feature_importance,
+                    top_n=top_n,
+                )
             if result is None:
                 results.append(None)
                 continue

@@ -89,6 +89,43 @@ export interface ModelEvaluationResponse {
   evaluated_at: string
 }
 
+/** One feature's importance, for a ranked importance list (issue #80). */
+export interface RankedFeature {
+  feature_name: string
+  importance: number
+}
+
+/**
+ * Global feature importance for one model (issue #80). Carries model-native
+ * importance and, when the model type is SHAP-supported, SHAP-based importance.
+ */
+export interface FeatureImportanceResponse {
+  model_id: string
+  partial: boolean
+  /** "tree", "linear", or null when SHAP is unavailable */
+  explainer_type: string | null
+  native_importance: RankedFeature[]
+  shap_importance: RankedFeature[] | null
+  message: string | null
+}
+
+/**
+ * SHAP summary-plot data for one model (issue #80). feature_importance is the
+ * mean |SHAP| per feature, ranked. partial=true (with empty lists + a message)
+ * for models trained before #80 or whose type isn't SHAP-supported.
+ */
+export interface ShapSummaryResponse {
+  model_id: string
+  partial: boolean
+  explainer_type: string | null
+  problem_type: string
+  feature_importance: RankedFeature[]
+  base_value: number | null
+  plain_language: string
+  message: string | null
+  evaluated_at: string
+}
+
 export interface ModelComparisonRequest {
   model_ids: string[]
 }
