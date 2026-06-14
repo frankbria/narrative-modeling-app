@@ -9,7 +9,7 @@ import type { DataFixtures } from './data';
 
 // Import fixture implementations
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { AIMockProvider } from './ai-mock';
 
 // AI Mock fixture type
@@ -124,7 +124,10 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         .waitFor({ state: 'attached', timeout: 10000 })
         .catch((e) => fail('waiting for file input', e));
 
-      // Prepare file buffer
+      // Prepare file buffer. `fileName` may be a path relative to test-data
+      // (e.g. "ai-test-datasets/binary-classification.csv"); the uploaded name
+      // and the explore heading use the basename only.
+      const uploadName = basename(fileName);
       const csvPath = join(__dirname, '../test-data', fileName);
       let fileBuffer: Buffer;
 
@@ -142,7 +145,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
       // Set file on hidden input (Playwright handles hidden inputs automatically)
       await fileInput.setInputFiles({
-        name: fileName,
+        name: uploadName,
         mimeType: 'text/csv',
         buffer: fileBuffer,
       });
@@ -200,7 +203,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
       // Stability check: the explore page stage-gates on workflow state and
       // redirects back to /upload when DATA_LOADING isn't marked complete.
       // Waiting for the dataset heading proves we actually landed.
-      const exploreHeading = page.locator('h1', { hasText: fileName });
+      const exploreHeading = page.locator('h1', { hasText: uploadName });
       try {
         await exploreHeading.waitFor({ state: 'visible', timeout: 15000 });
       } catch (e) {
@@ -236,75 +239,77 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
   trainModel: async ({ request }, use) => {
     const train = async (datasetId: string, targetColumn: string): Promise<string> => {
-      const maxRetries = 2;
-
       // API calls must target the backend directly — Next.js does not proxy
       // /api/v1/* to the FastAPI server. Backend runs with SKIP_AUTH=true in
       // E2E, but HTTPBearer still requires some Authorization header.
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       const headers = { Authorization: 'Bearer e2e-test-token' };
 
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Fail loudly (issue #156): the old fixture swallowed every failure and
+      // returned 'mock-model-id', so downstream tests broke at the predict step
+      // with a misleading error instead of surfacing the train failure here.
+
+      // 1. Submit training, retrying only transient server-side failures. The
+      //    real ML pipeline lives under /api/v1/ml (AutoMLEngine +
+      //    ModelStorageService); /api/v1/models only stores config records.
+      const maxSubmitRetries = 2;
+      let modelId: string | undefined;
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= maxSubmitRetries; attempt++) {
         try {
-          // The real ML pipeline lives under /api/v1/ml (AutoMLEngine +
-          // ModelStorageService); /api/v1/models only stores config records.
           const response = await request.post(`${apiBase}/ml/train`, {
             headers,
-            data: {
-              dataset_id: datasetId,
-              target_column: targetColumn,
-            },
+            data: { dataset_id: datasetId, target_column: targetColumn },
             timeout: 30000,
           });
-
           if (!response.ok()) {
-            if (attempt < maxRetries) {
-              // Wait and retry for server errors
+            lastError = new Error(
+              `POST /ml/train failed (${response.status()}): ${await response.text()}`
+            );
+            if (attempt < maxSubmitRetries) {
               await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
               continue;
             }
-            throw new Error(`Training failed with status ${response.status()}`);
+            throw lastError;
           }
-
           const data = await response.json();
-          const modelId = data.model_id || data.id;
-
-          // Training runs as a background task; the model becomes retrievable
-          // from GET /api/v1/ml/{id} once the artifact is saved.
-          let trained = false;
-          const maxPollAttempts = 30; // 60 seconds max
-
-          for (let pollAttempts = 0; pollAttempts < maxPollAttempts; pollAttempts++) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            try {
-              const statusResponse = await request.get(`${apiBase}/ml/${modelId}`, {
-                headers,
-                timeout: 5000,
-              });
-              if (statusResponse.ok()) {
-                trained = true;
-                break;
-              }
-            } catch (error) {
-              // Transient network error — keep polling
-            }
+          modelId = data.model_id || data.id;
+          if (!modelId) {
+            throw new Error(`Training response carried no model id: ${JSON.stringify(data)}`);
           }
-
-          if (!trained) {
-            console.warn('Training timed out, but returning model ID anyway');
-          }
-
-          return modelId;
+          break;
         } catch (error) {
-          if (attempt === maxRetries) {
-            console.warn('Training fixture failed after all retries, returning mock ID:', error);
-            return 'mock-model-id';
+          lastError = error;
+          if (attempt < maxSubmitRetries) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+            continue;
           }
+          throw new Error(
+            `trainModel: submitting training failed after ${maxSubmitRetries + 1} attempts: ${lastError}`
+          );
         }
       }
 
-      return 'mock-model-id';
+      // 2. Training runs as a background task; poll until the model artifact is
+      //    retrievable from GET /api/v1/ml/{id} (200 only once it is saved).
+      const maxPollAttempts = 30; // ~60 seconds
+      for (let pollAttempts = 0; pollAttempts < maxPollAttempts; pollAttempts++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+          const statusResponse = await request.get(`${apiBase}/ml/${modelId}`, {
+            headers,
+            timeout: 5000,
+          });
+          if (statusResponse.ok()) {
+            return modelId as string;
+          }
+        } catch (error) {
+          // Transient network error — keep polling
+        }
+      }
+      throw new Error(
+        `trainModel: model ${modelId} did not become retrievable within ~60s`
+      );
     };
 
     await use(train);

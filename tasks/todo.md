@@ -1,42 +1,43 @@
-# Issue #155 — Fix client-side crash on /datasets/{id}/prepare
+# Issue #156 — /api/v1/ml/train 404 + trainModel fixture masking
 
-> Previous plan (issue #87 — backend workflow persistence) was **completed** and merged in PR #193
-> (commit ea58249); see `git log tasks/todo.md`.
+> Previous plan (issue #155 — prepare-page crash / data-preparation spec) was
+> completed and merged in PR #194.
 
-## Verify-before-fix finding
-Reproduced live against current `main`: the prepare page **already renders without crashing**.
-The crash described in the issue was fixed by intervening PRs (notably **#166**, which corrected the
-`TransformationConfigDialog` props contract). The CodeRabbit plan's "Phase 1: fix dialog props" is a
-no-op today, and the dialog never rendered on initial load anyway (`editingIndex` is `null`).
+## Verify-before-fix findings
+- **AC1 (train 404) — already fixed by #76.** `model_training.py:186-199` coerces
+  the dataset id string to `PydanticObjectId` before lookup. Live e2e confirms
+  `POST /api/v1/ml/train → 200`.
+- **AC2 (fixture masking) — still valid.** `trainModel` returned `'mock-model-id'`
+  on any failure, so downstream tests broke at predict with a misleading error.
+- **AC3 (perf single-prediction smoke test) — still valid.** Was `test.fixme`.
+  Re-enabling exposed a deeper issue: the 6-row `sample.csv` makes AutoML detect
+  problem type "unknown" and fail (`ufunc 'divide' not supported`), so no model
+  is ever saved. The fixme also referenced #157 (unrealistic 100ms threshold).
 
-Confirmed working in browser (churn.csv dataset, seeded `data_loading`+`data_profiling`):
-- h1 "Prepare Data" + metadata + Visual/Chain toggles render
-- both view modes render; chain view lists transformations
-- edit dialog (`TransformationConfigDialog`) opens cleanly — the path CodeRabbit flagged
-
-## Adapted plan (done)
-1. [x] **Re-enable the two `test.fixme` @smoke tests** (removed `.fixme` + the
-   "Disabled pending #155" comments).
-2. [x] **Add a defensive guard** on the edit-dialog render block (page.tsx) so the IIFE
-   only runs when `transformations[editingIndex]` exists.
-3. [x] **Repair the whole data-preparation spec** — re-enabling the tests surfaced two
-   classes of pre-existing breakage, both fixed:
-   - **#87 gating regression**: the backend became the hydration source of truth, so a
-     localStorage-only seed no longer grants access. Added a `seedPreparationWorkflow`
-     helper that seeds the real backend workflow (live API, no mocking) + localStorage
-     fallback, applied to all three `describe` blocks.
-   - **Masked broad locators**: while the page crashed/redirected these never ran. Fixed
-     `toContain('default')` → `toContain('bg-primary')` (active Button variant), scoped
-     bare `h1`/`text=/rows/`/`text=/No transformations/` and `.first()`'d the
-     link-wrapping-button Back controls, fixed the invalid comma `text=` OR.
-4. [x] **Verified**: `chromium-smoke` @smoke (2 passed) and full `chromium-full` spec
-   (16 passed); type-check clean; eslint clean; 313 transformation jest tests pass.
+## Done
+1. [x] **trainModel fixture fails loudly** (`e2e/fixtures/index.ts`): submit with
+   bounded retries; throw with status+body on non-ok train, missing model id, or
+   a ~60s poll timeout. No more `mock-model-id`.
+2. [x] **Use a trainable dataset**: `uploadTestDataset` now accepts a relative
+   path and uploads under its basename; the single-prediction test trains on
+   `ai-test-datasets/binary-classification.csv` (999 rows, binary `churned`).
+   Fixed the `uploadTestDataset` fixture **type** to accept the optional filename.
+3. [x] **Re-enable the perf single-prediction @smoke test** with a real predict
+   payload (full feature record), a functional assertion (predictions array of
+   length 1), a CI-safe 2000ms latency ceiling (~180ms observed locally; tight
+   tuning deferred to #157), and `test.setTimeout(120000)` for train+poll.
+4. [x] **Verified**: passes in `chromium-smoke` and `chromium-full`, stable across
+   runs; `tsc --noEmit` clean; `next lint` (CI) clean.
 
 ## Acceptance criteria
-- [x] `/datasets/{id}/prepare` renders (h1 "Prepare Data", view-mode toggles) for a valid dataset
-- [x] The two fixme'd smoke tests are re-enabled and pass
+- [x] `POST /api/v1/ml/train` accepts the upload dataset id string (coerce to ObjectId) — #76
+- [x] `trainModel` E2E fixture fails loudly instead of returning a mock id
+- [x] The fixme'd perf single-prediction smoke test is re-enabled and passes
 
-## Deviation from original (CodeRabbit) plan
-- Original Phase 1 (fix dialog props `onSave`→`onAdd`, add missing props, metadata helper) is
-  **already implemented** by #166 — dropped.
-- Keeping only CodeRabbit's "Task 2" defensive guard + the test re-enable + verification.
+## Out of scope (follow-up filed)
+The loud fixture surfaces that other **manual `chromium-full`** tests
+(error-scenarios, model-config, other performance tests) still train on the
+un-trainable `sample.csv` and were vacuously passing / now fail loudly at train.
+Not in the PR gate (those aren't @smoke). Follow-up issue: migrate them to a
+trainable dataset. The batch-prediction test also targets a separate
+`/api/v1/models/{id}/predict-batch` endpoint — left untouched.
