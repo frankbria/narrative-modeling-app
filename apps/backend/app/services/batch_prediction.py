@@ -1,10 +1,12 @@
 """
 Batch prediction service for processing large datasets
 """
+
 import asyncio
 import json
 import logging
 import statistics
+import numpy as np
 import pandas as pd
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime
@@ -14,7 +16,9 @@ from io import StringIO, BytesIO
 
 from app.models.batch_job import BatchJob, JobStatus, JobType, BatchPredictionConfig
 from app.models.ml_model import MLModel
+from app.services.confidence_service import ConfidenceService
 from app.services.model_storage import ModelStorageService
+from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
 from beanie import PydanticObjectId
 
@@ -27,6 +31,9 @@ class BatchPredictionService:
     def __init__(self):
         self.s3_service = S3Service()
         self.model_storage = ModelStorageService()
+        # Confidence / explanation helpers (issue #83).
+        self.confidence = ConfidenceService()
+        self.explainer = PredictionExplainerService()
         # Hold strong references to background tasks: asyncio only keeps a weak
         # reference, so an un-retained task can be garbage-collected mid-run.
         self._background_tasks: set = set()
@@ -54,6 +61,7 @@ class BatchPredictionService:
         output_format: str = "csv",
         include_probabilities: bool = True,
         include_metadata: bool = False,
+        include_explanations: bool = False,
         chunk_size: int = 1000,
         priority: int = 0,
         auto_start: bool = True,
@@ -66,11 +74,9 @@ class BatchPredictionService:
         """
 
         # Validate model exists and user has access
-        model = await MLModel.find_one({
-            "model_id": model_id,
-            "user_id": user_id,
-            "is_active": True
-        })
+        model = await MLModel.find_one(
+            {"model_id": model_id, "user_id": user_id, "is_active": True}
+        )
 
         if not model:
             raise ValueError("Model not found or not accessible")
@@ -86,7 +92,8 @@ class BatchPredictionService:
             output_format=output_format,
             include_probabilities=include_probabilities,
             include_metadata=include_metadata,
-            chunk_size=chunk_size
+            include_explanations=include_explanations,
+            chunk_size=chunk_size,
         ).dict()
 
         # Create job
@@ -96,7 +103,7 @@ class BatchPredictionService:
             user_id=user_id,
             config=config,
             input_path=input_path,
-            priority=priority
+            priority=priority,
         )
 
         # Initialize progress
@@ -112,10 +119,7 @@ class BatchPredictionService:
         return job
 
     async def _prepare_input_data(
-        self,
-        input_data: Any,
-        user_id: str,
-        model_id: str
+        self, input_data: Any, user_id: str, model_id: str
     ) -> Tuple[str, int]:
         """Prepare and upload input data to S3"""
 
@@ -140,7 +144,7 @@ class BatchPredictionService:
             # Convert DataFrame to CSV and upload
             csv_buffer = StringIO()
             input_data.to_csv(csv_buffer, index=False)
-            csv_content = csv_buffer.getvalue().encode('utf-8')
+            csv_content = csv_buffer.getvalue().encode("utf-8")
 
             total_records = len(input_data)
 
@@ -152,7 +156,7 @@ class BatchPredictionService:
             df = pd.DataFrame(input_data)
             csv_buffer = StringIO()
             df.to_csv(csv_buffer, index=False)
-            csv_content = csv_buffer.getvalue().encode('utf-8')
+            csv_content = csv_buffer.getvalue().encode("utf-8")
 
             total_records = len(input_data)
 
@@ -174,10 +178,12 @@ class BatchPredictionService:
 
             # Load model
             config = BatchPredictionConfig(**job.config)
-            model = await MLModel.find_one({
-                "model_id": config.model_id,
-                "user_id": job.user_id,
-            })
+            model = await MLModel.find_one(
+                {
+                    "model_id": config.model_id,
+                    "user_id": job.user_id,
+                }
+            )
 
             if not model:
                 raise ValueError("Model not found")
@@ -202,26 +208,21 @@ class BatchPredictionService:
                 try:
                     # Make predictions for chunk
                     chunk_predictions = await self._predict_chunk(
-                        chunk_df,
-                        trained_model,
-                        feature_engineer,
-                        model,
-                        config
+                        chunk_df, trained_model, feature_engineer, model, config
                     )
 
                     predictions.extend(chunk_predictions)
                     total_success += len(
-                        [p for p in chunk_predictions if p.get('error') is None]
+                        [p for p in chunk_predictions if p.get("error") is None]
                     )
                     total_error += len(
-                        [p for p in chunk_predictions if p.get('error') is not None]
+                        [p for p in chunk_predictions if p.get("error") is not None]
                     )
 
                 except Exception as e:
                     # Handle chunk processing error
                     error_predictions = [
-                        {"error": str(e), "row_index": i}
-                        for i in range(len(chunk_df))
+                        {"error": str(e), "row_index": i} for i in range(len(chunk_df))
                     ]
                     predictions.extend(error_predictions)
                     total_error += len(error_predictions)
@@ -231,7 +232,7 @@ class BatchPredictionService:
                     processed_records=len(predictions),
                     success_count=total_success,
                     error_count=total_error,
-                    current_chunk=chunk_num
+                    current_chunk=chunk_num,
                 )
                 await job.save()
 
@@ -251,9 +252,7 @@ class BatchPredictionService:
             await job.save()
 
     async def _read_data_chunks(
-        self,
-        s3_path: str,
-        chunk_size: int
+        self, s3_path: str, chunk_size: int
     ) -> AsyncGenerator[pd.DataFrame, None]:
         """Read data from S3 in chunks"""
 
@@ -261,7 +260,9 @@ class BatchPredictionService:
         content = await self.s3_service.download_file_obj(s3_path)
 
         # Create temporary file
-        with tempfile.NamedTemporaryFile(mode='w+b', delete=False, suffix='.csv') as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", delete=False, suffix=".csv"
+        ) as temp_file:
             temp_file.write(content)
             temp_file_path = temp_file.name
 
@@ -279,7 +280,7 @@ class BatchPredictionService:
         trained_model: Any,
         feature_engineer: Any,
         model: MLModel,
-        config: BatchPredictionConfig
+        config: BatchPredictionConfig,
     ) -> List[Dict[str, Any]]:
         """Make predictions for a chunk of data"""
 
@@ -301,45 +302,88 @@ class BatchPredictionService:
 
                 # Make prediction
                 prediction = trained_model.predict(X_transformed)[0]
+                prediction_value = (
+                    prediction.item() if hasattr(prediction, "item") else prediction
+                )
 
-                # Get probabilities if requested
+                # Compute probabilities whenever the (calibrated) classifier
+                # supports them; they drive confidence + low-confidence flags
+                # even when the caller didn't request the full vectors (#83).
                 probabilities = None
                 confidence = None
-                if (config.include_probabilities and
-                    is_classification and
-                    hasattr(trained_model, "predict_proba")):
+                low_confidence = None
+                if is_classification and hasattr(trained_model, "predict_proba"):
                     proba_row = trained_model.predict_proba(X_transformed)[0]
-                    probabilities = proba_row.tolist()
-                    confidence = float(max(probabilities)) if probabilities else None
+                    proba_list = proba_row.tolist()
+                    confidence = self.confidence.confidence_from_proba(proba_list)
+                    if confidence is not None:
+                        low_confidence = self.confidence.is_low_confidence(confidence)
+                    if config.include_probabilities:
+                        probabilities = proba_list
 
                 # Create result
                 result = {
                     "row_index": index,
-                    "prediction": prediction.item() if hasattr(prediction, 'item') else prediction,
-                    "input_data": input_data
+                    "prediction": prediction_value,
+                    "input_data": input_data,
                 }
 
                 if probabilities is not None:
                     result["probabilities"] = probabilities
                 if confidence is not None:
                     result["confidence"] = confidence
+                if low_confidence is not None:
+                    result["low_confidence"] = low_confidence
+
+                # Regression prediction interval from the model's residual std.
+                if (
+                    not is_classification
+                    and getattr(model, "residual_std", None) is not None
+                ):
+                    interval = self.confidence.regression_interval(
+                        prediction_value, model.residual_std
+                    )
+                    if interval is not None:
+                        result["prediction_interval"] = interval
+
+                # Per-prediction explanation (opt-in — issue #83).
+                if getattr(config, "include_explanations", False):
+                    explanation = self.explainer.explain(
+                        trained_model,
+                        np.asarray(X_transformed)[0],
+                        model.feature_names,
+                        prediction=prediction_value,
+                        problem_type=model.problem_type,
+                        feature_importance=model.feature_importance,
+                    )
+                    if explanation is not None:
+                        result["explanation_text"] = explanation.explanation_text
+                        result["explanation"] = {
+                            "method": explanation.method,
+                            "top_features": [
+                                {
+                                    "feature_name": f.feature_name,
+                                    "contribution": f.contribution,
+                                    "feature_value": f.feature_value,
+                                }
+                                for f in explanation.top_features
+                            ],
+                        }
 
                 if config.include_metadata:
                     result["metadata"] = {
                         "model_id": model.model_id,
                         "model_version": model.version,
-                        "prediction_time": datetime.utcnow().isoformat()
+                        "prediction_time": datetime.utcnow().isoformat(),
                     }
 
                 predictions.append(result)
 
             except Exception as e:
                 # Handle individual prediction error
-                predictions.append({
-                    "row_index": index,
-                    "error": str(e),
-                    "input_data": row.to_dict()
-                })
+                predictions.append(
+                    {"row_index": index, "error": str(e), "input_data": row.to_dict()}
+                )
 
         return predictions
 
@@ -354,7 +398,9 @@ class BatchPredictionService:
         stats for regression) and confidence statistics for the downloadable
         results' summary.
         """
-        successful = [p for p in predictions if p.get("error") is None and "prediction" in p]
+        successful = [
+            p for p in predictions if p.get("error") is None and "prediction" in p
+        ]
         errors = [p for p in predictions if p.get("error") is not None]
         is_classification = str(model.problem_type).endswith("classification")
 
@@ -389,6 +435,11 @@ class BatchPredictionService:
                 "median": statistics.median(confidences),
             }
 
+        # Number of successful predictions flagged low-confidence (issue #83).
+        low_confidence_count = sum(
+            1 for p in successful if p.get("low_confidence") is True
+        )
+
         success_count = len(successful)
         total = len(predictions)
         summary: Dict[str, Any] = {
@@ -398,14 +449,13 @@ class BatchPredictionService:
             "success_rate": (success_count / total * 100) if total else 0.0,
             "prediction_distribution": prediction_distribution,
             "confidence_stats": confidence_stats,
+            "low_confidence_count": low_confidence_count,
         }
         if prediction_value_stats:
             summary["prediction_value_stats"] = prediction_value_stats
         return summary
 
-    def _results_to_dataframe(
-        self, predictions: List[Dict[str, Any]]
-    ) -> pd.DataFrame:
+    def _results_to_dataframe(self, predictions: List[Dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
         the original input columns plus prediction/confidence/error columns."""
         rows: List[Dict[str, Any]] = []
@@ -415,8 +465,14 @@ class BatchPredictionService:
                 row["prediction"] = p["prediction"]
             if p.get("confidence") is not None:
                 row["confidence"] = p["confidence"]
+            if p.get("low_confidence") is not None:
+                row["low_confidence"] = p["low_confidence"]
+            if p.get("prediction_interval") is not None:
+                row["prediction_interval"] = json.dumps(p["prediction_interval"])
             if p.get("probabilities") is not None:
                 row["probabilities"] = json.dumps(p["probabilities"])
+            if p.get("explanation_text") is not None:
+                row["explanation"] = p["explanation_text"]
             if p.get("error") is not None:
                 row["error"] = p["error"]
             rows.append(row)
@@ -426,7 +482,7 @@ class BatchPredictionService:
         self,
         job: BatchJob,
         predictions: List[Dict[str, Any]],
-        config: BatchPredictionConfig
+        config: BatchPredictionConfig,
     ) -> str:
         """Save prediction results to S3"""
 
@@ -439,11 +495,11 @@ class BatchPredictionService:
             df = self._results_to_dataframe(predictions)
             csv_buffer = StringIO()
             df.to_csv(csv_buffer, index=False)
-            content = csv_buffer.getvalue().encode('utf-8')
+            content = csv_buffer.getvalue().encode("utf-8")
 
         elif config.output_format.lower() == "json":
             # Convert to JSON
-            content = json.dumps(predictions, indent=2, default=str).encode('utf-8')
+            content = json.dumps(predictions, indent=2, default=str).encode("utf-8")
 
         else:
             raise ValueError(f"Unsupported output format: {config.output_format}")
@@ -456,17 +512,14 @@ class BatchPredictionService:
     async def get_job_status(self, job_id: str, user_id: str) -> Optional[BatchJob]:
         """Get job status and progress"""
 
-        return await BatchJob.find_one({
-            "job_id": job_id,
-            "user_id": user_id
-        })
+        return await BatchJob.find_one({"job_id": job_id, "user_id": user_id})
 
     async def list_user_jobs(
         self,
         user_id: str,
         job_type: Optional[JobType] = None,
         status: Optional[JobStatus] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[BatchJob]:
         """List user's batch jobs"""
 
@@ -481,11 +534,13 @@ class BatchPredictionService:
     async def cancel_job(self, job_id: str, user_id: str) -> bool:
         """Cancel a pending or running job"""
 
-        job = await BatchJob.find_one({
-            "job_id": job_id,
-            "user_id": user_id,
-            "status": {"$in": [JobStatus.PENDING, JobStatus.RUNNING]}
-        })
+        job = await BatchJob.find_one(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": {"$in": [JobStatus.PENDING, JobStatus.RUNNING]},
+            }
+        )
 
         if not job:
             return False
@@ -499,10 +554,7 @@ class BatchPredictionService:
     async def retry_job(self, job_id: str, user_id: str) -> bool:
         """Retry a failed job"""
 
-        job = await BatchJob.find_one({
-            "job_id": job_id,
-            "user_id": user_id
-        })
+        job = await BatchJob.find_one({"job_id": job_id, "user_id": user_id})
 
         if not job or not job.can_retry():
             return False
@@ -527,11 +579,9 @@ class BatchPredictionService:
     async def download_results(self, job_id: str, user_id: str) -> Optional[bytes]:
         """Download job results"""
 
-        job = await BatchJob.find_one({
-            "job_id": job_id,
-            "user_id": user_id,
-            "status": JobStatus.COMPLETED
-        })
+        job = await BatchJob.find_one(
+            {"job_id": job_id, "user_id": user_id, "status": JobStatus.COMPLETED}
+        )
 
         if not job or not job.output_path:
             return None

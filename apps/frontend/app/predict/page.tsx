@@ -118,6 +118,7 @@ export default function PredictPage() {
       const result = await modelService.predict(state.modelId as string, {
         data: [buildRecord()],
         include_probabilities: true,
+        include_explanations: true,
       });
       setPrediction(result);
 
@@ -357,6 +358,34 @@ export default function PredictPage() {
                     <span data-testid="confidence-score" className="confidence font-medium">
                       {(prediction.confidence[0] * 100).toFixed(1)}%
                     </span>
+                    {prediction.is_calibrated && (
+                      <span className="ml-2 text-xs text-gray-500">(calibrated)</span>
+                    )}
+                  </div>
+                )}
+                {prediction.low_confidence?.[0] && (
+                  <div
+                    data-testid="low-confidence-warning"
+                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800"
+                  >
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>
+                      Low confidence — this prediction is below the{' '}
+                      {prediction.confidence_threshold != null
+                        ? `${(prediction.confidence_threshold * 100).toFixed(0)}%`
+                        : 'recommended'}{' '}
+                      confidence threshold. Treat it with caution.
+                    </span>
+                  </div>
+                )}
+                {/* Regression prediction interval (#83). */}
+                {prediction.prediction_intervals?.[0] && (
+                  <div className="mt-2 text-sm text-gray-700">
+                    <span className="text-gray-600">Estimated range: </span>
+                    <span data-testid="prediction-interval" className="font-medium">
+                      {prediction.prediction_intervals[0][0].toFixed(2)} –{' '}
+                      {prediction.prediction_intervals[0][1].toFixed(2)}
+                    </span>
                   </div>
                 )}
                 {prediction.probabilities?.[0] && (
@@ -368,6 +397,35 @@ export default function PredictPage() {
                         <span className="font-medium">{(prob * 100).toFixed(1)}%</span>
                       </div>
                     ))}
+                  </div>
+                )}
+                {/* Plain-language explanation + feature contributions (#83). */}
+                {prediction.explanations?.[0] && (
+                  <div
+                    data-testid="prediction-explanation"
+                    className="mt-4 border-t border-green-200 pt-3"
+                  >
+                    <p className="text-sm font-medium text-gray-700 mb-1">
+                      What drove this prediction
+                    </p>
+                    <p className="text-sm text-gray-600 mb-2">
+                      {prediction.explanations[0]!.explanation_text}
+                    </p>
+                    <div className="space-y-1">
+                      {prediction.explanations[0]!.top_features.map((f) => (
+                        <div key={f.feature_name} className="flex justify-between text-sm">
+                          <span>{f.feature_name}</span>
+                          <span
+                            className={`font-medium ${
+                              f.contribution >= 0 ? 'text-green-700' : 'text-red-700'
+                            }`}
+                          >
+                            {f.contribution >= 0 ? '+' : ''}
+                            {f.contribution.toFixed(3)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -499,6 +557,20 @@ export default function PredictPage() {
                         (summary.confidence_stats as Record<string, number>).mean * 100
                       ).toFixed(1)}
                       %
+                    </p>
+                  )}
+
+                {/* Low-confidence count across the batch (#83). */}
+                {typeof summary.low_confidence_count === 'number' &&
+                  summary.low_confidence_count > 0 && (
+                    <p
+                      data-testid="batch-low-confidence"
+                      className="flex items-center gap-2 text-xs text-amber-800"
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      {summary.low_confidence_count} low-confidence prediction
+                      {summary.low_confidence_count === 1 ? '' : 's'} — review the
+                      flagged rows in the downloaded CSV.
                     </p>
                   )}
 

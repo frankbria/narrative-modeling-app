@@ -109,6 +109,24 @@ async def test_train_predict_single_and_batch_roundtrip(
     assert len(body["predictions"]) == 1
     assert body["confidence"] is not None and len(body["confidence"]) == 1
     assert body["class_labels"] == ["0", "1"]
+    # Confidence/explainability enrichment (issue #83). This model was saved
+    # directly (no training-time calibration), so it degrades gracefully:
+    # raw confidence + low-confidence flags, is_calibrated False.
+    assert body["low_confidence"] is not None and len(body["low_confidence"]) == 1
+    assert body["is_calibrated"] is False
+
+    # 2b) Explanations are opt-in; a tree model yields model-native importance.
+    explained = await async_authorized_client.post(
+        f"/api/v1/ml/{model_id}/predict",
+        json={"data": [record], "include_explanations": True},
+    )
+    assert explained.status_code == 200, explained.text
+    exp_body = explained.json()
+    assert exp_body["explanations"] is not None
+    explanation = exp_body["explanations"][0]
+    assert explanation["method"] == "tree_importance"
+    assert explanation["explanation_text"]
+    assert len(explanation["top_features"]) >= 1
 
     # 3) Batch prediction round-trip through the service + S3.
     batch_df = pd.DataFrame([record, {"age": 60, "income": 80000, "gender": "f"}])
@@ -117,8 +135,12 @@ async def test_train_predict_single_and_batch_roundtrip(
         user_id=user_id,
         model_id=model_id,
         input_data=batch_df,
+        include_explanations=True,
         auto_start=False,
     )
+    # The flag must survive into the saved job config, else explanations are
+    # unreachable through normal job creation (issue #83 review fix).
+    assert job.config["include_explanations"] is True
     await svc._process_batch_job(job)
 
     refreshed = await svc.get_job_status(job.job_id, user_id)
@@ -126,9 +148,16 @@ async def test_train_predict_single_and_batch_roundtrip(
     assert refreshed.results["total_predictions"] == 2
     assert refreshed.results["success_count"] == 2
     assert "prediction_distribution" in refreshed.results
+    # Batch summary carries the low-confidence count (issue #83).
+    assert "low_confidence_count" in refreshed.results
 
     content = await svc.download_results(job.job_id, user_id)
     assert content is not None
     out = pd.read_csv(io.BytesIO(content))
     assert len(out) == 2
     assert "prediction" in out.columns
+    # Confidence column (issue #82) + low-confidence column (issue #83).
+    assert "confidence" in out.columns
+    assert "low_confidence" in out.columns
+    # Explanations were requested, so the CSV carries an explanation column (#83).
+    assert "explanation" in out.columns

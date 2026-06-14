@@ -152,6 +152,24 @@ export interface CancelTrainingResponse {
 export interface PredictRequest {
   data: Record<string, any>[]
   include_probabilities?: boolean
+  /** Request per-prediction feature-contribution breakdowns (#83). */
+  include_explanations?: boolean
+}
+
+/** A single feature's contribution to a prediction (#83). */
+export interface FeatureContribution {
+  feature_name: string
+  /** Signed contribution; positive raises the prediction. */
+  contribution: number
+  feature_value?: number | null
+}
+
+/** Per-prediction, model-native explanation (no SHAP — see #80/#83). */
+export interface PredictionExplanation {
+  top_features: FeatureContribution[]
+  explanation_text: string
+  /** linear_coefficients | tree_importance | stored_importance */
+  method: string
 }
 
 export interface PredictResponse {
@@ -168,6 +186,17 @@ export interface PredictResponse {
     problem_type: string
     target_column: string
   }
+  /** Per-record low-confidence warning flags (#83). */
+  low_confidence?: boolean[]
+  /** Whether the model yields calibrated probabilities (#83). */
+  is_calibrated?: boolean
+  calibration_method?: string | null
+  /** Threshold below which a prediction is flagged low-confidence (#83). */
+  confidence_threshold?: number
+  /** Symmetric regression prediction intervals [low, high] per record (#83). */
+  prediction_intervals?: (number[] | null)[]
+  /** Per-record explanations, present when include_explanations was set (#83). */
+  explanations?: (PredictionExplanation | null)[]
 }
 
 /** A raw input feature the prediction form must collect (#82). */

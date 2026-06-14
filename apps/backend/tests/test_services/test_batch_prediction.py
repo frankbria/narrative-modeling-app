@@ -41,9 +41,7 @@ def _service() -> BatchPredictionService:
     svc = BatchPredictionService()
     # Never touch real S3 in unit tests.
     svc.s3_service = MagicMock()
-    svc.s3_service.upload_file_obj = AsyncMock(
-        return_value="s3://bucket/key"
-    )
+    svc.s3_service.upload_file_obj = AsyncMock(return_value="s3://bucket/key")
     svc.s3_service.download_file_obj = AsyncMock()
     return svc
 
@@ -114,7 +112,9 @@ def test_calculate_summary_statistics_classification():
     assert stats["prediction_distribution"] == {"yes": 2, "no": 1}
     assert stats["confidence_stats"]["max"] == 0.9
     assert stats["confidence_stats"]["min"] == 0.6
-    assert round(stats["confidence_stats"]["mean"], 4) == round((0.9 + 0.6 + 0.8) / 3, 4)
+    assert round(stats["confidence_stats"]["mean"], 4) == round(
+        (0.9 + 0.6 + 0.8) / 3, 4
+    )
 
 
 def test_calculate_summary_statistics_regression():
@@ -155,6 +155,125 @@ def test_results_to_dataframe_flattens_inputs_and_outputs():
     assert "error" in df.columns
     # probabilities are JSON-encoded so the cell stays a scalar
     assert json.loads(df.iloc[0]["probabilities"]) == [0.2, 0.8]
+
+
+class _LowConfClassifier:
+    def predict(self, X):
+        return np.array([1] * len(X))
+
+    def predict_proba(self, X):
+        # 0.55 max → below the 0.7 low-confidence threshold
+        return np.array([[0.45, 0.55]] * len(X))
+
+
+class _FakeRegressor:
+    def predict(self, X):
+        return np.array([10.0] * len(X))
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_flags_low_confidence():
+    """Predictions below the threshold are flagged low_confidence (#83)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123", include_probabilities=False)
+    chunk = pd.DataFrame([{"age": 30}])
+
+    results = await svc._predict_chunk(
+        chunk, _LowConfClassifier(), _FakeFeatureEngineer(), _model(), config
+    )
+
+    assert results[0]["confidence"] == 0.55
+    assert results[0]["low_confidence"] is True
+    # Confidence is computed even though full probabilities were not requested.
+    assert "probabilities" not in results[0]
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_regression_interval():
+    """Regression rows carry a prediction interval from residual_std (#83)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123")
+    model = _model("regression")
+    model.residual_std = 2.0
+    chunk = pd.DataFrame([{"age": 30}])
+
+    results = await svc._predict_chunk(
+        chunk, _FakeRegressor(), _FakeFeatureEngineer(), model, config
+    )
+
+    low, high = results[0]["prediction_interval"]
+    assert low == pytest.approx(10.0 - 1.96 * 2.0)
+    assert high == pytest.approx(10.0 + 1.96 * 2.0)
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_includes_explanation_when_requested():
+    """With include_explanations, rows carry a model-native explanation (#83)."""
+    from sklearn.datasets import make_classification
+    from sklearn.linear_model import LogisticRegression
+
+    X, y = make_classification(
+        n_samples=80,
+        n_features=1,
+        n_informative=1,
+        n_redundant=0,
+        n_clusters_per_class=1,
+        random_state=0,
+    )
+    estimator = LogisticRegression().fit(X, y)
+
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123", include_explanations=True)
+    model = _model()
+    model.feature_importance = None
+    chunk = pd.DataFrame([{"age": float(X[0][0])}])
+
+    results = await svc._predict_chunk(
+        chunk, estimator, _FakeFeatureEngineer(), model, config
+    )
+
+    assert "explanation_text" in results[0]
+    assert results[0]["explanation"]["method"] == "linear_coefficients"
+
+
+def test_summary_counts_low_confidence():
+    """Summary reports how many successful predictions were low-confidence (#83)."""
+    svc = _service()
+    predictions = [
+        {
+            "prediction": "yes",
+            "confidence": 0.9,
+            "low_confidence": False,
+            "error": None,
+        },
+        {"prediction": "no", "confidence": 0.6, "low_confidence": True, "error": None},
+        {"prediction": "no", "confidence": 0.55, "low_confidence": True, "error": None},
+    ]
+
+    stats = svc._calculate_summary_statistics(predictions, _model())
+
+    assert stats["low_confidence_count"] == 2
+
+
+def test_results_to_dataframe_includes_low_confidence_column():
+    """CSV export carries the low_confidence column + interval/explanation (#83)."""
+    svc = _service()
+    predictions = [
+        {
+            "input_data": {"age": 30},
+            "prediction": 10.0,
+            "low_confidence": False,
+            "prediction_interval": [6.0, 14.0],
+            "explanation_text": "driven by age",
+        },
+    ]
+
+    df = svc._results_to_dataframe(predictions)
+
+    assert "low_confidence" in df.columns
+    assert not bool(df.iloc[0]["low_confidence"])
+    assert json.loads(df.iloc[0]["prediction_interval"]) == [6.0, 14.0]
+    assert df.iloc[0]["explanation"] == "driven by age"
 
 
 @pytest.mark.asyncio
