@@ -85,6 +85,20 @@ jest.mock('@/lib/services/model', () => ({
     getEvaluation: (...args: unknown[]) => mockGetEvaluation(...args),
     listModels: (...args: unknown[]) => mockListModels(...args),
     compareModels: (...args: unknown[]) => mockCompareModels(...args),
+    // SHAP summary is best-effort enrichment (issue #80); default to a partial
+    // response so the page renders without the SHAP chart in these tests.
+    getShapSummary: () =>
+      Promise.resolve({
+        model_id: 'm1',
+        partial: true,
+        explainer_type: null,
+        problem_type: 'binary_classification',
+        feature_importance: [],
+        base_value: null,
+        plain_language: '',
+        message: 'unavailable',
+        evaluated_at: '2026-06-14T00:00:00Z',
+      }),
   },
 }))
 

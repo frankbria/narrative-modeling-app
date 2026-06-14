@@ -17,7 +17,8 @@ import {
   isClassificationMetrics,
   type AIExplanation,
   type ModelComparisonResponse,
-  type ModelEvaluationResponse
+  type ModelEvaluationResponse,
+  type ShapSummaryResponse
 } from '@/lib/types/evaluation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,7 @@ import { ROCCurveChart } from '@/components/ROCCurveChart';
 import { PRCurveChart } from '@/components/PRCurveChart';
 import { ModelComparisonTable } from '@/components/ModelComparisonTable';
 import { FeatureImportanceChart } from '@/components/FeatureImportanceChart';
+import { ShapSummaryChart } from '@/components/ShapSummaryChart';
 import { exportEvaluationCSV, exportEvaluationPDF } from '@/lib/utils/export';
 
 const MIN_COMPARE = 2;
@@ -274,6 +276,7 @@ export default function EvaluatePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<ModelEvaluationResponse | null>(null);
+  const [shap, setShap] = useState<ShapSummaryResponse | null>(null);
 
   const loadEvaluation = useCallback(async (modelId: string) => {
     setLoading(true);
@@ -281,6 +284,13 @@ export default function EvaluatePage() {
     try {
       const data = await modelService.getEvaluation(modelId);
       setEvaluation(data);
+      // SHAP summary is best-effort enrichment (issue #80): a failure (or a
+      // model with no SHAP support) must never block the evaluation view.
+      try {
+        setShap(await modelService.getShapSummary(modelId));
+      } catch {
+        setShap(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -432,6 +442,14 @@ export default function EvaluatePage() {
             )}
             {featureScores && featureScores.length > 0 && (
               <FeatureImportanceChart features={featureScores} height={360} />
+            )}
+            {shap && !shap.partial && shap.feature_importance.length > 0 && (
+              <ShapSummaryChart
+                features={shap.feature_importance}
+                plainLanguage={shap.plain_language}
+                explainerType={shap.explainer_type}
+                height={360}
+              />
             )}
           </TabsContent>
 
