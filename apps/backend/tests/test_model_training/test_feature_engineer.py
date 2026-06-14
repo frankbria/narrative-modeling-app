@@ -74,6 +74,36 @@ class TestFeatureEngineer:
         assert set(engineer.categorical_features) == {
             'categorical1', 'categorical2', 'numeric_categorical'
         }
+
+    @pytest.mark.asyncio
+    async def test_boolean_columns_treated_as_categorical(self):
+        """Boolean columns (parsed from true/false CSV values) must become
+        categorical and survive a string-valued transform — otherwise they
+        are silently dropped from the prediction form/contract (issue #82)."""
+        config = FeatureEngineeringConfig(
+            select_features=False, create_interactions=False, scale_features=False
+        )
+        engineer = FeatureEngineer(config)
+        df = pd.DataFrame(
+            {
+                'num': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                'flag': [True, False, True, False, True, False],
+            }
+        )
+        y = pd.Series([0, 1, 0, 1, 0, 1])
+
+        result = await engineer.fit_transform(df, y, 'binary_classification')
+
+        assert 'flag' in engineer.categorical_features
+        assert 'flag' not in engineer.numeric_features
+
+        # The form submits categorical values as strings; transform must accept
+        # "True"/"False" and match the encoder categories fitted from bools.
+        out = await engineer.transform(pd.DataFrame([{'num': 2.5, 'flag': 'True'}]))
+        assert len(out) == 1
+        # Engineered output should not still carry a raw bool 'flag' column.
+        assert 'flag' not in out.columns
+        _ = result
     
     @pytest.mark.asyncio
     async def test_handle_missing_values(self, engineer, mixed_data):
