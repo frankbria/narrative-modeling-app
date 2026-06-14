@@ -8,7 +8,6 @@ tree/ensemble models, LinearExplainer for linear models; unsupported models
 
 import math
 
-import numpy as np
 import pandas as pd
 import pytest
 from sklearn.calibration import CalibratedClassifierCV
