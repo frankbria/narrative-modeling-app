@@ -4,11 +4,9 @@ Production model serving API routes
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
-import hashlib
 import logging
-import redis
 from beanie import PydanticObjectId
 
 from app.models.api_key import APIKey
@@ -18,7 +16,6 @@ from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.model_storage import ModelStorageService
 from app.services.prediction_enrichment import PredictionEnricher
 from app.auth.nextauth_auth import get_current_user_id
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/production", tags=["production"])
@@ -26,14 +23,9 @@ router = APIRouter(prefix="/production", tags=["production"])
 # Stateless — reuse one instance instead of constructing it per request (#83).
 _prediction_enricher = PredictionEnricher()
 
-# Initialize Redis for rate limiting
-redis_client = None  # Redis is optional for development
-try:
-    if hasattr(settings, "REDIS_URL") and settings.REDIS_URL:
-        redis_client = redis.from_url(settings.REDIS_URL)
-except (redis.RedisError, redis.ConnectionError, OSError) as e:
-    # Redis is optional - log but continue without it
-    logger.warning(f"Redis connection failed: {e}. Rate limiting disabled.")
+# Rate limiting is enforced globally by RateLimitMiddleware over every /api/v1 route
+# (issue #151), including this endpoint, using the per-key APIKey.rate_limit budget.
+# The previous in-route sync-Redis check was removed as redundant.
 
 
 # Request/Response Models
@@ -100,8 +92,8 @@ class APIKeyListResponse(BaseModel):
 
 # Helper functions
 def hash_api_key(api_key: str) -> str:
-    """Hash an API key for secure storage"""
-    return hashlib.sha256(api_key.encode()).hexdigest()
+    """Hash an API key for secure storage (delegates to the model's shared scheme)."""
+    return APIKey.hash_key(api_key)
 
 
 async def verify_api_key(api_key: str = Header(..., alias="X-API-Key")) -> APIKey:
@@ -125,33 +117,6 @@ async def verify_api_key(api_key: str = Header(..., alias="X-API-Key")) -> APIKe
     await api_key_doc.save()
 
     return api_key_doc
-
-
-async def check_rate_limit(api_key: APIKey, request: Request) -> None:
-    """Check if the API key has exceeded its rate limit"""
-    if not redis_client:
-        return  # Skip rate limiting if Redis not configured
-
-    # Create rate limit key
-    rate_key = f"rate_limit:{api_key.key_id}:{datetime.utcnow().hour}"
-
-    # Increment counter
-    try:
-        current_count = redis_client.incr(rate_key)
-
-        # Set expiration on first request of the hour
-        if current_count == 1:
-            redis_client.expire(rate_key, 3600)  # 1 hour
-
-        # Check limit
-        if current_count > api_key.rate_limit:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Rate limit exceeded. Limit: {api_key.rate_limit}/hour",
-            )
-    except redis.RedisError:
-        # Don't block requests if Redis is down
-        pass
 
 
 # API Routes
@@ -237,13 +202,12 @@ async def revoke_api_key(
 async def production_predict(
     model_id: str,
     request: ProductionPredictRequest,
-    req: Request,
     api_key: APIKey = Depends(verify_api_key),
 ):
-    """Make predictions using a deployed model (Production API)"""
+    """Make predictions using a deployed model (Production API)
 
-    # Check rate limit
-    await check_rate_limit(api_key, req)
+    Rate limiting is enforced globally by RateLimitMiddleware (#151).
+    """
 
     # Verify model access
     if not api_key.has_model_access(model_id):

@@ -102,7 +102,9 @@ class Settings(BaseModel):
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "narrative_modeling")
     TEST_MONGODB_DB: str = os.getenv("TEST_MONGODB_DB", "narrative_modeling_test")
-    TEST_MONGODB_URI: str = os.getenv("TEST_MONGODB_URI", "mongodb://localhost:27017/narrative_modeling_test")
+    TEST_MONGODB_URI: str = os.getenv(
+        "TEST_MONGODB_URI", "mongodb://localhost:27017/narrative_modeling_test"
+    )
 
     # API settings
     API_V1_STR: str = "/api/v1"
@@ -114,12 +116,43 @@ class Settings(BaseModel):
     AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
     S3_BUCKET: str = os.getenv("S3_BUCKET", "narrative-modeling-uploads")
 
+    # Redis (shared by the cache service and rate-limit middleware). Empty means
+    # "no Redis configured" — the limiter then falls back to a process-local
+    # in-memory store (still enforces, but per-worker, not shared) (#151).
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
+    # Rate limiting (issue #151). All env-configurable.
+    RATE_LIMIT_ENABLED: bool = (
+        os.getenv("RATE_LIMIT_ENABLED", "true").strip().lower() == "true"
+    )
+    # Default per-identity budget for session/IP-identified callers.
+    RATE_LIMIT_DEFAULT_REQUESTS: int = int(
+        os.getenv("RATE_LIMIT_DEFAULT_REQUESTS", "100")
+    )
+    RATE_LIMIT_DEFAULT_WINDOW_SECONDS: int = int(
+        os.getenv("RATE_LIMIT_DEFAULT_WINDOW_SECONDS", "60")
+    )
+    # Window over which an APIKey's `rate_limit` field is counted (the field is
+    # documented as "Requests per hour", so the default window is one hour).
+    RATE_LIMIT_APIKEY_WINDOW_SECONDS: int = int(
+        os.getenv("RATE_LIMIT_APIKEY_WINDOW_SECONDS", "3600")
+    )
+    # Whether to trust the client IP from the X-Forwarded-For header. Default OFF:
+    # an unauthenticated caller can forge XFF to land in a fresh IP bucket on every
+    # request, defeating the anonymous-flood limit. Enable ONLY when the app sits
+    # behind a trusted reverse proxy (e.g. nginx) that overwrites XFF with the real
+    # peer address. When off, the limiter uses the direct socket peer.
+    RATE_LIMIT_TRUST_FORWARDED_FOR: bool = (
+        os.getenv("RATE_LIMIT_TRUST_FORWARDED_FOR", "false").strip().lower() == "true"
+    )
+
     # CORS settings
     @property
     def BACKEND_CORS_ORIGINS(self) -> List[str]:
         cors_origins = os.getenv("BACKEND_CORS_ORIGINS", '["*"]')
         if cors_origins:
             import json
+
             try:
                 return json.loads(cors_origins)
             except (json.JSONDecodeError, ValueError):

@@ -84,6 +84,11 @@ export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
 export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
 export SKIP_AUTH=true
+# Disable global rate limiting for E2E (#151): SKIP_AUTH makes every request share
+# one dev-user bucket, so parallel Playwright workers + polling dashboards would
+# trip the per-user limit and flake. Rate limiting has its own unit/integration
+# coverage; the E2E suite must not be subject to it.
+export RATE_LIMIT_ENABLED=false
 
 # AWS S3 configuration (test/mock values for E2E)
 # When AWS_ENDPOINT_URL is set (e.g. http://localhost:9000 for MinIO in CI),
