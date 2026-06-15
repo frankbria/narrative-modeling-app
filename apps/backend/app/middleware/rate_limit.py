@@ -4,8 +4,10 @@ API rate-limiting middleware (issue #151).
 Enforces request budgets on every ``/api/v1`` route. Identity is resolved per
 request, cheapest first:
 
-1. ``X-API-Key`` header → look up the :class:`APIKey` and use its ``rate_limit``
-   field over ``RATE_LIMIT_APIKEY_WINDOW_SECONDS`` (per-key override).
+1. ``X-API-Key`` header **on a production route** (where the key is the real auth
+   mechanism) → look up the :class:`APIKey` and use its ``rate_limit`` field over
+   ``RATE_LIMIT_APIKEY_WINDOW_SECONDS`` (per-key override). Elsewhere the header is
+   ignored so it cannot be used to escape the per-user/IP budget.
 2. Session ``Authorization: Bearer`` token → the authenticated user id, with the
    default per-user budget.
 3. Otherwise the client IP, with the same default budget (guards unauthenticated
@@ -33,6 +35,12 @@ from app.services.rate_limit import RateLimitResult, RateLimitStore
 logger = logging.getLogger(__name__)
 
 _API_V1_PREFIX = "/api/v1"
+# Routes where ``X-API-Key`` is the actual authentication mechanism (the production
+# model-serving surface — see app/api/routes/production.py, mounted under
+# /api/v1/production). The per-key bucket is honoured ONLY here; on every other
+# /api/v1 route the header is meaningless, so it must not let a caller swap into a
+# more favourable key budget and escape their per-user/IP limit.
+_APIKEY_AUTH_PREFIX = "/api/v1/production"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -48,6 +56,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         default_window_seconds: Optional[int] = None,
         apikey_window_seconds: Optional[int] = None,
         trust_forwarded_for: Optional[bool] = None,
+        apikey_auth_prefix: str = _APIKEY_AUTH_PREFIX,
     ) -> None:
         super().__init__(app)
         # ``store`` may be injected (tests) or resolved from ``app.state`` per request
@@ -75,6 +84,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if trust_forwarded_for is None
             else trust_forwarded_for
         )
+        self._apikey_auth_prefix = apikey_auth_prefix
 
     def _resolve_store(self, request: Request) -> Optional[RateLimitStore]:
         if self._store is not None:
@@ -113,12 +123,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def _resolve_identity(self, request: Request) -> Tuple[str, int, int]:
         """Return ``(bucket_key, limit, window_seconds)`` for this request."""
-        # 1. API key (per-key override).
-        api_key_header = request.headers.get("x-api-key")
-        if api_key_header:
-            identity = await self._identity_from_api_key(api_key_header)
-            if identity is not None:
-                return identity
+        # 1. API key (per-key override) — only on the routes that authenticate with
+        # X-API-Key, so the header can't be used to opt into a key budget elsewhere.
+        if request.url.path.startswith(self._apikey_auth_prefix):
+            api_key_header = request.headers.get("x-api-key")
+            if api_key_header:
+                identity = await self._identity_from_api_key(api_key_header)
+                if identity is not None:
+                    return identity
 
         # 2. Session user.
         user_id = await self._user_id_from_request(request)

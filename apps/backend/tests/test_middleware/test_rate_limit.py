@@ -226,6 +226,19 @@ class TestRateLimitMiddleware:
             == 200
         )
 
+    def test_api_key_header_ignored_on_non_production_route(self):
+        # An X-API-Key on a non-production /api/v1 route must NOT opt into a key
+        # bucket — the default per-user/IP budget still applies (no DB touched).
+        app = _build_app(
+            InMemoryRateLimitStore(), default_requests=2, default_window_seconds=60
+        )
+        client = TestClient(app)
+        headers = {"X-API-Key": "sk_live_whatever"}
+        assert client.get("/api/v1/ping", headers=headers).status_code == 200
+        assert client.get("/api/v1/ping", headers=headers).status_code == 200
+        # 3rd request blocked by the DEFAULT budget, proving the key path was skipped.
+        assert client.get("/api/v1/ping", headers=headers).status_code == 429
+
     def test_failing_store_fails_open(self):
         class _BrokenStore:
             async def hit(self, key, limit, window_seconds):

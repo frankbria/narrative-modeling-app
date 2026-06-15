@@ -74,7 +74,8 @@ class TestApiKeyRateLimitOverride:
             apikey_window_seconds=60,
         )
 
-        @app.get("/api/v1/secured")
+        # The per-key bucket is honoured only on the production (X-API-Key) surface.
+        @app.get("/api/v1/production/secured")
         async def secured():
             return {"ok": True}
 
@@ -84,13 +85,10 @@ class TestApiKeyRateLimitOverride:
                 transport=transport, base_url="http://test"
             ) as client:
                 headers = {"X-API-Key": raw_key}
-                assert (
-                    await client.get("/api/v1/secured", headers=headers)
-                ).status_code == 200
-                assert (
-                    await client.get("/api/v1/secured", headers=headers)
-                ).status_code == 200
-                blocked = await client.get("/api/v1/secured", headers=headers)
+                path = "/api/v1/production/secured"
+                assert (await client.get(path, headers=headers)).status_code == 200
+                assert (await client.get(path, headers=headers)).status_code == 200
+                blocked = await client.get(path, headers=headers)
                 assert blocked.status_code == 429
                 assert "Retry-After" in blocked.headers
         finally:
