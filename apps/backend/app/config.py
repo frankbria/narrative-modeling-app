@@ -117,7 +117,8 @@ class Settings(BaseModel):
     S3_BUCKET: str = os.getenv("S3_BUCKET", "narrative-modeling-uploads")
 
     # Redis (shared by the cache service and rate-limit middleware). Empty means
-    # "no Redis configured" — the limiter then fails open (#151).
+    # "no Redis configured" — the limiter then falls back to a process-local
+    # in-memory store (still enforces, but per-worker, not shared) (#151).
     REDIS_URL: str = os.getenv("REDIS_URL", "")
 
     # Rate limiting (issue #151). All env-configurable.

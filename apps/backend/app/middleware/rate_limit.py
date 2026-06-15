@@ -14,7 +14,9 @@ request, cheapest first:
    floods, e.g. against auth endpoints).
 
 Over-budget requests get a ``429`` with a ``Retry-After`` header and never reach
-the route handler. Allowed requests carry ``X-RateLimit-*`` headers.
+the route handler. Allowed requests carry ``X-RateLimit-*`` headers when the
+limiter actively enforced them (omitted on fail-open / disabled paths, where no
+limit is in effect to report).
 
 Registered so that the CORS middleware stays *outermost* — a ``429`` returned here
 still passes back through CORS and gains its headers, so browsers can read it.
@@ -105,13 +107,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         bucket_key, limit, window = await self._resolve_identity(request)
-        result = await store.hit(bucket_key, limit, window)
+        try:
+            result = await store.hit(bucket_key, limit, window)
+        except Exception as exc:
+            # Defence in depth: the stores already fail open internally, but a store
+            # that unexpectedly raises must never 500 a request — fail open here too.
+            logger.warning("Rate-limit store raised (%s); failing open.", exc)
+            return await call_next(request)
 
         if not result.allowed:
             return self._too_many_requests(result)
 
         response = await call_next(request)
         if result.limited:
+            # Headers are emitted only when the limiter actually enforced; on
+            # fail-open / disabled paths there is no limit in effect to report.
             self._apply_headers(response, result)
         return response
 

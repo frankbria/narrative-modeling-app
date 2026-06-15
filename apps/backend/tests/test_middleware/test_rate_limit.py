@@ -257,10 +257,11 @@ class TestRateLimitMiddleware:
         assert client.get(path, headers=headers).status_code == 200
         assert client.get(path, headers=headers).status_code == 429
 
-    def test_failing_store_fails_open(self):
-        class _BrokenStore:
+    def test_store_returning_fail_open_result_is_not_limited(self):
+        # A store that returns a fail-open RESULT (e.g. RedisRateLimitStore's
+        # internal fail-open) must pass requests through without limiting.
+        class _FailOpenStore:
             async def hit(self, key, limit, window_seconds):
-                # Mirror RedisRateLimitStore's fail-open contract.
                 return RateLimitResult(
                     allowed=True,
                     limit=limit,
@@ -269,7 +270,21 @@ class TestRateLimitMiddleware:
                     limited=False,
                 )
 
-        app = _build_app(_BrokenStore(), default_requests=1, default_window_seconds=60)
+        app = _build_app(
+            _FailOpenStore(), default_requests=1, default_window_seconds=60
+        )
+        client = TestClient(app)
+        for _ in range(5):
+            assert client.get("/api/v1/ping").status_code == 200
+
+    def test_raising_store_fails_open(self):
+        # A store that unexpectedly RAISES must not 500 — the middleware catches
+        # it and fails open (defence in depth on top of the stores' own handling).
+        class _RaisingStore:
+            async def hit(self, key, limit, window_seconds):
+                raise RuntimeError("backend exploded")
+
+        app = _build_app(_RaisingStore(), default_requests=1, default_window_seconds=60)
         client = TestClient(app)
         for _ in range(5):
             assert client.get("/api/v1/ping").status_code == 200

@@ -85,20 +85,34 @@ def _build_result(count: int, limit: int, ttl_seconds: int) -> RateLimitResult:
     )
 
 
+# Sweep expired buckets once the map grows past this many entries, so a churn of
+# one-off identities (e.g. distinct IPs) can't grow the map without bound.
+_PRUNE_THRESHOLD = 10_000
+
+
 class InMemoryRateLimitStore:
     """Process-local fixed-window counter (single instance / tests).
 
-    Keeps a ``{key: (count, window_start_monotonic)}`` map. Thread-safe via a lock
-    so it behaves under the threadpool ``TestClient`` uses. Not shared across
-    workers — a Redis store is required for correct multi-instance limiting.
+    Keeps a ``{key: (count, window_start_monotonic, window_seconds)}`` map.
+    Thread-safe via a lock so it behaves under the threadpool ``TestClient`` uses.
+    Not shared across workers — a Redis store is required for correct
+    multi-instance limiting.
     """
 
     def __init__(self) -> None:
-        self._buckets: Dict[str, Tuple[int, float]] = {}
+        self._buckets: Dict[str, Tuple[int, float, int]] = {}
         self._lock = Lock()
 
     def _now(self) -> float:
         return time.monotonic()
+
+    def _prune_expired(self, now: float) -> None:
+        """Drop buckets whose window has fully elapsed (caller holds the lock)."""
+        expired = [
+            k for k, (_, start, win) in self._buckets.items() if now - start >= win
+        ]
+        for k in expired:
+            del self._buckets[k]
 
     async def hit(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
         if limit <= 0:
@@ -107,13 +121,15 @@ class InMemoryRateLimitStore:
 
         now = self._now()
         with self._lock:
-            count, window_start = self._buckets.get(key, (0, now))
+            count, window_start, _ = self._buckets.get(key, (0, now, window_seconds))
             if now - window_start >= window_seconds:
                 # Window expired — start a fresh one.
                 count, window_start = 0, now
             count += 1
-            self._buckets[key] = (count, window_start)
+            self._buckets[key] = (count, window_start, window_seconds)
             ttl = math.ceil(window_seconds - (now - window_start))
+            if len(self._buckets) > _PRUNE_THRESHOLD:
+                self._prune_expired(now)
 
         return _build_result(count, limit, ttl)
 
@@ -121,6 +137,27 @@ class InMemoryRateLimitStore:
         """Clear all buckets (test helper)."""
         with self._lock:
             self._buckets.clear()
+
+
+# Atomic fixed-window counter: INCR the key and, on the first hit of a window (or
+# if the TTL was somehow lost), (re)arm the expiry — all in one round-trip so a
+# concurrent caller can never observe a counted-but-unexpiring key. Returns
+# {count, ttl_seconds}.
+_INCR_WINDOW_LUA = """
+local count = redis.call('INCR', KEYS[1])
+local ttl
+if count == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+    ttl = tonumber(ARGV[1])
+else
+    ttl = redis.call('TTL', KEYS[1])
+    if ttl < 0 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+        ttl = tonumber(ARGV[1])
+    end
+end
+return {count, ttl}
+"""
 
 
 class RedisRateLimitStore:
@@ -147,18 +184,11 @@ class RedisRateLimitStore:
         redis_key = f"{self._key_prefix}{key}"
         try:
             client = await self._get_client()
-            # Atomic-ish: INCR then, only on the first hit of the window, set the TTL.
-            count = int(await client.incr(redis_key))
-            if count == 1:
-                await client.expire(redis_key, window_seconds)
-                ttl = window_seconds
-            else:
-                ttl = int(await client.ttl(redis_key))
-                if ttl < 0:
-                    # Key exists without a TTL (e.g. EXPIRE lost to a crash) — repair it.
-                    await client.expire(redis_key, window_seconds)
-                    ttl = window_seconds
-            return _build_result(count, limit, ttl)
+            # One atomic round-trip: increment + (re)arm the window TTL.
+            count, ttl = await client.eval(
+                _INCR_WINDOW_LUA, 1, redis_key, window_seconds
+            )
+            return _build_result(int(count), limit, int(ttl))
         except Exception as exc:  # pragma: no cover - exercised via fail-open test
             # Availability over strict enforcement: never block on a limiter outage.
             if not self._failed_open_logged:
