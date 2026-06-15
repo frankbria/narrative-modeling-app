@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useDebounce } from '@/lib/hooks/useDebounce';
-import { TransformationService } from '@/lib/services/transformation';
 import type { TransformationStep, ParameterValue } from '@/lib/types/recipe';
 import { getAuthToken } from '@/lib/auth-helpers';
 
@@ -200,6 +199,63 @@ export function TransformationPreview({
     setLocalSampleSize((prev) => prev);
   };
 
+  // Export the current transformed preview as a CSV.
+  // Uses RFC 4180-style field quoting and the Blob/anchor download pattern from
+  // SelectedFeatureSet.tsx (LF line endings, matching that established convention).
+  const transformedData = previewData?.preview_result?.transformed_data;
+
+  const handleExport =
+    transformedData && transformedData.length > 0
+      ? () => {
+          const escapeCsvField = (value: ParameterValue): string => {
+            // Serialize arrays/objects as JSON so complex cells stay meaningful
+            // instead of becoming "1,2,3" or "[object Object]".
+            const field =
+              value === null || value === undefined
+                ? ''
+                : typeof value === 'object'
+                  ? JSON.stringify(value)
+                  : String(value);
+            if (
+              field.includes(',') ||
+              field.includes('"') ||
+              field.includes('\n')
+            ) {
+              return `"${field.replace(/"/g, '""')}"`;
+            }
+            return field;
+          };
+
+          // Column set is the union of keys across rows, preserving first-seen order.
+          const columns: string[] = [];
+          const seen = new Set<string>();
+          for (const row of transformedData) {
+            for (const key of Object.keys(row)) {
+              if (!seen.has(key)) {
+                seen.add(key);
+                columns.push(key);
+              }
+            }
+          }
+
+          const headerLine = columns.map(escapeCsvField).join(',');
+          const dataLines = transformedData.map((row) =>
+            columns.map((col) => escapeCsvField(row[col])).join(',')
+          );
+          const csv = [headerLine, ...dataLines].join('\n');
+
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `transformation-preview-${datasetId}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      : undefined;
+
   return (
     <div className="space-y-4">
       {/* Preview Controls */}
@@ -207,6 +263,7 @@ export function TransformationPreview({
         sampleSize={localSampleSize}
         onSampleSizeChange={handleSampleSizeChange}
         onRefresh={handleRetry}
+        onExport={handleExport}
         loading={loading}
       />
 

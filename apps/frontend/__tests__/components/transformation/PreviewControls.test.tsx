@@ -437,6 +437,59 @@ describe('PreviewControls Component', () => {
       const exportButton = screen.getByText('Export').closest('button');
       expect(exportButton?.querySelector('svg')).toBeInTheDocument();
     });
+
+    it('should call onExport when clicked', () => {
+      const mockOnExport = jest.fn();
+      render(
+        <PreviewControls
+          sampleSize={100}
+          onSampleSizeChange={mockOnSampleSizeChange}
+          onExport={mockOnExport}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Export').closest('button')!);
+      expect(mockOnExport).toHaveBeenCalledTimes(1);
+    });
+
+    it('should disable export button when onExport is not provided', () => {
+      render(
+        <PreviewControls
+          sampleSize={100}
+          onSampleSizeChange={mockOnSampleSizeChange}
+        />
+      );
+
+      const exportButton = screen.getByText('Export').closest('button');
+      expect(exportButton).toBeDisabled();
+    });
+
+    it('should enable export button when onExport is provided and not loading', () => {
+      render(
+        <PreviewControls
+          sampleSize={100}
+          onSampleSizeChange={mockOnSampleSizeChange}
+          onExport={jest.fn()}
+        />
+      );
+
+      const exportButton = screen.getByText('Export').closest('button');
+      expect(exportButton).not.toBeDisabled();
+    });
+
+    it('should disable export button when loading even if onExport provided', () => {
+      render(
+        <PreviewControls
+          sampleSize={100}
+          onSampleSizeChange={mockOnSampleSizeChange}
+          onExport={jest.fn()}
+          loading={true}
+        />
+      );
+
+      const exportButton = screen.getByText('Export').closest('button');
+      expect(exportButton).toBeDisabled();
+    });
   });
 
   describe('Layout and Styling', () => {

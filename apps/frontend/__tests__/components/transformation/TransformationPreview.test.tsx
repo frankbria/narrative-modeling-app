@@ -22,11 +22,14 @@ jest.mock('@/components/transformation/ImpactStats', () => ({
 }));
 
 jest.mock('@/components/transformation/PreviewControls', () => ({
-  PreviewControls: jest.fn(({ sampleSize, onSampleSizeChange, onRefresh, loading }) => (
+  PreviewControls: jest.fn(({ sampleSize, onSampleSizeChange, onRefresh, onExport, loading }) => (
     <div data-testid="preview-controls">
       <button onClick={() => onSampleSizeChange(500)}>Change Size</button>
       <button onClick={onRefresh} disabled={loading}>
         Refresh
+      </button>
+      <button onClick={onExport} disabled={loading || !onExport}>
+        Export
       </button>
       <span>Sample: {sampleSize}</span>
     </div>
@@ -442,6 +445,139 @@ describe('TransformationPreview Component', () => {
           })
         );
       });
+    });
+  });
+
+  describe('CSV Export', () => {
+    let createObjectURLSpy: jest.SpyInstance;
+    let revokeObjectURLSpy: jest.SpyInstance;
+    let clickSpy: jest.SpyInstance;
+    let originalCreateObjectURL: typeof URL.createObjectURL;
+    let originalRevokeObjectURL: typeof URL.revokeObjectURL;
+
+    beforeEach(() => {
+      originalCreateObjectURL = URL.createObjectURL;
+      originalRevokeObjectURL = URL.revokeObjectURL;
+      createObjectURLSpy = jest.fn(() => 'blob:mock-url');
+      revokeObjectURLSpy = jest.fn();
+      URL.createObjectURL = createObjectURLSpy as unknown as typeof URL.createObjectURL;
+      URL.revokeObjectURL = revokeObjectURLSpy as unknown as typeof URL.revokeObjectURL;
+      clickSpy = jest
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      clickSpy.mockRestore();
+    });
+
+    it('should disable export until preview data is available', async () => {
+      (global.fetch as jest.Mock).mockImplementation(
+        () => new Promise(() => {}) // never resolves -> no preview data
+      );
+
+      render(
+        <TransformationPreview
+          datasetId="dataset123"
+          operations={mockOperations}
+        />
+      );
+
+      const exportButton = screen.getByText('Export').closest('button');
+      expect(exportButton).toBeDisabled();
+    });
+
+    it('should enable export once preview data loads', async () => {
+      render(
+        <TransformationPreview
+          datasetId="dataset123"
+          operations={mockOperations}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('before-after-view')).toBeInTheDocument();
+      });
+
+      const exportButton = screen.getByText('Export').closest('button');
+      expect(exportButton).not.toBeDisabled();
+    });
+
+    it('should trigger a CSV download when export is clicked', async () => {
+      render(
+        <TransformationPreview
+          datasetId="dataset123"
+          operations={mockOperations}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('before-after-view')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Export').closest('button')!);
+
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+      const blobArg = createObjectURLSpy.mock.calls[0][0] as Blob;
+      expect(blobArg).toBeInstanceOf(Blob);
+      expect(blobArg.type).toBe('text/csv');
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('serializes complex cell values as JSON and quotes them', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          preview_result: {
+            original_data: [{ id: 1 }],
+            transformed_data: [
+              { id: 1, tags: ['x', 'y'], meta: { k: 'v' } },
+            ],
+            impact_stats: {
+              rows_affected: 0,
+              values_changed: 0,
+              columns_affected: [],
+              quality_score_before: 1,
+              quality_score_after: 1,
+            },
+            warnings: [],
+          },
+        }),
+      });
+
+      render(
+        <TransformationPreview
+          datasetId="dataset123"
+          operations={mockOperations}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('before-after-view')).toBeInTheDocument();
+      });
+
+      const OriginalBlob = global.Blob;
+      const blobSpy = jest
+        .spyOn(global, 'Blob')
+        .mockImplementation(
+          (parts, opts) => new OriginalBlob(parts as BlobPart[], opts)
+        );
+
+      fireEvent.click(screen.getByText('Export').closest('button')!);
+
+      const blobParts = blobSpy.mock.calls[0][0] as string[];
+      const csv = blobParts.join('');
+
+      expect(csv).toContain('id,tags,meta');
+      // Arrays/objects are JSON-serialized; commas inside force RFC 4180 quoting.
+      expect(csv).toContain('"[""x"",""y""]"');
+      expect(csv).toContain('"{""k"":""v""}"');
+
+      blobSpy.mockRestore();
     });
   });
 
