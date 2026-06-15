@@ -14,6 +14,12 @@ import os
 # detection. setdefault keeps an explicitly exported ENVIRONMENT authoritative.
 os.environ.setdefault("ENVIRONMENT", "test")
 
+# Rate limiting (#151) is enforced globally by RateLimitMiddleware. Keep it OFF for
+# the shared full-app test client so a limiter bucket can never bleed across the
+# suite and cause spurious 429s. The rate-limit tests opt back in explicitly by
+# constructing their own app/middleware with enabled=True.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator, TYPE_CHECKING

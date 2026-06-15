@@ -40,6 +40,8 @@ from fastapi.responses import Response
 
 from app.middleware.api_version import APIVersionMiddleware
 from app.middleware.metrics import MetricsMiddleware, get_metrics
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
     health,
@@ -103,11 +105,18 @@ async def lifespan(app: FastAPI):
     # Initialize Redis cache
     await init_cache()
 
+    # Build the rate-limit store (Redis when configured, else in-memory). Exposed
+    # on app.state so RateLimitMiddleware can resolve it per request (#151).
+    app.state.rate_limit_store = build_rate_limit_store(settings.REDIS_URL)
+
     yield
 
     # Cleanup
     client.close()
     await cleanup_cache()
+    store = getattr(app.state, "rate_limit_store", None)
+    if store is not None and hasattr(store, "close"):
+        await store.close()
 
 
 # ✅ Create the app only once
@@ -121,6 +130,16 @@ app = FastAPI(
 # Note: Don't override app.openapi() as it causes recursion.
 # The enhanced spec is available at /api/v1/docs/openapi.json
 doc_service = APIDocumentationService(app)
+
+# Default so the attribute exists before lifespan runs (middleware resolves the
+# real store from app.state per request; None ⇒ fail open). See lifespan above.
+app.state.rate_limit_store = None
+
+# ✅ Rate limiting (#151). Added FIRST so it is the innermost middleware — it runs
+# just before the route handler and short-circuits over-budget requests, while the
+# CORS middleware (added next) stays outermost and still decorates the 429 with
+# CORS headers so browsers can read it.
+app.add_middleware(RateLimitMiddleware)
 
 # ✅ Apply CORS to the correct app instance
 app.add_middleware(
@@ -301,6 +320,7 @@ async def get_enhanced_openapi_yaml():
     for better readability and certain tooling compatibility.
     """
     import yaml
+
     spec = doc_service.generate_openapi_spec()
     yaml_content = yaml.dump(spec, default_flow_style=False, sort_keys=False)
     return Response(content=yaml_content, media_type="application/x-yaml")
@@ -331,12 +351,14 @@ async def get_client_library(language: str):
     if language not in libraries:
         raise HTTPException(
             status_code=404,
-            detail=f"Language '{language}' not supported. Available: {', '.join(libraries.keys())}"
+            detail=f"Language '{language}' not supported. Available: {', '.join(libraries.keys())}",
         )
     return Response(content=libraries[language], media_type="text/plain")
 
 
-@app.get(f"{settings.API_V1_STR}/docs/integrations/{{framework}}", tags=["documentation"])
+@app.get(
+    f"{settings.API_V1_STR}/docs/integrations/{{framework}}", tags=["documentation"]
+)
 async def get_integration_example(framework: str):
     """
     Get integration example for the specified framework.
@@ -362,7 +384,7 @@ async def get_integration_example(framework: str):
     if framework not in examples:
         raise HTTPException(
             status_code=404,
-            detail=f"Framework '{framework}' not supported. Available: {', '.join(examples.keys())}"
+            detail=f"Framework '{framework}' not supported. Available: {', '.join(examples.keys())}",
         )
     return Response(content=examples[framework], media_type="text/plain")
 

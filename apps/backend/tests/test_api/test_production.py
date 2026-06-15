@@ -2,7 +2,7 @@
 Tests for production API endpoints
 """
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
@@ -167,32 +167,11 @@ class TestProductionAPI:
         
         assert response.status_code in [200, 401, 404]
     
-    @pytest.mark.asyncio
-    @patch('app.api.routes.production.redis_client')
-    async def test_rate_limiting(self, mock_redis):
-        """Test rate limiting functionality"""
-        from app.api.routes.production import check_rate_limit
-        from fastapi import Request, HTTPException
-        
-        # Mock Redis operations
-        mock_redis.incr.return_value = 1001  # Over limit
-        mock_redis.expire.return_value = True
-        
-        # Create mock API key with 1000 rate limit
-        api_key = Mock()
-        api_key.key_id = "key_123"
-        api_key.rate_limit = 1000
-        
-        # Create mock request
-        mock_request = Mock(spec=Request)
-        
-        # Should raise rate limit exception
-        with pytest.raises(HTTPException) as exc_info:
-            await check_rate_limit(api_key, mock_request)
-        
-        assert exc_info.value.status_code == 429
-        assert "Rate limit exceeded" in str(exc_info.value.detail)
-    
+    # Rate limiting moved out of this route in #151. It is now enforced globally by
+    # RateLimitMiddleware over every /api/v1 route (using the per-key APIKey.rate_limit
+    # budget). See tests/test_middleware/test_rate_limit.py and
+    # tests/test_integration/test_rate_limit_integration.py.
+
     def test_api_key_model_access(self):
         """Test API key model access control"""
         # Test the has_model_access logic

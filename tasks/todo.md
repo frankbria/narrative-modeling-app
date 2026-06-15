@@ -1,64 +1,62 @@
-# Issue #88 — [P3.4] Seamless stage transitions across the 8-stage workflow
+# Issue #151 — Enforce API rate limiting (modeled but never enforced)
 
-## Reality check (verified against code, not the stale Traycer plan)
-- **Backend (#87) is fully done**: `WorkflowState` model, `WorkflowService` (create/get/update/history),
-  routes `POST/GET/PUT /api/v1/workflows/{dataset_id}` + `/history`, schemas, 25+ tests. Every PUT
-  appends a `state_history` snapshot ⇒ transition recording already exists. **No new backend endpoint.**
-- **AC3 (progress indicator)**: already done — `WorkflowBar` (global in layout) shows all 8 stages + completion.
-- The Traycer plan's backend steps (1,2,3,11) and "POST /transition" are obsolete. This issue is **frontend UX polish**.
-- **Routing gotcha**: stage routes are inconsistent — `explore/[id]`, `evaluate/[datasetId]`, `predict/[datasetId]`,
-  `model/[id]` (a model *detail* viewer, NOT the training stage), but `prepare`/`features`/`deploy`/`model` stage
-  pages have no dynamic segment. `completeStage`/`setCurrentStage` blindly push `/{route}/{datasetId}`, which 404s
-  or mis-routes (e.g. `/model/{datasetId}` hits the detail viewer). Navigation must become **route-aware**.
+**Branch:** `feat/151-rate-limiting`
+**Plan source:** self-authored (issue had no implementation-plan comment)
 
-## Acceptance Criteria
-- [ ] AC1 — "Continue to next stage" CTA on each stage completion, data carried forward
-- [ ] AC2 — Stage dependency guards redirect with a **helpful message** (not empty shells / silent /upload bounce)
-- [ ] AC3 — Progress indicator showing 8 stages + completion state (✅ exists; verify only)
-- [ ] AC4 — Back navigation restores prior stage state without losing work
-- [ ] AC5 — Stage completion validation before transition
-- [ ] AC6 — E2E test: complete journey upload → predict using only "Continue" CTAs
+## Problem
+`APIKey.rate_limit` is modeled and even partially checked in one route
+(`production.py` predict), but there is **no global enforcement**. Every `/api/v1`
+endpoint can be hammered without restriction (DoS + cost risk before beta).
 
-## Adapted Plan (frontend-only, TDD)
+## Design decisions
+- **Global ASGI middleware** (not per-route decorators) so it covers *all* `/api/v1`
+  routes per AC. Registered so CORS stays **outermost** (429s get CORS headers) and
+  the limiter runs just before route handlers (blocks the expensive work).
+- **Identity resolution** (in order): `X-API-Key` header → per-key limit from
+  `APIKey.rate_limit` (window 1h, matching the field's documented semantics);
+  else session Bearer token → default per-user limit; else client IP → default limit.
+  Reuses existing `get_current_user_id_optional` (no auth-logic drift).
+- **Storage:** pluggable `RateLimitStore`. `RedisRateLimitStore` (atomic INCR+EXPIRE
+  fixed-window, async) is primary; `InMemoryRateLimitStore` for unit tests + a
+  single-instance fallback. **Fail-open** when Redis is unreachable (log a warning) —
+  never take the app down for a limiter outage (documented beta tradeoff).
+- **429 response:** JSON body + `Retry-After` (seconds to window reset). Also adds
+  `X-RateLimit-Limit/Remaining/Reset` on every `/api/v1` response.
+- **Env-configurable** via new `Settings` fields.
 
-### Step 1 — Stage validation + navigation utility
-- `apps/frontend/lib/utils/stageValidation.ts`: `validateStageCompletion(stage, stageData) -> {isValid, errors[]}`
-  (per-stage required-field rules); `getNextStage`, `getPreviousStage`, `buildStageUrl(stage, datasetId)`
-  (route-aware: only append id for parameterized routes), `getFirstIncompletePrerequisite(stage, completed)`.
-- Tests: `__tests__/lib/utils/stageValidation.test.ts`
+## Steps (TDD: RED → GREEN → REFACTOR)
+1. **Config** — add to `app/config.py`: `REDIS_URL`, `RATE_LIMIT_ENABLED` (def true),
+   `RATE_LIMIT_DEFAULT_REQUESTS` (def 100), `RATE_LIMIT_DEFAULT_WINDOW_SECONDS`
+   (def 60), `RATE_LIMIT_APIKEY_WINDOW_SECONDS` (def 3600).
+2. **Store layer** — `app/services/rate_limit.py`: `RateLimitResult`, store protocol,
+   `InMemoryRateLimitStore`, `RedisRateLimitStore` (lazy async client, fail-open).
+   Add `APIKey.hash_key(raw)` staticmethod for shared hashing.
+3. **Middleware** — `app/middleware/rate_limit.py`: `RateLimitMiddleware` (identity →
+   limit/window → store hit → 200 + headers or 429 + Retry-After). Skip non-`/api/v1`
+   paths and OPTIONS preflight.
+4. **Wire up** — `app/main.py`: build the store in lifespan (from `REDIS_URL`), expose
+   on `app.state`, register `RateLimitMiddleware` so CORS remains outermost.
+5. **Refactor production.py** — remove the now-redundant in-route `check_rate_limit`
+   + sync `redis` client (global middleware supersedes it; kills the sync-redis-in-async
+   antipattern). Migrate its test into the middleware suite.
+6. **Tests**
+   - `tests/test_middleware/test_rate_limit.py` (unit, InMemory store): under limit→200,
+     over→429 + `Retry-After`, headers present, window reset, OPTIONS / non-`/api/v1`
+     skipped, disabled flag, fail-open when store errors.
+   - integration (real Redis :6380): Redis-backed counter enforces + expires.
+   - integration (DB): per-`APIKey` override honored (low `rate_limit` → 429 sooner).
+   - update `tests/test_api/test_production.py` (drop direct `check_rate_limit` test).
+7. **Docs** — update CLAUDE.md backend section + `.env` example; note beta limitations.
 
-### Step 2 — WorkflowContext: navigation helpers + opt-out auto-advance + guard message
-- Add `goToNextStage()`, `goToPreviousStage()` (route-aware via `buildStageUrl`).
-- `completeStage(stage, data?, opts?: {autoAdvance?: boolean})` — default `true` (backward compatible);
-  fix its auto-advance push to use `buildStageUrl`.
-- Guard message: `guardMessage` state + `requestStageRedirect(targetStage, message)` + `clearGuardMessage()`.
-- Extend `WorkflowContextType` in `lib/types/workflow.ts`.
-- Tests: `__tests__/lib/contexts/WorkflowContext.navigation.test.tsx`
+## Acceptance criteria
+- [ ] Rate-limit middleware applied to all `/api/v1` routes
+- [ ] Per-API-key limits read from `APIKey` model fields
+- [ ] Sensible default per-user limits for session-authenticated requests
+- [ ] 429 responses with `Retry-After` header
+- [ ] Limits configurable via env
+- [ ] Tests: over-limit→429; under-limit→200; key-specific overrides honored
 
-### Step 3 — Shared StageNavigation component
-- `apps/frontend/components/workflow/StageNavigation.tsx`: Back (prev) + Continue (next stage name).
-  lucide-react (ArrowLeft/ArrowRight), existing Tailwind button styling. Validates via stageValidation;
-  shows errors; disabled/loading; final stage shows Finish/restart.
-- Tests: `__tests__/components/workflow/StageNavigation.test.tsx`
-
-### Step 4 — Stage guard hook + helpful-message banner
-- `apps/frontend/lib/hooks/useStageGuard.ts`: gate a page; on denial redirect to nearest incomplete
-  prerequisite with a helpful message (replaces silent `/upload` bounce). Respects `isHydrated`.
-- `apps/frontend/components/workflow/StageGuardBanner.tsx` rendered in layout (global), reads `guardMessage`.
-
-### Step 5 — Wire stage pages
-- Adopt `useStageGuard` + `StageNavigation` on: prepare, features, model (gaps); standardize evaluate, predict, deploy.
-- Set `autoAdvance:false` where an explicit Continue CTA is shown. Upload keeps its existing entry flow.
-
-### Step 6 — E2E journey test
-- `apps/frontend/e2e/workflows/stage-transitions.spec.ts`: upload → predict using only Continue CTAs;
-  assert gated direct-access shows the guard message. Use a trainable dataset (ai-test-datasets), not 6-row sample.csv.
-
-### Step 7 — Docs
-- Update CLAUDE.md #88 section (backend reuse, guard message, StageNavigation, route-aware nav).
-
-## Deviations from Traycer plan
-- No new backend model/service/routes/transition endpoint — #87 already delivers persistence + history.
-- WorkflowBar (AC3) already complete.
-- `completeStage` auto-advance made opt-out (flag) to enable explicit Continue CTAs without breaking callers.
-- Route-aware navigation added to fix latent `/{route}/{datasetId}` mis-routing.
+## Known beta limitations
+- Fixed-window (not sliding-window/token-bucket) — simple, matches existing per-hour field.
+- Fail-open on Redis outage (availability > strict enforcement for beta).
+- In-memory fallback is per-worker (not shared) — fine for single-instance staging.
