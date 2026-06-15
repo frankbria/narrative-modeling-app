@@ -234,15 +234,16 @@ export default function DatasetPreparePage() {
    */
   const handleComplete = async (transformedDatasetId: string) => {
     try {
-      // Complete DATA_PREPARATION stage
+      // Complete DATA_PREPARATION and auto-advance. autoAdvance is opt-in (#88);
+      // this alternate prepare route has no explicit Continue CTA, so it opts in
+      // to keep its one-step flow. (The previous implicit default never actually
+      // navigated — canAccessStage saw the pre-completion state — so this also
+      // fixes a latent dead-navigation bug.)
       completeStage(WorkflowStage.DATA_PREPARATION, {
         datasetId: transformedDatasetId,
         originalDatasetId: datasetId,
         timestamp: new Date().toISOString()
-      });
-
-      // Auto-advance to next stage via WorkflowContext
-      // Navigation happens automatically through completeStage
+      }, { autoAdvance: true });
     } catch (err) {
       console.error('Error completing preparation stage:', err);
       setError('Failed to complete data preparation. Please try again.');
