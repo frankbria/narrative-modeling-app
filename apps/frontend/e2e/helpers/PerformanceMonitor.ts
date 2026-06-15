@@ -100,8 +100,9 @@ export class PerformanceMonitor {
     iterations: number = 20
   ): Promise<PerformanceMetric> {
     const durations: number[] = [];
+    const runs = Math.max(1, Math.floor(iterations));
 
-    for (let i = 0; i < iterations; i++) {
+    for (let i = 0; i < runs; i++) {
       const startTime = Date.now();
       await apiCall();
       durations.push(Date.now() - startTime);

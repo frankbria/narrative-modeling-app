@@ -58,6 +58,9 @@ export function FeedbackWidget() {
       return;
     }
 
+    // Abort a stalled request so the widget never gets stuck on "Sending…".
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       setStatus('submitting');
       const token = await getAuthToken();
@@ -74,6 +77,7 @@ export function FeedbackWidget() {
           page_context:
             typeof window !== 'undefined' ? window.location.pathname : null,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -83,9 +87,16 @@ export function FeedbackWidget() {
       setStatus('success');
     } catch (err) {
       setStatus('error');
+      const isAbort = err instanceof DOMException && err.name === 'AbortError';
       setErrorMessage(
-        err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+        isAbort
+          ? 'The request timed out. Please try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Something went wrong. Please try again.'
       );
+    } finally {
+      clearTimeout(timeout);
     }
   };
 

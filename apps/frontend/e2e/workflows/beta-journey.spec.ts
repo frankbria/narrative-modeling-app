@@ -409,15 +409,23 @@ test.describe('Beta launch readiness — API performance (#152)', () => {
 
     const monitor = new PerformanceMonitor();
 
+    // Each measured call throws on a non-2xx response so a fast error can't
+    // satisfy the <500ms threshold and corrupt the baseline.
     const onboarding = await monitor.measureP95(
       'beta-journey-performance',
-      () => request.get(`${apiBase}/onboarding/status`, { headers }),
+      async () => {
+        const res = await request.get(`${apiBase}/onboarding/status`, { headers });
+        if (!res.ok()) throw new Error(`GET /onboarding/status -> ${res.status()}`);
+      },
       'GET /onboarding/status',
       500
     );
     const datasets = await monitor.measureP95(
       'beta-journey-performance',
-      () => request.get(`${apiBase}/datasets?page=1&limit=5`, { headers }),
+      async () => {
+        const res = await request.get(`${apiBase}/datasets?page=1&limit=5`, { headers });
+        if (!res.ok()) throw new Error(`GET /datasets -> ${res.status()}`);
+      },
       'GET /datasets',
       500
     );
@@ -425,8 +433,8 @@ test.describe('Beta launch readiness — API performance (#152)', () => {
     // polluting the beta feedback collection with 20 perf-check rows per run.
     const feedback = await monitor.measureP95(
       'beta-journey-performance',
-      () =>
-        request.post(`${apiBase}/feedback`, {
+      async () => {
+        const res = await request.post(`${apiBase}/feedback`, {
           headers,
           data: {
             rating: 5,
@@ -434,7 +442,9 @@ test.describe('Beta launch readiness — API performance (#152)', () => {
             message: 'perf check',
             page_context: '/dashboard',
           },
-        }),
+        });
+        if (!res.ok()) throw new Error(`POST /feedback -> ${res.status()}`);
+      },
       'POST /feedback',
       500,
       1

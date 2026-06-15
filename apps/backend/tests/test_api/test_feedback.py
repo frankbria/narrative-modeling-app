@@ -127,3 +127,23 @@ class TestSubmitFeedback:
             "/api/v1/feedback", json=VALID_PAYLOAD
         )
         assert response.status_code in (401, 403)
+
+    @pytest.mark.asyncio
+    async def test_storage_failure_returns_opaque_500(
+        self, async_authorized_client, setup_database
+    ):
+        """A storage error returns a 500 without leaking internal details."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "app.models.feedback.Feedback.insert",
+            new=AsyncMock(side_effect=RuntimeError("mongodb://secret@host failed")),
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/feedback", json=VALID_PAYLOAD
+            )
+
+        assert response.status_code == 500
+        detail = response.json()["detail"]
+        assert "secret" not in detail
+        assert "mongodb" not in detail.lower()

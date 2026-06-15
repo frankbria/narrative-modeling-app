@@ -41,9 +41,10 @@ async def submit_feedback(
     try:
         await feedback.insert()
     except Exception:  # pragma: no cover - defensive
-        # Log internals; return an opaque message so storage/driver errors
-        # (which can embed connection strings) never reach the client.
-        logger.exception("Failed to store feedback for user %s", user_id)
+        # Log internals (stack trace only — no user identifier in log sinks);
+        # return an opaque message so storage/driver errors (which can embed
+        # connection strings) never reach the client.
+        logger.exception("Failed to store feedback")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store feedback. Please try again.",
