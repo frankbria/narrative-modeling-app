@@ -15,6 +15,8 @@ export interface PreviewControlsProps {
   sampleSize: number;
   onSampleSizeChange: (size: number) => void;
   onRefresh?: () => void;
+  /** Invoked when the Export button is clicked; export is disabled when omitted */
+  onExport?: () => void;
   loading?: boolean;
 }
 
@@ -24,6 +26,7 @@ export function PreviewControls({
   sampleSize,
   onSampleSizeChange,
   onRefresh,
+  onExport,
   loading = false,
 }: PreviewControlsProps) {
   const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
@@ -36,8 +39,7 @@ export function PreviewControls({
   }, [loading]);
 
   const handleExport = () => {
-    // TODO: Implement CSV export functionality
-    console.log('Export preview data');
+    onExport?.();
   };
 
   const formatTimestamp = (date: Date | null): string => {
@@ -106,7 +108,7 @@ export function PreviewControls({
         {/* Export Button */}
         <Button
           onClick={handleExport}
-          disabled={loading}
+          disabled={loading || !onExport}
           variant="outline"
           size="sm"
         >

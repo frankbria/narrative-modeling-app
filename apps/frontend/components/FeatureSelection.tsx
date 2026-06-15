@@ -7,9 +7,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SelectionControls, type SelectionConfig } from './SelectionControls'
 import { FeatureImportanceChart } from './FeatureImportanceChart'
 import { SelectedFeatureSet } from './SelectedFeatureSet'
+import { MethodComparisonView } from './MethodComparisonView'
 import {
   FeatureSelectionService,
   type FeatureSelectionResult,
+  type MethodComparisonResponse,
   type SelectionMethod
 } from '@/lib/services/featureSelection'
 
@@ -34,9 +36,10 @@ export function FeatureSelection({
   })
 
   const [result, setResult] = useState<FeatureSelectionResult | null>(null)
+  const [comparisonResult, setComparisonResult] = useState<MethodComparisonResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'configure' | 'results'>('configure')
+  const [activeTab, setActiveTab] = useState<'configure' | 'results' | 'comparison'>('configure')
 
   // Load previously selected features on mount
   useEffect(() => {
@@ -124,7 +127,7 @@ export function FeatureSelection({
         'statistical'
       ]
 
-      const comparisonResult = await FeatureSelectionService.compareMethods(
+      const comparison = await FeatureSelectionService.compareMethods(
         datasetId,
         {
           target_column: config.targetColumn,
@@ -135,32 +138,9 @@ export function FeatureSelection({
         session.accessToken
       )
 
-      // For now, just show the first method's results
-      // TODO: Create a proper comparison view
-      const firstResult = comparisonResult.results[0]
-      if (firstResult) {
-        // Transform to FeatureSelectionResult format
-        const transformedResult: FeatureSelectionResult = {
-          dataset_id: comparisonResult.dataset_id,
-          method: firstResult.method,
-          selected_features: firstResult.selected_features,
-          feature_scores: firstResult.top_features,
-          redundant_pairs: [],
-          explanation: comparisonResult.recommendations,
-          metadata: {
-            problem_type: config.problemType || 'auto-detected',
-            n_samples: 0,
-            n_features_original: columns.length,
-            n_features_selected: firstResult.selected_features.length,
-            target_column: config.targetColumn
-          },
-          execution_time_ms: firstResult.execution_time_ms,
-          created_at: new Date().toISOString()
-        }
-
-        setResult(transformedResult)
-        setActiveTab('results')
-      }
+      // Preserve the full comparison response and surface it in the Comparison tab.
+      setComparisonResult(comparison)
+      setActiveTab('comparison')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Method comparison failed')
     } finally {
@@ -179,11 +159,14 @@ export function FeatureSelection({
       )}
 
       {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'configure' | 'results')}>
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'configure' | 'results' | 'comparison')}>
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="configure">Configure Selection</TabsTrigger>
           <TabsTrigger value="results" disabled={!result}>
             Results {result && `(${result.selected_features.length} features)`}
+          </TabsTrigger>
+          <TabsTrigger value="comparison" disabled={!comparisonResult}>
+            Comparison {comparisonResult && `(${comparisonResult.results.length} methods)`}
           </TabsTrigger>
         </TabsList>
 
@@ -216,6 +199,12 @@ export function FeatureSelection({
                 }}
               />
             </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="comparison" className="space-y-6">
+          {comparisonResult && (
+            <MethodComparisonView comparison={comparisonResult} />
           )}
         </TabsContent>
       </Tabs>
