@@ -15,7 +15,7 @@ export default function middleware(request: NextRequest) {
                        request.cookies.get('__Secure-authjs.session-token'); // Production uses secure prefix
 
   // Define protected routes
-  const protectedRoutes = ['/', '/dashboard', '/api/protected', '/upload', '/prepare', '/explore', '/analyze', '/model', '/deploy', '/monitor', '/insights'];
+  const protectedRoutes = ['/', '/dashboard', '/onboarding', '/api/protected', '/upload', '/prepare', '/explore', '/analyze', '/model', '/deploy', '/monitor', '/insights'];
   const isProtectedRoute = protectedRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
 
   // Enforce authentication for protected routes

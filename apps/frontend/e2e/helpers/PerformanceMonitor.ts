@@ -86,6 +86,48 @@ export class PerformanceMonitor {
   }
 
   /**
+   * Measure the p95 latency of an API call over many iterations (issue #152).
+   *
+   * Runs `apiCall` `iterations` times, sorts the durations, and records the
+   * 95th-percentile value against `threshold`. Used for the beta-journey
+   * "p95 API < 500ms" sanity check.
+   */
+  async measureP95(
+    testName: string,
+    apiCall: () => Promise<any>,
+    metricName: string,
+    threshold: number,
+    iterations: number = 20
+  ): Promise<PerformanceMetric> {
+    const durations: number[] = [];
+
+    for (let i = 0; i < iterations; i++) {
+      const startTime = Date.now();
+      await apiCall();
+      durations.push(Date.now() - startTime);
+    }
+
+    durations.sort((a, b) => a - b);
+    // Nearest-rank p95: index ceil(0.95 * n) - 1, clamped to the array.
+    const rank = Math.ceil(0.95 * durations.length) - 1;
+    const index = Math.min(durations.length - 1, Math.max(0, rank));
+    const p95 = durations[index];
+
+    const metric: PerformanceMetric = {
+      testName,
+      metricName: `p95 ${metricName}`,
+      value: p95,
+      unit: 'ms',
+      timestamp: new Date().toISOString(),
+      threshold,
+      passed: p95 <= threshold,
+    };
+
+    this.metrics.push(metric);
+    return metric;
+  }
+
+  /**
    * Measure rendering time for a specific element
    */
   async measureRenderTime(

@@ -64,6 +64,7 @@ from app.api.routes import (
     batch_prediction,
     model_export,
     onboarding,
+    feedback,
     cache,
     transformations,
     versions,
@@ -238,6 +239,11 @@ app.include_router(
     onboarding.router,
     prefix=f"{settings.API_V1_STR}/onboarding",
     tags=["onboarding"],
+)
+app.include_router(
+    feedback.router,
+    prefix=f"{settings.API_V1_STR}/feedback",
+    tags=["feedback"],
 )
 app.include_router(
     cache.router,

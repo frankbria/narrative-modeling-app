@@ -16,6 +16,7 @@ from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
 from app.models.feature import FeatureDefinition
 from app.models.feature_store import FeatureCollection, FeatureVersion, StoredFeature
+from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
 from app.models.plot import Plot
@@ -46,6 +47,7 @@ DOCUMENT_MODELS = [
     FeatureCollection,
     FeatureDefinition,
     FeatureVersion,
+    Feedback,
     MLModel,
     ModelConfig,
     Plot,

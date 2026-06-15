@@ -237,7 +237,7 @@ export default function OnboardingPage() {
               </Button>
               <Button 
                 variant="outline" 
-                onClick={() => router.push('/docs')}
+                onClick={() => router.push('/quickstart')}
                 className="w-full"
               >
                 <BookOpen className="mr-2 h-4 w-4" />

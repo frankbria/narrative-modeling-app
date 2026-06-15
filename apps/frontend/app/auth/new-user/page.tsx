@@ -19,7 +19,7 @@ export default function SignUpPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button
-            onClick={() => signIn('google', { callbackUrl: '/' })}
+            onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
@@ -28,7 +28,7 @@ export default function SignUpPage() {
           </Button>
           
           <Button
-            onClick={() => signIn('github', { callbackUrl: '/' })}
+            onClick={() => signIn('github', { callbackUrl: '/dashboard' })}
             className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
