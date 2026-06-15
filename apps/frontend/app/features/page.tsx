@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -20,22 +22,21 @@ interface AiSuggestions {
 }
 
 export default function FeaturesPage() {
-  const { state, completeStage, canAccessStage } = useWorkflow();
+  const { state, completeStage } = useWorkflow();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [features, setFeatures] = useState<Feature[]>([]);
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
-  useEffect(() => {
-    if (!canAccessStage(WorkflowStage.FEATURE_ENGINEERING)) {
-      router.push('/upload');
-      return;
-    }
+  // Redirect to the earliest incomplete prerequisite (with a message) if this
+  // stage isn't accessible yet; waits for hydration first.
+  useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
 
+  useEffect(() => {
     loadFeatures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canAccessStage, router]);
+  }, []);
 
   const loadFeatures = async () => {
     try {
@@ -233,17 +234,13 @@ export default function FeaturesPage() {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={() => router.push('/prepare')}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
-          >
-            Back
-          </button>
+        {/* Action: generate features. This marks the stage complete; the
+            StageNavigation footer then enables "Continue to Model Training". */}
+        <div className="mt-6 flex justify-end">
           <button
             onClick={handleGenerateFeatures}
             disabled={selectedFeatures.length < 2 || loading}
+            data-testid="generate-features-button"
             className={`px-6 py-2 rounded-lg font-medium transition-colors ${
               selectedFeatures.length >= 2 && !loading
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -253,6 +250,9 @@ export default function FeaturesPage() {
             {loading ? 'Generating...' : 'Generate Features'}
           </button>
         </div>
+
+        {/* Shared Back / Continue navigation. */}
+        <StageNavigation currentStage={WorkflowStage.FEATURE_ENGINEERING} loading={loading} />
       </div>
     </div>
   );

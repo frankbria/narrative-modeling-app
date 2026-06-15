@@ -3,14 +3,20 @@
 import React, { useEffect } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function PreparePage() {
-  const { state, completeStage, canAccessStage, setDatasetId } = useWorkflow();
+  const { state, completeStage, setDatasetId } = useWorkflow();
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlDatasetId = searchParams.get('datasetId');
+
+  // Redirect to the earliest incomplete prerequisite (with a message) if this
+  // stage isn't accessible yet; waits for hydration first.
+  useStageGuard(WorkflowStage.DATA_PREPARATION);
 
   useEffect(() => {
     // If a dataset ID is provided in the URL, use it
@@ -18,13 +24,6 @@ export default function PreparePage() {
       setDatasetId(urlDatasetId);
     }
   }, [urlDatasetId, state.datasetId, setDatasetId]);
-
-  useEffect(() => {
-    // Check if user can access this stage
-    if (!canAccessStage(WorkflowStage.DATA_PREPARATION)) {
-      router.push('/upload');
-    }
-  }, [canAccessStage, router]);
 
   const handleTransformationComplete = (transformedDatasetId: string) => {
     // Mark stage as complete and save the transformed dataset ID
@@ -63,10 +62,31 @@ export default function PreparePage() {
       </div>
       
       <div className="flex-1">
-        <TransformationPipeline 
+        <TransformationPipeline
           datasetId={currentDatasetId}
           onComplete={handleTransformationComplete}
         />
+      </div>
+
+      <div className="bg-white border-t px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          {/* Data preparation is optional — the user can apply transformations
+              or skip straight to feature engineering. `ready` keeps Continue
+              enabled; onContinue records the stage if it wasn't completed via a
+              transformation. */}
+          <StageNavigation
+            currentStage={WorkflowStage.DATA_PREPARATION}
+            ready
+            onContinue={() => {
+              if (!state.completedStages.has(WorkflowStage.DATA_PREPARATION)) {
+                completeStage(WorkflowStage.DATA_PREPARATION, {
+                  skipped: true,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   );

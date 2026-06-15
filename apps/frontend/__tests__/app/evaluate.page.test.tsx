@@ -56,6 +56,9 @@ jest.mock('@/lib/utils/export', () => ({
 // Workflow context: evaluation stage accessible, model trained.
 const mockCompleteStage = jest.fn()
 const mockCanAccessStage = jest.fn(() => true)
+const mockGoToNextStage = jest.fn()
+const mockGoToPreviousStage = jest.fn()
+const mockRequestStageRedirect = jest.fn()
 const mockWorkflowContext = {
   state: {
     currentStage: WorkflowStage.MODEL_EVALUATION,
@@ -64,6 +67,8 @@ const mockWorkflowContext = {
     datasetId: 'ds-1',
     modelId: 'm1',
   },
+  isHydrated: true,
+  guardMessage: null,
   canAccessStage: mockCanAccessStage,
   completeStage: mockCompleteStage,
   setCurrentStage: jest.fn(),
@@ -71,6 +76,10 @@ const mockWorkflowContext = {
   resetWorkflow: jest.fn(),
   loadWorkflow: jest.fn(),
   saveWorkflow: jest.fn(),
+  goToNextStage: mockGoToNextStage,
+  goToPreviousStage: mockGoToPreviousStage,
+  requestStageRedirect: mockRequestStageRedirect,
+  clearGuardMessage: jest.fn(),
 }
 jest.mock('@/lib/contexts/WorkflowContext', () => ({
   useWorkflow: () => mockWorkflowContext,
@@ -176,23 +185,26 @@ describe('EvaluatePage', () => {
     mockWorkflowContext.state.modelId = 'm1'
   })
 
-  it('redirects to /upload when the evaluation stage is not accessible', () => {
+  it('redirects with a guard message when the evaluation stage is not accessible', () => {
     mockCanAccessStage.mockReturnValue(false)
     mockGetEvaluation.mockResolvedValue(classificationEvaluation)
 
     render(<EvaluatePage />)
 
-    expect(mockPush).toHaveBeenCalledWith('/upload')
+    expect(mockRequestStageRedirect).toHaveBeenCalledTimes(1)
     expect(mockGetEvaluation).not.toHaveBeenCalled()
   })
 
-  it('redirects to /model when no model id is in the workflow state', () => {
+  it('redirects to model training when no model id is in the workflow state', () => {
     mockWorkflowContext.state.modelId = ''
     mockGetEvaluation.mockResolvedValue(classificationEvaluation)
 
     render(<EvaluatePage />)
 
-    expect(mockPush).toHaveBeenCalledWith('/model')
+    expect(mockRequestStageRedirect).toHaveBeenCalledWith(
+      WorkflowStage.MODEL_TRAINING,
+      expect.stringMatching(/train a model/i)
+    )
     expect(mockGetEvaluation).not.toHaveBeenCalled()
   })
 
@@ -281,13 +293,13 @@ describe('EvaluatePage', () => {
     expect(await screen.findByText(/no evaluation data/i)).toBeInTheDocument()
   })
 
-  it('completes the evaluation stage when proceeding to prediction', async () => {
+  it('completes the evaluation stage and advances when continuing to prediction', async () => {
     mockGetEvaluation.mockResolvedValue(classificationEvaluation)
 
     render(<EvaluatePage />)
     await screen.findByText('Churn Model')
 
-    fireEvent.click(screen.getByRole('button', { name: /proceed to prediction/i }))
+    fireEvent.click(screen.getByRole('button', { name: /continue to prediction/i }))
 
     expect(mockCompleteStage).toHaveBeenCalledTimes(1)
     const [stage, payload] = mockCompleteStage.mock.calls[0]
@@ -296,17 +308,19 @@ describe('EvaluatePage', () => {
       evaluationComplete: true,
       metrics: classificationEvaluation.metrics,
     })
+    // After recording completion, StageNavigation advances to the next stage.
+    await waitFor(() => expect(mockGoToNextStage).toHaveBeenCalledTimes(1))
   })
 
-  it('keeps the Back to Training navigation', async () => {
+  it('navigates back to the previous stage', async () => {
     mockGetEvaluation.mockResolvedValue(classificationEvaluation)
 
     render(<EvaluatePage />)
     await screen.findByText('Churn Model')
 
-    fireEvent.click(screen.getByRole('button', { name: /back to training/i }))
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
 
-    expect(mockPush).toHaveBeenCalledWith('/model')
+    expect(mockGoToPreviousStage).toHaveBeenCalledTimes(1)
   })
 
   it('exports CSV and PDF from the header buttons', async () => {
