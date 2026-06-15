@@ -14,8 +14,7 @@ export default function PreparePage() {
   const searchParams = useSearchParams();
   const urlDatasetId = searchParams.get('datasetId');
 
-  // Redirect to the earliest incomplete prerequisite (with a message) if this
-  // stage isn't accessible yet; waits for hydration first.
+  // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.DATA_PREPARATION);
 
   useEffect(() => {

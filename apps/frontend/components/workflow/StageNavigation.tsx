@@ -85,7 +85,6 @@ export function StageNavigation({
     }
   };
 
-  // What to tell the user when Continue is disabled.
   const hint = isComplete
     ? validation.errors[0]
     : 'Complete this step to continue.';

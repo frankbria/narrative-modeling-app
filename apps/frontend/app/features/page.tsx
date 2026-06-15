@@ -29,8 +29,7 @@ export default function FeaturesPage() {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
-  // Redirect to the earliest incomplete prerequisite (with a message) if this
-  // stage isn't accessible yet; waits for hydration first.
+  // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
 
   useEffect(() => {

@@ -48,8 +48,7 @@ export default function ModelPage() {
   const [cancellationRequested, setCancellationRequested] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
 
-  // Redirect to the earliest incomplete prerequisite (with a message) if this
-  // stage isn't accessible yet; waits for hydration first.
+  // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
 
   useEffect(() => {
