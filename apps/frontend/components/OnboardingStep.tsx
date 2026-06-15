@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -447,9 +448,11 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="outline" className="w-full">
-                <BookOpen className="mr-2 h-4 w-4" />
-                View Documentation
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/quickstart">
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  View Documentation
+                </Link>
               </Button>
               <Button variant="outline" className="w-full">
                 <Video className="mr-2 h-4 w-4" />

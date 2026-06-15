@@ -10,6 +10,7 @@ import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
 import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
+import { FeedbackWidget } from '@/components/FeedbackWidget'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',
@@ -51,6 +52,7 @@ export default async function RootLayout({
                     <ConditionalAIChat />
                   </div>
                 </main>
+                <FeedbackWidget />
               </>
             ) : (
               <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">

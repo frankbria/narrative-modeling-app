@@ -1,62 +1,54 @@
-# Issue #151 — Enforce API rate limiting (modeled but never enforced)
+# Issue #152 — [P4.2] Beta launch readiness: onboarding integration, user docs, feedback collection
 
-**Branch:** `feat/151-rate-limiting`
-**Plan source:** self-authored (issue had no implementation-plan comment)
+**Plan source:** CodeRabbit comment plan, adapted to the actual codebase.
+**Branch:** `feat/152-beta-launch-readiness`
 
-## Problem
-`APIKey.rate_limit` is modeled and even partially checked in one route
-(`production.py` predict), but there is **no global enforcement**. Every `/api/v1`
-endpoint can be hammered without restriction (DoS + cost risk before beta).
+## Acceptance Criteria (from issue)
+- [ ] AC1: Onboarding flow triggers for new users and records completion via `/api/v1/onboarding/*`
+- [ ] AC2: User-facing quickstart guide (upload → profile → prepare → features → train → evaluate → predict)
+- [ ] AC3: In-app feedback mechanism wired to storage
+- [ ] AC4: Full user-journey integration test (the 10 beta acceptance criteria in `BETA_ROADMAP.md`)
+- [ ] AC5: Performance sanity check: p95 API < 500ms on the journey's endpoints
 
-## Design decisions
-- **Global ASGI middleware** (not per-route decorators) so it covers *all* `/api/v1`
-  routes per AC. Registered so CORS stays **outermost** (429s get CORS headers) and
-  the limiter runs just before route handlers (blocks the expensive work).
-- **Identity resolution** (in order): `X-API-Key` header → per-key limit from
-  `APIKey.rate_limit` (window 1h, matching the field's documented semantics);
-  else session Bearer token → default per-user limit; else client IP → default limit.
-  Reuses existing `get_current_user_id_optional` (no auth-logic drift).
-- **Storage:** pluggable `RateLimitStore`. `RedisRateLimitStore` (atomic INCR+EXPIRE
-  fixed-window, async) is primary; `InMemoryRateLimitStore` for unit tests + a
-  single-instance fallback. **Fail-open** when Redis is unreachable (log a warning) —
-  never take the app down for a limiter outage (documented beta tradeoff).
-- **429 response:** JSON body + `Retry-After` (seconds to window reset). Also adds
-  `X-RateLimit-Limit/Remaining/Reset` on every `/api/v1` response.
-- **Env-configurable** via new `Settings` fields.
+## Adapted Steps (TDD: RED → GREEN → REFACTOR)
 
-## Steps (TDD: RED → GREEN → REFACTOR)
-1. **Config** — add to `app/config.py`: `REDIS_URL`, `RATE_LIMIT_ENABLED` (def true),
-   `RATE_LIMIT_DEFAULT_REQUESTS` (def 100), `RATE_LIMIT_DEFAULT_WINDOW_SECONDS`
-   (def 60), `RATE_LIMIT_APIKEY_WINDOW_SECONDS` (def 3600).
-2. **Store layer** — `app/services/rate_limit.py`: `RateLimitResult`, store protocol,
-   `InMemoryRateLimitStore`, `RedisRateLimitStore` (lazy async client, fail-open).
-   Add `APIKey.hash_key(raw)` staticmethod for shared hashing.
-3. **Middleware** — `app/middleware/rate_limit.py`: `RateLimitMiddleware` (identity →
-   limit/window → store hit → 200 + headers or 429 + Retry-After). Skip non-`/api/v1`
-   paths and OPTIONS preflight.
-4. **Wire up** — `app/main.py`: build the store in lifespan (from `REDIS_URL`), expose
-   on `app.state`, register `RateLimitMiddleware` so CORS remains outermost.
-5. **Refactor production.py** — remove the now-redundant in-route `check_rate_limit`
-   + sync `redis` client (global middleware supersedes it; kills the sync-redis-in-async
-   antipattern). Migrate its test into the middleware suite.
-6. **Tests**
-   - `tests/test_middleware/test_rate_limit.py` (unit, InMemory store): under limit→200,
-     over→429 + `Retry-After`, headers present, window reset, OPTIONS / non-`/api/v1`
-     skipped, disabled flag, fail-open when store errors.
-   - integration (real Redis :6380): Redis-backed counter enforces + expires.
-   - integration (DB): per-`APIKey` override honored (low `rate_limit` → 429 sooner).
-   - update `tests/test_api/test_production.py` (drop direct `check_rate_limit` test).
-7. **Docs** — update CLAUDE.md backend section + `.env` example; note beta limitations.
+### Step 1 — Backend: Feedback collection endpoint  → AC3
+- `apps/backend/app/models/feedback.py`: `Feedback(Document)` — `feedback_id` (indexed), `user_id` (indexed), `rating` (1–5), `category` (enum), `message`, `page_context` (optional), `created_at`. `Settings.name = "feedback"`.
+- Register `Feedback` in `apps/backend/app/models/registry.py`.
+- `apps/backend/app/schemas/feedback.py`: `FeedbackCategory` enum (bug, feature_request, general, onboarding), `FeedbackRequest`, `FeedbackResponse`.
+- `apps/backend/app/api/routes/feedback.py`: `POST /api/v1/feedback` (auth via `get_current_user_id`, 201; 422 on validation).
+- Register router in `apps/backend/app/main.py`.
+- Tests: `apps/backend/tests/test_api/test_feedback.py` (mongomock, mirrors `test_onboarding.py`): 401 unauth, 201 valid, 422 invalid rating/category, persistence.
 
-## Acceptance criteria
-- [ ] Rate-limit middleware applied to all `/api/v1` routes
-- [ ] Per-API-key limits read from `APIKey` model fields
-- [ ] Sensible default per-user limits for session-authenticated requests
-- [ ] 429 responses with `Retry-After` header
-- [ ] Limits configurable via env
-- [ ] Tests: over-limit→429; under-limit→200; key-specific overrides honored
+### Step 2 — Frontend: Onboarding flow integration  → AC1
+- `apps/frontend/app/auth/new-user/page.tsx`: both OAuth `callbackUrl: '/'` → `'/onboarding'`.
+- `apps/frontend/middleware.ts`: add `/onboarding` to `protectedRoutes`.
+- `apps/frontend/lib/hooks/useOnboardingStatus.ts`: fetch `GET /api/v1/onboarding/status` → `{ isComplete, isLoading, currentStepId }` (uses `getAuthToken`/`API_URL`).
+- `apps/frontend/app/dashboard/page.tsx`: redirect to `/onboarding` if incomplete, with a "Skip for now" bypass persisted to localStorage so returning users aren't trapped.
+- Tests: `apps/frontend/__tests__/lib/hooks/useOnboardingStatus.test.tsx`.
 
-## Known beta limitations
-- Fixed-window (not sliding-window/token-bucket) — simple, matches existing per-hour field.
-- Fail-open on Redis outage (availability > strict enforcement for beta).
-- In-memory fallback is per-worker (not shared) — fine for single-instance staging.
+### Step 3 — Frontend: Quickstart guide + doc-link fixes  → AC2
+- `apps/frontend/app/quickstart/page.tsx`: static doc page covering the 8 stages (purpose / key actions / expected outcome / nav hint each) with anchor navigation; Card/Accordion + lucide icons.
+- Fix `/docs` links → `/quickstart`: onboarding completion screen, `OnboardingStep` Help buttons, dashboard help section.
+- Test: `apps/frontend/__tests__/app/quickstart.test.tsx` (renders all 8 stages).
+
+### Step 4 — Frontend: Feedback widget  → AC3
+- `apps/frontend/components/FeedbackWidget.tsx`: floating bottom-right button → expandable form (star rating, category select, message textarea); POST `/api/v1/feedback` with `page_context = location.pathname`; inline success/error states (no new toast dep).
+- Mount in `apps/frontend/app/layout.tsx` inside the authenticated session block.
+- Tests: `apps/frontend/__tests__/components/FeedbackWidget.test.tsx` (open, validate, submit success/error).
+
+### Step 5 — E2E: Beta journey + performance + feedback  → AC4, AC5
+- `apps/frontend/e2e/workflows/beta-journey.spec.ts` (`@beta-acceptance`):
+  - Onboarding routing scenarios (new → onboarding; returning-incomplete → onboarding; completed → dashboard) — backend mocked via `page.route` (stage-transitions pattern).
+  - Full journey mapped to the **10 `BETA_ROADMAP.md` criteria** (reuse `WorkflowOrchestrator`).
+  - Feedback widget: open → fill → submit → success + error handling.
+  - p95 < 500ms assertions (extend `PerformanceMonitor`) for `/api/v1/onboarding/status`, `/api/v1/datasets`, `/api/v1/ml/train`, `/api/v1/ml/{id}/predict`.
+- Note: E2E suite is **not** in the CI gate (manual `workflow_dispatch`).
+
+## Deviations from the original CodeRabbit plan
+1. **`BETA_ROADMAP.md` exists** — integration test maps to its real 10 criteria (CodeRabbit assumed it was missing and substituted the 8-stage list).
+2. **Icons: `lucide-react`** to match the existing codebase (CLAUDE.md's "Hugeicons, never lucide" applies to new Nova projects, not this legacy app).
+3. **No toast dependency** — widget uses inline success/error states (YAGNI; no Sonner/Toaster in the app today).
+4. **Feedback persisted via a dedicated Beanie `Feedback` model** registered in `registry.py` (backend convention), not a raw collection insert.
+5. **Corrected perf-test endpoint paths** to the real routes: `/api/v1/ml/train`, `/api/v1/ml/{id}/predict` (plan said `/api/v1/models/...`).
+6. **Onboarding skip-persistence** added so the dashboard redirect doesn't trap returning users.

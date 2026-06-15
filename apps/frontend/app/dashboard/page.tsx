@@ -6,6 +6,8 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, WorkflowStage } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { useOnboardingStatus } from '@/lib/hooks/useOnboardingStatus';
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -85,9 +87,44 @@ function getStatusColor(status: string): string {
   }
 }
 
+// localStorage flag set when a returning user opts out of onboarding so the
+// dashboard stops redirecting them ("Skip for now" / ?skipOnboarding=true).
+// Scoped per user so one account's choice can't bypass onboarding for another
+// account on a shared browser.
+function onboardingSkipKey(userId: string | null | undefined): string {
+  return `onboarding_skipped:${userId ?? 'anonymous'}`;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { state, canAccessStage } = useWorkflow();
+  const { user } = useCurrentUser();
+  const {
+    isComplete: onboardingComplete,
+    isLoading: onboardingLoading,
+    error: onboardingError,
+  } = useOnboardingStatus();
+
+  // Redirect first-time users into the onboarding flow (issue #152, AC1).
+  // Honors an explicit skip request (persisted per user) so users aren't
+  // trapped, and fails open: a status error or in-flight request never
+  // triggers a redirect.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const skipKey = onboardingSkipKey(user?.id);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('skipOnboarding') === 'true') {
+      window.localStorage.setItem(skipKey, 'true');
+      return;
+    }
+
+    if (onboardingLoading || onboardingError) return;
+    const skipped = window.localStorage.getItem(skipKey) === 'true';
+    if (!onboardingComplete && !skipped) {
+      router.push('/onboarding');
+    }
+  }, [onboardingComplete, onboardingLoading, onboardingError, user?.id, router]);
 
   const [recentDatasets, setRecentDatasets] = useState<DatasetItem[]>([]);
   const [recentModels, setRecentModels] = useState<ModelItem[]>([]);
@@ -540,13 +577,20 @@ export default function DashboardPage() {
                 Follow the 8-stage workflow to build and deploy your ML models.
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => router.push('/upload')}
-            >
-              Start with Data Upload
-              <ArrowRight size={14} className="ml-1" />
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => router.push('/quickstart')}
+              >
+                Read the Quickstart Guide
+              </Button>
+              <Button
+                onClick={() => router.push('/upload')}
+              >
+                Start with Data Upload
+                <ArrowRight size={14} className="ml-1" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
