@@ -39,13 +39,37 @@ export interface WorkflowContextType {
    * always sees an empty state and wrongly kicks the user back to /upload.
    */
   isHydrated: boolean;
+  /**
+   * A helpful message shown when a stage guard redirects the user away from a
+   * stage they can't access yet (e.g. opening /predict with no trained model).
+   * Rendered globally by StageGuardBanner; `null` when there is nothing to show.
+   */
+  guardMessage: string | null;
   canAccessStage: (stage: WorkflowStage) => boolean;
-  completeStage: (stage: WorkflowStage, data?: any) => void;
+  /**
+   * Mark a stage complete and record its data. By default this no longer
+   * navigates — explicit "Continue" CTAs (StageNavigation) drive transitions so
+   * the user stays in control. Pass `{ autoAdvance: true }` to advance to the
+   * next stage automatically once its prerequisites are met.
+   */
+  completeStage: (
+    stage: WorkflowStage,
+    data?: any,
+    opts?: { autoAdvance?: boolean }
+  ) => void;
   setCurrentStage: (stage: WorkflowStage) => void;
   setDatasetId: (datasetId: string) => void;
   resetWorkflow: () => void;
   loadWorkflow: (datasetId: string) => Promise<void>;
   saveWorkflow: () => Promise<void>;
+  /** Navigate forward to the next stage (route-aware). No-op on the last stage. */
+  goToNextStage: () => void;
+  /** Navigate back to the previous stage (route-aware). No-op on the first stage. */
+  goToPreviousStage: () => void;
+  /** Redirect to `targetStage` and surface `message` via StageGuardBanner. */
+  requestStageRedirect: (targetStage: WorkflowStage, message: string) => void;
+  /** Dismiss the current guard message. */
+  clearGuardMessage: () => void;
   // Transformation history methods
   updateHistoryPosition: (position: number) => void;
   updateHistoryState: (historyState: { position: number; canUndo: boolean; canRedo: boolean }) => void;

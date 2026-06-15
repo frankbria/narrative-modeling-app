@@ -9,6 +9,7 @@ import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
+import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',
@@ -44,6 +45,7 @@ export default async function RootLayout({
                     scroll on narrow viewports instead of letting the stage strip scroll (#185) */}
                 <main className="flex flex-1 min-w-0 min-h-screen flex-col">
                   <WorkflowBar />
+                  <StageGuardBanner />
                   <div className="flex flex-1">
                     <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
                     <ConditionalAIChat />

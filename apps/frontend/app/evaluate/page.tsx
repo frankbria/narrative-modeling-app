@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import {
   LineChart as LineChartIcon,
@@ -271,8 +273,9 @@ function CompareTab({ datasetId }: { datasetId?: string }) {
 }
 
 export default function EvaluatePage() {
-  const { state, completeStage, canAccessStage } = useWorkflow();
+  const { state, completeStage, requestStageRedirect } = useWorkflow();
   const router = useRouter();
+  const { ready } = useStageGuard(WorkflowStage.MODEL_EVALUATION);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<ModelEvaluationResponse | null>(null);
@@ -298,19 +301,19 @@ export default function EvaluatePage() {
     }
   }, []);
 
+  // Stage access (with a helpful redirect) is handled by useStageGuard above.
   useEffect(() => {
-    if (!canAccessStage(WorkflowStage.MODEL_EVALUATION)) {
-      router.push('/upload');
-      return;
-    }
-
+    if (!ready) return;
     if (!state.modelId) {
-      router.push('/model');
+      // Accessible but no trained model in state — send the user back to train.
+      requestStageRedirect(
+        WorkflowStage.MODEL_TRAINING,
+        'Train a model before evaluating it.'
+      );
       return;
     }
-
     loadEvaluation(state.modelId);
-  }, [canAccessStage, router, state.modelId, loadEvaluation]);
+  }, [ready, state.modelId, loadEvaluation, requestStageRedirect]);
 
   const handleProceedToPrediction = () => {
     completeStage(WorkflowStage.MODEL_EVALUATION, {
@@ -481,21 +484,15 @@ export default function EvaluatePage() {
           </TabsContent>
         </Tabs>
 
-        {/* Actions */}
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={() => router.push('/model')}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
-          >
-            Back to Training
-          </button>
-          <button
-            onClick={handleProceedToPrediction}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-          >
-            Proceed to Prediction
-          </button>
-        </div>
+        {/* Shared Back / Continue navigation. Evaluation is informational, so
+            Continue is always available; onContinue records completion before
+            advancing to the prediction stage. */}
+        <StageNavigation
+          currentStage={WorkflowStage.MODEL_EVALUATION}
+          ready
+          continueLabel="Continue to Prediction"
+          onContinue={handleProceedToPrediction}
+        />
       </div>
     </div>
   );

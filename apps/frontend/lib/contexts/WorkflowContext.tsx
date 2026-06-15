@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { WorkflowState, WorkflowStage, WorkflowContextType, WORKFLOW_STAGES } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { buildStageUrl, getNextStage, getPreviousStage } from '@/lib/utils/stageValidation';
 
 const initialState: WorkflowState = {
   currentStage: WorkflowStage.DATA_LOADING,
@@ -65,6 +66,8 @@ export function WorkflowProvider({
   // consumer effects fire before this provider's hydration effect, so an
   // early canAccessStage() check always sees an empty completedStages set.
   const [isHydrated, setIsHydrated] = useState(false);
+  // Helpful message shown by StageGuardBanner when a guard redirects the user.
+  const [guardMessage, setGuardMessage] = useState<string | null>(null);
   // Whether a backend workflow document exists for the current dataset
   // (decides POST vs PUT on save).
   const workflowExistsRef = useRef(false);
@@ -142,11 +145,22 @@ export function WorkflowProvider({
     );
   }, [state.completedStages]);
 
-  const completeStage = useCallback((stage: WorkflowStage, data?: any) => {
+  const completeStage = useCallback((
+    stage: WorkflowStage,
+    data?: any,
+    opts?: { autoAdvance?: boolean }
+  ) => {
+    // The dataset id may arrive with this very completion (DATA_LOADING), so
+    // resolve it for navigation rather than relying on the (stale) state value.
+    const resolvedDatasetId =
+      stage === WorkflowStage.DATA_LOADING && data?.datasetId
+        ? data.datasetId
+        : state.datasetId;
+
     setState(prev => {
       const newCompletedStages = new Set(prev.completedStages);
       newCompletedStages.add(stage);
-      
+
       const newStageData = { ...prev.stageData };
       if (data) {
         newStageData[stage] = data;
@@ -170,23 +184,51 @@ export function WorkflowProvider({
       };
     });
 
-    // Auto-advance to next stage
-    const currentIndex = WORKFLOW_STAGES.findIndex(s => s.id === stage);
-    if (currentIndex < WORKFLOW_STAGES.length - 1) {
-      const nextStage = WORKFLOW_STAGES[currentIndex + 1];
-      if (canAccessStage(nextStage.id)) {
-        router.push(`${nextStage.route}${state.datasetId ? `/${state.datasetId}` : ''}`);
+    // Forward navigation is opt-in (default off): explicit "Continue" CTAs drive
+    // transitions so the user stays in control. When auto-advance is requested,
+    // check accessibility against the about-to-be-completed set (not the stale
+    // closure) and use route-aware URL building.
+    if (opts?.autoAdvance) {
+      const next = getNextStage(stage);
+      if (next) {
+        const willBeComplete = new Set(state.completedStages);
+        willBeComplete.add(stage);
+        const accessible = next.requiredStages.every(req => willBeComplete.has(req));
+        if (accessible) {
+          router.push(buildStageUrl(next.id, resolvedDatasetId));
+        }
       }
+    }
+  }, [state.datasetId, state.completedStages, router]);
+
+  const setCurrentStage = useCallback((stage: WorkflowStage) => {
+    if (canAccessStage(stage)) {
+      setState(prev => ({ ...prev, currentStage: stage }));
+      router.push(buildStageUrl(stage, state.datasetId));
     }
   }, [state.datasetId, canAccessStage, router]);
 
-  const setCurrentStage = useCallback((stage: WorkflowStage) => {
-    const stageConfig = WORKFLOW_STAGES.find(s => s.id === stage);
-    if (stageConfig && canAccessStage(stage)) {
-      setState(prev => ({ ...prev, currentStage: stage }));
-      router.push(`${stageConfig.route}${state.datasetId ? `/${state.datasetId}` : ''}`);
-    }
-  }, [state.datasetId, canAccessStage, router]);
+  const goToNextStage = useCallback(() => {
+    const next = getNextStage(state.currentStage);
+    if (!next) return;
+    setState(prev => ({ ...prev, currentStage: next.id }));
+    router.push(buildStageUrl(next.id, state.datasetId));
+  }, [state.currentStage, state.datasetId, router]);
+
+  const goToPreviousStage = useCallback(() => {
+    const previous = getPreviousStage(state.currentStage);
+    if (!previous) return;
+    // No access check: backward navigation always restores a prior stage.
+    setState(prev => ({ ...prev, currentStage: previous.id }));
+    router.push(buildStageUrl(previous.id, state.datasetId));
+  }, [state.currentStage, state.datasetId, router]);
+
+  const requestStageRedirect = useCallback((targetStage: WorkflowStage, message: string) => {
+    setGuardMessage(message);
+    router.push(buildStageUrl(targetStage, state.datasetId));
+  }, [state.datasetId, router]);
+
+  const clearGuardMessage = useCallback(() => setGuardMessage(null), []);
 
   const resetWorkflow = useCallback(() => {
     setState(initialState);
@@ -348,6 +390,7 @@ export function WorkflowProvider({
   const value: WorkflowContextType = {
     state,
     isHydrated,
+    guardMessage,
     canAccessStage,
     completeStage,
     setCurrentStage,
@@ -355,6 +398,10 @@ export function WorkflowProvider({
     resetWorkflow,
     loadWorkflow,
     saveWorkflow,
+    goToNextStage,
+    goToPreviousStage,
+    requestStageRedirect,
+    clearGuardMessage,
     updateHistoryPosition,
     updateHistoryState,
     refreshHistory

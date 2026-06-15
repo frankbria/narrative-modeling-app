@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -10,27 +12,27 @@ import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy } from 'lucide-react';
 import type { DeployResponse, DeploymentStatusResponse } from '@/lib/types/api';
 
 export default function DeployPage() {
-  const { state, completeStage, canAccessStage } = useWorkflow();
+  const { state, completeStage, requestStageRedirect } = useWorkflow();
   const router = useRouter();
+  const { ready } = useStageGuard(WorkflowStage.DEPLOYMENT);
   const [loading, setLoading] = useState(false);
   const [deployment, setDeployment] = useState<DeployResponse | null>(null);
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'deployed'>('idle');
 
   useEffect(() => {
-    if (!canAccessStage(WorkflowStage.DEPLOYMENT)) {
-      router.push('/upload');
-      return;
-    }
-
+    // Stage access (with a helpful redirect) is handled by useStageGuard.
+    if (!ready) return;
     if (!state.modelId) {
-      router.push('/model');
+      requestStageRedirect(
+        WorkflowStage.MODEL_TRAINING,
+        'Train a model before deploying it.'
+      );
       return;
     }
-
     // Check if already deployed
     checkDeploymentStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canAccessStage, router, state.modelId]);
+  }, [ready, state.modelId]);
 
   const checkDeploymentStatus = async () => {
     try {
@@ -263,13 +265,14 @@ export default function DeployPage() {
           </div>
         )}
 
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={() => router.push('/')}
-            className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-          >
-            Complete Workflow
-          </button>
+        {/* Final stage — terminal CTA via the shared navigation component. */}
+        <div className="mt-8">
+          <StageNavigation
+            currentStage={WorkflowStage.DEPLOYMENT}
+            hideBack
+            onFinish={() => router.push('/')}
+            finishLabel="Complete Workflow"
+          />
         </div>
       </div>
     </div>

@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import { useRouter } from 'next/navigation';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { Target, Upload, FileText, Send, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import {
@@ -23,8 +24,8 @@ const BATCH_POLL_INTERVAL_MS = 2000;
 
 export default function PredictPage() {
   const { data: session } = useSession();
-  const { state, completeStage, canAccessStage, isHydrated } = useWorkflow();
-  const router = useRouter();
+  const { state, completeStage, requestStageRedirect } = useWorkflow();
+  const { ready } = useStageGuard(WorkflowStage.PREDICTION);
 
   const [loading, setLoading] = useState(false);
   const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
@@ -58,22 +59,20 @@ export default function PredictPage() {
   }, [state.modelId]);
 
   useEffect(() => {
-    // Wait for the workflow to hydrate (backend → localStorage) before gating:
-    // child effects run before the provider's hydrate effect, so an early
-    // canAccessStage() check sees an empty completedStages set and would
-    // wrongly redirect a legitimately-reached prediction stage to /upload.
-    if (!isHydrated) return;
-    if (!canAccessStage(WorkflowStage.PREDICTION)) {
-      router.push('/upload');
-      return;
-    }
+    // Stage access (with a helpful redirect) is handled by useStageGuard, which
+    // also waits for hydration before deciding.
+    if (!ready) return;
     if (!state.modelId) {
-      router.push('/model');
+      // Accessible but no trained model in state — send the user back to train.
+      requestStageRedirect(
+        WorkflowStage.MODEL_TRAINING,
+        'Train a model before making predictions.'
+      );
       return;
     }
     loadModelFeatures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, canAccessStage, router, state.modelId]);
+  }, [ready, state.modelId]);
 
   // Clean up the progress poller on unmount.
   useEffect(() => {
@@ -603,25 +602,9 @@ export default function PredictPage() {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="mt-6 flex justify-between">
-          <button
-            type="button"
-            onClick={() => router.push('/evaluate')}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
-          >
-            Back
-          </button>
-          {state.completedStages.has(WorkflowStage.PREDICTION) && (
-            <button
-              type="button"
-              onClick={() => router.push('/deploy')}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-            >
-              Continue to Deployment
-            </button>
-          )}
-        </div>
+        {/* Shared Back / Continue navigation. "Continue to Deployment" enables
+            once a prediction has been made (stage marked complete). */}
+        <StageNavigation currentStage={WorkflowStage.PREDICTION} loading={loading} />
       </div>
     </div>
   );

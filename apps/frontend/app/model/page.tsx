@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import { useRouter } from 'next/navigation';
+import { useStageGuard } from '@/lib/hooks/useStageGuard';
+import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { modelService, TrainingStatus } from '@/lib/services/model';
@@ -34,8 +35,7 @@ interface ModelConfig {
  */
 export default function ModelPage() {
   const { data: session } = useSession();
-  const { state, completeStage, canAccessStage } = useWorkflow();
-  const router = useRouter();
+  const { state, completeStage } = useWorkflow();
   const [training, setTraining] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     target_column: ''
@@ -48,20 +48,14 @@ export default function ModelPage() {
   const [cancellationRequested, setCancellationRequested] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
 
+  // Guard: redirect (with a message) if this stage is not accessible yet.
+  useStageGuard(WorkflowStage.MODEL_TRAINING);
+
   useEffect(() => {
-    if (!canAccessStage(WorkflowStage.MODEL_TRAINING)) {
-      router.push('/upload');
-      return;
-    }
-
-    if (!state.datasetId) {
-      router.push('/upload');
-      return;
-    }
-
+    if (!state.datasetId) return;
     loadDatasetColumns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canAccessStage, router, state.datasetId]);
+  }, [state.datasetId]);
 
   const loadDatasetColumns = async () => {
     try {
@@ -230,14 +224,9 @@ export default function ModelPage() {
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex justify-between pt-4">
-              <button
-                onClick={() => router.push('/features')}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                Back
-              </button>
+            {/* Action: start training. Back / Continue live in the shared
+                StageNavigation footer below. */}
+            <div className="flex justify-end pt-4">
               <button
                 onClick={handleTrainModel}
                 disabled={!modelConfig.target_column || training}
@@ -350,6 +339,10 @@ export default function ModelPage() {
             )}
           </div>
         )}
+
+        {/* Shared Back / Continue navigation. "Continue to Model Evaluation"
+            enables once training completes (modelId recorded on the stage). */}
+        <StageNavigation currentStage={WorkflowStage.MODEL_TRAINING} loading={training && !completedStatus} />
       </div>
     </div>
   );

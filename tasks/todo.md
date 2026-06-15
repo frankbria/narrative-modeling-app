@@ -1,62 +1,64 @@
-# Issue #80 — Model interpretability: SHAP values & feature importance
+# Issue #88 — [P3.4] Seamless stage transitions across the 8-stage workflow
 
-**Plan source:** Adapted from the Traycer plan, which was **largely discarded as stale + over-scoped** (it
-referenced files that don't exist here — `models.py`/`model.py`/`ModelConfig`/`model_service.py` — and
-proposed LIME, matplotlib/plotly image generation, dependence plots, KernelExplainer, cross-model comparison,
-a separate `/models/[id]/interpretability` page, and a Redis cache layer, all of which the issue's own Beta
-Scope defers post-beta). This plan is driven by the issue's **Acceptance Criteria** + the real codebase
-(verified 2026-06-14), building on the #79 evaluation pipeline and #83 explainer infrastructure.
+## Reality check (verified against code, not the stale Traycer plan)
+- **Backend (#87) is fully done**: `WorkflowState` model, `WorkflowService` (create/get/update/history),
+  routes `POST/GET/PUT /api/v1/workflows/{dataset_id}` + `/history`, schemas, 25+ tests. Every PUT
+  appends a `state_history` snapshot ⇒ transition recording already exists. **No new backend endpoint.**
+- **AC3 (progress indicator)**: already done — `WorkflowBar` (global in layout) shows all 8 stages + completion.
+- The Traycer plan's backend steps (1,2,3,11) and "POST /transition" are obsolete. This issue is **frontend UX polish**.
+- **Routing gotcha**: stage routes are inconsistent — `explore/[id]`, `evaluate/[datasetId]`, `predict/[datasetId]`,
+  `model/[id]` (a model *detail* viewer, NOT the training stage), but `prepare`/`features`/`deploy`/`model` stage
+  pages have no dynamic segment. `completeStage`/`setCurrentStage` blindly push `/{route}/{datasetId}`, which 404s
+  or mis-routes (e.g. `/model/{datasetId}` hits the detail viewer). Navigation must become **route-aware**.
 
-## Scope decisions / deviations
-- **Endpoints live under `/api/v1/ml/`**, not `/api/v1/models/`. Every real model endpoint (predict, features,
-  evaluation, compare) and the frontend `ModelService` already point at `/ml/`. `/api/v1/models/` is a legacy
-  `ModelConfig` surface with no prediction endpoints. The AC's `/api/v1/models/...` path was from the stale plan.
-- **SHAP via TreeExplainer (tree models) + LinearExplainer (linear models) only.** Verified installable &
-  functional on Python 3.13 / numpy 2.3 / sklearn 1.7 (shap 0.52). Models with neither (KNN, SVM-rbf) fall back
-  to model-native / stored importance — exactly the roadmap's "fall back to native if blocked." **No LIME, no
-  KernelExplainer, no PDP/ICE/dependence plots** (post-beta per roadmap).
-- **Frontend renders from JSON with Recharts** (same as #79 ROC/PR/feature-importance charts). **No backend
-  image generation** (no matplotlib/plotly).
-- **SHAP computed at training time** on the held-out test set (sampled <=200 rows) from the **raw** estimator
-  (before #83 calibration wrapping), persisted to S3 like #79's `evaluation_data.json`. Keeps the <30s budget
-  off the request path; endpoints serve stored data instantly. All best-effort — never fails training.
-- **Per-prediction SHAP extends #83's `PredictionExplainerService`/`PredictionEnricher`** (prefer SHAP, fall
-  back to existing linear/tree/stored logic) — not a parallel system. Single-predict path only.
+## Acceptance Criteria
+- [ ] AC1 — "Continue to next stage" CTA on each stage completion, data carried forward
+- [ ] AC2 — Stage dependency guards redirect with a **helpful message** (not empty shells / silent /upload bounce)
+- [ ] AC3 — Progress indicator showing 8 stages + completion state (✅ exists; verify only)
+- [ ] AC4 — Back navigation restores prior stage state without losing work
+- [ ] AC5 — Stage completion validation before transition
+- [ ] AC6 — E2E test: complete journey upload → predict using only "Continue" CTAs
 
-## Steps (TDD: RED -> GREEN -> REFACTOR)
-1. **Deps** — add `shap>=0.46` to `apps/backend/pyproject.toml`; `uv lock`/`uv sync`; confirm import.
-2. **InterpretabilityService** (`app/services/interpretability_service.py`) — `select_explainer_type` (unwrap
-   calibrated/frozen/pipeline), `compute_global_shap` (mean |SHAP| per feature + sampled beeswarm points +
-   explainer_type; multiclass -> mean-abs across classes), `compute_instance_shap` (base + signed per-feature
-   contributions, class slice for multiclass), `top_drivers_text` (plain language), sampling helper. Never raises.
-   Tests: tree/linear/regression/multiclass/unsupported->None/sampling cap/JSON-safe serialization.
-3. **Training integration** — `AutoMLEngine`: compute global SHAP on `X_test_transformed` (sampled) from the
-   raw estimator before calibration; store on `AutoMLResult`. `model_storage.save_model`: `build_shap_payload`
-   -> S3 `models/{user_id}/{model_id}/shap_data.json`; set new `MLModel` fields. Best-effort + warning on failure.
-4. **MLModel fields** — `shap_values_path: Optional[str] = None`, `shap_explainer_type: Optional[str] = None`
-   (optional -> pre-#80 models degrade).
-5. **Schemas** — `schemas/evaluation.py`: `ShapSummaryResponse`, `FeatureImportanceResponse` (+ mirror to
-   `lib/types/evaluation.ts`). Add `"shap_tree"`/`"shap_linear"` to #83 `PredictionExplanation.method`.
-6. **Endpoints** in `model_training.py` (registered before `/{model_id}` catch-all):
-   `GET /{model_id}/feature-importance` (native + SHAP importance, ranked; partial when none; 404 foreign),
-   `GET /{model_id}/shap` (load shap_data.json; partial + message when absent/unsupported; never 500; 404 foreign).
-   Tests: `tests/test_api/test_interpretability.py`.
-7. **Per-prediction SHAP** — extend `PredictionExplainerService`/`PredictionEnricher` to prefer instance SHAP,
-   fall back to linear/tree/stored. Gated behind existing `include_explanations`, single-predict path.
-   Tests: extend `test_prediction_explainer_service.py`.
-8. **Frontend service/types** — `lib/types/evaluation.ts` mirror; `lib/services/model.ts` add `getShapSummary`,
-   `getFeatureImportance` (call `/ml/{id}/shap`, `/ml/{id}/feature-importance`).
-9. **Frontend viz** — `components/ShapSummaryChart.tsx` (Recharts bar of mean |SHAP|, FeatureImportanceChart
-   pattern); integrate SHAP global importance + plain-language drivers into the evaluate page Overview (native
-   fallback when partial). Predict page's "What drove this prediction" panel now SHAP-powered (minimal change).
-   Tests: `__tests__/components/ShapSummaryChart.test.tsx` + extend evaluate page test.
-10. **Docs** — update CLAUDE.md issue-history (#80 bullet); API docs if needed (Phase 12b).
+## Adapted Plan (frontend-only, TDD)
 
-## Acceptance Criteria -> coverage
-- [ ] Global feature importance for all beta algorithms -> Steps 6, 9 (native + SHAP; native fallback always available)
-- [ ] SHAP summary plot data (Tree/Linear explainers) -> Steps 2, 3, 6, 9
-- [ ] Individual prediction explanations (waterfall-style contributions) -> Step 7 + existing predict panel
-- [ ] Plain-language explanation of top drivers -> Step 2 `top_drivers_text` (+ #83 text)
-- [ ] Sampling strategy, SHAP stays fast (<30s) -> Step 2 sampling + Step 3 train-time precompute (off request path)
-- [ ] Endpoints `feature-importance` + `shap` -> Step 6 (under `/api/v1/ml/` — deviation noted above)
-- [ ] Frontend visualizations on evaluate page, same chart library (Recharts) -> Step 9
+### Step 1 — Stage validation + navigation utility
+- `apps/frontend/lib/utils/stageValidation.ts`: `validateStageCompletion(stage, stageData) -> {isValid, errors[]}`
+  (per-stage required-field rules); `getNextStage`, `getPreviousStage`, `buildStageUrl(stage, datasetId)`
+  (route-aware: only append id for parameterized routes), `getFirstIncompletePrerequisite(stage, completed)`.
+- Tests: `__tests__/lib/utils/stageValidation.test.ts`
+
+### Step 2 — WorkflowContext: navigation helpers + opt-out auto-advance + guard message
+- Add `goToNextStage()`, `goToPreviousStage()` (route-aware via `buildStageUrl`).
+- `completeStage(stage, data?, opts?: {autoAdvance?: boolean})` — default `true` (backward compatible);
+  fix its auto-advance push to use `buildStageUrl`.
+- Guard message: `guardMessage` state + `requestStageRedirect(targetStage, message)` + `clearGuardMessage()`.
+- Extend `WorkflowContextType` in `lib/types/workflow.ts`.
+- Tests: `__tests__/lib/contexts/WorkflowContext.navigation.test.tsx`
+
+### Step 3 — Shared StageNavigation component
+- `apps/frontend/components/workflow/StageNavigation.tsx`: Back (prev) + Continue (next stage name).
+  lucide-react (ArrowLeft/ArrowRight), existing Tailwind button styling. Validates via stageValidation;
+  shows errors; disabled/loading; final stage shows Finish/restart.
+- Tests: `__tests__/components/workflow/StageNavigation.test.tsx`
+
+### Step 4 — Stage guard hook + helpful-message banner
+- `apps/frontend/lib/hooks/useStageGuard.ts`: gate a page; on denial redirect to nearest incomplete
+  prerequisite with a helpful message (replaces silent `/upload` bounce). Respects `isHydrated`.
+- `apps/frontend/components/workflow/StageGuardBanner.tsx` rendered in layout (global), reads `guardMessage`.
+
+### Step 5 — Wire stage pages
+- Adopt `useStageGuard` + `StageNavigation` on: prepare, features, model (gaps); standardize evaluate, predict, deploy.
+- Set `autoAdvance:false` where an explicit Continue CTA is shown. Upload keeps its existing entry flow.
+
+### Step 6 — E2E journey test
+- `apps/frontend/e2e/workflows/stage-transitions.spec.ts`: upload → predict using only Continue CTAs;
+  assert gated direct-access shows the guard message. Use a trainable dataset (ai-test-datasets), not 6-row sample.csv.
+
+### Step 7 — Docs
+- Update CLAUDE.md #88 section (backend reuse, guard message, StageNavigation, route-aware nav).
+
+## Deviations from Traycer plan
+- No new backend model/service/routes/transition endpoint — #87 already delivers persistence + history.
+- WorkflowBar (AC3) already complete.
+- `completeStage` auto-advance made opt-out (flag) to enable explicit Continue CTAs without breaking callers.
+- Route-aware navigation added to fix latent `/{route}/{datasetId}` mis-routing.
