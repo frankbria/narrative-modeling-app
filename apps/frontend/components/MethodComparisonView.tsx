@@ -19,18 +19,29 @@ import {
   type MethodComparisonResponse
 } from '@/lib/services/featureSelection'
 
+/**
+ * Props for {@link MethodComparisonView}.
+ */
 export interface MethodComparisonViewProps {
+  /** Full multi-method comparison response to render. */
   comparison: MethodComparisonResponse
-  /** Optional callback fired after a successful CSV export (mainly for testing) */
+  /** Optional callback fired after a successful CSV export (mainly for testing). */
   onExportCSV?: () => void
 }
 
 /**
- * Escape a CSV field per RFC 4180.
- * Mirrors the pattern established in SelectedFeatureSet.tsx.
+ * Escape a single CSV field using RFC 4180-style quoting.
+ * Fields containing a comma, double-quote, or line break (LF or CR) are wrapped
+ * in double-quotes with embedded quotes doubled. Mirrors the pattern in
+ * SelectedFeatureSet.tsx.
  */
 function escapeCsvField(field: string): string {
-  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+  if (
+    field.includes(',') ||
+    field.includes('"') ||
+    field.includes('\n') ||
+    field.includes('\r')
+  ) {
     return `"${field.replace(/"/g, '""')}"`
   }
   return field

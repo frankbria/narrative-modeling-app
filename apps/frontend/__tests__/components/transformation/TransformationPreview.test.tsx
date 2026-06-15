@@ -579,6 +579,52 @@ describe('TransformationPreview Component', () => {
 
       blobSpy.mockRestore();
     });
+
+    it('quotes fields containing carriage returns', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          preview_result: {
+            original_data: [{ id: 1 }],
+            transformed_data: [{ id: 1, note: 'line1\r\nline2' }],
+            impact_stats: {
+              rows_affected: 0,
+              values_changed: 0,
+              columns_affected: [],
+              quality_score_before: 1,
+              quality_score_after: 1,
+            },
+            warnings: [],
+          },
+        }),
+      });
+
+      render(
+        <TransformationPreview
+          datasetId="dataset123"
+          operations={mockOperations}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('before-after-view')).toBeInTheDocument();
+      });
+
+      const OriginalBlob = global.Blob;
+      const blobSpy = jest
+        .spyOn(global, 'Blob')
+        .mockImplementation(
+          (parts, opts) => new OriginalBlob(parts as BlobPart[], opts)
+        );
+
+      fireEvent.click(screen.getByText('Export').closest('button')!);
+
+      const csv = (blobSpy.mock.calls[0][0] as string[]).join('');
+      expect(csv).toContain('"line1\r\nline2"');
+
+      blobSpy.mockRestore();
+    });
   });
 
   describe('API Integration', () => {

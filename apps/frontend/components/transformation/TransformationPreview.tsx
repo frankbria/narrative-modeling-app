@@ -219,7 +219,8 @@ export function TransformationPreview({
             if (
               field.includes(',') ||
               field.includes('"') ||
-              field.includes('\n')
+              field.includes('\n') ||
+              field.includes('\r')
             ) {
               return `"${field.replace(/"/g, '""')}"`;
             }
