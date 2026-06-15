@@ -76,3 +76,14 @@ memory/claude-flow-data.json
 .claude/logs/
 .swarm/
 .claude-flow/
+
+# Local demo / scratch artifacts (per-issue demo docs, screenshots, scratch
+# notes). These are generated locally and can embed environment-specific data
+# such as presigned S3 URLs with credentials, so they are not committed by
+# default. Scoped to the repo-root tasks/ dir only (apps/backend/tasks/ is
+# unaffected). Already-tracked files are re-included below; force an
+# intentional commit of a new artifact with `git add -f`.
+/tasks/*
+!/tasks/issue-76-demo.md
+!/tasks/lessons.md
+!/tasks/todo.md
