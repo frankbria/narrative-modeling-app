@@ -35,12 +35,14 @@ from app.services.rate_limit import RateLimitResult, RateLimitStore
 logger = logging.getLogger(__name__)
 
 _API_V1_PREFIX = "/api/v1"
-# Routes where ``X-API-Key`` is the actual authentication mechanism (the production
-# model-serving surface — see app/api/routes/production.py, mounted under
-# /api/v1/production). The per-key bucket is honoured ONLY here; on every other
-# /api/v1 route the header is meaningless, so it must not let a caller swap into a
-# more favourable key budget and escape their per-user/IP limit.
-_APIKEY_AUTH_PREFIX = "/api/v1/production"
+# Routes where ``X-API-Key`` is the actual authentication mechanism: the production
+# model-serving endpoints (predict / info) that depend on ``verify_api_key`` — see
+# app/api/routes/production.py, mounted at /api/v1/production/v1/models/{id}/... .
+# NOTE: the sibling /api/v1/production/api-keys CRUD routes are *bearer*-authed, so
+# the prefix is deliberately the /v1/models segment, not the whole /production tree.
+# The per-key bucket is honoured ONLY under this prefix; everywhere else the header
+# is ignored so it can't be used to escape the per-user/IP budget.
+_APIKEY_AUTH_PREFIX = "/api/v1/production/v1/models"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

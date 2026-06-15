@@ -32,6 +32,11 @@ def _build_app(store, **mw_kwargs) -> FastAPI:
     async def ping():
         return {"message": "pong"}
 
+    # A bearer-authed production management route (NOT an X-API-Key route).
+    @app.get("/api/v1/production/api-keys")
+    async def list_keys():
+        return {"keys": []}
+
     @app.get("/healthz")
     async def healthz():
         return {"ok": True}
@@ -238,6 +243,19 @@ class TestRateLimitMiddleware:
         assert client.get("/api/v1/ping", headers=headers).status_code == 200
         # 3rd request blocked by the DEFAULT budget, proving the key path was skipped.
         assert client.get("/api/v1/ping", headers=headers).status_code == 429
+
+    def test_api_key_header_ignored_on_bearer_management_route(self):
+        # /api/v1/production/api-keys is bearer-authed, not X-API-Key — a key here
+        # must not opt into a key bucket. The default budget applies (no DB touched).
+        app = _build_app(
+            InMemoryRateLimitStore(), default_requests=2, default_window_seconds=60
+        )
+        client = TestClient(app)
+        headers = {"X-API-Key": "sk_live_whatever"}
+        path = "/api/v1/production/api-keys"
+        assert client.get(path, headers=headers).status_code == 200
+        assert client.get(path, headers=headers).status_code == 200
+        assert client.get(path, headers=headers).status_code == 429
 
     def test_failing_store_fails_open(self):
         class _BrokenStore:
