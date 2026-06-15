@@ -47,6 +47,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         default_requests: Optional[int] = None,
         default_window_seconds: Optional[int] = None,
         apikey_window_seconds: Optional[int] = None,
+        trust_forwarded_for: Optional[bool] = None,
     ) -> None:
         super().__init__(app)
         # ``store`` may be injected (tests) or resolved from ``app.state`` per request
@@ -68,6 +69,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             settings.RATE_LIMIT_APIKEY_WINDOW_SECONDS
             if apikey_window_seconds is None
             else apikey_window_seconds
+        )
+        self._trust_forwarded_for = (
+            settings.RATE_LIMIT_TRUST_FORWARDED_FOR
+            if trust_forwarded_for is None
+            else trust_forwarded_for
         )
 
     def _resolve_store(self, request: Request) -> Optional[RateLimitStore]:
@@ -126,6 +132,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._default_window,
         )
 
+    def _client_ip(self, request: Request) -> str:
+        # Only honour X-Forwarded-For when explicitly trusted (app behind a proxy
+        # that overwrites it); otherwise it is attacker-controlled and lets an
+        # anonymous caller forge a fresh bucket per request. See settings.
+        if self._trust_forwarded_for:
+            forwarded = request.headers.get("x-forwarded-for")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     async def _identity_from_api_key(
         self, raw_key: str
     ) -> Optional[Tuple[str, int, int]]:
@@ -156,14 +172,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await get_current_user_id_optional(authorization=auth_header)
         except Exception:  # pragma: no cover - optional auth never raises to caller
             return None
-
-    @staticmethod
-    def _client_ip(request: Request) -> str:
-        # Honour the first hop in X-Forwarded-For when present (behind nginx/proxy).
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
 
     @staticmethod
     def _apply_headers(response: Response, result: RateLimitResult) -> None:

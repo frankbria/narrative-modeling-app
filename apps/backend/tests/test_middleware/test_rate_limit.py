@@ -172,6 +172,60 @@ class TestRateLimitMiddleware:
         for _ in range(5):
             assert client.get("/api/v1/ping").status_code == 200
 
+    def test_spoofed_forwarded_for_ignored_when_untrusted(self):
+        # Default (untrusted) — a forged X-Forwarded-For must NOT mint fresh buckets;
+        # all requests share the real socket peer, so the limit still bites.
+        app = _build_app(
+            InMemoryRateLimitStore(),
+            default_requests=2,
+            default_window_seconds=60,
+            trust_forwarded_for=False,
+        )
+        client = TestClient(app)
+        assert (
+            client.get(
+                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/api/v1/ping", headers={"X-Forwarded-For": "2.2.2.2"}
+            ).status_code
+            == 200
+        )
+        blocked = client.get("/api/v1/ping", headers={"X-Forwarded-For": "3.3.3.3"})
+        assert blocked.status_code == 429
+
+    def test_forwarded_for_honored_when_trusted(self):
+        # Behind a trusted proxy — each distinct forwarded client gets its own bucket.
+        app = _build_app(
+            InMemoryRateLimitStore(),
+            default_requests=1,
+            default_window_seconds=60,
+            trust_forwarded_for=True,
+        )
+        client = TestClient(app)
+        assert (
+            client.get(
+                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
+            ).status_code
+            == 200
+        )
+        # Same client → blocked; different client → still allowed.
+        assert (
+            client.get(
+                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
+            ).status_code
+            == 429
+        )
+        assert (
+            client.get(
+                "/api/v1/ping", headers={"X-Forwarded-For": "9.9.9.9"}
+            ).status_code
+            == 200
+        )
+
     def test_failing_store_fails_open(self):
         class _BrokenStore:
             async def hit(self, key, limit, window_seconds):

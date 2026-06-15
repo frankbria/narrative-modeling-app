@@ -136,6 +136,14 @@ class Settings(BaseModel):
     RATE_LIMIT_APIKEY_WINDOW_SECONDS: int = int(
         os.getenv("RATE_LIMIT_APIKEY_WINDOW_SECONDS", "3600")
     )
+    # Whether to trust the client IP from the X-Forwarded-For header. Default OFF:
+    # an unauthenticated caller can forge XFF to land in a fresh IP bucket on every
+    # request, defeating the anonymous-flood limit. Enable ONLY when the app sits
+    # behind a trusted reverse proxy (e.g. nginx) that overwrites XFF with the real
+    # peer address. When off, the limiter uses the direct socket peer.
+    RATE_LIMIT_TRUST_FORWARDED_FOR: bool = (
+        os.getenv("RATE_LIMIT_TRUST_FORWARDED_FOR", "false").strip().lower() == "true"
+    )
 
     # CORS settings
     @property
