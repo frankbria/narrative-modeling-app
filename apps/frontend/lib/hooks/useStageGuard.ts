@@ -13,7 +13,7 @@
  * and would wrongly kick a legitimate user back to the start.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import {
@@ -29,10 +29,18 @@ export interface UseStageGuardResult {
 export function useStageGuard(stage: WorkflowStage): UseStageGuardResult {
   const { state, isHydrated, canAccessStage, requestStageRedirect } = useWorkflow();
   const accessible = canAccessStage(stage);
+  // Redirect at most once per mount: once we navigate away the page unmounts,
+  // but this also prevents a redundant second push if the effect re-runs.
+  const redirectedRef = useRef(false);
 
   useEffect(() => {
     if (!isHydrated) return;
-    if (accessible) return;
+    if (accessible) {
+      redirectedRef.current = false;
+      return;
+    }
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
 
     const target =
       getFirstIncompletePrerequisite(stage, state.completedStages) ??

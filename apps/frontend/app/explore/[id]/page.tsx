@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, ArrowLeft, BarChart3, Database, Brain, CheckCircle2, TrendingUp } from 'lucide-react'
 import { useWorkflow } from '@/lib/contexts/WorkflowContext'
 import { WorkflowStage } from '@/lib/types/workflow'
+import { useStageGuard } from '@/lib/hooks/useStageGuard'
 
 // Import our new components
 import { DataPreviewTable } from '@/components/DataPreviewTable'
@@ -63,7 +64,10 @@ export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
   useSession()
-  const { state, completeStage, canAccessStage, loadWorkflow, isHydrated } = useWorkflow()
+  const { state, completeStage, loadWorkflow } = useWorkflow()
+  // Guard: redirect (with a message) if profiling isn't accessible yet. `ready`
+  // is true only once hydration is done and the stage is accessible.
+  const { ready } = useStageGuard(WorkflowStage.DATA_PROFILING)
   const [dataset, setDataset] = useState<ProcessedDataset | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -72,15 +76,9 @@ export default function DatasetAnalysisPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
   useEffect(() => {
-    // Wait for workflow state to hydrate before gating — checking too early
-    // always sees an empty state and wrongly redirects to /upload
-    if (!isHydrated) {
-      return
-    }
-
-    // Check workflow access
-    if (!canAccessStage(WorkflowStage.DATA_PROFILING)) {
-      router.push('/upload')
+    // Wait until the stage is hydrated and accessible (useStageGuard handles the
+    // redirect-with-message when it isn't).
+    if (!ready) {
       return
     }
 
@@ -161,7 +159,7 @@ export default function DatasetAnalysisPage() {
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.id, apiUrl, isHydrated])
+  }, [params?.id, apiUrl, ready])
 
   const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
     try {
@@ -300,13 +298,15 @@ export default function DatasetAnalysisPage() {
           {dataset.is_processed && !state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
             <Button 
               onClick={() => {
+                // autoAdvance: complete profiling AND move straight to the next
+                // stage in one click, matching the button label.
                 completeStage(WorkflowStage.DATA_PROFILING, {
                   datasetId: dataset.id,
                   schema: dataset.schema,
                   statistics: dataset.statistics,
                   quality: dataset.quality_report,
                   timestamp: new Date().toISOString()
-                })
+                }, { autoAdvance: true })
               }}
               className="bg-green-600 hover:bg-green-700 text-white"
             >

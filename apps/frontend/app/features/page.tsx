@@ -30,12 +30,17 @@ export default function FeaturesPage() {
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
   // Guard: redirect (with a message) if this stage is not accessible yet.
-  useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
+  const { ready } = useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
 
   useEffect(() => {
+    // Wait until the stage is accessible AND the dataset id has hydrated — on a
+    // direct /features load the provider sets datasetId after this page mounts,
+    // so loading too early would fetch /datasets/undefined/features once and
+    // never retry.
+    if (!ready || !state.datasetId) return;
     loadFeatures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, state.datasetId]);
 
   const loadFeatures = async () => {
     try {

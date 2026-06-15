@@ -245,9 +245,8 @@ test.describe.serial('Seamless stage transitions (#88)', () => {
     await page.getByTestId('next-step-button').click();
     await expect(page).toHaveURL(new RegExp(`/explore/${DATASET_ID}`), { timeout: 15000 });
 
-    // --- Stage 2: Data profiling ---
+    // --- Stage 2: Data profiling (one-click "Complete & Continue") ---
     await page.getByRole('button', { name: /Complete & Continue to Data Preparation/i }).click();
-    await page.getByRole('button', { name: /^Continue to Data Preparation$/i }).click();
     await expect(page).toHaveURL(/\/prepare$/, { timeout: 15000 });
 
     // --- Stage 3: Data preparation (optional → Continue advances) ---
