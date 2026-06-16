@@ -163,6 +163,24 @@ describe('DeployPage', () => {
       expect(screen.queryByText('API Key')).not.toBeInTheDocument();
     });
 
+    it('returns to the idle state when deployment fails (non-2xx)', async () => {
+      mockFetch.mockReset();
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(notDeployedModel) })
+        .mockResolvedValueOnce({ ok: false, status: 400, statusText: 'Bad Request', json: () => Promise.resolve({}) });
+
+      render(<DeployPage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: /deploy model/i }));
+
+      // Not stuck on the "Deploying Your Model" spinner; back to the deploy CTA.
+      expect(
+        await screen.findByRole('button', { name: /deploy model/i })
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Deploying Your Model')).not.toBeInTheDocument();
+      expect(mockCompleteStage).not.toHaveBeenCalled();
+    });
+
     it('completes the stage with model_id and deployment_endpoint', async () => {
       render(<DeployPage />);
 

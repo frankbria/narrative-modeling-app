@@ -95,6 +95,10 @@ export default function DeployPage() {
           apiEndpoint: data.deployment_endpoint,
           timestamp: new Date().toISOString()
         });
+      } else {
+        // A 4xx/5xx does not throw; without this the spinner would hang forever.
+        console.error(`Failed to deploy model: ${response.status} ${response.statusText}`);
+        setDeploymentStatus('idle');
       }
     } catch (error) {
       console.error('Failed to deploy model:', error);
@@ -219,7 +223,9 @@ export default function DeployPage() {
                     {deployment.deployment_endpoint}
                   </code>
                   <button
+                    type="button"
                     onClick={() => copyToClipboard(deployment.deployment_endpoint!)}
+                    aria-label="Copy API endpoint"
                     className="p-2 hover:bg-gray-200 rounded"
                   >
                     <Copy className="w-5 h-5" />
