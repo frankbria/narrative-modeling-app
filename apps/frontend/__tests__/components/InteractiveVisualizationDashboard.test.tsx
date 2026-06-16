@@ -277,6 +277,27 @@ describe('InteractiveVisualizationDashboard (real data — issue #170)', () => {
     expect(createObjectURL).not.toHaveBeenCalled()
   })
 
+  it('does not export stale data after a failed refetch', async () => {
+    const user = userEvent.setup()
+    const createObjectURL = jest.fn(() => 'blob:mock')
+    global.URL.createObjectURL = createObjectURL
+    // First fetch succeeds, a later refetch (filter/refresh) fails.
+    mockGetBoxPlot
+      .mockResolvedValueOnce({ min: 1, q1: 10, median: 42, q3: 70, max: 99, outliers: [] })
+      .mockRejectedValueOnce(new Error('boom'))
+
+    renderDashboard()
+    await user.click(screen.getByText('set-boxplot'))
+    await waitFor(() => expect(mockGetBoxPlot).toHaveBeenCalledTimes(1))
+
+    // Trigger a refetch that fails; the cached boxplot data must be cleared.
+    await user.click(screen.getByText('do-refresh'))
+    await waitFor(() => expect(mockGetBoxPlot).toHaveBeenCalledTimes(2))
+
+    await user.click(screen.getByText('do-export'))
+    expect(createObjectURL).not.toHaveBeenCalled()
+  })
+
   it('exports the real fetched chart data', async () => {
     const user = userEvent.setup()
     const createObjectURL = jest.fn(() => 'blob:mock')

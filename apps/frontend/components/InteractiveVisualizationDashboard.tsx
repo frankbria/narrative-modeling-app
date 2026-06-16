@@ -120,6 +120,11 @@ export function InteractiveVisualizationDashboard({
     let cancelled = false
     setLoading(true)
     setError(null)
+    // Clear the active chart's previous data up front so an in-flight refetch or
+    // a failed request can't be exported as the current selection's data.
+    if (activeChart === 'boxplot') setBoxplotData(null)
+    else if (activeChart === 'scatter') setScatterData(null)
+    else setLineData(null)
 
     const run = async () => {
       try {
@@ -141,6 +146,8 @@ export function InteractiveVisualizationDashboard({
           if (!cancelled) setLineData(result)
         }
       } catch (err) {
+        // Data was cleared above and stays cleared on failure, so export sees no
+        // stale data for the current chart.
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load chart data')
         }
