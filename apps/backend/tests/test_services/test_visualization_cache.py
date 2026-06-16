@@ -169,11 +169,11 @@ class TestCacheVisualization:
         assert result is not None
 
 
-def _sample_df():
-    """A small numeric DataFrame, mimicking get_dataframe_from_s3's return."""
-    import pandas as pd
+def _csv_bytes():
+    """A small numeric CSV as BytesIO, mimicking get_file_from_s3's return."""
+    import io
 
-    return pd.DataFrame({"value": list(range(1, 11))})
+    return io.BytesIO(b"value\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
 
 
 class TestHistogramBinCountCaching:
@@ -192,7 +192,7 @@ class TestHistogramBinCountCaching:
             "app.services.visualization_cache.get_cached_visualization",
             new=AsyncMock(return_value=cached),
         ) as mock_get_cached, patch(
-            "app.services.visualization_cache.get_dataframe_from_s3"
+            "app.services.visualization_cache.get_file_from_s3"
         ) as mock_s3, patch(
             "app.services.visualization_cache.cache_visualization"
         ) as mock_cache:
@@ -218,8 +218,8 @@ class TestHistogramBinCountCaching:
             "app.services.visualization_cache.UserData.get",
             new=AsyncMock(return_value=mock_dataset),
         ), patch(
-            "app.services.visualization_cache.get_dataframe_from_s3",
-            new=AsyncMock(return_value=_sample_df()),
+            "app.services.visualization_cache.get_file_from_s3",
+            return_value=_csv_bytes(),
         ), patch(
             "app.services.visualization_cache.cache_visualization"
         ) as mock_cache:
@@ -241,8 +241,8 @@ class TestHistogramBinCountCaching:
             "app.services.visualization_cache.UserData.get",
             new=AsyncMock(return_value=mock_dataset),
         ), patch(
-            "app.services.visualization_cache.get_dataframe_from_s3",
-            new=AsyncMock(return_value=_sample_df()),
+            "app.services.visualization_cache.get_file_from_s3",
+            return_value=_csv_bytes(),
         ):
             result = await generate_and_cache_histogram(str(mock_dataset.id), "value", 20)
 

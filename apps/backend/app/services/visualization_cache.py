@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 import numpy as np
+import pandas as pd
 from app.models.visualization_cache import (
     VisualizationCache,
     HistogramData,
@@ -9,20 +10,13 @@ from app.models.visualization_cache import (
     CorrelationMatrixData,
 )
 from app.models.user_data import UserData
-from app.services.transformation_engine.data_utils import get_dataframe_from_s3
+from app.utils.s3 import get_file_from_s3
 from app.services.redis_cache import cache_service
 
 logger = logging.getLogger(__name__)
 
 # Only this bin count is cacheable — the cache key does not capture num_bins.
 DEFAULT_HISTOGRAM_BINS = 50
-
-
-def _current_data_source(dataset: UserData) -> str:
-    """The dataset's current data file: the transformed file when present
-    (``file_path``), else the original upload (``s3_url``). Mirrors the loading
-    convention in transformations.py so visualizations reflect the latest data."""
-    return dataset.file_path or dataset.s3_url
 
 
 async def get_cached_visualization(
@@ -147,7 +141,7 @@ async def generate_and_cache_histogram(
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = await get_dataframe_from_s3(_current_data_source(dataset))
+    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
 
     # Calculate histogram
     counts, bin_edges = np.histogram(df[column_name].dropna(), bins=num_bins)
@@ -179,7 +173,7 @@ async def generate_and_cache_boxplot(
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = await get_dataframe_from_s3(_current_data_source(dataset))
+    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
 
     # Calculate boxplot statistics
     q1 = df[column_name].quantile(0.25)
@@ -221,7 +215,7 @@ async def generate_and_cache_correlation_matrix(dataset_id: str) -> Dict[str, An
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = await get_dataframe_from_s3(_current_data_source(dataset))
+    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
 
     # Select numeric columns
     numeric_df = df.select_dtypes(include=[np.number])
