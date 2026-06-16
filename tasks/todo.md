@@ -1,55 +1,42 @@
-# Issue #157 — Stabilize flaky performance smoke tests (thresholds + timing)
+# Issue #170 — InteractiveVisualizationDashboard renders sample data instead of real values
 
-## Root cause
-Wall-clock timing assertions (`Date.now()` deltas around page loads / API calls) live
-inside the **blocking `@smoke` gate** (`smoke-tests.yml`, runs on every PR). On shared
-2-core GitHub runners those measurements are contention-sensitive, so identical code
-passes and fails across runs. Functional smoke value (page loads, prediction works) is
-worth keeping in the gate; the *timing* assertions are not.
+**Type:** bug, P1-High, frontend, phase-4
+**File (primary):** `apps/frontend/components/InteractiveVisualizationDashboard.tsx`
+**Plan source:** CodeRabbit comment (adapted)
 
-## Decisions (confirmed with user)
-1. **Split, don't retune** — re-tag timing tests `@perf`, remove `@smoke`.
-2. **Dedicated non-blocking perf CI job** — new `perf-tests.yml`, records numbers, never blocks.
-3. **Single-prediction SLO target = 1000ms** (was a 2000ms stability margin; ~180ms local).
+## Problem
+The dashboard generates chart payloads with `Math.random()` (`sampleChartData` memo ~lines 62–116 for scatter/line/histogram) and a static `sampleBoxPlotData` constant (~188–195). Only the correlation tab uses real backend data. This shows fabricated analytics to users.
 
-## Plan
+## Acceptance Criteria
+- [ ] No `Math.random()`/static placeholder data rendered as analytics in the visualizations tab
+- [ ] Charts reflect the selected dataset's actual values, or show an explicit empty/unsupported state
 
-### 1. Introduce a `@perf` tag (test tagging)
-- `e2e/workflows/performance.spec.ts`:
-  - **Dashboard load test** (~line 33): remove `test.fixme` → `test`, swap `@smoke` → `@perf`,
-    calibrate threshold to a CI-realistic **5000ms** (documented as a TTI ceiling for a
-    2-core runner, not a tuned target). Keep the functional assert.
-  - **Single-prediction test** (~line 182): swap `@smoke` → `@perf`, set
-    `SINGLE_PREDICTION_BUDGET_MS = 1000` with a comment documenting the SLO rationale.
-    Functional prediction smoke coverage already exists in `predict.spec.ts:136 @smoke`,
-    so the blocking gate loses no functional coverage.
+## Adapted Plan (TDD)
 
-### 2. Transform contention (item 3)
-- The two `transform.spec.ts @smoke` tests already carry `test.slow()` (landed in #156).
-  Keep them in `@smoke` (they assert *functional* transformation, not timing); `test.slow()`
-  triples their per-test timeout so 2-core worker contention no longer times them out.
-- No worker-count change needed: removing the two heavy `performance.spec.ts` timing tests
-  from `@smoke` (training + prediction were the core-pegging culprits per the issue) is what
-  actually relieves the contention that flaked the transform specs.
+### Step 1 — Histogram via HistogramChart fetch mode
+- Render `<HistogramChart datasetId={datasetId} column={firstSelectedNumericColumn} />` instead of sample `data`. It handles its own loading/error/empty.
 
-### 3. Dedicated non-blocking perf CI job
-- New `.github/workflows/perf-tests.yml`: mirrors `smoke-tests.yml` infra (Mongo + MinIO +
-  backend + frontend), runs `@perf` on `chromium-full`, **`continue-on-error: true`** on the
-  test step (records numbers, never fails the PR). Uploads the perf-results artifact.
-- Add `test:e2e:perf` script to `apps/frontend/package.json` (`--grep @perf --project=chromium-full`).
+### Step 2 — Boxplot, Scatter, Line via real services + local fetch state
+- Per-chart local state (`data`/`loading`/`error`) + a `useEffect` fetching when the chart is active and required columns are selected:
+  - boxplot → `getBoxPlot(datasetId, column, token)`
+  - scatter → `getScatterPlot(datasetId, xCol, yCol, filters, token)` (first 2 numeric cols)
+  - line → `getLineChart(datasetId, xCol, yCols, filters, token)` (first col x, rest y)
+- Use `getAuthToken()` (HistogramChart pattern). Guard against stale responses (cancel flag in effect cleanup).
+- **Deviation from CodeRabbit plan:** uniform local-state fetch for boxplot too (not the `useVisualizations` hook) so all three direct-service charts follow one consistent pattern, instead of mixing an otherwise-unused hook in for a single chart type.
 
-### 4. Docs sync
-- `e2e/README.md`: document the `@perf` tag, the non-blocking perf job, and that perf
-  assertions are no longer in the blocking smoke gate. Update smoke listing.
-- `CLAUDE.md`: add an issue #157 note under the testing section.
+### Step 3 — Empty / unsupported state guards
+- In `renderChart()`, guard each case: prompt to select columns when none; unsupported message when selected columns aren't numeric; empty state when fetch returns no data.
 
-## Out of scope (YAGNI)
-- No change to `playwright.config.ts` worker counts.
-- No new PerformanceMonitor capabilities. No backend changes.
+### Step 4 — Real-data export
+- `handleExportChart` serializes the active chart's fetched data (boxplot/scatter/line local state, histogram fetched data, correlation = `statistics.correlation_matrix`); friendly message when nothing to export.
 
-## Verification
-- `npx playwright test --grep @smoke --project=chromium-smoke --list` → the two perf tests
-  are **gone** from the smoke set; transform/predict smokes remain.
-- `npx playwright test --grep @perf --project=chromium-full --list` → both perf tests collected.
-- `npm run type-check` (tsc) green.
-- Demo (Phase 11): smoke grep list before/after + the perf grep list as outcome evidence.
+### Step 5 — Remove all sample-data code
+- Delete `sampleChartData` memo and `sampleBoxPlotData` constant; remove now-unused imports/vars; replace simulated `handleRefreshChart` setTimeout with a real refetch trigger.
+
+### Step 6 — Tests
+- `__tests__/components/InteractiveVisualizationDashboard.test.tsx`: mock visualization services; assert real fetches drive each chart; assert no random data; assert empty/unsupported states; assert export uses real data.
+- Run `npm test`, `npm run type-check`, eslint.
+
+## Notes / risks
+- `getAuthToken()` is a placeholder token format (app-wide, out of scope).
+- Dashboard `Column.type` vocabulary is `'numeric'|'categorical'|'datetime'|'text'` (distinct from `NUMERIC_DATA_TYPES` in api.ts). Gate numeric charts on `type === 'numeric'`.

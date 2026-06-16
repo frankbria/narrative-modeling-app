@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,7 +14,14 @@ import { BoxplotChart } from './BoxplotChart'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { ScatterPlotChart, ScatterPlotData } from './ScatterPlotChart'
 import { LineChart, LineChartData } from './LineChart'
-import { HistogramData, BoxPlotData } from '@/lib/services/visualization'
+import {
+  BoxPlotData,
+  getBoxPlot,
+  getScatterPlot,
+  getLineChart,
+  getHistogram,
+} from '@/lib/services/visualization'
+import { getAuthToken } from '@/lib/auth-helpers'
 import { StatItem } from '@/lib/utils'
 import { DatasetStatistics, NUMERIC_DATA_TYPES } from '@/lib/types/api'
 
@@ -36,11 +43,21 @@ export function InteractiveVisualizationDashboard({
   columns,
   statistics
 }: InteractiveVisualizationDashboardProps) {
+  const [activeTab, setActiveTab] = useState('configure')
   const [activeChart, setActiveChart] = useState('histogram')
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [filters, setFilters] = useState<ChartFilter[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Real chart data fetched from the backend (issue #170). Histogram fetches
+  // itself via HistogramChart's datasetId/column mode; correlation is derived
+  // from the `statistics` prop, so only these three need local state here.
+  const [boxplotData, setBoxplotData] = useState<BoxPlotData | null>(null)
+  const [scatterData, setScatterData] = useState<ScatterPlotData | null>(null)
+  const [lineData, setLineData] = useState<LineChartData | null>(null)
+  // Bumping this re-runs the fetch effect and remounts HistogramChart.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Chart configuration state
   const [showGrid, setShowGrid] = useState(true)
@@ -51,6 +68,11 @@ export function InteractiveVisualizationDashboard({
   const categoricalColumns = columns.filter(col => col.type === 'categorical')
   const datetimeColumns = columns.filter(col => col.type === 'datetime')
 
+  // The numeric columns the user has currently selected, in selection order.
+  const selectedNumeric = selectedColumns.filter(name =>
+    numericColumns.some(col => col.name === name)
+  )
+
   // Auto-select first numeric column if none selected
   useEffect(() => {
     if (selectedColumns.length === 0 && numericColumns.length > 0) {
@@ -58,62 +80,73 @@ export function InteractiveVisualizationDashboard({
     }
   }, [columns, selectedColumns.length, numericColumns])
 
-  // Generate sample data based on chart type and columns
-  const sampleChartData = useMemo(() => {
-    if (!selectedColumns.length) return null
-
-    switch (activeChart) {
-      case 'scatter':
-        if (selectedColumns.length >= 2) {
-          const data: ScatterPlotData = {
-            data: Array.from({ length: 100 }, (_, i) => ({
-              x: Math.random() * 100,
-              y: Math.random() * 100 + (Math.random() * 50 - 25),
-              label: `Point ${i + 1}`,
-              category: i % 3 === 0 ? 'A' : i % 3 === 1 ? 'B' : 'C'
-            })),
-            xLabel: selectedColumns[0],
-            yLabel: selectedColumns[1],
-            title: `${selectedColumns[0]} vs ${selectedColumns[1]}`
-          }
-          return data
-        }
-        break
-
-      case 'line':
-        const lineData: LineChartData = {
-          data: Array.from({ length: 50 }, (_, i) => {
-            const item: { x: string | number; [key: string]: string | number } = { x: i }
-            selectedColumns.forEach((col, index) => {
-              item[col] = Math.sin(i * 0.1 + index) * 50 + 50 + Math.random() * 10
-            })
-            return item
-          }),
-          lines: selectedColumns.map((col, index) => ({
-            dataKey: col,
-            label: col,
-            color: ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'][index % 4]
-          })),
-          xLabel: 'Time',
-          yLabel: 'Value',
-          title: `Time Series: ${selectedColumns.join(', ')}`,
-          showBrush: true
-        }
-        return lineData
-
-      case 'histogram':
-        return {
-          bins: Array.from({ length: binCount }, () => Math.floor(Math.random() * 50)),
-          binEdges: Array.from({ length: binCount + 1 }, (_, i) => i * 2),
-          counts: Array.from({ length: binCount }, () => Math.floor(Math.random() * 50)),
-          min: 0,
-          max: binCount * 2
-        }
-
-      default:
-        return null
+  // Fetch real data for the active chart from the backend. Histogram and
+  // correlation are handled elsewhere (HistogramChart fetch mode / statistics
+  // prop), so this only drives boxplot, scatter, and line.
+  useEffect(() => {
+    if (activeChart !== 'boxplot' && activeChart !== 'scatter' && activeChart !== 'line') {
+      setLoading(false)
+      setError(null)
+      return
     }
-  }, [activeChart, selectedColumns, binCount])
+
+    const numericNames = new Set(
+      columns.filter(col => col.type === 'numeric').map(col => col.name)
+    )
+    const numericSelected = selectedColumns.filter(name => numericNames.has(name))
+
+    // Not enough numeric columns selected — renderChart() shows guidance and we
+    // never fabricate data.
+    const required = activeChart === 'boxplot' ? 1 : 2
+    if (!datasetId || numericSelected.length < required) {
+      setLoading(false)
+      setError(null)
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    const run = async () => {
+      try {
+        const token = (await getAuthToken()) ?? undefined
+        if (activeChart === 'boxplot') {
+          const result = await getBoxPlot(datasetId, numericSelected[0], token)
+          if (!cancelled) setBoxplotData(result)
+        } else if (activeChart === 'scatter') {
+          const result = await getScatterPlot(
+            datasetId,
+            numericSelected[0],
+            numericSelected[1],
+            filters,
+            token
+          )
+          if (!cancelled) setScatterData(result)
+        } else {
+          const result = await getLineChart(
+            datasetId,
+            numericSelected[0],
+            numericSelected.slice(1),
+            filters,
+            token
+          )
+          if (!cancelled) setLineData(result)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load chart data')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [activeChart, datasetId, selectedColumns, filters, columns, refreshKey])
 
   const handleColumnToggle = (columnName: string) => {
     setSelectedColumns(prev => {
@@ -132,14 +165,35 @@ export function InteractiveVisualizationDashboard({
 
   const handleExportChart = async () => {
     try {
-      // In a real implementation, this would export the chart as PNG/PDF
-      const dataStr = JSON.stringify(sampleChartData, null, 2)
+      // Export the real data backing the active chart. Histogram fetches itself
+      // inside HistogramChart, so re-fetch the selected column's data on demand.
+      let exportData: unknown = null
+      if (activeChart === 'correlation') {
+        exportData = statistics?.correlation_matrix ?? null
+      } else if (activeChart === 'boxplot') {
+        exportData = boxplotData
+      } else if (activeChart === 'scatter') {
+        exportData = scatterData
+      } else if (activeChart === 'line') {
+        exportData = lineData
+      } else if (activeChart === 'histogram' && datasetId && selectedNumeric.length > 0) {
+        const token = (await getAuthToken()) ?? undefined
+        exportData = await getHistogram(datasetId, selectedNumeric[0], binCount, token)
+      }
+
+      if (exportData == null) {
+        setError('No chart data available to export yet')
+        return
+      }
+
+      const dataStr = JSON.stringify(exportData, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
       const url = URL.createObjectURL(dataBlob)
       const link = document.createElement('a')
       link.href = url
       link.download = `${activeChart}_${datasetId}.json`
       link.click()
+      URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Export failed:', err)
       setError(err instanceof Error ? err.message : 'Export failed')
@@ -147,13 +201,8 @@ export function InteractiveVisualizationDashboard({
   }
 
   const handleRefreshChart = () => {
-    setLoading(true)
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false)
-      // Force re-generation of sample data
-      setSelectedColumns([...selectedColumns])
-    }, 1000)
+    setError(null)
+    setRefreshKey(key => key + 1)
   }
 
   const getChartTypeRecommendations = () => {
@@ -181,17 +230,6 @@ export function InteractiveVisualizationDashboard({
     }
 
     return recommendations
-  }
-
-  // Sample box plot data for the selected column (illustrative values until a
-  // real distribution endpoint is wired up).
-  const sampleBoxPlotData: BoxPlotData = {
-    min: 0,
-    q1: 25,
-    median: 50,
-    q3: 75,
-    max: 100,
-    outliers: []
   }
 
   // Derive StatItem entries for the correlation heatmap. Prefer the provided
@@ -250,20 +288,53 @@ export function InteractiveVisualizationDashboard({
       )
     }
 
-    const data = sampleChartData
+    const emptyState = (message: string) => (
+      <div className="flex items-center justify-center h-96 text-muted-foreground">
+        <div className="text-center">
+          <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>{message}</p>
+        </div>
+      </div>
+    )
 
     switch (activeChart) {
       case 'histogram':
-        return data ? <HistogramChart data={data as HistogramData} /> : null
+        if (selectedNumeric.length < 1) {
+          return emptyState('Select a numeric column to view its histogram')
+        }
+        // HistogramChart fetches its own data and renders loading/empty/error
+        // states internally. `key` forces a refetch when the user hits refresh.
+        return (
+          <HistogramChart
+            key={`${selectedNumeric[0]}-${refreshKey}`}
+            datasetId={datasetId}
+            column={selectedNumeric[0]}
+          />
+        )
 
       case 'scatter':
-        return data ? <ScatterPlotChart data={data as ScatterPlotData} /> : null
+        if (selectedNumeric.length < 2) {
+          return emptyState('Select two numeric columns (X and Y) to plot a scatter chart')
+        }
+        return scatterData
+          ? <ScatterPlotChart data={scatterData} />
+          : emptyState('No data available for the selected columns')
 
       case 'line':
-        return data ? <LineChart data={data as LineChartData} /> : null
+        if (selectedNumeric.length < 2) {
+          return emptyState('Select an X column and at least one numeric Y column for a line chart')
+        }
+        return lineData
+          ? <LineChart data={lineData} />
+          : emptyState('No data available for the selected columns')
 
       case 'boxplot':
-        return <BoxplotChart data={sampleBoxPlotData} />
+        if (selectedNumeric.length < 1) {
+          return emptyState('Select a numeric column to view its box plot')
+        }
+        return boxplotData
+          ? <BoxplotChart data={boxplotData} />
+          : emptyState('No data available for the selected column')
 
       case 'correlation':
         return (
@@ -274,7 +345,7 @@ export function InteractiveVisualizationDashboard({
         )
 
       default:
-        return <div>Chart type not implemented</div>
+        return emptyState('This chart type is not supported yet')
     }
   }
 
@@ -291,7 +362,7 @@ export function InteractiveVisualizationDashboard({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value="configure" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList>
               <TabsTrigger value="configure">Configure</TabsTrigger>
               <TabsTrigger value="visualize">Visualize</TabsTrigger>
