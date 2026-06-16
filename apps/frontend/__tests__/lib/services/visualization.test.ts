@@ -40,7 +40,7 @@ describe('getHistogram', () => {
     await getHistogram('ds-1', 'age', 50, 'tok-123')
 
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/visualizations/histogram/ds-1/age?bins=50')
+    expect(url).toContain('/visualizations/histogram/ds-1/age?num_bins=50')
     expect(init.headers['Authorization']).toBe('Bearer tok-123')
   })
 
@@ -53,7 +53,7 @@ describe('getHistogram', () => {
     await getHistogram('ds 1', 'price/unit #2')
 
     const [url] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/visualizations/histogram/ds%201/price%2Funit%20%232?bins=50')
+    expect(url).toContain('/visualizations/histogram/ds%201/price%2Funit%20%232?num_bins=50')
   })
 
   it('throws on a non-ok response', async () => {

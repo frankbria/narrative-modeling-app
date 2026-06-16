@@ -89,7 +89,8 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const response = await fetch(
-    `${apiUrl}/visualizations/histogram/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}?bins=${bins}`,
+    // Backend route parameter is `num_bins`; sending `bins` is silently ignored.
+    `${apiUrl}/visualizations/histogram/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}?num_bins=${bins}`,
     { headers }
   );
   if (!response.ok) {

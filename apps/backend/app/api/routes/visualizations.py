@@ -102,7 +102,7 @@ async def get_scatter_plot(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.file_path))
+        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
         
         # Apply filters if provided
         if filters:
@@ -167,7 +167,7 @@ async def get_line_chart(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.file_path))
+        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
         
         # Apply filters if provided
         if filters:
@@ -191,10 +191,20 @@ async def get_line_chart(
         # Parse y_columns
         y_cols = y_columns.split(',')
         
-        # Prepare line chart data
+        # Prepare line chart data. The x value must be JSON-serializable: numpy
+        # scalars (from a numeric x column) are not, so coerce to native types.
+        def _native_x(value):
+            if pd.isna(value):
+                return None
+            if isinstance(value, np.integer):
+                return int(value)
+            if isinstance(value, np.floating):
+                return float(value)
+            return str(value)
+
         data = []
         for _, row in df.iterrows():
-            point = {'x': row[x_column]}
+            point = {'x': _native_x(row[x_column])}
             for y_col in y_cols:
                 if y_col in df.columns:
                     point[y_col] = float(row[y_col]) if pd.notna(row[y_col]) else None
@@ -236,7 +246,7 @@ async def get_time_series(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.file_path))
+        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
         
         # Apply filters if provided
         if filters:
