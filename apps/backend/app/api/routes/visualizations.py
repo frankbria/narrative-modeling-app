@@ -7,12 +7,20 @@ from app.services.visualization_cache import (
 )
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
-from app.utils.s3 import get_file_from_s3
+from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 import pandas as pd
 import json
 import numpy as np
 
 router = APIRouter()
+
+
+def _current_data_source(dataset: UserData) -> str:
+    """The dataset's current data location: the transformed file when one has
+    been written (``file_path``), otherwise the original upload (``s3_url``).
+    Mirrors the loading convention in transformations.py so visualizations
+    reflect the user's latest data rather than the original upload."""
+    return dataset.file_path or dataset.s3_url
 
 
 @router.get("/histogram/{dataset_id}/{column_name}")
@@ -102,7 +110,7 @@ async def get_scatter_plot(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+        df = await get_dataframe_from_s3(_current_data_source(dataset))
         
         # Apply filters if provided
         if filters:
@@ -167,7 +175,7 @@ async def get_line_chart(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+        df = await get_dataframe_from_s3(_current_data_source(dataset))
         
         # Apply filters if provided
         if filters:
@@ -246,7 +254,7 @@ async def get_time_series(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+        df = await get_dataframe_from_s3(_current_data_source(dataset))
         
         # Apply filters if provided
         if filters:

@@ -226,8 +226,7 @@ class TestVisualizationCache:
         
         with patch('app.services.visualization_cache.get_cached_visualization', return_value=None), \
              patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('pandas.read_csv', return_value=test_df), \
-             patch('app.services.visualization_cache.get_file_from_s3', return_value="mock_file_path"), \
+             patch('app.services.visualization_cache.get_dataframe_from_s3', new=AsyncMock(return_value=test_df)), \
              patch('app.services.visualization_cache.cache_visualization') as mock_cache_viz:
             
             result = await generate_and_cache_histogram(dataset_id, column_name, num_bins)
@@ -261,8 +260,7 @@ class TestVisualizationCache:
         
         with patch('app.services.visualization_cache.get_cached_visualization', return_value=None), \
              patch('app.services.visualization_cache.UserData.get', return_value=mock_dataset), \
-             patch('pandas.read_csv', return_value=test_df), \
-             patch('app.services.visualization_cache.get_file_from_s3', return_value="mock_file_path"), \
+             patch('app.services.visualization_cache.get_dataframe_from_s3', new=AsyncMock(return_value=test_df)), \
              patch('app.services.visualization_cache.cache_visualization') as mock_cache_viz:
             
             result = await generate_and_cache_correlation_matrix(dataset_id)
