@@ -1,0 +1,162 @@
+name: E2E Performance Tests
+
+# Non-blocking performance benchmarks (issue #157). These run wall-clock timing
+# assertions that are inherently noisy on shared 2-core GitHub runners, so they
+# are kept OUT of the blocking @smoke gate (smoke-tests.yml) and run here with
+# continue-on-error: the job records latency numbers without failing the PR.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/frontend/e2e/workflows/performance.spec.ts'
+      - 'apps/frontend/e2e/helpers/PerformanceMonitor.ts'
+      - '.github/workflows/perf-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  perf-tests:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: uv sync
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # GitHub Actions `services:` blocks cannot override a container's command,
+      # and minio/minio requires `server /data` — so MinIO is started manually.
+      - name: Start MinIO (S3-compatible storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          echo "Waiting for MinIO to become healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              echo "MinIO is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO failed to start" >&2
+          docker logs minio >&2
+          exit 1
+
+      - name: Create test bucket in MinIO
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+        run: aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
+
+      # `test:e2e:perf` runs ./test-e2e.sh, which launches BOTH the FastAPI
+      # backend (port 8000) and the Next.js frontend (port 3010) before invoking
+      # Playwright — so no explicit backend/frontend start step is needed here
+      # (same as smoke-tests.yml).
+      #
+      # continue-on-error: perf assertions are advisory — a breach must not block
+      # the PR. The recorded numbers (and any failures) surface in the artifacts.
+      - name: Run Performance Tests
+        id: perf
+        continue-on-error: true
+        working-directory: apps/frontend
+        run: npm run test:e2e:perf
+        env:
+          CI: true
+          NODE_ENV: development
+          TEST_USER_EMAIL: test@narrativeml.com
+          TEST_USER_PASSWORD: test-password-123
+          NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
+          NEXTAUTH_URL: http://localhost:3010
+          GOOGLE_CLIENT_ID: dummy-client-id
+          GOOGLE_CLIENT_SECRET: dummy-client-secret
+          GITHUB_ID: dummy-client-id
+          GITHUB_SECRET: dummy-client-secret
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: narrative-modeling-test
+          # Port configuration
+          PORT: 3010
+          BACKEND_PORT: 8000
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+          # S3 storage backed by the MinIO container (no real AWS credentials).
+          # NOTE: credentials must NOT start with "test-" — that prefix puts
+          # S3Service into no-op mock mode; MinIO mode needs the real client.
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          # Three names for the same bucket: AWS_BUCKET_NAME (upload paths),
+          # AWS_S3_BUCKET (download whitelist), S3_BUCKET (settings/versioning).
+          AWS_BUCKET_NAME: test-bucket
+          AWS_S3_BUCKET: test-bucket
+          S3_BUCKET: test-bucket
+          AWS_ENDPOINT_URL: http://localhost:9000
+          # OpenAI API key (dummy value for testing)
+          OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
+
+      - name: Report perf outcome
+        if: always()
+        run: |
+          if [ "${{ steps.perf.outcome }}" = "success" ]; then
+            echo "✅ Performance assertions passed within thresholds." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ One or more performance assertions exceeded their threshold (non-blocking)." >> "$GITHUB_STEP_SUMMARY"
+            echo "See the performance-results artifact for recorded latencies." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: |
+            apps/frontend/e2e/performance-results.json
+            apps/frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-test-report
+          path: apps/frontend/playwright-report/
+          retention-days: 7

@@ -23,6 +23,11 @@ test.describe('Model Training Workflow', () => {
   let datasetId: string;
 
   test.beforeEach(async ({ uploadTestDataset }) => {
+    // #157: these @smoke tests train real models; on 2-core CI the upload +
+    // training can exceed the 30s test budget (hook/fixture setup counts against
+    // it) when a parallel worker is also training. test.slow() triples the budget
+    // to stabilize the gate (same pattern as evaluate/model-config/data-preparation).
+    test.slow();
     // Upload dataset before each test
     datasetId = await uploadTestDataset();
   });

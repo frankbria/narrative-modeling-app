@@ -88,6 +88,22 @@ Fast, critical-path tests that run on every PR:
 - **Train**: Model training flow (4 tests)
 - **Predict**: Predictions (2 tests)
 
+### Performance Tests (@perf) - non-blocking (issue #157)
+Wall-clock latency benchmarks (page-load TTI, single-prediction latency). These
+are **deliberately not `@smoke`**: timing measurements are inherently noisy on
+shared 2-core GitHub runners, so keeping them in the blocking gate made identical
+code flake. They run in a dedicated `continue-on-error` job that records numbers
+without failing the PR.
+
+- Tag tests `@perf` and keep wall-clock assertions out of `@smoke`.
+- Thresholds are CI-realistic ceilings / documented SLOs, not tuned-to-the-ms gates
+  (e.g. dashboard TTI ≤ 5s ceiling; single-prediction SLO 1000ms).
+- Run locally: `npm run test:e2e:perf` (`--grep @perf --project=chromium-full`).
+- The `perf-tests.yml` job only auto-triggers on changes to `performance.spec.ts`,
+  `PerformanceMonitor.ts`, or the workflow itself. If you change shared E2E
+  infrastructure (`playwright.config.ts`, `test-e2e.sh`, `e2e/fixtures/`), trigger
+  the perf job manually via `workflow_dispatch` to catch any latency regression.
+
 ### Full Suite - 129 tests
 Comprehensive E2E testing that runs on main branch:
 
@@ -96,13 +112,14 @@ Comprehensive E2E testing that runs on main branch:
 - All transformation types
 - All ML algorithms
 - Security validation
-- Performance testing
+- Performance testing (`@perf`)
 
 ## CI/CD Integration
 
-**Pull Requests** → Smoke tests only
-- Workflow: `.github/workflows/smoke-tests.yml`
-- Duration: ~5-7 minutes
+**Pull Requests** → Smoke tests (blocking) + Performance tests (non-blocking)
+- Smoke workflow: `.github/workflows/smoke-tests.yml` (~5-7 min, Chromium) — **blocks the PR**
+- Perf workflow: `.github/workflows/perf-tests.yml` (`@perf`, `continue-on-error`) —
+  records latencies, **never blocks**; results in the `performance-results` artifact
 - Browser: Chromium only
 
 **Main Branch** → Full suite
