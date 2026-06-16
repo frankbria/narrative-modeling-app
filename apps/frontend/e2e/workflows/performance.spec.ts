@@ -28,18 +28,22 @@ test.afterEach(() => {
 });
 
 test.describe('Performance - Page Load', () => {
-  // Disabled pending #157: threshold flakes across identical runs;
-  // re-enable once perf thresholds are calibrated for CI runners
-  test.fixme('should load dashboard page within 2s @smoke', async ({ authenticatedPage }) => {
+  // #157: moved out of the blocking @smoke gate into the non-blocking @perf job.
+  // Wall-clock TTI on shared 2-core CI runners flaked a 2s threshold across
+  // identical runs; 5000ms is a realistic TTI ceiling for a contended 2-core
+  // runner (a "did not hang" guardrail, not a tuned target). The @perf job runs
+  // continue-on-error, so a breach records a number without failing the PR.
+  test('should load dashboard page within 5s @perf', async ({ authenticatedPage }) => {
+    const DASHBOARD_LOAD_CEILING_MS = 5000;
     const metric = await perfMonitor.measurePageLoad(
       authenticatedPage,
       'Dashboard Load',
       '/dashboard',
-      2000
+      DASHBOARD_LOAD_CEILING_MS
     );
 
     expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(2000);
+    expect(metric.value).toBeLessThanOrEqual(DASHBOARD_LOAD_CEILING_MS);
   });
 
   test('should load dataset list page (50 datasets) within 3s', async ({
@@ -174,12 +178,14 @@ test.describe('Performance - API Response Times', () => {
     expect(metric.value).toBeLessThanOrEqual(30000);
   });
 
-  // Re-enabled in #156 (POST /api/v1/ml/train now accepts the upload id string).
-  // The smoke gate is functional — train a real model and get a successful
-  // prediction back. The latency budget is a generous, CI-safe ceiling (~180ms
-  // observed locally; 2-core CI runners + cold model load run slower); tuning
-  // it to a tight target is tracked in #157.
-  test('should make a single prediction @smoke', async ({
+  // #157: this is a latency measurement, so it moved out of the blocking @smoke
+  // gate into the non-blocking @perf job. Functional "train a real model and get
+  // a prediction back" smoke coverage already lives in predict.spec.ts (@smoke),
+  // so the blocking gate loses no coverage. The intended single-prediction SLO is
+  // 1000ms: generous headroom over the ~180ms prediction call observed locally,
+  // accounting for cold model load on a 2-core runner. The @perf job runs
+  // continue-on-error, so a breach records a number without failing the PR.
+  test('should make a single prediction @perf', async ({
     request,
     uploadTestDataset,
     trainModel,
@@ -200,7 +206,7 @@ test.describe('Performance - API Response Times', () => {
     // still requires an Authorization header for HTTPBearer.
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-    const SINGLE_PREDICTION_BUDGET_MS = 2000;
+    const SINGLE_PREDICTION_BUDGET_MS = 1000;
     const metric = await perfMonitor.measureApiCall(
       'Single Prediction API',
       async () => {

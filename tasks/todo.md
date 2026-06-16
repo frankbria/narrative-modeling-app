@@ -1,55 +1,55 @@
-# Issue #153 — Frontend cleanup: CSV export + feature-selection comparison view
+# Issue #157 — Stabilize flaky performance smoke tests (thresholds + timing)
 
-**Branch:** `feat/153-frontend-cleanup-csv-comparison`
-**Scope:** Frontend-only. Remove two shipped TODO markers by implementing the
-features they describe.
+## Root cause
+Wall-clock timing assertions (`Date.now()` deltas around page loads / API calls) live
+inside the **blocking `@smoke` gate** (`smoke-tests.yml`, runs on every PR). On shared
+2-core GitHub runners those measurements are contention-sensitive, so identical code
+passes and fails across runs. Functional smoke value (page loads, prediction works) is
+worth keeping in the gate; the *timing* assertions are not.
 
-## Plan source
-Adapted from the CodeRabbit auto-generated plan on the issue. Verified against the
-actual code; the plan maps cleanly. Design choices kept: CSV export = transformed
-data only (single file); comparison overlap matrix = simple numeric table.
+## Decisions (confirmed with user)
+1. **Split, don't retune** — re-tag timing tests `@perf`, remove `@smoke`.
+2. **Dedicated non-blocking perf CI job** — new `perf-tests.yml`, records numbers, never blocks.
+3. **Single-prediction SLO target = 1000ms** (was a 2000ms stability margin; ~180ms local).
 
-## Steps
+## Plan
 
-### Feature 1 — CSV export for transformation preview
-1. `components/transformation/PreviewControls.tsx`
-   - Add `onExport?: () => void` to `PreviewControlsProps` (mirror `onRefresh`).
-   - Replace stub `handleExport`/`console.log` with `onExport?.()`; remove TODO.
-   - Disable Export button when `loading` OR `onExport` is undefined.
-2. `components/transformation/TransformationPreview.tsx`
-   - Add `handleExport()` that builds an RFC 4180 CSV from
-     `previewData.preview_result.transformed_data` (header from union of row keys),
-     adapting the escape/Blob/anchor pattern from `SelectedFeatureSet.tsx`.
-   - Filename `transformation-preview-{datasetId}.csv`.
-   - Pass `onExport={handleExport}` to `PreviewControls` only when preview data exists.
-3. Tests: extend `__tests__/components/transformation/PreviewControls.test.tsx`
-   (onExport invoked, disabled when undefined/loading) and
-   `TransformationPreview.test.tsx` (export wired + Blob/anchor download triggered).
+### 1. Introduce a `@perf` tag (test tagging)
+- `e2e/workflows/performance.spec.ts`:
+  - **Dashboard load test** (~line 33): remove `test.fixme` → `test`, swap `@smoke` → `@perf`,
+    calibrate threshold to a CI-realistic **5000ms** (documented as a TTI ceiling for a
+    2-core runner, not a tuned target). Keep the functional assert.
+  - **Single-prediction test** (~line 182): swap `@smoke` → `@perf`, set
+    `SINGLE_PREDICTION_BUDGET_MS = 1000` with a comment documenting the SLO rationale.
+    Functional prediction smoke coverage already exists in `predict.spec.ts:136 @smoke`,
+    so the blocking gate loses no functional coverage.
 
-### Feature 2 — Feature-selection comparison view
-4. `components/FeatureSelection.tsx`
-   - Add `comparisonResult: MethodComparisonResponse | null` state.
-   - Rewrite `handleCompare` to store the full response (drop the
-     first-result-only transform + TODO); auto-switch to the Comparison tab.
-   - Leave `result` (single-method flow) untouched.
-   - Add a third "Comparison" tab, disabled when `comparisonResult` is null.
-5. `components/MethodComparisonView.tsx` (new)
-   - Props: `MethodComparisonResponse`.
-   - Side-by-side methods (name, selected features, top scores), consensus
-     features, overlap matrix as a numeric table, recommendations text, CSV export.
-6. Tests: new `__tests__/components/MethodComparisonView.test.tsx` and
-   `__tests__/components/FeatureSelection.test.tsx` (3-tab structure, state, switch,
-   service mocked).
+### 2. Transform contention (item 3)
+- The two `transform.spec.ts @smoke` tests already carry `test.slow()` (landed in #156).
+  Keep them in `@smoke` (they assert *functional* transformation, not timing); `test.slow()`
+  triples their per-test timeout so 2-core worker contention no longer times them out.
+- No worker-count change needed: removing the two heavy `performance.spec.ts` timing tests
+  from `@smoke` (training + prediction were the core-pegging culprits per the issue) is what
+  actually relieves the contention that flaked the transform specs.
 
-## Notes / decisions
-- This repo uses `lucide-react` throughout; matching it for consistency (the global
-  "never lucide-react" rule targets *new* Nova-template projects, not this app).
-- No backend changes — `MethodComparisonResponse` already carries all needed data.
+### 3. Dedicated non-blocking perf CI job
+- New `.github/workflows/perf-tests.yml`: mirrors `smoke-tests.yml` infra (Mongo + MinIO +
+  backend + frontend), runs `@perf` on `chromium-full`, **`continue-on-error: true`** on the
+  test step (records numbers, never fails the PR). Uploads the perf-results artifact.
+- Add `test:e2e:perf` script to `apps/frontend/package.json` (`--grep @perf --project=chromium-full`).
 
-## Acceptance criteria (verified in demo)
-- [ ] CSV export downloads the current transformation preview as CSV
-- [ ] Feature-selection comparison view shows methods side-by-side (selected
-      features + importance scores)
-- [ ] TODO comments removed (both files)
-- [ ] Component tests for both
-- [ ] `npm test` green, `npm run type-check` clean, eslint clean
+### 4. Docs sync
+- `e2e/README.md`: document the `@perf` tag, the non-blocking perf job, and that perf
+  assertions are no longer in the blocking smoke gate. Update smoke listing.
+- `CLAUDE.md`: add an issue #157 note under the testing section.
+
+## Out of scope (YAGNI)
+- No change to `playwright.config.ts` worker counts.
+- No new PerformanceMonitor capabilities. No backend changes.
+
+## Verification
+- `npx playwright test --grep @smoke --project=chromium-smoke --list` → the two perf tests
+  are **gone** from the smoke set; transform/predict smokes remain.
+- `npx playwright test --grep @perf --project=chromium-full --list` → both perf tests collected.
+- `npm run type-check` (tsc) green.
+- Demo (Phase 11): smoke grep list before/after + the perf grep list as outcome evidence.
