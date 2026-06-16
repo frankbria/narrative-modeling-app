@@ -7,16 +7,33 @@
  * to the fields the UI actually reads.
  */
 
-/** Response from the model deployment endpoint. */
+/**
+ * Response from the model deployment endpoint (`PUT /models/{id}/deploy`).
+ *
+ * Mirrors the backend `ModelDeployResponse` Pydantic schema in
+ * `apps/backend/app/schemas/model.py` — keep the two in sync. The backend does
+ * not issue an API key on deploy, so there is intentionally no `api_key` field.
+ */
 export interface DeployResponse {
-  id?: string
-  api_endpoint: string
-  api_key: string
+  model_id: string
+  status: string
+  deployed_at: string
+  deployment_endpoint: string | null
+  message: string
 }
 
-/** Wrapper returned by the deployment status check endpoint. */
-export interface DeploymentStatusResponse {
-  deployment?: DeployResponse
+/**
+ * Narrow view of `GET /models/{id}` (`ModelConfigResponse`) used by the deploy
+ * page to detect an already-deployed model on mount. Only the deployment fields
+ * the UI reads are typed here; mirrors `DeploymentConfigResponse` in
+ * `apps/backend/app/schemas/model.py`.
+ */
+export interface ModelDeploymentView {
+  deployment_config?: {
+    is_deployed: boolean
+    deployment_endpoint: string | null
+    deployed_at: string | null
+  }
 }
 
 /** A single feature-importance entry. */

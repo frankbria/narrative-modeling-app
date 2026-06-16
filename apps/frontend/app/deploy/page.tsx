@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy } from 'lucide-react';
-import type { DeployResponse, DeploymentStatusResponse } from '@/lib/types/api';
+import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
 
 export default function DeployPage() {
   const { state, completeStage, requestStageRedirect } = useWorkflow();
@@ -37,16 +37,25 @@ export default function DeployPage() {
   const checkDeploymentStatus = async () => {
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/models/${state.modelId}/deployment`, {
+      // Deployment status lives on the model record; there is no dedicated
+      // `/deployment` route. Read `deployment_config` from GET /models/{id}.
+      const response = await fetch(`${API_URL}/models/${state.modelId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
 
       if (response.ok) {
-        const data = (await response.json()) as DeploymentStatusResponse;
-        if (data.deployment) {
-          setDeployment(data.deployment);
+        const data = (await response.json()) as ModelDeploymentView;
+        const config = data.deployment_config;
+        if (config?.is_deployed) {
+          setDeployment({
+            model_id: state.modelId ?? '',
+            status: 'deployed',
+            deployed_at: config.deployed_at ?? '',
+            deployment_endpoint: config.deployment_endpoint,
+            message: 'Model is deployed'
+          });
           setDeploymentStatus('deployed');
         }
       }
@@ -61,30 +70,35 @@ export default function DeployPage() {
 
     try {
       const token = await getAuthToken();
+      // Backend route is PUT /models/{id}/deploy; ModelDeployRequest accepts an
+      // optional `endpoint`. The backend persists it verbatim and does not
+      // synthesize a default, so we supply the production serving URL (the
+      // route registered at /production/v1/models/{id}/predict) — otherwise the
+      // success page would have no endpoint to show.
+      const servingEndpoint = `${API_URL}/production/v1/models/${state.modelId}`;
       const response = await fetch(`${API_URL}/models/${state.modelId}/deploy`, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          deployment_type: 'api',
-          auto_scaling: true,
-          min_instances: 1,
-          max_instances: 5
-        })
+        body: JSON.stringify({ endpoint: servingEndpoint })
       });
 
       if (response.ok) {
         const data = (await response.json()) as DeployResponse;
         setDeployment(data);
         setDeploymentStatus('deployed');
-        
+
         completeStage(WorkflowStage.DEPLOYMENT, {
-          deploymentId: data.id,
-          apiEndpoint: data.api_endpoint,
+          deploymentId: data.model_id,
+          apiEndpoint: data.deployment_endpoint,
           timestamp: new Date().toISOString()
         });
+      } else {
+        // A 4xx/5xx does not throw; without this the spinner would hang forever.
+        console.error(`Failed to deploy model: ${response.status} ${response.statusText}`);
+        setDeploymentStatus('idle');
       }
     } catch (error) {
       console.error('Failed to deploy model:', error);
@@ -203,50 +217,44 @@ export default function DeployPage() {
           <div className="space-y-6">
             <div className="bg-gray-50 rounded-lg p-6">
               <h3 className="font-semibold mb-4">API Endpoint</h3>
-              <div className="flex items-center gap-2 mb-2">
-                <code className="flex-1 bg-gray-800 text-green-400 p-3 rounded font-mono text-sm">
-                  {deployment.api_endpoint}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(deployment.api_endpoint)}
-                  className="p-2 hover:bg-gray-200 rounded"
-                >
-                  <Copy className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-4">API Key</h3>
-              <div className="flex items-center gap-2 mb-2">
-                <code className="flex-1 bg-gray-800 text-green-400 p-3 rounded font-mono text-sm">
-                  {deployment.api_key}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(deployment.api_key)}
-                  className="p-2 hover:bg-gray-200 rounded"
-                >
-                  <Copy className="w-5 h-5" />
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Keep this key secure. You won&apos;t be able to see it again.
-              </p>
+              {deployment.deployment_endpoint ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <code className="flex-1 bg-gray-800 text-green-400 p-3 rounded font-mono text-sm">
+                    {deployment.deployment_endpoint}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(deployment.deployment_endpoint!)}
+                    aria-label="Copy API endpoint"
+                    className="p-2 hover:bg-gray-200 rounded"
+                  >
+                    <Copy className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No endpoint URL was assigned. Your model is deployed and ready to serve predictions.
+                </p>
+              )}
             </div>
 
             <div className="bg-blue-50 rounded-lg p-6">
               <h3 className="font-semibold mb-3">Example Request</h3>
               <pre className="bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto text-sm">
-{`curl -X POST ${deployment.api_endpoint}/predict \\
-  -H "Authorization: Bearer ${deployment.api_key}" \\
+{`curl -X POST ${deployment.deployment_endpoint ?? '<deployment-endpoint>'}/predict \\
+  -H "X-API-Key: <your-api-key>" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "features": {
-      "feature1": 123,
-      "feature2": "value"
-    }
+    "data": [
+      { "feature1": 123, "feature2": "value" }
+    ]
   }'`}
               </pre>
+              <p className="text-xs text-gray-500 mt-2">
+                The production prediction API authenticates with an{' '}
+                <code className="font-mono">X-API-Key</code> header. Generate a
+                key from your account settings before calling the endpoint.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
