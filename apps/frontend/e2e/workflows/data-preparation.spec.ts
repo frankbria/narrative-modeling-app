@@ -87,6 +87,10 @@ test.describe('Data Preparation Page', () => {
   let datasetId: string;
 
   test.beforeEach(async ({ page, request, uploadTestDataset }) => {
+    // #157: upload + workflow seeding can exceed the 30s test budget (hook/fixture
+    // setup counts against it) under 2-core CI contention when a parallel worker
+    // is training. test.slow() triples the budget to stabilize these @smoke tests.
+    test.slow();
     // Upload test dataset, then seed the profiling-complete workflow state so
     // the DATA_PROFILING-gated prepare page is reachable (see helper).
     datasetId = await uploadTestDataset();

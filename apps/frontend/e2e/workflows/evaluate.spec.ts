@@ -66,6 +66,11 @@ test.describe('Model Evaluation Dashboard', () => {
   let datasetId: string;
 
   test.beforeEach(async ({ uploadTestDataset }) => {
+    // #157: train-then-evaluate is heavy; on 2-core CI the upload + training can
+    // exceed the 30s test budget (hook/fixture setup counts against it) when a
+    // parallel worker is also training. test.slow() triples the budget so 2-core
+    // contention no longer flakes these @smoke tests.
+    test.slow();
     datasetId = await uploadTestDataset();
   });
 

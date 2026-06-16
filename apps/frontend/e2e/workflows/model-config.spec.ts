@@ -27,6 +27,10 @@ test.describe('Model Config Workflow', () => {
   let modelId: string;
 
   test.beforeEach(async ({ uploadTestDataset }) => {
+    // #157: training is heavy; on 2-core CI the upload + model training can exceed
+    // the 30s test budget (hook/fixture setup counts against it) under parallel
+    // worker contention. test.slow() triples the budget to stabilize @smoke.
+    test.slow();
     // Upload dataset before each test
     datasetId = await uploadTestDataset();
   });
