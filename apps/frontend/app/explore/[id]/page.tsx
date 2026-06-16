@@ -123,7 +123,11 @@ export default function DatasetAnalysisPage() {
         const data = await response.json()
 
         if (isMounted) {
-          setDataset(data)
+          // The /user_data response carries the Mongo id as `_id` and leaves
+          // `id` null; normalize it (falling back to the route param) so every
+          // consumer — visualizations, preview, workflow, export — receives a
+          // valid dataset id rather than `null`.
+          setDataset({ ...data, id: data.id ?? data._id ?? datasetId })
         }
 
         // If not processed, start processing
@@ -175,7 +179,11 @@ export default function DatasetAnalysisPage() {
 
       if (response.ok) {
         const processedData = await response.json()
-        setDataset(prev => prev ? { ...prev, ...processedData } : null)
+        // Preserve the already-normalized id; the processing response (like the
+        // initial fetch) carries the id as `_id` with `id` null.
+        setDataset(prev => prev
+          ? { ...prev, ...processedData, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
+          : null)
       }
     } catch (err) {
       // Ignore abort errors

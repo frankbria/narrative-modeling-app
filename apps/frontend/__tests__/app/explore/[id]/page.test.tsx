@@ -93,8 +93,12 @@ jest.mock('@/components/AIInsightsPanel', () => {
 
 jest.mock('@/components/InteractiveVisualizationDashboard', () => {
   return {
-    InteractiveVisualizationDashboard: ({ columns }: { columns?: unknown }) => (
-      <div data-testid="visualization-dashboard" data-columns={JSON.stringify(columns ?? null)}>
+    InteractiveVisualizationDashboard: ({ datasetId, columns }: { datasetId?: string; columns?: unknown }) => (
+      <div
+        data-testid="visualization-dashboard"
+        data-dataset-id={datasetId ?? ''}
+        data-columns={JSON.stringify(columns ?? null)}
+      >
         Visualizations
       </div>
     )
@@ -182,6 +186,47 @@ describe('DatasetAnalysisPage', () => {
     expect(screen.getByText('1,000')).toBeInTheDocument() // Row count
     expect(screen.getByText('5')).toBeInTheDocument() // Column count
     expect(screen.getByText('85.0%')).toBeInTheDocument() // Quality score
+  })
+
+  it('normalizes a null dataset id from the API `_id` field (issue #170)', async () => {
+    // The /user_data response carries the Mongo id as `_id` and leaves `id`
+    // null; the page must normalize it so children (visualizations, preview)
+    // receive a real id rather than null and can fetch real data.
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        ...mockProcessedDataset,
+        id: null,
+        _id: 'real-mongo-id',
+      }),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    // DataPreviewTable (overview tab) receives datasetId={dataset.id}.
+    await waitFor(() => {
+      expect(screen.getByTestId('data-preview-table')).toHaveTextContent(
+        'DataPreviewTable for real-mongo-id'
+      )
+    }, { timeout: 3000 })
+  })
+
+  it('falls back to the route param when both id and _id are absent', async () => {
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ ...mockProcessedDataset, id: null }),
+    })
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      // useParams() is mocked to id: 'test-dataset-id'
+      expect(screen.getByTestId('data-preview-table')).toHaveTextContent(
+        'DataPreviewTable for test-dataset-id'
+      )
+    }, { timeout: 3000 })
   })
 
   it.skip('shows processing state for unprocessed datasets', async () => {
