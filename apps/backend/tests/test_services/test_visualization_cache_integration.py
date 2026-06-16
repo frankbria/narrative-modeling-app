@@ -209,8 +209,11 @@ class TestVisualizationCache:
         """Test histogram generation and caching"""
         dataset_id = str(PydanticObjectId())
         column_name = "numeric_col"
-        num_bins = 5
-        
+        # Caching only applies to the default bin count — the cache key does not
+        # capture num_bins (issue #170). The bypass path for custom counts is
+        # covered by test_visualization_cache.TestHistogramBinCountCaching.
+        num_bins = 50
+
         # Mock dataset
         mock_dataset = Mock()
         mock_dataset.id = PydanticObjectId(dataset_id)
