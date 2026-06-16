@@ -79,6 +79,16 @@ describe('HistogramChart', () => {
     expect(mockGetHistogram).toHaveBeenCalledWith('ds-1', 'age', 50, 'tok-123')
   })
 
+  it('forwards a custom bin count to the fetch', async () => {
+    mockGetHistogram.mockResolvedValue(sampleData)
+
+    render(<HistogramChart datasetId="ds-1" column="age" bins={20} />)
+
+    await waitFor(() => {
+      expect(mockGetHistogram).toHaveBeenCalledWith('ds-1', 'age', 20, 'tok-123')
+    })
+  })
+
   it('shows a distinct error state when the fetch fails', async () => {
     mockGetHistogram.mockRejectedValue(new Error('boom'))
 

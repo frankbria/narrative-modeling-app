@@ -441,3 +441,66 @@ async def test_get_correlation_matrix_server_error(
         assert response.status_code == 500
         data = response.json()
         assert "detail" in data
+
+
+def _csv_bytes():
+    """Return a small CSV as BytesIO, mimicking get_file_from_s3's return."""
+    import io
+
+    return io.BytesIO(b"col1,col2\n1,5\n2,4\n3,3\n4,2\n5,1\n")
+
+
+@pytest.mark.asyncio
+async def test_get_scatter_plot_uses_s3_url(
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+):
+    """Scatter plot must load data from the dataset's s3_url (not file_path,
+    which is an unparseable raw key / often None for uploaded datasets)."""
+    dataset_id = mock_dataset_id
+
+    with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
+        "app.api.routes.visualizations.get_file_from_s3",
+        return_value=_csv_bytes(),
+    ) as mock_get_file:
+        response = await async_authorized_client.get(
+            f"/api/v1/visualizations/scatter/{dataset_id}/col1/col2",
+            headers={"Authorization": "Bearer test_token"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 5
+        assert data["xLabel"] == "col1"
+        assert data["yLabel"] == "col2"
+        # The regression guard: the route reads s3_url, never file_path.
+        mock_get_file.assert_called_once_with(mock_dataset.s3_url)
+
+
+@pytest.mark.asyncio
+async def test_get_line_chart_uses_s3_url(
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+):
+    """Line chart must load data from the dataset's s3_url, like scatter."""
+    dataset_id = mock_dataset_id
+
+    with patch(
+        "app.api.routes.visualizations.UserData.get",
+        return_value=mock_dataset,
+    ), patch(
+        "app.api.routes.visualizations.get_file_from_s3",
+        return_value=_csv_bytes(),
+    ) as mock_get_file:
+        response = await async_authorized_client.get(
+            f"/api/v1/visualizations/line/{dataset_id}/col1",
+            params={"y_columns": "col2"},
+            headers={"Authorization": "Bearer test_token"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 5
+        assert data["lines"] == [{"dataKey": "col2", "label": "col2"}]
+        mock_get_file.assert_called_once_with(mock_dataset.s3_url)

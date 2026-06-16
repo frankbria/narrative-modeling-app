@@ -15,6 +15,9 @@ from app.services.redis_cache import cache_service
 
 logger = logging.getLogger(__name__)
 
+# Only this bin count is cacheable — the cache key does not capture num_bins.
+DEFAULT_HISTOGRAM_BINS = 50
+
 
 async def get_cached_visualization(
     dataset_id: str, visualization_type: str, column_name: Optional[str] = None
@@ -112,13 +115,26 @@ async def cache_visualization(
 
 
 async def generate_and_cache_histogram(
-    dataset_id: str, column_name: str, num_bins: int = 50
+    dataset_id: str, column_name: str, num_bins: int = DEFAULT_HISTOGRAM_BINS
 ) -> Dict[str, Any]:
     """Generate and cache histogram data for a numeric column"""
-    # Get cached data if it exists
-    cached_data = await get_cached_visualization(dataset_id, "histogram", column_name)
-    if cached_data:
-        return cached_data
+    # The visualization cache is keyed by (dataset, type, column) only — it does
+    # not capture num_bins — so only the default bin count may be served from /
+    # written to the cache. Non-default counts are always computed fresh,
+    # otherwise a later request would reuse an earlier bin shape (e.g. 50 bins
+    # returned after the user selects 20). See issue #170.
+    use_cache = num_bins == DEFAULT_HISTOGRAM_BINS
+
+    if use_cache:
+        cached_data = await get_cached_visualization(
+            dataset_id, "histogram", column_name
+        )
+        # Guard against entries written by the old bin-agnostic path (or any
+        # non-default shape that predates this fix): only serve a cache hit whose
+        # bin count actually matches the default. Otherwise fall through and
+        # recompute, overwriting the stale entry below.
+        if cached_data and len(cached_data.get("counts", [])) == DEFAULT_HISTOGRAM_BINS:
+            return cached_data
 
     # Get dataset from S3
     dataset = await UserData.get(dataset_id)
@@ -135,10 +151,10 @@ async def generate_and_cache_histogram(
         bins=bins, counts=counts.tolist(), bin_edges=bin_edges.tolist()
     )
 
-    # Cache the data
-    await cache_visualization(
-        dataset_id, "histogram", histogram_data.model_dump(), column_name
-    )
+    if use_cache:
+        await cache_visualization(
+            dataset_id, "histogram", histogram_data.model_dump(), column_name
+        )
 
     return histogram_data.model_dump()
 

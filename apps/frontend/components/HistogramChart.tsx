@@ -10,11 +10,13 @@ interface HistogramChartProps {
   datasetId?: string;
   /** Column to fetch histogram data for when `data` is not supplied. */
   column?: string;
+  /** Number of bins to request when fetching by datasetId/column. */
+  bins?: number;
   /** Chart height in pixels. */
   height?: number;
 }
 
-export function HistogramChart({ data, datasetId, column, height = 300 }: HistogramChartProps) {
+export function HistogramChart({ data, datasetId, column, bins = 50, height = 300 }: HistogramChartProps) {
   const [fetchedData, setFetchedData] = useState<HistogramData | null>(data ?? null);
   const [fetchError, setFetchError] = useState(false);
 
@@ -30,7 +32,7 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
       // The histogram route requires auth (get_current_user_id) — resolve and
       // forward the bearer token or every request 401s.
       getAuthToken()
-        .then((token) => getHistogram(datasetId, column, 50, token ?? undefined))
+        .then((token) => getHistogram(datasetId, column, bins, token ?? undefined))
         .then((result) => {
           if (!cancelled) setFetchedData(result);
         })
@@ -45,7 +47,7 @@ export function HistogramChart({ data, datasetId, column, height = 300 }: Histog
         cancelled = true;
       };
     }
-  }, [data, datasetId, column]);
+  }, [data, datasetId, column, bins]);
 
   if (fetchError) {
     return (

@@ -89,7 +89,8 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const response = await fetch(
-    `${apiUrl}/visualizations/histogram/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}?bins=${bins}`,
+    // Backend route parameter is `num_bins`; sending `bins` is silently ignored.
+    `${apiUrl}/visualizations/histogram/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}?num_bins=${bins}`,
     { headers }
   );
   if (!response.ok) {
@@ -113,9 +114,10 @@ export async function getBoxPlot(datasetId: string, column: string, token?: stri
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
-  const response = await fetch(`${apiUrl}/visualizations/boxplot/${datasetId}/${column}`, {
-    headers
-  });
+  const response = await fetch(
+    `${apiUrl}/visualizations/boxplot/${encodeURIComponent(datasetId)}/${encodeURIComponent(column)}`,
+    { headers }
+  );
   if (!response.ok) {
     throw new Error('Failed to fetch boxplot data');
   }
@@ -139,7 +141,7 @@ export async function getScatterPlot(
   }
   
   const response = await fetch(
-    `${apiUrl}/visualizations/scatter/${datasetId}/${xColumn}/${yColumn}?${queryParams}`,
+    `${apiUrl}/visualizations/scatter/${encodeURIComponent(datasetId)}/${encodeURIComponent(xColumn)}/${encodeURIComponent(yColumn)}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {
@@ -166,7 +168,7 @@ export async function getLineChart(
   }
   
   const response = await fetch(
-    `${apiUrl}/visualizations/line/${datasetId}/${xColumn}?${queryParams}`,
+    `${apiUrl}/visualizations/line/${encodeURIComponent(datasetId)}/${encodeURIComponent(xColumn)}?${queryParams}`,
     { headers }
   );
   if (!response.ok) {
