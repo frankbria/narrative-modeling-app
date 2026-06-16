@@ -1,42 +1,30 @@
-# Issue #170 — InteractiveVisualizationDashboard renders sample data instead of real values
+# Issue #168 — Frontend deploy page contract mismatch (POST vs PUT + response fields)
 
-**Type:** bug, P1-High, frontend, phase-4
-**File (primary):** `apps/frontend/components/InteractiveVisualizationDashboard.tsx`
-**Plan source:** CodeRabbit comment (adapted)
-
-## Problem
-The dashboard generates chart payloads with `Math.random()` (`sampleChartData` memo ~lines 62–116 for scatter/line/histogram) and a static `sampleBoxPlotData` constant (~188–195). Only the correlation tab uses real backend data. This shows fabricated analytics to users.
+**Branch:** `fix/168-deploy-page-contract-mismatch`
+**Scope (confirmed):** Full fix — 3 AC + the broken `checkDeploymentStatus`.
 
 ## Acceptance Criteria
-- [ ] No `Math.random()`/static placeholder data rendered as analytics in the visualizations tab
-- [ ] Charts reflect the selected dataset's actual values, or show an explicit empty/unsupported state
+- [ ] Deploy page request method/URL matches the backend route (`PUT /models/{id}/deploy`)
+- [ ] Response fields read by the UI exist in `ModelDeployResponse`
+- [ ] `DeployResponse` in `lib/types/api.ts` matches the backend schema
 
-## Adapted Plan (TDD)
+## Backend contract (source of truth)
+- `PUT /api/v1/models/{model_id}/deploy` → `ModelDeployResponse { model_id, status, deployed_at, deployment_endpoint?: str|null, message }`
+- Request body: `ModelDeployRequest { endpoint?: str }` (extra fields ignored)
+- No `GET /models/{id}/deployment` route exists. Status lives in `GET /models/{id}` → `deployment_config { is_deployed, deployment_endpoint?, deployed_at? }`
 
-### Step 1 — Histogram via HistogramChart fetch mode
-- Render `<HistogramChart datasetId={datasetId} column={firstSelectedNumericColumn} />` instead of sample `data`. It handles its own loading/error/empty.
+## Plan (TDD)
+1. **RED** — `__tests__/app/deploy/page.test.tsx`: assert PUT method, endpoint read from `deployment_endpoint`, no `api_key` UI, `completeStage` gets `model_id`+`deployment_endpoint`, and mount status check hits `GET /models/{id}` (not `/deployment`).
+2. `lib/types/api.ts`:
+   - `DeployResponse` → `{ model_id, status, deployed_at, deployment_endpoint: string|null, message }` (+ JSDoc → backend schema).
+   - Replace `DeploymentStatusResponse` with a narrow `ModelDeploymentView` (`deployment_config?: { is_deployed, deployment_endpoint, deployed_at }`).
+3. `app/deploy/page.tsx`:
+   - `handleDeploy`: POST→PUT; clean body (`{}` — endpoint optional); read `data.deployment_endpoint`/`data.model_id`; `completeStage` uses `model_id`+`deployment_endpoint`.
+   - `checkDeploymentStatus`: `GET /models/{id}`; if `deployment_config.is_deployed`, build a `DeployResponse` from it.
+   - Success UI: drop the API Key section; render `deployment_endpoint` (with null fallback); fix the example `curl` (remove `api_key` Authorization header).
+4. **GREEN** — `npm test` (deploy), `npm run type-check`, eslint.
+5. deslop → quality gate (cross-family review) → PR → demo → CI → docs → merge.
 
-### Step 2 — Boxplot, Scatter, Line via real services + local fetch state
-- Per-chart local state (`data`/`loading`/`error`) + a `useEffect` fetching when the chart is active and required columns are selected:
-  - boxplot → `getBoxPlot(datasetId, column, token)`
-  - scatter → `getScatterPlot(datasetId, xCol, yCol, filters, token)` (first 2 numeric cols)
-  - line → `getLineChart(datasetId, xCol, yCols, filters, token)` (first col x, rest y)
-- Use `getAuthToken()` (HistogramChart pattern). Guard against stale responses (cancel flag in effect cleanup).
-- **Deviation from CodeRabbit plan:** uniform local-state fetch for boxplot too (not the `useVisualizations` hook) so all three direct-service charts follow one consistent pattern, instead of mixing an otherwise-unused hook in for a single chart type.
-
-### Step 3 — Empty / unsupported state guards
-- In `renderChart()`, guard each case: prompt to select columns when none; unsupported message when selected columns aren't numeric; empty state when fetch returns no data.
-
-### Step 4 — Real-data export
-- `handleExportChart` serializes the active chart's fetched data (boxplot/scatter/line local state, histogram fetched data, correlation = `statistics.correlation_matrix`); friendly message when nothing to export.
-
-### Step 5 — Remove all sample-data code
-- Delete `sampleChartData` memo and `sampleBoxPlotData` constant; remove now-unused imports/vars; replace simulated `handleRefreshChart` setTimeout with a real refetch trigger.
-
-### Step 6 — Tests
-- `__tests__/components/InteractiveVisualizationDashboard.test.tsx`: mock visualization services; assert real fetches drive each chart; assert no random data; assert empty/unsupported states; assert export uses real data.
-- Run `npm test`, `npm run type-check`, eslint.
-
-## Notes / risks
-- `getAuthToken()` is a placeholder token format (app-wide, out of scope).
-- Dashboard `Column.type` vocabulary is `'numeric'|'categorical'|'datetime'|'text'` (distinct from `NUMERIC_DATA_TYPES` in api.ts). Gate numeric charts on `type === 'numeric'`.
+## Out of scope (Known Limitations)
+- `lib/services/visualization.ts` `getBoxPlot`/`getCorrelationMatrix` camelCase drift — has **no callers** (`useVisualizations` unused). Note in PR; defer (YAGNI). Not in AC.
+- Backend issuing real API keys on deploy (intentionally not done).
