@@ -22,8 +22,18 @@ jest.mock('@/lib/services/visualization', () => ({
 // Stub the chart leaf components so we can assert on the data props the
 // dashboard passes them, without recharts/SVG noise in jsdom.
 jest.mock('@/components/HistogramChart', () => ({
-  HistogramChart: ({ datasetId, column }: { datasetId?: string; column?: string }) => (
-    <div data-testid="histogram-chart">hist:{datasetId}:{column}</div>
+  HistogramChart: ({
+    datasetId,
+    column,
+    bins,
+  }: {
+    datasetId?: string
+    column?: string
+    bins?: number
+  }) => (
+    <div data-testid="histogram-chart">
+      hist:{datasetId}:{column}:{bins}
+    </div>
   ),
 }))
 jest.mock('@/components/BoxplotChart', () => ({
@@ -186,10 +196,11 @@ describe('InteractiveVisualizationDashboard (real data — issue #170)', () => {
   it('renders the histogram in fetch-by-column mode (datasetId + column)', async () => {
     const user = userEvent.setup()
     renderDashboard()
-    // histogram is the default chart; age is auto-selected.
+    // histogram is the default chart; age is auto-selected. The default bin
+    // count (50) is threaded through to the fetch.
     await goToVisualizeTab(user)
 
-    expect(screen.getByTestId('histogram-chart')).toHaveTextContent('hist:ds-1:age')
+    expect(screen.getByTestId('histogram-chart')).toHaveTextContent('hist:ds-1:age:50')
   })
 
   it('passes the real correlation_matrix to the heatmap', async () => {
@@ -211,6 +222,33 @@ describe('InteractiveVisualizationDashboard (real data — issue #170)', () => {
     expect(mockGetScatterPlot).not.toHaveBeenCalled()
     expect(screen.queryByTestId('scatter-chart')).not.toBeInTheDocument()
     expect(screen.getByText(/two numeric columns/i)).toBeInTheDocument()
+  })
+
+  it('clears fetched scatter data when the selection drops below two numeric columns', async () => {
+    const user = userEvent.setup()
+    const createObjectURL = jest.fn(() => 'blob:mock')
+    global.URL.createObjectURL = createObjectURL
+    mockGetScatterPlot.mockResolvedValue({
+      data: [{ x: 1, y: 2 }],
+      xLabel: 'age',
+      yLabel: 'income',
+    })
+
+    renderDashboard()
+    await user.click(screen.getByText('set-scatter'))
+    await user.click(screen.getByRole('button', { name: /^income/ }))
+    await waitFor(() => expect(mockGetScatterPlot).toHaveBeenCalled())
+
+    // Deselect income → back to a single numeric column. The cached scatter data
+    // must be cleared so it can't be exported for a no-longer-valid selection.
+    await user.click(screen.getByRole('button', { name: /^income/ }))
+    await user.click(screen.getByText('do-export'))
+    await goToVisualizeTab(user)
+
+    await waitFor(() => {
+      expect(screen.getByText(/no .*data .*export/i)).toBeInTheDocument()
+    })
+    expect(createObjectURL).not.toHaveBeenCalled()
   })
 
   it('exports the real fetched chart data', async () => {

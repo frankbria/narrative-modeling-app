@@ -96,11 +96,15 @@ export function InteractiveVisualizationDashboard({
     const numericSelected = selectedColumns.filter(name => numericNames.has(name))
 
     // Not enough numeric columns selected — renderChart() shows guidance and we
-    // never fabricate data.
+    // never fabricate data. Clear any previously fetched data so a now-invalid
+    // selection can't be exported.
     const required = activeChart === 'boxplot' ? 1 : 2
     if (!datasetId || numericSelected.length < required) {
       setLoading(false)
       setError(null)
+      if (activeChart === 'boxplot') setBoxplotData(null)
+      else if (activeChart === 'scatter') setScatterData(null)
+      else setLineData(null)
       return
     }
 
@@ -306,9 +310,10 @@ export function InteractiveVisualizationDashboard({
         // states internally. `key` forces a refetch when the user hits refresh.
         return (
           <HistogramChart
-            key={`${selectedNumeric[0]}-${refreshKey}`}
+            key={`${selectedNumeric[0]}-${binCount}-${refreshKey}`}
             datasetId={datasetId}
             column={selectedNumeric[0]}
+            bins={binCount}
           />
         )
 
