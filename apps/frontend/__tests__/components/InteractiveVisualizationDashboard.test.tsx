@@ -93,6 +93,7 @@ const columns = [
   { name: 'age', type: 'numeric' as const },
   { name: 'income', type: 'numeric' as const },
   { name: 'city', type: 'categorical' as const },
+  { name: 'signup_date', type: 'datetime' as const },
 ]
 
 const statistics = {
@@ -191,6 +192,31 @@ describe('InteractiveVisualizationDashboard (real data — issue #170)', () => {
       expect(screen.getByTestId('line-chart')).toHaveTextContent('line-series:1')
     })
     expect(mockGetLineChart).toHaveBeenCalledWith('ds-1', 'age', ['income'], [], 'mock-token')
+  })
+
+  it('supports a non-numeric (datetime) X axis for line charts', async () => {
+    const user = userEvent.setup()
+    mockGetLineChart.mockResolvedValue({
+      data: [{ x: '2026-01-01', income: 5 }],
+      lines: [{ dataKey: 'income', label: 'income' }],
+      xLabel: 'signup_date',
+      yLabel: 'income',
+    })
+
+    renderDashboard()
+    await user.click(screen.getByText('set-line'))
+    // age is auto-selected. Add signup_date, then deselect age so the datetime
+    // column becomes the first (X) selection, then add income as the numeric Y.
+    await user.click(screen.getByRole('button', { name: /^signup_date/ }))
+    await user.click(screen.getByRole('button', { name: /^age/ }))
+    await user.click(screen.getByRole('button', { name: /^income/ }))
+    await goToVisualizeTab(user)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('line-chart')).toHaveTextContent('line-series:1')
+    })
+    // X is the datetime column; only income is sent as the numeric Y series.
+    expect(mockGetLineChart).toHaveBeenCalledWith('ds-1', 'signup_date', ['income'], [], 'mock-token')
   })
 
   it('renders the histogram in fetch-by-column mode (datasetId + column)', async () => {

@@ -181,10 +181,16 @@ class TestHistogramBinCountCaching:
     non-default counts must be computed fresh (issue #170)."""
 
     @pytest.mark.asyncio
-    async def test_default_bins_served_from_cache(self, mock_dataset, sample_histogram_data):
+    async def test_default_bins_served_from_cache(self, mock_dataset):
+        # A valid default-count cache entry has exactly DEFAULT_HISTOGRAM_BINS counts.
+        cached = {
+            "bins": list(range(DEFAULT_HISTOGRAM_BINS)),
+            "counts": [1] * DEFAULT_HISTOGRAM_BINS,
+            "bin_edges": list(range(DEFAULT_HISTOGRAM_BINS + 1)),
+        }
         with patch(
             "app.services.visualization_cache.get_cached_visualization",
-            new=AsyncMock(return_value=sample_histogram_data.model_dump()),
+            new=AsyncMock(return_value=cached),
         ) as mock_get_cached, patch(
             "app.services.visualization_cache.get_file_from_s3"
         ) as mock_s3, patch(
@@ -195,10 +201,35 @@ class TestHistogramBinCountCaching:
             )
 
         mock_get_cached.assert_called_once()
-        # A cache hit must short-circuit before touching S3 or re-writing cache.
+        # A valid cache hit must short-circuit before touching S3 or re-writing cache.
         mock_s3.assert_not_called()
         mock_cache.assert_not_called()
-        assert result == sample_histogram_data.model_dump()
+        assert result == cached
+
+    @pytest.mark.asyncio
+    async def test_stale_cache_entry_is_recomputed(self, mock_dataset):
+        # An entry with the wrong bin count (e.g. written by the old bin-agnostic
+        # path) must be rejected and recomputed at the default count.
+        stale = {"bins": [1, 2], "counts": [3, 4], "bin_edges": [0, 1, 2]}
+        with patch(
+            "app.services.visualization_cache.get_cached_visualization",
+            new=AsyncMock(return_value=stale),
+        ), patch(
+            "app.services.visualization_cache.UserData.get",
+            new=AsyncMock(return_value=mock_dataset),
+        ), patch(
+            "app.services.visualization_cache.get_file_from_s3",
+            return_value=_csv_bytes(),
+        ), patch(
+            "app.services.visualization_cache.cache_visualization"
+        ) as mock_cache:
+            result = await generate_and_cache_histogram(
+                str(mock_dataset.id), "value", DEFAULT_HISTOGRAM_BINS
+            )
+
+        # Recomputed at the default count and the corrected entry re-cached.
+        assert len(result["counts"]) == DEFAULT_HISTOGRAM_BINS
+        mock_cache.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_non_default_bins_bypass_cache(self, mock_dataset):

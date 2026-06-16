@@ -129,7 +129,11 @@ async def generate_and_cache_histogram(
         cached_data = await get_cached_visualization(
             dataset_id, "histogram", column_name
         )
-        if cached_data:
+        # Guard against entries written by the old bin-agnostic path (or any
+        # non-default shape that predates this fix): only serve a cache hit whose
+        # bin count actually matches the default. Otherwise fall through and
+        # recompute, overwriting the stale entry below.
+        if cached_data and len(cached_data.get("counts", [])) == DEFAULT_HISTOGRAM_BINS:
             return cached_data
 
     # Get dataset from S3

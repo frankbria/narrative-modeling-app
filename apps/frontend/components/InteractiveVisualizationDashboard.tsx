@@ -94,12 +94,21 @@ export function InteractiveVisualizationDashboard({
       columns.filter(col => col.type === 'numeric').map(col => col.name)
     )
     const numericSelected = selectedColumns.filter(name => numericNames.has(name))
+    // Line charts plot a numeric Y series against any-type X (e.g. a date), so
+    // X is the first selected column and Y is the remaining numeric columns.
+    const lineX = selectedColumns[0]
+    const lineY = selectedColumns.slice(1).filter(name => numericNames.has(name))
 
-    // Not enough numeric columns selected — renderChart() shows guidance and we
+    // Requirements per chart — renderChart() shows matching guidance and we
     // never fabricate data. Clear any previously fetched data so a now-invalid
     // selection can't be exported.
-    const required = activeChart === 'boxplot' ? 1 : 2
-    if (!datasetId || numericSelected.length < required) {
+    const canFetch =
+      activeChart === 'boxplot'
+        ? numericSelected.length >= 1
+        : activeChart === 'scatter'
+          ? numericSelected.length >= 2
+          : lineX !== undefined && lineY.length >= 1
+    if (!datasetId || !canFetch) {
       setLoading(false)
       setError(null)
       if (activeChart === 'boxplot') setBoxplotData(null)
@@ -128,13 +137,7 @@ export function InteractiveVisualizationDashboard({
           )
           if (!cancelled) setScatterData(result)
         } else {
-          const result = await getLineChart(
-            datasetId,
-            numericSelected[0],
-            numericSelected.slice(1),
-            filters,
-            token
-          )
+          const result = await getLineChart(datasetId, lineX, lineY, filters, token)
           if (!cancelled) setLineData(result)
         }
       } catch (err) {
@@ -325,13 +328,17 @@ export function InteractiveVisualizationDashboard({
           ? <ScatterPlotChart data={scatterData} />
           : emptyState('No data available for the selected columns')
 
-      case 'line':
-        if (selectedNumeric.length < 2) {
+      case 'line': {
+        const lineY = selectedColumns.slice(1).filter(name =>
+          numericColumns.some(col => col.name === name)
+        )
+        if (selectedColumns.length < 2 || lineY.length < 1) {
           return emptyState('Select an X column and at least one numeric Y column for a line chart')
         }
         return lineData
           ? <LineChart data={lineData} />
           : emptyState('No data available for the selected columns')
+      }
 
       case 'boxplot':
         if (selectedNumeric.length < 1) {
