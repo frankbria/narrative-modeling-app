@@ -1,4 +1,4 @@
-import { getHistogram } from '@/lib/services/visualization'
+import { getHistogram, getBoxPlot, getScatterPlot, getLineChart } from '@/lib/services/visualization'
 
 // Regression (issue #166 review): the backend histogram endpoint returns
 // snake_case fields with `bins` as bin CENTERS and `counts` as the counts
@@ -60,5 +60,36 @@ describe('getHistogram', () => {
     ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 401 })
 
     await expect(getHistogram('ds-1', 'age')).rejects.toThrow('Failed to fetch histogram data')
+  })
+})
+
+// Issue #170: column names come from user CSV headers and may contain reserved
+// URL characters (e.g. `cost/revenue`); path-based chart services must encode
+// them so they hit the correct FastAPI route.
+describe('chart services encode path segments', () => {
+  beforeEach(() => {
+    ;(global.fetch as jest.Mock).mockReset()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({}),
+    })
+  })
+
+  it('encodes dataset and column in getBoxPlot', async () => {
+    await getBoxPlot('ds 1', 'cost/revenue')
+    const [url] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/visualizations/boxplot/ds%201/cost%2Frevenue')
+  })
+
+  it('encodes both columns in getScatterPlot', async () => {
+    await getScatterPlot('ds-1', 'a/b', 'c d')
+    const [url] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/visualizations/scatter/ds-1/a%2Fb/c%20d')
+  })
+
+  it('encodes the x column in getLineChart', async () => {
+    await getLineChart('ds-1', 'a/b', ['y1'])
+    const [url] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/visualizations/line/ds-1/a%2Fb')
   })
 })
