@@ -99,6 +99,10 @@ without failing the PR.
 - Thresholds are CI-realistic ceilings / documented SLOs, not tuned-to-the-ms gates
   (e.g. dashboard TTI ≤ 5s ceiling; single-prediction SLO 1000ms).
 - Run locally: `npm run test:e2e:perf` (`--grep @perf --project=chromium-full`).
+- The `perf-tests.yml` job only auto-triggers on changes to `performance.spec.ts`,
+  `PerformanceMonitor.ts`, or the workflow itself. If you change shared E2E
+  infrastructure (`playwright.config.ts`, `test-e2e.sh`, `e2e/fixtures/`), trigger
+  the perf job manually via `workflow_dispatch` to catch any latency regression.
 
 ### Full Suite - 129 tests
 Comprehensive E2E testing that runs on main branch:

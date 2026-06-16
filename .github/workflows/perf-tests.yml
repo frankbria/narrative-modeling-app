@@ -88,6 +88,11 @@ jobs:
           AWS_REGION: us-east-1
         run: aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
 
+      # `test:e2e:perf` runs ./test-e2e.sh, which launches BOTH the FastAPI
+      # backend (port 8000) and the Next.js frontend (port 3010) before invoking
+      # Playwright — so no explicit backend/frontend start step is needed here
+      # (same as smoke-tests.yml).
+      #
       # continue-on-error: perf assertions are advisory — a breach must not block
       # the PR. The recorded numbers (and any failures) surface in the artifacts.
       - name: Run Performance Tests
