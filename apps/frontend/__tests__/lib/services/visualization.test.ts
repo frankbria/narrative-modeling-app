@@ -64,8 +64,13 @@ describe('getHistogram', () => {
 })
 
 // Issue #170: column names come from user CSV headers and may contain reserved
-// URL characters (e.g. `cost/revenue`); path-based chart services must encode
-// them so they hit the correct FastAPI route.
+// URL characters (spaces, `#`, `&`, `?`, `%`, …). Path-based chart services must
+// percent-encode each segment so it survives as a single path param.
+// NOTE: a literal `/` in a column name is *not* supported — encodeURIComponent
+// turns it into `%2F`, but Starlette percent-decodes the path before route
+// matching, so the slash becomes a segment separator and the route 404s. (This
+// predates this change; the old code interpolated the raw `/` and 404'd too.)
+// These tests therefore use single-segment-safe special characters.
 describe('chart services encode path segments', () => {
   beforeEach(() => {
     ;(global.fetch as jest.Mock).mockReset()
@@ -76,20 +81,20 @@ describe('chart services encode path segments', () => {
   })
 
   it('encodes dataset and column in getBoxPlot', async () => {
-    await getBoxPlot('ds 1', 'cost/revenue')
+    await getBoxPlot('ds 1', 'unit price')
     const [url] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/visualizations/boxplot/ds%201/cost%2Frevenue')
+    expect(url).toContain('/visualizations/boxplot/ds%201/unit%20price')
   })
 
   it('encodes both columns in getScatterPlot', async () => {
-    await getScatterPlot('ds-1', 'a/b', 'c d')
+    await getScatterPlot('ds-1', 'col#1', 'c d')
     const [url] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/visualizations/scatter/ds-1/a%2Fb/c%20d')
+    expect(url).toContain('/visualizations/scatter/ds-1/col%231/c%20d')
   })
 
   it('encodes the x column in getLineChart', async () => {
-    await getLineChart('ds-1', 'a/b', ['y1'])
+    await getLineChart('ds-1', 'col & x', ['y1'])
     const [url] = (global.fetch as jest.Mock).mock.calls[0]
-    expect(url).toContain('/visualizations/line/ds-1/a%2Fb')
+    expect(url).toContain('/visualizations/line/ds-1/col%20%26%20x')
   })
 })
