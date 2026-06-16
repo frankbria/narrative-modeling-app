@@ -226,7 +226,10 @@ describe('InteractiveVisualizationDashboard (real data — issue #170)', () => {
     // count (50) is threaded through to the fetch.
     await goToVisualizeTab(user)
 
-    expect(screen.getByTestId('histogram-chart')).toHaveTextContent('hist:ds-1:age:50')
+    // The default numeric column is selected via an effect, so wait for it.
+    await waitFor(() => {
+      expect(screen.getByTestId('histogram-chart')).toHaveTextContent('hist:ds-1:age:50')
+    })
   })
 
   it('passes the real correlation_matrix to the heatmap', async () => {
