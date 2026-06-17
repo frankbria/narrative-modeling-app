@@ -13,7 +13,10 @@
 # tag + digest for reproducible builds.
 
 # ── builder: compile wheels and build the virtualenv ────────────────────────
-FROM python:3.13-slim AS builder
+# Base image digest-pinned (issue #176): both stages MUST use the identical
+# digest so the interpreter baked into /app/.venv matches the runtime interpreter
+# when the venv is copied forward. Refresh both pins together when bumping.
+FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -42,7 +45,8 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 # ── runtime: minimal image with only the built venv + code ──────────────────
-FROM python:3.13-slim AS runtime
+# Same digest as the builder above (see note there) — keep the two in sync.
+FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
