@@ -16,6 +16,7 @@
 # Base image digest-pinned (issue #176): both stages MUST use the identical
 # digest so the interpreter baked into /app/.venv matches the runtime interpreter
 # when the venv is copied forward. Refresh both pins together when bumping.
+# Pinned 2026-06-17 (python:3.13-slim); digest-refresh automation tracked on #176.
 FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS builder
 
 ENV PYTHONUNBUFFERED=1 \
@@ -31,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # uv binary from the official distroless image (patch tag + digest pinned for
-# reproducibility — issue #176; resolves to uv 0.5.31).
+# reproducibility — issue #176; resolves to uv 0.5.31). Pinned 2026-06-17.
 COPY --from=ghcr.io/astral-sh/uv:0.5.31@sha256:7bff3c3776ec467fc1437960f2c469d8beb30f536a6465a3350c647ccd260ec2 /uv /uvx /bin/
 
 WORKDIR /app
@@ -69,6 +70,11 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/app /app/app
 COPY --from=builder /app/utils /app/utils
+
+# Guard the targeted COPY above: fail the build if the runtime image is missing
+# a top-level package the app imports (e.g. a future sibling of app/ + utils/).
+# Import only — no DB/lifespan side effects fire here.
+RUN python -c "import app.main"
 
 EXPOSE 8000
 

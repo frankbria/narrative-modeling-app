@@ -8,6 +8,7 @@
 # ── deps: install node_modules from the lockfile ────────────────────────────
 # Base image digest-pinned (issue #176) for reproducible builds, matching the
 # backend image. Refresh all three stage pins together when bumping Node.
+# Pinned 2026-06-17 (node:20-alpine); digest-refresh automation tracked on #176.
 FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
