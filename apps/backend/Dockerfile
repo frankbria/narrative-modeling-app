@@ -17,7 +17,7 @@
 # digest so the interpreter baked into /app/.venv matches the runtime interpreter
 # when the venv is copied forward. Refresh both pins together when bumping.
 # Pinned 2026-06-17 (python:3.13-slim); digest-refresh automation tracked on #176.
-FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS builder
+FROM python:3.14-slim@sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061 AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -47,7 +47,7 @@ RUN uv sync --frozen --no-dev
 
 # ── runtime: minimal image with only the built venv + code ──────────────────
 # Same digest as the builder above (see note there) — keep the two in sync.
-FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS runtime
+FROM python:3.14-slim@sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061 AS runtime
 
 # MPLCONFIGDIR: matplotlib (pulled in by SHAP/visualization) needs a writable cache
 # dir; as a non-root user it can't write under the root-owned /app home (issue #176).
