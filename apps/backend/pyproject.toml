@@ -69,9 +69,8 @@ extend-select = ["I"]
 #     so deployment-set env vars win and the package resolves (issue #149).
 #     I001 is ignored too: isort would reorder those imports above the sys.path
 #     mutation and break package resolution.
-#   - batch_job.py / the perf benchmark defer an import to its point of use.
+#   - the perf benchmark defers an import to its point of use.
 "app/main.py" = ["E402", "I001"]
-"app/models/batch_job.py" = ["E402"]
 "tests/benchmarks/test_transformation_perf.py" = ["E402"]
 
 [tool.mypy]

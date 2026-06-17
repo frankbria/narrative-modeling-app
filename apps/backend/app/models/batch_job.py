@@ -2,7 +2,7 @@
 Batch prediction job model
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -187,6 +187,3 @@ class BatchJob(Document):
             self.progress.error_count = error_count
         if current_chunk is not None:
             self.progress.current_chunk = current_chunk
-
-
-from datetime import timedelta  # Import needed for estimated_completion
