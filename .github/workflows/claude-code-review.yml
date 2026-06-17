@@ -72,4 +72,9 @@ jobs:
           # Tooling Claude is allowed to run.
           # --max-turns caps agent iterations (the action has no max_turns input;
           # CLI flags are passed via claude_args) — second runaway safeguard.
-          claude_args: '--max-turns 20 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          # 40 (was 20): large mechanical diffs (e.g. a repo-wide import-sort)
+          # exhausted 20 turns just paging the diff and died before posting
+          # ("error_max_turns", no comment). At ~7 turns/min, 40 turns still
+          # completes inside the 10-min timeout above, which remains the hard
+          # cost ceiling (issue #176 / #188).
+          claude_args: '--max-turns 40 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'

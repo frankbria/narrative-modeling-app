@@ -10,7 +10,12 @@ on:
 
 jobs:
   smoke-tests:
-    timeout-minutes: 15
+    # 30 min (was 15): on contended 2-core runners the uncached setup
+    # (backend uv sync of the ML stack + npm ci + Playwright browser install)
+    # could exceed 15 min before any test ran, cancelling the job mid-setup.
+    # The Playwright cache below removes the largest chunk; the headroom covers
+    # the rest (issue #176 CI hardening).
+    timeout-minutes: 30
     runs-on: ubuntu-latest
 
     services:
@@ -50,6 +55,18 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/frontend
         run: npm ci
+
+      # Cache the downloaded Chromium binary across runs — the largest single
+      # setup cost. Keyed on the lockfile so a Playwright version bump rebuilds
+      # it. `--with-deps` still runs each time for the apt system libraries
+      # (not stored in this cache path), but those are mostly preinstalled.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Playwright Browsers
         working-directory: apps/frontend
