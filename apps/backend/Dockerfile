@@ -49,13 +49,14 @@ RUN uv sync --frozen --no-dev
 # Same digest as the builder above (see note there) — keep the two in sync.
 FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS runtime
 
+# MPLCONFIGDIR: matplotlib (pulled in by SHAP/visualization) needs a writable cache
+# dir; as a non-root user it can't write under the root-owned /app home (issue #176).
+# Point it at a dedicated dir pre-created + chown'd below. Keeps /app read-only and
+# avoids a per-boot "temporary cache directory" fallback warning. (Comment kept above
+# the ENV — inline comments inside a `\`-continued instruction are non-standard.)
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
-    # matplotlib (pulled in by SHAP/visualization) needs a writable cache dir; as a
-    # non-root user it can't write under the root-owned /app home (issue #176). Point
-    # it at a dedicated dir pre-created + chown'd below. Keeps /app read-only and
-    # avoids a per-boot "temporary cache directory" fallback warning.
     MPLCONFIGDIR=/var/cache/matplotlib
 
 # Runtime-only libraries: curl for the healthcheck, libgomp1 for xgboost/lightgbm.
