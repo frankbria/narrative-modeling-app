@@ -145,23 +145,29 @@ describe('HistoryService', () => {
   });
 
   describe('getHistory', () => {
-    it('should fetch history data', async () => {
-      const mockHistoryData: HistoryData = {
+    it('should fetch history data and map snake_case API fields to camelCase', async () => {
+      // Mirrors the actual backend HistoryDataResponse contract: top-level fields
+      // are already snake_case, but each entry uses snake_case keys
+      // (transformation_type / affected_columns / rows_affected / version_id).
+      const mockApiResponse = {
         history: [
           {
             position: 0,
             timestamp: '2024-01-01T00:00:00Z',
-            transformationType: 'initial',
+            transformation_type: 'initial',
             description: 'Initial state',
-            affectedColumns: []
+            affected_columns: [],
+            rows_affected: null,
+            version_id: null
           },
           {
             position: 1,
             timestamp: '2024-01-01T01:00:00Z',
-            transformationType: 'drop_column',
+            transformation_type: 'drop_column',
             description: 'Dropped column A',
-            affectedColumns: ['A'],
-            rowsAffected: 100
+            affected_columns: ['A'],
+            rows_affected: 100,
+            version_id: 'version-abc'
           }
         ],
         current_position: 1,
@@ -171,7 +177,7 @@ describe('HistoryService', () => {
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockHistoryData
+        json: async () => mockApiResponse
       });
 
       const result = await service.getHistory(mockDatasetId, mockToken);
@@ -185,7 +191,65 @@ describe('HistoryService', () => {
         }
       );
 
-      expect(result).toEqual(mockHistoryData);
+      const expected: HistoryData = {
+        history: [
+          {
+            position: 0,
+            timestamp: '2024-01-01T00:00:00Z',
+            transformationType: 'initial',
+            description: 'Initial state',
+            affectedColumns: [],
+            rowsAffected: undefined,
+            versionId: undefined
+          },
+          {
+            position: 1,
+            timestamp: '2024-01-01T01:00:00Z',
+            transformationType: 'drop_column',
+            description: 'Dropped column A',
+            affectedColumns: ['A'],
+            rowsAffected: 100,
+            versionId: 'version-abc'
+          }
+        ],
+        current_position: 1,
+        can_undo: true,
+        can_redo: false
+      };
+
+      expect(result).toEqual(expected);
+      // Ensure no snake_case entry keys leak through to consumers.
+      expect(result.history[1]).not.toHaveProperty('transformation_type');
+      expect(result.history[1]).not.toHaveProperty('affected_columns');
+      expect(result.history[1]).not.toHaveProperty('rows_affected');
+      expect(result.history[1]).not.toHaveProperty('version_id');
+    });
+
+    it('should default affected_columns to an empty array when omitted', async () => {
+      const mockApiResponse = {
+        history: [
+          {
+            position: 0,
+            timestamp: '2024-01-01T00:00:00Z',
+            transformation_type: 'initial',
+            description: 'Initial state'
+          }
+        ],
+        current_position: 0,
+        can_undo: false,
+        can_redo: false
+      };
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockApiResponse
+      });
+
+      const result = await service.getHistory(mockDatasetId, mockToken);
+
+      expect(result.history[0].affectedColumns).toEqual([]);
+      expect(result.history[0].rowsAffected).toBeUndefined();
+      expect(result.history[0].versionId).toBeUndefined();
     });
 
     it('should throw error when get history fails', async () => {
