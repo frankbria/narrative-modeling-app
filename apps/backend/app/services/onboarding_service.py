@@ -2,16 +2,16 @@
 Onboarding service for managing user tutorial and guidance experience
 """
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from app.schemas.onboarding import (
-    OnboardingStepType,
-    OnboardingStepStatus,
-    OnboardingUserProgress
-)
 from app.models.user_data import UserData
-from app.services.s3_service import S3Service
+from app.schemas.onboarding import (
+    OnboardingStepStatus,
+    OnboardingStepType,
+    OnboardingUserProgress,
+)
 from app.services.redis_cache import cache_service
+from app.services.s3_service import S3Service
 
 
 class OnboardingService:
@@ -335,9 +335,11 @@ class OnboardingService:
         
         # Upload the sample dataset file to S3 for the user
         try:
-            import pandas as pd
             import os
-            from app.models.user_data import UserData, SchemaField
+
+            import pandas as pd
+
+            from app.models.user_data import SchemaField, UserData
         except ImportError as e:
             raise ValueError(f"Required dependencies not available: {e}")
         

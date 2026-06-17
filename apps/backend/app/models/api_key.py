@@ -2,13 +2,14 @@
 API Key model for production model serving
 """
 
-from datetime import datetime, timezone
-from typing import Optional, List
-from beanie import Document, Indexed
-from pydantic import Field
 import hashlib
 import secrets
 import string
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from beanie import Document, Indexed
+from pydantic import Field
 
 
 class APIKey(Document):

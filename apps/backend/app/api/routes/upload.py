@@ -1,22 +1,24 @@
+import io
+import logging
+import os
+from typing import Any, Dict
+
+import pandas as pd
 from fastapi import (
     APIRouter,
-    UploadFile,
+    BackgroundTasks,
+    Depends,
     File,
     HTTPException,
-    Depends,
     Request,
-    BackgroundTasks,
+    UploadFile,
 )
-from typing import Dict, Any
-import pandas as pd
-import io
-import os
-from app.models.user_data import UserData
+
 from app.auth.nextauth_auth import get_current_user_id
-from app.utils.schema_inference import infer_schema, generate_s3_filename
-from app.utils.s3 import upload_file_to_s3, create_s3_client
+from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
-import logging
+from app.utils.s3 import create_s3_client, upload_file_to_s3
+from app.utils.schema_inference import generate_s3_filename, infer_schema
 
 # Set up logging
 logger = logging.getLogger(__name__)

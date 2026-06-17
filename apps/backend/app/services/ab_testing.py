@@ -1,16 +1,17 @@
 """
 A/B Testing service for experiment management and variant assignment
 """
-import random
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
+import random
 from datetime import datetime, timedelta
-from scipy import stats
-import numpy as np
+from typing import Any, Dict, List, Optional, Tuple
 
-from app.models.ab_test import ABTest, Variant, ExperimentStatus
-from app.models.ml_model import MLModel
+import numpy as np
 from beanie import PydanticObjectId
+from scipy import stats
+
+from app.models.ab_test import ABTest, ExperimentStatus, Variant
+from app.models.ml_model import MLModel
 
 
 class ABTestingService:

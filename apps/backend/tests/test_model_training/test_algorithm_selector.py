@@ -5,9 +5,9 @@ Tests for AlgorithmSelector
 import pytest
 
 from app.services.model_training.algorithm_selector import (
+    AlgorithmRecommendation,
     AlgorithmSelector,
     DataProfile,
-    AlgorithmRecommendation,
 )
 from app.services.model_training.problem_detector import ProblemType
 

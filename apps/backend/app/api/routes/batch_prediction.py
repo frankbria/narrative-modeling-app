@@ -2,20 +2,19 @@
 Batch prediction API routes
 """
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime
 import io
 import os
 import tempfile
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
-from app.auth.nextauth_auth import get_current_user_id
-
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
 

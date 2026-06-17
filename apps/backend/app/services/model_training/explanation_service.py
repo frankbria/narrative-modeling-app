@@ -2,9 +2,10 @@
 AI-powered explanation service for model training decisions
 """
 
-import os
 import logging
-from typing import Dict, Any, List, Optional
+import os
+from typing import Any, Dict, List, Optional
+
 from openai import OpenAI
 
 from .algorithm_selector import AlgorithmRecommendation, DataProfile

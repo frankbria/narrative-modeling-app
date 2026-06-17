@@ -2,12 +2,13 @@
 Data quality assessment service for comprehensive quality scoring
 """
 
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
-import pandas as pd
+from typing import Any, Dict, List, Optional
+
 import numpy as np
-from pydantic import BaseModel, Field, ConfigDict
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class QualityDimension(str, Enum):

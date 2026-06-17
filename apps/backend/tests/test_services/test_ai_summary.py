@@ -1,13 +1,16 @@
-import pytest
-from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
 from beanie import PydanticObjectId
-from app.models.user_data import UserData, AISummary, SchemaField
+
+from app.models.user_data import AISummary, SchemaField, UserData
 from app.utils.ai_summary import (
-    generate_dataset_summary,
-    prepare_dataset_summary,
     call_openai_api,
-    initialize_openai_client)
+    generate_dataset_summary,
+    initialize_openai_client,
+    prepare_dataset_summary,
+)
 
 # Document construction requires Beanie model registration (no DB IO needed)
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]

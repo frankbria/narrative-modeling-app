@@ -5,12 +5,13 @@ Following TDD methodology - these tests are written BEFORE implementation.
 Tests cover all version API endpoints with various scenarios and edge cases.
 """
 
-import pytest
-from httpx import AsyncClient
 import uuid
 
-from app.models.version import DatasetVersion
+import pytest
+from httpx import AsyncClient
+
 from app.models.dataset import DatasetMetadata, SchemaField
+from app.models.version import DatasetVersion
 from app.services.versioning_service import versioning_service
 
 

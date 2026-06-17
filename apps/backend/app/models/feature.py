@@ -5,12 +5,12 @@ This model stores feature definitions created by the Visual Feature Builder,
 including expression trees, metadata, and validation status.
 """
 
-from beanie import Document, Indexed
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timezone
-from beanie import PydanticObjectId
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def get_current_time() -> datetime:

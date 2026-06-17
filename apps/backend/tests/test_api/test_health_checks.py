@@ -3,9 +3,11 @@ Unit tests for health check endpoints
 Tests Story 7.2: Comprehensive Health Checks
 """
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)

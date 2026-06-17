@@ -13,25 +13,26 @@ Endpoints:
 - PUT /models/{model_id}/deploy - Deploy model to endpoint
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query
-from typing import Optional
 import logging
+from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.auth.nextauth_auth import get_current_user_id
+from app.models.model import ModelStatus
 from app.schemas.model import (
-    ModelTrainRequest,
-    ModelTrainResponse,
     ModelConfigResponse,
-    ModelListResponse,
-    ModelListItem,
-    ModelUpdateRequest,
     ModelDeployRequest,
     ModelDeployResponse,
-    PerformanceMetricsResponse
+    ModelListItem,
+    ModelListResponse,
+    ModelTrainRequest,
+    ModelTrainResponse,
+    ModelUpdateRequest,
+    PerformanceMetricsResponse,
 )
-from app.services.model_service import ModelService
 from app.services.exceptions import NotFoundError, PermissionDeniedError
-from app.models.model import ModelStatus
-from app.auth.nextauth_auth import get_current_user_id
+from app.services.model_service import ModelService
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +63,16 @@ async def train_model(
     """
     try:
         # Verify dataset exists
-        from app.services.dataset_service import DatasetService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics,
-            HyperparameterConfig
-        )
-        import uuid
         import time
+        import uuid
+
+        from app.models.model import (
+            FeatureConfig,
+            HyperparameterConfig,
+            PerformanceMetrics,
+            TrainingConfig,
+        )
+        from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
         dataset = await dataset_service.get_dataset(request.dataset_id)
@@ -192,8 +196,10 @@ async def get_model(
 
         # Convert to response schema
         from app.schemas.model import (
-            FeatureConfigResponse, TrainingConfigResponse,
-            PerformanceMetricsResponse, DeploymentConfigResponse
+            DeploymentConfigResponse,
+            FeatureConfigResponse,
+            PerformanceMetricsResponse,
+            TrainingConfigResponse,
         )
 
         return ModelConfigResponse(
@@ -439,8 +445,10 @@ async def update_model(
 
         # Convert to response (reuse get_model logic)
         from app.schemas.model import (
-            FeatureConfigResponse, TrainingConfigResponse,
-            PerformanceMetricsResponse, DeploymentConfigResponse
+            DeploymentConfigResponse,
+            FeatureConfigResponse,
+            PerformanceMetricsResponse,
+            TrainingConfigResponse,
         )
 
         return ModelConfigResponse(

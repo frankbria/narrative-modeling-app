@@ -2,14 +2,14 @@
 Tests for feature engineering
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     FeatureEngineeringConfig,
-    FeatureEngineeringResult
+    FeatureEngineeringResult,
 )
 
 

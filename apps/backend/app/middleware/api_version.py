@@ -11,6 +11,7 @@ Provides middleware to:
 import logging
 import re
 from typing import Optional
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware

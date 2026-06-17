@@ -3,10 +3,11 @@ Custom JSON encoder to handle numpy and other special types
 """
 
 import json
+from datetime import date, datetime
+from decimal import Decimal
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
-from decimal import Decimal
 from bson import ObjectId
 
 

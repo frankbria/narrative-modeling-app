@@ -3,12 +3,13 @@ PII (Personally Identifiable Information) Detection Service
 Identifies and helps manage sensitive data in uploaded datasets
 """
 
+import logging
 import re
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-import logging
 
 logger = logging.getLogger(__name__)
 

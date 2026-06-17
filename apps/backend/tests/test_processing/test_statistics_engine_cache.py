@@ -1,13 +1,17 @@
 """
 Tests for statistics engine cache integration
 """
-import pytest
-import pandas as pd
-import numpy as np
-from unittest.mock import AsyncMock, patch
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
-from app.services.data_processing.statistics_engine import StatisticsEngine, DatasetStatistics
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.services.data_processing.statistics_engine import (
+    DatasetStatistics,
+    StatisticsEngine,
+)
 
 
 class TestStatisticsEngineCache:

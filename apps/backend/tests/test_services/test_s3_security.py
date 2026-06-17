@@ -11,8 +11,9 @@ Critical security requirements:
 4. Enforce file size limits
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from botocore.exceptions import ClientError
 from tenacity import RetryError
 

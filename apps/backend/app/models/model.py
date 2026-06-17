@@ -5,12 +5,12 @@ This model focuses on ML model configuration, training parameters, performance m
 and deployment settings. It consolidates and enhances the existing MLModel and TrainedModel.
 """
 
-from beanie import Document, Indexed
-from pydantic import BaseModel, Field, field_validator, HttpUrl
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from beanie import PydanticObjectId
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 def get_current_time() -> datetime:

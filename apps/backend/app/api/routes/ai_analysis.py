@@ -3,14 +3,17 @@ API routes for AI-powered data analysis using MCP
 """
 
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
-from app.services.mcp_integration import mcp_service, MCPAnalysisResponse
-from app.services.dataset_summarization import dataset_summarization_service, DatasetSummaryRequest
-
+from app.services.dataset_summarization import (
+    DatasetSummaryRequest,
+    dataset_summarization_service,
+)
+from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
 
 router = APIRouter()
 

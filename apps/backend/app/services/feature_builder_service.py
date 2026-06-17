@@ -7,27 +7,31 @@ provides preview/validation functionality using safe expression evaluation.
 
 import logging
 import uuid
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
-import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 
 from app.models.feature import (
-    FeatureDefinition,
     ExpressionNode,
+    FeatureDefinition,
     FeatureStatistics,
     NodeType,
     OutputType,
 )
 from app.services.base_service import BaseService
 from app.services.dataset_service import DatasetService
-from app.services.expression_evaluator import (
-    ExpressionEvaluator,
-    ExpressionError,
-    ColumnNotFoundError,
-)
-from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
 from app.services.exceptions import ValidationError
+from app.services.expression_evaluator import (
+    ColumnNotFoundError,
+    ExpressionError,
+    ExpressionEvaluator,
+)
+from app.services.transformation_engine.data_utils import (
+    get_dataframe_from_s3,
+    upload_dataframe_to_s3,
+)
 
 logger = logging.getLogger(__name__)
 

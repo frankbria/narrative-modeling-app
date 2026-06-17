@@ -13,13 +13,14 @@ patching module attributes does not affect FastAPI's resolved dependency
 graph (the routes hold direct references via Depends).
 """
 
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock
 
-from app.main import app
+import pytest
+from fastapi.testclient import TestClient
+
 from app.api.routes.transformations import get_history_service
 from app.auth.nextauth_auth import get_current_user_id
+from app.main import app
 from app.services.exceptions import ValidationError
 
 pytestmark = pytest.mark.unit

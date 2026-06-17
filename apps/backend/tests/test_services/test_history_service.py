@@ -11,16 +11,17 @@ Tests cover:
 - Error handling (invalid position, no history, unauthorized access)
 """
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.history_service import HistoryService
+import pytest
+
 from app.services.exceptions import (
     NotFoundError,
+    PermissionDeniedError,
     ValidationError,
-    PermissionDeniedError
 )
+from app.services.history_service import HistoryService
 
 
 @pytest.fixture

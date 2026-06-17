@@ -3,9 +3,9 @@ Pydantic schemas for the in-app feedback collection endpoint (issue #152).
 """
 
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class FeedbackCategory(str, Enum):

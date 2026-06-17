@@ -1,6 +1,7 @@
 # utils/aws.py
 import logging
 import os
+
 from dotenv import load_dotenv
 
 from app.utils.s3 import create_s3_client

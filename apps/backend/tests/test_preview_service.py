@@ -8,16 +8,17 @@ Tests cover:
 - Edge cases (empty DataFrames, NaN values, incompatible shapes)
 """
 
-import pytest
-import pandas as pd
 from unittest.mock import AsyncMock, MagicMock
 
+import pandas as pd
+import pytest
+
+from app.schemas.preview import ImpactStatistics
 from app.services.data_processing import PreviewService
 from app.services.data_processing.quality_assessment import (
     QualityAssessmentService,
     QualityReport,
 )
-from app.schemas.preview import ImpactStatistics
 
 
 @pytest.fixture

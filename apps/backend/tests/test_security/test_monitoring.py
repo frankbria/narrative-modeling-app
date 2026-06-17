@@ -2,8 +2,10 @@
 Tests for Monitoring Service
 """
 
-import pytest
 import time
+
+import pytest
+
 from app.services.monitoring import ApplicationMonitor
 
 

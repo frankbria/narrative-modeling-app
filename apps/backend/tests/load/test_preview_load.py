@@ -18,10 +18,14 @@ Run with:
 """
 
 import asyncio
-import pytest
 import time
+
+import pytest
+
 from app.schemas.transformation import TransformationStepRequest
-from app.services.data_processing.preview_service_integration import PreviewServiceIntegration
+from app.services.data_processing.preview_service_integration import (
+    PreviewServiceIntegration,
+)
 
 # A minimal cheap operation: generate_preview requires a non-empty operations
 # list, so this stands in wherever the old tests passed operations=[]

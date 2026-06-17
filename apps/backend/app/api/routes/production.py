@@ -2,20 +2,21 @@
 Production model serving API routes
 """
 
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header
-from pydantic import BaseModel, Field
 import logging
-from beanie import PydanticObjectId
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
+from beanie import PydanticObjectId
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field
+
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.model_storage import ModelStorageService
 from app.services.prediction_enrichment import PredictionEnricher
-from app.auth.nextauth_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/production", tags=["production"])

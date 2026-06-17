@@ -5,40 +5,39 @@ Implements multiple feature selection algorithms with importance scoring,
 redundancy detection, and human-readable explanations.
 """
 
-from typing import Dict, List, Tuple, Optional, Any
-import pandas as pd
-import numpy as np
-import time
-import logging
+import asyncio
 import hashlib
 import json
-import asyncio
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+import pandas as pd
+from scipy.stats import pearsonr
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.feature_selection import (
-    mutual_info_classif,
-    mutual_info_regression,
     RFE,
     chi2,
     f_classif,
-    f_regression
+    f_regression,
+    mutual_info_classif,
+    mutual_info_regression,
 )
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LassoCV, LogisticRegressionCV
 from sklearn.preprocessing import StandardScaler
-from scipy.stats import pearsonr
 
-from app.services.dataset_service import DatasetService
-from app.services.s3_service import download_file_from_s3
+from app.schemas.feature_selection import FeatureScore, RedundantPair, SelectionMethod
 from app.services.data_processing.statistics_engine import StatisticsEngine
-from app.services.model_training.feature_engineer import FeatureEngineer, FeatureEngineeringConfig
-from app.services.redis_cache import cache_service
-from app.schemas.feature_selection import (
-    FeatureScore,
-    RedundantPair,
-    SelectionMethod
+from app.services.dataset_service import DatasetService
+from app.services.model_training.feature_engineer import (
+    FeatureEngineer,
+    FeatureEngineeringConfig,
 )
+from app.services.redis_cache import cache_service
+from app.services.s3_service import download_file_from_s3
 
 logger = logging.getLogger(__name__)
 

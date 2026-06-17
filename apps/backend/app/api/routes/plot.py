@@ -1,10 +1,12 @@
 # backend/app/api/routes/plot.py
 
-from fastapi import APIRouter, HTTPException, Depends
 from typing import List
+
 from beanie import PydanticObjectId
-from app.models.plot import Plot
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.auth.nextauth_auth import get_current_user_id
+from app.models.plot import Plot
 
 router = APIRouter()
 

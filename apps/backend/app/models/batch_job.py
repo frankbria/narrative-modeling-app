@@ -2,11 +2,12 @@
 Batch prediction job model
 """
 
-from typing import List, Dict, Any, Optional
 from datetime import datetime
-from beanie import Document, Indexed
-from pydantic import Field, BaseModel
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, Indexed
+from pydantic import BaseModel, Field
 
 
 class JobStatus(str, Enum):

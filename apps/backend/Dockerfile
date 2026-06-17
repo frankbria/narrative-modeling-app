@@ -1,10 +1,19 @@
 # Backend (FastAPI) production image — built by docker-compose.staging.yml and
 # deployed by .github/workflows/deploy.yml (issue #150).
 #
-# Python is pinned to 3.13 to match .python-version / requires-python. uv manages
-# the virtualenv; only runtime deps are installed (--no-dev). libgomp1 is needed
-# by the gradient-boosting stack (xgboost/lightgbm); curl backs the healthcheck.
-FROM python:3.13-slim
+# Multi-stage (issue #176): the `builder` stage carries build-essential (~200 MB),
+# needed only to compile wheels during `uv sync`; the final `runtime` stage copies
+# just the built `/app` (virtualenv + code) into a slim image and installs only the
+# runtime libraries. libgomp1 is required by the gradient-boosting stack
+# (xgboost/lightgbm); curl backs the healthcheck.
+#
+# Python is pinned to 3.13 to match .python-version / requires-python. Both stages
+# share the same python:3.13-slim base, so the interpreter path baked into
+# /app/.venv stays valid when the venv is copied forward. uv is pinned to a patch
+# tag + digest for reproducible builds.
+
+# ── builder: compile wheels and build the virtualenv ────────────────────────
+FROM python:3.13-slim AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -13,14 +22,14 @@ ENV PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
+# build-essential is only needed here to compile any sdist-only wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl \
         build-essential \
-        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# uv binary from the official distroless image (pinned major for reproducibility).
-COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /bin/
+# uv binary from the official distroless image (patch tag + digest pinned for
+# reproducibility — issue #176; resolves to uv 0.5.31).
+COPY --from=ghcr.io/astral-sh/uv:0.5.31@sha256:7bff3c3776ec467fc1437960f2c469d8beb30f536a6465a3350c647ccd260ec2 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -28,9 +37,28 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Application code.
+# Application code, then install the project itself into the venv.
 COPY . .
 RUN uv sync --frozen --no-dev
+
+# ── runtime: minimal image with only the built venv + code ──────────────────
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+# Runtime-only libraries: curl for the healthcheck, libgomp1 for xgboost/lightgbm.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the fully built application (virtualenv at /app/.venv + source) from the
+# builder. No compiler toolchain is carried into the runtime image.
+COPY --from=builder /app /app
 
 EXPOSE 8000
 

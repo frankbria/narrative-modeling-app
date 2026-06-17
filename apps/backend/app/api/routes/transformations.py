@@ -2,74 +2,83 @@
 API routes for data transformation pipeline
 """
 import asyncio
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-import pandas as pd
-from datetime import datetime
 import logging
 import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.schemas.transformation import (
-    TransformationPreviewRequest,
-    TransformationApplyRequest,
-    TransformationPreviewResponse,
-    TransformationApplyResponse,
-    TransformationPipelineRequest,
-    RecipeStepRequest,
-    RecipeCreateRequest,
-    RecipeResponse,
-    RecipeListResponse,
-    RecipeApplyRequest,
-    RecipeExportRequest,
-    RecipeExportResponse,
-    RecipeCompatibilityRequest,
-    RecipeCompatibilityResponse,
-    RecipeVersionRequest,
-    RecipeShareRequest,
-    RecipeShareResponse,
-    SharedRecipeListResponse,
-    RecipeImportRequest,
-    RecipeExportJSONResponse,
-    RecipeDuplicateRequest,
-    RecipeVersionHistoryResponse,
-    TransformationHistoryResponse,
     AutoCleanRequest,
-    TransformationSuggestionResponse,
-    ValidationRequest,
-    ValidationResponse,
-    TransformationTypeInfo,
-    HistoryOperationResponse,
-    HistoryDataResponse,
+    BulkJobListResponse,
+    BulkTransformationJobResponse,
+    BulkTransformationPreviewRequest,
+    BulkTransformationPreviewResponse,
+    BulkTransformationProgressResponse,
+    BulkTransformationRequest,
     ClearHistoryResponse,
+    ColumnMetadataResponse,
+    ColumnPreviewResult,
     # Bulk transformation schemas
     ColumnSelectionPatternRequest,
     ColumnSelectionResponse,
-    ColumnMetadataResponse,
-    BulkTransformationPreviewRequest,
-    BulkTransformationPreviewResponse,
-    ColumnPreviewResult,
-    BulkTransformationRequest,
-    BulkTransformationJobResponse,
-    BulkTransformationProgressResponse,
-    BulkJobListResponse,
+    HistoryDataResponse,
+    HistoryOperationResponse,
+    RecipeApplyRequest,
+    RecipeCompatibilityRequest,
+    RecipeCompatibilityResponse,
+    RecipeCreateRequest,
+    RecipeDuplicateRequest,
+    RecipeExportJSONResponse,
+    RecipeExportRequest,
+    RecipeExportResponse,
+    RecipeImportRequest,
+    RecipeListResponse,
+    RecipeResponse,
+    RecipeShareRequest,
+    RecipeShareResponse,
+    RecipeStepRequest,
+    RecipeVersionHistoryResponse,
+    RecipeVersionRequest,
+    SharedRecipeListResponse,
+    TransformationApplyRequest,
+    TransformationApplyResponse,
+    TransformationHistoryResponse,
+    TransformationPipelineRequest,
+    TransformationPreviewRequest,
+    TransformationPreviewResponse,
+    TransformationSuggestionResponse,
+    TransformationTypeInfo,
+    ValidationRequest,
+    ValidationResponse,
 )
-from app.services.transformation_engine.transformation_engine import (
-    TransformationEngine,
-    TransformationType as EngineTransformationType
-)
-from app.services.transformation_engine.validators import TransformationValidator
-from app.services.transformation_engine.recipe_manager import RecipeManager, RecipeCompatibilityChecker
-from app.services.transformation_engine.data_utils import get_dataframe_from_s3, upload_dataframe_to_s3
-from app.services.history_service import HistoryService
 from app.services.bulk_transformation_service import BulkTransformationService
 from app.services.exceptions import (
     NotFoundError,
     OperationError,
+    PermissionDeniedError,
     ValidationError,
-    PermissionDeniedError
 )
+from app.services.history_service import HistoryService
+from app.services.transformation_engine.data_utils import (
+    get_dataframe_from_s3,
+    upload_dataframe_to_s3,
+)
+from app.services.transformation_engine.recipe_manager import (
+    RecipeCompatibilityChecker,
+    RecipeManager,
+)
+from app.services.transformation_engine.transformation_engine import (
+    TransformationEngine,
+)
+from app.services.transformation_engine.transformation_engine import (
+    TransformationType as EngineTransformationType,
+)
+from app.services.transformation_engine.validators import TransformationValidator
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -1391,8 +1400,8 @@ async def get_available_transformations():
 def get_history_service():
     """Dependency injection for HistoryService."""
     from app.services.history_service import HistoryService
-    from app.services.versioning_service import versioning_service
     from app.services.transformation_service import TransformationService
+    from app.services.versioning_service import versioning_service
 
     transformation_service = TransformationService()
     return HistoryService(

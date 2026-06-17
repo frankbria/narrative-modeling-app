@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 CLASSIFICATION_PAYLOAD = {
     "problem_type": "binary_classification",
     "y_test": [0, 1, 1, 0, 1, 0, 1, 1, 0, 0],

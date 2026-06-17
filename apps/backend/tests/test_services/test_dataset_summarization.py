@@ -2,14 +2,15 @@
 Tests for dataset summarization service
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.services.dataset_summarization import (
     DatasetSummarizationService,
     DatasetSummaryRequest,
-    EnhancedAISummary
+    EnhancedAISummary,
 )
 
 

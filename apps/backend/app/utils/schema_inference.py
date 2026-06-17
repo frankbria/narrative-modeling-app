@@ -1,8 +1,9 @@
-import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 
 
 def infer_field_type(series: pd.Series) -> str:

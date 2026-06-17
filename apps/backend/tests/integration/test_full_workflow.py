@@ -2,15 +2,17 @@
 Integration tests for the complete upload → process → analyze workflow
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-import pandas as pd
 import io
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
+import pytest
+from beanie import PydanticObjectId
 
 from app.models.dataset import DatasetMetadata
-from beanie import PydanticObjectId
+
 
 @pytest.fixture
 def sample_csv_file():

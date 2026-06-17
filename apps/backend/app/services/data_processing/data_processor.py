@@ -3,15 +3,16 @@ Main data processor that orchestrates schema inference, statistics, and quality 
 """
 
 import io
-from typing import Dict, Any, Optional
-from pathlib import Path
-import pandas as pd
-import numpy as np
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from .schema_inference import SchemaInferenceService, SchemaDefinition
-from .statistics_engine import StatisticsEngine, DatasetStatistics
+import numpy as np
+import pandas as pd
+
 from .quality_assessment import QualityAssessmentService, QualityReport
+from .schema_inference import SchemaDefinition, SchemaInferenceService
+from .statistics_engine import DatasetStatistics, StatisticsEngine
 
 
 class ProcessedData:

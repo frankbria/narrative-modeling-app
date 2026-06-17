@@ -9,10 +9,11 @@ the user a "why this model" narrative without any runtime LLM call or cost.
 """
 
 from typing import List, Optional
+
 import pandas as pd
 
-from .automl_engine import ModelCandidate
 from .algorithm_selector import DataProfile
+from .automl_engine import ModelCandidate
 from .problem_detector import ProblemType
 
 

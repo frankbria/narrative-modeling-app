@@ -7,10 +7,11 @@ updated as the background training task runs. It is the source of truth for the
 the model comparison table, the selected best model, and any error.
 """
 
-from typing import List, Dict, Any, Literal, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
+
 from beanie import Document, Indexed
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.batch_job import JobStatus
 

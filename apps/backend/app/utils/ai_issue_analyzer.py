@@ -5,17 +5,18 @@ This utility uses OpenAI to analyze data patterns, detect semantic issues,
 and generate context-aware fix suggestions.
 """
 
-import os
 import json
 import logging
-from typing import Dict, List, Optional, Any
+import os
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 from openai import AsyncOpenAI, OpenAIError
 
 from app.models.data_issue import (
     DataIssue,
-    IssueType,
     IssueSeverity,
+    IssueType,
     SuggestedFix,
 )
 from app.utils.circuit_breaker import with_circuit_breaker

@@ -14,7 +14,6 @@ import pkgutil
 import pytest
 from beanie import Document
 
-
 pytestmark = pytest.mark.unit
 
 

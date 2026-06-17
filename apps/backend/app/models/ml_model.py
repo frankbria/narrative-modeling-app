@@ -2,8 +2,9 @@
 Machine Learning Model document for MongoDB
 """
 
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 from beanie import Document, Indexed
 from pydantic import Field
 

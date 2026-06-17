@@ -15,13 +15,15 @@ Tests cover:
 - Edge cases and error conditions
 """
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
+
 from app.models.feature_store import (
-    StoredFeature,
-    FeatureVersion,
     FeatureCollection,
-    get_current_time
+    FeatureVersion,
+    StoredFeature,
+    get_current_time,
 )
 
 

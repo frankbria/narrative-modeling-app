@@ -5,12 +5,12 @@ Tests model training operations to ensure they meet performance targets:
 - Training duration: <5min (300s) for 50K rows
 - Different algorithms: logistic regression, random forest, XGBoost
 """
-import pytest
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+import pytest
 import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
 
 class TestModelTrainingPerformance:
@@ -182,8 +182,8 @@ class TestModelTrainingWithTransformations:
 
     def test_train_with_preprocessing_50k(self, benchmark, benchmark_data_50k, performance_targets):
         """Benchmark training with preprocessing pipeline (50K rows)"""
-        from sklearn.preprocessing import StandardScaler
         from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
 
         X = benchmark_data_50k[['feature_1', 'feature_2', 'feature_3', 'feature_4', 'feature_5']]
         y = benchmark_data_50k['target']

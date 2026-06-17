@@ -11,11 +11,11 @@ Tests validate:
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.models.user_data import UserData
 from app.middleware.api_version import CURRENT_VERSION, DEFAULT_VERSION
+from app.models.user_data import UserData
 
 
 @pytest.mark.integration

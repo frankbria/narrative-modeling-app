@@ -4,13 +4,18 @@ Feature Store API routes.
 Provides REST endpoints for managing features, versions, and collections.
 """
 
+from typing import Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.services.exceptions import (
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.services.feature_store_service import FeatureStoreService
-from app.services.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 
 router = APIRouter()
 

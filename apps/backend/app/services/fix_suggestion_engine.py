@@ -6,20 +6,21 @@ It integrates with the TransformationEngine to execute fixes.
 """
 
 import logging
-from typing import Dict, List, Any, Tuple
+from typing import Any, Dict, List, Tuple
+
 import pandas as pd
 
 from app.models.data_issue import (
-    DataIssue,
-    SuggestedFix,
     AppliedFix,
+    DataIssue,
     IssueType,
+    SuggestedFix,
 )
 from app.models.transformation import TransformationType
+from app.services.exceptions import OperationError, ValidationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
 )
-from app.services.exceptions import ValidationError, OperationError
 
 logger = logging.getLogger(__name__)
 

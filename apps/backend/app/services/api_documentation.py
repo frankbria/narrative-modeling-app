@@ -5,8 +5,10 @@ Provides enhanced OpenAPI documentation, client library generation,
 and integration examples for the Narrative Modeling API.
 """
 import json
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from fastapi import FastAPI
+
 from app.config import settings
 
 

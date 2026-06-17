@@ -1,18 +1,19 @@
 # app/api/routes/column_stats.py
 
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List
-from beanie import PydanticObjectId
-from app.models.column_stats import ColumnStats
-from app.auth.nextauth_auth import get_current_user_id
-import pandas as pd
 import io
-import os
 import logging
-from app.models.user_data import UserData
-from app.utils.s3 import create_s3_client, parse_s3_url
+import os
+from typing import List
 
+import pandas as pd
+from beanie import PydanticObjectId
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.auth.nextauth_auth import get_current_user_id
+from app.models.column_stats import ColumnStats
+from app.models.user_data import UserData
 from app.utils.column_stats import calculate_and_store_column_stats
+from app.utils.s3 import create_s3_client, parse_s3_url
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

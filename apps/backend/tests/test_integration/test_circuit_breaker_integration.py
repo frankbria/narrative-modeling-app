@@ -9,19 +9,20 @@ Tests validate:
 - Metrics are tracked properly
 """
 
+import asyncio
+
 import pytest
 import pytest_asyncio
-import asyncio
 from tenacity import RetryError
 
+from app.models.user_data import UserData
 from app.utils.circuit_breaker import (
     CircuitBreaker,
+    CircuitBreakerOpen,
     CircuitState,
     get_circuit_breaker,
     with_circuit_breaker,
-    CircuitBreakerOpen,
 )
-from app.models.user_data import UserData
 
 
 @pytest.mark.integration

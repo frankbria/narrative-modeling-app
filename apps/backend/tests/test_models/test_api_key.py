@@ -3,6 +3,7 @@ Tests for API Key model
 """
 from datetime import datetime, timedelta
 from unittest.mock import Mock
+
 from app.models.api_key import APIKey
 
 

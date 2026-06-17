@@ -1,12 +1,13 @@
 """
 Tests for production API endpoints
 """
-import pytest
 from unittest.mock import Mock
 
+import pytest
+
+from app.api.routes.production import hash_api_key
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
-from app.api.routes.production import hash_api_key
 
 
 class TestProductionAPI:
@@ -144,8 +145,9 @@ class TestProductionAPI:
     @pytest.mark.asyncio
     async def test_verify_api_key_format(self):
         """Test API key format validation"""
-        from app.api.routes.production import verify_api_key
         from fastapi import HTTPException
+
+        from app.api.routes.production import verify_api_key
         
         # Test invalid format
         with pytest.raises(HTTPException) as exc_info:

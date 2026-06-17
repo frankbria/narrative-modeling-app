@@ -7,8 +7,9 @@ proper test isolation.
 Run with: pytest tests/integration/test_mongodb_fixtures.py -v -m integration
 """
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 
 
 @pytest.mark.integration
@@ -96,7 +97,7 @@ async def test_trained_model_fixture(test_trained_model, test_user_data):
 @pytest.mark.asyncio
 async def test_batch_job_fixture(test_batch_job):
     """Test that test_batch_job fixture creates a valid BatchJob document."""
-    from app.models.batch_job import BatchJob, JobType, JobStatus
+    from app.models.batch_job import BatchJob, JobStatus, JobType
 
     # Verify fixture returned a document
     assert test_batch_job is not None
@@ -147,7 +148,7 @@ async def test_fixture_isolation(test_user_data):
 @pytest.mark.asyncio
 async def test_document_crud_operations(setup_database):
     """Test basic CRUD operations on MongoDB documents."""
-    from app.models.user_data import UserData, SchemaField
+    from app.models.user_data import SchemaField, UserData
 
     # CREATE
     user_data = UserData(
@@ -223,9 +224,9 @@ async def test_multiple_fixtures_interaction(
     test_user_data, test_trained_model, test_batch_job
 ):
     """Test that multiple fixtures can be used together."""
-    from app.models.user_data import UserData
-    from app.models.trained_model import TrainedModel
     from app.models.batch_job import BatchJob
+    from app.models.trained_model import TrainedModel
+    from app.models.user_data import UserData
 
     # Verify all fixtures are present
     assert test_user_data.id is not None

@@ -1,10 +1,12 @@
 # backend/app/api/routes/trained_model.py
 
-from fastapi import APIRouter, HTTPException, Depends
 from typing import List
+
 from beanie import PydanticObjectId
-from app.models.trained_model import TrainedModel
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.auth.nextauth_auth import get_current_user_id
+from app.models.trained_model import TrainedModel
 
 router = APIRouter()
 

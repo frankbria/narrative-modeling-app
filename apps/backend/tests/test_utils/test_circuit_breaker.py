@@ -11,17 +11,18 @@ Tests validate:
 - Decorator usage
 """
 
-import time
 import threading
+import time
+
 import pytest
 
 from app.utils.circuit_breaker import (
     CircuitBreaker,
-    CircuitState,
     CircuitBreakerMetrics,
     CircuitBreakerOpen,
-    get_circuit_breaker,
+    CircuitState,
     get_all_circuit_metrics,
+    get_circuit_breaker,
     with_circuit_breaker,
     with_sync_circuit_breaker,
 )

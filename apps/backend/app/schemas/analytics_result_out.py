@@ -1,7 +1,8 @@
 # app/schemas/analytics_result_out.py
-from pydantic import BaseModel, model_validator
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, model_validator
 
 
 class AnalyticsResultOut(BaseModel):

@@ -1,16 +1,17 @@
+import asyncio
+import logging
+import os
+import time
+from datetime import datetime
+from typing import Any, Dict
+
+import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from datetime import datetime
-import os
-import asyncio
-import time
-import logging
-from typing import Dict, Any
 
-from app.services.monitoring import monitor
 from app.models.user_data import UserData  # To access beanie database
+from app.services.monitoring import monitor
 from app.services.s3_service import s3_service
-import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

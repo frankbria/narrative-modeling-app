@@ -5,11 +5,12 @@ These schemas define request/response models for model training and deployment o
 using ModelConfig model.
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
-from app.models.model import ProblemType
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field
+
+from app.models.model import ProblemType
 
 # Request Schemas
 

@@ -5,17 +5,14 @@ Tests version creation, retrieval, lineage tracking, and version management.
 Uses proper mocking to avoid Beanie initialization requirements.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime, timedelta, timezone
 import io
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import pytest
+
+from app.services.exceptions import ConflictError, NotFoundError, ValidationError
 from app.services.versioning_service import VersioningService
-from app.services.exceptions import (
-    NotFoundError,
-    ConflictError,
-    ValidationError
-)
 
 
 @pytest.fixture

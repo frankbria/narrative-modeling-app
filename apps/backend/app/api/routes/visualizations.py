@@ -1,16 +1,18 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+import json
 from typing import Optional
-from app.services.visualization_cache import (
-    generate_and_cache_histogram,
-    generate_and_cache_boxplot,
-    generate_and_cache_correlation_matrix,
-)
+
+import numpy as np
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
+from app.services.visualization_cache import (
+    generate_and_cache_boxplot,
+    generate_and_cache_correlation_matrix,
+    generate_and_cache_histogram,
+)
 from app.utils.s3 import get_file_from_s3
-import pandas as pd
-import json
-import numpy as np
 
 router = APIRouter()
 

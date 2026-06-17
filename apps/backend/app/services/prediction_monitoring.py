@@ -1,14 +1,16 @@
 """
 Prediction monitoring and analytics service
 """
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
-from collections import defaultdict
-import numpy as np
-from beanie import PydanticObjectId
-from app.models.ml_model import MLModel
 import asyncio
 import logging
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+from beanie import PydanticObjectId
+
+from app.models.ml_model import MLModel
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,6 @@ Auth fixture maps to user "test_user_123".
 
 import pytest
 
-
 DATASET_ID = "dataset_wf_api_1"
 
 CREATE_PAYLOAD = {
@@ -235,10 +234,11 @@ class TestRecoveryScenarios:
     @pytest.mark.asyncio
     async def test_state_survives_new_client_session(self, setup_database):
         """Simulate a crash: save state, open a brand-new client, GET restores it."""
-        from httpx import AsyncClient, ASGITransport
         from asgi_lifespan import LifespanManager
-        from app.main import app
+        from httpx import ASGITransport, AsyncClient
+
         from app.auth.nextauth_auth import get_current_user_id
+        from app.main import app
 
         async def override_get_current_user_id() -> str:
             return "test_user_123"

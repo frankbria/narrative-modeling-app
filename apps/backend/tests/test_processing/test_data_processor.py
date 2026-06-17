@@ -2,10 +2,11 @@
 Tests for the main data processor service
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from io import BytesIO
+
+import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.data_processing.data_processor import DataProcessor, ProcessedData
 

@@ -10,9 +10,10 @@ Following strict TDD methodology:
 Tests cover all 8 endpoints with success/error cases and backward compatibility.
 """
 
-import pytest
-from unittest.mock import patch
 import io
+from unittest.mock import patch
+
+import pytest
 
 from app.models.dataset import SchemaField
 

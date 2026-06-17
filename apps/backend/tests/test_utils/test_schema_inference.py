@@ -1,6 +1,8 @@
-import pandas as pd
 from datetime import datetime
-from app.utils.schema_inference import infer_field_type, infer_data_type, infer_schema
+
+import pandas as pd
+
+from app.utils.schema_inference import infer_data_type, infer_field_type, infer_schema
 
 
 def test_infer_field_type_numeric():

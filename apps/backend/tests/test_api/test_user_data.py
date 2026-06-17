@@ -13,12 +13,13 @@ Integration tests for user_data routes covering all endpoints:
 - GET /{id}/eda-summary - Get EDA summary
 """
 
-import pytest
-from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from beanie import PydanticObjectId
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.user_data import UserData, AISummary, SchemaField
+import pytest
+from beanie import PydanticObjectId
+from httpx import AsyncClient
+
+from app.models.user_data import AISummary, SchemaField, UserData
 
 
 @pytest.mark.integration
@@ -504,8 +505,9 @@ class TestUserDataAPI:
         sample_user_data: UserData
     ):
         """Test getting preview data with successful S3 retrieval."""
-        import pandas as pd
         import io
+
+        import pandas as pd
 
         # Mock S3 client and response
         mock_df = pd.DataFrame({

@@ -5,45 +5,56 @@ Provides endpoints for managing datasets using DatasetService.
 Implements Story 12.1: API Integration for New Models (Dataset portion).
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Path, Body
 import logging
-import uuid
-import numpy as np
 import time
+import uuid
 
+import numpy as np
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    HTTPException,
+    Path,
+    Query,
+    UploadFile,
+    status,
+)
+
+from app.auth.nextauth_auth import get_current_user_id
+from app.models.dataset import DatasetMetadata
 from app.schemas.dataset import (
-    DatasetListResponse,
-    DatasetListItem,
-    DatasetDetailResponse,
-    DatasetUploadResponse,
-    DatasetUpdateRequest,
     DatasetDeleteResponse,
-    DatasetSchemaResponse,
+    DatasetDetailResponse,
+    DatasetListItem,
+    DatasetListResponse,
     DatasetPreviewResponse,
     DatasetProcessingRequest,
-    DatasetProcessingResponse
+    DatasetProcessingResponse,
+    DatasetSchemaResponse,
+    DatasetUpdateRequest,
+    DatasetUploadResponse,
 )
-from app.schemas.preview import PreviewRequest, PreviewResponse
 from app.schemas.feature_selection import (
-    FeatureSelectionRequest,
-    FeatureSelectionResult,
     FeatureImportanceRequest,
     FeatureImportanceResponse,
-    RedundancyDetectionRequest,
-    RedundancyDetectionResponse,
+    FeatureSelectionRequest,
+    FeatureSelectionResult,
     MethodComparisonRequest,
     MethodComparisonResponse,
-    SelectedFeaturesResponse
+    RedundancyDetectionRequest,
+    RedundancyDetectionResponse,
+    SelectedFeaturesResponse,
 )
+from app.schemas.preview import PreviewRequest, PreviewResponse
+from app.services.data_processing.data_processor import DataProcessor
 from app.services.dataset_service import DatasetService
 from app.services.model_training.feature_selection_service import (
+    FeatureSelectionConfig,
     FeatureSelectionService,
-    FeatureSelectionConfig
 )
-from app.auth.nextauth_auth import get_current_user_id
 from app.utils.s3 import upload_file_to_s3
-from app.services.data_processing.data_processor import DataProcessor
-from app.models.dataset import DatasetMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -806,7 +817,9 @@ async def preview_transformation(
             )
 
         # Import PreviewService here to avoid circular imports
-        from app.services.data_processing.preview_service_integration import preview_service
+        from app.services.data_processing.preview_service_integration import (
+            preview_service,
+        )
 
         # Call PreviewService to generate preview
         preview_result = await preview_service.generate_preview(

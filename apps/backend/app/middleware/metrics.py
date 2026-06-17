@@ -22,11 +22,12 @@ Usage:
 
 import time
 from typing import Callable
+
 from prometheus_client import (
     CollectorRegistry,
     Counter,
-    Histogram,
     Gauge,
+    Histogram,
     generate_latest,
 )
 from starlette.middleware.base import BaseHTTPMiddleware

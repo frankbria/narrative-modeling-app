@@ -9,14 +9,14 @@ comparison, the algorithm recommendations, and the job lifecycle — is real.
 """
 
 import io
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
-from app.models.training_job import TrainingJob
 from app.models.batch_job import JobStatus
+from app.models.training_job import TrainingJob
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ async def test_train_workflow_completes_with_comparison(
     setup_database, sample_classification_csv
 ):
     """POST-style training task trains a real model and records full results."""
-    from app.api.routes.model_training import train_model_task, TrainModelRequest
+    from app.api.routes.model_training import TrainModelRequest, train_model_task
 
     model_id = "model_integration_workflow"
     user_id = "integration_user"

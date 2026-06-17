@@ -1,8 +1,10 @@
-import pytest
 from unittest.mock import Mock, patch
+
 import pandas as pd
+import pytest
 from fastapi import UploadFile
-from app.models.user_data import UserData, SchemaField
+
+from app.models.user_data import SchemaField, UserData
 
 
 @pytest.mark.asyncio

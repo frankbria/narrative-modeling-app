@@ -2,10 +2,11 @@
 MCP (Model Context Protocol) integration service for AI tool orchestration
 """
 
-import os
 import logging
-from typing import Dict, Any, List, Optional
+import os
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
 import httpx
 from pydantic import BaseModel, Field
 

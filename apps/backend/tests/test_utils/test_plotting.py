@@ -1,15 +1,16 @@
-import pytest
 import numpy as np
 import pandas as pd
-from app.utils.plotting import (
-    generate_histogram,
-    generate_boxplot,
-    generate_correlation_matrix,
-)
+import pytest
+
 from app.models.visualization_cache import (
-    HistogramData,
     BoxplotData,
     CorrelationMatrixData,
+    HistogramData,
+)
+from app.utils.plotting import (
+    generate_boxplot,
+    generate_correlation_matrix,
+    generate_histogram,
 )
 
 

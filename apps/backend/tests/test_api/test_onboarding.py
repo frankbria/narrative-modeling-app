@@ -1,11 +1,12 @@
 """
 Tests for onboarding API routes
 """
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from app.main import app
+import pytest
+
 from app.auth.nextauth_auth import get_current_user_id
+from app.main import app
 
 
 @pytest.fixture

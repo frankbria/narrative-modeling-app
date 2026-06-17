@@ -1,10 +1,11 @@
 """
 Shared fixtures for benchmark tests.
 """
-import pytest
-import pandas as pd
+from typing import Any, Dict, Tuple
+
 import numpy as np
-from typing import Dict, Any, Tuple
+import pandas as pd
+import pytest
 
 
 @pytest.fixture

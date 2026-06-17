@@ -1,8 +1,9 @@
 """
 Tests for Redis cache service
 """
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.services.redis_cache import RedisCacheService, cache_result
 

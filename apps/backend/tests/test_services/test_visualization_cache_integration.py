@@ -1,16 +1,17 @@
 """
 Tests for visualization cache service
 """
-import pytest
+from unittest.mock import AsyncMock, Mock, patch
+
 import pandas as pd
-from unittest.mock import AsyncMock, patch, Mock
+import pytest
 from beanie import PydanticObjectId
 
 from app.services.visualization_cache import (
-    get_cached_visualization,
     cache_visualization,
+    generate_and_cache_correlation_matrix,
     generate_and_cache_histogram,
-    generate_and_cache_correlation_matrix
+    get_cached_visualization,
 )
 
 

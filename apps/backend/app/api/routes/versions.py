@@ -5,27 +5,25 @@ Provides endpoints for managing dataset versions and transformation lineage.
 Implements Story 12.2: Data Versioning API.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from typing import Optional
 import logging
+from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.auth.nextauth_auth import get_current_user_id
+from app.models.dataset import DatasetMetadata
+from app.models.version import DatasetVersion
 from app.schemas.version import (
-    DatasetVersionResponse,
     DatasetVersionCreate,
+    DatasetVersionResponse,
     LineageResponse,
     VersionComparisonRequest,
     VersionComparisonResponse,
     VersionListResponse,
-    VersionPinRequest
+    VersionPinRequest,
 )
-from app.models.version import DatasetVersion
-from app.models.dataset import DatasetMetadata
+from app.services.exceptions import NotFoundError, ValidationError
 from app.services.versioning_service import versioning_service
-from app.auth.nextauth_auth import get_current_user_id
-from app.services.exceptions import (
-    NotFoundError,
-    ValidationError
-)
 
 logger = logging.getLogger(__name__)
 

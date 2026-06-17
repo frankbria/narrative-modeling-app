@@ -19,9 +19,10 @@ Following strict TDD methodology:
 - COMMIT: Save progress
 """
 
-import pytest
-from unittest.mock import patch
 import io
+from unittest.mock import patch
+
+import pytest
 
 from app.models.dataset import DatasetMetadata, SchemaField
 from app.models.user_data import UserData
@@ -559,7 +560,8 @@ class TestMigrationPathScenarios:
         DatasetMetadata (legacy records from before migration).
         """
         # ARRANGE: Create UserData directly (simulating legacy record)
-        from app.models.user_data import UserData, SchemaField as LegacySchemaField
+        from app.models.user_data import SchemaField as LegacySchemaField
+        from app.models.user_data import UserData
 
         user_data = UserData(
             user_id="test_user_123",

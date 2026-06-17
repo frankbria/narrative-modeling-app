@@ -6,19 +6,22 @@ tests (Redis hit/miss, error handling, TTL) live in
 test_visualization_cache_integration.py.
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import patch, Mock, AsyncMock
 from beanie import PydanticObjectId
 
 from app.models.visualization_cache import (
-    HistogramData,
     BoxplotData,
-    CorrelationMatrixData)
+    CorrelationMatrixData,
+    HistogramData,
+)
 from app.services.visualization_cache import (
-    get_cached_visualization,
+    DEFAULT_HISTOGRAM_BINS,
     cache_visualization,
     generate_and_cache_histogram,
-    DEFAULT_HISTOGRAM_BINS)
+    get_cached_visualization,
+)
 
 pytestmark = pytest.mark.unit
 

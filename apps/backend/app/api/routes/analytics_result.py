@@ -1,12 +1,14 @@
 # backend/app/api/routes/analytics_result.py
 
-from fastapi import APIRouter, HTTPException, Depends, Body
 from typing import List
+
 from beanie import PydanticObjectId
+from fastapi import APIRouter, Body, Depends, HTTPException
+
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.analytics_result import AnalyticsResult
 from app.schemas.analytics_result_in import AnalyticsResultIn
 from app.schemas.analytics_result_out import AnalyticsResultOut
-from app.auth.nextauth_auth import get_current_user_id
 
 router = APIRouter()
 

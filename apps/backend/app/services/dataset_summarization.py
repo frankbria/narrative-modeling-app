@@ -2,18 +2,19 @@
 Enhanced dataset summarization service using AI
 """
 
-import os
 import json
 import logging
-from typing import Dict, Any, List, Optional, Union
+import os
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
-from openai import OpenAI, OpenAIError
+from typing import Any, Dict, List, Optional, Union
 
+from openai import OpenAI, OpenAIError
+from pydantic import BaseModel, Field
+
+from app.models.user_data import AISummary
+from app.services.data_processing.quality_assessment import QualityReport
 from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
-from app.services.data_processing.quality_assessment import QualityReport
-from app.models.user_data import AISummary
 from app.utils.circuit_breaker import with_circuit_breaker
 
 logger = logging.getLogger(__name__)

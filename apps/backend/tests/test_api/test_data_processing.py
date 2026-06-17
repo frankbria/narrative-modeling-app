@@ -2,10 +2,11 @@
 Tests for data processing API endpoints
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-import pandas as pd
 import io
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
+import pytest
 from bson import ObjectId
 
 from app.models.user_data import UserData

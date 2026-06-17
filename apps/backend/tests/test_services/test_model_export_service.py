@@ -1,10 +1,11 @@
 """
 Tests for model export service
 """
-import pytest
 import zipfile
-from unittest.mock import Mock, AsyncMock, patch
 from io import BytesIO
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app.services.model_export import ModelExportService
 from app.services.model_storage import ModelStorageService

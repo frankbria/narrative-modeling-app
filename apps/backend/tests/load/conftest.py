@@ -8,11 +8,12 @@ Prerequisites (see apps/backend/docs/TEST_INFRASTRUCTURE.md):
   network throughput.
 """
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
 import pytest_asyncio
-from unittest.mock import patch
 
 TEST_USER_ID = "load_test_user_123"
 TEST_DATASET_ID = "test_dataset_456"

@@ -1,12 +1,13 @@
 """
 Cache management API endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any
 import logging
+from typing import Any, Dict
 
-from app.services.redis_cache import cache_service
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.auth.nextauth_auth import get_current_user_id
+from app.services.redis_cache import cache_service
 
 logger = logging.getLogger(__name__)
 

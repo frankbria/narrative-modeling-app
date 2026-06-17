@@ -11,16 +11,17 @@ Following TDD methodology with pytest and async/await patterns.
 Uses real MongoDB for integration tests (no mocks).
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from beanie import PydanticObjectId
 
 from app.services.transformation_engine.recipe_manager import (
-    RecipeManager,
     RecipeCompatibilityChecker,
-    TransformationRecipe,
+    RecipeManager,
     SharedRecipe,
-    TransformationStep
+    TransformationRecipe,
+    TransformationStep,
 )
 
 

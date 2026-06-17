@@ -1,13 +1,15 @@
-import pandas as pd
-import numpy as np
 from typing import List
+
+import numpy as np
+import pandas as pd
+from beanie import Link
+
 from app.models.column_stats import (
+    CategoricalValueCounts,
     ColumnStats,
     NumericHistogram,
-    CategoricalValueCounts,
 )
 from app.models.user_data import UserData
-from beanie import Link
 
 
 async def calculate_and_store_column_stats(

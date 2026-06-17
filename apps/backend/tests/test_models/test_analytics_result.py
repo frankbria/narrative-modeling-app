@@ -1,9 +1,11 @@
-import pytest
 from datetime import datetime, timezone
-from beanie import PydanticObjectId, Link
+
+import pytest
+from beanie import Link, PydanticObjectId
+
 from app.models.analytics_result import AnalyticsResult
-from app.models.user_data import UserData
 from app.models.plot import Plot
+from app.models.user_data import UserData
 
 # Document construction requires Beanie model registration (no DB IO needed)
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]

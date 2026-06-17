@@ -4,11 +4,12 @@ Schema inference service for automatic data type detection and validation
 
 import re
 from datetime import datetime
-from typing import List, Optional, Any, Union
 from enum import Enum
-import pandas as pd
+from typing import Any, List, Optional, Union
+
 import numpy as np
-from pydantic import BaseModel, Field, ConfigDict
+import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DataType(str, Enum):

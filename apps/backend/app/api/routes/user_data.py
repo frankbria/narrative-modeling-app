@@ -1,16 +1,18 @@
 # backend/app/api/routes/user_data.py
 
-from fastapi import APIRouter, HTTPException, Depends
+import io
+import logging
+import os
+from typing import Any, Dict, List
+
+import pandas as pd
 from beanie import PydanticObjectId
-from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.schemas.user_data import UserDataResponse
-from app.auth.nextauth_auth import get_current_user_id
 from app.services.eda_summary import generate_eda_summary
-import pandas as pd
-import io
-import os
-import logging
 from app.utils.s3 import create_s3_client, parse_s3_url
 
 # Set up logging

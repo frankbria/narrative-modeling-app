@@ -3,13 +3,13 @@ Application Monitoring Service
 Tracks metrics, performance, and security events
 """
 
+import logging
 import time
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
 from collections import defaultdict, deque
 from dataclasses import dataclass
-import logging
+from datetime import datetime, timedelta
 from functools import wraps
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +235,9 @@ class ApplicationMonitor:
     
     def _get_memory_usage(self) -> Dict[str, Any]:
         """Get memory usage statistics"""
-        import psutil
         import os
+
+        import psutil
         
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
