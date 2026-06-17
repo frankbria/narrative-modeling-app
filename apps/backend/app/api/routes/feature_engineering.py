@@ -5,30 +5,31 @@ Provides endpoints for AI-powered feature suggestions, feedback recording,
 and feature application.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
-from typing import Optional
 import logging
-import pandas as pd
 import uuid
 from datetime import datetime
+from typing import Optional
 
+import pandas as pd
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+
+from app.auth.nextauth_auth import get_current_user_id
 from app.schemas.feature_engineering import (
-    FeatureSuggestionRequest,
-    FeatureSuggestionResponse,
-    FeatureFeedbackRequest,
-    FeatureFeedbackResponse,
-    GenerateMoreRequest,
     ApplyFeatureRequest,
-    ApplyMultipleFeaturesRequest,
     ApplyFeatureResponse,
+    ApplyMultipleFeaturesRequest,
     FeatureExplanationResponse,
     FeatureFeedbackRecord,
-    FeatureType
+    FeatureFeedbackRequest,
+    FeatureFeedbackResponse,
+    FeatureSuggestionRequest,
+    FeatureSuggestionResponse,
+    FeatureType,
+    GenerateMoreRequest,
 )
-from app.services.feature_engineering_service import feature_engineering_service
 from app.services.dataset_service import DatasetService
+from app.services.feature_engineering_service import feature_engineering_service
 from app.services.s3_service import download_file_from_s3
-from app.auth.nextauth_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 

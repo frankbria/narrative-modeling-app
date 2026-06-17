@@ -5,22 +5,27 @@ Provides business logic for managing reusable feature definitions,
 including CRUD operations, feature application, versioning, and sharing.
 """
 
-import uuid
+import io
 import logging
-from typing import List, Optional, Dict, Any
+import uuid
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from app.models.feature_store import StoredFeature, FeatureVersion, FeatureCollection
+import pandas as pd
+
 from app.models.dataset import DatasetMetadata
+from app.models.feature_store import FeatureCollection, FeatureVersion, StoredFeature
 from app.services.base_service import BaseService
-from app.services.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from app.services.exceptions import (
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     parse_feature_definition,
 )
 from app.services.s3_service import get_file_from_s3
-import pandas as pd
-import io
 
 logger = logging.getLogger(__name__)
 

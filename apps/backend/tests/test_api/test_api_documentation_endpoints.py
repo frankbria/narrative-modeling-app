@@ -6,6 +6,7 @@ integration examples, and Postman collection generation.
 """
 import yaml
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)

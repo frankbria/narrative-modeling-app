@@ -598,7 +598,7 @@ The testing pipeline consists of three workflows that run automatically:
    - Artifacts: `coverage.xml` (30-day retention)
 
 2. **Frontend Unit Tests** (10-minute timeout)
-   - Node 18, npm package manager
+   - Node 20, npm package manager
    - Tests: Jest with coverage
    - Coverage uploaded to Codecov (frontend-unit flag)
    - Artifacts: `coverage/` directory (30-day retention)
@@ -619,7 +619,7 @@ The testing pipeline consists of three workflows that run automatically:
 **Configuration**:
 - 60-minute timeout
 - Browser matrix: Chromium, Firefox, WebKit
-- Node 18, npm package manager
+- Node 20, npm package manager
 - Fail-fast: false (run all browsers)
 
 **Environment Variables**:

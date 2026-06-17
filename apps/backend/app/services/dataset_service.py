@@ -5,9 +5,12 @@ This service handles CRUD operations for datasets using the new DatasetMetadata 
 while maintaining backward compatibility with the legacy UserData model through dual-write.
 """
 
-from typing import List, Optional, Any, Dict
-from app.models.dataset import DatasetMetadata, SchemaField, AISummary, PIIReport
-from app.models.user_data import UserData, SchemaField as LegacySchemaField, AISummary as LegacyAISummary
+from typing import Any, Dict, List, Optional
+
+from app.models.dataset import AISummary, DatasetMetadata, PIIReport, SchemaField
+from app.models.user_data import AISummary as LegacyAISummary
+from app.models.user_data import SchemaField as LegacySchemaField
+from app.models.user_data import UserData
 from app.services.base_service import BaseService
 
 

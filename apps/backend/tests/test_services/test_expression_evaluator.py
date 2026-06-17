@@ -4,14 +4,14 @@ Tests for the Expression Evaluator service.
 Tests safe evaluation of expression trees using pandas operations.
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from app.models.feature import ExpressionNode, NodeType
 from app.services.expression_evaluator import (
-    ExpressionEvaluator,
     ColumnNotFoundError,
+    ExpressionEvaluator,
 )
 
 

@@ -5,37 +5,42 @@ Provides endpoints for the Visual Feature Builder - creating, previewing,
 validating, and managing feature definitions.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Path, Body
 import logging
 
-from app.schemas.feature import (
-    FeatureDefinitionCreate,
-    FeatureDefinitionUpdate,
-    FeatureDefinitionResponse,
-    FeatureListResponse,
-    FeatureDeleteResponse,
-    FeaturePreviewRequest,
-    FeaturePreviewResponse,
-    FeatureStatisticsResponse,
-    FeatureValidationRequest,
-    FeatureValidationDetailedResponse,
-    ExpressionNodeRequest,
-    ExpressionNodeResponse,
-    AvailableOperationsResponse,
-    AvailableFunctionsResponse,
-    OperationInfo,
-    FunctionInfo,
-    ApplyFeatureRequest,
-    ApplyFeatureResponse,
-)
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.feature import (
     ExpressionNode,
     NodeType,
     OutputType,
 )
+from app.schemas.feature import (
+    ApplyFeatureRequest,
+    ApplyFeatureResponse,
+    AvailableFunctionsResponse,
+    AvailableOperationsResponse,
+    ExpressionNodeRequest,
+    ExpressionNodeResponse,
+    FeatureDefinitionCreate,
+    FeatureDefinitionResponse,
+    FeatureDefinitionUpdate,
+    FeatureDeleteResponse,
+    FeatureListResponse,
+    FeaturePreviewRequest,
+    FeaturePreviewResponse,
+    FeatureStatisticsResponse,
+    FeatureValidationDetailedResponse,
+    FeatureValidationRequest,
+    FunctionInfo,
+    OperationInfo,
+)
+from app.services.exceptions import (
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.services.feature_builder_service import feature_builder_service
-from app.services.exceptions import NotFoundError, ValidationError, PermissionDeniedError
-from app.auth.nextauth_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 

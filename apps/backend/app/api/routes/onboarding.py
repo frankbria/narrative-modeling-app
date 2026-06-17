@@ -1,18 +1,19 @@
 """
 Onboarding API routes for guiding new users through the platform
 """
-from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.auth.nextauth_auth import get_current_user_id
-from app.services.onboarding_service import OnboardingService
 from app.schemas.onboarding import (
-    OnboardingStatusResponse,
-    OnboardingStepResponse, 
     CompleteStepRequest,
+    OnboardingStatusResponse,
+    OnboardingStepResponse,
+    SampleDatasetResponse,
     TutorialProgressResponse,
-    SampleDatasetResponse
 )
+from app.services.onboarding_service import OnboardingService
 
 router = APIRouter()
 

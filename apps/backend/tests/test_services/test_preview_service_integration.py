@@ -14,14 +14,18 @@ Test Coverage:
 - Large sample size limits
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import pandas as pd
-import numpy as np
 
-from app.services.data_processing.preview_service_integration import PreviewServiceIntegration
-from app.schemas.preview import PreviewResult, ImpactStatistics
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.schemas.preview import ImpactStatistics, PreviewResult
 from app.schemas.transformation import TransformationStepRequest
+from app.services.data_processing.preview_service_integration import (
+    PreviewServiceIntegration,
+)
+
 
 @pytest.mark.unit
 class TestPreviewServiceIntegration:

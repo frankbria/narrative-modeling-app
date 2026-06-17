@@ -2,8 +2,9 @@
 Tests for PII Detection Service
 """
 
-import pytest
 import pandas as pd
+import pytest
+
 from app.services.security.pii_detector import PIIDetector, PIIType
 
 

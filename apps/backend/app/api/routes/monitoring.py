@@ -1,16 +1,16 @@
 """
 Model monitoring and analytics API routes
 """
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.models.ml_model import MLModel
-from app.models.api_key import APIKey
 from app.auth.nextauth_auth import get_current_user_id
+from app.models.api_key import APIKey
+from app.models.ml_model import MLModel
 from app.services.prediction_monitoring import PredictionMonitoringService
-
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 

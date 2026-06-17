@@ -1,14 +1,15 @@
 """
 Tests for prediction monitoring service
 """
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app.services.prediction_monitoring import (
     PredictionLog,
     PredictionMonitoringService,
-    prediction_log
+    prediction_log,
 )
 
 

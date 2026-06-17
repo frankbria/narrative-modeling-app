@@ -7,24 +7,25 @@ rule-based analysis (via QualityAssessmentService) and AI-powered analysis.
 
 import logging
 import time
-from typing import Dict, List, Optional, Any, Tuple
-import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 
 from app.models.data_issue import (
     DataIssue,
     DataIssueRecord,
-    IssueType,
-    IssueSeverity,
-    SuggestedFix,
     DetectionSummary,
-)
-from app.services.data_processing.quality_assessment import (
-    QualityAssessmentService,
-    QualityIssue,
-    QualityDimension,
+    IssueSeverity,
+    IssueType,
+    SuggestedFix,
 )
 from app.schemas.data_issue import DetectionOptions
+from app.services.data_processing.quality_assessment import (
+    QualityAssessmentService,
+    QualityDimension,
+    QualityIssue,
+)
 
 logger = logging.getLogger(__name__)
 

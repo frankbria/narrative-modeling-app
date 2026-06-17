@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 SHAP_PAYLOAD = {
     "explainer_type": "tree",
     "shap_importance": {"f1": 0.1, "f2": 0.6, "f3": 0.3},

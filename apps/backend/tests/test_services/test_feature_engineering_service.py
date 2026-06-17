@@ -5,19 +5,20 @@ Tests AI-powered feature suggestion generation, domain detection,
 importance estimation, and feedback recording.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from datetime import datetime
 
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.schemas.feature_engineering import (
+    FeatureFeedbackRecord,
+    FeatureSuggestionResponse,
+    FeatureType,
+)
+from app.services.domain_detector import Domain, DomainDetector
 from app.services.feature_engineering_service import (
     FeatureEngineeringService,
-)
-from app.services.domain_detector import DomainDetector, Domain
-from app.schemas.feature_engineering import (
-    FeatureType,
-    FeatureSuggestionResponse,
-    FeatureFeedbackRecord,
 )
 
 

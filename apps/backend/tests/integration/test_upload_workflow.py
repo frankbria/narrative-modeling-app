@@ -8,10 +8,11 @@ version don't exist and need to be created or the tests need to be
 rewritten to use existing fixtures.
 """
 
-import pytest
 import io
 from datetime import datetime, timezone
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 class TestUploadWorkflowIntegration:
@@ -115,6 +116,7 @@ class TestSimpleUploadWorkflow:
             from app.models.dataset import DatasetMetadata
             with patch.object(DatasetMetadata, 'insert', new_callable=AsyncMock) as mock_insert:
                 import uuid
+
                 from beanie import PydanticObjectId
 
                 mock_dataset = DatasetMetadata(

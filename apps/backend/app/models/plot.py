@@ -1,9 +1,11 @@
 # app/models/plot.py
 
-from beanie import Document, Link
-from pydantic import HttpUrl, Field
-from typing import Optional
 from datetime import datetime, timezone
+from typing import Optional
+
+from beanie import Document, Link
+from pydantic import Field, HttpUrl
+
 from app.models.user_data import UserData
 
 

@@ -5,12 +5,12 @@ This model focuses on data transformation configurations, history, and validatio
 It replaces the transformation-specific fields from the legacy UserData model.
 """
 
-from beanie import Document, Indexed
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from beanie import PydanticObjectId
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def get_current_time() -> datetime:

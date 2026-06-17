@@ -8,43 +8,44 @@ These endpoints provide functionality for:
 - Batch fix operations
 """
 
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from beanie import PydanticObjectId
-from datetime import datetime, timezone
 import logging
 import time
+from datetime import datetime, timezone
+from typing import Optional
+
+from beanie import PydanticObjectId
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.user_data import UserData
 from app.models.data_issue import (
-    DataIssueRecord,
     DataIssue,
+    DataIssueRecord,
     IssueSeverity,
 )
+from app.models.user_data import UserData
 from app.schemas.data_issue import (
-    IssueDetectionRequest,
-    IssueDetectionResponse,
-    FixPreviewRequest,
-    FixPreviewResponse,
-    FixApplicationRequest,
-    FixApplicationResponse,
     BatchFixRequest,
     BatchFixResponse,
     BatchFixResult,
     DataIssueResponse,
-    SuggestedFixResponse,
     DetectionSummaryResponse,
-    IssueHistoryResponse,
+    FixApplicationRequest,
+    FixApplicationResponse,
+    FixPreviewRequest,
+    FixPreviewResponse,
+    IssueDetectionRequest,
+    IssueDetectionResponse,
     IssueHistoryListResponse,
+    IssueHistoryResponse,
+    SuggestedFixResponse,
 )
 from app.services.data_issue_detection_service import DataIssueDetectionService
+from app.services.exceptions import OperationError, ValidationError
 from app.services.fix_suggestion_engine import FixSuggestionEngine
 from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
     upload_dataframe_to_s3,
 )
-from app.services.exceptions import OperationError, ValidationError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

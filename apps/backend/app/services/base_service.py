@@ -9,16 +9,17 @@ Provides a standardized interface for service layer operations with:
 - Audit logging hooks
 """
 
-from typing import TypeVar, Generic, Optional, List, Type, Any, Dict
+import logging
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+
 from beanie import Document
 from pydantic import BaseModel
-import logging
 
 from app.services.exceptions import (
     NotFoundError,
     PermissionDeniedError,
-    ValidationError
+    ValidationError,
 )
 
 # Type variable for Beanie Document subclasses

@@ -2,8 +2,9 @@
 Tests for Secure Upload API endpoints
 """
 
-from httpx import AsyncClient
 import io
+
+from httpx import AsyncClient
 
 
 class TestSecureUploadAPI:

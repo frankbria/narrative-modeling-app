@@ -9,7 +9,6 @@ import pytest
 
 from app.services.exceptions import ConflictError, NotFoundError
 
-
 USER_ID = "test_user_123"
 OTHER_USER_ID = "other_user_456"
 DATASET_ID = "dataset_wf_1"

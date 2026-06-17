@@ -2,9 +2,9 @@
 Algorithm recommendation system for AutoML
 """
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
 import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 from .problem_detector import ProblemType
 

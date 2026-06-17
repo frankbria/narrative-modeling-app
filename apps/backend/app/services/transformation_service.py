@@ -6,20 +6,18 @@ TransformationConfig model, delegating actual transformation execution to
 the existing TransformationEngine.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from app.models.transformation import (
     TransformationConfig,
     TransformationStep,
-    TransformationValidation
-)
-from app.services.transformation_engine.transformation_engine import (
-    TransformationEngine,
-    TransformationType
+    TransformationValidation,
 )
 from app.services.base_service import BaseService
-from app.services.exceptions import (
-    NotFoundError,
-    OperationError
+from app.services.exceptions import NotFoundError, OperationError
+from app.services.transformation_engine.transformation_engine import (
+    TransformationEngine,
+    TransformationType,
 )
 
 
@@ -357,13 +355,15 @@ class TransformationService(BaseService[TransformationConfig]):
         """
         import time
         from datetime import datetime, timezone
+
+        import pandas as pd
+
         from app.models.dataset import DatasetMetadata
+        from app.services.redis_cache import cache_service
         from app.services.transformation_engine.data_utils import (
             get_dataframe_from_s3,
-            upload_dataframe_to_s3
+            upload_dataframe_to_s3,
         )
-        from app.services.redis_cache import cache_service
-        import pandas as pd
 
         start_time = time.time()
 
@@ -422,10 +422,9 @@ class TransformationService(BaseService[TransformationConfig]):
             execution_time_ms = int((time.time() - start_time) * 1000)
 
             # Create dataset version for transformation BEFORE adding step
-            from app.services.versioning_service import versioning_service
-
             # Get parent version (most recent version for this dataset)
             from app.models.version import DatasetVersion
+            from app.services.versioning_service import versioning_service
             parent_version = await DatasetVersion.find(
                 {"dataset_id": dataset_id}
             ).sort([("version_number", -1)]).first_or_none()

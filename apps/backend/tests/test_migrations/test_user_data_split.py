@@ -6,15 +6,17 @@ TransformationConfig, and ModelConfig models. Includes volume testing,
 rollback procedures, performance measurement, and data integrity verification.
 """
 
-import pytest
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import List
-import uuid
 
-from app.models.user_data import UserData, SchemaField as LegacySchemaField, AISummary
-from app.models.dataset import DatasetMetadata, SchemaField, PIIReport
+import pytest
+
+from app.models.dataset import DatasetMetadata, PIIReport, SchemaField
 from app.models.transformation import TransformationConfig, TransformationStep
+from app.models.user_data import AISummary, UserData
+from app.models.user_data import SchemaField as LegacySchemaField
 
 
 class TestMigrationDataGeneration:

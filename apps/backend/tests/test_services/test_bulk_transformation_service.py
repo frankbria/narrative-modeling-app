@@ -5,21 +5,22 @@ Tests column selection patterns, preview operations, and job management
 without requiring a database connection.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import pandas as pd
 
-from app.services.bulk_transformation_service import BulkTransformationService
+import pandas as pd
+import pytest
+
 from app.models.bulk_transformation import (
+    BulkJobStatus,
     BulkTransformationJob,
     BulkTransformationProgress,
     BulkTransformationResult,
     ColumnResult,
-    BulkJobStatus,
-    PatternType,
     ColumnSelectionPattern,
+    PatternType,
 )
 from app.models.dataset import DatasetMetadata, SchemaField
+from app.services.bulk_transformation_service import BulkTransformationService
 from app.services.exceptions import NotFoundError, OperationError
 
 
@@ -621,8 +622,8 @@ class TestBulkTransformationValidation:
         self, bulk_service, mock_dataset
     ):
         """Test that exceeding MAX_COLUMNS_PER_JOB raises ValidationError."""
-        from app.services.exceptions import ValidationError
         from app.services.bulk_transformation_service import MAX_COLUMNS_PER_JOB
+        from app.services.exceptions import ValidationError
 
         many_columns = [f"col_{i}" for i in range(MAX_COLUMNS_PER_JOB + 1)]
 
@@ -690,7 +691,9 @@ class TestBulkTransformationValidation:
         self, bulk_service, mock_dataset
     ):
         """Test that exceeding concurrent job limit raises OperationError."""
-        from app.services.bulk_transformation_service import MAX_CONCURRENT_JOBS_PER_USER
+        from app.services.bulk_transformation_service import (
+            MAX_CONCURRENT_JOBS_PER_USER,
+        )
 
         with patch.object(
             DatasetMetadata, 'find_one', new_callable=AsyncMock

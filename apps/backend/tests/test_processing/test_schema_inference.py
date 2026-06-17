@@ -2,11 +2,14 @@
 Tests for schema inference service
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
-from app.services.data_processing.schema_inference import SchemaInferenceService, DataType
+from app.services.data_processing.schema_inference import (
+    DataType,
+    SchemaInferenceService,
+)
 
 
 @pytest.fixture

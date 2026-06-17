@@ -76,10 +76,11 @@ def demo_services() -> None:
 
 
 async def demo_endpoints() -> None:
-    import httpx
     from unittest.mock import AsyncMock, patch
-    from motor.motor_asyncio import AsyncIOMotorClient
+
+    import httpx
     from beanie import init_beanie
+    from motor.motor_asyncio import AsyncIOMotorClient
 
     from app.main import app
     from app.models.ml_model import MLModel

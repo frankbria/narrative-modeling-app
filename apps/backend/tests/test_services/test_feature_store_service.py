@@ -10,8 +10,9 @@ Tests cover CRUD operations, feature application, compatibility checking,
 sharing, collections, and version management.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.mark.unit

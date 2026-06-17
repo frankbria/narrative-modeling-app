@@ -1,6 +1,8 @@
-import pytest
 from datetime import datetime, timezone
-from app.models.user_data import UserData, SchemaField, AISummary, get_current_time
+
+import pytest
+
+from app.models.user_data import AISummary, SchemaField, UserData, get_current_time
 
 # Document construction requires Beanie model registration (no DB IO needed)
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]

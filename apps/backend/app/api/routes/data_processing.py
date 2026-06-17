@@ -2,21 +2,21 @@
 API routes for data processing functionality
 """
 
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, ConfigDict
-import logging
-import numpy as np
 import json
+import logging
+from typing import Any, Dict, Optional
+
+import numpy as np
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.s3_service import s3_service
+from app.utils.json_encoder import NumpyJSONEncoder, convert_numpy_types
 from app.utils.s3 import parse_s3_url
-from app.utils.json_encoder import convert_numpy_types, NumpyJSONEncoder
-
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +236,9 @@ async def get_data_preview(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Get preview of processed data"""
-    import pandas as pd
     import io
+
+    import pandas as pd
     
     user_data = await UserData.find_one(
         UserData.id == file_id,

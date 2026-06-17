@@ -2,16 +2,17 @@
 Tests for MCP integration service
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
 import httpx
+import pytest
 
 from app.services.mcp_integration import (
-    MCPIntegrationService,
+    MCPAnalysisResponse,
     MCPConfig,
+    MCPIntegrationService,
     MCPToolRequest,
     MCPToolResponse,
-    MCPAnalysisResponse
 )
 
 

@@ -4,13 +4,15 @@ Tests for version models.
 Tests DatasetVersion, TransformationLineage, and VersionComparison models.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 from app.models.version import (
     DatasetVersion,
     TransformationLineage,
     TransformationStep,
-    VersionComparison
+    VersionComparison,
 )
 
 

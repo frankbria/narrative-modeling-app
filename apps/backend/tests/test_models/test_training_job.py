@@ -9,14 +9,14 @@ from datetime import timedelta
 
 import pytest
 
+from app.models.batch_job import JobStatus
 from app.models.training_job import (
+    ModelComparisonEntry,
     TrainingJob,
     TrainingLogEntry,
     TrainingProgress,
-    ModelComparisonEntry,
     _utcnow,
 )
-from app.models.batch_job import JobStatus
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]
 

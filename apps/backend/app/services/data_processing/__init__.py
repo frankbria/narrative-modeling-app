@@ -2,11 +2,11 @@
 Data processing services for schema inference, statistics, and quality assessment
 """
 
-from .schema_inference import SchemaInferenceService, DataType, SchemaDefinition
-from .statistics_engine import StatisticsEngine, ColumnStatistics
-from .quality_assessment import QualityAssessmentService, QualityReport
 from .data_processor import DataProcessor
 from .preview_service import PreviewService
+from .quality_assessment import QualityAssessmentService, QualityReport
+from .schema_inference import DataType, SchemaDefinition, SchemaInferenceService
+from .statistics_engine import ColumnStatistics, StatisticsEngine
 
 __all__ = [
     "SchemaInferenceService",

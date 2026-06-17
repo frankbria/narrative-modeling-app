@@ -10,10 +10,10 @@ Tests cover transformation preview, apply, and history endpoints
 using TransformationService instead of direct UserData queries.
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock
-import pandas as pd
+from unittest.mock import AsyncMock, patch
 
+import pandas as pd
+import pytest
 
 
 @pytest.mark.integration
@@ -31,8 +31,8 @@ class TestTransformationRoutes:
         Should return 200 with preview data showing before/after transformation.
         """
         # ARRANGE: Create test dataset
-        from app.services.dataset_service import DatasetService
         from app.models.dataset import SchemaField
+        from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -171,8 +171,8 @@ class TestTransformationRoutes:
         Should create TransformationConfig, update dataset, and return transformation_id.
         """
         # ARRANGE: Create test dataset
-        from app.services.dataset_service import DatasetService
         from app.models.dataset import SchemaField
+        from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(

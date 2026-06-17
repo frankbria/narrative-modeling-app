@@ -9,9 +9,7 @@ Tests cover:
 - add_transformation_step() with branching (truncates forward history)
 """
 
-from app.models.transformation import (
-    TransformationConfig
-)
+from app.models.transformation import TransformationConfig
 
 
 class TestTransformationConfigHistory:

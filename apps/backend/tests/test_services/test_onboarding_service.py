@@ -1,12 +1,13 @@
 """
 Tests for onboarding service
 """
-import pytest
-from unittest.mock import Mock, patch
 from datetime import datetime
+from unittest.mock import Mock, patch
 
-from app.services.onboarding_service import OnboardingService
+import pytest
+
 from app.schemas.onboarding import OnboardingUserProgress
+from app.services.onboarding_service import OnboardingService
 
 
 @pytest.fixture

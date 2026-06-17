@@ -3,16 +3,16 @@ Tests for AutoML result-summary helpers (comparison table, best-model
 explanation, data profile). All pure functions — no DB/S3/LLM required.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from app.services.model_training.automl_engine import ModelCandidate
-from app.services.model_training.problem_detector import ProblemType
 from app.services.model_training.comparison import (
-    build_model_comparison,
     build_best_model_explanation,
     build_data_profile,
+    build_model_comparison,
 )
+from app.services.model_training.problem_detector import ProblemType
 
 
 def _candidate(name, cv, test=None, t=1.0):

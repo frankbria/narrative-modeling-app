@@ -1,12 +1,13 @@
-import boto3
+import io
+import logging
 import os
 import re
-from botocore.config import Config
-from botocore.exceptions import ClientError, NoCredentialsError
 from typing import Optional, Tuple
 from urllib.parse import urlparse
-import logging
-import io
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError, NoCredentialsError
 
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)

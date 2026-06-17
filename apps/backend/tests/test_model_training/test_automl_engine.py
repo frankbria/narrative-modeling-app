@@ -2,10 +2,11 @@
 Tests for AutoML engine
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.model_training.automl_engine import (
     AutoMLEngine,
@@ -14,11 +15,11 @@ from app.services.model_training.automl_engine import (
     TrainingCancelledError,
     TrainingEvent,
 )
-from app.services.model_training.problem_detector import (
-    ProblemType,
-    ProblemDetectionResult,
-)
 from app.services.model_training.feature_engineer import FeatureEngineeringResult
+from app.services.model_training.problem_detector import (
+    ProblemDetectionResult,
+    ProblemType,
+)
 
 
 class TestAutoMLEngine:

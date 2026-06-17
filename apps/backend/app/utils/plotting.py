@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
+
 from app.models.visualization_cache import (
-    HistogramData,
     BoxplotData,
     CorrelationMatrixData,
+    HistogramData,
 )
 
 

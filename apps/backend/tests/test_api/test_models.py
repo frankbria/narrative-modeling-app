@@ -9,8 +9,9 @@ Following strict TDD methodology:
 Tests cover model lifecycle endpoints using ModelService.
 """
 
-import pytest
 import uuid
+
+import pytest
 
 from app.models.model import ProblemType
 
@@ -30,8 +31,8 @@ class TestModelRoutes:
         Should create ModelConfig with TRAINING status and return training response.
         """
         # ARRANGE: Create test dataset
-        from app.services.dataset_service import DatasetService
         from app.models.dataset import SchemaField
+        from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -123,8 +124,8 @@ class TestModelRoutes:
         Should return 422 validation error.
         """
         # ARRANGE: Create dataset
-        from app.services.dataset_service import DatasetService
         from app.models.dataset import SchemaField
+        from app.services.dataset_service import DatasetService
 
         dataset_service = DatasetService()
         dataset = await dataset_service.create_dataset(
@@ -180,11 +181,13 @@ class TestModelRoutes:
         Should return complete ModelConfig details.
         """
         # ARRANGE: Create model using ModelService
-        from app.services.model_service import ModelService
         from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics,
-            HyperparameterConfig
+            FeatureConfig,
+            HyperparameterConfig,
+            PerformanceMetrics,
+            TrainingConfig,
         )
+        from app.services.model_service import ModelService
 
         model_service = ModelService()
         model_id = f"model_{uuid.uuid4().hex[:8]}"
@@ -270,10 +273,8 @@ class TestModelRoutes:
         Should return list of models for authenticated user.
         """
         # ARRANGE: Create multiple models
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
 
@@ -332,10 +333,8 @@ class TestModelRoutes:
         Should return only models for specified dataset.
         """
         # ARRANGE: Create models for different datasets
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         target_dataset = "target_dataset_123"
@@ -413,10 +412,8 @@ class TestModelRoutes:
         Should return only models with specified status.
         """
         # ARRANGE: Create models and mark some as trained
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
 
@@ -494,10 +491,8 @@ class TestModelRoutes:
         Should respect page and limit parameters.
         """
         # ARRANGE: Create 25 models
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
 
@@ -547,10 +542,8 @@ class TestModelRoutes:
         Should update metadata fields and return updated model.
         """
         # ARRANGE: Create model
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"update_model_{uuid.uuid4().hex[:8]}"
@@ -632,10 +625,8 @@ class TestModelRoutes:
         Should return complete PerformanceMetrics from ModelConfig.
         """
         # ARRANGE: Create model with performance metrics
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"perf_model_{uuid.uuid4().hex[:8]}"
@@ -695,10 +686,8 @@ class TestModelRoutes:
         Should return regression-specific metrics (rmse, mae, r2_score).
         """
         # ARRANGE: Create regression model
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"regression_model_{uuid.uuid4().hex[:8]}"
@@ -770,10 +759,8 @@ class TestModelRoutes:
         Should update status and deployment configuration.
         """
         # ARRANGE: Create trained model
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"deploy_model_{uuid.uuid4().hex[:8]}"
@@ -832,10 +819,8 @@ class TestModelRoutes:
         Should return 400 Bad Request (invalid state transition).
         """
         # ARRANGE: Create model in TRAINING state (not TRAINED)
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"untrained_model_{uuid.uuid4().hex[:8]}"
@@ -887,10 +872,8 @@ class TestModelRoutes:
         Should return 409 Conflict.
         """
         # ARRANGE: Create and deploy model
+        from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
         from app.services.model_service import ModelService
-        from app.models.model import (
-            FeatureConfig, TrainingConfig, PerformanceMetrics
-        )
 
         model_service = ModelService()
         model_id = f"already_deployed_{uuid.uuid4().hex[:8]}"

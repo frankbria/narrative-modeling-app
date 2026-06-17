@@ -1,21 +1,24 @@
 """
 Integration tests for Redis cache functionality
 """
-import pytest
-from unittest.mock import AsyncMock, patch
-import pandas as pd
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
-from app.services.redis_cache import cache_result
-from app.services.data_processing.statistics_engine import StatisticsEngine
-from app.services.onboarding_service import OnboardingService
-from app.services.visualization_cache import (
-    get_cached_visualization,
-    generate_and_cache_histogram
-)
-from app.schemas.onboarding import OnboardingUserProgress
-from app.services.data_processing.statistics_engine import DatasetStatistics
+import pandas as pd
+import pytest
 from beanie import PydanticObjectId
+
+from app.schemas.onboarding import OnboardingUserProgress
+from app.services.data_processing.statistics_engine import (
+    DatasetStatistics,
+    StatisticsEngine,
+)
+from app.services.onboarding_service import OnboardingService
+from app.services.redis_cache import cache_result
+from app.services.visualization_cache import (
+    generate_and_cache_histogram,
+    get_cached_visualization,
+)
 
 
 class TestRedisCacheIntegration:

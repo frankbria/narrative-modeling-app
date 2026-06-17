@@ -29,15 +29,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Install dependencies
         working-directory: apps/frontend
-        run: |
-          # Try npm ci first (faster), fall back to npm install if lock file is out of sync
-          npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+        run: npm ci
 
       - name: Install Playwright Browser
         working-directory: apps/frontend

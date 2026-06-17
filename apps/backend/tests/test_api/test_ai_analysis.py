@@ -2,8 +2,9 @@
 Tests for AI analysis API endpoints
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from app.services.mcp_integration import MCPAnalysisResponse
 

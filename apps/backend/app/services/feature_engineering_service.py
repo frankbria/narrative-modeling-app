@@ -5,29 +5,35 @@ Combines rule-based heuristics with GPT-4 intelligence to generate
 comprehensive feature suggestions for machine learning tasks.
 """
 
-import os
-import json
-import uuid
-import logging
 import hashlib
-from typing import Dict, List, Any, Optional
-from datetime import datetime
-import pandas as pd
-import numpy as np
+import json
+import logging
+import os
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from sklearn.feature_selection import mutual_info_classif
+import numpy as np
+import pandas as pd
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    OpenAI,
+    OpenAIError,
+    RateLimitError,
+)
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from openai import OpenAI, OpenAIError, RateLimitError, AuthenticationError, APIConnectionError
+from sklearn.feature_selection import mutual_info_classif
 
 from app.schemas.feature_engineering import (
-    FeatureSuggestion,
-    FeatureType,
     ComputationCost,
+    FeatureFeedbackRecord,
+    FeatureSuggestion,
     FeatureSuggestionResponse,
-    FeatureFeedbackRecord
+    FeatureType,
 )
-from app.services.domain_detector import domain_detector, Domain
+from app.services.domain_detector import Domain, domain_detector
 from app.services.model_training.problem_detector import ProblemDetector, ProblemType
 from app.services.redis_cache import cache_service
 from app.utils.circuit_breaker import with_circuit_breaker

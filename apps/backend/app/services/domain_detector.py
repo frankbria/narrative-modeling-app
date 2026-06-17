@@ -6,9 +6,10 @@ enabling domain-specific feature templates and suggestions.
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

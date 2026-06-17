@@ -5,8 +5,9 @@ Tests focus on request validation and basic endpoint availability.
 These tests verify that the preview endpoint properly validates inputs.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 @pytest.mark.integration

@@ -212,12 +212,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+        run: npm ci
       - name: Lint
         working-directory: apps/frontend
         run: npm run lint
@@ -230,12 +230,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+        run: npm ci
       - name: Type check (tsc --noEmit)
         working-directory: apps/frontend
         run: npm run type-check
@@ -261,12 +261,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+        run: npm ci
       - name: Run unit tests with coverage
         working-directory: apps/frontend
         run: npm test -- --coverage --watchAll=false

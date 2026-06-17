@@ -5,8 +5,8 @@ Tests prediction operations to ensure they meet performance targets:
 - Single prediction: <100ms (0.1s)
 - Batch prediction: 1000 rows/sec
 """
-import pytest
 import pandas as pd
+import pytest
 
 
 class TestPredictionPerformance:
@@ -123,8 +123,9 @@ class TestPredictionMemoryEfficiency:
 
     def test_batch_prediction_memory_1000(self, benchmark, trained_model_large):
         """Benchmark memory usage for batch prediction (1000 rows)"""
-        import psutil
         import os
+
+        import psutil
 
         model, X_test = trained_model_large
         batch_data = X_test.iloc[:1000]
@@ -144,8 +145,9 @@ class TestPredictionMemoryEfficiency:
 
     def test_batch_prediction_memory_10000(self, benchmark, trained_model_large):
         """Benchmark memory usage for batch prediction (10K rows)"""
-        import psutil
         import os
+
+        import psutil
 
         model, X_test = trained_model_large
         # Extend test data if needed

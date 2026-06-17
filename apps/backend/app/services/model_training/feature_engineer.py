@@ -3,20 +3,22 @@ Feature engineering for AutoML
 """
 
 import json
-from typing import Dict, List, Tuple, Any, Optional, TYPE_CHECKING
-import pandas as pd
-import numpy as np
-from pydantic import ValidationError as PydanticValidationError
-from sklearn.preprocessing import (
-    StandardScaler, MinMaxScaler, RobustScaler,
-    LabelEncoder, OneHotEncoder
-)
-from sklearn.impute import SimpleImputer
-from sklearn.feature_selection import (
-    SelectKBest, f_classif, f_regression
-)
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+from pydantic import ValidationError as PydanticValidationError
+from sklearn.feature_selection import SelectKBest, f_classif, f_regression
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import (
+    LabelEncoder,
+    MinMaxScaler,
+    OneHotEncoder,
+    RobustScaler,
+    StandardScaler,
+)
 
 from app.models.feature import (
     ExpressionNode,

@@ -2,35 +2,36 @@
 Core AutoML engine for automated model selection and training
 """
 
-from typing import Awaitable, Callable, Dict, List, Any, Optional, Tuple
-import pandas as pd
-import numpy as np
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import asyncio
 import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, r2_score
-from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import xgboost as xgb
 from sklearn.ensemble import (
-    RandomForestClassifier,
-    RandomForestRegressor,
     GradientBoostingClassifier,
     GradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
 )
-from sklearn.svm import SVC, SVR
+from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
+from sklearn.metrics import accuracy_score, r2_score
+from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
-import xgboost as xgb
-import lightgbm as lgb
+from sklearn.svm import SVC, SVR
 
-from .problem_detector import ProblemDetector, ProblemType
-from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import (
     GlobalShapResult,
     InterpretabilityService,
 )
+
+from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
+from .problem_detector import ProblemDetector, ProblemType
 
 logger = logging.getLogger(__name__)
 

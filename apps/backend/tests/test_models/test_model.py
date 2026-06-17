@@ -13,19 +13,21 @@ Tests cover:
 - Edge cases and error conditions
 """
 
-import pytest
 from datetime import datetime, timezone
+
+import pytest
 from pydantic import ValidationError
+
 from app.models.model import (
-    ModelConfig,
-    ProblemType,
-    ModelStatus,
-    HyperparameterConfig,
-    FeatureConfig,
-    PerformanceMetrics,
-    TrainingConfig,
     DeploymentConfig,
-    get_current_time
+    FeatureConfig,
+    HyperparameterConfig,
+    ModelConfig,
+    ModelStatus,
+    PerformanceMetrics,
+    ProblemType,
+    TrainingConfig,
+    get_current_time,
 )
 
 

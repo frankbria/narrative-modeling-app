@@ -19,9 +19,7 @@ Tests authentication, authorization, error handling, and request/response schema
 import pytest
 from beanie import PydanticObjectId
 
-from app.services.transformation_engine.recipe_manager import (
-    RecipeManager
-)
+from app.services.transformation_engine.recipe_manager import RecipeManager
 
 
 @pytest.mark.integration

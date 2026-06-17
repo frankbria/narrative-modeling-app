@@ -1,9 +1,16 @@
-import pytest
+import io
 import os
 from unittest.mock import Mock, patch
+
+import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
-import io
-from app.utils.s3 import get_s3_client, upload_file_to_s3, get_file_from_s3, parse_s3_url
+
+from app.utils.s3 import (
+    get_file_from_s3,
+    get_s3_client,
+    parse_s3_url,
+    upload_file_to_s3,
+)
 
 
 @pytest.fixture

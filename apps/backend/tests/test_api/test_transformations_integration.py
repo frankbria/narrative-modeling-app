@@ -2,20 +2,20 @@
 Comprehensive tests for transformation pipeline integration
 Tests authentication, CRUD operations, preview/apply functionality
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from httpx import AsyncClient, ASGITransport
-import pandas as pd
-import numpy as np
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
 from bson import ObjectId
-from app.main import app
+from httpx import ASGITransport, AsyncClient
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.user_data import UserData
+from app.main import app
 from app.models.dataset import DatasetMetadata
+from app.models.user_data import UserData
 from app.services.transformation_engine.recipe_manager import TransformationRecipe
-
 
 
 @pytest.fixture
@@ -66,9 +66,9 @@ def mock_dataset(sample_dataframe):
 def mock_s3_operations(sample_dataframe):
     """Mock S3 operations for dataframe loading/saving"""
     # Create a temporary file with sample data
-    import tempfile
     import os
     import shutil
+    import tempfile
     
     # Create temp file and ensure data is written before closing
     temp_fd, temp_path = tempfile.mkstemp(suffix='.parquet')

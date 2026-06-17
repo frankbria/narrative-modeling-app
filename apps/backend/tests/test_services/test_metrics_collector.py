@@ -10,15 +10,17 @@ Tests:
 - Business metrics (users, datasets, models, predictions)
 """
 
-import pytest
 import time
-from app.services.metrics_collector import (
-    MLMetricsCollector,
-    BusinessMetricsCollector,
-    ml_metrics,
-    business_metrics,
-)
+
+import pytest
 from prometheus_client import CollectorRegistry
+
+from app.services.metrics_collector import (
+    BusinessMetricsCollector,
+    MLMetricsCollector,
+    business_metrics,
+    ml_metrics,
+)
 
 
 @pytest.fixture

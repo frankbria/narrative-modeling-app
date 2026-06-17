@@ -7,8 +7,9 @@ NO eval() or exec() is used - only explicit pandas/numpy function mappings.
 
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from app.models.feature import (
     ExpressionNode,

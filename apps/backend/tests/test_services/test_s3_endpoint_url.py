@@ -11,8 +11,9 @@ https://{bucket}.s3.amazonaws.com/{key}. These tests verify:
 """
 
 import os
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from tenacity import RetryError
 
 from app.services.s3_service import download_file_from_s3

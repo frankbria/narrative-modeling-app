@@ -5,11 +5,11 @@ Tests the full workflow: Upload → Transform → Train → Predict
 Uses real MongoDB connections and minimal mocking.
 """
 
-import pytest
-import pandas as pd
 import io
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import pandas as pd
+import pytest
 
 
 class TestMLWorkflowE2E:

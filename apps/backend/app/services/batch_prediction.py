@@ -5,23 +5,24 @@ Batch prediction service for processing large datasets
 import asyncio
 import json
 import logging
+import os
 import statistics
+import tempfile
+from datetime import datetime
+from io import BytesIO, StringIO
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
-from datetime import datetime
-import tempfile
-import os
-from io import StringIO, BytesIO
+from beanie import PydanticObjectId
 
-from app.models.batch_job import BatchJob, JobStatus, JobType, BatchPredictionConfig
+from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import InterpretabilityService
 from app.services.model_storage import ModelStorageService
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
-from beanie import PydanticObjectId
 
 logger = logging.getLogger(__name__)
 

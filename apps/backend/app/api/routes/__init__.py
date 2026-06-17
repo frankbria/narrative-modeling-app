@@ -1,16 +1,17 @@
 from fastapi import APIRouter
+
 from app.api.routes import (
-    user_data,
     analytics_result,
+    column_stats,
+    data_issues,
+    health,
+    onboarding,
     plot,
+    secure_upload,
+    store,
     trained_model,
     upload,
-    store,
-    column_stats,
-    health,
-    secure_upload,
-    onboarding,
-    data_issues,
+    user_data,
 )
 
 api_router = APIRouter()

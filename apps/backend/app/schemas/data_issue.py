@@ -5,9 +5,10 @@ These schemas define request/response models for data issue detection
 and fix suggestion operations.
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 # Import types from models - SINGLE SOURCE OF TRUTH
 

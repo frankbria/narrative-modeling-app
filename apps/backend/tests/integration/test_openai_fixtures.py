@@ -7,8 +7,9 @@ AI-powered features without making real API calls.
 Run with: pytest tests/integration/test_openai_fixtures.py -v
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio

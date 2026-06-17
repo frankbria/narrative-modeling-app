@@ -1,17 +1,19 @@
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pandas as pd
+
+from app.models.user_data import UserData
 from app.models.visualization_cache import (
-    VisualizationCache,
-    HistogramData,
     BoxplotData,
     CorrelationMatrixData,
+    HistogramData,
+    VisualizationCache,
 )
-from app.models.user_data import UserData
-from app.utils.s3 import get_file_from_s3
 from app.services.redis_cache import cache_service
+from app.utils.s3 import get_file_from_s3
 
 logger = logging.getLogger(__name__)
 

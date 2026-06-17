@@ -4,15 +4,15 @@ Unit tests for DataIssueDetectionService.
 Tests rule-based detection, fix suggestion generation, and detection summary creation.
 """
 
-import pytest
 import pandas as pd
+import pytest
 
-from app.services.data_issue_detection_service import DataIssueDetectionService
 from app.models.data_issue import (
-    IssueType,
     IssueSeverity,
+    IssueType,
 )
 from app.schemas.data_issue import DetectionOptions
+from app.services.data_issue_detection_service import DataIssueDetectionService
 
 
 class TestDataIssueDetectionService:

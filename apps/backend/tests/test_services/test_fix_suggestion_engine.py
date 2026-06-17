@@ -4,16 +4,16 @@ Unit tests for FixSuggestionEngine.
 Tests fix suggestion generation, validation, and preview functionality.
 """
 
-import pytest
 import pandas as pd
+import pytest
 
-from app.services.fix_suggestion_engine import FixSuggestionEngine
 from app.models.data_issue import (
     DataIssue,
-    IssueType,
     IssueSeverity,
+    IssueType,
     SuggestedFix,
 )
+from app.services.fix_suggestion_engine import FixSuggestionEngine
 
 
 class TestFixSuggestionEngine:

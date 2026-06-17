@@ -2,10 +2,12 @@
 Response schemas for UserData API endpoints
 """
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
 from datetime import datetime
-from app.models.user_data import SchemaField, AISummary
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.user_data import AISummary, SchemaField
 
 
 class UserDataResponse(BaseModel):

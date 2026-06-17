@@ -2,14 +2,15 @@
 Tests for ExplanationService
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from app.services.model_training.explanation_service import ExplanationService
+import pytest
+
 from app.services.model_training.algorithm_selector import (
     AlgorithmRecommendation,
     DataProfile,
 )
+from app.services.model_training.explanation_service import ExplanationService
 from app.services.model_training.problem_detector import ProblemType
 
 

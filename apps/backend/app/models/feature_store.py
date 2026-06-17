@@ -10,11 +10,11 @@ Models:
 - FeatureCollection: Organized groups of related features
 """
 
-from beanie import Document, Indexed
-from pydantic import Field, field_validator
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from beanie import PydanticObjectId
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import Field, field_validator
 
 
 def get_current_time() -> datetime:

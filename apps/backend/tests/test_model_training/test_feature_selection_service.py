@@ -2,18 +2,17 @@
 Tests for Feature Selection Service
 """
 
-import pytest
-import pandas as pd
-import numpy as np
-from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.schemas.feature_selection import FeatureScore
 from app.services.model_training.feature_selection_service import (
+    FeatureSelectionConfig,
     FeatureSelectionService,
-    FeatureSelectionConfig
-)
-from app.schemas.feature_selection import (
-    FeatureScore
 )
 
 

@@ -5,10 +5,11 @@ y_proba) and human-readable class labels on the AutoMLResult so the training
 task can persist them for the evaluation dashboard.
 """
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 from app.services.model_training.automl_engine import AutoMLEngine, AutoMLResult
 from app.services.model_training.problem_detector import (

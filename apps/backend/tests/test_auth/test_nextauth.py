@@ -13,12 +13,12 @@ longer exist in the implementation.
 """
 
 import time
+from unittest.mock import patch
 
 import pytest
-from jose import jwt
-from unittest.mock import patch
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from jose import jwt
 
 from app.auth.nextauth_auth import get_current_user_id, get_current_user_id_optional
 

@@ -2,9 +2,9 @@
 Tests for statistics calculation engine
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.data_processing.statistics_engine import StatisticsEngine
 

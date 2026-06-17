@@ -53,9 +53,10 @@ async def test_train_predict_single_and_batch_roundtrip(
     monkeypatch.setenv("AWS_REGION", "us-east-1")
 
     # Fresh services so they read the patched env (bucket + endpoint).
+    from sklearn.ensemble import RandomForestClassifier
+
     from app.services.batch_prediction import BatchPredictionService
     from app.services.model_storage import ModelStorageService
-    from sklearn.ensemble import RandomForestClassifier
 
     user_id = "test_user_123"
     df = _training_frame()

@@ -9,7 +9,6 @@ Auth fixture maps to user "test_user_123".
 
 import pytest
 
-
 VALID_PAYLOAD = {
     "rating": 4,
     "category": "general",

@@ -1,11 +1,12 @@
 """
 A/B Test model for experiment tracking
 """
-from typing import List, Dict, Optional
 from datetime import datetime
-from beanie import Document, Indexed
-from pydantic import Field, BaseModel
 from enum import Enum
+from typing import Dict, List, Optional
+
+from beanie import Document, Indexed
+from pydantic import BaseModel, Field
 
 
 class VariantStatus(str, Enum):

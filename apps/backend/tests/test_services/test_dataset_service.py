@@ -5,9 +5,11 @@ Following TDD methodology with simplified mocking approach.
 Tests cover core business logic without deep Beanie Document mocking.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.models.dataset import SchemaField, AISummary, PIIReport
+
+import pytest
+
+from app.models.dataset import AISummary, PIIReport, SchemaField
 
 
 @pytest.mark.unit

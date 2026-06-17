@@ -2,11 +2,12 @@
 Batch prediction job model
 """
 
-from typing import List, Dict, Any, Optional
-from datetime import datetime
-from beanie import Document, Indexed
-from pydantic import Field, BaseModel
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, Indexed
+from pydantic import BaseModel, Field
 
 
 class JobStatus(str, Enum):
@@ -186,6 +187,3 @@ class BatchJob(Document):
             self.progress.error_count = error_count
         if current_chunk is not None:
             self.progress.current_chunk = current_chunk
-
-
-from datetime import timedelta  # Import needed for estimated_completion

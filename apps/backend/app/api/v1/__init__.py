@@ -6,18 +6,19 @@ with the /api/v1 prefix for proper API versioning.
 """
 
 from fastapi import APIRouter
+
 from app.api.routes import (
-    health,
-    secure_upload,
-    data_processing,
     ai_analysis,
+    data_processing,
+    datasets,
+    health,
     model_training,
-    production,
     monitoring,
-    visualizations,
+    production,
+    secure_upload,
     transformations,
     versions,
-    datasets,
+    visualizations,
 )
 
 # Create v1 API router

@@ -1,9 +1,11 @@
-import os
 import json
 import logging
-from typing import Dict, Any, Optional
+import os
+from typing import Any, Dict, Optional
+
 from openai import OpenAI, OpenAIError
-from app.models.user_data import UserData, AISummary
+
+from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
 
 # Set up logging

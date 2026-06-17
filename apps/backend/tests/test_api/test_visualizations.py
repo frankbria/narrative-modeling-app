@@ -1,15 +1,17 @@
-import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
 import json
+from unittest.mock import MagicMock, PropertyMock, patch
+
+import pytest
+from beanie import Link, PydanticObjectId
+
+from app.auth.nextauth_auth import get_current_user_id
+from app.main import app
+from app.models.user_data import UserData
 from app.models.visualization_cache import (
-    HistogramData,
     BoxplotData,
     CorrelationMatrixData,
+    HistogramData,
 )
-from app.main import app
-from beanie import PydanticObjectId, Link
-from app.models.user_data import UserData
-from app.auth.nextauth_auth import get_current_user_id
 
 
 @pytest.fixture

@@ -1,12 +1,13 @@
 # backend/app/auth/nextauth_auth.py
 
-import os
-from jose import jwt, JWTError
-from fastapi import Depends, HTTPException, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
 import logging
+import os
+from typing import Optional
+
 from dotenv import load_dotenv
+from fastapi import Depends, Header, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 
 # Set up logging
 logger = logging.getLogger(__name__)

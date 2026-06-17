@@ -2,17 +2,18 @@
 Tests for model training API endpoints
 """
 
+import io
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import numpy as np
+import pandas as pd
 import pytest
 import pytest_asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
-import pandas as pd
-import numpy as np
-from datetime import datetime, timezone
-import io
 
 from app.models.ml_model import MLModel
 from app.services.model_training import ProblemType
-from app.services.model_training.automl_engine import ModelCandidate, AutoMLResult
+from app.services.model_training.automl_engine import AutoMLResult, ModelCandidate
 
 
 @pytest.fixture
@@ -34,8 +35,9 @@ def sample_dataset():
 @pytest.fixture
 def sample_ml_model():
     """Create a sample ML model mock"""
-    from beanie import PydanticObjectId
     import uuid
+
+    from beanie import PydanticObjectId
 
     mock_model = MagicMock()
     mock_model._id = PydanticObjectId()
@@ -562,7 +564,7 @@ class TestModelTrainingBackgroundTask:
     @pytest.mark.asyncio
     async def test_train_model_task_success(self, sample_dataset, sample_dataframe):
         """Test successful model training task"""
-        from app.api.routes.model_training import train_model_task, TrainModelRequest
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
 
         # Mock S3 file loading
         with patch(
@@ -628,8 +630,8 @@ class TestTrainingStatusEndpoint:
     @pytest.mark.asyncio
     async def test_train_creates_pending_job(self, async_authorized_client):
         """POST /train persists a pending TrainingJob and it is queryable."""
-        from app.models.training_job import TrainingJob
         from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
 
         mock_user_data = MagicMock(
             id="dataset_123",
@@ -669,7 +671,7 @@ class TestTrainingStatusEndpoint:
     @pytest.mark.asyncio
     async def test_status_returns_completed_results(self, async_authorized_client):
         """A completed job returns comparison, recommendations, and explanation."""
-        from app.models.training_job import TrainingJob, ModelComparisonEntry
+        from app.models.training_job import ModelComparisonEntry, TrainingJob
 
         job = TrainingJob(
             model_id="model_status_done",
@@ -746,9 +748,9 @@ class TestTrainingStatusEndpoint:
     @pytest.mark.asyncio
     async def test_train_model_task_marks_failure(self, sample_dataset, setup_database):
         """A task failure transitions the TrainingJob to FAILED with an error."""
-        from app.api.routes.model_training import train_model_task, TrainModelRequest
-        from app.models.training_job import TrainingJob
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
         from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
 
         job = TrainingJob(
             model_id="model_task_fail",
@@ -791,9 +793,9 @@ class TestTrainingStatusEndpoint:
         self, sample_dataset, sample_dataframe, setup_database
     ):
         """TrainingCancelledError transitions the job to CANCELLED, not FAILED."""
-        from app.api.routes.model_training import train_model_task, TrainModelRequest
-        from app.models.training_job import TrainingJob
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
         from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
         from app.services.model_training.automl_engine import TrainingCancelledError
 
         job = TrainingJob(
@@ -853,9 +855,9 @@ class TestTrainingStatusEndpoint:
         and the flag must survive — the task $push-es log appends and
         re-reads the job before terminal saves.
         """
-        from app.api.routes.model_training import train_model_task, TrainModelRequest
-        from app.models.training_job import TrainingJob
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
         from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
         from app.services.model_training.automl_engine import (
             TrainingCancelledError,
             TrainingEvent,
@@ -927,9 +929,9 @@ class TestTrainingStatusEndpoint:
         self, sample_dataset, sample_dataframe, setup_database
     ):
         """A successful task records task-start, download, and completion logs."""
-        from app.api.routes.model_training import train_model_task, TrainModelRequest
-        from app.models.training_job import TrainingJob
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
         from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
 
         job = TrainingJob(
             model_id="model_task_logs",
@@ -1005,8 +1007,8 @@ async def _insert_job(
     **kwargs,
 ):
     """Insert a TrainingJob in the given lifecycle state and return it."""
-    from app.models.training_job import TrainingJob
     from app.models.batch_job import JobStatus
+    from app.models.training_job import TrainingJob
 
     job = TrainingJob(
         model_id=model_id,
@@ -1355,6 +1357,7 @@ class TestExtendedStatusFields:
     @pytest.mark.asyncio
     async def test_status_includes_monitoring_fields(self, async_authorized_client):
         from datetime import timedelta
+
         from app.models.training_job import _utcnow
 
         job = await _insert_job("model_status_ext", status="running")

@@ -20,19 +20,20 @@ os.environ.setdefault("ENVIRONMENT", "test")
 # constructing their own app/middleware with enabled=True.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, AsyncGenerator
+
 import pytest
 import pytest_asyncio
-from typing import AsyncGenerator, TYPE_CHECKING
-from datetime import datetime, timezone
 
 # Lazy imports to avoid app initialization for unit tests
 # Only import these when fixtures are actually used. The TYPE_CHECKING block
 # below makes the fixture return annotations resolvable for type checkers and
 # linters without triggering app/model import (and Beanie init) at collection.
 if TYPE_CHECKING:
-    from app.models.user_data import UserData
-    from app.models.trained_model import TrainedModel
     from app.models.batch_job import BatchJob
+    from app.models.trained_model import TrainedModel
+    from app.models.user_data import UserData
 
 
 def _point_app_at_test_database():
@@ -46,6 +47,7 @@ def _point_app_at_test_database():
     connected to the production Atlas URI during tests).
     """
     import os
+
     from app.config import settings
 
     uri = settings.TEST_MONGODB_URI
@@ -73,8 +75,10 @@ def beanie_models_initialized():
     real MongoDB connection here timed out in CI where no Mongo runs).
     """
     import asyncio
-    from mongomock_motor import AsyncMongoMockClient
+
     from beanie import init_beanie
+    from mongomock_motor import AsyncMongoMockClient
+
     from app.models.registry import DOCUMENT_MODELS
 
     async def _init():
@@ -102,8 +106,9 @@ async def setup_database(request):
         return
 
     # Lazy imports for integration tests
-    from motor.motor_asyncio import AsyncIOMotorClient
     from beanie import init_beanie
+    from motor.motor_asyncio import AsyncIOMotorClient
+
     from app.config import settings
     from app.models.registry import DOCUMENT_MODELS
 
@@ -134,6 +139,7 @@ async def setup_database(request):
 async def mongo_client(setup_database):
     """Provide a MongoDB client for tests."""
     from motor.motor_asyncio import AsyncIOMotorClient
+
     from app.config import settings
 
     client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
@@ -144,7 +150,7 @@ async def mongo_client(setup_database):
 @pytest_asyncio.fixture
 async def test_user_data(setup_database) -> "UserData":
     """Create and return a test UserData document."""
-    from app.models.user_data import UserData, SchemaField
+    from app.models.user_data import SchemaField, UserData
 
     user_data = UserData(
         user_id="test_user_123",
@@ -266,8 +272,9 @@ async def redis_client(request):
         return
 
     # Lazy import
-    import redis.asyncio as aioredis
     import os
+
+    import redis.asyncio as aioredis
 
     # Use test Redis configuration
     redis_url = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
@@ -331,10 +338,11 @@ def s3_client(request):
         yield None
         return
 
-    import boto3
     import os
-    from botocore.exceptions import ClientError, EndpointConnectionError
+
+    import boto3
     from botocore.config import Config
+    from botocore.exceptions import ClientError, EndpointConnectionError
 
     # Use LocalStack by default for testing
     # Note: LocalStack accepts any credentials - these are local-only placeholders
@@ -518,8 +526,9 @@ def test_openai_response():
 @pytest_asyncio.fixture
 async def async_test_client() -> AsyncGenerator:
     """Create a test client for the FastAPI application."""
-    from httpx import AsyncClient, ASGITransport
     from asgi_lifespan import LifespanManager
+    from httpx import ASGITransport, AsyncClient
+
     from app.main import app
 
     _point_app_at_test_database()
@@ -556,6 +565,7 @@ def mock_dataset_id() -> str:
 async def mock_s3_client():
     """Mock S3 client for versioning service tests."""
     from unittest.mock import MagicMock
+
     from app.services.versioning_service import versioning_service
 
     # Create mock S3 client
@@ -582,8 +592,9 @@ async def mock_s3_client():
 def authorized_client():
     """Create an authorized test client for the FastAPI application."""
     from fastapi.testclient import TestClient
-    from app.main import app
+
     from app.auth.nextauth_auth import get_current_user_id
+    from app.main import app
 
     # Override the auth dependency to return a test user
     async def override_get_current_user_id() -> str:
@@ -604,10 +615,11 @@ def authorized_client():
 @pytest_asyncio.fixture
 async def async_authorized_client() -> AsyncGenerator:
     """Create an async authorized test client for the FastAPI application."""
-    from httpx import AsyncClient, ASGITransport
     from asgi_lifespan import LifespanManager
-    from app.main import app
+    from httpx import ASGITransport, AsyncClient
+
     from app.auth.nextauth_auth import get_current_user_id
+    from app.main import app
 
     # Override the auth dependency to return a test user
     async def override_get_current_user_id() -> str:
@@ -630,9 +642,10 @@ async def async_authorized_client() -> AsyncGenerator:
 @pytest.fixture
 def mock_user_data():
     """Create a mock UserData object that matches the current model schema"""
-    from app.models.user_data import UserData, SchemaField
     from datetime import datetime, timezone
     from unittest.mock import MagicMock
+
+    from app.models.user_data import SchemaField, UserData
     
     # Create a mock object instead of actual Document to avoid DB operations
     mock = MagicMock(spec=UserData)

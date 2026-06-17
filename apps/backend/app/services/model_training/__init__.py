@@ -2,9 +2,9 @@
 Model training services for AutoML functionality
 """
 
-from .problem_detector import ProblemDetector, ProblemType
-from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
 from .automl_engine import AutoMLEngine, TrainingCancelledError, TrainingEvent
+from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
+from .problem_detector import ProblemDetector, ProblemType
 
 __all__ = [
     "ProblemDetector",

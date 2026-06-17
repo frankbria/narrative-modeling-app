@@ -2,15 +2,15 @@
 Integration tests for complete AutoML pipeline
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.model_training import (
     AutoMLEngine,
-    ProblemDetector,
     FeatureEngineeringConfig,
-    ProblemType
+    ProblemDetector,
+    ProblemType,
 )
 
 

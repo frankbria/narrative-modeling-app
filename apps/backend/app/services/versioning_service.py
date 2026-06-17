@@ -10,28 +10,29 @@ Security:
 - All bypassed operations are logged for security auditing
 """
 
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, timedelta, timezone
-import uuid
-from botocore.exceptions import ClientError
 import logging
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-from app.utils.s3 import create_s3_client
+from botocore.exceptions import ClientError
+
+from app.config import settings
+from app.models.dataset import DatasetMetadata
 from app.models.version import (
     DatasetVersion,
     TransformationLineage,
     TransformationStep,
-    VersionComparison
+    VersionComparison,
 )
-from app.models.dataset import DatasetMetadata
-from app.config import settings
 from app.services.base_service import BaseService
 from app.services.exceptions import (
-    NotFoundError,
     ConflictError,
+    NotFoundError,
     OperationError,
-    ValidationError
+    ValidationError,
 )
+from app.utils.s3 import create_s3_client
 
 logger = logging.getLogger(__name__)
 

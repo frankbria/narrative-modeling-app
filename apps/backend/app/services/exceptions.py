@@ -5,7 +5,7 @@ This module provides a consistent exception hierarchy for all service operations
 enabling proper error handling, logging, and HTTP status code mapping in routes.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 class ServiceError(Exception):

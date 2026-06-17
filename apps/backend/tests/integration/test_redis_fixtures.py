@@ -7,9 +7,10 @@ job queue management.
 Run with: pytest tests/integration/test_redis_fixtures.py -v -m integration
 """
 
-import pytest
 import json
 from datetime import datetime, timezone
+
+import pytest
 
 
 @pytest.mark.integration

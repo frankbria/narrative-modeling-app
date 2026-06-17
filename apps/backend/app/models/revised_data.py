@@ -1,8 +1,10 @@
-from beanie import Document, Link, Indexed
-from pydantic import Field
-from typing import List, Optional
 from datetime import datetime, timezone
-from app.models.user_data import UserData, SchemaField
+from typing import List, Optional
+
+from beanie import Document, Indexed, Link
+from pydantic import Field
+
+from app.models.user_data import SchemaField, UserData
 
 
 def get_current_time() -> datetime:

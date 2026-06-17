@@ -2,11 +2,12 @@
 Test configuration for API tests
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 from app.auth.nextauth_auth import get_current_user_id
 
@@ -23,7 +24,7 @@ def mock_app():
     app.dependency_overrides[get_current_user_id] = fake_get_current_user_id
     
     # Import and include routes after overriding dependencies
-    from app.api.routes import secure_upload, health
+    from app.api.routes import health, secure_upload
     
     app.include_router(
         secure_upload.router,

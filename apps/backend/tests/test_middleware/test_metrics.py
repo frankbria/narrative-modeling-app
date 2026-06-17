@@ -13,11 +13,12 @@ Tests:
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from prometheus_client import CONTENT_TYPE_LATEST
+
 from app.middleware.metrics import (
     MetricsMiddleware,
     get_metrics,
 )
-from prometheus_client import CONTENT_TYPE_LATEST
 
 
 @pytest.fixture

@@ -15,11 +15,11 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app.middleware.api_version import (
-    APIVersionMiddleware,
-    get_api_version,
-    SUPPORTED_VERSIONS,
     CURRENT_VERSION,
     DEFAULT_VERSION,
+    SUPPORTED_VERSIONS,
+    APIVersionMiddleware,
+    get_api_version,
 )
 
 

@@ -2,33 +2,32 @@
 API routes for model training and management
 """
 
-from typing import Optional, List, Dict, Any, Union
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from pydantic import BaseModel, Field
-import pandas as pd
-import numpy as np
 import io
+import logging
 import math
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone
-import logging
+from typing import Any, Dict, List, Optional, Union
 
+import numpy as np
+import pandas as pd
 from beanie import PydanticObjectId
 from beanie.odm.operators.update.array import Push
 from beanie.odm.operators.update.general import Set
 from bson.errors import InvalidId
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.user_data import UserData
-from app.models.ml_model import MLModel
 from app.models.batch_job import JobStatus
+from app.models.ml_model import MLModel
 from app.models.training_job import (
+    ModelComparisonEntry,
     TrainingJob,
     TrainingLogEntry,
-    ModelComparisonEntry,
 )
-from app.services.s3_service import get_file_from_s3
-from app.utils.s3 import parse_s3_url
+from app.models.user_data import UserData
 from app.schemas.evaluation import (
     ClassificationMetrics,
     FeatureImportanceResponse,
@@ -50,7 +49,6 @@ from app.services.model_storage import (
     build_evaluation_payload,
     build_shap_payload,
 )
-from app.services.prediction_enrichment import PredictionEnricher
 from app.services.model_training import (
     AutoMLEngine,
     FeatureEngineeringConfig,
@@ -62,7 +60,9 @@ from app.services.model_training.comparison import (
     build_best_model_explanation,
     build_data_profile,
 )
-from dataclasses import asdict
+from app.services.prediction_enrichment import PredictionEnricher
+from app.services.s3_service import get_file_from_s3
+from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

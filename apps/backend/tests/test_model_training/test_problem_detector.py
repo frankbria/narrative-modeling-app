@@ -2,9 +2,9 @@
 Tests for problem type detection
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from app.services.model_training.problem_detector import ProblemDetector, ProblemType
 
