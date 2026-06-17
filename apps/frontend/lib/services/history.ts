@@ -1,6 +1,54 @@
-import { HistoryResponse, HistoryData } from '@/lib/types/history';
+import { HistoryResponse, HistoryData, HistoryEntry } from '@/lib/types/history';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+/**
+ * Raw shape of a history entry as emitted by the backend `HistoryDataResponse`
+ * contract (snake_case). Mapped to the camelCase `HistoryEntry` before reaching
+ * consumers — see {@link mapHistoryResponse}.
+ */
+interface RawHistoryEntry {
+  position: number;
+  timestamp: string;
+  transformation_type: string;
+  description: string;
+  affected_columns?: string[];
+  rows_affected?: number | null;
+  version_id?: string | null;
+}
+
+interface RawHistoryData {
+  history: RawHistoryEntry[];
+  current_position: number;
+  can_undo: boolean;
+  can_redo: boolean;
+}
+
+/**
+ * Convert a raw backend history payload (snake_case entry fields) into the
+ * camelCase `HistoryData` shape the frontend types and components expect.
+ *
+ * The top-level fields (`current_position`, `can_undo`, `can_redo`) already
+ * match the frontend contract; only each entry's fields are renamed.
+ */
+function mapHistoryResponse(raw: RawHistoryData): HistoryData {
+  return {
+    history: (raw.history ?? []).map(
+      (entry): HistoryEntry => ({
+        position: entry.position,
+        timestamp: entry.timestamp,
+        transformationType: entry.transformation_type,
+        description: entry.description,
+        affectedColumns: entry.affected_columns ?? [],
+        rowsAffected: entry.rows_affected ?? undefined,
+        versionId: entry.version_id ?? undefined,
+      })
+    ),
+    current_position: raw.current_position,
+    can_undo: raw.can_undo,
+    can_redo: raw.can_redo,
+  };
+}
 
 /**
  * Service for managing transformation history operations
@@ -94,7 +142,8 @@ export class HistoryService {
       throw new Error(`Get history failed: ${response.statusText}`);
     }
 
-    return response.json();
+    const raw: RawHistoryData = await response.json();
+    return mapHistoryResponse(raw);
   }
 
   /**
