@@ -1,6 +1,18 @@
 # Lessons
 
-## 2026-06-17 — issue #176 (CI/Docker hardening, batch 2 / PR #215)
+## 2026-06-17 — issue #176 (CI/Docker hardening, batch 3 / PR #222)
+
+- **Pin service-container images by multi-arch digest, not tag.** Resolve the
+  manifest-list digest with `docker buildx imagetools inspect <img:tag>` (the
+  `Digest:` line) → pin as `img:tag@sha256:…`; this preserves multi-arch unlike a
+  per-platform digest. GitHub Actions `services:` `image:` and docker-compose
+  `image:` both accept it. **Dependabot's `github-actions` ecosystem does NOT
+  manage service `image:` refs** — those pins are manual (the `docker` ecosystem
+  covers Dockerfiles/compose, not workflow service blocks).
+- The CI run on the pinning PR itself is the functional test — the integration
+  job spins up the pinned mongo/redis, so green = the digests are valid + healthy.
+
+## 2026-06-17 — issue #176 (CI/Docker hardening, batch 2 / PR #215; recorded here)
 
 - **Making a Python container non-root breaks `$HOME`-caching libs.** After
   `USER appuser`, matplotlib (pulled in via SHAP/visualization) couldn't write
