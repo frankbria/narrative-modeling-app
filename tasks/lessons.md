@@ -1,5 +1,29 @@
 # Lessons
 
+## 2026-06-17 — issue #176 (CI/Docker hardening, batch 2 / PR #215)
+
+- **Making a Python container non-root breaks `$HOME`-caching libs.** After
+  `USER appuser`, matplotlib (pulled in via SHAP/visualization) couldn't write
+  its cache under the root-owned `/app` home and fell back to `/tmp` with a
+  per-boot warning. Fix: set `MPLCONFIGDIR` to a dir **pre-created + `chown`'d**
+  to the user (just exporting `MPLCONFIGDIR=/tmp/matplotlib` wasn't enough —
+  matplotlib's writability check failed on the not-yet-existing dir). Keeps
+  `/app` read-only. Watch for the same with joblib/numba/fontconfig if they warn.
+- **Inline `#` comments inside a `\`-continued `ENV`/`RUN` are non-standard.**
+  Current BuildKit strips them (the build passed), but the Dockerfile spec
+  doesn't guarantee it and older daemons / custom frontends may choke. Put the
+  comment **above** the instruction. Caught by claude-review; cheap pre-merge fix.
+- **Verify non-root doesn't break runtime file writes.** codex's review probe
+  grepped for `open(...,'w')`/`to_csv` — turned out safe here (`UploadHandler` →
+  `/tmp/uploads`; `api_documentation` writes were example-client **string
+  templates**, not executed), but the check is the right reflex when dropping
+  privileges.
+- **SHA-pin actions + Dependabot together.** Pin `uses: org/action@vN` →
+  `@<40-hex-sha> # vN` (resolve via `gh api repos/<org>/<action>/commits/<tag>`),
+  then add a Dependabot `github-actions` (grouped) + `docker` config so the pins
+  refresh. The CI run on the PR itself validates the pins (jobs spawning = the
+  pinned checkout/setup resolved).
+
 ## 2026-06-08 — issue #75 (core AutoML pipeline)
 
 - **Trust the code, not the issue's "Current State".** The ticket (and its

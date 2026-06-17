@@ -21,7 +21,8 @@ jobs:
 
     services:
       mongodb:
-        image: mongo:7
+        # Digest-pinned (issue #176); unified to the same mongo:7.0 digest as ci.yml.
+        image: mongo:7.0@sha256:8ecb514b00bdcc0bde67ef4e6c330385377a9dc68e24ee94e28c07c891647348
         ports:
           - 27017:27017
         options: >-
