@@ -56,9 +56,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy the fully built application (virtualenv at /app/.venv + source) from the
-# builder. No compiler toolchain is carried into the runtime image.
-COPY --from=builder /app /app
+# Copy only what the server needs at runtime, leaving build/test artifacts
+# (tests/, docs/, tasks/, sample_datasets/, pyproject.toml, uv.lock, …) out of
+# the image: the virtualenv, the `app` package, and the top-level `utils`
+# namespace package (imported by app/api/routes/s3.py). gunicorn runs from
+# WORKDIR /app, so /app is on sys.path and both packages resolve. No compiler
+# toolchain is carried forward.
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/app /app/app
+COPY --from=builder /app/utils /app/utils
 
 EXPOSE 8000
 
