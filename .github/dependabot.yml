@@ -1,0 +1,45 @@
+# Dependabot — keep pinned Docker base/tool digests and GitHub Actions SHAs current
+# (issue #176). The deployed image bases (python:3.13-slim, ghcr.io/astral-sh/uv,
+# node:20-alpine) and every workflow `uses:` are pinned by digest/SHA for
+# reproducibility + supply-chain hardening; those pins do not refresh themselves, so
+# Dependabot opens weekly PRs to bump them (and pick up upstream security patches).
+version: 2
+updates:
+  # Backend production image — refreshes `FROM python:3.13-slim@sha256:…` and the
+  # `COPY --from=ghcr.io/astral-sh/uv:0.5.31@sha256:…` tool digest.
+  - package-ecosystem: "docker"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # Frontend production image — refreshes the `node:20-alpine@sha256:…` base digest.
+  - package-ecosystem: "docker"
+    directory: "/apps/frontend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # Workflow actions — refreshes the commit-SHA pins (keeps the `# vN` tag comments
+  # accurate). Grouped so all action bumps land in one PR per week.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
