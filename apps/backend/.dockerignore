@@ -20,4 +20,20 @@ test-results/
 .gitignore
 Dockerfile
 .dockerignore
+
+# Non-build inputs — keep the builder's `COPY . .` lean (issue #176). The runtime
+# image already copies only .venv/app/utils, so these never reach the final image;
+# excluding them here trims the builder context + speeds cache-miss COPYs. Never add
+# a build input here: pyproject.toml, uv.lock, app/, utils/, main.py, README.md
+# (referenced by [project].readme — there is no [build-system] section).
 docs/
+claudedocs/
+tests/
+tasks/
+sample_datasets/
+scripts/
+.benchmarks/
+.apm/
+docker-compose.test.yml
+coverage_summary.txt
+test.csv

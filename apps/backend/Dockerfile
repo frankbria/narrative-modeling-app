@@ -49,15 +49,29 @@ RUN uv sync --frozen --no-dev
 # Same digest as the builder above (see note there) — keep the two in sync.
 FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f AS runtime
 
+# MPLCONFIGDIR: matplotlib (pulled in by SHAP/visualization) needs a writable cache
+# dir; as a non-root user it can't write under the root-owned /app home (issue #176).
+# Point it at a dedicated dir pre-created + chown'd below. Keeps /app read-only and
+# avoids a per-boot "temporary cache directory" fallback warning. (Comment kept above
+# the ENV — inline comments inside a `\`-continued instruction are non-standard.)
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    MPLCONFIGDIR=/var/cache/matplotlib
 
 # Runtime-only libraries: curl for the healthcheck, libgomp1 for xgboost/lightgbm.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libgomp1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Run as a non-root user (issue #176), mirroring the frontend image. Debian slim
+# ships groupadd/useradd (not alpine's addgroup/adduser). uid/gid 1001 matches the
+# frontend's convention. The copied venv/app/utils are chown'd to this user below.
+RUN groupadd --system --gid 1001 appuser \
+    && useradd --system --uid 1001 --gid appuser --home-dir /app appuser \
+    && mkdir -p "$MPLCONFIGDIR" \
+    && chown appuser:appuser "$MPLCONFIGDIR"
 
 WORKDIR /app
 
@@ -66,15 +80,19 @@ WORKDIR /app
 # the image: the virtualenv, the `app` package, and the top-level `utils`
 # namespace package (imported by app/api/routes/s3.py). gunicorn runs from
 # WORKDIR /app, so /app is on sys.path and both packages resolve. No compiler
-# toolchain is carried forward.
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/app /app/app
-COPY --from=builder /app/utils /app/utils
+# toolchain is carried forward. --chown hands ownership to the non-root appuser.
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/utils /app/utils
 
 # Guard the targeted COPY above: fail the build if the runtime image is missing
 # a top-level package the app imports (e.g. a future sibling of app/ + utils/).
-# Import only — no DB/lifespan side effects fire here.
+# Import only — no DB/lifespan side effects fire here. Runs as root pre-switch.
 RUN python -c "import app.main"
+
+# Drop privileges for the running server. gunicorn binds :8000 (>1024 → no root
+# needed) and the curl healthcheck works as any user.
+USER appuser
 
 EXPOSE 8000
 
