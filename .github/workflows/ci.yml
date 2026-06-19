@@ -68,12 +68,16 @@ jobs:
         run: uv sync
       - name: mypy (blocking, new errors only)
         working-directory: apps/backend
-        # `set +o pipefail` so mypy's own exit 1 (it always finds the baselined
-        # errors) doesn't fail the step — only `mypy-baseline filter`'s exit code
-        # matters: 0 when no NEW errors, 1 when a change introduces one.
+        # mypy exits 1 when it finds errors (it always finds the baselined ones)
+        # and >=2 on a fatal crash (plugin/syntax/internal). Tolerate 1, fail
+        # loudly on >=2, then let `mypy-baseline filter` decide: exit 0 when no
+        # NEW errors, 1 when a change introduces one. (A bare pipe would either
+        # swallow a mypy crash or, under pipefail, fail on the expected exit 1.)
         run: |
-          set +o pipefail
-          uv run mypy app/ | uv run mypy-baseline filter
+          status=0
+          uv run mypy app/ > mypy_out.txt || status=$?
+          if [ "$status" -ge 2 ]; then cat mypy_out.txt; exit "$status"; fi
+          uv run mypy-baseline filter < mypy_out.txt
 
   backend-unit:
     name: Backend Unit Tests
