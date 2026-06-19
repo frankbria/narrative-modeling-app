@@ -28,6 +28,18 @@ updates:
       - "dependencies"
       - "docker"
 
+  # Staging compose — refreshes the `redis:7-alpine@sha256:…` digest pinned in the
+  # repo-root `docker-compose.staging.yml` (deploy path, not CI).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
   # Workflow actions — refreshes the commit-SHA pins (keeps the `# vN` tag comments
   # accurate). Grouped so all action bumps land in one PR per week.
   - package-ecosystem: "github-actions"

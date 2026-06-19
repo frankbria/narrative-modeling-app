@@ -92,7 +92,7 @@ CACHE_DEFAULT_TTL=3600            # Default TTL in seconds
 Redis service added to `docker-compose.yml`:
 ```yaml
 redis:
-  image: redis:7.2-alpine
+  image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99  # digest-pinned (issue #176)
   ports:
     - "6379:6379"
   command: redis-server --appendonly yes
