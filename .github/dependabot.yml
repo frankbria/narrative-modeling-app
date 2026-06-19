@@ -16,6 +16,14 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      # Python major bumps need the scientific stack (numba via shap, etc.) to
+      # support the new interpreter first — 3.14 breaks `uv sync` because
+      # numba 0.62.1 caps at <3.14 (PR #216). Re-enable by removing this once
+      # numba/llvmlite ship 3.14 wheels and uv.lock is relocked. Digest +
+      # minor/patch refreshes still flow.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
 
   # Frontend production image — refreshes the `node:20-alpine@sha256:…` base digest.
   - package-ecosystem: "docker"
