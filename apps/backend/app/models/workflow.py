@@ -9,7 +9,7 @@ full state snapshots for recovery/audit.
 
 import copy
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 import pymongo
 from beanie import Document, Indexed, PydanticObjectId
@@ -49,11 +49,11 @@ class WorkflowState(Document):
     """
 
     # Ownership and identification
-    workflow_id: Indexed(str) = Field(
+    workflow_id: Annotated[str, Indexed()] = Field(
         ..., description="Unique workflow identifier (UUID)"
     )
-    user_id: Indexed(str) = Field(..., description="User who owns this workflow")
-    dataset_id: Indexed(str) = Field(
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this workflow")
+    dataset_id: Annotated[str, Indexed()] = Field(
         ..., description="Dataset this workflow belongs to"
     )
 

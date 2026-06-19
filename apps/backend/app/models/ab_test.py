@@ -3,7 +3,7 @@ A/B Test model for experiment tracking
 """
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -48,7 +48,7 @@ class ABTest(Document):
     """A/B Test experiment document"""
     
     # Identification
-    experiment_id: Indexed(str) = Field(description="Unique experiment ID")
+    experiment_id: Annotated[str, Indexed()] = Field(description="Unique experiment ID")
     name: str = Field(description="Experiment name")
     description: Optional[str] = Field(None, description="Experiment description")
     

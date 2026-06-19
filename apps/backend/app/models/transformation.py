@@ -7,7 +7,7 @@ It replaces the transformation-specific fields from the legacy UserData model.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -161,9 +161,9 @@ class TransformationConfig(Document):
     """
 
     # Ownership and identification
-    user_id: Indexed(str) = Field(..., description="User who owns this transformation config")
-    dataset_id: Indexed(str) = Field(..., description="Dataset this transformation config applies to")
-    config_id: Indexed(str) = Field(..., description="Unique transformation config identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this transformation config")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Dataset this transformation config applies to")
+    config_id: Annotated[str, Indexed()] = Field(..., description="Unique transformation config identifier")
 
     # Transformation history
     transformation_steps: List[TransformationStep] = Field(default_factory=list, description="Applied transformation steps")

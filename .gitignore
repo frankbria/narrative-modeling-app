@@ -87,3 +87,4 @@ memory/claude-flow-data.json
 !/tasks/issue-76-demo.md
 !/tasks/lessons.md
 !/tasks/todo.md
+apps/backend/mypy_out.txt

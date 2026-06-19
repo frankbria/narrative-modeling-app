@@ -7,7 +7,7 @@ including expression trees, metadata, and validation status.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -244,9 +244,9 @@ class FeatureDefinition(Document):
     """
 
     # Ownership and identification
-    user_id: Indexed(str) = Field(..., description="User who created this feature")
-    dataset_id: Indexed(str) = Field(..., description="Dataset this feature is for")
-    feature_id: Indexed(str) = Field(..., description="Unique feature identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who created this feature")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Dataset this feature is for")
+    feature_id: Annotated[str, Indexed()] = Field(..., description="Unique feature identifier")
 
     # Feature metadata
     name: str = Field(..., min_length=1, max_length=255, description="Feature name")

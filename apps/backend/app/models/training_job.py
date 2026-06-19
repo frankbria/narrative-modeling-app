@@ -8,7 +8,7 @@ the model comparison table, the selected best model, and any error.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -70,8 +70,8 @@ class TrainingJob(Document):
     """Tracks the lifecycle of an AutoML training run."""
 
     # Identification (model_id doubles as the resulting MLModel id on success)
-    model_id: Indexed(str) = Field(description="Unique training/model identifier")
-    user_id: Indexed(str)
+    model_id: Annotated[str, Indexed()] = Field(description="Unique training/model identifier")
+    user_id: Annotated[str, Indexed()]
     dataset_id: str
     target_column: str
 

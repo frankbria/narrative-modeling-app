@@ -7,7 +7,7 @@ enabling reproducibility and historical analysis of data transformations and mod
 
 import hashlib
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -54,12 +54,12 @@ class DatasetVersion(Document):
     """
 
     # Version identification
-    version_id: Indexed(str) = Field(..., description="Unique version identifier (UUID)")
-    dataset_id: Indexed(str) = Field(..., description="Parent dataset identifier")
+    version_id: Annotated[str, Indexed()] = Field(..., description="Unique version identifier (UUID)")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Parent dataset identifier")
     version_number: int = Field(..., ge=1, description="Sequential version number")
 
     # Ownership
-    user_id: Indexed(str) = Field(..., description="User who owns this version")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this version")
 
     # Content identification
     content_hash: str = Field(..., description="SHA-256 hash of file content for deduplication")
@@ -160,15 +160,15 @@ class TransformationLineage(Document):
     """
 
     # Lineage identification
-    lineage_id: Indexed(str) = Field(..., description="Unique lineage identifier (UUID)")
+    lineage_id: Annotated[str, Indexed()] = Field(..., description="Unique lineage identifier (UUID)")
 
     # Version relationships
-    parent_version_id: Indexed(str) = Field(..., description="Source dataset version")
-    child_version_id: Indexed(str) = Field(..., description="Result dataset version")
-    dataset_id: Indexed(str) = Field(..., description="Dataset identifier")
+    parent_version_id: Annotated[str, Indexed()] = Field(..., description="Source dataset version")
+    child_version_id: Annotated[str, Indexed()] = Field(..., description="Result dataset version")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Dataset identifier")
 
     # Ownership
-    user_id: Indexed(str) = Field(..., description="User who performed transformation")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who performed transformation")
 
     # Transformation details
     transformation_steps: List[TransformationStep] = Field(
