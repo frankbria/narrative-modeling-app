@@ -6,7 +6,7 @@ import hashlib
 import secrets
 import string
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -15,12 +15,12 @@ from pydantic import Field
 class APIKey(Document):
     """API Key for accessing production model endpoints"""
 
-    key_id: Indexed(str) = Field(description="Unique API key identifier")
+    key_id: Annotated[str, Indexed()] = Field(description="Unique API key identifier")
     key_hash: str = Field(description="Hashed API key for security")
     name: str = Field(description="Friendly name for the API key")
     description: Optional[str] = Field(None, description="Description of key usage")
 
-    user_id: Indexed(str) = Field(description="Owner user ID")
+    user_id: Annotated[str, Indexed()] = Field(description="Owner user ID")
 
     # Permissions
     model_ids: List[str] = Field(default_factory=list, description="Allowed model IDs")

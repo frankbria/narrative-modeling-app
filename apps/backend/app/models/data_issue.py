@@ -7,7 +7,7 @@ It provides audit trail for issue detection and fix application.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field
@@ -118,8 +118,8 @@ class DataIssueRecord(Document):
     """
 
     # Ownership and identification
-    dataset_id: Indexed(str) = Field(..., description="Dataset these issues belong to")
-    user_id: Indexed(str) = Field(..., description="User who owns this dataset")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Dataset these issues belong to")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this dataset")
 
     # Detection results
     issues: List[DataIssue] = Field(default_factory=list, description="Detected issues")

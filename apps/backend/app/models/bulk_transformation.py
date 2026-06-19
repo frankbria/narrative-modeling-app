@@ -8,7 +8,7 @@ to multiple columns simultaneously with parallel processing.
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -145,9 +145,9 @@ class BulkTransformationJob(Document):
     """
 
     # Identification
-    job_id: Indexed(str) = Field(..., description="Unique job identifier")
-    user_id: Indexed(str) = Field(..., description="User who owns this job")
-    dataset_id: Indexed(str) = Field(..., description="Target dataset")
+    job_id: Annotated[str, Indexed()] = Field(..., description="Unique job identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this job")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Target dataset")
 
     # Configuration
     selected_columns: List[str] = Field(

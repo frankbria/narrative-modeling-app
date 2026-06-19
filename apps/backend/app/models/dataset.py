@@ -7,7 +7,7 @@ fields from the legacy UserData model.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -99,8 +99,8 @@ class DatasetMetadata(Document):
     """
 
     # Ownership and identification
-    user_id: Indexed(str) = Field(..., description="User who owns this dataset")
-    dataset_id: Indexed(str) = Field(..., description="Unique dataset identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this dataset")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Unique dataset identifier")
 
     # File metadata
     filename: str = Field(..., description="Storage filename (may be generated)")

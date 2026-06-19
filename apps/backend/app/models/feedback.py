@@ -7,7 +7,7 @@ requests) tied to the page the user was on.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
@@ -21,10 +21,10 @@ def get_current_time() -> datetime:
 class Feedback(Document):
     """A single piece of user feedback — one document per submission."""
 
-    feedback_id: Indexed(str) = Field(
+    feedback_id: Annotated[str, Indexed()] = Field(
         ..., description="Unique feedback identifier (UUID)"
     )
-    user_id: Indexed(str) = Field(..., description="User who submitted the feedback")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who submitted the feedback")
     rating: int = Field(..., ge=1, le=5, description="Star rating, 1 (worst) to 5 (best)")
     category: str = Field(
         ..., description="Feedback category (bug, feature_request, general, onboarding)"

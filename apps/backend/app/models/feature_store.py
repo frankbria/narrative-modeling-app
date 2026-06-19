@@ -11,7 +11,7 @@ Models:
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field, field_validator
@@ -31,13 +31,13 @@ class StoredFeature(Document):
     """
 
     # Identification
-    feature_id: Indexed(str) = Field(..., description="Unique feature identifier")
-    user_id: Indexed(str) = Field(..., description="User who owns this feature")
+    feature_id: Annotated[str, Indexed()] = Field(..., description="Unique feature identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this feature")
 
     # Basic metadata
     name: str = Field(..., description="Human-readable feature name")
     description: str = Field(..., description="Description of what the feature does")
-    category: Indexed(str) = Field(..., description="Feature category for organization")
+    category: Annotated[str, Indexed()] = Field(..., description="Feature category for organization")
     tags: List[str] = Field(default_factory=list, description="User-defined tags for discovery")
 
     # Feature definition
@@ -199,8 +199,8 @@ class FeatureVersion(Document):
     """
 
     # Version identification
-    version_id: Indexed(str) = Field(..., description="Unique version identifier")
-    feature_id: Indexed(str) = Field(..., description="Parent feature identifier")
+    version_id: Annotated[str, Indexed()] = Field(..., description="Unique version identifier")
+    feature_id: Annotated[str, Indexed()] = Field(..., description="Parent feature identifier")
     version_number: int = Field(..., ge=1, description="Sequential version number")
 
     # Version snapshot
@@ -310,13 +310,13 @@ class FeatureCollection(Document):
     """
 
     # Identification
-    collection_id: Indexed(str) = Field(..., description="Unique collection identifier")
-    user_id: Indexed(str) = Field(..., description="User who owns this collection")
+    collection_id: Annotated[str, Indexed()] = Field(..., description="Unique collection identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this collection")
 
     # Basic metadata
     name: str = Field(..., description="Collection name")
     description: str = Field(..., description="Description of the collection")
-    domain: Indexed(str) = Field(..., description="Domain/industry: finance, healthcare, retail, etc.")
+    domain: Annotated[str, Indexed()] = Field(..., description="Domain/industry: finance, healthcare, retail, etc.")
 
     # Features in collection
     feature_ids: List[str] = Field(default_factory=list, description="List of feature IDs in collection")

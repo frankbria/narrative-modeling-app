@@ -49,10 +49,11 @@ jobs:
         run: uv run ruff check .
 
   backend-typecheck:
-    # Advisory gate: the backend is not yet fully typed (issue #150). mypy runs
-    # for visibility but does not block — continue-on-error keeps it green while
-    # types are added incrementally. Tighten to blocking in a follow-up.
-    name: Backend Type Check (mypy, advisory)
+    # Blocking gate (issue #219): mypy runs through `mypy-baseline filter`, so the
+    # pre-existing errors recorded in apps/backend/mypy-baseline.txt are tolerated
+    # but any NEW type error fails the build. Burn the baseline down over time
+    # (#226) and never grow it.
+    name: Backend Type Check (mypy)
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
@@ -65,10 +66,14 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
-      - name: mypy (non-blocking)
+      - name: mypy (blocking, new errors only)
         working-directory: apps/backend
-        continue-on-error: true
-        run: uv run mypy app/
+        # `set +o pipefail` so mypy's own exit 1 (it always finds the baselined
+        # errors) doesn't fail the step — only `mypy-baseline filter`'s exit code
+        # matters: 0 when no NEW errors, 1 when a change introduces one.
+        run: |
+          set +o pipefail
+          uv run mypy app/ | uv run mypy-baseline filter
 
   backend-unit:
     name: Backend Unit Tests

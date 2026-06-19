@@ -4,7 +4,7 @@ Batch prediction job model
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -76,7 +76,7 @@ class BatchJob(Document):
     """Batch job document for async processing"""
 
     # Identification
-    job_id: Indexed(str) = Field(description="Unique job identifier")
+    job_id: Annotated[str, Indexed()] = Field(description="Unique job identifier")
     job_type: JobType = Field(description="Type of batch job")
 
     # Ownership

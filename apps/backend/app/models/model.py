@@ -7,7 +7,7 @@ and deployment settings. It consolidates and enhances the existing MLModel and T
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -151,9 +151,9 @@ class ModelConfig(Document):
     """
 
     # Ownership and identification
-    user_id: Indexed(str) = Field(..., description="User who owns this model")
-    dataset_id: Indexed(str) = Field(..., description="Dataset used for training")
-    model_id: Indexed(str) = Field(..., description="Unique model identifier")
+    user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this model")
+    dataset_id: Annotated[str, Indexed()] = Field(..., description="Dataset used for training")
+    model_id: Annotated[str, Indexed()] = Field(..., description="Unique model identifier")
 
     # Model metadata
     name: str = Field(..., description="Human-readable model name")

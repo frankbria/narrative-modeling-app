@@ -3,7 +3,7 @@ Machine Learning Model document for MongoDB
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -13,9 +13,9 @@ class MLModel(Document):
     """ML Model metadata stored in MongoDB"""
 
     # Ownership and identification
-    user_id: Indexed(str)
-    dataset_id: Indexed(str)
-    model_id: Indexed(str) = Field(description="Unique model identifier")
+    user_id: Annotated[str, Indexed()]
+    dataset_id: Annotated[str, Indexed()]
+    model_id: Annotated[str, Indexed()] = Field(description="Unique model identifier")
     name: str
     description: Optional[str] = None
 
