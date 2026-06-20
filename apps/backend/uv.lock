@@ -1030,7 +1030,6 @@ dependencies = [
     { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "shap" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
     { name = "statsmodels" },
@@ -1046,6 +1045,9 @@ dev = [
     { name = "mypy" },
     { name = "mypy-baseline" },
     { name = "pytest-cov" },
+]
+interpretability = [
+    { name = "shap" },
 ]
 
 [package.metadata]
@@ -1084,7 +1086,6 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "scikit-learn", specifier = ">=1.7.0" },
     { name = "scipy", specifier = ">=1.11.0" },
-    { name = "shap", specifier = ">=0.46.0" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "statsmodels", specifier = ">=0.14.0" },
@@ -1101,6 +1102,7 @@ dev = [
     { name = "mypy-baseline", specifier = ">=0.7.4,<1" },
     { name = "pytest-cov", specifier = ">=6.1.1" },
 ]
+interpretability = [{ name = "shap", specifier = ">=0.46.0" }]
 
 [[package]]
 name = "numba"

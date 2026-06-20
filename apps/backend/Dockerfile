@@ -37,7 +37,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.31@sha256:7bff3c3776ec467fc1437960f2c469d8b
 
 WORKDIR /app
 
-# Install dependencies first (cached unless the manifests change).
+# Install dependencies first (cached unless the manifests change). --no-dev still
+# installs the `interpretability` group (shap) because it's in default-groups, so
+# this beta image ships SHAP. For a slim production image (~57 MB lighter, drops
+# shap+numba+llvmlite), append `--no-group interpretability` to both uv sync lines;
+# the app degrades to model-native importance and `import app.main` stays valid
+# (shap is lazy-imported). See pyproject.toml [dependency-groups] (issue #204).
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
