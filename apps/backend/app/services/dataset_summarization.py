@@ -5,8 +5,8 @@ Enhanced dataset summarization service using AI
 import json
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from datetime import UTC, datetime
+from typing import Any
 
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field
@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 class DatasetSummaryRequest(BaseModel):
     """Request model for dataset summarization"""
     file_id: str
-    schema: Union[Dict[str, Any], SchemaDefinition]
-    statistics: Union[Dict[str, Any], DatasetStatistics]
-    quality_report: Union[Dict[str, Any], QualityReport]
-    sample_data: Optional[List[Dict[str, Any]]] = None
-    focus_areas: Optional[List[str]] = Field(
+    schema: dict[str, Any] | SchemaDefinition
+    statistics: dict[str, Any] | DatasetStatistics
+    quality_report: dict[str, Any] | QualityReport
+    sample_data: list[dict[str, Any]] | None = None
+    focus_areas: list[str] | None = Field(
         default=["patterns", "quality", "relationships", "recommendations"]
     )
     max_tokens: int = Field(default=2500, ge=500, le=4000)
@@ -70,7 +70,7 @@ class DatasetSummarizationService:
         Returns:
             Enhanced AI summary with insights and recommendations
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         
         try:
             # Prepare the dataset context
@@ -83,7 +83,7 @@ class DatasetSummarizationService:
                 summary = self._generate_fallback_summary(context)
             
             # Calculate processing time
-            processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+            processing_time = (datetime.now(UTC) - start_time).total_seconds()
             summary.processing_time = processing_time
             
             return summary
@@ -92,7 +92,7 @@ class DatasetSummarizationService:
             logger.error(f"Error generating dataset summary: {e}")
             return self._create_error_summary(str(e))
     
-    def _prepare_context(self, request: DatasetSummaryRequest) -> Dict[str, Any]:
+    def _prepare_context(self, request: DatasetSummaryRequest) -> dict[str, Any]:
         """Prepare context for AI summarization"""
         # Convert models to dicts if needed
         schema = request.schema
@@ -128,7 +128,7 @@ class DatasetSummarizationService:
         
         return context
     
-    def _extract_column_details(self, schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_column_details(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract important column details from schema"""
         columns = []
         
@@ -144,7 +144,7 @@ class DatasetSummarizationService:
         
         return columns
     
-    def _extract_quality_insights(self, quality_report: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_quality_insights(self, quality_report: dict[str, Any]) -> dict[str, Any]:
         """Extract key quality insights"""
         return {
             "overall_score": quality_report.get("overall_quality_score", 0),
@@ -154,7 +154,7 @@ class DatasetSummarizationService:
             "dimension_scores": quality_report.get("dimension_scores", {})
         }
     
-    def _extract_statistical_highlights(self, statistics: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_statistical_highlights(self, statistics: dict[str, Any]) -> dict[str, Any]:
         """Extract statistical highlights"""
         highlights = {
             "missing_data_summary": statistics.get("missing_value_summary", {}),
@@ -193,7 +193,7 @@ class DatasetSummarizationService:
     )
     async def _generate_openai_summary(
         self,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         request: DatasetSummaryRequest
     ) -> EnhancedAISummary:
         """Generate summary using OpenAI"""
@@ -231,7 +231,7 @@ class DatasetSummarizationService:
             logger.error(f"OpenAI API error: {e}")
             return self._generate_fallback_summary(context)
     
-    def _create_system_prompt(self, focus_areas: List[str]) -> str:
+    def _create_system_prompt(self, focus_areas: list[str]) -> str:
         """Create system prompt for OpenAI"""
         focus_string = ", ".join(focus_areas)
         
@@ -250,7 +250,7 @@ Respond in JSON format with the following structure:
 
 Be specific, quantitative where possible, and focus on actionable insights. The detailed_analysis should be thorough but well-structured."""
     
-    def _create_user_prompt(self, context: Dict[str, Any]) -> str:
+    def _create_user_prompt(self, context: dict[str, Any]) -> str:
         """Create user prompt with dataset context"""
         context_json = json.dumps(context, indent=2)
         
@@ -265,7 +265,7 @@ Focus on:
 4. Potential use cases or analysis approaches
 5. Any unusual patterns or outliers that need attention"""
     
-    def _generate_fallback_summary(self, context: Dict[str, Any]) -> EnhancedAISummary:
+    def _generate_fallback_summary(self, context: dict[str, Any]) -> EnhancedAISummary:
         """Generate basic summary without AI"""
         overview = f"Dataset contains {context['dataset_overview']['row_count']:,} rows and {context['dataset_overview']['column_count']} columns."
         
@@ -294,7 +294,7 @@ Focus on:
             model_used="fallback"
         )
     
-    def _create_fallback_markdown(self, context: Dict[str, Any]) -> str:
+    def _create_fallback_markdown(self, context: dict[str, Any]) -> str:
         """Create basic markdown analysis"""
         return f"""# Dataset Analysis
 
@@ -312,7 +312,7 @@ Focus on:
 This is a basic analysis generated without AI assistance. For more detailed insights, ensure OpenAI API access is configured.
 """
     
-    def _calculate_confidence(self, context: Dict[str, Any]) -> float:
+    def _calculate_confidence(self, context: dict[str, Any]) -> float:
         """Calculate confidence score based on data completeness"""
         score = 0.5  # Base score
         

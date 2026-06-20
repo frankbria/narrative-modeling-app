@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 from openai import OpenAI, OpenAIError
 
@@ -30,7 +30,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
 
-async def generate_dataset_summary(user_data_id: str) -> Optional[AISummary]:
+async def generate_dataset_summary(user_data_id: str) -> AISummary | None:
     """
     Generate an AI summary of a dataset using OpenAI's GPT-4.
 
@@ -75,7 +75,7 @@ async def generate_dataset_summary(user_data_id: str) -> Optional[AISummary]:
         return None
 
 
-def prepare_dataset_summary(user_data: UserData) -> Dict[str, Any]:
+def prepare_dataset_summary(user_data: UserData) -> dict[str, Any]:
     """
     Prepare a summary of the dataset for the OpenAI prompt.
 
@@ -118,7 +118,7 @@ def prepare_dataset_summary(user_data: UserData) -> Dict[str, Any]:
     exceptions=(OpenAIError, Exception),
     fallback_value=None
 )
-async def call_openai_api(dataset_summary: Dict[str, Any]) -> Optional[AISummary]:
+async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
     """
     Call the OpenAI API to generate an AI summary of the dataset.
 

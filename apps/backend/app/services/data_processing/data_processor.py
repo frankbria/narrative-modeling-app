@@ -3,9 +3,9 @@ Main data processor that orchestrates schema inference, statistics, and quality 
 """
 
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -24,16 +24,16 @@ class ProcessedData:
         schema: SchemaDefinition,
         statistics: DatasetStatistics,
         quality_report: QualityReport,
-        file_metadata: Dict[str, Any]
+        file_metadata: dict[str, Any]
     ):
         self.dataframe = dataframe
         self.schema = schema
         self.statistics = statistics
         self.quality_report = quality_report
         self.file_metadata = file_metadata
-        self.processed_at = datetime.now(timezone.utc)
+        self.processed_at = datetime.now(UTC)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses"""
         return {
             "schema": self.schema.model_dump(),
@@ -44,7 +44,7 @@ class ProcessedData:
             "preview": self.get_preview()
         }
     
-    def get_preview(self, rows: int = 100) -> Dict[str, Any]:
+    def get_preview(self, rows: int = 100) -> dict[str, Any]:
         """Get preview of the data"""
         preview_df = self.dataframe.head(rows)
         
@@ -77,7 +77,7 @@ class ProcessedData:
             "preview_rows": len(preview_df)
         }
     
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get summary of the processed data"""
         column_types = {col.name: col.data_type for col in self.schema.columns}
         
@@ -88,7 +88,7 @@ class ProcessedData:
             "column_count": len(self.dataframe.columns),
             "overall_quality_score": self.quality_report.overall_quality_score,
             "column_types": column_types,
-            "processing_time_seconds": (datetime.now(timezone.utc) - self.processed_at).total_seconds()
+            "processing_time_seconds": (datetime.now(UTC) - self.processed_at).total_seconds()
         }
 
 
@@ -119,9 +119,9 @@ class DataProcessor:
     async def process_file(
         self,
         file_path: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
         encoding: str = "utf-8",
-        delimiter: Optional[str] = None
+        delimiter: str | None = None
     ) -> ProcessedData:
         """
         Process a file from disk
@@ -152,9 +152,9 @@ class DataProcessor:
         self,
         file_bytes: bytes,
         filename: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
         encoding: str = "utf-8",
-        delimiter: Optional[str] = None
+        delimiter: str | None = None
     ) -> ProcessedData:
         """
         Process file from bytes
@@ -192,7 +192,7 @@ class DataProcessor:
     async def process_dataframe(
         self,
         df: pd.DataFrame,
-        file_metadata: Optional[Dict[str, Any]] = None
+        file_metadata: dict[str, Any] | None = None
     ) -> ProcessedData:
         """
         Process a pandas DataFrame
@@ -262,7 +262,7 @@ class DataProcessor:
         file_path: str,
         file_type: str,
         encoding: str,
-        delimiter: Optional[str]
+        delimiter: str | None
     ) -> pd.DataFrame:
         """Read file from disk"""
         if file_type == 'csv':
@@ -295,7 +295,7 @@ class DataProcessor:
         file_obj: io.BytesIO,
         file_type: str,
         encoding: str,
-        delimiter: Optional[str]
+        delimiter: str | None
     ) -> pd.DataFrame:
         """Read file from file-like object"""
         if file_type == 'csv':
@@ -328,7 +328,7 @@ class DataProcessor:
     
     def _detect_delimiter(self, file_path: str) -> str:
         """Detect CSV delimiter from file"""
-        with open(file_path, 'r') as f:
+        with open(file_path) as f:
             sample = f.read(1024)
         
         return self._detect_delimiter_from_sample(sample)
@@ -370,7 +370,7 @@ class DataProcessor:
         
         return df
     
-    def _get_file_metadata(self, file_path: str, file_type: str) -> Dict[str, Any]:
+    def _get_file_metadata(self, file_path: str, file_type: str) -> dict[str, Any]:
         """Get metadata about the file"""
         path = Path(file_path)
         

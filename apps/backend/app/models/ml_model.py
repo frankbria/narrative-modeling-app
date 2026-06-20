@@ -2,8 +2,8 @@
 Machine Learning Model document for MongoDB
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -17,18 +17,18 @@ class MLModel(Document):
     dataset_id: Annotated[str, Indexed()]
     model_id: Annotated[str, Indexed()] = Field(description="Unique model identifier")
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
     # Model details
     problem_type: str  # classification, regression, etc.
     algorithm: str  # e.g., "Random Forest", "XGBoost"
     target_column: str
-    feature_names: List[str]
+    feature_names: list[str]
 
     # Performance metrics
     cv_score: float
     test_score: float
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
     # Model metadata
     training_time: float  # seconds
@@ -38,10 +38,10 @@ class MLModel(Document):
 
     # Storage information
     model_path: str  # S3 path to serialized model
-    feature_transformer_path: Optional[str] = None  # S3 path to feature transformer
+    feature_transformer_path: str | None = None  # S3 path to feature transformer
     # S3 path to held-out evaluation arrays (issue #79); None for models
     # trained before the evaluation dashboard existed (backward compatible)
-    evaluation_data_path: Optional[str] = None
+    evaluation_data_path: str | None = None
 
     # Versioning
     version: str = Field(
@@ -50,12 +50,12 @@ class MLModel(Document):
     is_active: bool = True
 
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_used_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_used_at: datetime | None = None
 
     # Feature importance
-    feature_importance: Optional[Dict[str, float]] = None
+    feature_importance: dict[str, float] | None = None
 
     # SHAP interpretability (issue #80). All optional so pre-#80 models degrade
     # gracefully: the interpretability endpoints return native feature
@@ -63,24 +63,24 @@ class MLModel(Document):
     # path to the global SHAP summary (mean |SHAP| per feature) computed at
     # training time; ``shap_explainer_type`` is "tree" or "linear" (None when
     # the model type isn't SHAP-supported).
-    shap_values_path: Optional[str] = None
-    shap_explainer_type: Optional[str] = None
+    shap_values_path: str | None = None
+    shap_explainer_type: str | None = None
 
     # Confidence & uncertainty (issue #83). All optional/defaulted so models
     # trained before #83 keep working: classification degrades to raw
     # max-probability confidence (is_calibrated=False) and regression has no
     # prediction interval (residual_std=None).
     is_calibrated: bool = False  # persisted model yields calibrated probabilities
-    calibration_method: Optional[str] = None  # "sigmoid" or "isotonic"
+    calibration_method: str | None = None  # "sigmoid" or "isotonic"
     # Brier (binary) / log loss (multiclass) — an IN-SAMPLE diagnostic measured
     # on the calibration-fit split, so optimistic (see ConfidenceService).
-    calibration_score: Optional[float] = None
-    residual_std: Optional[float] = (
+    calibration_score: float | None = None
+    residual_std: float | None = (
         None  # held-out residual std for regression intervals
     )
 
     # Training configuration
-    training_config: Dict[str, Any] = Field(default_factory=dict)
+    training_config: dict[str, Any] = Field(default_factory=dict)
 
     class Settings:
         name = "ml_models"

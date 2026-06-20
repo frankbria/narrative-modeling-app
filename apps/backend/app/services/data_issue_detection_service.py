@@ -7,7 +7,7 @@ rule-based analysis (via QualityAssessmentService) and AI-powered analysis.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -51,10 +51,10 @@ class DataIssueDetectionService:
     async def detect_issues(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-        options: Optional[DetectionOptions] = None,
+        column_types: dict[str, str],
+        options: DetectionOptions | None = None,
         include_ai_analysis: bool = True,
-    ) -> Tuple[List[DataIssue], DetectionSummary]:
+    ) -> tuple[list[DataIssue], DetectionSummary]:
         """
         Detect data quality issues in a DataFrame.
 
@@ -69,7 +69,7 @@ class DataIssueDetectionService:
         """
         start_time = time.time()
         options = options or DetectionOptions()
-        all_issues: List[DataIssue] = []
+        all_issues: list[DataIssue] = []
 
         # Sample large datasets for performance
         sample_df = self._create_sample(df, options.sample_size)
@@ -136,11 +136,11 @@ class DataIssueDetectionService:
     async def _detect_rule_based_issues(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
+        column_types: dict[str, str],
         options: DetectionOptions,
-    ) -> List[DataIssue]:
+    ) -> list[DataIssue]:
         """Use QualityAssessmentService for rule-based detection."""
-        issues: List[DataIssue] = []
+        issues: list[DataIssue] = []
 
         # Run quality assessment
         quality_report = await self.quality_service.assess_quality(df, column_types)
@@ -221,11 +221,11 @@ class DataIssueDetectionService:
     def _detect_outliers(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
+        column_types: dict[str, str],
         options: DetectionOptions,
-    ) -> List[DataIssue]:
+    ) -> list[DataIssue]:
         """Detect outliers in numeric columns."""
-        issues: List[DataIssue] = []
+        issues: list[DataIssue] = []
         numeric_cols = [
             col for col, dtype in column_types.items()
             if dtype in ["integer", "float"] and col in df.columns
@@ -292,10 +292,10 @@ class DataIssueDetectionService:
     def _detect_format_issues(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[DataIssue]:
+        column_types: dict[str, str],
+    ) -> list[DataIssue]:
         """Detect format-specific issues like inconsistent casing, whitespace."""
-        issues: List[DataIssue] = []
+        issues: list[DataIssue] = []
 
         for col, dtype in column_types.items():
             if col not in df.columns:
@@ -324,7 +324,7 @@ class DataIssueDetectionService:
         self,
         series: pd.Series,
         col_name: str
-    ) -> Optional[DataIssue]:
+    ) -> DataIssue | None:
         """Check for leading/trailing whitespace."""
         non_null = series.dropna().astype(str)
         if len(non_null) == 0:
@@ -355,7 +355,7 @@ class DataIssueDetectionService:
         self,
         series: pd.Series,
         col_name: str
-    ) -> Optional[DataIssue]:
+    ) -> DataIssue | None:
         """Check for inconsistent casing in categorical-like columns."""
         non_null = series.dropna().astype(str)
         if len(non_null) == 0:
@@ -380,7 +380,7 @@ class DataIssueDetectionService:
             )
         return None
 
-    def _find_casing_duplicates(self, values: np.ndarray) -> List[str]:
+    def _find_casing_duplicates(self, values: np.ndarray) -> list[str]:
         """Find values that are duplicates when compared case-insensitively."""
         lower_map = {}
         duplicates = []
@@ -398,7 +398,7 @@ class DataIssueDetectionService:
         self,
         series: pd.Series,
         col_name: str
-    ) -> Optional[DataIssue]:
+    ) -> DataIssue | None:
         """Check for inconsistent date formats."""
         non_null = series.dropna()
         if len(non_null) == 0:
@@ -428,10 +428,10 @@ class DataIssueDetectionService:
         self,
         issue: DataIssue,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[SuggestedFix]:
+        column_types: dict[str, str],
+    ) -> list[SuggestedFix]:
         """Generate fix suggestions for an issue."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
 
         if issue.issue_type == IssueType.MISSING_VALUES:
             fixes.extend(self._suggest_missing_value_fixes(issue, df, column_types))
@@ -496,10 +496,10 @@ class DataIssueDetectionService:
         self,
         issue: DataIssue,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[SuggestedFix]:
+        column_types: dict[str, str],
+    ) -> list[SuggestedFix]:
         """Suggest fixes for missing values based on column type."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
         col = issue.affected_column
 
         if not col or col not in df.columns:
@@ -550,9 +550,9 @@ class DataIssueDetectionService:
 
         return fixes
 
-    def _suggest_outlier_fixes(self, issue: DataIssue) -> List[SuggestedFix]:
+    def _suggest_outlier_fixes(self, issue: DataIssue) -> list[SuggestedFix]:
         """Suggest fixes for outliers."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
         col = issue.affected_column
 
         if issue.affected_percentage < 10:
@@ -590,7 +590,7 @@ class DataIssueDetectionService:
     def _create_sample(
         self,
         df: pd.DataFrame,
-        sample_size: Optional[int]
+        sample_size: int | None
     ) -> pd.DataFrame:
         """Create a sample of the DataFrame for analysis."""
         if sample_size is None or len(df) <= sample_size:
@@ -601,7 +601,7 @@ class DataIssueDetectionService:
         self,
         series: pd.Series,
         issue_type: IssueType
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Get example values that are problematic."""
         if issue_type == IssueType.MISSING_VALUES:
             # Return indices of missing values
@@ -659,7 +659,7 @@ class DataIssueDetectionService:
 
     def _create_summary(
         self,
-        issues: List[DataIssue],
+        issues: list[DataIssue],
         detection_time_ms: int,
         columns_analyzed: int,
         rows_analyzed: int,
@@ -686,7 +686,7 @@ class DataIssueDetectionService:
         self,
         dataset_id: str,
         user_id: str,
-        issues: List[DataIssue],
+        issues: list[DataIssue],
         summary: DetectionSummary,
         options: DetectionOptions,
     ) -> DataIssueRecord:
@@ -706,7 +706,7 @@ class DataIssueDetectionService:
         self,
         dataset_id: str,
         user_id: str,
-    ) -> Optional[DataIssueRecord]:
+    ) -> DataIssueRecord | None:
         """Get the most recent detection record for a dataset."""
         record = await DataIssueRecord.find_one(
             DataIssueRecord.dataset_id == dataset_id,

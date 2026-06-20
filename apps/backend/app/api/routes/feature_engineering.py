@@ -8,7 +8,6 @@ and feature application.
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
@@ -496,8 +495,8 @@ async def apply_multiple_features(
 async def _apply_single_feature(
     df: pd.DataFrame,
     suggestion,
-    parameters: Optional[dict] = None
-) -> Optional[str]:
+    parameters: dict | None = None
+) -> str | None:
     """Apply a single feature suggestion to a dataframe"""
     import numpy as np
 

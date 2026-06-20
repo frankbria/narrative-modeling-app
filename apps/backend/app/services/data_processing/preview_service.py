@@ -5,7 +5,7 @@ Provides functionality to preview transformations and calculate their impact
 on data by comparing original vs transformed DataFrames.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ from .quality_assessment import QualityAssessmentService
 class PreviewService:
     """Service for previewing transformations and calculating their impact"""
 
-    def __init__(self, quality_service: Optional[QualityAssessmentService] = None):
+    def __init__(self, quality_service: QualityAssessmentService | None = None):
         """
         Initialize preview service.
 
@@ -31,7 +31,7 @@ class PreviewService:
         self,
         original_df: pd.DataFrame,
         transformed_df: pd.DataFrame,
-        column_types: Optional[Dict[str, str]] = None,
+        column_types: dict[str, str] | None = None,
     ) -> ImpactStatistics:
         """
         Calculate impact statistics by comparing original vs transformed DataFrames.
@@ -126,7 +126,7 @@ class PreviewService:
                     f"PreviewService expects same columns."
                 )
 
-    def _infer_column_types(self, df: pd.DataFrame) -> Dict[str, str]:
+    def _infer_column_types(self, df: pd.DataFrame) -> dict[str, str]:
         """
         Infer column types from DataFrame dtypes.
 
@@ -155,7 +155,7 @@ class PreviewService:
 
     def _calculate_basic_metrics(
         self, original_df: pd.DataFrame, transformed_df: pd.DataFrame
-    ) -> tuple[int, int, List[str]]:
+    ) -> tuple[int, int, list[str]]:
         """
         Calculate basic impact metrics.
 
@@ -206,8 +206,8 @@ class PreviewService:
         self,
         original_df: pd.DataFrame,
         transformed_df: pd.DataFrame,
-        columns_affected: List[str],
-    ) -> Dict[str, Dict[str, Any]]:
+        columns_affected: list[str],
+    ) -> dict[str, dict[str, Any]]:
         """
         Calculate value distribution changes for affected columns.
 
@@ -263,7 +263,7 @@ class PreviewService:
         self,
         original_df: pd.DataFrame,
         transformed_df: pd.DataFrame,
-        column_types: Dict[str, str],
+        column_types: dict[str, str],
     ) -> tuple[float, float]:
         """
         Calculate quality scores before and after transformation.

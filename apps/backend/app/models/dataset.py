@@ -6,8 +6,8 @@ schema, statistics, and quality assessments. It replaces the dataset-specific
 fields from the legacy UserData model.
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SchemaField(BaseModel):
@@ -23,11 +23,11 @@ class SchemaField(BaseModel):
 
     field_name: str = Field(..., description="Name of the field/column")
     field_type: str = Field(..., description="Field type: numeric, text, boolean, datetime, categorical")
-    data_type: Optional[str] = Field(None, description="Statistical data type: nominal, ordinal, interval, ratio")
+    data_type: str | None = Field(None, description="Statistical data type: nominal, ordinal, interval, ratio")
     inferred_dtype: str = Field(..., description="Inferred data type from pandas (e.g., int64, float64, object)")
     unique_values: int = Field(..., ge=0, description="Number of unique values")
     missing_values: int = Field(..., ge=0, description="Number of missing values")
-    example_values: List[Any] = Field(default_factory=list, description="Sample values from the field")
+    example_values: list[Any] = Field(default_factory=list, description="Sample values from the field")
     is_constant: bool = Field(default=False, description="Whether all values are the same")
     is_high_cardinality: bool = Field(default=False, description="Whether field has high cardinality")
 
@@ -42,7 +42,7 @@ class SchemaField(BaseModel):
 
     @field_validator('data_type')
     @classmethod
-    def validate_data_type(cls, v: Optional[str]) -> Optional[str]:
+    def validate_data_type(cls, v: str | None) -> str | None:
         """Validate data_type is one of allowed values."""
         if v is None:
             return v
@@ -56,9 +56,9 @@ class AISummary(BaseModel):
     """AI-generated summary of dataset contents."""
 
     overview: str = Field(..., description="High-level overview of the dataset")
-    issues: List[str] = Field(default_factory=list, description="Identified data quality issues")
-    relationships: List[str] = Field(default_factory=list, description="Identified relationships between columns")
-    suggestions: List[str] = Field(default_factory=list, description="Suggestions for data improvement")
+    issues: list[str] = Field(default_factory=list, description="Identified data quality issues")
+    relationships: list[str] = Field(default_factory=list, description="Identified relationships between columns")
+    suggestions: list[str] = Field(default_factory=list, description="Suggestions for data improvement")
     raw_markdown: str = Field(..., alias="rawMarkdown", description="Raw markdown version of summary")
     created_at: datetime = Field(default_factory=get_current_time, alias="createdAt")
 
@@ -71,11 +71,11 @@ class PIIReport(BaseModel):
     """PII detection and risk assessment report."""
 
     contains_pii: bool = Field(default=False, description="Whether PII was detected")
-    pii_fields: List[str] = Field(default_factory=list, description="List of fields containing PII")
+    pii_fields: list[str] = Field(default_factory=list, description="List of fields containing PII")
     risk_level: str = Field(default="low", description="Overall PII risk level: low, medium, high")
-    detection_details: Dict[str, Any] = Field(default_factory=dict, description="Detailed PII detection results")
+    detection_details: dict[str, Any] = Field(default_factory=dict, description="Detailed PII detection results")
     masked: bool = Field(default=False, description="Whether PII has been masked")
-    masked_at: Optional[datetime] = None
+    masked_at: datetime | None = None
 
     @field_validator('risk_level')
     @classmethod
@@ -108,34 +108,34 @@ class DatasetMetadata(Document):
     file_type: str = Field(..., description="File type: csv, excel, json, parquet")
     file_path: str = Field(..., description="Storage path (e.g., S3 key)")
     s3_url: str = Field(..., description="S3 URL for file access")
-    file_size: Optional[int] = Field(None, ge=0, description="File size in bytes")
+    file_size: int | None = Field(None, ge=0, description="File size in bytes")
 
     # Dataset dimensions
     num_rows: int = Field(..., ge=0, description="Number of rows in dataset")
     num_columns: int = Field(..., ge=0, description="Number of columns in dataset")
-    columns: List[str] = Field(default_factory=list, description="Column names")
+    columns: list[str] = Field(default_factory=list, description="Column names")
 
     # Schema information
-    data_schema: List[SchemaField] = Field(default_factory=list, description="Detailed schema for each field")
-    inferred_schema: Optional[Dict[str, Any]] = Field(None, alias="schema", description="Full inferred schema from processing")
+    data_schema: list[SchemaField] = Field(default_factory=list, description="Detailed schema for each field")
+    inferred_schema: dict[str, Any] | None = Field(None, alias="schema", description="Full inferred schema from processing")
 
     # Statistics and quality
-    statistics: Optional[Dict[str, Any]] = Field(None, description="Calculated statistics for each column")
-    quality_report: Optional[Dict[str, Any]] = Field(None, description="Data quality assessment results")
-    data_preview: Optional[List[Dict[str, Any]]] = Field(None, description="Preview rows (first N rows)")
+    statistics: dict[str, Any] | None = Field(None, description="Calculated statistics for each column")
+    quality_report: dict[str, Any] | None = Field(None, description="Data quality assessment results")
+    data_preview: list[dict[str, Any]] | None = Field(None, description="Preview rows (first N rows)")
 
     # AI analysis
-    ai_summary: Optional[AISummary] = Field(None, alias="aiSummary")
+    ai_summary: AISummary | None = Field(None, alias="aiSummary")
 
     # PII detection
-    pii_report: Optional[PIIReport] = None
+    pii_report: PIIReport | None = None
 
     # Processing status
     is_processed: bool = Field(default=False, description="Whether initial processing is complete")
-    processed_at: Optional[datetime] = None
+    processed_at: datetime | None = None
 
     # Onboarding
-    onboarding_progress: Optional[Dict[str, Any]] = Field(None, description="User's onboarding tutorial progress")
+    onboarding_progress: dict[str, Any] | None = Field(None, description="User's onboarding tutorial progress")
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
@@ -143,7 +143,7 @@ class DatasetMetadata(Document):
 
     # Version tracking
     version: str = Field(default="1.0.0", description="Dataset version (major.minor.patch)")
-    parent_dataset_id: Optional[str] = Field(None, description="Parent dataset if this is derived")
+    parent_dataset_id: str | None = Field(None, description="Parent dataset if this is derived")
 
     class Settings:
         name = "dataset_metadata"
@@ -188,7 +188,7 @@ class DatasetMetadata(Document):
         self.processed_at = get_current_time()
         self.update_timestamp()
 
-    def get_column_schema(self, column_name: str) -> Optional[SchemaField]:
+    def get_column_schema(self, column_name: str) -> SchemaField | None:
         """Get schema information for a specific column."""
         for field in self.data_schema:
             if field.field_name == column_name:

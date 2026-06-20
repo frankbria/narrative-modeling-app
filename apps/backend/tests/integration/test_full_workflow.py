@@ -4,7 +4,7 @@ Integration tests for the complete upload → process → analyze workflow
 
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -59,7 +59,7 @@ class TestFullWorkflow:
                     columns=["customer_id", "name", "age", "purchase_amount", "purchase_date", "category", "email"],
                     data_schema=[],
                     file_type="csv",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     is_processed=False
                 )
                 mock_insert.return_value = mock_dataset
@@ -223,7 +223,7 @@ class TestFullWorkflow:
                 mock_data.pii_detected = True
                 mock_data.pii_columns = ["ssn", "email", "phone"]
                 mock_data.file_type = "csv"
-                mock_data.upload_date = datetime.now(timezone.utc)
+                mock_data.upload_date = datetime.now(UTC)
                 mock_insert.return_value = mock_data
 
                 # Upload should detect PII

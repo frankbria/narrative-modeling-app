@@ -5,9 +5,9 @@ This model focuses on ML model configuration, training parameters, performance m
 and deployment settings. It consolidates and enhances the existing MLModel and TrainedModel.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ProblemType(str, Enum):
@@ -42,32 +42,32 @@ class HyperparameterConfig(BaseModel):
     """Hyperparameter configuration for model training."""
 
     # Common hyperparameters
-    n_estimators: Optional[int] = Field(None, ge=1, description="Number of estimators (for ensemble methods)")
-    max_depth: Optional[int] = Field(None, ge=1, description="Maximum tree depth")
-    learning_rate: Optional[float] = Field(None, gt=0, description="Learning rate")
-    random_state: Optional[int] = Field(None, description="Random state for reproducibility")
+    n_estimators: int | None = Field(None, ge=1, description="Number of estimators (for ensemble methods)")
+    max_depth: int | None = Field(None, ge=1, description="Maximum tree depth")
+    learning_rate: float | None = Field(None, gt=0, description="Learning rate")
+    random_state: int | None = Field(None, description="Random state for reproducibility")
 
     # Additional hyperparameters (flexible)
-    additional_params: Dict[str, Any] = Field(default_factory=dict, description="Additional algorithm-specific parameters")
+    additional_params: dict[str, Any] = Field(default_factory=dict, description="Additional algorithm-specific parameters")
 
 
 class FeatureConfig(BaseModel):
     """Feature engineering and selection configuration."""
 
-    feature_names: List[str] = Field(..., description="List of feature column names")
+    feature_names: list[str] = Field(..., description="List of feature column names")
     target_column: str = Field(..., description="Target column name")
 
     # Feature engineering
-    engineered_features: List[str] = Field(default_factory=list, description="List of engineered feature names")
-    dropped_features: List[str] = Field(default_factory=list, description="Features dropped during selection")
+    engineered_features: list[str] = Field(default_factory=list, description="List of engineered feature names")
+    dropped_features: list[str] = Field(default_factory=list, description="Features dropped during selection")
 
     # Feature importance
-    feature_importance: Optional[Dict[str, float]] = Field(None, description="Feature importance scores")
+    feature_importance: dict[str, float] | None = Field(None, description="Feature importance scores")
 
     # Feature types
-    numeric_features: List[str] = Field(default_factory=list, description="Numeric feature names")
-    categorical_features: List[str] = Field(default_factory=list, description="Categorical feature names")
-    datetime_features: List[str] = Field(default_factory=list, description="Datetime feature names")
+    numeric_features: list[str] = Field(default_factory=list, description="Numeric feature names")
+    categorical_features: list[str] = Field(default_factory=list, description="Categorical feature names")
+    datetime_features: list[str] = Field(default_factory=list, description="Datetime feature names")
 
 
 class PerformanceMetrics(BaseModel):
@@ -78,22 +78,22 @@ class PerformanceMetrics(BaseModel):
     test_score: float = Field(..., ge=0.0, le=1.0, description="Test set score")
 
     # Classification metrics
-    accuracy: Optional[float] = Field(None, ge=0.0, le=1.0)
-    precision: Optional[float] = Field(None, ge=0.0, le=1.0)
-    recall: Optional[float] = Field(None, ge=0.0, le=1.0)
-    f1_score: Optional[float] = Field(None, ge=0.0, le=1.0)
-    roc_auc: Optional[float] = Field(None, ge=0.0, le=1.0)
+    accuracy: float | None = Field(None, ge=0.0, le=1.0)
+    precision: float | None = Field(None, ge=0.0, le=1.0)
+    recall: float | None = Field(None, ge=0.0, le=1.0)
+    f1_score: float | None = Field(None, ge=0.0, le=1.0)
+    roc_auc: float | None = Field(None, ge=0.0, le=1.0)
 
     # Regression metrics
-    rmse: Optional[float] = Field(None, ge=0.0, description="Root Mean Squared Error")
-    mae: Optional[float] = Field(None, ge=0.0, description="Mean Absolute Error")
-    r2_score: Optional[float] = Field(None, description="R-squared score")
+    rmse: float | None = Field(None, ge=0.0, description="Root Mean Squared Error")
+    mae: float | None = Field(None, ge=0.0, description="Mean Absolute Error")
+    r2_score: float | None = Field(None, description="R-squared score")
 
     # Additional metrics
-    additional_metrics: Dict[str, Any] = Field(default_factory=dict, description="Additional problem-specific metrics")
+    additional_metrics: dict[str, Any] = Field(default_factory=dict, description="Additional problem-specific metrics")
 
     # Confusion matrix (for classification)
-    confusion_matrix: Optional[List[List[int]]] = None
+    confusion_matrix: list[list[int]] | None = None
 
 
 class TrainingConfig(BaseModel):
@@ -127,16 +127,16 @@ class DeploymentConfig(BaseModel):
     """Model deployment configuration."""
 
     is_deployed: bool = Field(default=False, description="Whether model is deployed")
-    deployed_at: Optional[datetime] = None
-    deployment_endpoint: Optional[str] = Field(None, description="API endpoint for deployed model")
+    deployed_at: datetime | None = None
+    deployment_endpoint: str | None = Field(None, description="API endpoint for deployed model")
 
     # Monitoring
     prediction_count: int = Field(default=0, ge=0, description="Total number of predictions made")
-    last_prediction_at: Optional[datetime] = None
+    last_prediction_at: datetime | None = None
 
     # Performance monitoring
-    average_prediction_time: Optional[float] = Field(None, ge=0.0, description="Average prediction time in ms")
-    error_rate: Optional[float] = Field(None, ge=0.0, le=1.0, description="Prediction error rate")
+    average_prediction_time: float | None = Field(None, ge=0.0, description="Average prediction time in ms")
+    error_rate: float | None = Field(None, ge=0.0, le=1.0, description="Prediction error rate")
 
 
 class ModelConfig(Document):
@@ -157,7 +157,7 @@ class ModelConfig(Document):
 
     # Model metadata
     name: str = Field(..., description="Human-readable model name")
-    description: Optional[str] = Field(None, description="Model description")
+    description: str | None = Field(None, description="Model description")
     problem_type: ProblemType = Field(..., description="Type of ML problem")
     algorithm: str = Field(..., description="Algorithm name (e.g., 'Random Forest', 'XGBoost')")
 
@@ -171,28 +171,28 @@ class ModelConfig(Document):
 
     # Storage
     model_path: str = Field(..., description="Storage path for serialized model (e.g., S3 key)")
-    model_file_url: Optional[HttpUrl] = Field(None, description="HTTP URL for model file access")
-    feature_transformer_path: Optional[str] = Field(None, description="Storage path for feature transformer")
+    model_file_url: HttpUrl | None = Field(None, description="HTTP URL for model file access")
+    feature_transformer_path: str | None = Field(None, description="Storage path for feature transformer")
     model_size: int = Field(..., ge=0, description="Model file size in bytes")
 
     # Status and lifecycle
     status: ModelStatus = Field(default=ModelStatus.TRAINING, description="Model lifecycle status")
-    deployment_config: Optional[DeploymentConfig] = Field(default_factory=DeploymentConfig)
+    deployment_config: DeploymentConfig | None = Field(default_factory=DeploymentConfig)
 
     # Versioning
     version: str = Field(default="1.0.0", description="Model version (semantic versioning)")
     is_active: bool = Field(default=True, description="Whether this is the active version")
-    parent_model_id: Optional[str] = Field(None, description="Parent model if this is a retrained version")
+    parent_model_id: str | None = Field(None, description="Parent model if this is a retrained version")
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
     updated_at: datetime = Field(default_factory=get_current_time)
-    trained_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
+    trained_at: datetime | None = None
+    last_used_at: datetime | None = None
 
     # Metadata
-    tags: List[str] = Field(default_factory=list, description="Tags for organization and search")
-    notes: Optional[str] = Field(None, description="Additional notes about the model")
+    tags: list[str] = Field(default_factory=list, description="Tags for organization and search")
+    notes: str | None = Field(None, description="Additional notes about the model")
 
     class Settings:
         name = "model_configs"
@@ -233,7 +233,7 @@ class ModelConfig(Document):
         self.trained_at = get_current_time()
         self.update_timestamp()
 
-    def mark_deployed(self, endpoint: Optional[str] = None) -> None:
+    def mark_deployed(self, endpoint: str | None = None) -> None:
         """Mark model as deployed."""
         self.status = ModelStatus.DEPLOYED
         if self.deployment_config is None:
@@ -256,7 +256,7 @@ class ModelConfig(Document):
         self.is_active = False
         self.update_timestamp()
 
-    def record_prediction(self, prediction_time_ms: Optional[float] = None) -> None:
+    def record_prediction(self, prediction_time_ms: float | None = None) -> None:
         """
         Record a prediction event.
 
@@ -284,7 +284,7 @@ class ModelConfig(Document):
 
         self.update_timestamp()
 
-    def get_feature_importance_sorted(self) -> List[tuple[str, float]]:
+    def get_feature_importance_sorted(self) -> list[tuple[str, float]]:
         """
         Get feature importance sorted by importance score.
 
@@ -300,7 +300,7 @@ class ModelConfig(Document):
             reverse=True
         )
 
-    def get_top_features(self, n: int = 10) -> List[str]:
+    def get_top_features(self, n: int = 10) -> list[str]:
         """
         Get top N most important features.
 
@@ -313,7 +313,7 @@ class ModelConfig(Document):
         sorted_features = self.get_feature_importance_sorted()
         return [name for name, _ in sorted_features[:n]]
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """
         Get a summary of model performance.
 

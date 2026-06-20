@@ -5,7 +5,7 @@ Handles navigation through transformation history, restoring previous dataset ve
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 
 from app.models.dataset import DatasetMetadata
 from app.services.exceptions import (
@@ -39,7 +39,7 @@ class HistoryService:
         self.versioning_service = versioning_service
         self.transformation_service = transformation_service
 
-    async def undo(self, dataset_id: str, user_id: str) -> Dict[str, Any]:
+    async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move back one step in transformation history.
 
@@ -110,7 +110,7 @@ class HistoryService:
             "message": f"Undone to position {config.current_position}"
         }
 
-    async def redo(self, dataset_id: str, user_id: str) -> Dict[str, Any]:
+    async def redo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move forward one step in transformation history.
 
@@ -181,7 +181,7 @@ class HistoryService:
             "message": f"Redone to position {config.current_position}"
         }
 
-    async def jump_to_position(self, dataset_id: str, position: int, user_id: str) -> Dict[str, Any]:
+    async def jump_to_position(self, dataset_id: str, position: int, user_id: str) -> dict[str, Any]:
         """
         Jump to a specific position in transformation history.
 
@@ -256,7 +256,7 @@ class HistoryService:
             "message": f"Jumped to position {position}"
         }
 
-    async def get_history(self, dataset_id: str, user_id: str) -> Dict[str, Any]:
+    async def get_history(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Get full transformation history with current position.
 

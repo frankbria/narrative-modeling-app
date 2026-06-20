@@ -25,8 +25,9 @@ estimator. Nothing here ever raises — explanations are best-effort enrichment.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -41,12 +42,12 @@ DEFAULT_TOP_N = 5
 class FeatureContributionResult:
     feature_name: str
     contribution: float
-    feature_value: Optional[float]
+    feature_value: float | None
 
 
 @dataclass
 class ExplanationResult:
-    top_features: List[FeatureContributionResult]
+    top_features: list[FeatureContributionResult]
     explanation_text: str
     method: str  # linear_coefficients | tree_importance | stored_importance
 
@@ -55,7 +56,7 @@ class PredictionExplainerService:
     """Generate per-prediction feature-contribution breakdowns (SHAP + native)."""
 
     def __init__(
-        self, interpretability: Optional[InterpretabilityService] = None
+        self, interpretability: InterpretabilityService | None = None
     ) -> None:
         # Stateless collaborator; shap is imported lazily inside it.
         self._interpretability = interpretability or InterpretabilityService()
@@ -64,12 +65,12 @@ class PredictionExplainerService:
         self,
         contributions: Sequence[float],
         feature_names: Sequence[str],
-        x_row: Optional[Sequence[float]],
+        x_row: Sequence[float] | None,
         prediction: Any = None,
         problem_type: str = "classification",
         method: str = "shap_tree",
         top_n: int = DEFAULT_TOP_N,
-    ) -> Optional[ExplanationResult]:
+    ) -> ExplanationResult | None:
         """Build an ``ExplanationResult`` from precomputed per-feature contributions.
 
         Used by callers (e.g. ``PredictionEnricher``) that compute SHAP
@@ -101,9 +102,9 @@ class PredictionExplainerService:
         feature_names: Sequence[str],
         prediction: Any = None,
         problem_type: str = "classification",
-        feature_importance: Optional[Dict[str, float]] = None,
+        feature_importance: dict[str, float] | None = None,
         top_n: int = DEFAULT_TOP_N,
-    ) -> Optional[ExplanationResult]:
+    ) -> ExplanationResult | None:
         """Explain a single prediction; ``None`` if the model isn't explainable.
 
         ``x_row`` is the *engineered* feature vector aligned with
@@ -131,9 +132,9 @@ class PredictionExplainerService:
         feature_names: Sequence[str],
         prediction: Any,
         problem_type: str,
-        feature_importance: Optional[Dict[str, float]],
+        feature_importance: dict[str, float] | None,
         top_n: int,
-    ) -> Optional[ExplanationResult]:
+    ) -> ExplanationResult | None:
         try:
             values = np.asarray(list(x_row), dtype=float).ravel()
         except (TypeError, ValueError):
@@ -194,11 +195,11 @@ class PredictionExplainerService:
     def _instance_shap(
         self,
         estimator: Any,
-        values: Optional[np.ndarray],
+        values: np.ndarray | None,
         feature_names: Sequence[str],
         prediction: Any,
         problem_type: str,
-    ) -> tuple[Optional[np.ndarray], str]:
+    ) -> tuple[np.ndarray | None, str]:
         """Return ``(shap_contributions, "shap_tree")`` or ``(None, "")``.
 
         Per-row SHAP is only computed for tree/ensemble models (TreeExplainer
@@ -215,7 +216,7 @@ class PredictionExplainerService:
         return np.asarray(instance.contributions, dtype=float), "shap_tree"
 
     def _native_contributions(
-        self, base: Any, values: Optional[np.ndarray], prediction: Any
+        self, base: Any, values: np.ndarray | None, prediction: Any
     ):
         """Return ``(contribution_array, method)`` or ``(None, "")``."""
         if hasattr(base, "coef_") and values is not None:
@@ -229,7 +230,7 @@ class PredictionExplainerService:
 
     def _coef_for_prediction(
         self, base: Any, coef: np.ndarray, prediction: Any
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         """Pick the coefficient row matching the predicted class."""
         if coef.ndim == 1:
             return coef
@@ -245,8 +246,8 @@ class PredictionExplainerService:
         return np.mean(coef, axis=0)
 
     def _from_importance_dict(
-        self, importance: Dict[str, float], feature_names: Sequence[str]
-    ) -> Optional[np.ndarray]:
+        self, importance: dict[str, float], feature_names: Sequence[str]
+    ) -> np.ndarray | None:
         if not importance:
             return None
         return np.asarray(
@@ -259,13 +260,13 @@ class PredictionExplainerService:
         self,
         contributions: np.ndarray,
         feature_names: Sequence[str],
-        values: Optional[np.ndarray],
+        values: np.ndarray | None,
         top_n: int,
-    ) -> List[FeatureContributionResult]:
+    ) -> list[FeatureContributionResult]:
         names = list(feature_names)
         n = min(len(names), len(contributions))
         order = sorted(range(n), key=lambda i: abs(contributions[i]), reverse=True)
-        results: List[FeatureContributionResult] = []
+        results: list[FeatureContributionResult] = []
         for i in order[: max(top_n, 0)]:
             value = float(values[i]) if values is not None and i < len(values) else None
             results.append(
@@ -279,7 +280,7 @@ class PredictionExplainerService:
 
     def _explanation_text(
         self,
-        top: List[FeatureContributionResult],
+        top: list[FeatureContributionResult],
         prediction: Any,
         problem_type: str,
     ) -> str:

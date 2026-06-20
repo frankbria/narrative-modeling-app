@@ -10,7 +10,7 @@ Security:
 - All bypassed operations are logged for security auditing via BaseService._check_ownership()
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.models.model import (
     DeploymentConfig,
@@ -49,11 +49,11 @@ class ModelService(BaseService[ModelConfig]):
         performance_metrics: PerformanceMetrics,
         model_path: str,
         model_size: int,
-        hyperparameters: Optional[HyperparameterConfig] = None,
-        description: Optional[str] = None,
-        model_file_url: Optional[str] = None,
-        feature_transformer_path: Optional[str] = None,
-        deployment_config: Optional[DeploymentConfig] = None,
+        hyperparameters: HyperparameterConfig | None = None,
+        description: str | None = None,
+        model_file_url: str | None = None,
+        feature_transformer_path: str | None = None,
+        deployment_config: DeploymentConfig | None = None,
         **kwargs
     ) -> ModelConfig:
         """
@@ -117,8 +117,8 @@ class ModelService(BaseService[ModelConfig]):
     async def get_model_config(
         self,
         model_id: str,
-        user_id: Optional[str] = None
-    ) -> Optional[ModelConfig]:
+        user_id: str | None = None
+    ) -> ModelConfig | None:
         """
         Retrieve model configuration by model ID.
 
@@ -140,7 +140,7 @@ class ModelService(BaseService[ModelConfig]):
         user_id: str,
         skip: int = 0,
         limit: int = 1000
-    ) -> List[ModelConfig]:
+    ) -> list[ModelConfig]:
         """
         List all model configurations for a user, sorted chronologically.
 
@@ -169,7 +169,7 @@ class ModelService(BaseService[ModelConfig]):
     async def list_models_by_dataset(
         self,
         dataset_id: str
-    ) -> List[ModelConfig]:
+    ) -> list[ModelConfig]:
         """
         List all model configurations for a dataset, sorted chronologically.
 
@@ -189,7 +189,7 @@ class ModelService(BaseService[ModelConfig]):
         self,
         model_id: str,
         status: ModelStatus,
-        metrics: Optional[Dict[str, Any]] = None
+        metrics: dict[str, Any] | None = None
     ) -> ModelConfig:
         """
         Update model training status and optionally update metrics.
@@ -263,8 +263,8 @@ class ModelService(BaseService[ModelConfig]):
     async def mark_model_deployed(
         self,
         model_id: str,
-        endpoint: Optional[str] = None,
-        user_id: Optional[str] = None
+        endpoint: str | None = None,
+        user_id: str | None = None
     ) -> ModelConfig:
         """
         Mark model as deployed.
@@ -361,7 +361,7 @@ class ModelService(BaseService[ModelConfig]):
     async def record_prediction(
         self,
         model_id: str,
-        prediction_time_ms: Optional[float] = None
+        prediction_time_ms: float | None = None
     ) -> ModelConfig:
         """
         Record a prediction event.
@@ -395,7 +395,7 @@ class ModelService(BaseService[ModelConfig]):
         user_id: str,
         skip: int = 0,
         limit: int = 1000
-    ) -> List[ModelConfig]:
+    ) -> list[ModelConfig]:
         """
         Get all active model configurations for a user, sorted chronologically.
 
@@ -426,7 +426,7 @@ class ModelService(BaseService[ModelConfig]):
         user_id: str,
         skip: int = 0,
         limit: int = 1000
-    ) -> List[ModelConfig]:
+    ) -> list[ModelConfig]:
         """
         Get all deployed model configurations for a user, sorted chronologically.
 

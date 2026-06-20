@@ -2,7 +2,7 @@
 Model monitoring and analytics API routes
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -28,23 +28,23 @@ class ModelMetricsResponse(BaseModel):
     avg_confidence: float
     error_rate: float
     time_window_hours: int
-    last_prediction_at: Optional[datetime]
+    last_prediction_at: datetime | None
 
 
 class PredictionDistributionResponse(BaseModel):
     model_id: str
-    distribution: Dict[str, int]
+    distribution: dict[str, int]
     total: int
     unique_values: int
-    most_common: Optional[str]
-    least_common: Optional[str]
+    most_common: str | None
+    least_common: str | None
 
 
 class DriftDetectionResponse(BaseModel):
     model_id: str
     drift_detected: bool
     drift_score: float
-    features_with_drift: List[str]
+    features_with_drift: list[str]
     recommendation: str
     checked_at: datetime
 
@@ -55,7 +55,7 @@ class UsageStatsResponse(BaseModel):
     total_predictions_24h: int
     total_api_keys: int
     active_api_keys: int
-    models: List[Dict[str, Any]]
+    models: list[dict[str, Any]]
 
 
 class APIKeyUsageResponse(BaseModel):
@@ -65,7 +65,7 @@ class APIKeyUsageResponse(BaseModel):
     requests_last_24h: int
     rate_limit: int
     usage_percentage: float
-    models_accessed: List[str]
+    models_accessed: list[str]
 
 
 # API Routes
@@ -206,7 +206,7 @@ async def get_usage_overview(
     )
 
 
-@router.get("/api-keys/usage", response_model=List[APIKeyUsageResponse])
+@router.get("/api-keys/usage", response_model=list[APIKeyUsageResponse])
 async def get_api_key_usage(
     current_user_id: str = Depends(get_current_user_id)
 ):

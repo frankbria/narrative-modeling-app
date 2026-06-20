@@ -4,7 +4,7 @@ Production model serving API routes
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -32,12 +32,12 @@ _prediction_enricher = PredictionEnricher()
 # Request/Response Models
 class CreateAPIKeyRequest(BaseModel):
     name: str = Field(..., description="Friendly name for the API key")
-    description: Optional[str] = Field(None, description="Description of key usage")
-    model_ids: Optional[List[str]] = Field(
+    description: str | None = Field(None, description="Description of key usage")
+    model_ids: list[str] | None = Field(
         None, description="Specific model IDs to allow"
     )
     rate_limit: int = Field(default=1000, description="Requests per hour")
-    expires_in_days: Optional[int] = Field(None, description="Days until expiration")
+    expires_in_days: int | None = Field(None, description="Days until expiration")
 
 
 class APIKeyResponse(BaseModel):
@@ -45,13 +45,13 @@ class APIKeyResponse(BaseModel):
     api_key: str
     name: str
     created_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
     rate_limit: int
-    model_ids: List[str]
+    model_ids: list[str]
 
 
 class ProductionPredictRequest(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="Input data for prediction")
+    data: list[dict[str, Any]] = Field(..., description="Input data for prediction")
     include_metadata: bool = Field(default=False, description="Include model metadata")
     include_probabilities: bool = Field(
         default=True, description="Include probabilities for classification"
@@ -63,29 +63,29 @@ class ProductionPredictRequest(BaseModel):
 
 
 class ProductionPredictResponse(BaseModel):
-    predictions: List[Any]
-    probabilities: Optional[List[List[float]]] = None
+    predictions: list[Any]
+    probabilities: list[list[float]] | None = None
     model_version: str
     prediction_id: str
     timestamp: datetime
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
     # Confidence & explainability enrichment (issue #83), all optional.
-    confidence: Optional[List[float]] = None
-    low_confidence: Optional[List[bool]] = None
+    confidence: list[float] | None = None
+    low_confidence: list[bool] | None = None
     is_calibrated: bool = False
-    calibration_method: Optional[str] = None
+    calibration_method: str | None = None
     confidence_threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD
-    prediction_intervals: Optional[List[Optional[List[float]]]] = None
-    explanations: Optional[List[Optional[PredictionExplanation]]] = None
+    prediction_intervals: list[list[float] | None] | None = None
+    explanations: list[PredictionExplanation | None] | None = None
 
 
 class APIKeyListResponse(BaseModel):
     key_id: str
     name: str
-    description: Optional[str]
+    description: str | None
     created_at: datetime
-    expires_at: Optional[datetime]
-    last_used_at: Optional[datetime]
+    expires_at: datetime | None
+    last_used_at: datetime | None
     total_requests: int
     rate_limit: int
     is_active: bool
@@ -162,7 +162,7 @@ async def create_api_key(
     )
 
 
-@router.get("/api-keys", response_model=List[APIKeyListResponse])
+@router.get("/api-keys", response_model=list[APIKeyListResponse])
 async def list_api_keys(current_user_id: str = Depends(get_current_user_id)):
     """List all API keys for the current user"""
     api_keys = await APIKey.find({"user_id": current_user_id}).to_list()

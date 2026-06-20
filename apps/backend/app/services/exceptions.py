@@ -5,7 +5,7 @@ This module provides a consistent exception hierarchy for all service operations
 enabling proper error handling, logging, and HTTP status code mapping in routes.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class ServiceError(Exception):
@@ -21,15 +21,15 @@ class ServiceError(Exception):
     def __init__(
         self,
         message: str,
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None
     ):
         self.message = message
         self.code = code or self.__class__.__name__.upper()
         self.details = details or {}
         super().__init__(self.message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert exception to dictionary for API responses."""
         return {
             "error": self.code,
@@ -56,10 +56,10 @@ class NotFoundError(ServiceError):
     def __init__(
         self,
         message: str = "Resource not found",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None
     ):
         if resource_type and resource_id:
             details = details or {}
@@ -88,10 +88,10 @@ class PermissionDeniedError(ServiceError):
     def __init__(
         self,
         message: str = "Permission denied",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        resource_id: Optional[str] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        user_id: str | None = None,
+        resource_id: str | None = None
     ):
         if user_id and resource_id:
             details = details or {}
@@ -117,10 +117,10 @@ class ValidationError(ServiceError):
     def __init__(
         self,
         message: str = "Validation failed",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field: Optional[str] = None,
-        value: Optional[Any] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        field: str | None = None,
+        value: Any | None = None
     ):
         if field:
             details = details or {}
@@ -147,8 +147,8 @@ class UnsafeFeatureDefinitionError(ValidationError):
     def __init__(
         self,
         message: str = "Feature definition must be a serialized expression tree",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message, code or "UNSAFE_FEATURE_DEFINITION", details)
 
@@ -174,9 +174,9 @@ class ConflictError(ServiceError):
     def __init__(
         self,
         message: str = "Resource conflict",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        existing_id: Optional[str] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        existing_id: str | None = None
     ):
         if existing_id:
             details = details or {}
@@ -205,10 +205,10 @@ class OperationError(ServiceError):
     def __init__(
         self,
         message: str = "Operation failed",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        operation: Optional[str] = None,
-        original_error: Optional[Exception] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        operation: str | None = None,
+        original_error: Exception | None = None
     ):
         if operation:
             details = details or {}
@@ -236,9 +236,9 @@ class RateLimitError(ServiceError):
     def __init__(
         self,
         message: str = "Rate limit exceeded",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        retry_after: Optional[int] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        retry_after: int | None = None
     ):
         if retry_after:
             details = details or {}
@@ -266,9 +266,9 @@ class DependencyError(ServiceError):
     def __init__(
         self,
         message: str = "Operation blocked by dependency",
-        code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        dependencies: Optional[list] = None
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        dependencies: list | None = None
     ):
         if dependencies:
             details = details or {}

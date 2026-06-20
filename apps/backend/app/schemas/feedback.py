@@ -3,7 +3,6 @@ Pydantic schemas for the in-app feedback collection endpoint (issue #152).
 """
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +26,7 @@ class FeedbackRequest(BaseModel):
     message: str = Field(
         ..., min_length=1, max_length=2000, description="Free-text feedback message"
     )
-    page_context: Optional[str] = Field(
+    page_context: str | None = Field(
         None, max_length=500, description="Path/URL the user was on when submitting"
     )
 
@@ -51,5 +50,5 @@ class FeedbackResponse(BaseModel):
     rating: int
     category: FeedbackCategory
     message: str
-    page_context: Optional[str] = None
+    page_context: str | None = None
     created_at: str  # ISO 8601

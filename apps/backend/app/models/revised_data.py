@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from beanie import Document, Indexed, Link
 from pydantic import Field
@@ -8,7 +7,7 @@ from app.models.user_data import SchemaField, UserData
 
 
 def get_current_time() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RevisedData(Document):
@@ -20,8 +19,8 @@ class RevisedData(Document):
     s3_url: str  # New S3 URL for the revised file
     num_rows: int  # Updated number of rows
     num_columns: int  # Updated number of columns
-    data_schema: List[SchemaField]  # Updated schema
-    revision_notes: Optional[str] = None  # Optional notes about what was revised
+    data_schema: list[SchemaField]  # Updated schema
+    revision_notes: str | None = None  # Optional notes about what was revised
     created_at: datetime = Field(default_factory=get_current_time)
     updated_at: datetime = Field(default_factory=get_current_time)
 

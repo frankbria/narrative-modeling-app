@@ -1,8 +1,7 @@
 # app/models/analytics_result.py
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from inspect import signature
-from typing import List, Optional
 
 from beanie import Document, Link
 from pydantic import Field
@@ -14,12 +13,12 @@ from app.models.user_data import UserData
 class AnalyticsResult(Document):
     userId: str
     datasetId: Link[UserData]
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     analysisType: str  # e.g., "EDA", "regression", "clustering"
-    config: Optional[dict] = None
-    result: Optional[dict] = None
-    plotRefs: Optional[List[Link[Plot]]] = None
-    summaryText: Optional[str] = None
+    config: dict | None = None
+    result: dict | None = None
+    plotRefs: list[Link[Plot]] | None = None
+    summaryText: str | None = None
 
     def __init__(self, **data):
         # Pass only keyword arguments to the parent initalizer.

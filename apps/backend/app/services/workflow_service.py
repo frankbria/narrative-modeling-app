@@ -7,7 +7,7 @@ append-only version history of full state snapshots.
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from beanie.exceptions import RevisionIdWasChanged
 from pymongo.errors import DuplicateKeyError
@@ -58,10 +58,10 @@ class WorkflowService(BaseService[WorkflowState]):
         user_id: str,
         dataset_id: str,
         current_stage: str,
-        completed_stages: Optional[List[str]] = None,
-        stage_data: Optional[Dict[str, Any]] = None,
-        model_id: Optional[str] = None,
-        deployment_id: Optional[str] = None,
+        completed_stages: list[str] | None = None,
+        stage_data: dict[str, Any] | None = None,
+        model_id: str | None = None,
+        deployment_id: str | None = None,
     ) -> WorkflowState:
         """Create the workflow for a dataset with its initial history entry.
 
@@ -110,7 +110,7 @@ class WorkflowService(BaseService[WorkflowState]):
         return workflow
 
     async def update_workflow(
-        self, user_id: str, dataset_id: str, updates: Dict[str, Any]
+        self, user_id: str, dataset_id: str, updates: dict[str, Any]
     ) -> WorkflowState:
         """Apply a partial update and append a new history snapshot.
 
@@ -145,7 +145,7 @@ class WorkflowService(BaseService[WorkflowState]):
 
     async def get_history(
         self, user_id: str, dataset_id: str
-    ) -> List[StateHistoryEntry]:
+    ) -> list[StateHistoryEntry]:
         """Return the version history for recovery/audit."""
         workflow = await self.get_by_dataset(user_id, dataset_id)
         return workflow.state_history

@@ -6,8 +6,8 @@ enabling reproducibility and historical analysis of data transformations and mod
 """
 
 import hashlib
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -15,17 +15,17 @@ from pydantic import BaseModel, Field, field_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TransformationStep(BaseModel):
     """Details of a single transformation step applied to data."""
 
     step_type: str = Field(..., description="Type of transformation: drop_missing, encode, scale, etc.")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
-    affected_columns: List[str] = Field(default_factory=list, description="Columns affected by this transformation")
-    rows_affected: Optional[int] = Field(None, description="Number of rows affected (e.g., dropped)")
-    execution_time: Optional[float] = Field(None, description="Execution time in seconds")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
+    affected_columns: list[str] = Field(default_factory=list, description="Columns affected by this transformation")
+    rows_affected: int | None = Field(None, description="Number of rows affected (e.g., dropped)")
+    execution_time: float | None = Field(None, description="Execution time in seconds")
 
     @field_validator('step_type')
     @classmethod
@@ -70,29 +70,29 @@ class DatasetVersion(Document):
     s3_url: str = Field(..., description="S3 URL for version access")
 
     # Version metadata
-    description: Optional[str] = Field(None, description="User-provided version description")
-    tags: List[str] = Field(default_factory=list, description="User-defined tags for version")
+    description: str | None = Field(None, description="User-provided version description")
+    tags: list[str] = Field(default_factory=list, description="User-defined tags for version")
 
     # Dataset characteristics at this version
     num_rows: int = Field(..., ge=0, description="Number of rows")
     num_columns: int = Field(..., ge=0, description="Number of columns")
-    columns: List[str] = Field(default_factory=list, description="Column names")
+    columns: list[str] = Field(default_factory=list, description="Column names")
     schema_hash: str = Field(..., description="Hash of schema for change detection")
 
     # Lineage tracking
-    parent_version_id: Optional[str] = Field(None, description="Parent version if derived")
-    transformation_lineage_id: Optional[str] = Field(None, description="Link to transformation lineage")
+    parent_version_id: str | None = Field(None, description="Parent version if derived")
+    transformation_lineage_id: str | None = Field(None, description="Link to transformation lineage")
     is_base_version: bool = Field(default=False, description="Whether this is the original uploaded version")
 
     # Usage tracking
-    used_in_training: List[str] = Field(default_factory=list, description="List of model training job IDs")
+    used_in_training: list[str] = Field(default_factory=list, description="List of model training job IDs")
     access_count: int = Field(default=0, ge=0, description="Number of times accessed")
-    last_accessed_at: Optional[datetime] = None
+    last_accessed_at: datetime | None = None
 
     # Lifecycle management
     is_pinned: bool = Field(default=False, description="Whether version is pinned (not auto-deleted)")
-    retention_days: Optional[int] = Field(None, ge=1, description="Days to retain (None = indefinite)")
-    expires_at: Optional[datetime] = None
+    retention_days: int | None = Field(None, ge=1, description="Days to retain (None = indefinite)")
+    expires_at: datetime | None = None
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
@@ -126,7 +126,7 @@ class DatasetVersion(Document):
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod
-    def compute_schema_hash(columns: List[str], dtypes: Dict[str, str]) -> str:
+    def compute_schema_hash(columns: list[str], dtypes: dict[str, str]) -> str:
         """Compute hash of schema for change detection."""
         schema_str = ",".join([f"{col}:{dtypes.get(col, 'unknown')}" for col in sorted(columns)])
         return hashlib.sha256(schema_str.encode()).hexdigest()
@@ -171,17 +171,17 @@ class TransformationLineage(Document):
     user_id: Annotated[str, Indexed()] = Field(..., description="User who performed transformation")
 
     # Transformation details
-    transformation_steps: List[TransformationStep] = Field(
+    transformation_steps: list[TransformationStep] = Field(
         default_factory=list,
         description="Ordered list of transformation steps"
     )
-    transformation_config_id: Optional[str] = Field(
+    transformation_config_id: str | None = Field(
         None,
         description="Reference to full TransformationConfig if stored separately"
     )
 
     # Impact metrics
-    total_execution_time: Optional[float] = Field(None, description="Total execution time in seconds")
+    total_execution_time: float | None = Field(None, description="Total execution time in seconds")
     rows_before: int = Field(..., ge=0, description="Row count before transformation")
     rows_after: int = Field(..., ge=0, description="Row count after transformation")
     columns_before: int = Field(..., ge=0, description="Column count before transformation")
@@ -189,22 +189,22 @@ class TransformationLineage(Document):
     data_loss_percentage: float = Field(default=0.0, ge=0, le=100, description="Percentage of data lost")
 
     # Quality tracking
-    quality_before: Optional[Dict[str, Any]] = Field(None, description="Quality metrics before transformation")
-    quality_after: Optional[Dict[str, Any]] = Field(None, description="Quality metrics after transformation")
-    quality_improvement: Optional[float] = Field(None, description="Quality improvement score")
+    quality_before: dict[str, Any] | None = Field(None, description="Quality metrics before transformation")
+    quality_after: dict[str, Any] | None = Field(None, description="Quality metrics after transformation")
+    quality_improvement: float | None = Field(None, description="Quality improvement score")
 
     # Reproducibility
     is_reproducible: bool = Field(default=True, description="Whether transformation can be reproduced")
-    reproducibility_notes: Optional[str] = Field(None, description="Notes on reproducibility challenges")
+    reproducibility_notes: str | None = Field(None, description="Notes on reproducibility challenges")
 
     # Validation
     is_validated: bool = Field(default=False, description="Whether transformation has been validated")
-    validation_status: Optional[str] = Field(None, description="Validation status: passed, failed, pending")
-    validation_errors: List[str] = Field(default_factory=list, description="Validation error messages")
+    validation_status: str | None = Field(None, description="Validation status: passed, failed, pending")
+    validation_errors: list[str] = Field(default_factory=list, description="Validation error messages")
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     class Settings:
         name = "transformation_lineages"
@@ -230,7 +230,7 @@ class TransformationLineage(Document):
 
     @field_validator('validation_status')
     @classmethod
-    def validate_validation_status(cls, v: Optional[str]) -> Optional[str]:
+    def validate_validation_status(cls, v: str | None) -> str | None:
         """Validate validation_status is one of allowed values."""
         if v is None:
             return v
@@ -269,7 +269,7 @@ class TransformationLineage(Document):
         self.is_validated = True
         self.validation_status = "passed" if passed else "failed"
 
-    def get_transformation_summary(self) -> Dict[str, Any]:
+    def get_transformation_summary(self) -> dict[str, Any]:
         """Get summary of transformations applied."""
         return {
             "total_steps": len(self.transformation_steps),
@@ -299,17 +299,17 @@ class VersionComparison(BaseModel):
     columns_diff: int = Field(..., description="Difference in column count")
 
     # Schema changes
-    columns_added: List[str] = Field(default_factory=list)
-    columns_removed: List[str] = Field(default_factory=list)
-    columns_renamed: Dict[str, str] = Field(default_factory=dict)
-    dtype_changes: Dict[str, tuple] = Field(default_factory=dict)
+    columns_added: list[str] = Field(default_factory=list)
+    columns_removed: list[str] = Field(default_factory=list)
+    columns_renamed: dict[str, str] = Field(default_factory=dict)
+    dtype_changes: dict[str, tuple] = Field(default_factory=dict)
 
     # Content changes
     content_similarity: float = Field(default=0.0, ge=0, le=100, description="Content similarity percentage")
     schema_identical: bool = Field(default=False)
 
     # Lineage path
-    lineage_path: List[str] = Field(
+    lineage_path: list[str] = Field(
         default_factory=list,
         description="List of lineage IDs connecting versions"
     )

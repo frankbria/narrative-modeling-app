@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiofiles
 from fastapi import HTTPException
@@ -34,7 +34,7 @@ class ChunkedUploadHandler:
     async def init_upload(self, 
                           filename: str, 
                           file_size: int,
-                          file_hash: Optional[str] = None) -> Dict[str, Any]:
+                          file_hash: str | None = None) -> dict[str, Any]:
         """Initialize a new upload session"""
         
         # Validate file size
@@ -82,7 +82,7 @@ class ChunkedUploadHandler:
                           session_id: str,
                           chunk_number: int,
                           chunk_data: bytes,
-                          chunk_hash: Optional[str] = None) -> Dict[str, Any]:
+                          chunk_hash: str | None = None) -> dict[str, Any]:
         """Upload a single chunk"""
         
         # Get session
@@ -152,7 +152,7 @@ class ChunkedUploadHandler:
             "complete": session["status"] == "complete"
         }
     
-    async def resume_upload(self, session_id: str) -> Dict[str, Any]:
+    async def resume_upload(self, session_id: str) -> dict[str, Any]:
         """Get resume information for interrupted upload"""
         
         session = self._get_session(session_id)
@@ -222,7 +222,7 @@ class ChunkedUploadHandler:
         data = f"{filename}:{file_size}:{datetime.utcnow().isoformat()}"
         return hashlib.sha256(data.encode()).hexdigest()[:16]
     
-    def _get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def _get_session(self, session_id: str) -> dict[str, Any] | None:
         """Get session from memory or disk"""
         # Check memory first
         if session_id in self.sessions:
@@ -231,20 +231,20 @@ class ChunkedUploadHandler:
         # Try loading from disk
         metadata_path = self.temp_dir / f"{session_id}.json"
         if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path) as f:
                 session = json.load(f)
                 self.sessions[session_id] = session
                 return session
         
         return None
     
-    def _save_session_metadata(self, session_id: str, session: Dict[str, Any]):
+    def _save_session_metadata(self, session_id: str, session: dict[str, Any]):
         """Save session metadata to disk for recovery"""
         metadata_path = self.temp_dir / f"{session_id}.json"
         with open(metadata_path, 'w') as f:
             json.dump(session, f)
     
-    def _calculate_progress(self, session: Dict[str, Any]) -> float:
+    def _calculate_progress(self, session: dict[str, Any]) -> float:
         """Calculate upload progress percentage"""
         return round(len(session["uploaded_chunks"]) / session["total_chunks"] * 100, 2)
     

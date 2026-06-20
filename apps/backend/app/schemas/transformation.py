@@ -6,7 +6,7 @@ using TransformationConfig model.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -19,9 +19,9 @@ class TransformationStepRequest(BaseModel):
     """Request schema for adding a transformation step."""
 
     transformation_type: str = Field(..., description="Type of transformation")
-    column: Optional[str] = Field(None, description="Target column")
-    columns: Optional[List[str]] = Field(None, description="Target columns")
-    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Transformation parameters")
+    column: str | None = Field(None, description="Target column")
+    columns: list[str] | None = Field(None, description="Target columns")
+    parameters: dict[str, Any] | None = Field(default_factory=dict, description="Transformation parameters")
 
     @field_validator('transformation_type')
     @classmethod
@@ -37,8 +37,8 @@ class TransformationPreviewRequest(BaseModel):
     """Request schema for transformation preview."""
 
     dataset_id: str = Field(..., description="Dataset to preview transformation on")
-    transformation_steps: List[TransformationStepRequest] = Field(..., description="Transformation steps to preview")
-    preview_rows: Optional[int] = Field(default=100, description="Number of rows to preview")
+    transformation_steps: list[TransformationStepRequest] = Field(..., description="Transformation steps to preview")
+    preview_rows: int | None = Field(default=100, description="Number of rows to preview")
 
 
 class TransformationApplyRequest(BaseModel):
@@ -46,9 +46,9 @@ class TransformationApplyRequest(BaseModel):
 
     dataset_id: str = Field(..., description="Dataset to apply transformation to")
     transformation_type: str = Field(..., description="Type of transformation")
-    column: Optional[str] = Field(None, description="Target column")
-    columns: Optional[List[str]] = Field(None, description="Target columns")
-    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Transformation parameters")
+    column: str | None = Field(None, description="Target column")
+    columns: list[str] | None = Field(None, description="Target columns")
+    parameters: dict[str, Any] | None = Field(default_factory=dict, description="Transformation parameters")
     save_as_new: bool = Field(default=False, description="Whether to save as new dataset version")
 
     @field_validator('transformation_type')
@@ -67,14 +67,14 @@ class TransformationStepResponse(BaseModel):
     """Response schema for transformation step."""
 
     transformation_type: str
-    column: Optional[str] = None
-    columns: Optional[List[str]] = None
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    column: str | None = None
+    columns: list[str] | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
     applied_at: datetime
     is_valid: bool = True
-    validation_errors: List[str] = Field(default_factory=list)
-    rows_affected: Optional[int] = None
-    data_loss_percentage: Optional[float] = None
+    validation_errors: list[str] = Field(default_factory=list)
+    rows_affected: int | None = None
+    data_loss_percentage: float | None = None
 
 
 class TransformationConfigResponse(BaseModel):
@@ -83,10 +83,10 @@ class TransformationConfigResponse(BaseModel):
     config_id: str = Field(..., description="Configuration identifier")
     user_id: str = Field(..., description="User who owns the configuration")
     dataset_id: str = Field(..., description="Dataset this config applies to")
-    transformation_steps: List[TransformationStepResponse] = Field(default_factory=list)
-    current_file_path: Optional[str] = None
+    transformation_steps: list[TransformationStepResponse] = Field(default_factory=list)
+    current_file_path: str | None = None
     is_applied: bool = False
-    applied_at: Optional[datetime] = None
+    applied_at: datetime | None = None
     total_transformations: int = 0
     total_data_loss: float = 0.0
     created_at: datetime
@@ -98,24 +98,24 @@ class TransformationPreviewResponse(BaseModel):
     """Response schema for transformation preview."""
 
     success: bool = Field(default=True, description="Whether preview succeeded")
-    preview_data: Optional[List[Dict[str, Any]]] = Field(default=None, description="Preview of transformed data")
+    preview_data: list[dict[str, Any]] | None = Field(default=None, description="Preview of transformed data")
     affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
-    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
-    stats_before: Optional[Dict[str, Any]] = Field(default=None, description="Statistics before transformation")
-    stats_after: Optional[Dict[str, Any]] = Field(default=None, description="Statistics after transformation")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
-    warnings: List[str] = Field(default_factory=list, description="Warning messages")
+    affected_columns: list[str] = Field(default_factory=list, description="Columns affected")
+    stats_before: dict[str, Any] | None = Field(default=None, description="Statistics before transformation")
+    stats_after: dict[str, Any] | None = Field(default=None, description="Statistics after transformation")
+    error: str | None = Field(default=None, description="Error message if failed")
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
 
 
 class TransformationValidationResponse(BaseModel):
     """Response schema for transformation validation."""
 
     is_valid: bool
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     validated_at: datetime
-    parameter_validation: Dict[str, bool] = Field(default_factory=dict)
-    data_type_compatibility: Dict[str, bool] = Field(default_factory=dict)
+    parameter_validation: dict[str, bool] = Field(default_factory=dict)
+    data_type_compatibility: dict[str, bool] = Field(default_factory=dict)
     dependency_validation: bool = True
 
 
@@ -126,10 +126,10 @@ class TransformationApplyResponse(BaseModel):
     dataset_id: str = Field(..., description="Dataset ID")
     transformation_id: str = Field(default="", description="Transformation ID")
     affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
-    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
+    affected_columns: list[str] = Field(default_factory=list, description="Columns affected")
     execution_time_ms: int = Field(default=0, ge=0, description="Execution time in milliseconds")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
-    warnings: List[str] = Field(default_factory=list, description="Warning messages")
+    error: str | None = Field(default=None, description="Error message if failed")
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
 
 
 class TransformationHistoryResponse(BaseModel):
@@ -138,13 +138,13 @@ class TransformationHistoryResponse(BaseModel):
     config_id: str = Field(..., description="Configuration ID")
     dataset_id: str = Field(..., description="Dataset ID")
     user_id: str = Field(..., description="User ID")
-    transformation_steps: List[Dict[str, Any]] = Field(default_factory=list, description="Transformation steps")
+    transformation_steps: list[dict[str, Any]] = Field(default_factory=list, description="Transformation steps")
     is_applied: bool = Field(default=False, description="Whether transformations are applied")
-    applied_at: Optional[datetime] = Field(default=None, description="When transformations were applied")
-    current_file_path: Optional[str] = Field(default=None, description="Current file path after transformations")
+    applied_at: datetime | None = Field(default=None, description="When transformations were applied")
+    current_file_path: str | None = Field(default=None, description="Current file path after transformations")
     total_transformations: int = Field(default=0, ge=0, description="Total number of transformations")
     total_data_loss: float = Field(default=0.0, ge=0.0, description="Total data loss percentage")
-    parent_config_id: Optional[str] = Field(default=None, description="Parent config ID for lineage")
+    parent_config_id: str | None = Field(default=None, description="Parent config ID for lineage")
     version: str = Field(default="1.0.0", description="Version (major.minor.patch)")
     created_at: datetime = Field(..., description="Created timestamp")
     updated_at: datetime = Field(..., description="Updated timestamp")
@@ -153,7 +153,7 @@ class TransformationHistoryResponse(BaseModel):
 class TransformationListResponse(BaseModel):
     """Response schema for list transformations endpoint."""
 
-    configurations: List[TransformationConfigResponse] = Field(default_factory=list)
+    configurations: list[TransformationConfigResponse] = Field(default_factory=list)
     total: int = Field(..., ge=0, description="Total number of configurations")
 
 
@@ -171,8 +171,8 @@ class RecipeStepRequest(BaseModel):
     """Request schema for recipe step."""
 
     type: str = Field(..., description="Transformation type")
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    description: Optional[str] = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
 
     @field_validator('type')
     @classmethod
@@ -195,21 +195,21 @@ class TransformationPipelineRequest(BaseModel):
     """Request schema for transformation pipeline."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    transformations: List[RecipeStepRequest] = Field(..., description="Transformation steps")
+    transformations: list[RecipeStepRequest] = Field(..., description="Transformation steps")
     save_as_recipe: bool = Field(default=False, description="Save as recipe")
-    recipe_name: Optional[str] = Field(None, description="Recipe name")
-    recipe_description: Optional[str] = Field(None, description="Recipe description")
+    recipe_name: str | None = Field(None, description="Recipe name")
+    recipe_description: str | None = Field(None, description="Recipe description")
 
 
 class RecipeCreateRequest(BaseModel):
     """Request schema for creating recipe."""
 
     name: str = Field(..., description="Recipe name")
-    description: Optional[str] = None
-    steps: List[RecipeStepRequest] = Field(..., description="Recipe steps")
-    dataset_id: Optional[str] = None
+    description: str | None = None
+    steps: list[RecipeStepRequest] = Field(..., description="Recipe steps")
+    dataset_id: str | None = None
     is_public: bool = Field(default=False)
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class RecipeResponse(BaseModel):
@@ -217,21 +217,21 @@ class RecipeResponse(BaseModel):
 
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     user_id: str
-    steps: List[Dict[str, Any]] = Field(default_factory=list)
+    steps: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     is_public: bool = False
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     usage_count: int = 0
-    rating: Optional[float] = None
+    rating: float | None = None
 
 
 class RecipeListResponse(BaseModel):
     """Response schema for recipe list."""
 
-    recipes: List[RecipeResponse] = Field(default_factory=list)
+    recipes: list[RecipeResponse] = Field(default_factory=list)
     total: int
     page: int
     per_page: int
@@ -260,25 +260,25 @@ class RecipeExportResponse(BaseModel):
 class RecipeCompatibilityRequest(BaseModel):
     """Request schema for recipe compatibility check."""
 
-    dataset_schema: Dict[str, str] = Field(..., description="Dataset column schema {column: type}")
+    dataset_schema: dict[str, str] = Field(..., description="Dataset column schema {column: type}")
 
 
 class RecipeCompatibilityResponse(BaseModel):
     """Response schema for compatibility check."""
 
     is_compatible: bool
-    missing_columns: List[str] = Field(default_factory=list)
-    type_mismatches: List[Dict[str, Any]] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    suggestions: List[str] = Field(default_factory=list)
+    missing_columns: list[str] = Field(default_factory=list)
+    type_mismatches: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     compatibility_score: float
 
 
 class RecipeVersionRequest(BaseModel):
     """Request schema for creating recipe version."""
 
-    changes: Dict[str, Any] = Field(..., description="Changes to apply to new version")
-    version_notes: Optional[str] = Field(None, description="Notes about this version")
+    changes: dict[str, Any] = Field(..., description="Changes to apply to new version")
+    version_notes: str | None = Field(None, description="Notes about this version")
 
 
 class RecipeShareRequest(BaseModel):
@@ -299,22 +299,22 @@ class RecipeShareResponse(BaseModel):
 class SharedRecipeListResponse(BaseModel):
     """Response schema for shared recipes list."""
 
-    shared_recipes: List[Dict[str, Any]]
+    shared_recipes: list[dict[str, Any]]
     total: int
 
 
 class RecipeImportRequest(BaseModel):
     """Request schema for recipe import."""
 
-    json_data: Dict[str, Any] = Field(..., description="Recipe JSON data")
-    name_override: Optional[str] = Field(None, description="Override recipe name")
+    json_data: dict[str, Any] = Field(..., description="Recipe JSON data")
+    name_override: str | None = Field(None, description="Override recipe name")
 
 
 class RecipeExportJSONResponse(BaseModel):
     """Response schema for JSON recipe export."""
 
     format_version: str
-    recipe: Dict[str, Any]
+    recipe: dict[str, Any]
 
 
 class RecipeDuplicateRequest(BaseModel):
@@ -326,7 +326,7 @@ class RecipeDuplicateRequest(BaseModel):
 class RecipeVersionHistoryResponse(BaseModel):
     """Response schema for version history."""
 
-    versions: List[Dict[str, Any]]
+    versions: list[dict[str, Any]]
     total_versions: int
 
 
@@ -334,32 +334,32 @@ class AutoCleanRequest(BaseModel):
     """Request schema for auto-clean operation."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    options: Dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class TransformationSuggestionResponse(BaseModel):
     """Response schema for transformation suggestions."""
 
-    suggestions: List[Dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[dict[str, Any]] = Field(default_factory=list)
     data_quality_score: float
-    critical_issues: List[str] = Field(default_factory=list)
+    critical_issues: list[str] = Field(default_factory=list)
 
 
 class ValidationRequest(BaseModel):
     """Request schema for validation."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    transformations: List[RecipeStepRequest] = Field(..., description="Transformations to validate")
+    transformations: list[RecipeStepRequest] = Field(..., description="Transformations to validate")
 
 
 class ValidationResponse(BaseModel):
     """Response schema for validation."""
 
     is_valid: bool
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    info: List[str] = Field(default_factory=list)
-    suggestions: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    info: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class TransformationTypeInfo(BaseModel):
@@ -369,7 +369,7 @@ class TransformationTypeInfo(BaseModel):
     category: str = Field(..., description="Category (Data Cleaning, Missing Values, etc.)")
     label: str = Field(..., description="Human-readable label")
     description: str = Field(..., description="What this transformation does")
-    parameters_schema: Dict[str, Any] = Field(default_factory=dict, description="JSON schema for parameters")
+    parameters_schema: dict[str, Any] = Field(default_factory=dict, description="JSON schema for parameters")
     requires_columns: bool = Field(default=False, description="Whether transformation requires column selection")
 
 
@@ -379,7 +379,7 @@ class HistoryOperationResponse(BaseModel):
     """Response schema for history operations (undo/redo/jump)."""
 
     success: bool = Field(..., description="Whether operation succeeded")
-    version_id: Optional[str] = Field(None, description="Version ID after operation")
+    version_id: str | None = Field(None, description="Version ID after operation")
     current_position: int = Field(..., description="Current position in history")
     message: str = Field(..., description="Human-readable message")
 
@@ -391,15 +391,15 @@ class HistoryEntrySchema(BaseModel):
     transformation_type: str = Field(..., description="Type of transformation")
     description: str = Field(..., description="Human-readable description")
     timestamp: str = Field(..., description="ISO timestamp")
-    affected_columns: List[str] = Field(default_factory=list, description="Columns affected")
-    rows_affected: Optional[int] = Field(None, description="Number of rows affected")
-    version_id: Optional[str] = Field(None, description="Associated version ID")
+    affected_columns: list[str] = Field(default_factory=list, description="Columns affected")
+    rows_affected: int | None = Field(None, description="Number of rows affected")
+    version_id: str | None = Field(None, description="Associated version ID")
 
 
 class HistoryDataResponse(BaseModel):
     """Response schema for get history endpoint."""
 
-    history: List[HistoryEntrySchema] = Field(..., description="List of history entries")
+    history: list[HistoryEntrySchema] = Field(..., description="List of history entries")
     current_position: int = Field(..., description="Current position in history")
     can_undo: bool = Field(..., description="Whether undo is available")
     can_redo: bool = Field(..., description="Whether redo is available")
@@ -423,7 +423,7 @@ class ColumnSelectionPatternRequest(BaseModel):
         ...,
         description="Type of pattern: data_type, name_pattern, quality_metric, custom"
     )
-    criteria: Dict[str, Any] = Field(
+    criteria: dict[str, Any] = Field(
         default_factory=dict,
         description="Pattern-specific criteria"
     )
@@ -452,7 +452,7 @@ class ColumnMetadataResponse(BaseModel):
 class ColumnSelectionResponse(BaseModel):
     """Response schema for column selection endpoint."""
 
-    columns: List[ColumnMetadataResponse] = Field(
+    columns: list[ColumnMetadataResponse] = Field(
         default_factory=list,
         description="List of matching columns with metadata"
     )
@@ -463,17 +463,17 @@ class ColumnSelectionResponse(BaseModel):
 class BulkTransformationPreviewRequest(BaseModel):
     """Request schema for bulk transformation preview."""
 
-    selected_columns: List[str] = Field(
+    selected_columns: list[str] = Field(
         ...,
         min_length=1,
         description="List of columns to preview transformation on"
     )
     transformation_type: str = Field(..., description="Type of transformation")
-    global_parameters: Optional[Dict[str, Any]] = Field(
+    global_parameters: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Global transformation parameters"
     )
-    per_column_params: Optional[Dict[str, Dict[str, Any]]] = Field(
+    per_column_params: dict[str, dict[str, Any]] | None = Field(
         default_factory=dict,
         description="Per-column parameter overrides"
     )
@@ -494,22 +494,22 @@ class ColumnPreviewResult(BaseModel):
 
     column_name: str = Field(..., description="Column name")
     success: bool = Field(default=True, description="Whether preview succeeded")
-    preview_data: Optional[List[Dict[str, Any]]] = Field(
+    preview_data: list[dict[str, Any]] | None = Field(
         default=None,
         description="Preview rows for this column"
     )
-    stats_before: Optional[Dict[str, Any]] = Field(default=None, description="Stats before")
-    stats_after: Optional[Dict[str, Any]] = Field(default=None, description="Stats after")
+    stats_before: dict[str, Any] | None = Field(default=None, description="Stats before")
+    stats_after: dict[str, Any] | None = Field(default=None, description="Stats after")
     affected_rows: int = Field(default=0, ge=0, description="Estimated rows affected")
-    error: Optional[str] = Field(default=None, description="Error if preview failed")
-    warnings: List[str] = Field(default_factory=list, description="Warnings")
+    error: str | None = Field(default=None, description="Error if preview failed")
+    warnings: list[str] = Field(default_factory=list, description="Warnings")
 
 
 class BulkTransformationPreviewResponse(BaseModel):
     """Response schema for bulk transformation preview."""
 
     success: bool = Field(default=True, description="Whether all previews succeeded")
-    column_previews: List[ColumnPreviewResult] = Field(
+    column_previews: list[ColumnPreviewResult] = Field(
         default_factory=list,
         description="Preview results per column"
     )
@@ -521,24 +521,24 @@ class BulkTransformationPreviewResponse(BaseModel):
     total_columns: int = Field(default=0, ge=0, description="Total columns previewed")
     successful_previews: int = Field(default=0, ge=0, description="Number of successful previews")
     failed_previews: int = Field(default=0, ge=0, description="Number of failed previews")
-    error: Optional[str] = Field(default=None, description="Global error if any")
-    warnings: List[str] = Field(default_factory=list, description="Global warnings")
+    error: str | None = Field(default=None, description="Global error if any")
+    warnings: list[str] = Field(default_factory=list, description="Global warnings")
 
 
 class BulkTransformationRequest(BaseModel):
     """Request schema for applying bulk transformation."""
 
-    selected_columns: List[str] = Field(
+    selected_columns: list[str] = Field(
         ...,
         min_length=1,
         description="List of columns to transform"
     )
     transformation_type: str = Field(..., description="Type of transformation")
-    global_parameters: Optional[Dict[str, Any]] = Field(
+    global_parameters: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Global transformation parameters"
     )
-    per_column_params: Optional[Dict[str, Dict[str, Any]]] = Field(
+    per_column_params: dict[str, dict[str, Any]] | None = Field(
         default_factory=dict,
         description="Per-column parameter overrides"
     )
@@ -562,7 +562,7 @@ class BulkTransformationJobResponse(BaseModel):
 
     job_id: str = Field(..., description="Unique job identifier")
     status: str = Field(..., description="Current job status")
-    selected_columns: List[str] = Field(default_factory=list, description="Columns being transformed")
+    selected_columns: list[str] = Field(default_factory=list, description="Columns being transformed")
     total_columns: int = Field(default=0, ge=0, description="Total columns to process")
     message: str = Field(..., description="Status message")
 
@@ -572,7 +572,7 @@ class BulkTransformationProgressResponse(BaseModel):
 
     job_id: str = Field(..., description="Job identifier")
     status: str = Field(..., description="Current job status")
-    progress: Dict[str, Any] = Field(
+    progress: dict[str, Any] = Field(
         default_factory=dict,
         description="Progress details"
     )
@@ -581,19 +581,19 @@ class BulkTransformationProgressResponse(BaseModel):
     processed_columns: int = Field(default=0, ge=0, description="Processed columns")
     successful_columns: int = Field(default=0, ge=0, description="Successful columns")
     failed_columns: int = Field(default=0, ge=0, description="Failed columns")
-    current_column: Optional[str] = Field(default=None, description="Currently processing column")
-    estimated_remaining_seconds: Optional[float] = Field(
+    current_column: str | None = Field(default=None, description="Currently processing column")
+    estimated_remaining_seconds: float | None = Field(
         default=None,
         description="Estimated time remaining in seconds"
     )
-    error_message: Optional[str] = Field(default=None, description="Error message if failed")
-    result: Optional[Dict[str, Any]] = Field(default=None, description="Results if completed")
+    error_message: str | None = Field(default=None, description="Error message if failed")
+    result: dict[str, Any] | None = Field(default=None, description="Results if completed")
 
 
 class BulkJobListResponse(BaseModel):
     """Response schema for listing bulk transformation jobs."""
 
-    jobs: List[BulkTransformationJobResponse] = Field(
+    jobs: list[BulkTransformationJobResponse] = Field(
         default_factory=list,
         description="List of jobs"
     )

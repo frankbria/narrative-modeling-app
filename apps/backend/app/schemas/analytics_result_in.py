@@ -1,5 +1,5 @@
 # app/schemas/analytics_result_in.py
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -7,10 +7,10 @@ from pydantic import BaseModel
 class AnalyticsResultIn(BaseModel):
     datasetId: str  # or change to an ObjectId-like string if necessary
     analysisType: str
-    config: Optional[Dict[str, Any]] = None
-    result: Optional[Dict[str, Any]] = None
-    plotRefs: Optional[List[str]] = None
-    summaryText: Optional[str] = None
+    config: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    plotRefs: list[str] | None = None
+    summaryText: str | None = None
 
     class Config:
         schema_extra = {

@@ -10,8 +10,8 @@ Models:
 - FeatureCollection: Organized groups of related features
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field, field_validator
@@ -19,7 +19,7 @@ from pydantic import Field, field_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class StoredFeature(Document):
@@ -38,12 +38,12 @@ class StoredFeature(Document):
     name: str = Field(..., description="Human-readable feature name")
     description: str = Field(..., description="Description of what the feature does")
     category: Annotated[str, Indexed()] = Field(..., description="Feature category for organization")
-    tags: List[str] = Field(default_factory=list, description="User-defined tags for discovery")
+    tags: list[str] = Field(default_factory=list, description="User-defined tags for discovery")
 
     # Feature definition
     definition_type: str = Field(..., description="Type: transformation, aggregation, encoding, custom")
     definition_code: str = Field(..., description="Serialized feature logic (code or config)")
-    input_requirements: Dict[str, str] = Field(
+    input_requirements: dict[str, str] = Field(
         default_factory=dict,
         description="Required input columns and their types"
     )
@@ -57,12 +57,12 @@ class StoredFeature(Document):
 
     # Sharing and permissions
     is_public: bool = Field(default=False, description="Whether feature is publicly accessible")
-    shared_with: List[str] = Field(default_factory=list, description="User IDs with shared access")
+    shared_with: list[str] = Field(default_factory=list, description="User IDs with shared access")
 
     # Usage tracking
     usage_count: int = Field(default=0, ge=0, description="Number of times feature has been applied")
-    last_used_at: Optional[datetime] = Field(None, description="Last time feature was used")
-    applied_to_datasets: List[str] = Field(
+    last_used_at: datetime | None = Field(None, description="Last time feature was used")
+    applied_to_datasets: list[str] = Field(
         default_factory=list,
         description="Dataset IDs where this feature has been applied"
     )
@@ -126,7 +126,7 @@ class StoredFeature(Document):
         """Update the updated_at timestamp to current time."""
         self.updated_at = get_current_time()
 
-    def check_compatibility(self, dataset_schema: List[Dict[str, Any]]) -> tuple[bool, List[str], Dict[str, Dict[str, str]]]:
+    def check_compatibility(self, dataset_schema: list[dict[str, Any]]) -> tuple[bool, list[str], dict[str, dict[str, str]]]:
         """
         Check if feature is compatible with a dataset schema.
 
@@ -159,7 +159,7 @@ class StoredFeature(Document):
 
         return is_compatible, missing_columns, type_mismatches
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert feature to dictionary representation.
 
@@ -206,7 +206,7 @@ class FeatureVersion(Document):
     # Version snapshot
     definition_code: str = Field(..., description="Feature definition code at this version")
     definition_type: str = Field(..., description="Feature definition type")
-    input_requirements: Dict[str, str] = Field(
+    input_requirements: dict[str, str] = Field(
         default_factory=dict,
         description="Input requirements at this version"
     )
@@ -214,7 +214,7 @@ class FeatureVersion(Document):
 
     # Change tracking
     changes_description: str = Field(..., description="Description of changes in this version")
-    changed_fields: List[str] = Field(
+    changed_fields: list[str] = Field(
         default_factory=list,
         description="List of fields that changed from previous version"
     )
@@ -251,7 +251,7 @@ class FeatureVersion(Document):
             raise ValueError(f"definition_type must be one of {allowed_types}, got: {v}")
         return v
 
-    def get_diff(self, previous_version: "FeatureVersion") -> Dict[str, Dict[str, Any]]:
+    def get_diff(self, previous_version: "FeatureVersion") -> dict[str, dict[str, Any]]:
         """
         Compare this version with a previous version.
 
@@ -319,15 +319,15 @@ class FeatureCollection(Document):
     domain: Annotated[str, Indexed()] = Field(..., description="Domain/industry: finance, healthcare, retail, etc.")
 
     # Features in collection
-    feature_ids: List[str] = Field(default_factory=list, description="List of feature IDs in collection")
+    feature_ids: list[str] = Field(default_factory=list, description="List of feature IDs in collection")
     feature_count: int = Field(default=0, ge=0, description="Number of features in collection")
 
     # Sharing
     is_public: bool = Field(default=False, description="Whether collection is publicly accessible")
-    shared_with: List[str] = Field(default_factory=list, description="User IDs with shared access")
+    shared_with: list[str] = Field(default_factory=list, description="User IDs with shared access")
 
     # Tags for organization
-    tags: List[str] = Field(default_factory=list, description="User-defined tags")
+    tags: list[str] = Field(default_factory=list, description="User-defined tags")
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time, description="Creation timestamp")
@@ -380,7 +380,7 @@ class FeatureCollection(Document):
             self.feature_count -= 1
             self.updated_at = get_current_time()
 
-    async def get_features(self) -> List[StoredFeature]:
+    async def get_features(self) -> list[StoredFeature]:
         """
         Retrieve all StoredFeature objects in this collection.
 

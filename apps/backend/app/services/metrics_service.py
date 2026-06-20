@@ -11,7 +11,8 @@ one consistent mapping between them.
 import json
 import logging
 import math
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from sklearn.metrics import (
@@ -51,7 +52,7 @@ def _as_str_array(values: Sequence[Any]) -> np.ndarray:
     return np.asarray([str(v) for v in values])
 
 
-def _safe_float(value: Any) -> Optional[float]:
+def _safe_float(value: Any) -> float | None:
     """Return a finite float, or None for NaN/inf (JSON-safe)."""
     as_float = float(value)
     return as_float if math.isfinite(as_float) else None
@@ -74,9 +75,9 @@ class MetricsService:
     @staticmethod
     def _per_class_auc(
         yt: np.ndarray, proba: np.ndarray, labels: Sequence[str]
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """One-vs-rest AUC per class, skipping classes with a degenerate split."""
-        per_class_auc: Dict[str, float] = {}
+        per_class_auc: dict[str, float] = {}
         for i, label in enumerate(labels):
             if i >= proba.shape[1]:
                 break  # probability columns must align with class_labels
@@ -90,8 +91,8 @@ class MetricsService:
     def compute_classification_metrics(
         y_test: Sequence[Any],
         y_pred: Sequence[Any],
-        y_proba: Optional[Sequence[Sequence[float]]],
-        class_labels: Optional[List[str]],
+        y_proba: Sequence[Sequence[float]] | None,
+        class_labels: list[str] | None,
     ) -> ClassificationMetrics:
         """Aggregate + per-class classification metrics.
 
@@ -124,8 +125,8 @@ class MetricsService:
             for i, label in enumerate(labels)
         }
 
-        roc_auc_value: Optional[float] = None
-        log_loss_value: Optional[float] = None
+        roc_auc_value: float | None = None
+        log_loss_value: float | None = None
         if y_proba is not None:
             proba = np.asarray(y_proba, dtype=float)
             per_class_auc = MetricsService._per_class_auc(yt, proba, labels)
@@ -161,7 +162,7 @@ class MetricsService:
         yp = np.asarray(y_pred, dtype=float)
 
         mse = float(mean_squared_error(yt, yp))
-        mape: Optional[float] = None
+        mape: float | None = None
         if not np.any(yt == 0):
             mape = _safe_float(np.mean(np.abs((yt - yp) / yt)) * 100)
 
@@ -177,7 +178,7 @@ class MetricsService:
     def compute_confusion_matrix(
         y_test: Sequence[Any],
         y_pred: Sequence[Any],
-        class_labels: Optional[List[str]],
+        class_labels: list[str] | None,
     ) -> ConfusionMatrixData:
         """Confusion matrix in class_labels order (matrix[i][j] = actual i, predicted j)."""
         yt = _as_str_array(y_test)
@@ -192,9 +193,9 @@ class MetricsService:
     @staticmethod
     def compute_roc_curves(
         y_test: Sequence[Any],
-        y_proba: Optional[Sequence[Sequence[float]]],
-        class_labels: List[str],
-    ) -> Optional[ROCCurveData]:
+        y_proba: Sequence[Sequence[float]] | None,
+        class_labels: list[str],
+    ) -> ROCCurveData | None:
         """One-vs-rest ROC curves per class, downsampled to <=200 points.
 
         Classes with a degenerate one-vs-rest split (absent from, or filling
@@ -206,8 +207,8 @@ class MetricsService:
         yt = _as_str_array(y_test)
         proba = np.asarray(y_proba, dtype=float)
 
-        curves: Dict[str, List[CurvePoint]] = {}
-        auc_per_class: Dict[str, float] = {}
+        curves: dict[str, list[CurvePoint]] = {}
+        auc_per_class: dict[str, float] = {}
         for i, label in enumerate(class_labels):
             y_bin = (yt == label).astype(int)
             if len(np.unique(y_bin)) < 2:
@@ -236,9 +237,9 @@ class MetricsService:
     @staticmethod
     def compute_pr_curves(
         y_test: Sequence[Any],
-        y_proba: Optional[Sequence[Sequence[float]]],
-        class_labels: List[str],
-    ) -> Optional[PRCurveData]:
+        y_proba: Sequence[Sequence[float]] | None,
+        class_labels: list[str],
+    ) -> PRCurveData | None:
         """One-vs-rest precision-recall curves per class (<=200 points each).
 
         ``baseline_per_class`` is each class's prevalence in ``y_test`` (the
@@ -250,8 +251,8 @@ class MetricsService:
         yt = _as_str_array(y_test)
         proba = np.asarray(y_proba, dtype=float)
 
-        curves: Dict[str, List[CurvePoint]] = {}
-        baseline_per_class: Dict[str, float] = {}
+        curves: dict[str, list[CurvePoint]] = {}
+        baseline_per_class: dict[str, float] = {}
         for i, label in enumerate(class_labels):
             y_bin = (yt == label).astype(int)
             if y_bin.sum() == 0:
@@ -274,7 +275,7 @@ class MetricsService:
         return PRCurveData(curves=curves, baseline_per_class=baseline_per_class)
 
     @staticmethod
-    async def load_evaluation_artifacts(ml_model: MLModel) -> Optional[Dict[str, Any]]:
+    async def load_evaluation_artifacts(ml_model: MLModel) -> dict[str, Any] | None:
         """Download and parse the model's evaluation_data.json from S3.
 
         Returns ``None`` when the model has no ``evaluation_data_path`` (models
@@ -309,7 +310,7 @@ class MetricsService:
         return payload
 
     @staticmethod
-    async def load_shap_artifacts(ml_model: MLModel) -> Optional[Dict[str, Any]]:
+    async def load_shap_artifacts(ml_model: MLModel) -> dict[str, Any] | None:
         """Download and parse the model's shap_data.json from S3 (issue #80).
 
         Returns ``None`` when the model has no ``shap_values_path`` (models

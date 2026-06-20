@@ -5,7 +5,7 @@ Statistics calculation engine for comprehensive data profiling
 import hashlib
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -37,42 +37,42 @@ class ColumnStatistics(BaseModel):
     unique_percentage: float
     
     # Numeric statistics (if applicable)
-    mean: Optional[float] = None
-    median: Optional[float] = None
-    mode: Optional[Any] = None
-    std_dev: Optional[float] = None
-    variance: Optional[float] = None
-    min_value: Optional[Union[float, str]] = None
-    max_value: Optional[Union[float, str]] = None
-    range: Optional[float] = None
+    mean: float | None = None
+    median: float | None = None
+    mode: Any | None = None
+    std_dev: float | None = None
+    variance: float | None = None
+    min_value: float | str | None = None
+    max_value: float | str | None = None
+    range: float | None = None
     
     # Quartiles and percentiles
-    q1: Optional[float] = None
-    q3: Optional[float] = None
-    iqr: Optional[float] = None
-    percentile_5: Optional[float] = None
-    percentile_95: Optional[float] = None
+    q1: float | None = None
+    q3: float | None = None
+    iqr: float | None = None
+    percentile_5: float | None = None
+    percentile_95: float | None = None
     
     # Distribution metrics
-    skewness: Optional[float] = None
-    kurtosis: Optional[float] = None
+    skewness: float | None = None
+    kurtosis: float | None = None
     
     # Outlier detection
-    outlier_count: Optional[int] = None
-    outlier_percentage: Optional[float] = None
-    lower_fence: Optional[float] = None
-    upper_fence: Optional[float] = None
+    outlier_count: int | None = None
+    outlier_percentage: float | None = None
+    lower_fence: float | None = None
+    upper_fence: float | None = None
     
     # String/categorical statistics
-    avg_length: Optional[float] = None
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    most_frequent_values: List[Dict[str, Any]] = Field(default_factory=list)
+    avg_length: float | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    most_frequent_values: list[dict[str, Any]] = Field(default_factory=list)
     
     # Date/time statistics
-    earliest_date: Optional[str] = None
-    latest_date: Optional[str] = None
-    date_range_days: Optional[int] = None
+    earliest_date: str | None = None
+    latest_date: str | None = None
+    date_range_days: int | None = None
 
 
 class DatasetStatistics(BaseModel):
@@ -90,9 +90,9 @@ class DatasetStatistics(BaseModel):
     row_count: int
     column_count: int
     memory_usage_mb: float
-    column_statistics: List[ColumnStatistics]
-    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None
-    missing_value_summary: Dict[str, Any] = Field(default_factory=dict)
+    column_statistics: list[ColumnStatistics]
+    correlation_matrix: dict[str, dict[str, float]] | None = None
+    missing_value_summary: dict[str, Any] = Field(default_factory=dict)
     calculated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -123,7 +123,7 @@ class StatisticsEngine:
             return bool(value)
         return value
 
-    def _generate_cache_key(self, df: pd.DataFrame, column_types: Dict[str, str]) -> str:
+    def _generate_cache_key(self, df: pd.DataFrame, column_types: dict[str, str]) -> str:
         """Generate a unique cache key for the dataset and column types"""
         # Create a hash of the dataframe structure and content sample
         df_info = {
@@ -139,7 +139,7 @@ class StatisticsEngine:
         info_str = json.dumps(df_info, sort_keys=True)
         return f"stats:{hashlib.md5(info_str.encode()).hexdigest()}"
 
-    async def calculate_statistics(self, df: pd.DataFrame, column_types: Dict[str, str]) -> DatasetStatistics:
+    async def calculate_statistics(self, df: pd.DataFrame, column_types: dict[str, str]) -> DatasetStatistics:
         """
         Calculate comprehensive statistics for a dataset with caching
         
@@ -332,7 +332,7 @@ class StatisticsEngine:
         except Exception as e:
             print(f"Error calculating string statistics for {stats.column_name}: {e}")
 
-    def _calculate_correlation_matrix(self, df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+    def _calculate_correlation_matrix(self, df: pd.DataFrame) -> dict[str, dict[str, float]]:
         """Calculate correlation matrix for numeric columns"""
         try:
             # Calculate correlations
@@ -351,7 +351,7 @@ class StatisticsEngine:
         except (ValueError, KeyError, AttributeError):
             return {}
 
-    def _calculate_missing_value_summary(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _calculate_missing_value_summary(self, df: pd.DataFrame) -> dict[str, Any]:
         """Calculate summary of missing values across dataset"""
         missing_counts = df.isna().sum()
         missing_percentages = (missing_counts / len(df) * 100).round(2)
@@ -370,7 +370,7 @@ class StatisticsEngine:
             "missing_patterns": self._analyze_missing_patterns(df)
         }
 
-    def _analyze_missing_patterns(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_missing_patterns(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze patterns in missing data"""
         # Check for rows with all missing values
         all_missing_rows = df.isna().all(axis=1).sum()

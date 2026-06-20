@@ -3,8 +3,8 @@ Core transformation engine for data pipeline
 """
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -20,20 +20,20 @@ logger = logging.getLogger(__name__)
 class TransformationResult(BaseModel):
     """Result of a transformation operation"""
     success: bool
-    transformed_data: Optional[List[Dict[str, Any]]] = None
+    transformed_data: list[dict[str, Any]] | None = None
     affected_rows: int = 0
-    affected_columns: List[str] = Field(default_factory=list)
-    preview_data: Optional[List[Dict[str, Any]]] = None
-    error: Optional[str] = None
-    warnings: List[str] = Field(default_factory=list)
-    stats_before: Optional[Dict[str, Any]] = None
-    stats_after: Optional[Dict[str, Any]] = None
+    affected_columns: list[str] = Field(default_factory=list)
+    preview_data: list[dict[str, Any]] | None = None
+    error: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    stats_before: dict[str, Any] | None = None
+    stats_after: dict[str, Any] | None = None
 
 
 class BaseTransformation(ABC):
     """Base class for all transformations"""
     
-    def __init__(self, parameters: Dict[str, Any]):
+    def __init__(self, parameters: dict[str, Any]):
         self.parameters = parameters
         self.validate_parameters()
     
@@ -52,11 +52,11 @@ class BaseTransformation(ABC):
         """Preview transformation on subset of data"""
         pass
     
-    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+    def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of columns that will be affected"""
         return []
     
-    def validate_data(self, df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
+    def validate_data(self, df: pd.DataFrame) -> tuple[bool, str | None]:
         """Validate if transformation can be applied to data"""
         return True, None
 
@@ -78,7 +78,7 @@ class RemoveDuplicatesTransformation(BaseTransformation):
         preview_df = df.head(n_rows).copy()
         return self.apply(preview_df)
     
-    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+    def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         return self.subset if self.subset else df.columns.tolist()
 
 
@@ -109,7 +109,7 @@ class TrimWhitespaceTransformation(BaseTransformation):
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         return self.apply(df.head(n_rows).copy())
     
-    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+    def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         if not self.columns:
             return df.select_dtypes(include=['object']).columns.tolist()
         return [col for col in self.columns if col in df.columns]
@@ -153,12 +153,12 @@ class DropMissingTransformation(BaseTransformation):
         preview_df = df.head(n_rows).copy()
         return self.apply(preview_df)
 
-    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+    def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         if not self.columns:
             return [col for col in df.columns if df[col].isnull().any()]
         return [col for col in self.columns if col in df.columns and df[col].isnull().any()]
 
-    def validate_data(self, df: pd.DataFrame) -> Tuple[bool, Optional[str]]:
+    def validate_data(self, df: pd.DataFrame) -> tuple[bool, str | None]:
         """Validate if transformation can be applied to data"""
         if df.empty:
             return False, "Cannot drop missing values from empty dataset"
@@ -243,7 +243,7 @@ class FillMissingTransformation(BaseTransformation):
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         return self.apply(df.head(n_rows).copy())
 
-    def get_affected_columns(self, df: pd.DataFrame) -> List[str]:
+    def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         if not self.columns:
             return [col for col in df.columns if df[col].isnull().any()]
         return [col for col in self.columns if col in df.columns and df[col].isnull().any()]
@@ -260,15 +260,15 @@ class TransformationEngine:
     }
 
     def __init__(self):
-        self.history: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
         # Optimization: Cache for preview statistics to avoid recalculation
-        self._stats_cache: Dict[str, Dict[str, Any]] = {}
+        self._stats_cache: dict[str, dict[str, Any]] = {}
         self._cache_max_size = 100  # Limit cache size to prevent memory bloat
     
     def create_transformation(
         self,
         transformation_type: TransformationType,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> BaseTransformation:
         """Create a transformation instance"""
         if transformation_type not in self.TRANSFORMATION_CLASSES:
@@ -281,7 +281,7 @@ class TransformationEngine:
         self,
         df: pd.DataFrame,
         transformation_type: TransformationType,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> TransformationResult:
         """
         Validate transformation configuration before application.
@@ -367,7 +367,7 @@ class TransformationEngine:
         self,
         df: pd.DataFrame,
         transformation_type: TransformationType,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         n_rows: int = 100
     ) -> TransformationResult:
         """Preview a transformation on subset of data"""
@@ -421,7 +421,7 @@ class TransformationEngine:
         self,
         df: pd.DataFrame,
         transformation_type: TransformationType,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> TransformationResult:
         """Apply transformation to full dataset"""
         try:
@@ -474,7 +474,7 @@ class TransformationEngine:
 
             # Add to history
             self.history.append({
-                'timestamp': datetime.now(timezone.utc),
+                'timestamp': datetime.now(UTC),
                 'type': transformation_type,
                 'parameters': parameters,
                 'affected_rows': affected_rows,
@@ -496,7 +496,7 @@ class TransformationEngine:
                 error=str(e)
             )
     
-    def _calculate_stats(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _calculate_stats(self, df: pd.DataFrame) -> dict[str, Any]:
         """
         Calculate basic statistics for dataframe with caching.
 
@@ -532,7 +532,7 @@ class TransformationEngine:
 
         return stats
     
-    def get_history(self) -> List[Dict[str, Any]]:
+    def get_history(self) -> list[dict[str, Any]]:
         """Get transformation history"""
         return self.history
 
@@ -545,7 +545,7 @@ class TransformationEngine:
         df: pd.DataFrame,
         operation: TransformationStepRequest,
         track_changes: bool = False
-    ) -> Tuple[pd.DataFrame, Optional[List[Tuple[int, str]]]]:
+    ) -> tuple[pd.DataFrame, list[tuple[int, str]] | None]:
         """
         Preview a single transformation operation on a DataFrame.
 

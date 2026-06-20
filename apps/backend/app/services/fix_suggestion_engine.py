@@ -6,7 +6,7 @@ It integrates with the TransformationEngine to execute fixes.
 """
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -42,7 +42,7 @@ class FixSuggestionEngine:
         self.transformation_engine = TransformationEngine()
 
         # Mapping of issue types to supported transformation types
-        self._issue_to_transformation_map: Dict[IssueType, List[str]] = {
+        self._issue_to_transformation_map: dict[IssueType, list[str]] = {
             IssueType.MISSING_VALUES: [
                 "fill_missing", "drop_missing",
                 "impute_mean", "impute_median", "impute_mode"
@@ -64,7 +64,7 @@ class FixSuggestionEngine:
     def get_supported_transformations(
         self,
         issue_type: IssueType
-    ) -> List[str]:
+    ) -> list[str]:
         """Get supported transformation types for an issue type."""
         return self._issue_to_transformation_map.get(issue_type, [])
 
@@ -72,8 +72,8 @@ class FixSuggestionEngine:
         self,
         issue: DataIssue,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[SuggestedFix]:
+        column_types: dict[str, str],
+    ) -> list[SuggestedFix]:
         """
         Generate fix suggestions for a specific issue.
 
@@ -85,7 +85,7 @@ class FixSuggestionEngine:
         Returns:
             List of suggested fixes
         """
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
 
         if issue.issue_type == IssueType.MISSING_VALUES:
             fixes = self._suggest_missing_value_fixes(issue, df, column_types)
@@ -123,10 +123,10 @@ class FixSuggestionEngine:
         self,
         issue: DataIssue,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[SuggestedFix]:
+        column_types: dict[str, str],
+    ) -> list[SuggestedFix]:
         """Suggest fixes for missing values."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
         col = issue.affected_column
 
         if not col or col not in df.columns:
@@ -208,7 +208,7 @@ class FixSuggestionEngine:
 
         return fixes
 
-    def _suggest_duplicate_fixes(self, issue: DataIssue) -> List[SuggestedFix]:
+    def _suggest_duplicate_fixes(self, issue: DataIssue) -> list[SuggestedFix]:
         """Suggest fixes for duplicate rows."""
         return [
             SuggestedFix(
@@ -231,9 +231,9 @@ class FixSuggestionEngine:
         self,
         issue: DataIssue,
         df: pd.DataFrame
-    ) -> List[SuggestedFix]:
+    ) -> list[SuggestedFix]:
         """Suggest fixes for outliers."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
         col = issue.affected_column
 
         # Cap/floor method (preserves all rows)
@@ -267,7 +267,7 @@ class FixSuggestionEngine:
 
         return fixes
 
-    def _suggest_whitespace_fixes(self, issue: DataIssue) -> List[SuggestedFix]:
+    def _suggest_whitespace_fixes(self, issue: DataIssue) -> list[SuggestedFix]:
         """Suggest fixes for whitespace issues."""
         # Guard against None affected_column
         if issue.affected_column is None:
@@ -287,7 +287,7 @@ class FixSuggestionEngine:
         self,
         issue: DataIssue,
         df: pd.DataFrame
-    ) -> List[SuggestedFix]:
+    ) -> list[SuggestedFix]:
         """Suggest fixes for inconsistent casing."""
         col = issue.affected_column
         fixes = []
@@ -331,7 +331,7 @@ class FixSuggestionEngine:
 
         return fixes[:3]  # Return top 3 suggestions
 
-    def _suggest_date_fixes(self, issue: DataIssue) -> List[SuggestedFix]:
+    def _suggest_date_fixes(self, issue: DataIssue) -> list[SuggestedFix]:
         """Suggest fixes for date format issues."""
         return [
             SuggestedFix(
@@ -360,10 +360,10 @@ class FixSuggestionEngine:
     def _suggest_type_conversion_fixes(
         self,
         issue: DataIssue,
-        column_types: Dict[str, str]
-    ) -> List[SuggestedFix]:
+        column_types: dict[str, str]
+    ) -> list[SuggestedFix]:
         """Suggest fixes for type mismatches."""
-        fixes: List[SuggestedFix] = []
+        fixes: list[SuggestedFix] = []
         col = issue.affected_column
         expected_type = column_types.get(col, "unknown")
 
@@ -393,7 +393,7 @@ class FixSuggestionEngine:
         self,
         issue: DataIssue,
         df: pd.DataFrame
-    ) -> List[SuggestedFix]:
+    ) -> list[SuggestedFix]:
         """Suggest fixes for format inconsistencies."""
         return [
             SuggestedFix(
@@ -438,7 +438,7 @@ class FixSuggestionEngine:
         issue: DataIssue,
         fix: SuggestedFix,
         n_rows: int = 100,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Preview a fix before applying it.
 
@@ -505,7 +505,7 @@ class FixSuggestionEngine:
         issue: DataIssue,
         fix: SuggestedFix,
         user_id: str,
-    ) -> Tuple[pd.DataFrame, AppliedFix]:
+    ) -> tuple[pd.DataFrame, AppliedFix]:
         """
         Apply a fix to the DataFrame.
 
@@ -585,7 +585,7 @@ class FixSuggestionEngine:
         self,
         fix: SuggestedFix,
         df: pd.DataFrame,
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """
         Validate if a fix is safe to apply.
 
@@ -596,7 +596,7 @@ class FixSuggestionEngine:
         Returns:
             Tuple of (is_safe, list of warnings)
         """
-        warnings: List[str] = []
+        warnings: list[str] = []
         is_safe = True
 
         # Check data loss
@@ -628,11 +628,11 @@ class FixSuggestionEngine:
     async def apply_batch_fixes(
         self,
         df: pd.DataFrame,
-        issues: List[DataIssue],
+        issues: list[DataIssue],
         user_id: str,
         auto_apply_safe_only: bool = False,
         stop_on_error: bool = True,
-    ) -> Tuple[pd.DataFrame, List[AppliedFix], List[str]]:
+    ) -> tuple[pd.DataFrame, list[AppliedFix], list[str]]:
         """
         Apply multiple fixes in batch.
 
@@ -646,8 +646,8 @@ class FixSuggestionEngine:
         Returns:
             Tuple of (transformed DataFrame, list of applied fixes, list of errors)
         """
-        applied_fixes: List[AppliedFix] = []
-        errors: List[str] = []
+        applied_fixes: list[AppliedFix] = []
+        errors: list[str] = []
         current_df = df.copy()
 
         for issue in issues:

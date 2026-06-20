@@ -5,7 +5,7 @@ MCP (Model Context Protocol) integration service for AI tool orchestration
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field
@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 class MCPToolRequest(BaseModel):
     """Request model for MCP tool execution"""
     tool_name: str
-    parameters: Dict[str, Any]
-    context: Optional[Dict[str, Any]] = None
+    parameters: dict[str, Any]
+    context: dict[str, Any] | None = None
 
 
 class MCPToolResponse(BaseModel):
     """Response model from MCP tool execution"""
     tool_name: str
     result: Any
-    error: Optional[str] = None
+    error: str | None = None
     execution_time: float
 
 
@@ -33,7 +33,7 @@ class MCPAnalysisRequest(BaseModel):
     file_id: str
     analysis_type: str = Field(default="comprehensive", pattern="^(comprehensive|statistical|quality|summary)$")
     include_visualization: bool = True
-    custom_prompts: Optional[List[str]] = None
+    custom_prompts: list[str] | None = None
 
 
 class MCPAnalysisResponse(BaseModel):
@@ -41,10 +41,10 @@ class MCPAnalysisResponse(BaseModel):
     file_id: str
     analysis_type: str
     summary: str
-    insights: List[Dict[str, Any]]
-    recommendations: List[str]
-    visualizations: Optional[List[Dict[str, Any]]] = None
-    metadata: Dict[str, Any]
+    insights: list[dict[str, Any]]
+    recommendations: list[str]
+    visualizations: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any]
 
 
 @dataclass
@@ -53,7 +53,7 @@ class MCPConfig:
     host: str = None
     port: int = None
     timeout: int = None
-    api_key: Optional[str] = None
+    api_key: str | None = None
     
     def __post_init__(self):
         if self.host is None:
@@ -73,7 +73,7 @@ class MCPConfig:
 class MCPIntegrationService:
     """Service for integrating with MCP server for AI-powered analysis"""
     
-    def __init__(self, config: Optional[MCPConfig] = None):
+    def __init__(self, config: MCPConfig | None = None):
         self.config = config or MCPConfig()
         self.client = httpx.AsyncClient(timeout=self.config.timeout)
         
@@ -128,10 +128,10 @@ class MCPIntegrationService:
     async def analyze_dataset(
         self, 
         file_id: str,
-        schema: Dict[str, Any],
-        statistics: Dict[str, Any],
-        quality_report: Dict[str, Any],
-        sample_data: List[Dict[str, Any]],
+        schema: dict[str, Any],
+        statistics: dict[str, Any],
+        quality_report: dict[str, Any],
+        sample_data: list[dict[str, Any]],
         analysis_type: str = "comprehensive"
     ) -> MCPAnalysisResponse:
         """
@@ -218,7 +218,7 @@ class MCPIntegrationService:
             logger.error(f"MCP analysis failed: {e}")
             return self._create_fallback_analysis(file_id, analysis_type, schema, statistics)
     
-    def _parse_eda_insights(self, eda_result: Any) -> List[Dict[str, Any]]:
+    def _parse_eda_insights(self, eda_result: Any) -> list[dict[str, Any]]:
         """Parse insights from EDA tool response"""
         if isinstance(eda_result, dict) and "insights" in eda_result:
             return eda_result["insights"]
@@ -235,9 +235,9 @@ class MCPIntegrationService:
     
     def _generate_recommendations(
         self, 
-        insights: List[Dict[str, Any]], 
-        quality_report: Dict[str, Any]
-    ) -> List[str]:
+        insights: list[dict[str, Any]], 
+        quality_report: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations based on insights and quality report"""
         recommendations = []
         
@@ -260,9 +260,9 @@ class MCPIntegrationService:
     
     def _create_analysis_summary(
         self, 
-        insights: List[Dict[str, Any]], 
-        schema: Dict[str, Any],
-        statistics: Dict[str, Any]
+        insights: list[dict[str, Any]], 
+        schema: dict[str, Any],
+        statistics: dict[str, Any]
     ) -> str:
         """Create a text summary of the analysis"""
         column_count = schema.get("column_count", 0)
@@ -285,8 +285,8 @@ class MCPIntegrationService:
         self,
         file_id: str,
         analysis_type: str,
-        schema: Dict[str, Any],
-        statistics: Dict[str, Any]
+        schema: dict[str, Any],
+        statistics: dict[str, Any]
     ) -> MCPAnalysisResponse:
         """Create a fallback analysis when MCP is unavailable"""
         return MCPAnalysisResponse(

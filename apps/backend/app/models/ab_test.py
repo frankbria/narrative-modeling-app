@@ -3,7 +3,7 @@ A/B Test model for experiment tracking
 """
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -28,7 +28,7 @@ class Variant(BaseModel):
     variant_id: str = Field(description="Unique variant identifier")
     model_id: str = Field(description="Model ID for this variant")
     name: str = Field(description="Variant name (e.g., 'Control', 'Treatment A')")
-    description: Optional[str] = Field(None, description="Variant description")
+    description: str | None = Field(None, description="Variant description")
     traffic_percentage: float = Field(description="Traffic allocation percentage")
     
     # Performance metrics
@@ -37,7 +37,7 @@ class Variant(BaseModel):
     error_count: int = Field(default=0)
     
     # Business metrics (customizable)
-    custom_metrics: Dict[str, float] = Field(default_factory=dict)
+    custom_metrics: dict[str, float] = Field(default_factory=dict)
     
     # Status
     status: VariantStatus = Field(default=VariantStatus.ACTIVE)
@@ -50,36 +50,36 @@ class ABTest(Document):
     # Identification
     experiment_id: Annotated[str, Indexed()] = Field(description="Unique experiment ID")
     name: str = Field(description="Experiment name")
-    description: Optional[str] = Field(None, description="Experiment description")
+    description: str | None = Field(None, description="Experiment description")
     
     # Ownership
     user_id: str = Field(description="User who created the experiment")
-    workspace_id: Optional[str] = Field(None, description="Workspace ID for team experiments")
+    workspace_id: str | None = Field(None, description="Workspace ID for team experiments")
     
     # Configuration
-    variants: List[Variant] = Field(description="List of variants in the test")
+    variants: list[Variant] = Field(description="List of variants in the test")
     primary_metric: str = Field(description="Primary metric for comparison")
-    secondary_metrics: List[str] = Field(default_factory=list)
+    secondary_metrics: list[str] = Field(default_factory=list)
     
     # Test settings
     min_sample_size: int = Field(default=1000, description="Minimum samples per variant")
     confidence_level: float = Field(default=0.95, description="Statistical confidence level")
-    test_duration_hours: Optional[int] = Field(None, description="Max test duration")
+    test_duration_hours: int | None = Field(None, description="Max test duration")
     
     # Status and timing
     status: ExperimentStatus = Field(default=ExperimentStatus.DRAFT)
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
     
     # Results
-    winner_variant_id: Optional[str] = None
-    statistical_significance: Optional[float] = None
-    lift_percentage: Optional[float] = None
+    winner_variant_id: str | None = None
+    statistical_significance: float | None = None
+    lift_percentage: float | None = None
     
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     
     class Settings:
         name = "ab_tests"
@@ -90,14 +90,14 @@ class ABTest(Document):
             "created_at"
         ]
     
-    def get_variant_by_id(self, variant_id: str) -> Optional[Variant]:
+    def get_variant_by_id(self, variant_id: str) -> Variant | None:
         """Get a specific variant by ID"""
         for variant in self.variants:
             if variant.variant_id == variant_id:
                 return variant
         return None
     
-    def get_active_variants(self) -> List[Variant]:
+    def get_active_variants(self) -> list[Variant]:
         """Get all active variants"""
         return [v for v in self.variants if v.status == VariantStatus.ACTIVE]
     

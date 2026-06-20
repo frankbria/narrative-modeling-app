@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 try:
     import onnx  # noqa: F401  # availability probe for the ONNX export path
@@ -33,7 +33,7 @@ class ModelExportService:
         self,
         model_id: str,
         user_id: str
-    ) -> Tuple[bytes, str]:
+    ) -> tuple[bytes, str]:
         """Export model to ONNX format"""
         
         if not ONNX_AVAILABLE:
@@ -73,7 +73,7 @@ class ModelExportService:
         self,
         model_id: str,
         user_id: str
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Export model to PMML format"""
         
         try:
@@ -105,7 +105,7 @@ class ModelExportService:
             with tempfile.NamedTemporaryFile(suffix='.pmml', delete=False) as temp_file:
                 sklearn2pmml(pipeline, temp_file.name)
                 
-                with open(temp_file.name, 'r') as f:
+                with open(temp_file.name) as f:
                     pmml_content = f.read()
                 
                 os.unlink(temp_file.name)
@@ -121,7 +121,7 @@ class ModelExportService:
         model_id: str,
         user_id: str,
         include_preprocessing: bool = True
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Generate Python code for the model"""
         
         # Get model
@@ -381,7 +381,7 @@ if __name__ == "__main__":
         self,
         model_id: str,
         user_id: str
-    ) -> Tuple[bytes, str]:
+    ) -> tuple[bytes, str]:
         """Generate a Docker container with the model"""
         
         # Get model
@@ -522,7 +522,7 @@ print(response.json())
         
         return zip_buffer.getvalue(), filename
     
-    async def get_export_formats(self) -> List[Dict[str, Any]]:
+    async def get_export_formats(self) -> list[dict[str, Any]]:
         """Get available export formats"""
         
         formats = [

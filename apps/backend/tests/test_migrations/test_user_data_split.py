@@ -8,8 +8,7 @@ rollback procedures, performance measurement, and data integrity verification.
 
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import pytest
 
@@ -23,7 +22,7 @@ class TestMigrationDataGeneration:
     """Test data generation for migration testing."""
 
     @staticmethod
-    def generate_legacy_user_data(count: int, user_id: str = "test_user") -> List[UserData]:
+    def generate_legacy_user_data(count: int, user_id: str = "test_user") -> list[UserData]:
         """Generate legacy UserData documents for testing."""
         documents = []
         for i in range(count):
@@ -48,22 +47,22 @@ class TestMigrationDataGeneration:
                     )
                     for j in range(10 + (i % 5))
                 ],
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
                 aiSummary=AISummary(
                     overview=f"Dataset {i} overview",
                     issues=[f"Issue {j}" for j in range(3)],
                     relationships=[f"Relationship {j}" for j in range(2)],
                     suggestions=[f"Suggestion {j}" for j in range(2)],
                     rawMarkdown=f"# Dataset {i}\nMarkdown content",
-                    createdAt=datetime.now(timezone.utc)
+                    createdAt=datetime.now(UTC)
                 ),
                 contains_pii=(i % 3 == 0),
                 pii_report={"detected": True, "fields": ["email"]} if i % 3 == 0 else None,
                 pii_risk_level="medium" if i % 3 == 0 else "low",
                 pii_masked=False,
                 is_processed=True,
-                processed_at=datetime.now(timezone.utc),
+                processed_at=datetime.now(UTC),
                 schema={"columns": [f"col_{j}" for j in range(10)]},
                 statistics={"mean": 50.0, "std": 15.0},
                 quality_report={"completeness": 0.95, "validity": 0.98},
@@ -78,7 +77,7 @@ class TestMigrationDataGeneration:
                         "type": "encode",
                         "column": "column_1",
                         "parameters": {"method": "label"},
-                        "applied_at": datetime.now(timezone.utc).isoformat()
+                        "applied_at": datetime.now(UTC).isoformat()
                     }
                 ] if i % 2 == 0 else []
             )
@@ -174,7 +173,7 @@ class TestMigrationLogic:
                 column=transform.get("column"),
                 columns=transform.get("columns"),
                 parameters=transform.get("parameters", {}),
-                applied_at=datetime.fromisoformat(transform["applied_at"]) if "applied_at" in transform else datetime.now(timezone.utc),
+                applied_at=datetime.fromisoformat(transform["applied_at"]) if "applied_at" in transform else datetime.now(UTC),
                 is_valid=True,
                 validation_errors=[],
                 rows_affected=transform.get("rows_affected"),

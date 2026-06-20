@@ -9,9 +9,9 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 from beanie import PydanticObjectId
@@ -62,7 +62,7 @@ def safe_regex_search(pattern: str, text: str, timeout: int = REGEX_TIMEOUT_SECO
     Returns:
         True if pattern matches, False if no match or timeout/error
     """
-    result: Dict[str, Any] = {'match': False, 'error': None}
+    result: dict[str, Any] = {'match': False, 'error': None}
 
     def run_regex() -> None:
         try:
@@ -95,7 +95,7 @@ class BulkTransformationService:
         """Initialize service with transformation engine."""
         self.engine = TransformationEngine()
         # Track active background tasks for proper cleanup and cancellation
-        self._active_tasks: Dict[str, asyncio.Task] = {}
+        self._active_tasks: dict[str, asyncio.Task] = {}
 
     def _cleanup_task(self, job_id: str, task: asyncio.Task) -> None:
         """Callback to clean up task reference when done."""
@@ -113,7 +113,7 @@ class BulkTransformationService:
         user_id: str,
         dataset_id: str,
         pattern: ColumnSelectionPattern
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Select columns matching a pattern.
 
@@ -217,12 +217,12 @@ class BulkTransformationService:
         self,
         user_id: str,
         dataset_id: str,
-        selected_columns: List[str],
+        selected_columns: list[str],
         transformation_type: str,
-        global_parameters: Dict[str, Any],
-        per_column_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        global_parameters: dict[str, Any],
+        per_column_params: dict[str, dict[str, Any]] | None = None,
         preview_rows: int = 10
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Preview bulk transformation on multiple columns.
 
@@ -348,10 +348,10 @@ class BulkTransformationService:
         self,
         user_id: str,
         dataset_id: str,
-        selected_columns: List[str],
+        selected_columns: list[str],
         transformation_type: str,
-        global_parameters: Dict[str, Any],
-        per_column_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        global_parameters: dict[str, Any],
+        per_column_params: dict[str, dict[str, Any]] | None = None,
         stop_on_error: bool = False
     ) -> BulkTransformationJob:
         """
@@ -490,9 +490,9 @@ class BulkTransformationService:
             df = await get_dataframe_from_s3(file_path)
 
             # Track results
-            column_results: List[ColumnResult] = []
-            successful_columns: List[str] = []
-            failed_columns: List[Dict[str, Any]] = []
+            column_results: list[ColumnResult] = []
+            successful_columns: list[str] = []
+            failed_columns: list[dict[str, Any]] = []
 
             # Process columns sequentially for DataFrame modifications
             for i, column in enumerate(job.selected_columns):
@@ -564,7 +564,7 @@ class BulkTransformationService:
 
             # Save transformed data to S3 if any columns succeeded
             if successful_columns:
-                timestamp = datetime.now(timezone.utc).timestamp()
+                timestamp = datetime.now(UTC).timestamp()
                 new_file_path = await upload_dataframe_to_s3(
                     df,
                     f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
@@ -601,9 +601,9 @@ class BulkTransformationService:
         df: pd.DataFrame,
         column: str,
         transformation_type: str,
-        global_parameters: Dict[str, Any],
-        per_column_params: Dict[str, Dict[str, Any]],
-    ) -> Tuple[pd.DataFrame, ColumnResult]:
+        global_parameters: dict[str, Any],
+        per_column_params: dict[str, dict[str, Any]],
+    ) -> tuple[pd.DataFrame, ColumnResult]:
         """
         Apply transformation to a single column and return the modified DataFrame
         along with the result status.
@@ -678,7 +678,7 @@ class BulkTransformationService:
         self,
         job_id: str,
         user_id: str
-    ) -> Optional[BulkTransformationJob]:
+    ) -> BulkTransformationJob | None:
         """
         Get the status of a bulk transformation job.
 
@@ -697,10 +697,10 @@ class BulkTransformationService:
     async def list_user_jobs(
         self,
         user_id: str,
-        dataset_id: Optional[str] = None,
-        status: Optional[BulkJobStatus] = None,
+        dataset_id: str | None = None,
+        status: BulkJobStatus | None = None,
         limit: int = 50
-    ) -> List[BulkTransformationJob]:
+    ) -> list[BulkTransformationJob]:
         """
         List user's bulk transformation jobs.
 
@@ -713,7 +713,7 @@ class BulkTransformationService:
         Returns:
             List of BulkTransformationJob
         """
-        query: Dict[str, Any] = {"user_id": user_id}
+        query: dict[str, Any] = {"user_id": user_id}
 
         if dataset_id:
             query["dataset_id"] = dataset_id
@@ -774,7 +774,7 @@ class BulkTransformationService:
         self,
         job_id: str,
         user_id: str
-    ) -> Optional[BulkTransformationJob]:
+    ) -> BulkTransformationJob | None:
         """
         Retry a failed job.
 

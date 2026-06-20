@@ -4,7 +4,7 @@ Batch prediction job model
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -83,12 +83,12 @@ class BatchJob(Document):
     user_id: str = Field(description="User who created the job")
 
     # Job configuration
-    config: Dict[str, Any] = Field(description="Job-specific configuration")
+    config: dict[str, Any] = Field(description="Job-specific configuration")
 
     # Input/Output
-    input_path: Optional[str] = Field(None, description="S3 path to input data")
-    output_path: Optional[str] = Field(None, description="S3 path to output data")
-    input_size_bytes: Optional[int] = Field(
+    input_path: str | None = Field(None, description="S3 path to input data")
+    output_path: str | None = Field(None, description="S3 path to output data")
+    input_size_bytes: int | None = Field(
         None, description="Size of input data in bytes"
     )
 
@@ -97,20 +97,20 @@ class BatchJob(Document):
     progress: JobProgress = Field(default_factory=JobProgress)
 
     # Error handling
-    error_message: Optional[str] = None
+    error_message: str | None = None
     retry_count: int = Field(default=0)
     max_retries: int = Field(default=3)
 
     # Timing
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     # Results
-    results: Dict[str, Any] = Field(default_factory=dict)
+    results: dict[str, Any] = Field(default_factory=dict)
 
     # Metadata
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     priority: int = Field(
         default=0, description="Job priority (higher = more important)"
     )
@@ -120,7 +120,7 @@ class BatchJob(Document):
         indexes = ["job_id", "user_id", "status", "job_type", "created_at", "priority"]
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         """Calculate job duration in seconds"""
         if not self.started_at:
             return None
@@ -129,7 +129,7 @@ class BatchJob(Document):
         return (end_time - self.started_at).total_seconds()
 
     @property
-    def estimated_completion(self) -> Optional[datetime]:
+    def estimated_completion(self) -> datetime | None:
         """Estimate completion time based on current progress"""
         if (
             self.status != JobStatus.RUNNING
@@ -157,7 +157,7 @@ class BatchJob(Document):
         self.status = JobStatus.RUNNING
         self.started_at = datetime.utcnow()
 
-    def mark_completed(self, results: Optional[Dict[str, Any]] = None) -> None:
+    def mark_completed(self, results: dict[str, Any] | None = None) -> None:
         """Mark job as completed"""
         self.status = JobStatus.COMPLETED
         self.completed_at = datetime.utcnow()
@@ -173,10 +173,10 @@ class BatchJob(Document):
 
     def update_progress(
         self,
-        processed_records: Optional[int] = None,
-        success_count: Optional[int] = None,
-        error_count: Optional[int] = None,
-        current_chunk: Optional[int] = None,
+        processed_records: int | None = None,
+        success_count: int | None = None,
+        error_count: int | None = None,
+        current_chunk: int | None = None,
     ) -> None:
         """Update job progress"""
         if processed_records is not None:

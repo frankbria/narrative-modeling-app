@@ -10,7 +10,6 @@ Provides middleware to:
 
 import logging
 import re
-from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -83,7 +82,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
 
         return response
 
-    def _parse_version_from_header(self, request: Request) -> Optional[str]:
+    def _parse_version_from_header(self, request: Request) -> str | None:
         """
         Parse API version from Accept header.
 
@@ -101,7 +100,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
 
         return None
 
-    def _parse_version_from_path(self, path: str) -> Optional[str]:
+    def _parse_version_from_path(self, path: str) -> str | None:
         """
         Parse API version from URL path.
 

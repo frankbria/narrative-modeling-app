@@ -2,7 +2,6 @@
 API routes for AI-powered data analysis using MCP
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
@@ -23,7 +22,7 @@ class AnalysisRequest(BaseModel):
     file_id: str = Field(..., description="ID of the file to analyze")
     analysis_type: str = Field(default="comprehensive", pattern="^(comprehensive|statistical|quality|summary)$")
     include_visualization: bool = Field(default=True, description="Include AI-generated visualizations")
-    custom_prompts: Optional[list[str]] = Field(default=None, description="Custom analysis prompts")
+    custom_prompts: list[str] | None = Field(default=None, description="Custom analysis prompts")
 
 
 @router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse)
@@ -143,7 +142,7 @@ async def chat_with_data(
 @router.post("/summarize/{file_id}")
 async def generate_ai_summary(
     file_id: str = Path(..., description="File ID"),
-    focus_areas: Optional[list[str]] = None,
+    focus_areas: list[str] | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """

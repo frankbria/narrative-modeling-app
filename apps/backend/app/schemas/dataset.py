@@ -6,7 +6,7 @@ using DatasetMetadata model and maintaining backward compatibility.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -20,26 +20,26 @@ class DatasetUploadResponse(BaseModel):
     filename: str = Field(..., description="Original filename")
     num_rows: int = Field(..., ge=0, description="Number of rows")
     num_columns: int = Field(..., ge=0, description="Number of columns")
-    preview: List[Dict[str, Any]] = Field(default_factory=list, description="Preview rows")
-    headers: List[str] = Field(default_factory=list, description="Column headers")
-    data_schema_fields: List[Dict[str, Any]] = Field(default_factory=list, description="Data schema", alias="schema")
+    preview: list[dict[str, Any]] = Field(default_factory=list, description="Preview rows")
+    headers: list[str] = Field(default_factory=list, description="Column headers")
+    data_schema_fields: list[dict[str, Any]] = Field(default_factory=list, description="Data schema", alias="schema")
     s3_url: str = Field(..., description="S3 URL for file access")
-    file_size: Optional[int] = Field(None, description="File size in bytes")
-    file_type: Optional[str] = Field(None, description="File type")
+    file_size: int | None = Field(None, description="File size in bytes")
+    file_type: str | None = Field(None, description="File type")
 
     model_config = {
         "populate_by_name": True
     }
 
     # PII report (for backward compatibility)
-    pii_report: Optional[Dict[str, Any]] = None
+    pii_report: dict[str, Any] | None = None
 
     # Legacy fields (for backward compatibility)
-    file_id: Optional[str] = None
-    previewData: Optional[List[List[Any]]] = None
-    fileName: Optional[str] = None
-    fileType: Optional[str] = None
-    id: Optional[str] = None
+    file_id: str | None = None
+    previewData: list[list[Any]] | None = None
+    fileName: str | None = None
+    fileType: str | None = None
+    id: str | None = None
 
 
 class DatasetListItem(BaseModel):
@@ -51,7 +51,7 @@ class DatasetListItem(BaseModel):
     file_type: str = Field(..., description="File type")
     num_rows: int = Field(..., ge=0, description="Number of rows")
     num_columns: int = Field(..., ge=0, description="Number of columns")
-    file_size: Optional[int] = Field(None, description="File size in bytes")
+    file_size: int | None = Field(None, description="File size in bytes")
     is_processed: bool = Field(..., description="Whether dataset is processed")
     contains_pii: bool = Field(default=False, description="Whether dataset contains PII")
     created_at: datetime = Field(..., description="Creation timestamp")
@@ -61,7 +61,7 @@ class DatasetListItem(BaseModel):
 class DatasetListResponse(BaseModel):
     """Response schema for list datasets endpoint."""
 
-    datasets: List[DatasetListItem] = Field(default_factory=list)
+    datasets: list[DatasetListItem] = Field(default_factory=list)
     total: int = Field(..., ge=0, description="Total number of datasets")
 
 
@@ -74,29 +74,29 @@ class DatasetDetailResponse(BaseModel):
     file_type: str = Field(..., description="File type")
     file_path: str = Field(..., description="Storage path")
     s3_url: str = Field(..., description="S3 URL")
-    file_size: Optional[int] = None
+    file_size: int | None = None
 
     # Dataset dimensions
     num_rows: int = Field(..., ge=0)
     num_columns: int = Field(..., ge=0)
-    columns: List[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
 
     # Schema and statistics
-    data_schema: List[Dict[str, Any]] = Field(default_factory=list)
-    inferred_schema: Optional[Dict[str, Any]] = None
-    statistics: Optional[Dict[str, Any]] = None
-    quality_report: Optional[Dict[str, Any]] = None
-    data_preview: Optional[List[Dict[str, Any]]] = None
+    data_schema: list[dict[str, Any]] = Field(default_factory=list)
+    inferred_schema: dict[str, Any] | None = None
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
+    data_preview: list[dict[str, Any]] | None = None
 
     # AI analysis
-    ai_summary: Optional[Dict[str, Any]] = None
+    ai_summary: dict[str, Any] | None = None
 
     # PII report
-    pii_report: Optional[Dict[str, Any]] = None
+    pii_report: dict[str, Any] | None = None
 
     # Processing status
     is_processed: bool = Field(..., description="Whether initial processing is complete")
-    processed_at: Optional[datetime] = None
+    processed_at: datetime | None = None
 
     # Timestamps
     created_at: datetime
@@ -109,11 +109,11 @@ class DatasetDetailResponse(BaseModel):
 class DatasetUpdateRequest(BaseModel):
     """Request schema for dataset update endpoint."""
 
-    statistics: Optional[Dict[str, Any]] = None
-    quality_report: Optional[Dict[str, Any]] = None
-    inferred_schema: Optional[Dict[str, Any]] = None
-    ai_summary: Optional[Dict[str, Any]] = None
-    pii_report: Optional[Dict[str, Any]] = None
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
+    inferred_schema: dict[str, Any] | None = None
+    ai_summary: dict[str, Any] | None = None
+    pii_report: dict[str, Any] | None = None
 
 
 class DatasetDeleteResponse(BaseModel):
@@ -127,9 +127,9 @@ class DatasetDeleteResponse(BaseModel):
 class DatasetProcessingRequest(BaseModel):
     """Request schema for marking dataset as processed."""
 
-    statistics: Optional[Dict[str, Any]] = None
-    quality_report: Optional[Dict[str, Any]] = None
-    inferred_schema: Optional[Dict[str, Any]] = None
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
+    inferred_schema: dict[str, Any] | None = None
 
 
 class DatasetProcessingResponse(BaseModel):
@@ -138,15 +138,15 @@ class DatasetProcessingResponse(BaseModel):
     dataset_id: str = Field(..., description="Dataset ID")
     is_processed: bool = Field(..., description="Processing status")
     processed_at: datetime = Field(..., description="Processing timestamp")
-    statistics: Optional[Dict[str, Any]] = None
-    quality_report: Optional[Dict[str, Any]] = None
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
 
 
 class DatasetSchemaResponse(BaseModel):
     """Response schema for dataset schema endpoint."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    schema: List[Dict[str, Any]] = Field(..., description="Field-level schema")
+    schema: list[dict[str, Any]] = Field(..., description="Field-level schema")
     num_fields: int = Field(..., ge=0, description="Number of fields in schema")
 
 
@@ -154,6 +154,6 @@ class DatasetPreviewResponse(BaseModel):
     """Response schema for dataset preview endpoint."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    preview: List[Dict[str, Any]] = Field(..., description="Preview rows")
+    preview: list[dict[str, Any]] = Field(..., description="Preview rows")
     total_rows: int = Field(..., ge=0, description="Total number of rows in dataset")
     preview_rows: int = Field(..., ge=0, description="Number of preview rows returned")

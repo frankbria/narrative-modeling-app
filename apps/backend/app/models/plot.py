@@ -1,7 +1,6 @@
 # app/models/plot.py
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from beanie import Document, Link
 from pydantic import Field, HttpUrl
@@ -11,11 +10,11 @@ from app.models.user_data import UserData
 
 class Plot(Document):
     userId: str
-    datasetId: Optional[Link[UserData]]
-    type: Optional[str]  # e.g., "histogram", "scatter"
+    datasetId: Link[UserData] | None
+    type: str | None  # e.g., "histogram", "scatter"
     imageUrl: HttpUrl
-    metadata: Optional[dict] = None
-    generatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict | None = None
+    generatedAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "plots"

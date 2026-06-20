@@ -3,7 +3,7 @@ Recipe manager for saving and loading transformation pipelines
 """
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field
@@ -15,32 +15,32 @@ class TransformationStep(BaseModel):
     """A single transformation step in a recipe"""
     step_id: str
     transformation_type: str
-    parameters: Dict[str, Any]
-    description: Optional[str] = None
+    parameters: dict[str, Any]
+    description: str | None = None
     order: int
 
 
 class TransformationRecipe(Document):
     """A saved transformation recipe"""
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     user_id: str
-    dataset_id: Optional[str] = None
-    steps: List[TransformationStep]
+    dataset_id: str | None = None
+    steps: list[TransformationStep]
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     is_public: bool = False
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     usage_count: int = 0
-    rating: Optional[float] = None
-    schema_snapshot: Optional[Dict[str, str]] = None  # Column types when recipe was created
+    rating: float | None = None
+    schema_snapshot: dict[str, str] | None = None  # Column types when recipe was created
 
     # Versioning fields
     version: int = 1
-    parent_recipe_id: Optional[PydanticObjectId] = None
+    parent_recipe_id: PydanticObjectId | None = None
 
     # Metadata for creator and tracking
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     class Settings:
         name = "transformation_recipes"
@@ -63,7 +63,7 @@ class RecipeExecutionHistory(Document):
     success: bool
     rows_affected: int
     execution_time_ms: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     class Settings:
         name = "recipe_execution_history"
@@ -77,16 +77,16 @@ class RecipeExecutionHistory(Document):
 class SharedRecipe(Document):
     """Independent copy of a shared recipe (not linked to original)"""
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     user_id: str  # User who received the shared recipe
     original_recipe_id: PydanticObjectId  # Reference to original recipe
     original_owner_id: str  # Original creator
-    steps: List[TransformationStep]
+    steps: list[TransformationStep]
     shared_at: datetime = Field(default_factory=datetime.utcnow)
-    tags: List[str] = Field(default_factory=list)
-    schema_snapshot: Optional[Dict[str, str]] = None
+    tags: list[str] = Field(default_factory=list)
+    schema_snapshot: dict[str, str] | None = None
     version: int = 1
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     class Settings:
         name = "shared_recipes"
@@ -100,10 +100,10 @@ class SharedRecipe(Document):
 class CompatibilityReport(BaseModel):
     """Report on recipe-dataset compatibility"""
     is_compatible: bool
-    missing_columns: List[str] = Field(default_factory=list)
-    type_mismatches: List[Dict[str, Any]] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    suggestions: List[str] = Field(default_factory=list)
+    missing_columns: list[str] = Field(default_factory=list)
+    type_mismatches: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     compatibility_score: float = Field(ge=0.0, le=100.0)  # 0-100%
 
 
@@ -113,7 +113,7 @@ class RecipeCompatibilityChecker:
     @staticmethod
     async def check_compatibility(
         recipe_id: str,
-        dataset_schema: Dict[str, str]
+        dataset_schema: dict[str, str]
     ) -> CompatibilityReport:
         """
         Check if recipe can be applied to dataset.
@@ -202,13 +202,13 @@ class RecipeManager:
     @staticmethod
     async def create_recipe(
         name: str,
-        steps: List[Dict[str, Any]],
+        steps: list[dict[str, Any]],
         user_id: str,
-        description: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        description: str | None = None,
+        dataset_id: str | None = None,
+        tags: list[str] | None = None,
         is_public: bool = False,
-        schema_snapshot: Optional[Dict[str, str]] = None
+        schema_snapshot: dict[str, str] | None = None
     ) -> TransformationRecipe:
         """Create a new transformation recipe"""
         
@@ -242,7 +242,7 @@ class RecipeManager:
         return recipe
     
     @staticmethod
-    async def get_recipe(recipe_id: str) -> Optional[TransformationRecipe]:
+    async def get_recipe(recipe_id: str) -> TransformationRecipe | None:
         """Get a recipe by ID"""
         try:
             recipe = await TransformationRecipe.get(PydanticObjectId(recipe_id))
@@ -255,9 +255,9 @@ class RecipeManager:
     async def get_user_recipes(
         user_id: str,
         include_public: bool = True
-    ) -> List[TransformationRecipe]:
+    ) -> list[TransformationRecipe]:
         """Get all recipes for a user"""
-        query: Dict[str, Any] = {"$or": [{"user_id": user_id}]}
+        query: dict[str, Any] = {"$or": [{"user_id": user_id}]}
 
         if include_public:
             query["$or"].append({"is_public": True})
@@ -267,11 +267,11 @@ class RecipeManager:
     
     @staticmethod
     async def get_public_recipes(
-        tags: Optional[List[str]] = None,
+        tags: list[str] | None = None,
         limit: int = 50
-    ) -> List[TransformationRecipe]:
+    ) -> list[TransformationRecipe]:
         """Get public recipes, optionally filtered by tags"""
-        query: Dict[str, Any] = {"is_public": True}
+        query: dict[str, Any] = {"is_public": True}
 
         if tags:
             query["tags"] = {"$in": tags}
@@ -287,8 +287,8 @@ class RecipeManager:
     async def update_recipe(
         recipe_id: str,
         user_id: str,
-        updates: Dict[str, Any]
-    ) -> Optional[TransformationRecipe]:
+        updates: dict[str, Any]
+    ) -> TransformationRecipe | None:
         """Update a recipe"""
         try:
             recipe = await TransformationRecipe.get(PydanticObjectId(recipe_id))
@@ -337,7 +337,7 @@ class RecipeManager:
         success: bool,
         rows_affected: int,
         execution_time_ms: int,
-        error_message: Optional[str] = None
+        error_message: str | None = None
     ) -> None:
         """Record recipe execution"""
         history = RecipeExecutionHistory(
@@ -360,7 +360,7 @@ class RecipeManager:
                 await recipe.save()
     
     @staticmethod
-    async def get_popular_recipes(limit: int = 10) -> List[TransformationRecipe]:
+    async def get_popular_recipes(limit: int = 10) -> list[TransformationRecipe]:
         """Get most popular public recipes"""
         recipes = await TransformationRecipe.find({"is_public": True})\
             .sort("-usage_count")\
@@ -372,11 +372,11 @@ class RecipeManager:
     @staticmethod
     async def search_recipes(
         query: str,
-        user_id: Optional[str] = None,
-        tags: Optional[List[str]] = None
-    ) -> List[TransformationRecipe]:
+        user_id: str | None = None,
+        tags: list[str] | None = None
+    ) -> list[TransformationRecipe]:
         """Search recipes by name or description"""
-        search_query: Dict[str, Any] = {
+        search_query: dict[str, Any] = {
             "$or": [
                 {"name": {"$regex": query, "$options": "i"}},
                 {"description": {"$regex": query, "$options": "i"}}
@@ -409,9 +409,9 @@ class RecipeManager:
     async def create_version(
         recipe_id: str,
         user_id: str,
-        changes: Dict[str, Any],
-        version_notes: Optional[str] = None
-    ) -> Optional[TransformationRecipe]:
+        changes: dict[str, Any],
+        version_notes: str | None = None
+    ) -> TransformationRecipe | None:
         """
         Create a new version of a recipe.
 
@@ -461,7 +461,7 @@ class RecipeManager:
             return None
 
     @staticmethod
-    async def get_version_history(recipe_id: str) -> List[TransformationRecipe]:
+    async def get_version_history(recipe_id: str) -> list[TransformationRecipe]:
         """
         Get all versions of a recipe in chronological order.
 
@@ -520,7 +520,7 @@ class RecipeManager:
         recipe_id: str,
         user_id: str,
         new_name: str
-    ) -> Optional[TransformationRecipe]:
+    ) -> TransformationRecipe | None:
         """
         Duplicate a recipe as a template for the user.
 
@@ -568,7 +568,7 @@ class RecipeManager:
         recipe_id: str,
         owner_id: str,
         target_user_id: str
-    ) -> Optional[SharedRecipe]:
+    ) -> SharedRecipe | None:
         """
         Share a recipe with another user (creates independent copy).
 
@@ -615,7 +615,7 @@ class RecipeManager:
             return None
 
     @staticmethod
-    async def get_shared_recipes(user_id: str) -> List[SharedRecipe]:
+    async def get_shared_recipes(user_id: str) -> list[SharedRecipe]:
         """
         Get all recipes shared with a user.
 
@@ -641,7 +641,7 @@ class RecipeManager:
         shared_recipe_id: str,
         user_id: str,
         original_recipe_id: str
-    ) -> Optional[SharedRecipe]:
+    ) -> SharedRecipe | None:
         """
         Update a shared recipe to match current version of original.
 
@@ -683,7 +683,7 @@ class RecipeManager:
             return None
 
     @staticmethod
-    def export_recipe_to_json(recipe: TransformationRecipe) -> Dict[str, Any]:
+    def export_recipe_to_json(recipe: TransformationRecipe) -> dict[str, Any]:
         """
         Export recipe as JSON for portability.
 
@@ -721,10 +721,10 @@ class RecipeManager:
 
     @staticmethod
     async def import_recipe_from_json(
-        json_data: Dict[str, Any],
+        json_data: dict[str, Any],
         user_id: str,
-        name_override: Optional[str] = None
-    ) -> Optional[TransformationRecipe]:
+        name_override: str | None = None
+    ) -> TransformationRecipe | None:
         """
         Import recipe from JSON.
 

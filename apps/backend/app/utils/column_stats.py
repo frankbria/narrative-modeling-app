@@ -1,4 +1,3 @@
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -14,7 +13,7 @@ from app.models.user_data import UserData
 
 async def calculate_and_store_column_stats(
     df: pd.DataFrame, dataset_id: str, user_id: str
-) -> List[ColumnStats]:
+) -> list[ColumnStats]:
     """
     Calculate descriptive statistics for each column in a DataFrame and store them in the database.
 

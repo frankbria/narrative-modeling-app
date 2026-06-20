@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, Header, HTTPException
@@ -97,8 +96,8 @@ async def get_current_user_id(
 
 # For backward compatibility during migration
 async def get_current_user_id_optional(
-    authorization: Optional[str] = Header(None)
-) -> Optional[str]:
+    authorization: str | None = Header(None)
+) -> str | None:
     """
     Optional authentication - returns user ID if authenticated, None otherwise
     """

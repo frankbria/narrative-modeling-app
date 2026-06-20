@@ -6,7 +6,8 @@ TransformationConfig model, delegating actual transformation execution to
 the existing TransformationEngine.
 """
 
-from typing import Any, Dict, List, Optional
+from datetime import UTC
+from typing import Any
 
 from app.models.transformation import (
     TransformationConfig,
@@ -45,8 +46,8 @@ class TransformationService(BaseService[TransformationConfig]):
         user_id: str,
         dataset_id: str,
         config_id: str,
-        transformation_steps: Optional[List[TransformationStep]] = None,
-        current_file_path: Optional[str] = None,
+        transformation_steps: list[TransformationStep] | None = None,
+        current_file_path: str | None = None,
         **kwargs
     ) -> TransformationConfig:
         """
@@ -77,7 +78,7 @@ class TransformationService(BaseService[TransformationConfig]):
     async def get_transformation_config(
         self,
         config_id: str
-    ) -> Optional[TransformationConfig]:
+    ) -> TransformationConfig | None:
         """
         Retrieve transformation configuration by config ID.
 
@@ -92,7 +93,7 @@ class TransformationService(BaseService[TransformationConfig]):
     async def list_transformation_configs(
         self,
         dataset_id: str
-    ) -> List[TransformationConfig]:
+    ) -> list[TransformationConfig]:
         """
         List all transformation configurations for a dataset, sorted chronologically.
 
@@ -112,10 +113,10 @@ class TransformationService(BaseService[TransformationConfig]):
         self,
         config_id: str,
         transformation_type: str,
-        column: Optional[str] = None,
-        columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        version_id: Optional[str] = None
+        column: str | None = None,
+        columns: list[str] | None = None,
+        parameters: dict[str, Any] | None = None,
+        version_id: str | None = None
     ) -> TransformationConfig:
         """
         Add a transformation step to configuration.
@@ -241,7 +242,7 @@ class TransformationService(BaseService[TransformationConfig]):
     async def get_applied_configs(
         self,
         dataset_id: str
-    ) -> List[TransformationConfig]:
+    ) -> list[TransformationConfig]:
         """
         Get all applied transformation configurations for a dataset, sorted chronologically.
 
@@ -263,9 +264,9 @@ class TransformationService(BaseService[TransformationConfig]):
         user_id: str,
         dataset_id: str,
         transformation_type: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         preview_rows: int = 10
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Preview transformation without applying it.
 
@@ -335,8 +336,8 @@ class TransformationService(BaseService[TransformationConfig]):
         user_id: str,
         dataset_id: str,
         transformation_type: str,
-        parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        parameters: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Apply transformation and persist results.
 
@@ -354,7 +355,7 @@ class TransformationService(BaseService[TransformationConfig]):
             OperationError: If transformation application fails
         """
         import time
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         import pandas as pd
 
@@ -403,7 +404,7 @@ class TransformationService(BaseService[TransformationConfig]):
 
             # Save transformed data to S3
             transformed_df = pd.DataFrame(result.transformed_data)
-            timestamp = datetime.now(timezone.utc).timestamp()
+            timestamp = datetime.now(UTC).timestamp()
             new_file_path = await upload_dataframe_to_s3(
                 transformed_df,
                 f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
@@ -513,7 +514,7 @@ class TransformationService(BaseService[TransformationConfig]):
     async def get_transformation_history(
         self,
         config_id: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get transformation history with lineage.
 

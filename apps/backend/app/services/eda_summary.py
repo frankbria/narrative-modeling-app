@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ def convert_numpy_types(obj):
         return obj
 
 
-def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
+def calculate_data_quality(df: pd.DataFrame) -> dict[str, Any]:
     # Calculate missing data
     missing_data = df.isnull().sum().sort_values(ascending=False).to_dict()
 
@@ -68,7 +68,7 @@ def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
     return convert_numpy_types(result)
 
 
-def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
+def calculate_variable_insights(df: pd.DataFrame) -> dict[str, Any]:
     result = {
         "highCardinality": df.nunique()[df.nunique() > 50]
         .sort_values(ascending=False)
@@ -87,7 +87,7 @@ def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
     return convert_numpy_types(result)
 
 
-def suggest_transformations(df: pd.DataFrame) -> Dict[str, Any]:
+def suggest_transformations(df: pd.DataFrame) -> dict[str, Any]:
     log_candidates = df.skew(numeric_only=True)
     log_transforms = log_candidates[log_candidates > 1].index.tolist()
     encode_candidates = df.select_dtypes(include="object").columns.tolist()
@@ -99,7 +99,7 @@ def suggest_transformations(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def generate_grouped_insights(df: pd.DataFrame) -> Dict[str, Any]:
+def generate_grouped_insights(df: pd.DataFrame) -> dict[str, Any]:
     insights = {}
     for col in df.select_dtypes(include="object").columns:
         insights[col] = df.groupby(col).mean(numeric_only=True).describe().to_dict()
@@ -108,7 +108,7 @@ def generate_grouped_insights(df: pd.DataFrame) -> Dict[str, Any]:
     return convert_numpy_types(insights)
 
 
-async def generate_eda_summary(user_data: UserData) -> Dict[str, Any]:
+async def generate_eda_summary(user_data: UserData) -> dict[str, Any]:
     local_file_path = download_file_from_s3(user_data.s3_url)
     df = pd.read_csv(local_file_path)
 

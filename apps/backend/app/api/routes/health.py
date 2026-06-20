@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 from fastapi import APIRouter
@@ -16,7 +16,7 @@ from app.services.s3_service import s3_service
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-async def check_mongodb_connection() -> Dict[str, Any]:
+async def check_mongodb_connection() -> dict[str, Any]:
     """
     Check MongoDB connectivity and response time
     Returns health status, latency, and error details if unhealthy
@@ -44,7 +44,7 @@ async def check_mongodb_connection() -> Dict[str, Any]:
             "error": str(e)
         }
 
-async def check_s3_access() -> Dict[str, Any]:
+async def check_s3_access() -> dict[str, Any]:
     """
     Check S3 bucket accessibility and response time
     Returns health status, latency, and bucket access details
@@ -81,7 +81,7 @@ async def check_s3_access() -> Dict[str, Any]:
             "error": str(e)
         }
 
-async def check_openai_api() -> Dict[str, Any]:
+async def check_openai_api() -> dict[str, Any]:
     """
     Check OpenAI API accessibility and response time
     Returns health status, latency, and API availability

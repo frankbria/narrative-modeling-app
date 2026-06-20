@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -62,7 +62,7 @@ class PIIDetector:
             PIIType.FINANCIAL_ACCOUNT: ['account', 'routing', 'iban', 'swift'],
         }
     
-    def detect_pii_in_dataframe(self, df: pd.DataFrame, sample_size: int = 100) -> List[PIIDetection]:
+    def detect_pii_in_dataframe(self, df: pd.DataFrame, sample_size: int = 100) -> list[PIIDetection]:
         """
         Detect PII in a pandas DataFrame
         
@@ -97,7 +97,7 @@ class PIIDetector:
         
         return detections
     
-    def _check_column_name(self, column_name: str) -> Optional[PIIDetection]:
+    def _check_column_name(self, column_name: str) -> PIIDetection | None:
         """Check if column name suggests PII"""
         column_lower = column_name.lower()
         
@@ -113,7 +113,7 @@ class PIIDetector:
                     )
         return None
     
-    def _check_patterns(self, column_name: str, data: pd.Series) -> Optional[PIIDetection]:
+    def _check_patterns(self, column_name: str, data: pd.Series) -> PIIDetection | None:
         """Check data patterns for PII"""
         for pii_type, pattern in self.patterns.items():
             matches = data.apply(lambda x: bool(pattern.match(str(x))))
@@ -140,7 +140,7 @@ class PIIDetector:
         else:
             return f"Possible {pii_type.value} detected. Review data and apply appropriate protection."
     
-    def mask_pii(self, df: pd.DataFrame, detections: List[PIIDetection], 
+    def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection], 
                  mask_char: str = '*') -> pd.DataFrame:
         """
         Mask detected PII in DataFrame
@@ -210,7 +210,7 @@ class PIIDetector:
             return value_str[0] + '*' * (len(value_str) - 2) + value_str[-1]
         return '*' * len(value_str)
     
-    def generate_pii_report(self, detections: List[PIIDetection]) -> Dict[str, Any]:
+    def generate_pii_report(self, detections: list[PIIDetection]) -> dict[str, Any]:
         """Generate a summary report of PII findings"""
         if not detections:
             return {
@@ -243,7 +243,7 @@ class PIIDetector:
             "recommendations": self._get_general_recommendations(risk_level)
         }
     
-    def _get_general_recommendations(self, risk_level: str) -> List[str]:
+    def _get_general_recommendations(self, risk_level: str) -> list[str]:
         """Get general recommendations based on risk level"""
         base_recommendations = [
             "Review all detected PII columns",

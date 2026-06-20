@@ -58,11 +58,12 @@ dev = [
 ]
 
 [tool.ruff.lint]
-# Add import-sorting (isort) on top of the default rule set (E, F) — issue #176.
-# pyupgrade (UP) is deliberately not enabled here: it produces ~2,900 findings
-# (repo-wide annotation rewrites) that would collide with the incremental mypy
-# typing effort (issue #176, item 1) — tracked separately.
-extend-select = ["I"]
+# On top of the default rule set (E, F): import-sorting (isort, "I", issue #176)
+# and pyupgrade ("UP", issue #220 — modernizes syntax/annotations to current
+# Python: PEP 585 builtins, PEP 604 unions, datetime.UTC, etc.). UP was
+# sequenced after the mypy gate (#219) so the annotation rewrites land on top of
+# the typing work rather than colliding with it.
+extend-select = ["I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 # Imports deliberately follow runtime setup, not a style slip:

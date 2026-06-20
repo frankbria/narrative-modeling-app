@@ -8,7 +8,7 @@ and generate context-aware fix suggestions.
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 from openai import AsyncOpenAI, OpenAIError
@@ -45,7 +45,7 @@ class AIIssueAnalyzer:
         """Initialize the AI analyzer."""
         self.client = self._initialize_client()
 
-    def _initialize_client(self) -> Optional[AsyncOpenAI]:
+    def _initialize_client(self) -> AsyncOpenAI | None:
         """Initialize the async OpenAI client."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -56,9 +56,9 @@ class AIIssueAnalyzer:
     async def analyze_data_patterns(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-        existing_issues: List[DataIssue],
-    ) -> List[DataIssue]:
+        column_types: dict[str, str],
+        existing_issues: list[DataIssue],
+    ) -> list[DataIssue]:
         """
         Analyze data for patterns that may indicate quality issues.
 
@@ -103,8 +103,8 @@ class AIIssueAnalyzer:
     def _create_privacy_safe_sample(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> Dict[str, Any]:
+        column_types: dict[str, str],
+    ) -> dict[str, Any]:
         """
         Create a privacy-safe sample of the data for AI analysis.
 
@@ -167,8 +167,8 @@ class AIIssueAnalyzer:
     def _select_columns_for_analysis(
         self,
         df: pd.DataFrame,
-        column_types: Dict[str, str],
-    ) -> List[str]:
+        column_types: dict[str, str],
+    ) -> list[str]:
         """Select most relevant columns for AI analysis."""
         selected = []
 
@@ -211,8 +211,8 @@ class AIIssueAnalyzer:
 
     def _summarize_existing_issues(
         self,
-        existing_issues: List[DataIssue]
-    ) -> List[Dict[str, Any]]:
+        existing_issues: list[DataIssue]
+    ) -> list[dict[str, Any]]:
         """Create a summary of existing issues for context."""
         return [
             {
@@ -235,10 +235,10 @@ class AIIssueAnalyzer:
     )
     async def _call_openai_analysis(
         self,
-        sample_data: Dict[str, Any],
-        column_types: Dict[str, str],
-        existing_issues: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        sample_data: dict[str, Any],
+        column_types: dict[str, str],
+        existing_issues: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
         """Call OpenAI API for data quality analysis."""
         if not self.client:
             return None
@@ -317,11 +317,11 @@ Please identify any additional data quality issues not covered above."""
 
     def _parse_ai_response(
         self,
-        ai_response: Dict[str, Any],
+        ai_response: dict[str, Any],
         df: pd.DataFrame
-    ) -> List[DataIssue]:
+    ) -> list[DataIssue]:
         """Parse AI response into DataIssue objects."""
-        issues: List[DataIssue] = []
+        issues: list[DataIssue] = []
 
         if not ai_response or "issues" not in ai_response:
             return issues
@@ -361,7 +361,7 @@ Please identify any additional data quality issues not covered above."""
                         affected_pct = 10.0
 
                 # Create suggested fix if provided
-                suggested_fixes: List[SuggestedFix] = []
+                suggested_fixes: list[SuggestedFix] = []
                 fix_data = issue_data.get("suggested_fix")
                 if fix_data:
                     suggested_fixes.append(SuggestedFix(
@@ -433,8 +433,8 @@ Keep the explanation non-technical and easy to understand."""
         self,
         issue: DataIssue,
         fix: SuggestedFix,
-        sample_data: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        sample_data: dict[str, Any],
+    ) -> dict[str, Any]:
         """Assess the potential impact of applying a fix."""
         if not self.client:
             return {

@@ -2,7 +2,7 @@
 A/B Testing API routes
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -17,29 +17,29 @@ router = APIRouter(prefix="/ab-testing", tags=["ab-testing"])
 # Request/Response Models
 class CreateExperimentRequest(BaseModel):
     name: str = Field(..., description="Experiment name")
-    description: Optional[str] = Field(None, description="Experiment description")
-    model_ids: List[str] = Field(..., description="List of model IDs to test")
+    description: str | None = Field(None, description="Experiment description")
+    model_ids: list[str] = Field(..., description="List of model IDs to test")
     primary_metric: str = Field(default="accuracy", description="Primary metric to optimize")
-    secondary_metrics: List[str] = Field(default_factory=list)
-    traffic_split: Optional[List[float]] = Field(None, description="Traffic percentage for each variant")
+    secondary_metrics: list[str] = Field(default_factory=list)
+    traffic_split: list[float] | None = Field(None, description="Traffic percentage for each variant")
     min_sample_size: int = Field(default=1000, description="Minimum samples per variant")
     confidence_level: float = Field(default=0.95, description="Statistical confidence level")
-    test_duration_hours: Optional[int] = Field(None, description="Maximum test duration")
+    test_duration_hours: int | None = Field(None, description="Maximum test duration")
 
 
 class ExperimentResponse(BaseModel):
     experiment_id: str
     name: str
-    description: Optional[str]
+    description: str | None
     status: ExperimentStatus
-    variants: List[Dict[str, Any]]
+    variants: list[dict[str, Any]]
     primary_metric: str
     created_at: datetime
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
-    winner_variant_id: Optional[str]
-    statistical_significance: Optional[float]
-    lift_percentage: Optional[float]
+    started_at: datetime | None
+    ended_at: datetime | None
+    winner_variant_id: str | None
+    statistical_significance: float | None
+    lift_percentage: float | None
 
 
 class VariantAssignmentResponse(BaseModel):
@@ -53,10 +53,10 @@ class ExperimentMetricsResponse(BaseModel):
     experiment_id: str
     name: str
     status: str
-    duration: Optional[float]
+    duration: float | None
     total_predictions: int
-    variants: List[Dict[str, Any]]
-    comparison: Optional[Dict[str, Any]]
+    variants: list[dict[str, Any]]
+    comparison: dict[str, Any] | None
 
 
 # API Routes
@@ -103,9 +103,9 @@ async def create_experiment(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/experiments", response_model=List[ExperimentResponse])
+@router.get("/experiments", response_model=list[ExperimentResponse])
 async def list_experiments(
-    status: Optional[ExperimentStatus] = Query(None, description="Filter by status"),
+    status: ExperimentStatus | None = Query(None, description="Filter by status"),
     current_user_id: str = Depends(get_current_user_id)
 ):
     """List all experiments for the current user"""
@@ -297,7 +297,7 @@ async def track_prediction(
     variant_id: str,
     latency_ms: float,
     success: bool = True,
-    custom_metrics: Optional[Dict[str, float]] = None
+    custom_metrics: dict[str, float] | None = None
 ):
     """Track a prediction for an A/B test variant"""
     

@@ -3,7 +3,7 @@ Response schemas for UserData API endpoints
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,34 +20,34 @@ class UserDataResponse(BaseModel):
     s3_url: str
     num_rows: int
     num_columns: int
-    data_schema: List[SchemaField]
+    data_schema: list[SchemaField]
     created_at: datetime
     updated_at: datetime
-    aiSummary: Optional[AISummary] = None
+    aiSummary: AISummary | None = None
     
     # PII-related fields
     contains_pii: bool = False
-    pii_report: Optional[Dict[str, Any]] = None
-    pii_risk_level: Optional[str] = None
+    pii_report: dict[str, Any] | None = None
+    pii_risk_level: str | None = None
     pii_masked: bool = False
     
     # Data processing fields
     is_processed: bool = False
-    processed_at: Optional[datetime] = None
-    schema: Optional[Dict[str, Any]] = None
-    statistics: Optional[Dict[str, Any]] = None
-    quality_report: Optional[Dict[str, Any]] = None
-    row_count: Optional[int] = None
-    columns: Optional[List[str]] = None
-    data_preview: Optional[List[Dict[str, Any]]] = None
-    file_type: Optional[str] = None
+    processed_at: datetime | None = None
+    schema: dict[str, Any] | None = None
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
+    row_count: int | None = None
+    columns: list[str] | None = None
+    data_preview: list[dict[str, Any]] | None = None
+    file_type: str | None = None
     
     # Onboarding progress
-    onboarding_progress: Optional[Dict[str, Any]] = None
+    onboarding_progress: dict[str, Any] | None = None
     
     # Transformation tracking
-    file_path: Optional[str] = None
-    transformation_history: List[Dict[str, Any]] = Field(default_factory=list)
+    file_path: str | None = None
+    transformation_history: list[dict[str, Any]] = Field(default_factory=list)
     
     model_config = ConfigDict(
         populate_by_name=True,

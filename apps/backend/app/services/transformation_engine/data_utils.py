@@ -4,7 +4,6 @@ Data utilities for transformation service
 import logging
 import os
 import tempfile
-from typing import Optional
 
 import pandas as pd
 
@@ -14,7 +13,7 @@ from app.utils.s3 import upload_file_to_s3
 logger = logging.getLogger(__name__)
 
 
-async def get_dataframe_from_s3(s3_url: str, nrows: Optional[int] = None) -> pd.DataFrame:
+async def get_dataframe_from_s3(s3_url: str, nrows: int | None = None) -> pd.DataFrame:
     """
     Download a file from S3 and load it as a pandas DataFrame
     

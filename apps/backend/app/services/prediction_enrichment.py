@@ -19,7 +19,8 @@ pre-#83 model → ``is_calibrated=False`` / no intervals, an unexplainable model
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -48,8 +49,8 @@ class PredictionEnricher:
         self.explainer = PredictionExplainerService(self.interpretability)
 
     def per_record_confidence(
-        self, probabilities: Optional[Sequence[Sequence[float]]]
-    ) -> Tuple[Optional[List[float]], Optional[List[bool]]]:
+        self, probabilities: Sequence[Sequence[float]] | None
+    ) -> tuple[list[float] | None, list[bool] | None]:
         """Return ``(confidence_scores, low_confidence_flags)`` for each record.
 
         ``(None, None)`` when no probabilities are available (regression or an
@@ -57,8 +58,8 @@ class PredictionEnricher:
         """
         if not probabilities:
             return None, None
-        scores: List[float] = []
-        flags: List[bool] = []
+        scores: list[float] = []
+        flags: list[bool] = []
         for row in probabilities:
             score = self.confidence.confidence_from_proba(row)
             if score is None:
@@ -73,12 +74,12 @@ class PredictionEnricher:
         return scores, flags
 
     def prediction_intervals(
-        self, predictions: Sequence[Any], residual_std: Optional[float]
-    ) -> Optional[List[Optional[List[float]]]]:
+        self, predictions: Sequence[Any], residual_std: float | None
+    ) -> list[list[float] | None] | None:
         """Symmetric regression intervals, or ``None`` when unavailable."""
         if residual_std is None:
             return None
-        intervals: List[Optional[List[float]]] = []
+        intervals: list[list[float] | None] = []
         for pred in predictions:
             intervals.append(self.confidence.regression_interval(pred, residual_std))
         return intervals
@@ -90,9 +91,9 @@ class PredictionEnricher:
         feature_names: Sequence[str],
         predictions: Sequence[Any],
         problem_type: str,
-        feature_importance: Optional[dict] = None,
+        feature_importance: dict | None = None,
         top_n: int = 5,
-    ) -> Optional[List[Optional[PredictionExplanation]]]:
+    ) -> list[PredictionExplanation | None] | None:
         """Per-record explanations as API schema objects, or ``None``.
 
         ``transformed_rows`` is the engineered feature matrix the estimator
@@ -114,7 +115,7 @@ class PredictionEnricher:
             estimator, matrix, feature_names, predictions, problem_type
         )
 
-        results: List[Optional[PredictionExplanation]] = []
+        results: list[PredictionExplanation | None] = []
         any_explained = False
         for i, pred in enumerate(predictions):
             row = matrix[i] if i < len(matrix) else None

@@ -10,7 +10,7 @@ Tests cover:
 - Edge cases and error conditions
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -36,7 +36,7 @@ class TestGetCurrentTime:
     def test_get_current_time_has_utc_timezone(self):
         """Test that returned datetime has UTC timezone."""
         current_time = get_current_time()
-        assert current_time.tzinfo == timezone.utc
+        assert current_time.tzinfo == UTC
 
 
 class TestTransformationStep:
@@ -138,7 +138,7 @@ class TestTransformationStep:
         )
 
         assert isinstance(step.applied_at, datetime)
-        assert step.applied_at.tzinfo == timezone.utc
+        assert step.applied_at.tzinfo == UTC
 
 
 class TestTransformationPreview:
@@ -181,7 +181,7 @@ class TestTransformationPreview:
         )
 
         assert isinstance(preview.generated_at, datetime)
-        assert preview.generated_at.tzinfo == timezone.utc
+        assert preview.generated_at.tzinfo == UTC
 
 
 class TestTransformationValidation:
@@ -230,7 +230,7 @@ class TestTransformationValidation:
         )
 
         assert isinstance(validation.validated_at, datetime)
-        assert validation.validated_at.tzinfo == timezone.utc
+        assert validation.validated_at.tzinfo == UTC
 
 
 class TestTransformationConfig:

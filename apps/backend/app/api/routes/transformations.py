@@ -5,7 +5,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -122,7 +122,7 @@ async def preview_transformation(
                     parameters=first_step.parameters or {},
                     preview_rows=request.preview_rows
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Preview timeout at API layer for dataset {request.dataset_id}")
             raise HTTPException(
                 status_code=408,
@@ -545,7 +545,7 @@ async def list_recipes(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     include_public: bool = True,
-    tags: Optional[List[str]] = Query(None),
+    tags: list[str] | None = Query(None),
     current_user_id: str = Depends(get_current_user_id)
 ):
     """List user's recipes and optionally public recipes"""
@@ -1178,7 +1178,7 @@ async def get_transformation_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/available", response_model=List[TransformationTypeInfo])
+@router.get("/available", response_model=list[TransformationTypeInfo])
 async def get_available_transformations():
     """
     Get list of all available transformation types with metadata.
@@ -1782,7 +1782,7 @@ async def get_bulk_job_status(
 )
 async def list_bulk_jobs(
     dataset_id: str,
-    status: Optional[str] = Query(None, description="Filter by job status"),
+    status: str | None = Query(None, description="Filter by job status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of jobs to return"),
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
@@ -1838,7 +1838,7 @@ async def cancel_bulk_job(
     job_id: str,
     current_user_id: str = Depends(get_current_user_id),
     bulk_service: "BulkTransformationService" = Depends(get_bulk_transformation_service)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Cancel a pending or running bulk transformation job.
 

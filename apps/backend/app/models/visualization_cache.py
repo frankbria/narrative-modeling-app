@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from beanie import Document, Indexed, Link
 from pydantic import BaseModel, Field
@@ -10,9 +10,9 @@ from app.models.user_data import UserData
 class HistogramData(BaseModel):
     """Model for storing histogram data"""
 
-    bins: List[float]
-    counts: List[int]
-    bin_edges: List[float]
+    bins: list[float]
+    counts: list[int]
+    bin_edges: list[float]
 
 
 class BoxplotData(BaseModel):
@@ -23,14 +23,14 @@ class BoxplotData(BaseModel):
     median: float
     q3: float
     max: float
-    outliers: List[float]
+    outliers: list[float]
 
 
 class CorrelationMatrixData(BaseModel):
     """Model for storing correlation matrix data"""
 
-    matrix: List[List[float]]
-    columns: List[str]
+    matrix: list[list[float]]
+    columns: list[str]
 
 
 class VisualizationCache(Document):
@@ -38,8 +38,8 @@ class VisualizationCache(Document):
 
     dataset_id: Link[UserData] = Indexed(Link[UserData])
     visualization_type: str  # 'histogram', 'boxplot', 'correlation'
-    column_name: Optional[str] = None  # For histograms and boxplots
-    data: Dict[
+    column_name: str | None = None  # For histograms and boxplots
+    data: dict[
         str, Any
     ]  # Will contain HistogramData, BoxplotData, or CorrelationMatrixData
     created_at: datetime = Field(default_factory=datetime.utcnow)

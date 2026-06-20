@@ -20,8 +20,9 @@ os.environ.setdefault("ENVIRONMENT", "test")
 # constructing their own app/middleware with enabled=True.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
@@ -194,8 +195,8 @@ async def test_user_data(setup_database) -> "UserData":
                 is_high_cardinality=False
             )
         ],
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
     )
 
     await user_data.insert()
@@ -305,14 +306,14 @@ async def test_redis_job(redis_client):
         return
 
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     job_data = {
         "job_id": "test_redis_job_123",
         "job_type": "model_training",
         "user_id": "test_user_123",
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "config": {
             "algorithm": "random_forest",
             "target": "category"
@@ -642,7 +643,7 @@ async def async_authorized_client() -> AsyncGenerator:
 @pytest.fixture
 def mock_user_data():
     """Create a mock UserData object that matches the current model schema"""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from unittest.mock import MagicMock
 
     from app.models.user_data import SchemaField, UserData
@@ -693,8 +694,8 @@ def mock_user_data():
             is_high_cardinality=False
         )
     ]
-    mock.created_at = datetime.now(timezone.utc)
-    mock.updated_at = datetime.now(timezone.utc)
+    mock.created_at = datetime.now(UTC)
+    mock.updated_at = datetime.now(UTC)
     mock.aiSummary = None
     
     # Add commonly used computed properties

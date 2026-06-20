@@ -6,7 +6,7 @@ import logging
 import os
 import pickle
 from functools import wraps
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import redis.asyncio as redis
 from redis.asyncio import Redis
@@ -19,7 +19,7 @@ class RedisCacheService:
     
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        self.redis_client: Optional[Redis] = None
+        self.redis_client: Redis | None = None
         self.default_ttl = int(os.getenv("CACHE_DEFAULT_TTL", "3600"))  # 1 hour
         
     async def connect(self):
@@ -64,7 +64,7 @@ class RedisCacheService:
         self, 
         key: str, 
         value: Any, 
-        ttl: Optional[int] = None
+        ttl: int | None = None
     ) -> bool:
         """Set a value in cache"""
         if not self.redis_client:
@@ -79,7 +79,7 @@ class RedisCacheService:
             logger.error(f"Failed to set cache key {key}: {e}")
             return False
             
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get a value from cache"""
         if not self.redis_client:
             return None
@@ -141,7 +141,7 @@ class RedisCacheService:
             logger.error(f"Failed to set expiry for key {key}: {e}")
             return False
             
-    async def increment(self, key: str, amount: int = 1) -> Optional[int]:
+    async def increment(self, key: str, amount: int = 1) -> int | None:
         """Increment a counter"""
         if not self.redis_client:
             return None
@@ -152,7 +152,7 @@ class RedisCacheService:
             logger.error(f"Failed to increment key {key}: {e}")
             return None
             
-    async def set_hash(self, key: str, mapping: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+    async def set_hash(self, key: str, mapping: dict[str, Any], ttl: int | None = None) -> bool:
         """Set a hash in cache"""
         if not self.redis_client:
             return False
@@ -172,7 +172,7 @@ class RedisCacheService:
             logger.error(f"Failed to set hash {key}: {e}")
             return False
             
-    async def get_hash(self, key: str) -> Optional[Dict[str, Any]]:
+    async def get_hash(self, key: str) -> dict[str, Any] | None:
         """Get a hash from cache"""
         if not self.redis_client:
             return None
@@ -191,7 +191,7 @@ class RedisCacheService:
             logger.error(f"Failed to get hash {key}: {e}")
             return None
             
-    async def get_hash_field(self, key: str, field: str) -> Optional[Any]:
+    async def get_hash_field(self, key: str, field: str) -> Any | None:
         """Get a specific field from hash"""
         if not self.redis_client:
             return None
@@ -205,7 +205,7 @@ class RedisCacheService:
             logger.error(f"Failed to get hash field {key}.{field}: {e}")
             return None
             
-    async def set_list(self, key: str, values: List[Any], ttl: Optional[int] = None) -> bool:
+    async def set_list(self, key: str, values: list[Any], ttl: int | None = None) -> bool:
         """Set a list in cache"""
         if not self.redis_client:
             return False
@@ -224,7 +224,7 @@ class RedisCacheService:
             logger.error(f"Failed to set list {key}: {e}")
             return False
             
-    async def get_list(self, key: str) -> Optional[List[Any]]:
+    async def get_list(self, key: str) -> list[Any] | None:
         """Get a list from cache"""
         if not self.redis_client:
             return None
@@ -238,22 +238,22 @@ class RedisCacheService:
             logger.error(f"Failed to get list {key}: {e}")
             return None
             
-    async def cache_user_progress(self, user_id: str, progress_data: Dict[str, Any]) -> bool:
+    async def cache_user_progress(self, user_id: str, progress_data: dict[str, Any]) -> bool:
         """Cache user onboarding progress"""
         key = f"user_progress:{user_id}"
         return await self.set_hash(key, progress_data, ttl=86400)  # 24 hours
         
-    async def get_user_progress(self, user_id: str) -> Optional[Dict[str, Any]]:
+    async def get_user_progress(self, user_id: str) -> dict[str, Any] | None:
         """Get cached user progress"""
         key = f"user_progress:{user_id}"
         return await self.get_hash(key)
         
-    async def cache_data_stats(self, data_id: str, stats: Dict[str, Any]) -> bool:
+    async def cache_data_stats(self, data_id: str, stats: dict[str, Any]) -> bool:
         """Cache data statistics"""
         key = f"data_stats:{data_id}"
         return await self.set(key, stats, ttl=7200)  # 2 hours
         
-    async def get_data_stats(self, data_id: str) -> Optional[Dict[str, Any]]:
+    async def get_data_stats(self, data_id: str) -> dict[str, Any] | None:
         """Get cached data statistics"""
         key = f"data_stats:{data_id}"
         return await self.get(key)
@@ -263,17 +263,17 @@ class RedisCacheService:
         key = f"predictions:{model_id}:{input_hash}"
         return await self.set(key, predictions, ttl=3600)  # 1 hour
         
-    async def get_model_predictions(self, model_id: str, input_hash: str) -> Optional[Any]:
+    async def get_model_predictions(self, model_id: str, input_hash: str) -> Any | None:
         """Get cached predictions"""
         key = f"predictions:{model_id}:{input_hash}"
         return await self.get(key)
         
-    async def cache_eda_results(self, data_id: str, eda_results: Dict[str, Any]) -> bool:
+    async def cache_eda_results(self, data_id: str, eda_results: dict[str, Any]) -> bool:
         """Cache EDA analysis results"""
         key = f"eda:{data_id}"
         return await self.set(key, eda_results, ttl=10800)  # 3 hours
         
-    async def get_eda_results(self, data_id: str) -> Optional[Dict[str, Any]]:
+    async def get_eda_results(self, data_id: str) -> dict[str, Any] | None:
         """Get cached EDA results"""
         key = f"eda:{data_id}"
         return await self.get(key)
@@ -296,7 +296,7 @@ class RedisCacheService:
             total_deleted += await self.delete_pattern(pattern)
         return total_deleted
         
-    async def get_cache_info(self) -> Dict[str, Any]:
+    async def get_cache_info(self) -> dict[str, Any]:
         """Get cache statistics"""
         if not self.redis_client:
             return {"error": "Redis not connected"}
@@ -320,7 +320,7 @@ class RedisCacheService:
 cache_service = RedisCacheService()
 
 
-def cache_result(key_pattern: str, ttl: Optional[int] = None):
+def cache_result(key_pattern: str, ttl: int | None = None):
     """Decorator for caching function results"""
     def decorator(func):
         @wraps(func)

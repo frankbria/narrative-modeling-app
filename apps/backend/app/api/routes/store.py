@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,8 +12,8 @@ router = APIRouter()
 class StoreDataRequest(BaseModel):
     fileName: str
     fileType: str
-    headers: List[str]
-    data: List[List[Any]]
+    headers: list[str]
+    data: list[list[Any]]
 
 
 @router.post("/")

@@ -4,7 +4,7 @@ Algorithm recommendation system for AutoML
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .problem_detector import ProblemType
 
@@ -18,7 +18,7 @@ class DataProfile:
     n_features: int
     n_numeric_features: int
     n_categorical_features: int
-    class_balance_ratio: Optional[float]  # None for regression
+    class_balance_ratio: float | None  # None for regression
     missing_value_percentage: float
     high_cardinality_features: int
     dataset_size_category: str  # "small", "medium", "large"
@@ -33,8 +33,8 @@ class AlgorithmRecommendation:
     training_time_estimate: str
     interpretability_score: int  # 1-10, higher is more interpretable
     explanation: str
-    pros: List[str]
-    cons: List[str]
+    pros: list[str]
+    cons: list[str]
 
 
 class AlgorithmSelector:
@@ -55,8 +55,8 @@ class AlgorithmSelector:
         self,
         problem_type: ProblemType,
         data_profile: DataProfile,
-        config: Dict[str, Any]
-    ) -> List[AlgorithmRecommendation]:
+        config: dict[str, Any]
+    ) -> list[AlgorithmRecommendation]:
         """
         Select and rank algorithms based on problem type and data characteristics
 
@@ -100,7 +100,7 @@ class AlgorithmSelector:
         self,
         data_profile: DataProfile,
         problem_type: ProblemType
-    ) -> List[AlgorithmRecommendation]:
+    ) -> list[AlgorithmRecommendation]:
         """Get classification algorithm recommendations"""
         recommendations = []
 
@@ -135,7 +135,7 @@ class AlgorithmSelector:
     def _get_regression_algorithms(
         self,
         data_profile: DataProfile
-    ) -> List[AlgorithmRecommendation]:
+    ) -> list[AlgorithmRecommendation]:
         """Get regression algorithm recommendations"""
         recommendations = []
 
@@ -472,10 +472,10 @@ class AlgorithmSelector:
 
     def _adjust_priorities(
         self,
-        recommendations: List[AlgorithmRecommendation],
+        recommendations: list[AlgorithmRecommendation],
         data_profile: DataProfile,
         optimize_for: str
-    ) -> List[AlgorithmRecommendation]:
+    ) -> list[AlgorithmRecommendation]:
         """
         Adjust algorithm priorities based on optimization preference
 

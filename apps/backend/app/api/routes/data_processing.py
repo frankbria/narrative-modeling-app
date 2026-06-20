@@ -4,7 +4,7 @@ API routes for data processing functionality
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -27,7 +27,7 @@ data_processor = DataProcessor()
 class ProcessingRequest(BaseModel):
     """Request model for data processing"""
     file_id: str = Field(..., description="ID of the uploaded file to process")
-    options: Optional[Dict[str, Any]] = Field(default=None, description="Processing options")
+    options: dict[str, Any] | None = Field(default=None, description="Processing options")
 
 
 class ProcessingResponse(BaseModel):
@@ -45,10 +45,10 @@ class ProcessingResponse(BaseModel):
     status: str
     file_id: str
     processing_id: str
-    schema: Dict[str, Any]
-    statistics: Dict[str, Any]
-    quality_report: Dict[str, Any]
-    preview: Dict[str, Any]
+    schema: dict[str, Any]
+    statistics: dict[str, Any]
+    quality_report: dict[str, Any]
+    preview: dict[str, Any]
 
 
 @router.post("/process", response_model=ProcessingResponse)

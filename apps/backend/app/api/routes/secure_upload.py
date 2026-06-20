@@ -4,7 +4,7 @@ Secure Upload API with PII detection and resumable uploads
 
 import io
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -31,7 +31,7 @@ async def secure_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Secure file upload with PII detection and validation
     """
@@ -182,7 +182,7 @@ async def confirm_pii_upload(
     file: UploadFile = File(...),
     mask_pii: bool = True,
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Confirm upload of file with PII after user review
     """
@@ -258,9 +258,9 @@ async def confirm_pii_upload(
 async def init_chunked_upload(
     filename: str,
     file_size: int,
-    file_hash: Optional[str] = None,
+    file_hash: str | None = None,
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Initialize chunked upload session for large files
     """
@@ -281,10 +281,10 @@ async def init_chunked_upload(
 async def upload_chunk(
     session_id: str,
     chunk_number: int,
-    chunk_hash: Optional[str] = None,
+    chunk_hash: str | None = None,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Upload a single chunk
     """
@@ -302,7 +302,7 @@ async def upload_chunk(
 async def resume_chunked_upload(
     session_id: str,
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get resume information for interrupted upload
     """
@@ -314,7 +314,7 @@ async def complete_chunked_upload(
     session_id: str,
     background_tasks: BackgroundTasks,
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Complete chunked upload and process file
     """

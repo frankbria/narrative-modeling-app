@@ -1,7 +1,6 @@
 # \app\models\trained_model.py
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from beanie import Document, Link
 from pydantic import Field, HttpUrl
@@ -11,12 +10,12 @@ from app.models.user_data import UserData
 
 class TrainedModel(Document):
     userId: str
-    datasetId: Optional[Link[UserData]]
+    datasetId: Link[UserData] | None
     modelType: str
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    params: Optional[dict] = None
-    performance: Optional[dict] = None
-    modelFileUrl: Optional[HttpUrl] = None
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    params: dict | None = None
+    performance: dict | None = None
+    modelFileUrl: HttpUrl | None = None
 
     class Settings:
         name = "trained_models"

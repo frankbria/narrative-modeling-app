@@ -8,8 +8,8 @@ full state snapshots for recovery/audit.
 """
 
 import copy
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 import pymongo
 from beanie import Document, Indexed, PydanticObjectId
@@ -19,7 +19,7 @@ from pymongo import IndexModel
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class StateHistoryEntry(BaseModel):
@@ -29,14 +29,14 @@ class StateHistoryEntry(BaseModel):
         ..., ge=1, description="Monotonically increasing version number"
     )
     current_stage: str = Field(..., description="Workflow stage at this version")
-    completed_stages: List[str] = Field(
+    completed_stages: list[str] = Field(
         default_factory=list, description="Stages completed at this version"
     )
-    stage_data: Dict[str, Any] = Field(
+    stage_data: dict[str, Any] = Field(
         default_factory=dict, description="Per-stage selections at this version"
     )
-    model_id: Optional[str] = Field(None, description="Trained model id, if any")
-    deployment_id: Optional[str] = Field(None, description="Deployment id, if any")
+    model_id: str | None = Field(None, description="Trained model id, if any")
+    deployment_id: str | None = Field(None, description="Deployment id, if any")
     timestamp: datetime = Field(default_factory=get_current_time)
 
 
@@ -59,18 +59,18 @@ class WorkflowState(Document):
 
     # Current state
     current_stage: str = Field(..., description="Stage the user is currently on")
-    completed_stages: List[str] = Field(
+    completed_stages: list[str] = Field(
         default_factory=list, description="Stages the user has completed"
     )
-    stage_data: Dict[str, Any] = Field(
+    stage_data: dict[str, Any] = Field(
         default_factory=dict,
         description="Key selections per stage (target column, recipes, features, training config)",
     )
-    model_id: Optional[str] = Field(None, description="Trained model id, if any")
-    deployment_id: Optional[str] = Field(None, description="Deployment id, if any")
+    model_id: str | None = Field(None, description="Trained model id, if any")
+    deployment_id: str | None = Field(None, description="Deployment id, if any")
 
     # Version history (append log of full snapshots)
-    state_history: List[StateHistoryEntry] = Field(default_factory=list)
+    state_history: list[StateHistoryEntry] = Field(default_factory=list)
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)

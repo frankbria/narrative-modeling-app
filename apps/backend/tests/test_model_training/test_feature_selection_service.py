@@ -2,7 +2,7 @@
 Tests for Feature Selection Service
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -561,7 +561,7 @@ class TestFeatureSelectionService:
             "explanation": "Cached result",
             "metadata": {},
             "execution_time_ms": 100.0,
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
 
         mock_cache.get = AsyncMock(return_value=cached_result)

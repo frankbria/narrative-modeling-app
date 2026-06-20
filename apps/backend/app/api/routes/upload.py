@@ -1,7 +1,7 @@
 import io
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
 from fastapi import (
@@ -40,7 +40,7 @@ async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Upload a file, infer its schema, store it in S3, and save metadata in MongoDB.
     Supports CSV, Excel, and TXT files.

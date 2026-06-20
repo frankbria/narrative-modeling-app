@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,8 +22,8 @@ DEFAULT_HISTOGRAM_BINS = 50
 
 
 async def get_cached_visualization(
-    dataset_id: str, visualization_type: str, column_name: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    dataset_id: str, visualization_type: str, column_name: str | None = None
+) -> dict[str, Any] | None:
     """Get cached visualization data from Redis first, then MongoDB"""
     # Generate Redis cache key
     cache_key = f"viz:{dataset_id}:{visualization_type}"
@@ -68,8 +68,8 @@ async def get_cached_visualization(
 async def cache_visualization(
     dataset_id: str,
     visualization_type: str,
-    data: Dict[str, Any],
-    column_name: Optional[str] = None,
+    data: dict[str, Any],
+    column_name: str | None = None,
 ) -> VisualizationCache:
     """Cache visualization data in both Redis and MongoDB"""
     # Generate Redis cache key
@@ -118,7 +118,7 @@ async def cache_visualization(
 
 async def generate_and_cache_histogram(
     dataset_id: str, column_name: str, num_bins: int = DEFAULT_HISTOGRAM_BINS
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate and cache histogram data for a numeric column"""
     # The visualization cache is keyed by (dataset, type, column) only — it does
     # not capture num_bins — so only the default bin count may be served from /
@@ -163,7 +163,7 @@ async def generate_and_cache_histogram(
 
 async def generate_and_cache_boxplot(
     dataset_id: str, column_name: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate and cache boxplot data for a numeric column"""
     # Get cached data if it exists
     cached_data = await get_cached_visualization(dataset_id, "boxplot", column_name)
@@ -205,7 +205,7 @@ async def generate_and_cache_boxplot(
     return boxplot_data.model_dump()
 
 
-async def generate_and_cache_correlation_matrix(dataset_id: str) -> Dict[str, Any]:
+async def generate_and_cache_correlation_matrix(dataset_id: str) -> dict[str, Any]:
     """Generate and cache correlation matrix for numeric columns"""
     # Get cached data if it exists
     cached_data = await get_cached_visualization(dataset_id, "correlation")

@@ -6,7 +6,7 @@ import io
 import os
 import tempfile
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -44,16 +44,16 @@ class BatchJobResponse(BaseModel):
     job_id: str
     job_type: str
     status: str
-    progress: Dict[str, Any]
-    config: Dict[str, Any]
+    progress: dict[str, Any]
+    config: dict[str, Any]
     created_at: datetime
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    duration_seconds: Optional[float]
-    error_message: Optional[str]
-    results: Dict[str, Any]
-    input_size_bytes: Optional[int]
-    output_path: Optional[str]
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_seconds: float | None
+    error_message: str | None
+    results: dict[str, Any]
+    input_size_bytes: int | None
+    output_path: str | None
 
 
 class JobProgressResponse(BaseModel):
@@ -67,7 +67,7 @@ class JobProgressResponse(BaseModel):
     success_rate: float
     current_chunk: int
     total_chunks: int
-    estimated_completion: Optional[datetime]
+    estimated_completion: datetime | None
 
 
 # API Routes
@@ -148,10 +148,10 @@ async def create_batch_job(
         )
 
 
-@router.get("/jobs", response_model=List[BatchJobResponse])
+@router.get("/jobs", response_model=list[BatchJobResponse])
 async def list_batch_jobs(
-    job_type: Optional[JobType] = Query(None, description="Filter by job type"),
-    status: Optional[JobStatus] = Query(None, description="Filter by status"),
+    job_type: JobType | None = Query(None, description="Filter by job type"),
+    status: JobStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(
         default=50, le=100, description="Maximum number of jobs to return"
     ),

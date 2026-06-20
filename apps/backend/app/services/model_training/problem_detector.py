@@ -4,7 +4,7 @@ Problem type detection for AutoML
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -24,10 +24,10 @@ class ProblemType(Enum):
 class ProblemDetectionResult:
     """Result of problem type detection"""
     problem_type: ProblemType
-    target_column: Optional[str]
+    target_column: str | None
     confidence: float
     reasoning: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class ProblemDetector:
@@ -41,8 +41,8 @@ class ProblemDetector:
     async def detect_problem_type(
         self,
         df: pd.DataFrame,
-        target_column: Optional[str] = None,
-        datetime_column: Optional[str] = None
+        target_column: str | None = None,
+        datetime_column: str | None = None
     ) -> ProblemDetectionResult:
         """
         Detect the type of ML problem based on data characteristics
@@ -188,7 +188,7 @@ class ProblemDetector:
                     }
                 )
     
-    def _infer_target_column(self, df: pd.DataFrame) -> Optional[str]:
+    def _infer_target_column(self, df: pd.DataFrame) -> str | None:
         """Try to infer the target column from column names"""
         # Common target column names
         target_patterns = [

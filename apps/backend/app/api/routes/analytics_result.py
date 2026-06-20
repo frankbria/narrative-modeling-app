@@ -1,6 +1,5 @@
 # backend/app/api/routes/analytics_result.py
 
-from typing import List
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -25,7 +24,7 @@ async def create_result(
     return AnalyticsResultOut.model_validate(result.model_dump())
 
 
-@router.get("/", response_model=List[AnalyticsResultOut])
+@router.get("/", response_model=list[AnalyticsResultOut])
 async def get_results_for_user(user_id: str = Depends(get_current_user_id)):
     results = await AnalyticsResult.find(AnalyticsResult.userId == user_id).to_list()
     return [

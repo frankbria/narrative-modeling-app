@@ -8,7 +8,6 @@ OpenAI key. The plain-language explanation here is rule-based on purpose: it giv
 the user a "why this model" narrative without any runtime LLM call or cost.
 """
 
-from typing import List, Optional
 
 import pandas as pd
 
@@ -17,7 +16,7 @@ from .automl_engine import ModelCandidate
 from .problem_detector import ProblemType
 
 
-def build_model_comparison(all_models: List[ModelCandidate]) -> List[dict]:
+def build_model_comparison(all_models: list[ModelCandidate]) -> list[dict]:
     """Build a side-by-side comparison table from trained candidates.
 
     Returns a list of dicts (algorithm, cv_score, test_score, training_time)
@@ -52,7 +51,7 @@ def _score_label(problem_type: ProblemType) -> str:
 
 def build_best_model_explanation(
     best_model: ModelCandidate,
-    all_models: List[ModelCandidate],
+    all_models: list[ModelCandidate],
     problem_type: ProblemType,
 ) -> str:
     """Produce a plain-language explanation of why ``best_model`` was chosen.
@@ -121,7 +120,7 @@ def build_data_profile(
         if features[col].nunique(dropna=True) > high_cardinality_threshold
     )
 
-    class_balance_ratio: Optional[float] = None
+    class_balance_ratio: float | None = None
     if problem_type in (
         ProblemType.BINARY_CLASSIFICATION,
         ProblemType.MULTICLASS_CLASSIFICATION,

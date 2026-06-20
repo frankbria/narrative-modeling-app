@@ -1,7 +1,7 @@
 """
 Validators for transformation pipeline
 """
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class ValidationRule(BaseModel):
     """A single validation rule"""
     rule_type: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     error_message: str
     severity: str = "error"  # error, warning, info
 
@@ -18,11 +18,11 @@ class ValidationRule(BaseModel):
 class ValidationResult(BaseModel):
     """Result of validation"""
     is_valid: bool
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    info: List[str] = Field(default_factory=list)
-    affected_rows: List[int] = Field(default_factory=list)
-    suggestions: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    info: list[str] = Field(default_factory=list)
+    affected_rows: list[int] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class TransformationValidator:
@@ -31,7 +31,7 @@ class TransformationValidator:
     @staticmethod
     def validate_remove_duplicates(
         df: pd.DataFrame,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> ValidationResult:
         """Validate remove duplicates transformation"""
         result = ValidationResult(is_valid=True)
@@ -65,7 +65,7 @@ class TransformationValidator:
     @staticmethod
     def validate_fill_missing(
         df: pd.DataFrame,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> ValidationResult:
         """Validate fill missing transformation"""
         result = ValidationResult(is_valid=True)
@@ -110,7 +110,7 @@ class TransformationValidator:
     @staticmethod
     def validate_trim_whitespace(
         df: pd.DataFrame,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> ValidationResult:
         """Validate trim whitespace transformation"""
         result = ValidationResult(is_valid=True)
@@ -157,7 +157,7 @@ class TransformationValidator:
     @staticmethod
     def validate_transformation_chain(
         df: pd.DataFrame,
-        transformations: List[Dict[str, Any]]
+        transformations: list[dict[str, Any]]
     ) -> ValidationResult:
         """Validate a chain of transformations"""
         result = ValidationResult(is_valid=True)
@@ -175,7 +175,7 @@ class TransformationValidator:
         return result
     
     @staticmethod
-    def suggest_transformations(df: pd.DataFrame) -> List[str]:
+    def suggest_transformations(df: pd.DataFrame) -> list[str]:
         """Suggest transformations based on data quality"""
         suggestions = []
         

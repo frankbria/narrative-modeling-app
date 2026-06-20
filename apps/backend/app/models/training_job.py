@@ -7,8 +7,8 @@ updated as the background training task runs. It is the source of truth for the
 the model comparison table, the selected best model, and any error.
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
@@ -19,12 +19,12 @@ LogLevel = Literal["info", "warning", "error"]
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _as_utc(value: datetime) -> datetime:
     """Treat a naive datetime as UTC (MongoDB round-trips drop the tzinfo)."""
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class TrainingLogEntry(BaseModel):
@@ -33,7 +33,7 @@ class TrainingLogEntry(BaseModel):
     timestamp: datetime = Field(default_factory=_utcnow)
     level: LogLevel
     message: str
-    stage: Optional[str] = None
+    stage: str | None = None
 
 
 class TrainingProgress(BaseModel):
@@ -41,8 +41,8 @@ class TrainingProgress(BaseModel):
 
     completed_algorithms: int = Field(default=0)
     total_algorithms: int = Field(default=0)
-    current_algorithm: Optional[str] = None
-    current_stage: Optional[str] = None
+    current_algorithm: str | None = None
+    current_stage: str | None = None
 
     @property
     def fraction(self) -> float:
@@ -61,9 +61,9 @@ class ModelComparisonEntry(BaseModel):
     """One row of the model comparison table."""
 
     algorithm: str
-    cv_score: Optional[float] = None
-    test_score: Optional[float] = None
-    training_time: Optional[float] = None
+    cv_score: float | None = None
+    test_score: float | None = None
+    training_time: float | None = None
 
 
 class TrainingJob(Document):
@@ -80,25 +80,25 @@ class TrainingJob(Document):
     progress: TrainingProgress = Field(default_factory=TrainingProgress)
 
     # Results
-    algorithm_recommendations: List[Dict[str, Any]] = Field(default_factory=list)
-    model_comparison: List[ModelComparisonEntry] = Field(default_factory=list)
-    best_model_id: Optional[str] = None
-    best_algorithm: Optional[str] = None
-    best_model_explanation: Optional[str] = None
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    algorithm_recommendations: list[dict[str, Any]] = Field(default_factory=list)
+    model_comparison: list[ModelComparisonEntry] = Field(default_factory=list)
+    best_model_id: str | None = None
+    best_algorithm: str | None = None
+    best_model_explanation: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
     # Live monitoring (issue #76)
-    logs: List[TrainingLogEntry] = Field(default_factory=list)
+    logs: list[TrainingLogEntry] = Field(default_factory=list)
     cancellation_requested: bool = False
 
     # Error handling
-    error: Optional[str] = None
+    error: str | None = None
 
     # Timestamps
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     class Settings:
         name = "training_jobs"
@@ -124,9 +124,9 @@ class TrainingJob(Document):
 
     def update_progress(
         self,
-        completed_algorithms: Optional[int] = None,
-        total_algorithms: Optional[int] = None,
-        current_algorithm: Optional[str] = None,
+        completed_algorithms: int | None = None,
+        total_algorithms: int | None = None,
+        current_algorithm: str | None = None,
     ) -> None:
         """Update progress counters; only provided fields are changed.
 
@@ -144,12 +144,12 @@ class TrainingJob(Document):
     def mark_completed(
         self,
         *,
-        best_model_id: Optional[str] = None,
-        best_algorithm: Optional[str] = None,
-        best_model_explanation: Optional[str] = None,
-        model_comparison: Optional[List[ModelComparisonEntry]] = None,
-        algorithm_recommendations: Optional[List[Dict[str, Any]]] = None,
-        metrics: Optional[Dict[str, Any]] = None,
+        best_model_id: str | None = None,
+        best_algorithm: str | None = None,
+        best_model_explanation: str | None = None,
+        model_comparison: list[ModelComparisonEntry] | None = None,
+        algorithm_recommendations: list[dict[str, Any]] | None = None,
+        metrics: dict[str, Any] | None = None,
     ) -> None:
         """Transition the job to COMPLETED and attach results."""
         self.status = JobStatus.COMPLETED
@@ -188,7 +188,7 @@ class TrainingJob(Document):
         self.progress.current_stage = None
 
     def add_log(
-        self, level: LogLevel, message: str, stage: Optional[str] = None
+        self, level: LogLevel, message: str, stage: str | None = None
     ) -> TrainingLogEntry:
         """Append a timestamped log entry and bump ``updated_at``.
 
@@ -203,7 +203,7 @@ class TrainingJob(Document):
     # -- timing ------------------------------------------------------------
 
     @property
-    def elapsed_seconds(self) -> Optional[float]:
+    def elapsed_seconds(self) -> float | None:
         """Seconds since the job started (frozen at completion; None if unstarted)."""
         if self.started_at is None:
             return None
@@ -211,7 +211,7 @@ class TrainingJob(Document):
         return (end - _as_utc(self.started_at)).total_seconds()
 
     @property
-    def estimated_remaining_seconds(self) -> Optional[float]:
+    def estimated_remaining_seconds(self) -> float | None:
         """Naive linear time-remaining estimate for a running job.
 
         Extrapolates from elapsed time and the completed-algorithm fraction;

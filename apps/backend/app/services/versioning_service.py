@@ -12,8 +12,8 @@ Security:
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -57,7 +57,7 @@ class VersioningService(BaseService[DatasetVersion]):
         dataset_metadata: DatasetMetadata,
         file_content: bytes,
         user_id: str,
-        description: Optional[str] = None
+        description: str | None = None
     ) -> DatasetVersion:
         """
         Create initial version for a newly uploaded dataset.
@@ -128,12 +128,12 @@ class VersioningService(BaseService[DatasetVersion]):
         self,
         parent_version_id: str,
         transformed_content: bytes,
-        transformation_steps: List[Dict[str, Any]],
+        transformation_steps: list[dict[str, Any]],
         dataset_metadata: DatasetMetadata,
         user_id: str,
-        description: Optional[str] = None,
-        transformation_config_id: Optional[str] = None
-    ) -> Tuple[DatasetVersion, TransformationLineage]:
+        description: str | None = None,
+        transformation_config_id: str | None = None
+    ) -> tuple[DatasetVersion, TransformationLineage]:
         """
         Create new version after transformation application.
 
@@ -264,10 +264,10 @@ class VersioningService(BaseService[DatasetVersion]):
         self,
         parent_version: DatasetVersion,
         child_version: DatasetVersion,
-        transformation_steps: List[Dict[str, Any]],
+        transformation_steps: list[dict[str, Any]],
         dataset_metadata: DatasetMetadata,
         user_id: str,
-        transformation_config_id: Optional[str] = None
+        transformation_config_id: str | None = None
     ) -> TransformationLineage:
         """Create transformation lineage record."""
         lineage_id = str(uuid.uuid4())
@@ -313,8 +313,8 @@ class VersioningService(BaseService[DatasetVersion]):
         self,
         version_id: str,
         mark_accessed: bool = True,
-        user_id: Optional[str] = None
-    ) -> Optional[DatasetVersion]:
+        user_id: str | None = None
+    ) -> DatasetVersion | None:
         """
         Retrieve a specific dataset version.
 
@@ -399,10 +399,10 @@ class VersioningService(BaseService[DatasetVersion]):
     async def list_versions(
         self,
         dataset_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         limit: int = 50,
         skip: int = 0
-    ) -> List[DatasetVersion]:
+    ) -> list[DatasetVersion]:
         """
         List versions for a dataset.
 
@@ -426,7 +426,7 @@ class VersioningService(BaseService[DatasetVersion]):
         logger.info(f"Listed {len(versions)} versions for dataset {dataset_id}")
         return versions
 
-    async def get_lineage_chain(self, version_id: str) -> List[TransformationLineage]:
+    async def get_lineage_chain(self, version_id: str) -> list[TransformationLineage]:
         """
         Get complete lineage chain from base version to specified version.
 
@@ -541,7 +541,7 @@ class VersioningService(BaseService[DatasetVersion]):
         self,
         version1_id: str,
         version2_id: str
-    ) -> List[TransformationLineage]:
+    ) -> list[TransformationLineage]:
         """Find transformation lineage path between two versions."""
         # Get lineage chains for both versions
         chain1 = await self.get_lineage_chain(version1_id)
@@ -566,7 +566,7 @@ class VersioningService(BaseService[DatasetVersion]):
     async def pin_version(
         self,
         version_id: str,
-        user_id: Optional[str] = None
+        user_id: str | None = None
     ) -> DatasetVersion:
         """
         Pin a version to prevent auto-deletion.
@@ -599,7 +599,7 @@ class VersioningService(BaseService[DatasetVersion]):
     async def unpin_version(
         self,
         version_id: str,
-        user_id: Optional[str] = None
+        user_id: str | None = None
     ) -> DatasetVersion:
         """
         Unpin a version, allowing auto-deletion.
@@ -646,7 +646,7 @@ class VersioningService(BaseService[DatasetVersion]):
         Returns:
             Number of versions deleted
         """
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=retention_days)
 
         # Get all versions for dataset
         all_versions = await DatasetVersion.find(

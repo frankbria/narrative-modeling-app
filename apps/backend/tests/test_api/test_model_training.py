@@ -3,7 +3,7 @@ Tests for model training API endpoints
 """
 
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -28,7 +28,7 @@ def sample_dataset():
     mock_dataset.data_schema = []
     mock_dataset.file_key = "uploads/test_user/test_data.csv"
     mock_dataset.s3_url = "s3://test-bucket/uploads/test_user/test_data.csv"
-    mock_dataset.created_at = datetime.now(timezone.utc)
+    mock_dataset.created_at = datetime.now(UTC)
     return mock_dataset
 
 
@@ -72,8 +72,8 @@ def sample_ml_model():
     mock_model.shap_explainer_type = None
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
     mock_model.version = "1.0.0"
-    mock_model.created_at = datetime.now(timezone.utc)
-    mock_model.updated_at = datetime.now(timezone.utc)
+    mock_model.created_at = datetime.now(UTC)
+    mock_model.updated_at = datetime.now(UTC)
     mock_model.last_used_at = None
     mock_model.is_active = True
     mock_model.save = AsyncMock()
@@ -188,7 +188,7 @@ class TestModelTrainingEndpoints:
         mock_model.target_column = "target"
         mock_model.cv_score = 0.85
         mock_model.test_score = 0.83
-        mock_model.created_at = datetime.now(timezone.utc)
+        mock_model.created_at = datetime.now(UTC)
         mock_model.last_used_at = None
         mock_model.is_active = True
 
