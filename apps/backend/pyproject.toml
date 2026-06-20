@@ -37,7 +37,6 @@ dependencies = [
     "xgboost>=3.0.2",
     "lightgbm>=4.6.0",
     "joblib>=1.5.1",
-    "shap>=0.46.0",
     "imbalanced-learn>=0.12.0",
     "statsmodels>=0.14.0",
     "prophet>=1.1.0",
@@ -56,6 +55,23 @@ dev = [
     "mypy>=1.13.0",
     "mypy-baseline>=0.7.4,<1",
 ]
+# SHAP interpretability stack, isolated so production can build a slim image
+# without it (issue #204). shap is the sole root pulling numba+llvmlite
+# (~57 MB of wheels / ~186 MB on-disk; llvmlite alone is the bulk). It stays in
+# default-groups below, so every normal install — local dev, CI, and the
+# `uv sync --no-dev` Docker build — still gets it (beta behaviour unchanged).
+# The code lazy-imports shap and degrades to model-native importance when it's
+# absent (InterpretabilityService → None, endpoints report `partial`), and the
+# Dockerfile's `import app.main` guard is lazy-safe — so a slim image built with
+# `uv sync --no-dev --no-group interpretability` runs without SHAP.
+interpretability = [
+    "shap>=0.46.0",
+]
+
+[tool.uv]
+# Keep shap installed by default (beta requires SHAP). --no-dev still installs
+# interpretability; only an explicit --no-group interpretability drops it.
+default-groups = ["dev", "interpretability"]
 
 [tool.ruff.lint]
 # On top of the default rule set (E, F): import-sorting (isort, "I", issue #176)
