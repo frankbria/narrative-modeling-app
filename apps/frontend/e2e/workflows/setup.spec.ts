@@ -14,6 +14,10 @@ test.describe('E2E Testing Setup', () => {
 
     // Verify page loaded successfully
     expect(page.url()).toContain('localhost');
+
+    // DELIBERATELY BROKEN — issue #210 AC3 demo: prove a red smoke test blocks
+    // merge via the required CI Success aggregate. Throwaway branch; do not merge.
+    expect('smoke-gate-demo').toBe('intentionally-failing');
   });
 
   test('should navigate to authentication page', async ({ page }) => {
