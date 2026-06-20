@@ -34,7 +34,9 @@ class UserDataResponse(BaseModel):
     # Data processing fields
     is_processed: bool = False
     processed_at: datetime | None = None
-    schema: dict[str, Any] | None = None
+    # `schema` shadows Pydantic's deprecated `BaseModel.schema()`; it is part of
+    # the public response contract and cannot be renamed.
+    schema: dict[str, Any] | None = None  # type: ignore[assignment]
     statistics: dict[str, Any] | None = None
     quality_report: dict[str, Any] | None = None
     row_count: int | None = None

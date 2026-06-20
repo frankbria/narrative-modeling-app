@@ -8,6 +8,7 @@ Implements Story 12.1: API Integration for New Models (Dataset portion).
 import logging
 import time
 import uuid
+from typing import Any
 
 import numpy as np
 from fastapi import (
@@ -143,6 +144,13 @@ async def upload_dataset(
     try:
         logger.info(f"Uploading dataset {file.filename} for user {current_user_id}")
 
+        # Validate filename is present
+        if not file.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is missing a filename."
+            )
+
         # Validate file type
         file_extension = file.filename.split('.')[-1].lower()
         supported_types = ['csv', 'xlsx', 'xls', 'json', 'parquet']
@@ -168,7 +176,7 @@ async def upload_dataset(
             content_type=file.content_type or 'application/octet-stream'
         )
 
-        if not success:
+        if not success or s3_url is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to upload file to S3"
@@ -332,7 +340,7 @@ async def update_dataset(
             )
 
         # Build update fields from request
-        update_fields = {}
+        update_fields: dict[str, Any] = {}
         if update_data.statistics is not None:
             update_fields['statistics'] = update_data.statistics
         if update_data.quality_report is not None:
@@ -347,6 +355,12 @@ async def update_dataset(
             dataset_id=dataset_id,
             **update_fields
         )
+
+        if not updated_dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset {dataset_id} not found"
+            )
 
         logger.info(f"Dataset {dataset_id} updated successfully")
 
@@ -577,6 +591,12 @@ async def mark_dataset_processed(
             quality_report=processing_data.quality_report,
             inferred_schema=processing_data.inferred_schema
         )
+
+        if not updated_dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset {dataset_id} not found"
+            )
 
         logger.info(f"Dataset {dataset_id} marked as processed")
 
@@ -1131,7 +1151,7 @@ async def compare_selection_methods(
             user_id=current_user_id,
             target_column=request.target_column,
             methods=request.methods,
-            top_k=request.top_k,
+            top_k=request.top_k if request.top_k is not None else 10,
             problem_type=request.problem_type
         )
 

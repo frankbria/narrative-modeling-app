@@ -120,7 +120,7 @@ async def preview_transformation(
                     dataset_id=request.dataset_id,
                     transformation_type=transformation_type.value,
                     parameters=first_step.parameters or {},
-                    preview_rows=request.preview_rows
+                    preview_rows=request.preview_rows or 10
                 )
         except TimeoutError:
             logger.error(f"Preview timeout at API layer for dataset {request.dataset_id}")
@@ -175,7 +175,7 @@ async def apply_transformation(
             user_id=current_user_id,
             dataset_id=request.dataset_id,
             transformation_type=request.transformation_type,
-            parameters=request.parameters
+            parameters=request.parameters or {}
         )
 
         return TransformationApplyResponse(

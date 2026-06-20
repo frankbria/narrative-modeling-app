@@ -55,6 +55,13 @@ async def upload_file(
         content = await file.read()
         logger.info(f"File content size: {len(content)} bytes")
 
+        # Ensure a filename is present before inspecting its extension
+        if not file.filename:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing filename. Please upload a CSV, Excel, or TXT file.",
+            )
+
         # Determine file type and read accordingly
         if file.filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(content))
@@ -97,7 +104,7 @@ async def upload_file(
             # Log the environment variables (without sensitive values)
             logger.info("AWS environment variables:")
             for var in required_env_vars:
-                value = os.getenv(var)
+                value = os.getenv(var) or ""
                 if var in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
                     masked_value = value[:4] + "*" * (len(value) - 8) + value[-4:]
                     logger.info(f"{var}: {masked_value}")
@@ -106,12 +113,13 @@ async def upload_file(
 
             # Upload to S3
             logger.info(f"Attempting to upload file to S3: {s3_filename}")
-            success, s3_url = upload_file_to_s3(content, s3_filename, file.content_type)
+            success, upload_url = upload_file_to_s3(content, s3_filename, file.content_type)
 
-            if not success:
+            if not success or not upload_url:
                 logger.error("Failed to upload file to S3")
                 s3_url = "s3_upload_failed"
             else:
+                s3_url = upload_url
                 logger.info(f"File uploaded successfully to S3: {s3_url}")
 
                 # Generate a signed URL for temporary access if needed

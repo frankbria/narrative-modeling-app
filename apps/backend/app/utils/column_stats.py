@@ -1,7 +1,6 @@
 
 import numpy as np
 import pandas as pd
-from beanie import Link
 
 from app.models.column_stats import (
     CategoricalValueCounts,
@@ -55,7 +54,7 @@ async def calculate_and_store_column_stats(
 
         # Create a ColumnStats object
         column_stats = ColumnStats(
-            dataset_id=Link(dataset),
+            dataset_id=dataset,
             column_name=column_name,
             data_type=data_type,
             count=count,

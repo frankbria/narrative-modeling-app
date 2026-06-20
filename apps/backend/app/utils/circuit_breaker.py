@@ -14,7 +14,7 @@ import asyncio
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from enum import Enum
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
@@ -45,7 +45,7 @@ class CircuitState(str, Enum):
 class CircuitBreakerMetrics:
     """Metrics tracking for circuit breaker state and performance."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.failure_count = 0
         self.success_count = 0
         self.consecutive_failures = 0
@@ -321,7 +321,7 @@ def with_circuit_breaker(
             pass
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         breaker = get_circuit_breaker(service_name, failure_threshold, recovery_timeout)
 
         @retry(

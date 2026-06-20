@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class BatchPredictionService:
     """Service for managing batch prediction jobs"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.s3_service = S3Service()
         self.model_storage = ModelStorageService()
         # Confidence / explanation helpers (issue #83 + #80). Share one
@@ -193,6 +193,9 @@ class BatchPredictionService:
 
             if not model:
                 raise ValueError("Model not found")
+
+            if not job.input_path:
+                raise ValueError("Batch job has no input path")
 
             # Load model artifacts. load_model returns a (model, feature_engineer)
             # tuple keyed by (model_id, user_id) — issue #82 bugfix.

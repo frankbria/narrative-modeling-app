@@ -28,18 +28,18 @@ class ApplicationMonitor:
     
     def __init__(self, max_events: int = 10000):
         self.max_events = max_events
-        self.events = deque(maxlen=max_events)
-        self.counters = defaultdict(int)
-        self.timers = defaultdict(list)
-        self.gauges = defaultdict(float)
-        
+        self.events: deque[MetricEvent] = deque(maxlen=max_events)
+        self.counters: defaultdict[str, int] = defaultdict(int)
+        self.timers: defaultdict[str, list[float]] = defaultdict(list)
+        self.gauges: defaultdict[str, float] = defaultdict(float)
+
         # Performance tracking
-        self.response_times = defaultdict(list)
-        self.error_counts = defaultdict(int)
-        
+        self.response_times: defaultdict[str, list[float]] = defaultdict(list)
+        self.error_counts: defaultdict[str, int] = defaultdict(int)
+
         # Security tracking
-        self.security_events = deque(maxlen=1000)
-        self.failed_auth_attempts = defaultdict(int)
+        self.security_events: deque[dict[str, Any]] = deque(maxlen=1000)
+        self.failed_auth_attempts: defaultdict[str, int] = defaultdict(int)
         
         # Upload tracking
         self.upload_stats = {
@@ -189,7 +189,7 @@ class ApplicationMonitor:
             if e['timestamp'] > one_hour_ago
         ]
         
-        event_types = defaultdict(int)
+        event_types: defaultdict[str, int] = defaultdict(int)
         for event in recent_security_events:
             event_types[event['type']] += 1
         

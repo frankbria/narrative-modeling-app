@@ -303,7 +303,7 @@ class VersioningService(BaseService[DatasetVersion]):
         """Get next version number for dataset."""
         latest_version = await DatasetVersion.find(
             DatasetVersion.dataset_id == dataset_id
-        ).sort(-DatasetVersion.version_number).first_or_none()
+        ).sort("-version_number").first_or_none()
 
         if latest_version:
             return latest_version.version_number + 1
@@ -422,7 +422,7 @@ class VersioningService(BaseService[DatasetVersion]):
 
         # Single find() call with combined filter
         query = DatasetVersion.find(filter_dict)
-        versions = await query.sort(-DatasetVersion.version_number).skip(skip).limit(limit).to_list()
+        versions = await query.sort("-version_number").skip(skip).limit(limit).to_list()
         logger.info(f"Listed {len(versions)} versions for dataset {dataset_id}")
         return versions
 
@@ -436,8 +436,8 @@ class VersioningService(BaseService[DatasetVersion]):
         Returns:
             List of TransformationLineage documents in chronological order
         """
-        chain = []
-        current_version_id = version_id
+        chain: list[TransformationLineage] = []
+        current_version_id: str | None = version_id
 
         while current_version_id:
             version = await self.get_version(current_version_id, mark_accessed=False)
@@ -651,7 +651,7 @@ class VersioningService(BaseService[DatasetVersion]):
         # Get all versions for dataset
         all_versions = await DatasetVersion.find(
             DatasetVersion.dataset_id == dataset_id
-        ).sort(-DatasetVersion.version_number).to_list()
+        ).sort("-version_number").to_list()
 
         # Determine versions to delete
         deleted_count = 0

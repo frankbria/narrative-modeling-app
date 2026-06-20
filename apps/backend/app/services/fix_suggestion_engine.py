@@ -37,7 +37,7 @@ class FixSuggestionEngine:
     the execution of fixes through the TransformationEngine.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the fix suggestion engine."""
         self.transformation_engine = TransformationEngine()
 
@@ -143,7 +143,7 @@ class FixSuggestionEngine:
             # Format mean explanation, handling NaN case
             if pd.isna(mean_val):
                 mean_explanation = "Fill missing values with mean (no numeric values available)"
-                mean_preview_impact = {"fill_value": None}
+                mean_preview_impact: dict[str, Any] = {"fill_value": None}
             else:
                 mean_explanation = f"Fill missing values with mean ({mean_val:.2f})"
                 mean_preview_impact = {"fill_value": float(mean_val)}
@@ -160,7 +160,7 @@ class FixSuggestionEngine:
             # Format median explanation, handling NaN case
             if pd.isna(median_val):
                 median_explanation = "Fill missing values with median (no numeric values available)"
-                median_preview_impact = {"fill_value": None}
+                median_preview_impact: dict[str, Any] = {"fill_value": None}
             else:
                 median_explanation = f"Fill missing values with median ({median_val:.2f}) - more robust to outliers"
                 median_preview_impact = {"fill_value": float(median_val)}
@@ -365,6 +365,8 @@ class FixSuggestionEngine:
         """Suggest fixes for type mismatches."""
         fixes: list[SuggestedFix] = []
         col = issue.affected_column
+        if not col:
+            return fixes
         expected_type = column_types.get(col, "unknown")
 
         if expected_type in ["integer", "float"]:

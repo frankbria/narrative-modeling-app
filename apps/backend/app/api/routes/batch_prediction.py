@@ -90,7 +90,7 @@ async def create_batch_job(
     """Create a new batch prediction job from uploaded file"""
 
     # Validate file type
-    if not file.filename.endswith(".csv"):
+    if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only CSV files are supported")
 
     try:

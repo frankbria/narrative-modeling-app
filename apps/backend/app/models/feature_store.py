@@ -261,7 +261,7 @@ class FeatureVersion(Document):
         Returns:
             Dictionary of differences with {field: {from: value, to: value}}
         """
-        diff = {}
+        diff: dict[str, dict[str, Any]] = {}
 
         # Compare version number
         if self.version_number != previous_version.version_number:

@@ -3,6 +3,7 @@ Core transformation engine for data pipeline
 """
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -252,14 +253,14 @@ class FillMissingTransformation(BaseTransformation):
 class TransformationEngine:
     """Main engine for executing transformations"""
 
-    TRANSFORMATION_CLASSES = {
+    TRANSFORMATION_CLASSES: dict[TransformationType, Callable[[dict[str, Any]], BaseTransformation]] = {
         TransformationType.REMOVE_DUPLICATES: RemoveDuplicatesTransformation,
         TransformationType.TRIM_WHITESPACE: TrimWhitespaceTransformation,
         TransformationType.DROP_MISSING: DropMissingTransformation,
         TransformationType.FILL_MISSING: FillMissingTransformation,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.history: list[dict[str, Any]] = []
         # Optimization: Cache for preview statistics to avoid recalculation
         self._stats_cache: dict[str, dict[str, Any]] = {}

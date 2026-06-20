@@ -4,6 +4,7 @@ import sys
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from pathlib import Path
+from typing import Any
 import logging
 
 # Add the app directory to sys.path if needed
@@ -94,7 +95,9 @@ async def lifespan(app: FastAPI):
     # Connect to DB (single place, all models via the canonical registry)
     mongo_uri = os.getenv("MONGODB_URI")
     db_name = os.getenv("MONGODB_DB")
-    client = AsyncIOMotorClient(mongo_uri)
+    if not db_name:
+        raise RuntimeError("MONGODB_DB environment variable is not set")
+    client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
         document_models=DOCUMENT_MODELS,

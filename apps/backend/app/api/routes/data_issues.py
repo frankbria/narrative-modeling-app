@@ -126,10 +126,10 @@ async def detect_issues(
         df = await get_dataframe_from_s3(file_path)
 
         # Get column types from schema
-        column_types = {}
+        column_types: dict[str, str] = {}
         if user_data.data_schema:
             column_types = {
-                field.field_name: field.data_type
+                field.field_name: field.data_type or ""
                 for field in user_data.data_schema
             }
 
@@ -677,7 +677,7 @@ async def get_issue_history(
         records = await DataIssueRecord.find(
             DataIssueRecord.dataset_id == dataset_id,
             DataIssueRecord.user_id == current_user_id,
-        ).sort(-DataIssueRecord.detected_at).skip(skip).limit(per_page).to_list()
+        ).sort("-detected_at").skip(skip).limit(per_page).to_list()
 
         return IssueHistoryListResponse(
             records=[

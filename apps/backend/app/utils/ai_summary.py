@@ -86,7 +86,7 @@ def prepare_dataset_summary(user_data: UserData) -> dict[str, Any]:
         A dictionary containing the dataset summary
     """
     # Extract basic information
-    summary = {
+    summary: dict[str, Any] = {
         "filename": user_data.filename,
         "num_rows": user_data.num_rows,
         "num_columns": user_data.num_columns,

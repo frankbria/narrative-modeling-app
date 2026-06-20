@@ -51,7 +51,7 @@ class ProcessedData:
         # Convert numpy types to Python types in the preview data
         preview_data = []
         for record in preview_df.to_dict(orient="records"):
-            converted_record = {}
+            converted_record: dict[Any, Any] = {}
             for key, value in record.items():
                 # Handle pandas NaN/None values
                 if pd.isna(value):
@@ -337,14 +337,14 @@ class DataProcessor:
         """Detect delimiter from sample text"""
         # Count occurrences of common delimiters
         delimiters = [',', '\t', ';', '|']
-        delimiter_counts = {}
-        
+        delimiter_counts: dict[str, int] = {}
+
         for delimiter in delimiters:
             delimiter_counts[delimiter] = sample.count(delimiter)
-        
+
         # Return delimiter with most occurrences
         if delimiter_counts:
-            return max(delimiter_counts, key=delimiter_counts.get)
+            return max(delimiter_counts, key=lambda d: delimiter_counts[d])
         else:
             return ','  # Default to comma
     

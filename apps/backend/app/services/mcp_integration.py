@@ -50,12 +50,12 @@ class MCPAnalysisResponse(BaseModel):
 @dataclass
 class MCPConfig:
     """Configuration for MCP server connection"""
-    host: str = None
-    port: int = None
-    timeout: int = None
+    host: str | None = None
+    port: int | None = None
+    timeout: int | None = None
     api_key: str | None = None
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.host is None:
             self.host = os.getenv("MCP_HOST", "localhost")
         if self.port is None:

@@ -183,7 +183,7 @@ class ModelService(BaseService[ModelConfig]):
         """
         return await ModelConfig.find(
             ModelConfig.dataset_id == dataset_id
-        ).sort(-ModelConfig.created_at).to_list()
+        ).sort("-created_at").to_list()
 
     async def update_training_status(
         self,

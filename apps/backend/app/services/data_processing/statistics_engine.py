@@ -339,7 +339,7 @@ class StatisticsEngine:
             corr_matrix = df.corr()
             
             # Convert to nested dictionary
-            result = {}
+            result: dict[str, dict[str, float]] = {}
             for col1 in corr_matrix.columns:
                 result[col1] = {}
                 for col2 in corr_matrix.columns:

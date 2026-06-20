@@ -277,7 +277,7 @@ class RecipeManager:
             query["tags"] = {"$in": tags}
         
         recipes = await TransformationRecipe.find(query)\
-            .sort([("rating", -1), ("usage_count", -1)])\
+            .sort("-rating", "-usage_count")\
             .limit(limit)\
             .to_list()
         

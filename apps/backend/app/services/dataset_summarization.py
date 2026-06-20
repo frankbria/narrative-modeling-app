@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 class DatasetSummaryRequest(BaseModel):
     """Request model for dataset summarization"""
     file_id: str
-    schema: dict[str, Any] | SchemaDefinition
+    # `schema` shadows Pydantic's deprecated `BaseModel.schema()`; it is part of
+    # the public request contract and cannot be renamed.
+    schema: dict[str, Any] | SchemaDefinition  # type: ignore[assignment]
     statistics: dict[str, Any] | DatasetStatistics
     quality_report: dict[str, Any] | QualityReport
     sample_data: list[dict[str, Any]] | None = None
@@ -198,7 +200,10 @@ class DatasetSummarizationService:
     ) -> EnhancedAISummary:
         """Generate summary using OpenAI"""
         # Create prompts
-        system_prompt = self._create_system_prompt(request.focus_areas)
+        system_prompt = self._create_system_prompt(
+            request.focus_areas
+            or ["patterns", "quality", "relationships", "recommendations"]
+        )
         user_prompt = self._create_user_prompt(context)
         
         try:

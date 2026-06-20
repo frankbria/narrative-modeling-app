@@ -184,10 +184,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
             Dictionary with items, total, skip, limit
         """
         # Build query conditions
-        conditions = []
+        conditions: list[dict[str, Any]] = []
 
         # User can see: owned features, public features, or shared features
-        access_condition = {
+        access_condition: dict[str, Any] = {
             "$or": [
                 {"user_id": user_id},
                 {"is_public": True},
@@ -348,9 +348,15 @@ class FeatureStoreService(BaseService[StoredFeature]):
                 resource_id=dataset_id
             )
 
-        # Check compatibility
+        # Check compatibility. check_compatibility subscripts each field as a
+        # dict; data_schema is normally a list of SchemaField models but legacy
+        # callers may already hold plain dicts — handle both.
+        schema_dicts = [
+            field if isinstance(field, dict) else field.model_dump()
+            for field in dataset.data_schema
+        ]
         is_compatible, missing_columns, type_mismatches = feature.check_compatibility(
-            dataset.data_schema
+            schema_dicts
         )
 
         # Generate suggestions
@@ -402,6 +408,13 @@ class FeatureStoreService(BaseService[StoredFeature]):
             DatasetMetadata.dataset_id == dataset_id,
             DatasetMetadata.user_id == user_id
         )
+
+        if not dataset:
+            raise NotFoundError(
+                message=f"Dataset {dataset_id} not found",
+                resource_type="Dataset",
+                resource_id=dataset_id
+            )
 
         # Load data from S3
         file_bytes = await get_file_from_s3(dataset.file_path)
@@ -518,7 +531,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         # Get all versions, newest first
         versions = await FeatureVersion.find(
             FeatureVersion.feature_id == feature_id
-        ).sort(-FeatureVersion.version_number).to_list()
+        ).sort("-version_number").to_list()
 
         return versions
 

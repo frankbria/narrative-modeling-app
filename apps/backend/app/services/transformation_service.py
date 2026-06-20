@@ -107,7 +107,7 @@ class TransformationService(BaseService[TransformationConfig]):
         """
         return await TransformationConfig.find(
             TransformationConfig.dataset_id == dataset_id
-        ).sort(-TransformationConfig.created_at).to_list()
+        ).sort("-created_at").to_list()
 
     async def add_transformation_step(
         self,
@@ -257,7 +257,7 @@ class TransformationService(BaseService[TransformationConfig]):
         return await TransformationConfig.find(
             TransformationConfig.dataset_id == dataset_id,
             TransformationConfig.is_applied
-        ).sort(-TransformationConfig.created_at).to_list()
+        ).sort("-created_at").to_list()
 
     async def preview_transformation(
         self,
@@ -428,7 +428,7 @@ class TransformationService(BaseService[TransformationConfig]):
             from app.services.versioning_service import versioning_service
             parent_version = await DatasetVersion.find(
                 {"dataset_id": dataset_id}
-            ).sort([("version_number", -1)]).first_or_none()
+            ).sort("-version_number").first_or_none()
 
             version_id = None
             if parent_version:

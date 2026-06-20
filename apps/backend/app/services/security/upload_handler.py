@@ -29,7 +29,7 @@ class ChunkedUploadHandler:
         self.chunk_size = chunk_size
         self.max_file_size = max_file_size
         self.session_timeout = session_timeout
-        self.sessions = {}  # In production, use Redis
+        self.sessions: dict[str, dict[str, Any]] = {}  # In production, use Redis
     
     async def init_upload(self, 
                           filename: str, 
@@ -268,8 +268,8 @@ class RateLimiter:
                  max_concurrent_uploads: int = 10):
         self.max_requests_per_minute = max_requests_per_minute
         self.max_concurrent_uploads = max_concurrent_uploads
-        self.request_times = {}  # user_id -> [timestamps]
-        self.active_uploads = {}  # user_id -> count
+        self.request_times: dict[str, list[datetime]] = {}  # user_id -> [timestamps]
+        self.active_uploads: dict[str, int] = {}  # user_id -> count
     
     def check_rate_limit(self, user_id: str) -> bool:
         """Check if user is within rate limits"""

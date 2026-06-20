@@ -95,7 +95,7 @@ class SampleDatasetResponse(BaseModel):
     problem_type: str
     difficulty_level: str = Field(description="beginner, intermediate, advanced")
     tags: list[str]
-    preview_data: list[dict[str, Any]] = Field(max_items=5)
+    preview_data: list[dict[str, Any]] = Field(max_length=5)
     target_column: str
     feature_columns: list[str]
     learning_objectives: list[str]

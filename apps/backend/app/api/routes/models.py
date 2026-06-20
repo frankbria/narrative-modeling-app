@@ -14,6 +14,7 @@ Endpoints:
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -419,7 +420,7 @@ async def update_model(
         model_service = ModelService()
 
         # Build update dict from request
-        update_fields = {}
+        update_fields: dict[str, Any] = {}
         if request.name is not None:
             update_fields["name"] = request.name
         if request.description is not None:
@@ -666,6 +667,12 @@ async def deploy_model(
         )
 
         if not deployed_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Model {model_id} not found"
+            )
+
+        if deployed_model.deployment_config is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Model {model_id} not found"

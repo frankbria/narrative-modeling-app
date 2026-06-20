@@ -30,7 +30,9 @@ async def get_histogram(
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
-        return await generate_and_cache_histogram(dataset_id, column_name, num_bins)
+        return await generate_and_cache_histogram(
+            dataset_id, column_name, num_bins if num_bins is not None else 50
+        )
     except HTTPException:
         raise
     except ValueError as e:
