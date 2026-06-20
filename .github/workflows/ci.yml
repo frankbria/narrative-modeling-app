@@ -266,7 +266,7 @@ jobs:
         run: npm run build
         env:
           CI: true
-          # Dummy values mirroring smoke-tests.yml — build must not need real secrets.
+          # Dummy values mirroring the e2e-smoke job below — build must not need real secrets.
           NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
           NEXTAUTH_URL: http://localhost:3000
           GOOGLE_CLIENT_ID: dummy-client-id
@@ -325,6 +325,159 @@ jobs:
         working-directory: apps/mcp
         run: uv run pytest tests/ -v
 
+  # ── E2E ────────────────────────────────────────────────────────────────────
+  e2e-smoke:
+    # Folded in from the former standalone smoke-tests.yml (issue #210) so the
+    # functional @smoke gate is part of the single required `CI Success`
+    # aggregate. The gate was stabilized in #157 (29 passed / 0 flaky) and
+    # soaked green across 10+ PRs before enforcement. Wall-clock @perf tests
+    # stay non-blocking in perf-tests.yml — they are NOT folded in here.
+    name: E2E Smoke Tests
+    # 30 min (was 15): on contended 2-core runners the uncached setup
+    # (backend uv sync of the ML stack + npm ci + Playwright browser install)
+    # could exceed 15 min before any test ran, cancelling the job mid-setup.
+    # The Playwright cache below removes the largest chunk; the headroom covers
+    # the rest (issue #176 CI hardening).
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        # Digest-pinned (issue #176); unified to the same mongo:7.0 digest as the
+        # backend-integration job above.
+        image: mongo:7.0@sha256:8ecb514b00bdcc0bde67ef4e6c330385377a9dc68e24ee94e28c07c891647348
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # This job runs PR-authored test code AND uploads artifacts, so don't
+          # persist GITHUB_TOKEN in .git/config (zizmor artipacked; CodeRabbit).
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: uv sync
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      # Cache the downloaded Chromium binary across runs — the largest single
+      # setup cost. Keyed on the lockfile so a Playwright version bump rebuilds
+      # it. `--with-deps` still runs each time for the apt system libraries
+      # (not stored in this cache path), but those are mostly preinstalled.
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Browsers
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # GitHub Actions `services:` blocks cannot override a container's command,
+      # and minio/minio requires `server /data` — so MinIO is started manually.
+      - name: Start MinIO (S3-compatible storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          echo "Waiting for MinIO to become healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              echo "MinIO is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO failed to start" >&2
+          docker logs minio >&2
+          exit 1
+
+      - name: Create test bucket in MinIO
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+        run: aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
+
+      - name: Run Smoke Tests
+        working-directory: apps/frontend
+        run: npm run test:e2e:smoke
+        env:
+          CI: true
+          NODE_ENV: development
+          TEST_USER_EMAIL: test@narrativeml.com
+          TEST_USER_PASSWORD: test-password-123
+          NEXTAUTH_SECRET: test-secret-for-ci-only-not-for-production
+          NEXTAUTH_URL: http://localhost:3010
+          GOOGLE_CLIENT_ID: dummy-client-id
+          GOOGLE_CLIENT_SECRET: dummy-client-secret
+          GITHUB_ID: dummy-client-id
+          GITHUB_SECRET: dummy-client-secret
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: narrative-modeling-test
+          # Port configuration
+          PORT: 3010
+          BACKEND_PORT: 8000
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+          # S3 storage backed by the MinIO container (no real AWS credentials).
+          # NOTE: credentials must NOT start with "test-" — that prefix puts
+          # S3Service into no-op mock mode; MinIO mode needs the real client.
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          # Three names for the same bucket: AWS_BUCKET_NAME (upload paths),
+          # AWS_S3_BUCKET (download whitelist), S3_BUCKET (settings/versioning).
+          # Env-var consolidation is tracked with CI hardening in #150.
+          AWS_BUCKET_NAME: test-bucket
+          AWS_S3_BUCKET: test-bucket
+          S3_BUCKET: test-bucket
+          AWS_ENDPOINT_URL: http://localhost:9000
+          # OpenAI API key (dummy value for testing)
+          OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-test-results
+          path: apps/frontend/test-results/
+          retention-days: 7
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-test-report
+          path: apps/frontend/playwright-report/
+          retention-days: 7
+
   # ── Aggregate gate ─────────────────────────────────────────────────────────
   ci-success:
     # Single required status for branch protection. Depends on every BLOCKING
@@ -339,6 +492,7 @@ jobs:
       - frontend-typecheck-build
       - frontend-unit
       - mcp-tests
+      - e2e-smoke
     runs-on: ubuntu-latest
     steps:
       - name: Verify all required jobs passed

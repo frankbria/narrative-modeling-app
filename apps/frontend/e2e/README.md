@@ -117,7 +117,8 @@ Comprehensive E2E testing that runs on main branch:
 ## CI/CD Integration
 
 **Pull Requests** → Smoke tests (blocking) + Performance tests (non-blocking)
-- Smoke workflow: `.github/workflows/smoke-tests.yml` (~5-7 min, Chromium) — **blocks the PR**
+- Smoke job: `e2e-smoke` in `.github/workflows/ci.yml` (~5-7 min, Chromium) — part of the
+  required `CI Success` aggregate, so a red smoke run **blocks the PR** (issue #210)
 - Perf workflow: `.github/workflows/perf-tests.yml` (`@perf`, `continue-on-error`) —
   records latencies, **never blocks**; results in the `performance-results` artifact
 - Browser: Chromium only
