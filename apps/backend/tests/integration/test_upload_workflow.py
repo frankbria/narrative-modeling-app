@@ -14,6 +14,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+# Upload-workflow integration suite — marked so the runnable tests (real
+# POST /datasets/upload, dataset listing, auth) run in the required CI gate
+# (issue #221). The @pytest.mark.skip tests below are fixture/endpoint debt
+# (not missing services) and stay skipped until those fixtures are built.
+pytestmark = pytest.mark.integration
+
 
 class TestUploadWorkflowIntegration:
     """Test complete upload workflows end-to-end"""

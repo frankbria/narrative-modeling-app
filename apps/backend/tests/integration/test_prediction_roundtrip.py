@@ -18,6 +18,7 @@ from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     FeatureEngineeringConfig,
 )
+from tests.conftest import require_service
 
 
 def _training_frame() -> pd.DataFrame:
@@ -41,7 +42,7 @@ async def test_train_predict_single_and_batch_roundtrip(
     async_authorized_client, setup_database, s3_client, test_s3_bucket, monkeypatch
 ):
     if s3_client is None or test_s3_bucket is None:
-        pytest.skip("LocalStack S3 not available")
+        require_service("LocalStack S3 not available")
 
     import os
 

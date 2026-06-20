@@ -11,6 +11,9 @@ name: CI
 #     (6380) and LocalStack S3 (4566) via apps/backend/docker-compose.test.yml.
 #       NOTE: MONGODB_URI is pointed at the *container*, never a production
 #       cluster — the test job must never hold a production DB handle (#160).
+#       All three services are HARD requirements: CI_REQUIRE_SERVICES=true turns
+#       a missing-service skip into a failure, so the S3/upload/OpenAI integration
+#       suites can never silently skip in the gate (#221).
 #   - frontend-* : NONE (build uses dummy env values; no real secrets).
 #   - mcp-tests  : NONE.
 #
@@ -161,26 +164,30 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
-      - name: Start LocalStack (S3, best-effort)
+      - name: Start LocalStack (S3, required)
         working-directory: apps/backend
-        # LocalStack is opportunistic: the S3-marked integration tests skip with a
-        # reason when it is absent, so neither a Docker Hub pull hiccup nor a slow
-        # start may fail the gate. Mongo + Redis (service containers above) are the
-        # hard requirements and are already healthy before this step.
+        # LocalStack is a HARD requirement of the gate (issue #221): the S3/upload
+        # integration suites must actually run, not silently skip. Combined with
+        # CI_REQUIRE_SERVICES=true below (which turns a missing-service skip into a
+        # failure), a Docker Hub hiccup or slow start fails the job loudly instead
+        # of producing a green-but-under-tested run. Mongo + Redis (service
+        # containers above) are already healthy before this step.
         run: |
-          docker compose -f docker-compose.test.yml up -d localstack \
-            || echo "::warning::LocalStack failed to start; S3-dependent integration tests will skip."
-          if timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 3; done'; then
-            echo "LocalStack healthy."
-          else
-            echo "::warning::LocalStack not healthy in time; S3-dependent integration tests will skip."
+          docker compose -f docker-compose.test.yml up -d localstack
+          if ! timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 3; done'; then
+            echo "::error::LocalStack did not become healthy in time; S3 integration tests cannot run."
+            docker logs narrative-localstack-test 2>&1 | tail -50 || true
+            exit 1
           fi
+          echo "LocalStack healthy."
       - name: Run integration tests with coverage
-        # Scope: the `integration`-marked suite — the DB-backed integration paths
-        # that run reliably against the Mongo service container + Redis. The
-        # unmarked files in tests/integration/ (S3 upload/workflow, live-OpenAI)
-        # need a provisioned LocalStack/OpenAI and would be environment-flaky as a
-        # required gate; they remain covered by the manual integration-tests.yml.
+        # Scope: the `integration`-marked suite in tests/integration/, now run with
+        # all backing services provisioned — Mongo + Redis (service containers) and
+        # LocalStack S3 (required step above). This includes the S3 fixtures, the
+        # train→predict→S3 round-trip, the upload-workflow suite, and the
+        # (fully-mocked) OpenAI suite (#221).
+        # CI_REQUIRE_SERVICES=true makes a missing-service skip a hard failure, so
+        # the gate can never go green while silently under-testing S3/OpenAI.
         working-directory: apps/backend
         run: |
           PYTHONPATH=. uv run pytest \
@@ -191,6 +198,8 @@ jobs:
             --cov-report=term-missing \
             -v
         env:
+          # Turn missing-service skips into failures so the gate stays honest (#221).
+          CI_REQUIRE_SERVICES: 'true'
           # MongoDB service container (NOT a production cluster — see #160).
           TEST_MONGODB_URI: mongodb://localhost:27017/narrative_test
           TEST_MONGODB_DB: narrative_test
