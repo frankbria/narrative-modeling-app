@@ -24,10 +24,17 @@ a missing service.
 |---|---|---|---|---|
 | MongoDB | `localhost:27017` (`TEST_MONGODB_URI`) | `tests/test_api/`, `tests/test_integration/`, `tests/integration/`, `tests/load/`, any test using `setup_database` or the app lifespan | local `mongod` (or Docker) | **required** — DB-backed tests error |
 | Redis (test instance) | `localhost:6380` (`TEST_REDIS_URL`) | `tests/integration/test_redis_fixtures.py` and other tests using the `redis_client` fixture | `docker compose -f docker-compose.test.yml up -d` | tests skip with reason |
-| S3 (LocalStack) | `localhost:4566` (`S3_ENDPOINT_URL`) | `tests/integration/test_s3_fixtures.py` and S3-gated integration tests | `docker compose -f docker-compose.test.yml up -d` | tests skip with reason |
-| OpenAI | n/a | — | never called: AI tests mock the client | n/a |
+| S3 (LocalStack) | `localhost:4566` (`S3_ENDPOINT_URL`) | `tests/integration/test_s3_fixtures.py` and S3-gated integration tests | `docker compose -f docker-compose.test.yml up -d` | tests skip with reason (fail in CI) |
+| OpenAI | n/a (mocked) | `tests/integration/test_openai_fixtures.py` | never calls the network: AI tests mock the client | tests still run (no service needed) |
 
 Notes:
+- **`CI_REQUIRE_SERVICES` (issue #221):** locally, a test whose backing service
+  is unavailable skips with a reason (the Redis/S3 rows above). In CI we
+  provision the services on purpose, so `ci.yml`'s `backend-integration` job sets
+  `CI_REQUIRE_SERVICES=true` and `require_service()` (`tests/conftest.py`)
+  **fails** instead of skipping — the gate can never go green while silently
+  under-testing S3/Redis. LocalStack is therefore a hard requirement of the job
+  (the workflow `exit 1`s if LocalStack never becomes healthy).
 - `tests/conftest.py` sets `ENVIRONMENT=test` (via `os.environ.setdefault`) at
   module scope, before any app import. This satisfies the `SKIP_AUTH` guard
   introduced in issue #149, which requires every set environment signal to be
@@ -49,7 +56,9 @@ Notes:
   provisions a MongoDB **service container** (27017) and Redis + LocalStack via
   `docker-compose.test.yml`. It also runs frontend (eslint/tsc/build/jest) and
   MCP pytest, and exposes the aggregate `CI Success` status. Requirements are
-  documented in the workflow header.
+  documented in the workflow header. All three services are **hard requirements**
+  (`CI_REQUIRE_SERVICES=true`): the S3/upload/OpenAI integration suites run in
+  the gate and a missing service fails the job instead of skipping (#221).
 - `.github/workflows/integration-tests.yml` (manual trigger) — the standalone
   integration run; provisions Redis + LocalStack via `docker-compose.test.yml`
   and uses an Atlas test cluster for MongoDB. Requirements in the workflow header.

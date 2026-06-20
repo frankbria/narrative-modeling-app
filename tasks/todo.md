@@ -1,57 +1,39 @@
-# Issue #176 — CI/Docker hardening follow-ups (batch 2)
+# Issue #221 — Broaden integration test coverage in CI gate
 
-Umbrella issue. Batch 1 (multi-stage backend image, digest pins, Node 20, uv pin, isort)
-shipped in PR #214. This PR implements 4 selected self-contained follow-ups.
+**Goal:** S3/upload/OpenAI integration coverage runs reliably in the required CI
+gate, with **no silent skips for missing services**.
 
-Branch: `chore/176-ci-docker-hardening-batch2`
+## Root cause
+- LocalStack is provisioned *best-effort* in `backend-integration` → S3 tests skip silently if it fails.
+- `test_openai_fixtures.py` lacks the `integration` marker → excluded from the gate.
+- `s3_client` / `redis_client` / roundtrip skip-on-missing-service → silently green even when a service is down.
 
-## Scope (user-confirmed)
-1. **Backend runtime non-root user**
-2. **Backend `.dockerignore`** (trim builder context)
-3. **Dependabot Docker digest refresh** (+ github-actions to maintain SHA pins)
-4. **Repo-wide GitHub Actions SHA pinning**
+## Changes (minimal)
+1. `tests/conftest.py` — add `require_service(reason)`: skips normally, but
+   `pytest.fail`s when `CI_REQUIRE_SERVICES` is truthy. Route `redis_client` +
+   `s3_client` "not available" skips through it.
+2. `tests/integration/test_prediction_roundtrip.py` — route its
+   `pytest.skip("LocalStack S3 not available")` through `require_service`.
+3. `tests/integration/test_openai_fixtures.py` + `test_upload_workflow.py` — add
+   module-level `pytestmark = pytest.mark.integration` (OpenAI suite is fully
+   mocked/deterministic; upload suite's 3 runnable tests cover real
+   POST /datasets/upload + listing + auth). The upload module's `@pytest.mark.skip`
+   tests are fixture/endpoint debt and stay skipped (not service skips).
+4. `.github/workflows/ci.yml` (`backend-integration`):
+   - Make LocalStack a **hard requirement** (fail if not healthy; drop best-effort warning).
+   - Add `CI_REQUIRE_SERVICES: true` to the test env.
+5. Docs — `ci.yml` header + `TEST_INFRASTRUCTURE.md` (LocalStack now required in
+   gate; mocked-OpenAI path in gate; `CI_REQUIRE_SERVICES` semantics).
 
-Out of scope (large/incremental — stay open on #176): mypy→blocking, ruff pyupgrade,
-broaden integration coverage. CI service-container image digest pinning = documented follow-up.
-
-## Plan
-
-### 1. Backend non-root user (`apps/backend/Dockerfile`, runtime stage)
-- Create non-root system user/group (`appuser`, uid/gid 1001) via `groupadd`/`useradd`
-  (Debian slim, not alpine's addgroup/adduser).
-- `--chown=appuser:appuser` on the three `COPY --from=builder` lines (.venv, app, utils).
-- Keep `python -c "import app.main"` guard (runs as root pre-switch, fine).
-- `USER appuser` before EXPOSE. gunicorn binds :8000 (>1024 → non-root OK); curl healthcheck OK.
-- Mirrors the frontend image's existing non-root pattern.
-
-### 2. Backend `.dockerignore`
-- Add clearly-non-build entries: `tests/`, `tasks/`, `sample_datasets/`, `claudedocs/`,
-  `scripts/`, `.benchmarks/`, `.apm/`, loose artifacts (`coverage_summary.txt`, `test.csv`,
-  `docker-compose.test.yml`).
-- NEVER exclude build inputs: `pyproject.toml`, `uv.lock`, `app/`, `utils/`, `main.py`,
-  `__init__.py`, **`README.md`** (referenced by `[project].readme`; no `[build-system]`).
-- VERIFY with a real `docker build` (the meaningful test for this change).
-
-### 3. `.github/dependabot.yml` (new)
-- `docker` for `apps/backend`, `apps/frontend`, `apps/mcp` (weekly) — refresh `FROM @sha256`
-  + `COPY --from=...@sha256` digest pins.
-- `github-actions` for `/` (weekly) — keep the new SHA pins current.
-
-### 4. GitHub Actions SHA pinning (all 8 workflows)
-Replace `uses: org/action@vN` → `uses: org/action@<sha> # vN`. Resolved SHAs:
-- actions/checkout@v5              -> 93cb6efe18208431cddfb8368fd83d5badbf9bfd
-- actions/upload-artifact@v4       -> ea165f8d65b6e75b540449e92b4886f43607fa02
-- actions/setup-python@v5          -> a26af69be951a213d495a4c3e4e4022e16d87065
-- actions/setup-node@v4            -> 49933ea5288caeca8642d1e84afbd3f7d6820020
-- codecov/codecov-action@v4        -> b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
-- anthropics/claude-code-action@v1 -> 9dd8b95a392eb34b6f5fb56cf5a64cb735912d4b
-- actions/cache@v4                 -> 0057852bfaa89a56745cba8c7296529d2fc39830
+## Out of scope (ponytail — AC says "for missing services")
+- Hardcoded `@pytest.mark.skip` tests in `test_upload_workflow.py` /
+  `test_full_workflow.py` / `test_ml_workflow_e2e.py` — skip for missing
+  fixtures / unimplemented endpoints (refactoring debt), not missing services.
+  (The *runnable* upload tests ARE promoted; only the fixture-debt ones stay skipped.)
+- Pulling `tests/test_integration/` into the gate.
 
 ## Verification
-- `docker build apps/backend` succeeds (non-root + .dockerignore); runs `import app.main`.
-- `docker build apps/frontend` still succeeds (unchanged, sanity).
-- actionlint / YAML lint workflows; confirm no bare `@vN` action refs remain.
-- Validate dependabot.yml.
-
-## PR
-- References #176; lists done + still-open items.
+- With LocalStack + Mongo up and `CI_REQUIRE_SERVICES=true`: S3 + OpenAI +
+  roundtrip suites **pass** (not skip).
+- With S3 endpoint unreachable + `CI_REQUIRE_SERVICES=true`: S3 tests **fail**
+  (not skip) — proves the no-silent-skip guard works.

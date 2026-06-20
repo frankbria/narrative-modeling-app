@@ -11,6 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# Fully mocked OpenAI path — no real API calls, deterministic. Marked so it runs
+# in the required CI integration gate (issue #221).
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_mock_openai_fixture(mock_openai):

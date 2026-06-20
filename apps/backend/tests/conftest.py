@@ -27,6 +27,20 @@ from typing import TYPE_CHECKING
 import pytest
 import pytest_asyncio
 
+
+def require_service(reason: str) -> None:
+    """Skip a service-gated test when its backing service is unavailable.
+
+    Locally a missing service skips with a reason (the long-standing behaviour).
+    But in CI we provision the services on purpose, so a missing-service skip
+    means the gate is silently under-testing — set ``CI_REQUIRE_SERVICES=true``
+    there and this fails instead of skips (issue #221).
+    """
+    if os.getenv("CI_REQUIRE_SERVICES", "").strip().lower() in ("1", "true", "yes"):
+        pytest.fail(f"Required service unavailable in CI: {reason}")
+    pytest.skip(reason)
+
+
 # Lazy imports to avoid app initialization for unit tests
 # Only import these when fixtures are actually used. The TYPE_CHECKING block
 # below makes the fixture return annotations resolvable for type checkers and
@@ -122,6 +136,15 @@ async def setup_database(request):
         database=client[settings.TEST_MONGODB_DB],
         document_models=DOCUMENT_MODELS,
     )
+
+    # Clean at the START as well as teardown. Tests that exercise the full app
+    # (via async_authorized_client) can persist documents that an *unrelated*
+    # fixture's teardown never sees, so relying only on the previous test's
+    # cleanup makes ordering-sensitive tests flaky (e.g. the "empty at start"
+    # invariant in test_mongodb_fixtures). Starting clean makes isolation
+    # independent of run order (issue #221, AC: "not flaky").
+    for model in DOCUMENT_MODELS:
+        await model.find().delete()
 
     yield
 
@@ -295,7 +318,7 @@ async def redis_client(request):
         await client.flushdb()
         await client.aclose()
     except (ConnectionError, Exception) as e:
-        pytest.skip(f"Redis not available: {e}")
+        require_service(f"Redis not available: {e}")
 
 
 @pytest_asyncio.fixture
@@ -374,7 +397,7 @@ def s3_client(request):
 
         yield client
     except (ClientError, EndpointConnectionError, Exception) as e:
-        pytest.skip(f"S3/LocalStack not available: {e}")
+        require_service(f"S3/LocalStack not available: {e}")
 
 
 @pytest.fixture
@@ -533,7 +556,11 @@ async def async_test_client() -> AsyncGenerator:
     from app.main import app
 
     _point_app_at_test_database()
-    async with LifespanManager(app):
+    # Generous startup/shutdown timeouts: asgi_lifespan defaults to 5s, which the
+    # app lifespan (Mongo connect + Beanie init + rate-limit store) can exceed
+    # under CPU contention on shared CI runners, flaking the integration gate
+    # (issue #221, AC: "not flaky").
+    async with LifespanManager(app, startup_timeout=30, shutdown_timeout=30):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
@@ -631,7 +658,9 @@ async def async_authorized_client() -> AsyncGenerator:
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
 
     _point_app_at_test_database()
-    async with LifespanManager(app):
+    # See async_test_client above — generous lifespan timeouts to avoid 5s-default
+    # startup flakes under CI contention (issue #221).
+    async with LifespanManager(app, startup_timeout=30, shutdown_timeout=30):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
