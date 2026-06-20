@@ -62,11 +62,11 @@ async def secure_upload(
                 detail=f"Unsupported file type: {file.content_type}"
             )
         
-        # Read file content
-        content = await file.read()
-
         if not file.filename:
             raise HTTPException(status_code=400, detail="Missing filename")
+
+        # Read file content
+        content = await file.read()
 
         # Load into DataFrame
         try:

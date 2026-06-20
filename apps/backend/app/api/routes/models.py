@@ -673,9 +673,11 @@ async def deploy_model(
             )
 
         if deployed_model.deployment_config is None:
+            # The model was found and mark_deployed() returned it, so a missing
+            # deployment_config here is an internal inconsistency, not a 404.
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Deployment succeeded but configuration is unavailable"
             )
 
         return ModelDeployResponse(
