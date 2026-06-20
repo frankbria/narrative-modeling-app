@@ -14,7 +14,6 @@ Endpoints:
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -283,8 +282,8 @@ async def get_model(
 @router.get("", response_model=ModelListResponse)
 async def list_models(
     current_user_id: str = Depends(get_current_user_id),
-    dataset_id: Optional[str] = Query(None, description="Filter by dataset ID"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (TRAINING, TRAINED, DEPLOYED, ARCHIVED, FAILED)"),
+    dataset_id: str | None = Query(None, description="Filter by dataset ID"),
+    status_filter: str | None = Query(None, alias="status", description="Filter by status (TRAINING, TRAINED, DEPLOYED, ARCHIVED, FAILED)"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page")
 ):

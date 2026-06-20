@@ -1,6 +1,6 @@
 # app/schemas/analytics_result_out.py
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, model_validator
 
@@ -11,10 +11,10 @@ class AnalyticsResultOut(BaseModel):
     datasetId: str  # Or adjust according to your ID format
     createdAt: datetime
     analysisType: str
-    config: Optional[Dict[str, Any]] = None
-    result: Optional[Dict[str, Any]] = None
-    plotRefs: Optional[List[str]] = None
-    summaryText: Optional[str] = None
+    config: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    plotRefs: list[str] | None = None
+    summaryText: str | None = None
 
     @model_validator(mode="before")
     def convert_fields(cls, data):

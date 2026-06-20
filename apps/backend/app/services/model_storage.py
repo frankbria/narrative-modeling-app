@@ -7,8 +7,8 @@ import json
 import logging
 import math
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import joblib
 import numpy as np
@@ -49,9 +49,9 @@ def build_evaluation_payload(
     problem_type: str,
     y_test: Any,
     y_pred: Any,
-    y_proba: Optional[Any],
-    class_labels: Optional[List[str]],
-) -> Dict[str, Any]:
+    y_proba: Any | None,
+    class_labels: list[str] | None,
+) -> dict[str, Any]:
     """Build the JSON-safe evaluation-artifact payload persisted to S3.
 
     Arrays may be numpy arrays, pandas Series, or plain lists; all values are
@@ -65,11 +65,11 @@ def build_evaluation_payload(
         "class_labels": (
             [str(label) for label in class_labels] if class_labels is not None else None
         ),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 
-def build_shap_payload(shap_global: Any) -> Optional[Dict[str, Any]]:
+def build_shap_payload(shap_global: Any) -> dict[str, Any] | None:
     """Build the JSON-safe global-SHAP summary payload persisted to S3 (#80).
 
     ``shap_global`` is a ``GlobalShapResult`` (from ``InterpretabilityService``)
@@ -83,7 +83,7 @@ def build_shap_payload(shap_global: Any) -> Optional[Dict[str, Any]]:
         "shap_importance": _to_json_safe(shap_global.shap_importance),
         "base_value": _to_json_safe(shap_global.base_value),
         "n_samples": int(shap_global.n_samples),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -101,9 +101,9 @@ class ModelStorageService:
         user_id: str,
         dataset_id: str,
         model_metadata: dict,
-        model_id: Optional[str] = None,
-        evaluation_data: Optional[Dict[str, Any]] = None,
-        shap_data: Optional[Dict[str, Any]] = None,
+        model_id: str | None = None,
+        evaluation_data: dict[str, Any] | None = None,
+        shap_data: dict[str, Any] | None = None,
     ) -> MLModel:
         """
         Save a trained model and its metadata
@@ -227,7 +227,7 @@ class ModelStorageService:
         logger.info(f"Saved model {model_id} for user {user_id}")
         return ml_model
     
-    async def load_model(self, model_id: str, user_id: str) -> Tuple[Any, Optional[FeatureEngineer]]:
+    async def load_model(self, model_id: str, user_id: str) -> tuple[Any, FeatureEngineer | None]:
         """
         Load a model and its feature transformer
         
@@ -264,7 +264,7 @@ class ModelStorageService:
             feature_engineer = joblib.load(io.BytesIO(transformer_data))
         
         # Update last used timestamp
-        ml_model.last_used_at = datetime.now(timezone.utc)
+        ml_model.last_used_at = datetime.now(UTC)
         await ml_model.save()
         
         return model, feature_engineer
@@ -327,7 +327,7 @@ class ModelStorageService:
     async def list_models(
         self,
         user_id: str,
-        dataset_id: Optional[str] = None,
+        dataset_id: str | None = None,
         is_active: bool = True
     ) -> list[MLModel]:
         """

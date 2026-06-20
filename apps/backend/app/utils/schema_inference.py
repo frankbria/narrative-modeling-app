@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,7 @@ def infer_field_type(series: pd.Series) -> str:
     return "text"
 
 
-def infer_data_type(series: pd.Series, field_type: str) -> Optional[str]:
+def infer_data_type(series: pd.Series, field_type: str) -> str | None:
     """
     Infer the data type based on the field type and data.
     Returns one of: 'nominal', 'ordinal', 'interval', 'ratio' or None if can't be inferred
@@ -66,7 +66,7 @@ def infer_data_type(series: pd.Series, field_type: str) -> Optional[str]:
     return None
 
 
-def infer_schema(df: pd.DataFrame) -> List[Dict[str, Any]]:
+def infer_schema(df: pd.DataFrame) -> list[dict[str, Any]]:
     """
     Infer the schema for a DataFrame.
     Returns a list of field descriptions.

@@ -5,7 +5,7 @@ Provides enhanced OpenAPI documentation, client library generation,
 and integration examples for the Narrative Modeling API.
 """
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -15,7 +15,7 @@ from app.config import settings
 class APIDocumentationService:
     """Service for generating comprehensive API documentation"""
 
-    def __init__(self, app: Optional[FastAPI] = None):
+    def __init__(self, app: FastAPI | None = None):
         """
         Initialize the documentation service
 
@@ -24,7 +24,7 @@ class APIDocumentationService:
         """
         self.app = app
 
-    def generate_openapi_spec(self) -> Dict[str, Any]:
+    def generate_openapi_spec(self) -> dict[str, Any]:
         """
         Generate enhanced OpenAPI specification
 
@@ -98,7 +98,7 @@ For API support and questions, please visit our documentation at https://docs.na
 or contact support@narrativeml.com
 """
 
-    def _enhance_openapi_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _enhance_openapi_spec(self, spec: dict[str, Any]) -> dict[str, Any]:
         """
         Enhance OpenAPI spec with additional metadata
 
@@ -197,7 +197,7 @@ or contact support@narrativeml.com
 
         return spec
 
-    def _add_response_examples(self, spec: Dict[str, Any]) -> None:
+    def _add_response_examples(self, spec: dict[str, Any]) -> None:
         """
         Add example responses to schema definitions
 
@@ -237,7 +237,7 @@ or contact support@narrativeml.com
                 "status_code": 400
             }
 
-    def generate_client_libraries(self) -> Dict[str, str]:
+    def generate_client_libraries(self) -> dict[str, str]:
         """
         Generate client library code examples
 
@@ -662,7 +662,7 @@ curl -X GET "$BASE_URL/api/v1/health"
 # Response: {"status": "healthy", "version": "1.0.0"}
 '''
 
-    def generate_integration_examples(self) -> Dict[str, str]:
+    def generate_integration_examples(self) -> dict[str, str]:
         """
         Generate integration examples for popular platforms
 
@@ -838,7 +838,7 @@ if __name__ == '__main__':
     app.run(debug=True)
 '''
 
-    def generate_postman_collection(self) -> Dict[str, Any]:
+    def generate_postman_collection(self) -> dict[str, Any]:
         """
         Generate Postman collection for API testing
 

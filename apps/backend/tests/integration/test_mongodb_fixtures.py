@@ -7,7 +7,7 @@ proper test isolation.
 Run with: pytest tests/integration/test_mongodb_fixtures.py -v -m integration
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -131,8 +131,8 @@ async def test_fixture_isolation(test_user_data):
         num_rows=50,
         num_columns=2,
         data_schema=[],
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
     )
     await additional_data.insert()
 
@@ -171,8 +171,8 @@ async def test_document_crud_operations(setup_database):
                 is_high_cardinality=False
             )
         ],
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
     )
     await user_data.insert()
     assert user_data.id is not None

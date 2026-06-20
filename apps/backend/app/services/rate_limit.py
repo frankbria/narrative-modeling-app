@@ -25,7 +25,7 @@ import math
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import Dict, Optional, Protocol, Tuple
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class InMemoryRateLimitStore:
     """
 
     def __init__(self) -> None:
-        self._buckets: Dict[str, Tuple[int, float, int]] = {}
+        self._buckets: dict[str, tuple[int, float, int]] = {}
         self._lock = Lock()
 
     def _now(self) -> float:
@@ -210,7 +210,7 @@ class RedisRateLimitStore:
 
 
 def build_rate_limit_store(
-    redis_url: Optional[str], key_prefix: str = "ratelimit:"
+    redis_url: str | None, key_prefix: str = "ratelimit:"
 ) -> RateLimitStore:
     """Pick a store: Redis when a URL is configured, else in-memory fallback."""
     if redis_url:

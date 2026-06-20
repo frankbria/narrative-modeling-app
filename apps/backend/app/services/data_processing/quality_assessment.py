@@ -4,7 +4,7 @@ Data quality assessment service for comprehensive quality scoring
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ class QualityDimension(str, Enum):
 class QualityIssue(BaseModel):
     """Individual quality issue identified"""
     dimension: QualityDimension
-    column: Optional[str] = None
+    column: str | None = None
     severity: str  # "low", "medium", "high"
     description: str
     affected_rows: int
@@ -40,7 +40,7 @@ class ColumnQualityScore(BaseModel):
     validity_score: float
     uniqueness_score: float
     overall_score: float
-    issues: List[QualityIssue] = Field(default_factory=list)
+    issues: list[QualityIssue] = Field(default_factory=list)
 
 
 class QualityReport(BaseModel):
@@ -56,11 +56,11 @@ class QualityReport(BaseModel):
     )
     
     overall_quality_score: float
-    dimension_scores: Dict[QualityDimension, float]
-    column_scores: List[ColumnQualityScore]
-    critical_issues: List[QualityIssue]
-    warnings: List[QualityIssue]
-    recommendations: List[str]
+    dimension_scores: dict[QualityDimension, float]
+    column_scores: list[ColumnQualityScore]
+    critical_issues: list[QualityIssue]
+    warnings: list[QualityIssue]
+    recommendations: list[str]
     row_count: int
     column_count: int
     assessed_at: datetime = Field(default_factory=datetime.utcnow)
@@ -80,8 +80,8 @@ class QualityAssessmentService:
     async def assess_quality(
         self, 
         df: pd.DataFrame, 
-        column_types: Dict[str, str],
-        column_stats: Optional[Dict[str, Any]] = None
+        column_types: dict[str, str],
+        column_stats: dict[str, Any] | None = None
     ) -> QualityReport:
         """
         Assess data quality across multiple dimensions
@@ -138,7 +138,7 @@ class QualityAssessmentService:
         series: pd.Series, 
         col_name: str, 
         col_type: str
-    ) -> tuple[ColumnQualityScore, List[QualityIssue]]:
+    ) -> tuple[ColumnQualityScore, list[QualityIssue]]:
         """Assess quality for a single column"""
         issues = []
         
@@ -178,7 +178,7 @@ class QualityAssessmentService:
         
         return column_score, issues
 
-    def _assess_completeness(self, series: pd.Series, col_name: str) -> tuple[float, List[QualityIssue]]:
+    def _assess_completeness(self, series: pd.Series, col_name: str) -> tuple[float, list[QualityIssue]]:
         """Assess data completeness"""
         issues = []
         null_count = series.isna().sum()
@@ -202,7 +202,7 @@ class QualityAssessmentService:
         
         return completeness_score, issues
 
-    def _assess_consistency(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, List[QualityIssue]]:
+    def _assess_consistency(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data consistency"""
         issues = []
         consistency_score = 1.0
@@ -275,7 +275,7 @@ class QualityAssessmentService:
         
         return max(0.0, consistency_score), issues
 
-    def _assess_validity(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, List[QualityIssue]]:
+    def _assess_validity(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data validity"""
         issues = []
         validity_score = 1.0
@@ -354,7 +354,7 @@ class QualityAssessmentService:
         
         return max(0.0, validity_score), issues
 
-    def _assess_uniqueness(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, List[QualityIssue]]:
+    def _assess_uniqueness(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data uniqueness"""
         issues = []
         
@@ -398,7 +398,7 @@ class QualityAssessmentService:
         
         return 1.0, issues  # Don't penalize uniqueness for non-ID columns
 
-    def _calculate_dimension_scores(self, column_scores: List[ColumnQualityScore]) -> Dict[QualityDimension, float]:
+    def _calculate_dimension_scores(self, column_scores: list[ColumnQualityScore]) -> dict[QualityDimension, float]:
         """Calculate average scores for each quality dimension"""
         if not column_scores:
             # Return zeros for empty dataframe
@@ -417,7 +417,7 @@ class QualityAssessmentService:
         
         return {k: float(v) for k, v in dimension_scores.items()}
 
-    def _generate_recommendations(self, issues: List[QualityIssue], column_types: Dict[str, str]) -> List[str]:
+    def _generate_recommendations(self, issues: list[QualityIssue], column_types: dict[str, str]) -> list[str]:
         """Generate actionable recommendations based on issues"""
         recommendations = []
         

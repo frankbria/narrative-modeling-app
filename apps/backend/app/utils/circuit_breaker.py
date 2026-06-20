@@ -14,9 +14,10 @@ import asyncio
 import logging
 import threading
 import time
+from collections.abc import Callable
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from tenacity import (
     after_log,
@@ -49,8 +50,8 @@ class CircuitBreakerMetrics:
         self.success_count = 0
         self.consecutive_failures = 0
         self.consecutive_successes = 0
-        self.last_failure_time: Optional[float] = None
-        self.last_success_time: Optional[float] = None
+        self.last_failure_time: float | None = None
+        self.last_success_time: float | None = None
         self.state_changes: list[tuple[CircuitState, float]] = []
         self._lock = threading.Lock()
 
@@ -82,7 +83,7 @@ class CircuitBreakerMetrics:
             self.consecutive_failures = 0
             self.consecutive_successes = 0
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get current metrics as dictionary."""
         with self._lock:
             current_state = self.state_changes[-1][0] if self.state_changes else CircuitState.CLOSED
@@ -249,7 +250,7 @@ class CircuitBreaker:
 
 
 # Global circuit breakers for each service
-_circuit_breakers: Dict[str, CircuitBreaker] = {}
+_circuit_breakers: dict[str, CircuitBreaker] = {}
 _circuit_breakers_lock = threading.Lock()
 
 
@@ -269,7 +270,7 @@ def get_circuit_breaker(
         return _circuit_breakers[service_name]
 
 
-def get_all_circuit_metrics() -> Dict[str, Dict[str, Any]]:
+def get_all_circuit_metrics() -> dict[str, dict[str, Any]]:
     """Get metrics for all tracked services."""
     with _circuit_breakers_lock:
         return {
@@ -297,7 +298,7 @@ def with_circuit_breaker(
     failure_threshold: int = 5,
     recovery_timeout: float = 60.0,
     exceptions: tuple = (Exception,),
-    fallback_value: Optional[Any] = None,
+    fallback_value: Any | None = None,
 ):
     """
     Decorator to apply circuit breaker pattern to async functions.
@@ -366,7 +367,7 @@ def with_sync_circuit_breaker(
     failure_threshold: int = 5,
     recovery_timeout: float = 60.0,
     exceptions: tuple = (Exception,),
-    fallback_value: Optional[Any] = None,
+    fallback_value: Any | None = None,
 ):
     """
     Decorator to apply circuit breaker pattern to synchronous functions.

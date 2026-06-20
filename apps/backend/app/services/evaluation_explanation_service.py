@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from openai import OpenAI, OpenAIError
 
@@ -44,12 +44,12 @@ class EvaluationExplanationService:
     async def generate_report_card(
         self,
         problem_type: str,
-        metrics: Union[ClassificationMetrics, RegressionMetrics],
-        confusion_matrix: Optional[ConfusionMatrixData],
-        feature_importance: Optional[Dict[str, float]],
+        metrics: ClassificationMetrics | RegressionMetrics,
+        confusion_matrix: ConfusionMatrixData | None,
+        feature_importance: dict[str, float] | None,
         n_test_samples: int,
-        model_name: Optional[str],
-        algorithm: Optional[str],
+        model_name: str | None,
+        algorithm: str | None,
     ) -> AIExplanation:
         """Build the AIExplanation report card; never raises.
 
@@ -83,13 +83,13 @@ class EvaluationExplanationService:
     def _build_context(
         self,
         problem_type: str,
-        metrics: Union[ClassificationMetrics, RegressionMetrics],
-        confusion_matrix: Optional[ConfusionMatrixData],
-        feature_importance: Optional[Dict[str, float]],
+        metrics: ClassificationMetrics | RegressionMetrics,
+        confusion_matrix: ConfusionMatrixData | None,
+        feature_importance: dict[str, float] | None,
         n_test_samples: int,
-        model_name: Optional[str],
-        algorithm: Optional[str],
-    ) -> Dict[str, Any]:
+        model_name: str | None,
+        algorithm: str | None,
+    ) -> dict[str, Any]:
         """Normalize inputs into one dict shared by the prompt and the fallback."""
         top_features = (
             dict(
@@ -125,8 +125,8 @@ class EvaluationExplanationService:
         fallback_value=None,
     )
     async def _generate_openai_explanation(
-        self, context: Dict[str, Any]
-    ) -> Optional[AIExplanation]:
+        self, context: dict[str, Any]
+    ) -> AIExplanation | None:
         """Call OpenAI in JSON mode.
 
         Exceptions must propagate so the circuit breaker records the failure
@@ -177,7 +177,7 @@ Respond in JSON with exactly this structure:
 }"""
 
     @staticmethod
-    def _create_user_prompt(context: Dict[str, Any]) -> str:
+    def _create_user_prompt(context: dict[str, Any]) -> str:
         return (
             "Explain this model's evaluation results as a report card:\n\n"
             + json.dumps(
@@ -187,7 +187,7 @@ Respond in JSON with exactly this structure:
             )
         )
 
-    def _generate_fallback_explanation(self, context: Dict[str, Any]) -> AIExplanation:
+    def _generate_fallback_explanation(self, context: dict[str, Any]) -> AIExplanation:
         """Deterministic rule-based report card (no API key required)."""
         if context["is_classification"]:
             return self._fallback_classification(context)
@@ -203,15 +203,15 @@ Respond in JSON with exactly this structure:
             return "fair"
         return "weak"
 
-    def _fallback_classification(self, context: Dict[str, Any]) -> AIExplanation:
+    def _fallback_classification(self, context: dict[str, Any]) -> AIExplanation:
         metrics = context["metrics"]
         accuracy = metrics["accuracy"]
         f1_macro = metrics["f1_macro"]
         n_samples = context["n_test_samples"]
 
-        strengths: List[str] = []
-        concerns: List[str] = []
-        recommendations: List[str] = []
+        strengths: list[str] = []
+        concerns: list[str] = []
+        recommendations: list[str] = []
 
         # Baseline: majority-class prevalence from the confusion matrix rows
         baseline = None
@@ -324,7 +324,7 @@ Respond in JSON with exactly this structure:
             generated_by="fallback",
         )
 
-    def _fallback_regression(self, context: Dict[str, Any]) -> AIExplanation:
+    def _fallback_regression(self, context: dict[str, Any]) -> AIExplanation:
         metrics = context["metrics"]
         r2 = metrics["r2"]
         n_samples = context["n_test_samples"]
@@ -357,9 +357,9 @@ Respond in JSON with exactly this structure:
                 f"value on average."
             )
 
-        strengths: List[str] = []
-        concerns: List[str] = []
-        recommendations: List[str] = []
+        strengths: list[str] = []
+        concerns: list[str] = []
+        recommendations: list[str] = []
 
         if r2 >= 0.75:
             strengths.append(

@@ -5,7 +5,7 @@ Schema inference service for automatic data type detection and validation
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -49,12 +49,12 @@ class ColumnSchema(BaseModel):
     nullable: bool = True
     unique: bool = False
     cardinality: int = 0
-    sample_values: List[Any] = Field(default_factory=list)
-    format_pattern: Optional[str] = None
-    min_value: Optional[Union[float, str]] = None
-    max_value: Optional[Union[float, str]] = None
-    mean_value: Optional[float] = None
-    most_common_value: Optional[Any] = None
+    sample_values: list[Any] = Field(default_factory=list)
+    format_pattern: str | None = None
+    min_value: float | str | None = None
+    max_value: float | str | None = None
+    mean_value: float | None = None
+    most_common_value: Any | None = None
     null_count: int = 0
     null_percentage: float = 0.0
 
@@ -71,7 +71,7 @@ class SchemaDefinition(BaseModel):
         }
     )
     
-    columns: List[ColumnSchema]
+    columns: list[ColumnSchema]
     row_count: int
     column_count: int
     file_type: str
@@ -324,7 +324,7 @@ class SchemaInferenceService:
         except (AttributeError, TypeError, ValueError):
             return False
 
-    def _detect_datetime_type(self, sample: pd.Series) -> Optional[DataType]:
+    def _detect_datetime_type(self, sample: pd.Series) -> DataType | None:
         """Detect if column contains date, datetime, or time values"""
         str_sample = sample.astype(str)
         

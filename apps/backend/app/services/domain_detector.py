@@ -8,7 +8,7 @@ enabling domain-specific feature templates and suggestions.
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -34,13 +34,13 @@ class DomainDetectionResult:
     """Result of domain detection"""
     domain: Domain
     confidence: float
-    evidence: List[str]
-    suggested_features: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
+    evidence: list[str]
+    suggested_features: list[dict[str, Any]]
+    metadata: dict[str, Any]
 
 
 # Domain keyword patterns
-DOMAIN_PATTERNS: Dict[Domain, Dict[str, List[str]]] = {
+DOMAIN_PATTERNS: dict[Domain, dict[str, list[str]]] = {
     Domain.FINANCIAL: {
         "column_keywords": [
             "price", "cost", "revenue", "profit", "margin", "balance",
@@ -144,7 +144,7 @@ DOMAIN_PATTERNS: Dict[Domain, Dict[str, List[str]]] = {
 }
 
 # Domain-specific feature templates
-DOMAIN_FEATURE_TEMPLATES: Dict[Domain, List[Dict[str, Any]]] = {
+DOMAIN_FEATURE_TEMPLATES: dict[Domain, list[dict[str, Any]]] = {
     Domain.FINANCIAL: [
         {
             "name": "price_change_pct",
@@ -331,7 +331,7 @@ class DomainDetector:
     def detect_domain(
         self,
         df: pd.DataFrame,
-        column_names: Optional[List[str]] = None
+        column_names: list[str] | None = None
     ) -> DomainDetectionResult:
         """
         Detect the domain of a dataset.
@@ -347,7 +347,7 @@ class DomainDetector:
             column_names = list(df.columns)
 
         # Score each domain
-        domain_scores: Dict[Domain, Tuple[float, List[str]]] = {}
+        domain_scores: dict[Domain, tuple[float, list[str]]] = {}
 
         for domain in Domain:
             if domain == Domain.GENERAL:
@@ -359,7 +359,7 @@ class DomainDetector:
         # Find best matching domain
         best_domain = Domain.GENERAL
         best_score = 0.0
-        best_evidence: List[str] = []
+        best_evidence: list[str] = []
 
         for domain, (score, evidence) in domain_scores.items():
             if score > best_score:
@@ -392,16 +392,16 @@ class DomainDetector:
     def _score_domain(
         self,
         df: pd.DataFrame,
-        column_names: List[str],
+        column_names: list[str],
         domain: Domain
-    ) -> Tuple[float, List[str]]:
+    ) -> tuple[float, list[str]]:
         """Score how well a dataset matches a domain"""
         patterns = self.domain_patterns.get(domain, {"column_keywords": [], "value_patterns": []})
         keywords = patterns.get("column_keywords", [])
         value_patterns = patterns.get("value_patterns", [])
 
         score = 0.0
-        evidence: List[str] = []
+        evidence: list[str] = []
 
         # Score based on column name matches
         columns_lower = [col.lower().replace("_", " ").replace("-", " ") for col in column_names]
@@ -441,12 +441,12 @@ class DomainDetector:
     def _get_applicable_features(
         self,
         df: pd.DataFrame,
-        column_names: List[str],
+        column_names: list[str],
         domain: Domain
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get domain-specific feature templates that can be applied to this dataset"""
         templates = self.feature_templates.get(domain, [])
-        applicable: List[Dict[str, Any]] = []
+        applicable: list[dict[str, Any]] = []
 
         columns_lower = {col.lower().replace("_", ""): col for col in column_names}
 

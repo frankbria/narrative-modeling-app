@@ -7,8 +7,8 @@ import logging
 import math
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -77,7 +77,7 @@ _prediction_enricher = PredictionEnricher()
 _interpretability_service = InterpretabilityService()
 
 
-def _rank_importance(importance: Optional[Dict[str, float]]) -> List[RankedFeature]:
+def _rank_importance(importance: dict[str, float] | None) -> list[RankedFeature]:
     """Convert an importance dict into a list ranked by descending importance.
 
     Tolerates a non-dict (e.g. corrupted S3 payload) by returning an empty list,
@@ -98,10 +98,10 @@ class TrainModelRequest(BaseModel):
 
     dataset_id: str
     target_column: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    feature_config: Optional[Dict[str, Any]] = None
-    training_config: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    description: str | None = None
+    feature_config: dict[str, Any] | None = None
+    training_config: dict[str, Any] | None = None
 
 
 class TrainModelResponse(BaseModel):
@@ -117,21 +117,21 @@ class ModelInfo(BaseModel):
 
     model_id: str
     name: str
-    description: Optional[str]
+    description: str | None
     problem_type: str
     algorithm: str
     target_column: str
     cv_score: float
     test_score: float
     created_at: datetime
-    last_used_at: Optional[datetime]
+    last_used_at: datetime | None
     is_active: bool
 
 
 class PredictRequest(BaseModel):
     """Request for making predictions"""
 
-    data: List[Dict[str, Any]] = Field(..., max_length=MAX_PREDICT_RECORDS)
+    data: list[dict[str, Any]] = Field(..., max_length=MAX_PREDICT_RECORDS)
     include_probabilities: bool = False
     # Per-prediction feature-contribution breakdowns are off by default to keep
     # responses light; opt in for explainability (issue #83).
@@ -141,24 +141,24 @@ class PredictRequest(BaseModel):
 class PredictResponse(BaseModel):
     """Response with predictions"""
 
-    predictions: List[Any]
-    probabilities: Optional[List[List[float]]] = None
+    predictions: list[Any]
+    probabilities: list[list[float]] | None = None
     # Per-record confidence (max class probability) for classification; None
     # for regression or when probabilities are unavailable (issue #82).
-    confidence: Optional[List[float]] = None
+    confidence: list[float] | None = None
     # Ordered class labels matching each probability vector, so the UI can map
     # probabilities to human-readable classes (issue #82).
-    class_labels: Optional[List[str]] = None
-    feature_names: List[str]
-    model_info: Dict[str, Any]
+    class_labels: list[str] | None = None
+    feature_names: list[str]
+    model_info: dict[str, Any]
     # Confidence & explainability enrichment (issue #83). All optional:
     # pre-#83 models report is_calibrated=False and omit intervals/explanations.
-    low_confidence: Optional[List[bool]] = None  # per-record warning flags
+    low_confidence: list[bool] | None = None  # per-record warning flags
     is_calibrated: bool = False
-    calibration_method: Optional[str] = None
+    calibration_method: str | None = None
     confidence_threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD
-    prediction_intervals: Optional[List[Optional[List[float]]]] = None  # regression
-    explanations: Optional[List[Optional[PredictionExplanation]]] = None
+    prediction_intervals: list[list[float] | None] | None = None  # regression
+    explanations: list[PredictionExplanation | None] | None = None
 
 
 class FeatureDescriptor(BaseModel):
@@ -169,14 +169,14 @@ class FeatureDescriptor(BaseModel):
     type: str
     # Allowed values for categorical features (from the fitted encoder), when
     # recoverable; None otherwise.
-    options: Optional[List[str]] = None
+    options: list[str] | None = None
 
 
 class ModelFeaturesResponse(BaseModel):
     """The input schema needed to auto-generate a prediction form (issue #82)."""
 
-    features: List[FeatureDescriptor]
-    class_labels: Optional[List[str]] = None
+    features: list[FeatureDescriptor]
+    class_labels: list[str] | None = None
     problem_type: str
     target_column: str
 
@@ -187,20 +187,20 @@ class TrainingStatusResponse(BaseModel):
     model_id: str
     status: str  # pending | running | completed | failed | cancelled
     progress: float  # 0.0 - 1.0
-    current_algorithm: Optional[str] = None
-    current_stage: Optional[str] = None  # preprocessing | training | finalizing
+    current_algorithm: str | None = None
+    current_stage: str | None = None  # preprocessing | training | finalizing
     completed_algorithms: int = 0
     total_algorithms: int = 0
-    elapsed_seconds: Optional[float] = None
-    estimated_remaining_seconds: Optional[float] = None
+    elapsed_seconds: float | None = None
+    estimated_remaining_seconds: float | None = None
     cancellation_requested: bool = False
-    metrics: Dict[str, Any] = {}
-    model_comparison: List[Dict[str, Any]] = []
-    algorithm_recommendations: List[Dict[str, Any]] = []
-    best_model_id: Optional[str] = None
-    best_algorithm: Optional[str] = None
-    explanation: Optional[str] = None
-    error: Optional[str] = None
+    metrics: dict[str, Any] = {}
+    model_comparison: list[dict[str, Any]] = []
+    algorithm_recommendations: list[dict[str, Any]] = []
+    best_model_id: str | None = None
+    best_algorithm: str | None = None
+    explanation: str | None = None
+    error: str | None = None
 
 
 class TrainingJobSummary(BaseModel):
@@ -211,19 +211,19 @@ class TrainingJobSummary(BaseModel):
     target_column: str
     status: str
     progress_percentage: float
-    current_stage: Optional[str] = None
+    current_stage: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    best_algorithm: Optional[str] = None
-    best_score: Optional[float] = None
-    elapsed_seconds: Optional[float] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    best_algorithm: str | None = None
+    best_score: float | None = None
+    elapsed_seconds: float | None = None
 
 
 class TrainingJobListResponse(BaseModel):
     """Paginated list of the current user's training jobs"""
 
-    jobs: List[TrainingJobSummary]
+    jobs: list[TrainingJobSummary]
     total_count: int
     limit: int
     skip: int
@@ -233,7 +233,7 @@ class TrainingLogsResponse(BaseModel):
     """Paginated log entries for one training job"""
 
     model_id: str
-    logs: List[TrainingLogEntry]
+    logs: list[TrainingLogEntry]
     total_count: int
     has_more: bool
 
@@ -274,7 +274,7 @@ async def train_model(
     # Create a unique model id. A short uuid suffix avoids collisions between
     # requests made within the same second (the id is the lookup key for the
     # TrainingJob status endpoint, so it must be unique).
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     model_id = f"model_{timestamp}_{uuid.uuid4().hex[:8]}"
 
     # Persist a pending TrainingJob synchronously so the status endpoint can be
@@ -381,7 +381,7 @@ async def train_model_task(
         # POST /{model_id}/cancel (the cancellation flag and its log entry) are
         # never clobbered by saving this (stale) in-memory document wholesale:
         # scalars/embedded docs go through $set, log appends through $push.
-        async def on_progress(completed: int, total: int, current: Optional[str]):
+        async def on_progress(completed: int, total: int, current: str | None):
             if not training_job:
                 return
             training_job.update_progress(
@@ -402,7 +402,7 @@ async def train_model_task(
             if not training_job:
                 return
             entry = training_job.add_log(event.level, event.message, stage=event.stage)
-            fields_to_set: Dict[Any, Any] = {
+            fields_to_set: dict[Any, Any] = {
                 TrainingJob.progress: training_job.progress,
                 TrainingJob.updated_at: training_job.updated_at,
             }
@@ -442,7 +442,7 @@ async def train_model_task(
         )
 
         # Prepare metadata
-        model_metadata: Dict[str, Any] = {
+        model_metadata: dict[str, Any] = {
             "name": request.name or f"{result.best_model.name} on {user_data.filename}",
             "description": request.description,
             "problem_type": result.problem_type.value,
@@ -590,7 +590,7 @@ async def _refreshed_job(job: TrainingJob) -> TrainingJob:
 
 async def _build_algorithm_recommendations(
     df: pd.DataFrame, target_column: str, problem_type
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Build plain-language algorithm recommendations for a dataset.
 
     Uses the rule-based ``AlgorithmSelector`` (no LLM/API call). Returns an empty
@@ -606,9 +606,9 @@ async def _build_algorithm_recommendations(
         return []
 
 
-@router.get("/", response_model=List[ModelInfo])
+@router.get("/", response_model=list[ModelInfo])
 async def list_models(
-    dataset_id: Optional[str] = Query(None),
+    dataset_id: str | None = Query(None),
     is_active: bool = Query(True),
     current_user_id: str = Depends(get_current_user_id),
 ):
@@ -638,7 +638,7 @@ async def list_models(
     ]
 
 
-def _best_comparison_score(job: TrainingJob) -> Optional[float]:
+def _best_comparison_score(job: TrainingJob) -> float | None:
     """Best score across the comparison rows (test_score, else cv_score)."""
     scores = [
         row.test_score if row.test_score is not None else row.cv_score
@@ -652,7 +652,7 @@ def _best_comparison_score(job: TrainingJob) -> Optional[float]:
 # captured as a model id.
 @router.get("/jobs", response_model=TrainingJobListResponse)
 async def list_training_jobs(
-    status: Optional[str] = Query(
+    status: str | None = Query(
         None,
         description=(
             "Lifecycle status filter; accepts a single status or a "
@@ -671,7 +671,7 @@ async def list_training_jobs(
     skip/limit pagination; ``total_count`` is the size of the filtered result
     set.
     """
-    query: Dict[str, Any] = {"user_id": current_user_id}
+    query: dict[str, Any] = {"user_id": current_user_id}
     if status is not None:
         try:
             statuses = [JobStatus(s.strip()) for s in status.split(",") if s.strip()]
@@ -732,8 +732,8 @@ async def compare_models(
     their scores are actually comparable. Returns 404 when any id is unknown
     (or owned by another user) and 400 on mixed datasets/problem types.
     """
-    models: List[MLModel] = []
-    missing: List[str] = []
+    models: list[MLModel] = []
+    missing: list[str] = []
     for model_id in request.model_ids:
         model = await MLModel.find_one(
             MLModel.model_id == model_id, MLModel.user_id == current_user_id
@@ -789,7 +789,7 @@ async def compare_models(
 @router.get("/{model_id}/logs", response_model=TrainingLogsResponse)
 async def get_training_logs(
     model_id: str,
-    level: Optional[str] = Query(None, pattern="^(info|warning|error)$"),
+    level: str | None = Query(None, pattern="^(info|warning|error)$"),
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0),
     current_user_id: str = Depends(get_current_user_id),
@@ -904,13 +904,13 @@ async def get_training_status(
     )
 
 
-def _stored_scalar_metrics(model: MLModel) -> Dict[str, float]:
+def _stored_scalar_metrics(model: MLModel) -> dict[str, float]:
     """Scalar metrics persisted at training time, as a plain float dict.
 
     Non-finite values are dropped: NaN/inf would serialize as invalid JSON
     (the artifact path is NaN-safe via _to_json_safe; keep this path symmetric).
     """
-    stored: Dict[str, float] = {}
+    stored: dict[str, float] = {}
     for key, value in (model.metrics or {}).items():
         if (
             isinstance(value, (int, float))
@@ -940,12 +940,12 @@ def _partial_evaluation_response(model: MLModel) -> ModelEvaluationResponse:
         pr_curve=None,
         feature_importance=model.feature_importance,
         ai_explanation=None,
-        evaluated_at=datetime.now(timezone.utc),
+        evaluated_at=datetime.now(UTC),
     )
 
 
 async def _full_evaluation_response(
-    model: MLModel, artifacts: Dict[str, Any]
+    model: MLModel, artifacts: dict[str, Any]
 ) -> ModelEvaluationResponse:
     """Compute the full evaluation payload from persisted held-out arrays."""
     problem_type = artifacts.get("problem_type") or model.problem_type
@@ -955,7 +955,7 @@ async def _full_evaluation_response(
     class_labels = artifacts.get("class_labels")
     is_classification = "classification" in str(problem_type).lower()
 
-    metrics: Union[ClassificationMetrics, RegressionMetrics]
+    metrics: ClassificationMetrics | RegressionMetrics
     if is_classification:
         metrics = MetricsService.compute_classification_metrics(
             y_test, y_pred, y_proba, class_labels
@@ -1002,7 +1002,7 @@ async def _full_evaluation_response(
         pr_curve=pr,
         feature_importance=model.feature_importance,
         ai_explanation=ai_explanation,
-        evaluated_at=datetime.now(timezone.utc),
+        evaluated_at=datetime.now(UTC),
     )
 
 
@@ -1131,7 +1131,7 @@ async def get_shap_summary(
                 "(and models trained before this feature) fall back to "
                 "model-native feature importance."
             ),
-            evaluated_at=datetime.now(timezone.utc),
+            evaluated_at=datetime.now(UTC),
         )
 
     importance = shap_artifacts.get("shap_importance")
@@ -1143,7 +1143,7 @@ async def get_shap_summary(
         feature_importance=_rank_importance(importance),
         base_value=shap_artifacts.get("base_value"),
         plain_language=_interpretability_service.top_drivers_text(importance),
-        evaluated_at=datetime.now(timezone.utc),
+        evaluated_at=datetime.now(UTC),
     )
 
 
@@ -1162,7 +1162,7 @@ async def get_model(model_id: str, current_user_id: str = Depends(get_current_us
     return model
 
 
-def _required_input_features(feature_engineer, ml_model) -> List[str]:
+def _required_input_features(feature_engineer, ml_model) -> list[str]:
     """The raw input columns a record must supply.
 
     When a feature engineer was fitted at training time, the model consumes the
@@ -1179,7 +1179,7 @@ def _required_input_features(feature_engineer, ml_model) -> List[str]:
     return list(ml_model.feature_names)
 
 
-def _categorical_options(feature_engineer, column: str) -> Optional[List[str]]:
+def _categorical_options(feature_engineer, column: str) -> list[str] | None:
     """Recover the allowed values for a categorical column from the fitted
     encoder, so the form can render a dropdown. Returns None if unrecoverable."""
     try:
@@ -1197,7 +1197,7 @@ def _categorical_options(feature_engineer, column: str) -> Optional[List[str]]:
     return None
 
 
-def _extract_class_labels(model, problem_type: str) -> Optional[List[str]]:
+def _extract_class_labels(model, problem_type: str) -> list[str] | None:
     """Ordered class labels from the fitted estimator (classification only)."""
     try:
         if "classification" not in str(problem_type):
@@ -1229,7 +1229,7 @@ async def get_model_features(
         raise HTTPException(status_code=404, detail="Model not found")
 
     feature_engineer = None
-    class_labels: Optional[List[str]] = None
+    class_labels: list[str] | None = None
     storage_service = ModelStorageService()
     try:
         model, feature_engineer = await storage_service.load_model(
@@ -1244,7 +1244,7 @@ async def get_model_features(
             exc,
         )
 
-    features: List[FeatureDescriptor] = []
+    features: list[FeatureDescriptor] = []
     if feature_engineer is not None and (
         getattr(feature_engineer, "numeric_features", None)
         or getattr(feature_engineer, "categorical_features", None)
@@ -1414,7 +1414,7 @@ async def deactivate_model(
         raise HTTPException(status_code=404, detail="Model not found")
 
     model.is_active = False
-    model.updated_at = datetime.now(timezone.utc)
+    model.updated_at = datetime.now(UTC)
     await model.save()
 
     return {"message": f"Model {model_id} deactivated"}

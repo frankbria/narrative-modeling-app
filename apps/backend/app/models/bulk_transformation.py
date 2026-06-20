@@ -6,9 +6,9 @@ to multiple columns simultaneously with parallel processing.
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PatternType(str, Enum):
@@ -41,14 +41,14 @@ class ColumnSelectionPattern(BaseModel):
     """Pattern for selecting columns programmatically."""
 
     pattern_type: PatternType = Field(..., description="Type of selection pattern")
-    criteria: Dict[str, Any] = Field(
+    criteria: dict[str, Any] = Field(
         default_factory=dict,
         description="Pattern-specific criteria"
     )
 
     @field_validator('criteria')
     @classmethod
-    def validate_criteria(cls, v: Dict[str, Any], info) -> Dict[str, Any]:
+    def validate_criteria(cls, v: dict[str, Any], info) -> dict[str, Any]:
         """Validate criteria based on pattern type."""
         # Get pattern_type from the data being validated
         pattern_type = info.data.get('pattern_type')
@@ -86,11 +86,11 @@ class ColumnResult(BaseModel):
     column_name: str = Field(..., description="Name of the column")
     success: bool = Field(default=True, description="Whether transformation succeeded")
     affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
-    warnings: List[str] = Field(default_factory=list, description="Warning messages")
+    error: str | None = Field(default=None, description="Error message if failed")
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
     execution_time_ms: int = Field(default=0, ge=0, description="Execution time in milliseconds")
-    stats_before: Optional[Dict[str, Any]] = Field(default=None, description="Stats before transformation")
-    stats_after: Optional[Dict[str, Any]] = Field(default=None, description="Stats after transformation")
+    stats_before: dict[str, Any] | None = Field(default=None, description="Stats before transformation")
+    stats_after: dict[str, Any] | None = Field(default=None, description="Stats after transformation")
 
 
 class BulkTransformationProgress(BaseModel):
@@ -100,7 +100,7 @@ class BulkTransformationProgress(BaseModel):
     processed_columns: int = Field(default=0, ge=0, description="Number of columns processed")
     successful_columns: int = Field(default=0, ge=0, description="Number of successful transformations")
     failed_columns: int = Field(default=0, ge=0, description="Number of failed transformations")
-    current_column: Optional[str] = Field(default=None, description="Currently processing column")
+    current_column: str | None = Field(default=None, description="Currently processing column")
 
     @property
     def percentage_complete(self) -> float:
@@ -120,15 +120,15 @@ class BulkTransformationProgress(BaseModel):
 class BulkTransformationResult(BaseModel):
     """Result of a bulk transformation job."""
 
-    successful_columns: List[str] = Field(
+    successful_columns: list[str] = Field(
         default_factory=list,
         description="List of successfully transformed columns"
     )
-    failed_columns: List[Dict[str, Any]] = Field(
+    failed_columns: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of failed columns with error details"
     )
-    column_results: List[ColumnResult] = Field(
+    column_results: list[ColumnResult] = Field(
         default_factory=list,
         description="Detailed results per column"
     )
@@ -150,7 +150,7 @@ class BulkTransformationJob(Document):
     dataset_id: Annotated[str, Indexed()] = Field(..., description="Target dataset")
 
     # Configuration
-    selected_columns: List[str] = Field(
+    selected_columns: list[str] = Field(
         default_factory=list,
         description="List of columns to transform",
         min_length=1,
@@ -158,11 +158,11 @@ class BulkTransformationJob(Document):
     )
     transformation_type: str = Field(..., description="Type of transformation to apply")
 
-    global_parameters: Dict[str, Any] = Field(
+    global_parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Global transformation parameters"
     )
-    per_column_params: Dict[str, Dict[str, Any]] = Field(
+    per_column_params: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="Per-column parameter overrides (column_name -> params)"
     )
@@ -175,7 +175,7 @@ class BulkTransformationJob(Document):
 
     @field_validator('selected_columns')
     @classmethod
-    def validate_column_names(cls, v: List[str]) -> List[str]:
+    def validate_column_names(cls, v: list[str]) -> list[str]:
         """Validate selected column names."""
         if len(v) != len(set(v)):
             raise ValueError("Duplicate column names in selected_columns")
@@ -191,17 +191,17 @@ class BulkTransformationJob(Document):
     )
 
     # Results
-    result: Optional[BulkTransformationResult] = Field(
+    result: BulkTransformationResult | None = Field(
         default=None,
         description="Results after job completion"
     )
-    error_message: Optional[str] = Field(
+    error_message: str | None = Field(
         default=None,
         description="Error message if job failed"
     )
 
     # File paths
-    output_file_path: Optional[str] = Field(
+    output_file_path: str | None = Field(
         default=None,
         description="Path to transformed dataset"
     )
@@ -212,8 +212,8 @@ class BulkTransformationJob(Document):
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
-    started_at: Optional[datetime] = Field(default=None)
-    completed_at: Optional[datetime] = Field(default=None)
+    started_at: datetime | None = Field(default=None)
+    completed_at: datetime | None = Field(default=None)
     updated_at: datetime = Field(default_factory=get_current_time)
 
     class Settings:
@@ -282,10 +282,10 @@ class BulkTransformationJob(Document):
 
     def update_progress(
         self,
-        processed_columns: Optional[int] = None,
-        successful_columns: Optional[int] = None,
-        failed_columns: Optional[int] = None,
-        current_column: Optional[str] = None
+        processed_columns: int | None = None,
+        successful_columns: int | None = None,
+        failed_columns: int | None = None,
+        current_column: str | None = None
     ) -> None:
         """Update job progress."""
         if processed_columns is not None:
@@ -299,7 +299,7 @@ class BulkTransformationJob(Document):
         self.update_timestamp()
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         """Calculate job duration in seconds."""
         if not self.started_at:
             return None
@@ -307,7 +307,7 @@ class BulkTransformationJob(Document):
         return (end_time - self.started_at).total_seconds()
 
     @property
-    def estimated_remaining_seconds(self) -> Optional[float]:
+    def estimated_remaining_seconds(self) -> float | None:
         """Estimate remaining time based on progress."""
         if (self.status != BulkJobStatus.RUNNING or
             not self.started_at or

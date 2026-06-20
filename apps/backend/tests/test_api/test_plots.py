@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -19,7 +19,7 @@ def mock_plot():
         type="histogram",
         imageUrl="https://example.com/plot.png",
         metadata={"title": "Test Plot", "description": "A test plot"},
-        generatedAt=datetime.now(timezone.utc),
+        generatedAt=datetime.now(UTC),
     )
 
 

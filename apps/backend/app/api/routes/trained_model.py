@@ -1,6 +1,5 @@
 # backend/app/api/routes/trained_model.py
 
-from typing import List
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,7 +19,7 @@ async def create_model(
     return model
 
 
-@router.get("/", response_model=List[TrainedModel])
+@router.get("/", response_model=list[TrainedModel])
 async def get_models_for_user(user_id: str = Depends(get_current_user_id)):
     return await TrainedModel.find(TrainedModel.userId == user_id).to_list()
 

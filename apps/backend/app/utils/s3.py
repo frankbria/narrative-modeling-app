@@ -2,7 +2,6 @@ import io
 import logging
 import os
 import re
-from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 import boto3
@@ -50,7 +49,7 @@ def create_s3_client():
     return boto3.client("s3", **client_kwargs)
 
 
-def parse_s3_url(s3_url: str) -> Tuple[Optional[str], str]:
+def parse_s3_url(s3_url: str) -> tuple[str | None, str]:
     """
     Parse any persisted S3 URL shape into (bucket, key).
 
@@ -68,7 +67,7 @@ def parse_s3_url(s3_url: str) -> Tuple[Optional[str], str]:
     Raises:
         ValueError: if no object key can be extracted.
     """
-    bucket: Optional[str] = None
+    bucket: str | None = None
     key = ""
 
     if s3_url.startswith("s3://"):
@@ -127,8 +126,8 @@ def get_s3_client():
 
 
 def upload_file_to_s3(
-    file_content: bytes, s3_filename: str, content_type: Optional[str] = None
-) -> Tuple[bool, Optional[str]]:
+    file_content: bytes, s3_filename: str, content_type: str | None = None
+) -> tuple[bool, str | None]:
     """
     Upload a file to S3.
 

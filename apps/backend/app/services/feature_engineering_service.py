@@ -12,7 +12,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -41,10 +41,10 @@ from app.utils.circuit_breaker import with_circuit_breaker
 logger = logging.getLogger(__name__)
 
 # OpenAI client initialization
-_openai_client: Optional[OpenAI] = None
+_openai_client: OpenAI | None = None
 
 
-def get_openai_client() -> Optional[OpenAI]:
+def get_openai_client() -> OpenAI | None:
     """Get or initialize OpenAI client"""
     global _openai_client
     if _openai_client is None:
@@ -78,15 +78,15 @@ MAX_INTERACTION_SUGGESTIONS = 20
 class DatasetAnalysis:
     """Analysis results for a dataset"""
     df: pd.DataFrame
-    numeric_columns: List[str]
-    categorical_columns: List[str]
-    datetime_columns: List[str]
-    text_columns: List[str]
-    target_column: Optional[str]
-    problem_type: Optional[ProblemType]
+    numeric_columns: list[str]
+    categorical_columns: list[str]
+    datetime_columns: list[str]
+    text_columns: list[str]
+    target_column: str | None
+    problem_type: ProblemType | None
     domain: Domain
-    statistics: Dict[str, Any]
-    correlations: Optional[pd.DataFrame]
+    statistics: dict[str, Any]
+    correlations: pd.DataFrame | None
 
 
 class FeatureEngineeringService:
@@ -105,11 +105,11 @@ class FeatureEngineeringService:
         self,
         df: pd.DataFrame,
         dataset_id: str,
-        target_column: Optional[str] = None,
-        problem_type: Optional[str] = None,
+        target_column: str | None = None,
+        problem_type: str | None = None,
         max_suggestions: int = 20,
         include_ai: bool = True,
-        feature_types: Optional[List[FeatureType]] = None
+        feature_types: list[FeatureType] | None = None
     ) -> FeatureSuggestionResponse:
         """
         Generate feature suggestions for a dataset.
@@ -143,7 +143,7 @@ class FeatureEngineeringService:
         logger.info(f"Generated {len(rule_based)} rule-based suggestions")
 
         # Generate AI suggestions if enabled
-        ai_suggestions: List[FeatureSuggestion] = []
+        ai_suggestions: list[FeatureSuggestion] = []
         if include_ai:
             try:
                 ai_suggestions = await self._generate_ai_suggestions(
@@ -205,8 +205,8 @@ class FeatureEngineeringService:
     async def _analyze_dataset(
         self,
         df: pd.DataFrame,
-        target_column: Optional[str],
-        problem_type: Optional[str]
+        target_column: str | None,
+        problem_type: str | None
     ) -> DatasetAnalysis:
         """Analyze dataset to inform suggestion generation"""
 
@@ -290,11 +290,11 @@ class FeatureEngineeringService:
     def _calculate_statistics(
         self,
         df: pd.DataFrame,
-        numeric_columns: List[str],
-        categorical_columns: List[str]
-    ) -> Dict[str, Any]:
+        numeric_columns: list[str],
+        categorical_columns: list[str]
+    ) -> dict[str, Any]:
         """Calculate basic statistics for the dataset"""
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "row_count": len(df),
             "column_count": len(df.columns),
             "numeric_stats": {},
@@ -329,9 +329,9 @@ class FeatureEngineeringService:
     async def _generate_rule_based_suggestions(
         self,
         analysis: DatasetAnalysis
-    ) -> List[FeatureSuggestion]:
+    ) -> list[FeatureSuggestion]:
         """Generate rule-based feature suggestions"""
-        suggestions: List[FeatureSuggestion] = []
+        suggestions: list[FeatureSuggestion] = []
 
         # Polynomial features for numeric columns
         suggestions.extend(self._suggest_polynomial_features(analysis))
@@ -362,7 +362,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_polynomial_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_polynomial_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest polynomial transformations"""
         suggestions = []
         target = analysis.target_column
@@ -424,7 +424,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_interaction_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_interaction_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest interaction features between numeric columns"""
         suggestions = []
         target = analysis.target_column
@@ -471,7 +471,7 @@ class FeatureEngineeringService:
 
         return suggestions[:MAX_INTERACTION_SUGGESTIONS]
 
-    def _suggest_aggregation_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_aggregation_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest aggregation features based on categorical groupings"""
         suggestions = []
         target = analysis.target_column
@@ -519,7 +519,7 @@ class FeatureEngineeringService:
 
         return suggestions[:15]
 
-    def _suggest_time_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_time_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest time-based features from datetime columns"""
         suggestions = []
 
@@ -601,7 +601,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_text_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_text_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest text-based features"""
         suggestions = []
 
@@ -653,7 +653,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_binning_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_binning_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest binning features for numeric columns"""
         suggestions = []
         target = analysis.target_column
@@ -698,7 +698,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_encoding_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_encoding_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest encoding options for categorical columns"""
         suggestions = []
 
@@ -738,7 +738,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_scaling_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_scaling_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest scaling options for numeric columns"""
         suggestions = []
         target = analysis.target_column
@@ -776,7 +776,7 @@ class FeatureEngineeringService:
 
         return suggestions
 
-    def _suggest_domain_features(self, analysis: DatasetAnalysis) -> List[FeatureSuggestion]:
+    def _suggest_domain_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest domain-specific features based on detected domain"""
         suggestions = []
         domain_result = domain_detector.detect_domain(analysis.df)
@@ -811,8 +811,8 @@ class FeatureEngineeringService:
     async def _generate_ai_suggestions(
         self,
         analysis: DatasetAnalysis,
-        existing_suggestions: List[FeatureSuggestion]
-    ) -> List[FeatureSuggestion]:
+        existing_suggestions: list[FeatureSuggestion]
+    ) -> list[FeatureSuggestion]:
         """Generate AI-powered feature suggestions using GPT-4"""
         client = get_openai_client()
         if not client:
@@ -932,8 +932,8 @@ Domain: {analysis.domain.value}"""
     def _prepare_ai_context(
         self,
         analysis: DatasetAnalysis,
-        existing_suggestions: List[FeatureSuggestion]
-    ) -> Dict[str, Any]:
+        existing_suggestions: list[FeatureSuggestion]
+    ) -> dict[str, Any]:
         """Prepare context dictionary for AI prompt"""
         return {
             "columns": {
@@ -952,9 +952,9 @@ Domain: {analysis.domain.value}"""
 
     async def _estimate_importance_batch(
         self,
-        suggestions: List[FeatureSuggestion],
+        suggestions: list[FeatureSuggestion],
         analysis: DatasetAnalysis
-    ) -> List[FeatureSuggestion]:
+    ) -> list[FeatureSuggestion]:
         """Estimate importance scores for all suggestions"""
         if not analysis.target_column:
             return suggestions
@@ -1037,8 +1037,8 @@ Domain: {analysis.domain.value}"""
 
     def _deduplicate_suggestions(
         self,
-        suggestions: List[FeatureSuggestion]
-    ) -> List[FeatureSuggestion]:
+        suggestions: list[FeatureSuggestion]
+    ) -> list[FeatureSuggestion]:
         """Remove duplicate suggestions based on name similarity"""
         seen_names = set()
         unique = []
@@ -1059,8 +1059,8 @@ Domain: {analysis.domain.value}"""
     def _get_cache_key(
         self,
         dataset_id: str,
-        target_column: Optional[str],
-        problem_type: Optional[str]
+        target_column: str | None,
+        problem_type: str | None
     ) -> str:
         """Generate cache key for suggestions"""
         key_parts = [dataset_id, target_column or "auto", problem_type or "auto"]
@@ -1069,7 +1069,7 @@ Domain: {analysis.domain.value}"""
     async def _get_cached_suggestions(
         self,
         cache_key: str
-    ) -> Optional[FeatureSuggestionResponse]:
+    ) -> FeatureSuggestionResponse | None:
         """Get cached suggestions if available"""
         try:
             if cache_service:
@@ -1110,7 +1110,7 @@ Domain: {analysis.domain.value}"""
         self,
         suggestion: FeatureSuggestion,
         analysis: DatasetAnalysis
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate detailed explanation for a feature suggestion"""
         return {
             "suggestion_id": suggestion.id,

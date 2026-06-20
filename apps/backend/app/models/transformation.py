@@ -5,9 +5,9 @@ This model focuses on data transformation configurations, history, and validatio
 It replaces the transformation-specific fields from the legacy UserData model.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # =============================================================================
@@ -86,19 +86,19 @@ class TransformationStep(BaseModel):
     """A single transformation step with parameters and validation."""
 
     transformation_type: str = Field(..., description="Type of transformation: encode, scale, impute, drop_missing")
-    column: Optional[str] = Field(None, description="Target column for transformation (if applicable)")
-    columns: Optional[List[str]] = Field(None, description="Target columns for transformation (for multi-column ops)")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
+    column: str | None = Field(None, description="Target column for transformation (if applicable)")
+    columns: list[str] | None = Field(None, description="Target columns for transformation (for multi-column ops)")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
     applied_at: datetime = Field(default_factory=get_current_time, description="When transformation was applied")
-    version_id: Optional[str] = Field(None, description="Dataset version ID after this transformation")
+    version_id: str | None = Field(None, description="Dataset version ID after this transformation")
 
     # Validation results
     is_valid: bool = Field(default=True, description="Whether transformation parameters are valid")
-    validation_errors: List[str] = Field(default_factory=list, description="Validation error messages")
+    validation_errors: list[str] = Field(default_factory=list, description="Validation error messages")
 
     # Impact tracking
-    rows_affected: Optional[int] = Field(None, ge=0, description="Number of rows affected by transformation")
-    data_loss_percentage: Optional[float] = Field(None, ge=0.0, le=100.0, description="Percentage of data lost")
+    rows_affected: int | None = Field(None, ge=0, description="Number of rows affected by transformation")
+    data_loss_percentage: float | None = Field(None, ge=0.0, le=100.0, description="Percentage of data lost")
 
     @field_validator('transformation_type')
     @classmethod
@@ -128,12 +128,12 @@ class TransformationStep(BaseModel):
 class TransformationPreview(BaseModel):
     """Preview of transformation results before application."""
 
-    sample_before: List[Dict[str, Any]] = Field(default_factory=list, description="Sample data before transformation")
-    sample_after: List[Dict[str, Any]] = Field(default_factory=list, description="Sample data after transformation")
-    affected_columns: List[str] = Field(default_factory=list, description="Columns affected by transformation")
+    sample_before: list[dict[str, Any]] = Field(default_factory=list, description="Sample data before transformation")
+    sample_after: list[dict[str, Any]] = Field(default_factory=list, description="Sample data after transformation")
+    affected_columns: list[str] = Field(default_factory=list, description="Columns affected by transformation")
     estimated_rows_affected: int = Field(..., ge=0, description="Estimated number of rows affected")
     estimated_data_loss: float = Field(default=0.0, ge=0.0, le=100.0, description="Estimated data loss percentage")
-    warnings: List[str] = Field(default_factory=list, description="Warnings about transformation impact")
+    warnings: list[str] = Field(default_factory=list, description="Warnings about transformation impact")
     generated_at: datetime = Field(default_factory=get_current_time)
 
 
@@ -141,13 +141,13 @@ class TransformationValidation(BaseModel):
     """Validation results for transformation configuration."""
 
     is_valid: bool = Field(..., description="Whether overall transformation configuration is valid")
-    errors: List[str] = Field(default_factory=list, description="Validation errors")
-    warnings: List[str] = Field(default_factory=list, description="Validation warnings")
+    errors: list[str] = Field(default_factory=list, description="Validation errors")
+    warnings: list[str] = Field(default_factory=list, description="Validation warnings")
     validated_at: datetime = Field(default_factory=get_current_time)
 
     # Detailed validation checks
-    parameter_validation: Dict[str, bool] = Field(default_factory=dict, description="Per-parameter validation results")
-    data_type_compatibility: Dict[str, bool] = Field(default_factory=dict, description="Data type compatibility checks")
+    parameter_validation: dict[str, bool] = Field(default_factory=dict, description="Per-parameter validation results")
+    data_type_compatibility: dict[str, bool] = Field(default_factory=dict, description="Data type compatibility checks")
     dependency_validation: bool = Field(default=True, description="Whether transformation order dependencies are valid")
 
 
@@ -166,20 +166,20 @@ class TransformationConfig(Document):
     config_id: Annotated[str, Indexed()] = Field(..., description="Unique transformation config identifier")
 
     # Transformation history
-    transformation_steps: List[TransformationStep] = Field(default_factory=list, description="Applied transformation steps")
+    transformation_steps: list[TransformationStep] = Field(default_factory=list, description="Applied transformation steps")
     current_position: int = Field(default=-1, description="Current position in transformation history (-1 = no transformations)")
 
     # Current state
-    current_file_path: Optional[str] = Field(None, description="Current file path after transformations")
+    current_file_path: str | None = Field(None, description="Current file path after transformations")
     is_applied: bool = Field(default=False, description="Whether transformations have been applied")
-    applied_at: Optional[datetime] = None
+    applied_at: datetime | None = None
 
     # Validation
-    validation_result: Optional[TransformationValidation] = None
-    last_validated_at: Optional[datetime] = None
+    validation_result: TransformationValidation | None = None
+    last_validated_at: datetime | None = None
 
     # Preview
-    last_preview: Optional[TransformationPreview] = None
+    last_preview: TransformationPreview | None = None
 
     # Metadata
     total_transformations: int = Field(default=0, ge=0, description="Total number of transformations applied")
@@ -191,7 +191,7 @@ class TransformationConfig(Document):
 
     # Version tracking
     version: str = Field(default="1.0.0", description="Config version (major.minor.patch)")
-    parent_config_id: Optional[str] = Field(None, description="Parent config if this is derived")
+    parent_config_id: str | None = Field(None, description="Parent config if this is derived")
 
     class Settings:
         name = "transformation_configs"
@@ -224,10 +224,10 @@ class TransformationConfig(Document):
     def add_transformation_step(
         self,
         transformation_type: str,
-        column: Optional[str] = None,
-        columns: Optional[List[str]] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        version_id: Optional[str] = None
+        column: str | None = None,
+        columns: list[str] | None = None,
+        parameters: dict[str, Any] | None = None,
+        version_id: str | None = None
     ) -> TransformationStep:
         """
         Add a new transformation step with branching support.
@@ -280,7 +280,7 @@ class TransformationConfig(Document):
         self.current_file_path = file_path
         self.update_timestamp()
 
-    def get_transformation_history(self) -> List[Dict[str, Any]]:
+    def get_transformation_history(self) -> list[dict[str, Any]]:
         """Get transformation history in legacy format for backward compatibility."""
         return [
             {
@@ -302,10 +302,10 @@ class TransformationConfig(Document):
         Returns:
             Validation results
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        parameter_validation: Dict[str, bool] = {}
-        data_type_compatibility: Dict[str, bool] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        parameter_validation: dict[str, bool] = {}
+        data_type_compatibility: dict[str, bool] = {}
 
         for i, step in enumerate(self.transformation_steps):
             step_key = f"step_{i}_{step.transformation_type}"
@@ -354,7 +354,7 @@ class TransformationConfig(Document):
         self.last_preview = None
         self.update_timestamp()
 
-    def get_affected_columns(self) -> List[str]:
+    def get_affected_columns(self) -> list[str]:
         """Get list of all columns affected by transformations."""
         affected = set()
         for step in self.transformation_steps:
@@ -382,7 +382,7 @@ class TransformationConfig(Document):
         """
         return self.current_position < len(self.transformation_steps) - 1
 
-    def get_current_state(self) -> Dict[str, Any]:
+    def get_current_state(self) -> dict[str, Any]:
         """
         Get current history state metadata.
 

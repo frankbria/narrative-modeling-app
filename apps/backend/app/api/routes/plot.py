@@ -1,6 +1,5 @@
 # backend/app/api/routes/plot.py
 
-from typing import List
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +17,7 @@ async def create_plot(plot: Plot, user_id: str = Depends(get_current_user_id)):
     return plot
 
 
-@router.get("/", response_model=List[Plot])
+@router.get("/", response_model=list[Plot])
 async def get_plots_for_user(user_id: str = Depends(get_current_user_id)):
     return await Plot.find(Plot.userId == user_id).to_list()
 

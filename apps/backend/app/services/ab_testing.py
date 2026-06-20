@@ -4,7 +4,7 @@ A/B Testing service for experiment management and variant assignment
 import hashlib
 import random
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from beanie import PydanticObjectId
@@ -20,11 +20,11 @@ class ABTestingService:
     @staticmethod
     async def create_experiment(
         name: str,
-        model_ids: List[str],
+        model_ids: list[str],
         user_id: str,
         primary_metric: str = "accuracy",
-        traffic_split: Optional[List[float]] = None,
-        description: Optional[str] = None
+        traffic_split: list[float] | None = None,
+        description: str | None = None
     ) -> ABTest:
         """Create a new A/B test experiment"""
         
@@ -105,7 +105,7 @@ class ABTestingService:
         variant_id: str,
         latency_ms: float,
         success: bool = True,
-        custom_metrics: Optional[Dict[str, float]] = None
+        custom_metrics: dict[str, float] | None = None
     ) -> None:
         """Track a prediction for a variant"""
         
@@ -138,7 +138,7 @@ class ABTestingService:
         variant_a: Variant,
         variant_b: Variant,
         metric: str = "accuracy"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate statistical significance between two variants"""
         
         # Get metric values
@@ -190,7 +190,7 @@ class ABTestingService:
         }
     
     @staticmethod
-    async def check_experiment_completion(experiment: ABTest) -> Tuple[bool, Optional[str]]:
+    async def check_experiment_completion(experiment: ABTest) -> tuple[bool, str | None]:
         """Check if experiment has reached completion criteria"""
         
         if experiment.status != ExperimentStatus.RUNNING:
@@ -258,7 +258,7 @@ class ABTestingService:
         return experiment
     
     @staticmethod
-    async def get_experiment_metrics(experiment: ABTest) -> Dict[str, Any]:
+    async def get_experiment_metrics(experiment: ABTest) -> dict[str, Any]:
         """Get comprehensive metrics for an experiment"""
         
         metrics = {

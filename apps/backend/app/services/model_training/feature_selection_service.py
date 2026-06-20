@@ -11,8 +11,8 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -45,12 +45,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FeatureSelectionConfig:
     """Configuration for feature selection"""
-    top_k: Optional[int] = None
-    threshold: Optional[float] = None
+    top_k: int | None = None
+    threshold: float | None = None
     correlation_threshold: float = 0.7
-    problem_type: Optional[str] = None
-    sample_size: Optional[int] = None
-    algorithm_params: Dict[str, Any] = None
+    problem_type: str | None = None
+    sample_size: int | None = None
+    algorithm_params: dict[str, Any] = None
 
     def __post_init__(self):
         if self.algorithm_params is None:
@@ -106,7 +106,7 @@ class FeatureSelectionService:
         target_column: str,
         method: SelectionMethod,
         config: FeatureSelectionConfig
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Main entry point for feature selection
 
@@ -188,7 +188,7 @@ class FeatureSelectionService:
                     "target_column": target_column
                 },
                 "execution_time_ms": execution_time,
-                "created_at": datetime.now(timezone.utc)
+                "created_at": datetime.now(UTC)
             }
 
             # Cache the result
@@ -207,9 +207,9 @@ class FeatureSelectionService:
         user_id: str,
         target_column: str,
         method: SelectionMethod,
-        problem_type: Optional[str] = None,
-        algorithm_params: Optional[Dict[str, Any]] = None
-    ) -> List[FeatureScore]:
+        problem_type: str | None = None,
+        algorithm_params: dict[str, Any] | None = None
+    ) -> list[FeatureScore]:
         """Calculate feature importance scores without selection"""
         df, _ = await self._load_dataset(dataset_id, user_id)
         X, y, detected_problem_type = await self._prepare_data(
@@ -239,7 +239,7 @@ class FeatureSelectionService:
         self,
         X: pd.DataFrame,
         threshold: float = 0.7
-    ) -> List[RedundantPair]:
+    ) -> list[RedundantPair]:
         """
         Detect highly correlated feature pairs
 
@@ -286,10 +286,10 @@ class FeatureSelectionService:
         dataset_id: str,
         user_id: str,
         target_column: str,
-        methods: List[SelectionMethod],
+        methods: list[SelectionMethod],
         top_k: int = 10,
-        problem_type: Optional[str] = None
-    ) -> Dict[str, Any]:
+        problem_type: str | None = None
+    ) -> dict[str, Any]:
         """Compare multiple selection methods"""
         df, _ = await self._load_dataset(dataset_id, user_id)
         X, y, detected_problem_type = await self._prepare_data(
@@ -352,7 +352,7 @@ class FeatureSelectionService:
         self,
         dataset_id: str,
         user_id: str
-    ) -> Tuple[pd.DataFrame, Any]:
+    ) -> tuple[pd.DataFrame, Any]:
         """Load dataset from S3"""
         dataset = await self.dataset_service.get_by_id(dataset_id, user_id)
 
@@ -373,10 +373,10 @@ class FeatureSelectionService:
         self,
         df: pd.DataFrame,
         target_column: str,
-        problem_type: Optional[str] = None,
-        sample_size: Optional[int] = None,
+        problem_type: str | None = None,
+        sample_size: int | None = None,
         dataset_id: str = ""
-    ) -> Tuple[pd.DataFrame, pd.Series, str]:
+    ) -> tuple[pd.DataFrame, pd.Series, str]:
         """Prepare features and target, detect problem type"""
         # Validate target column exists
         if target_column not in df.columns:
@@ -435,7 +435,7 @@ class FeatureSelectionService:
         method: SelectionMethod,
         problem_type: str,
         config: FeatureSelectionConfig
-    ) -> Tuple[List[str], List[FeatureScore]]:
+    ) -> tuple[list[str], list[FeatureScore]]:
         """Select features using specified method"""
         # Calculate importance scores
         scores = await self._calculate_importance_scores(
@@ -467,7 +467,7 @@ class FeatureSelectionService:
         method: SelectionMethod,
         problem_type: str,
         config: FeatureSelectionConfig
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Calculate importance scores using specified method"""
         if method == "correlation":
             return await self._select_correlation(X, y)
@@ -488,7 +488,7 @@ class FeatureSelectionService:
         self,
         X: pd.DataFrame,
         y: pd.Series
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Correlation-based selection"""
         scores = {}
 
@@ -521,7 +521,7 @@ class FeatureSelectionService:
         X: pd.DataFrame,
         y: pd.Series,
         problem_type: str
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Mutual information-based selection"""
         # Fill NaN values for mutual info calculation
         X_filled = X.fillna(0)
@@ -539,7 +539,7 @@ class FeatureSelectionService:
         y: pd.Series,
         problem_type: str,
         config: FeatureSelectionConfig
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Random Forest feature importance"""
         params = config.algorithm_params or {}
         n_estimators = params.get("n_estimators", 100)
@@ -573,7 +573,7 @@ class FeatureSelectionService:
         y: pd.Series,
         problem_type: str,
         config: FeatureSelectionConfig
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Recursive Feature Elimination"""
         # Determine n_features_to_select
         n_features = config.top_k or max(1, len(X.columns) // 2)
@@ -613,7 +613,7 @@ class FeatureSelectionService:
         y: pd.Series,
         problem_type: str,
         config: FeatureSelectionConfig
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """LASSO regularization"""
         # Fill NaN values and scale
         X_filled = X.fillna(0)
@@ -655,7 +655,7 @@ class FeatureSelectionService:
         X: pd.DataFrame,
         y: pd.Series,
         problem_type: str
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Statistical tests (chi2 or f-test)"""
         # Fill NaN values
         X_filled = X.fillna(0)
@@ -678,7 +678,7 @@ class FeatureSelectionService:
 
         return dict(zip(X.columns, scores))
 
-    def _normalize_scores(self, scores: Dict[str, float]) -> Dict[str, float]:
+    def _normalize_scores(self, scores: dict[str, float]) -> dict[str, float]:
         """Normalize scores to 0-1 range"""
         if not scores:
             return {}
@@ -699,10 +699,10 @@ class FeatureSelectionService:
 
     def _apply_selection_criteria(
         self,
-        scores: Dict[str, float],
-        top_k: Optional[int],
-        threshold: Optional[float]
-    ) -> List[str]:
+        scores: dict[str, float],
+        top_k: int | None,
+        threshold: float | None
+    ) -> list[str]:
         """Apply selection criteria to choose features"""
         # Sort features by score
         sorted_features = sorted(
@@ -726,9 +726,9 @@ class FeatureSelectionService:
 
     def _create_feature_scores(
         self,
-        scores: Dict[str, float],
-        selected_features: Optional[List[str]]
-    ) -> List[FeatureScore]:
+        scores: dict[str, float],
+        selected_features: list[str] | None
+    ) -> list[FeatureScore]:
         """Create FeatureScore objects from scores dictionary"""
         # Sort by score descending
         sorted_items = sorted(
@@ -754,9 +754,9 @@ class FeatureSelectionService:
     def _explain_selection(
         self,
         method: SelectionMethod,
-        selected_features: List[str],
-        feature_scores: List[FeatureScore],
-        redundant_pairs: List[RedundantPair],
+        selected_features: list[str],
+        feature_scores: list[FeatureScore],
+        redundant_pairs: list[RedundantPair],
         problem_type: str
     ) -> str:
         """Generate human-readable explanation"""
@@ -796,8 +796,8 @@ class FeatureSelectionService:
 
     def _generate_comparison_recommendations(
         self,
-        results: List[Dict],
-        consensus_features: List[str],
+        results: list[dict],
+        consensus_features: list[str],
         total_features: int
     ) -> str:
         """Generate recommendations from method comparison"""

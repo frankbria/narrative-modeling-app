@@ -10,8 +10,7 @@ These endpoints provide functionality for:
 
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -188,7 +187,7 @@ async def detect_issues(
 async def get_dataset_issues(
     dataset_id: str,
     include_ai: bool = Query(True, description="Include AI-detected issues"),
-    severity: Optional[str] = Query(None, description="Filter by severity"),
+    severity: str | None = Query(None, description="Filter by severity"),
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -442,7 +441,7 @@ async def apply_fix(
         )
 
         # Save transformed data
-        timestamp = datetime.now(timezone.utc).timestamp()
+        timestamp = datetime.now(UTC).timestamp()
         new_file_path = await upload_dataframe_to_s3(
             transformed_df,
             f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
@@ -450,7 +449,7 @@ async def apply_fix(
 
         # Update dataset record
         user_data.file_path = new_file_path
-        user_data.updated_at = datetime.now(timezone.utc)
+        user_data.updated_at = datetime.now(UTC)
         user_data.num_rows = len(transformed_df)
         await user_data.save()
 
@@ -609,7 +608,7 @@ async def batch_apply_fixes(
         # Save transformed data if any fixes were applied
         new_version_id = None
         if applied_fixes:
-            timestamp = datetime.now(timezone.utc).timestamp()
+            timestamp = datetime.now(UTC).timestamp()
             new_file_path = await upload_dataframe_to_s3(
                 transformed_df,
                 f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
@@ -617,7 +616,7 @@ async def batch_apply_fixes(
 
             # Update dataset
             user_data.file_path = new_file_path
-            user_data.updated_at = datetime.now(timezone.utc)
+            user_data.updated_at = datetime.now(UTC)
             user_data.num_rows = len(transformed_df)
             await user_data.save()
 

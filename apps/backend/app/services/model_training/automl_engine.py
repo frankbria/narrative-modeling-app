@@ -4,9 +4,10 @@ Core AutoML engine for automated model selection and training
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 import lightgbm as lgb
 import numpy as np
@@ -57,8 +58,8 @@ class TrainingEvent:
 
     level: str
     message: str
-    stage: Optional[str] = None
-    candidate: Optional[Dict[str, Any]] = None
+    stage: str | None = None
+    candidate: dict[str, Any] | None = None
 
 
 @dataclass
@@ -67,10 +68,10 @@ class ModelCandidate:
 
     name: str
     estimator: Any
-    hyperparameters: Dict[str, Any]
-    training_time: Optional[float] = None
-    cv_score: Optional[float] = None
-    test_score: Optional[float] = None
+    hyperparameters: dict[str, Any]
+    training_time: float | None = None
+    cv_score: float | None = None
+    test_score: float | None = None
 
 
 @dataclass
@@ -87,31 +88,31 @@ class AutoMLResult:
     """
 
     best_model: ModelCandidate
-    all_models: List[ModelCandidate]
+    all_models: list[ModelCandidate]
     problem_type: ProblemType
-    feature_names: List[str]
-    feature_importance: Optional[Dict[str, float]]
+    feature_names: list[str]
+    feature_importance: dict[str, float] | None
     training_time: float
-    metadata: Dict[str, Any]
-    y_test: Optional[np.ndarray] = None
-    y_pred: Optional[np.ndarray] = None
-    y_proba: Optional[np.ndarray] = None
-    class_labels: Optional[List[str]] = None
+    metadata: dict[str, Any]
+    y_test: np.ndarray | None = None
+    y_pred: np.ndarray | None = None
+    y_proba: np.ndarray | None = None
+    class_labels: list[str] | None = None
     # Confidence/uncertainty metadata (issue #83). ``best_model.estimator`` is
     # swapped for its calibrated wrapper when ``is_calibrated`` is True, so the
     # persisted model yields calibrated probabilities. ``residual_std`` powers
     # regression prediction intervals; both are ``None`` when unavailable.
     is_calibrated: bool = False
-    calibration_method: Optional[str] = None
-    calibration_score: Optional[float] = None
-    residual_std: Optional[float] = None
+    calibration_method: str | None = None
+    calibration_score: float | None = None
+    residual_std: float | None = None
     # SHAP global interpretability summary (issue #80). ``shap_global`` is a
     # ``GlobalShapResult`` for the best model, computed on the held-out set from
     # the RAW estimator *before* calibration (the calibrated wrapper hides the
     # tree/linear internals SHAP needs). ``None`` for unsupported model types
     # (KNN, kernel SVM), which fall back to model-native importance.
     shap_global: Optional["GlobalShapResult"] = None
-    shap_explainer_type: Optional[str] = None
+    shap_explainer_type: str | None = None
 
 
 class AutoMLEngine:
@@ -120,7 +121,7 @@ class AutoMLEngine:
     def __init__(
         self,
         max_models: int = 10,
-        time_limit: Optional[int] = None,
+        time_limit: int | None = None,
         cv_folds: int = 5,
         test_size: float = 0.2,
         random_state: int = 42,
@@ -138,12 +139,10 @@ class AutoMLEngine:
         self,
         df: pd.DataFrame,
         target_column: str,
-        feature_config: Optional[FeatureEngineeringConfig] = None,
-        progress_callback: Optional[
-            Callable[[int, int, Optional[str]], Awaitable[None]]
-        ] = None,
-        event_callback: Optional[Callable[[TrainingEvent], Awaitable[None]]] = None,
-        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
+        feature_config: FeatureEngineeringConfig | None = None,
+        progress_callback: Callable[[int, int, str | None], Awaitable[None]] | None = None,
+        event_callback: Callable[[TrainingEvent], Awaitable[None]] | None = None,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> AutoMLResult:
         """
         Run the AutoML pipeline
@@ -172,7 +171,7 @@ class AutoMLEngine:
         Raises:
             TrainingCancelledError: When ``cancel_check`` returns True.
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         await self._emit_event(
             event_callback,
@@ -265,12 +264,12 @@ class AutoMLEngine:
                 # loop for the whole fit, freezing every API request —
                 # including the status polls and the cancel endpoint this
                 # feature depends on.
-                model_start = datetime.now(timezone.utc)
+                model_start = datetime.now(UTC)
                 await asyncio.to_thread(
                     candidate.estimator.fit, X_train_transformed, y_train
                 )
                 candidate.training_time = (
-                    datetime.now(timezone.utc) - model_start
+                    datetime.now(UTC) - model_start
                 ).total_seconds()
 
                 # Cross-validation score
@@ -420,7 +419,7 @@ class AutoMLEngine:
             )
         )
 
-        total_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+        total_time = (datetime.now(UTC) - start_time).total_seconds()
 
         await self._emit_event(
             event_callback,
@@ -483,10 +482,10 @@ class AutoMLEngine:
 
     @staticmethod
     async def _report_progress(
-        progress_callback: Optional[Callable[[int, int, str], Awaitable[None]]],
+        progress_callback: Callable[[int, int, str], Awaitable[None]] | None,
         completed: int,
         total: int,
-        current_algorithm: Optional[str],
+        current_algorithm: str | None,
     ) -> None:
         """Invoke the progress callback, swallowing any error it raises."""
         if progress_callback is None:
@@ -498,7 +497,7 @@ class AutoMLEngine:
 
     @staticmethod
     async def _emit_event(
-        event_callback: Optional[Callable[["TrainingEvent"], Awaitable[None]]],
+        event_callback: Callable[["TrainingEvent"], Awaitable[None]] | None,
         event: "TrainingEvent",
     ) -> None:
         """Invoke the event callback, swallowing any error it raises."""
@@ -511,7 +510,7 @@ class AutoMLEngine:
 
     @staticmethod
     async def _is_cancelled(
-        cancel_check: Optional[Callable[[], Awaitable[bool]]],
+        cancel_check: Callable[[], Awaitable[bool]] | None,
     ) -> bool:
         """Await the cancellation check; errors are treated as 'not cancelled'."""
         if cancel_check is None:
@@ -527,7 +526,7 @@ class AutoMLEngine:
         estimator: Any,
         X_test_transformed: pd.DataFrame,
         is_classification: bool,
-    ) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[List[str]]]:
+    ) -> tuple[np.ndarray, np.ndarray | None, list[str] | None]:
         """Predict on the held-out set for evaluation-artifact capture.
 
         Returns ``(y_pred, y_proba, class_labels)``. ``class_labels`` are the
@@ -539,8 +538,8 @@ class AutoMLEngine:
         """
         y_pred = await asyncio.to_thread(estimator.predict, X_test_transformed)
 
-        y_proba: Optional[np.ndarray] = None
-        class_labels: Optional[List[str]] = None
+        y_proba: np.ndarray | None = None
+        class_labels: list[str] | None = None
         if is_classification:
             classes = getattr(estimator, "classes_", None)
             if classes is not None:
@@ -561,7 +560,7 @@ class AutoMLEngine:
         X_test_transformed: pd.DataFrame,
         y_test: Any,
         is_classification: bool,
-    ) -> Tuple[bool, Optional[str], Optional[float]]:
+    ) -> tuple[bool, str | None, float | None]:
         """Calibrate the best classifier and swap it in place (issue #83).
 
         Wraps ``best_model.estimator`` in a calibrated model fit on the
@@ -590,10 +589,10 @@ class AutoMLEngine:
         self,
         estimator: Any,
         X_test_transformed: pd.DataFrame,
-        feature_names: List[str],
+        feature_names: list[str],
         problem_type: ProblemType,
-        event_callback: Optional[Callable[["TrainingEvent"], Awaitable[None]]] = None,
-    ) -> Optional[GlobalShapResult]:
+        event_callback: Callable[["TrainingEvent"], Awaitable[None]] | None = None,
+    ) -> GlobalShapResult | None:
         """Compute the best model's global SHAP summary off the event loop (#80).
 
         SHAP is CPU-bound, so it runs in a worker thread. Best-effort: the
@@ -626,7 +625,7 @@ class AutoMLEngine:
     @staticmethod
     def _assess_class_balance(
         y_train: pd.Series, is_classification: bool
-    ) -> Tuple[Optional[float], Optional[str]]:
+    ) -> tuple[float | None, str | None]:
         """Return (majority/minority ratio, class_weight) for the training labels.
 
         ``class_weight`` is ``"balanced"`` when the ratio exceeds 2:1, otherwise
@@ -644,9 +643,9 @@ class AutoMLEngine:
     def _get_candidate_models(
         self,
         problem_type: ProblemType,
-        data_shape: Tuple[int, int],
-        class_weight: Optional[str] = None,
-    ) -> List[ModelCandidate]:
+        data_shape: tuple[int, int],
+        class_weight: str | None = None,
+    ) -> list[ModelCandidate]:
         """Get candidate models based on problem type and data characteristics.
 
         ``class_weight`` (e.g. ``"balanced"``) is applied to the classifiers that
@@ -879,8 +878,8 @@ class AutoMLEngine:
             return 0.0
 
     def _get_feature_importance(
-        self, model: Any, feature_names: List[str]
-    ) -> Optional[Dict[str, float]]:
+        self, model: Any, feature_names: list[str]
+    ) -> dict[str, float] | None:
         """Extract feature importance from model if available"""
         importance = None
 

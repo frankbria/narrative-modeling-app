@@ -5,8 +5,8 @@ API Key model for production model serving
 import hashlib
 import secrets
 import string
-from datetime import datetime, timezone
-from typing import Annotated, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -18,21 +18,21 @@ class APIKey(Document):
     key_id: Annotated[str, Indexed()] = Field(description="Unique API key identifier")
     key_hash: str = Field(description="Hashed API key for security")
     name: str = Field(description="Friendly name for the API key")
-    description: Optional[str] = Field(None, description="Description of key usage")
+    description: str | None = Field(None, description="Description of key usage")
 
     user_id: Annotated[str, Indexed()] = Field(description="Owner user ID")
 
     # Permissions
-    model_ids: List[str] = Field(default_factory=list, description="Allowed model IDs")
+    model_ids: list[str] = Field(default_factory=list, description="Allowed model IDs")
     rate_limit: int = Field(default=1000, description="Requests per hour")
 
     # Usage tracking
     total_requests: int = Field(default=0, description="Total requests made")
-    last_used_at: Optional[datetime] = Field(None, description="Last usage timestamp")
+    last_used_at: datetime | None = Field(None, description="Last usage timestamp")
 
     # Metadata
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: Optional[datetime] = Field(None, description="Expiration date")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime | None = Field(None, description="Expiration date")
     is_active: bool = Field(default=True)
 
     class Settings:
@@ -63,15 +63,15 @@ class APIKey(Document):
 
         if self.expires_at:
             # Get current time as timezone-aware UTC datetime
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             # Normalize expires_at to UTC-aware datetime
             if self.expires_at.tzinfo is None:
                 # Treat naive datetime as UTC
-                expires_at_utc = self.expires_at.replace(tzinfo=timezone.utc)
+                expires_at_utc = self.expires_at.replace(tzinfo=UTC)
             else:
                 # Convert to UTC
-                expires_at_utc = self.expires_at.astimezone(timezone.utc)
+                expires_at_utc = self.expires_at.astimezone(UTC)
 
             if now > expires_at_utc:
                 return False

@@ -5,7 +5,7 @@ Feature engineering for AutoML
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def parse_feature_definition(definition_code: Optional[str]) -> ExpressionNode:
+def parse_feature_definition(definition_code: str | None) -> ExpressionNode:
     """
     Parse a Feature Store definition into a safe expression tree.
 
@@ -151,7 +151,7 @@ class FeatureEngineeringConfig:
     encode_categorical: bool = True
     create_interactions: bool = False
     select_features: bool = True
-    max_features: Optional[int] = None
+    max_features: int | None = None
     scaling_method: str = "standard"  # standard, minmax, robust
     encoding_method: str = "onehot"  # onehot, label
     missing_strategy: str = "mean"  # mean, median, most_frequent, constant
@@ -161,16 +161,16 @@ class FeatureEngineeringConfig:
 class FeatureEngineeringResult:
     """Result of feature engineering"""
     X_transformed: pd.DataFrame
-    feature_names: List[str]
-    transformers: Dict[str, Any]
-    feature_importance: Optional[Dict[str, float]]
-    metadata: Dict[str, Any]
+    feature_names: list[str]
+    transformers: dict[str, Any]
+    feature_importance: dict[str, float] | None
+    metadata: dict[str, Any]
 
 
 class FeatureEngineer:
     """Automated feature engineering for ML models"""
     
-    def __init__(self, config: Optional[FeatureEngineeringConfig] = None):
+    def __init__(self, config: FeatureEngineeringConfig | None = None):
         self.config = config or FeatureEngineeringConfig()
         self.transformers = {}
         self.feature_names = []
@@ -180,8 +180,8 @@ class FeatureEngineer:
     async def fit_transform(
         self,
         X: pd.DataFrame,
-        y: Optional[pd.Series] = None,
-        problem_type: Optional[str] = None
+        y: pd.Series | None = None,
+        problem_type: str | None = None
     ) -> FeatureEngineeringResult:
         """
         Fit and transform features
@@ -449,8 +449,8 @@ class FeatureEngineer:
         self,
         X: pd.DataFrame,
         y: pd.Series,
-        problem_type: Optional[str] = None
-    ) -> Tuple[pd.DataFrame, Dict[str, float]]:
+        problem_type: str | None = None
+    ) -> tuple[pd.DataFrame, dict[str, float]]:
         """Select best features based on importance"""
         # Determine scoring function
         if problem_type and "classification" in problem_type.lower():
@@ -500,7 +500,7 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         suggestion: Any
-    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    ) -> tuple[pd.DataFrame, dict[str, Any]]:
         """
         Apply a single feature suggestion to a dataframe.
 
@@ -512,7 +512,7 @@ class FeatureEngineer:
             Tuple of (transformed dataframe, metadata dict)
         """
         df = df.copy()
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "feature_name": suggestion.name,
             "success": False,
             "error": None
@@ -562,8 +562,8 @@ class FeatureEngineer:
     async def apply_multiple_suggestions(
         self,
         df: pd.DataFrame,
-        suggestions: List[Any]
-    ) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+        suggestions: list[Any]
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         """
         Apply multiple feature suggestions to a dataframe.
 
@@ -574,7 +574,7 @@ class FeatureEngineer:
         Returns:
             Tuple of (transformed dataframe, list of metadata dicts)
         """
-        all_metadata: List[Dict[str, Any]] = []
+        all_metadata: list[dict[str, Any]] = []
 
         for suggestion in suggestions:
             df, metadata = await self.apply_suggestion(df, suggestion)
@@ -586,8 +586,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply polynomial transformation"""
         col = input_cols[0]
@@ -609,8 +609,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply interaction transformation"""
         col1, col2 = input_cols[0], input_cols[1]
@@ -631,8 +631,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply aggregation transformation"""
         aggregation = params.get("aggregation", "mean")
@@ -662,8 +662,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply time-based transformation"""
         col = input_cols[0]
@@ -699,8 +699,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply text transformation"""
         col = input_cols[0]
@@ -727,8 +727,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply binning transformation"""
         col = input_cols[0]
@@ -746,8 +746,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply encoding transformation"""
         col = input_cols[0]
@@ -767,8 +767,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply scaling transformation"""
         method = params.get("method", "standard")
@@ -792,8 +792,8 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         name: str,
-        input_cols: List[str],
-        params: Dict[str, Any]
+        input_cols: list[str],
+        params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply generic transformation based on formula (limited support)"""
         # Simplified implementation; complex formulas belong in expression

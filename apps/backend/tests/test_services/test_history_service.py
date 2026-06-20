@@ -11,7 +11,7 @@ Tests cover:
 - Error handling (invalid position, no history, unauthorized access)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -62,13 +62,13 @@ def mock_transformation_config():
     config.transformation_steps = [
         MagicMock(transformation_type="encode", version_id="v1",
                   column="col1", columns=None, rows_affected=10,
-                  applied_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)),
+                  applied_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)),
         MagicMock(transformation_type="scale", version_id="v2",
                   column="col2", columns=None, rows_affected=10,
-                  applied_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=timezone.utc)),
+                  applied_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=UTC)),
         MagicMock(transformation_type="remove_duplicates", version_id="v3",
                   column=None, columns=None, rows_affected=5,
-                  applied_at=datetime(2026, 1, 1, 0, 2, 0, tzinfo=timezone.utc))
+                  applied_at=datetime(2026, 1, 1, 0, 2, 0, tzinfo=UTC))
     ]
     config.can_undo = MagicMock(return_value=True)
     config.can_redo = MagicMock(return_value=False)

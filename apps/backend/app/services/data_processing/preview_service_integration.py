@@ -15,7 +15,6 @@ Integrates:
 
 import asyncio
 import logging
-from typing import List, Optional
 
 from app.schemas.preview import ImpactStatistics, PreviewResult
 from app.schemas.transformation import TransformationStepRequest
@@ -37,8 +36,8 @@ class PreviewServiceIntegration:
 
     def __init__(
         self,
-        transformation_engine: Optional[TransformationEngine] = None,
-        preview_service: Optional[PreviewService] = None
+        transformation_engine: TransformationEngine | None = None,
+        preview_service: PreviewService | None = None
     ):
         """
         Initialize preview service integration.
@@ -55,7 +54,7 @@ class PreviewServiceIntegration:
         user_id: str,
         dataset_id: str,
         s3_file_path: str,
-        operations: List[TransformationStepRequest],
+        operations: list[TransformationStepRequest],
         sample_size: int = 100
     ) -> PreviewResult:
         """
@@ -113,8 +112,8 @@ class PreviewServiceIntegration:
             )
             raise ValueError("S3 path mismatch - potential security violation")
 
-        warnings: List[str] = []
-        errors: List[str] = []
+        warnings: list[str] = []
+        errors: list[str] = []
 
         try:
             # SECURITY: Enforce 30-second timeout for entire preview generation to prevent DoS
@@ -219,7 +218,7 @@ class PreviewServiceIntegration:
                     errors=errors
                 )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Timeout exceeded - prevent DoS
             logger.error(f"Preview generation timeout (30s) for dataset {dataset_id}")
             raise ValueError(

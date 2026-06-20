@@ -5,8 +5,8 @@ Defines request/response models for feature selection operations,
 supporting multiple selection algorithms with importance scoring.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -32,32 +32,32 @@ class FeatureSelectionRequest(BaseModel):
         ...,
         description="Feature selection algorithm to use"
     )
-    top_k: Optional[int] = Field(
+    top_k: int | None = Field(
         None,
         ge=1,
         description="Number of top features to select (default: auto-determine)"
     )
-    threshold: Optional[float] = Field(
+    threshold: float | None = Field(
         None,
         ge=0.0,
         le=1.0,
         description="Importance threshold for feature inclusion (0.0-1.0)"
     )
-    correlation_threshold: Optional[float] = Field(
+    correlation_threshold: float | None = Field(
         0.7,
         ge=0.0,
         le=1.0,
         description="Threshold for detecting redundant features (default: 0.7)"
     )
-    problem_type: Optional[Literal["classification", "regression"]] = Field(
+    problem_type: Literal["classification", "regression"] | None = Field(
         None,
         description="Type of ML problem (auto-detected if not provided)"
     )
-    algorithm_params: Optional[Dict[str, Any]] = Field(
+    algorithm_params: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Algorithm-specific parameters (e.g., n_estimators for Random Forest)"
     )
-    sample_size: Optional[int] = Field(
+    sample_size: int | None = Field(
         None,
         description="Sample size for large datasets (default: use full dataset)"
     )
@@ -89,19 +89,19 @@ class FeatureSelectionResult(BaseModel):
 
     dataset_id: str = Field(..., description="Dataset ID")
     method: SelectionMethod = Field(..., description="Selection method used")
-    selected_features: List[str] = Field(
+    selected_features: list[str] = Field(
         ...,
         description="List of selected feature names"
     )
-    feature_scores: List[FeatureScore] = Field(
+    feature_scores: list[FeatureScore] = Field(
         ...,
         description="All features with importance scores"
     )
-    redundant_pairs: List[RedundantPair] = Field(
+    redundant_pairs: list[RedundantPair] = Field(
         default_factory=list,
         description="Pairs of highly correlated features"
     )
-    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = Field(
+    correlation_matrix: dict[str, dict[str, float]] | None = Field(
         None,
         description="Full correlation matrix for numeric features"
     )
@@ -109,7 +109,7 @@ class FeatureSelectionResult(BaseModel):
         ...,
         description="Human-readable explanation of selection results"
     )
-    metadata: Dict[str, Any] = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional metadata (problem_type, n_samples, etc.)"
     )
@@ -118,7 +118,7 @@ class FeatureSelectionResult(BaseModel):
         description="Execution time in milliseconds"
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of selection"
     )
 
@@ -128,8 +128,8 @@ class FeatureImportanceRequest(BaseModel):
 
     target_column: str = Field(..., description="Target column name")
     method: SelectionMethod = Field(..., description="Importance calculation method")
-    problem_type: Optional[Literal["classification", "regression"]] = None
-    algorithm_params: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    problem_type: Literal["classification", "regression"] | None = None
+    algorithm_params: dict[str, Any] | None = Field(default_factory=dict)
 
 
 class FeatureImportanceResponse(BaseModel):
@@ -137,7 +137,7 @@ class FeatureImportanceResponse(BaseModel):
 
     dataset_id: str = Field(..., description="Dataset ID")
     method: SelectionMethod = Field(..., description="Method used")
-    feature_scores: List[FeatureScore] = Field(
+    feature_scores: list[FeatureScore] = Field(
         ...,
         description="Features ranked by importance"
     )
@@ -163,15 +163,15 @@ class RedundancyDetectionResponse(BaseModel):
     """Response schema for redundancy detection."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    redundant_pairs: List[RedundantPair] = Field(
+    redundant_pairs: list[RedundantPair] = Field(
         ...,
         description="Redundant feature pairs"
     )
-    correlation_matrix: Dict[str, Dict[str, float]] = Field(
+    correlation_matrix: dict[str, dict[str, float]] = Field(
         ...,
         description="Full correlation matrix"
     )
-    recommendations: List[str] = Field(
+    recommendations: list[str] = Field(
         default_factory=list,
         description="Recommendations for handling redundancy"
     )
@@ -181,26 +181,26 @@ class MethodComparisonRequest(BaseModel):
     """Request schema for comparing selection methods."""
 
     target_column: str = Field(..., description="Target column name")
-    methods: List[SelectionMethod] = Field(
+    methods: list[SelectionMethod] = Field(
         ...,
         min_length=2,
         max_length=6,
         description="Methods to compare (2-6)"
     )
-    top_k: Optional[int] = Field(
+    top_k: int | None = Field(
         10,
         ge=1,
         description="Number of top features per method"
     )
-    problem_type: Optional[Literal["classification", "regression"]] = None
+    problem_type: Literal["classification", "regression"] | None = None
 
 
 class MethodComparisonResult(BaseModel):
     """Results for a single method in comparison."""
 
     method: SelectionMethod = Field(..., description="Selection method")
-    selected_features: List[str] = Field(..., description="Selected features")
-    top_features: List[FeatureScore] = Field(
+    selected_features: list[str] = Field(..., description="Selected features")
+    top_features: list[FeatureScore] = Field(
         ...,
         description="Top features with scores"
     )
@@ -211,15 +211,15 @@ class MethodComparisonResponse(BaseModel):
     """Response schema for method comparison."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    results: List[MethodComparisonResult] = Field(
+    results: list[MethodComparisonResult] = Field(
         ...,
         description="Results for each method"
     )
-    consensus_features: List[str] = Field(
+    consensus_features: list[str] = Field(
         ...,
         description="Features selected by all methods"
     )
-    overlap_matrix: Dict[str, Dict[str, int]] = Field(
+    overlap_matrix: dict[str, dict[str, int]] = Field(
         ...,
         description="Overlap count between methods"
     )
@@ -233,7 +233,7 @@ class SelectedFeaturesResponse(BaseModel):
     """Response schema for retrieving previously selected features."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    selected_features: List[str] = Field(
+    selected_features: list[str] = Field(
         default_factory=list,
         description="List of previously selected feature names"
     )

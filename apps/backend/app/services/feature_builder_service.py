@@ -7,8 +7,8 @@ provides preview/validation functionality using safe expression evaluation.
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -62,10 +62,10 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         dataset_id: str,
         name: str,
         expression_tree: ExpressionNode,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
         output_type: OutputType = OutputType.NUMERIC,
-        canvas_state: Optional[Dict[str, Any]] = None,
+        canvas_state: dict[str, Any] | None = None,
     ) -> FeatureDefinition:
         """
         Create a new feature definition.
@@ -139,7 +139,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         self,
         dataset_id: str,
         name: str
-    ) -> Optional[FeatureDefinition]:
+    ) -> FeatureDefinition | None:
         """Get feature by name within a dataset."""
         query = {
             "dataset_id": dataset_id,
@@ -150,8 +150,8 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
     def _validate_columns_exist(
         self,
         expression_tree: ExpressionNode,
-        available_columns: List[str]
-    ) -> List[str]:
+        available_columns: list[str]
+    ) -> list[str]:
         """Validate that all referenced columns exist in the dataset."""
         input_columns = expression_tree.get_input_columns()
         missing = [col for col in input_columns if col not in available_columns]
@@ -165,7 +165,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         user_id: str,
         expression_tree: ExpressionNode,
         sample_size: int = 100
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Preview a feature computation on sample data.
 
@@ -265,7 +265,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 "error": f"Preview failed: {str(e)}"
             }
 
-    def _calculate_statistics(self, series: pd.Series) -> Dict[str, Any]:
+    def _calculate_statistics(self, series: pd.Series) -> dict[str, Any]:
         """Calculate statistics for a series."""
         # Handle non-numeric series
         if not pd.api.types.is_numeric_dtype(series):
@@ -295,7 +295,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         self,
         series: pd.Series,
         num_bins: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Calculate distribution bins for a series."""
         if series.empty or series.isna().all():
             return []
@@ -339,7 +339,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         df: pd.DataFrame,
         feature_series: pd.Series,
         max_rows: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get sample data with computed feature column."""
         sample_df = df.head(max_rows).copy()
         sample_df["_computed_feature"] = feature_series.head(max_rows)
@@ -385,7 +385,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         dataset_id: str,
         user_id: str,
         expression_tree: ExpressionNode
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Validate an expression tree without full evaluation.
 
@@ -405,7 +405,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         )
 
         # Build column type info from dataset schema
-        column_info: Dict[str, str] = {}
+        column_info: dict[str, str] = {}
         for schema_field in dataset.data_schema:
             column_info[schema_field.field_name] = schema_field.field_type
 
@@ -435,7 +435,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             "potential_issues": potential_issues
         }
 
-    def _check_potential_issues(self, expression_tree: ExpressionNode) -> List[str]:
+    def _check_potential_issues(self, expression_tree: ExpressionNode) -> list[str]:
         """Check for potential runtime issues in the expression."""
         issues = []
 
@@ -477,7 +477,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         limit: int = 20,
         sort_field: str = "created_at",
         sort_ascending: bool = False
-    ) -> Tuple[List[FeatureDefinition], int]:
+    ) -> tuple[list[FeatureDefinition], int]:
         """
         List features for a dataset.
 
@@ -517,12 +517,12 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         self,
         feature_id: str,
         user_id: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        expression_tree: Optional[ExpressionNode] = None,
-        output_type: Optional[OutputType] = None,
-        canvas_state: Optional[Dict[str, Any]] = None
+        name: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        expression_tree: ExpressionNode | None = None,
+        output_type: OutputType | None = None,
+        canvas_state: dict[str, Any] | None = None
     ) -> FeatureDefinition:
         """
         Update a feature definition.
@@ -606,9 +606,9 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         self,
         feature_id: str,
         user_id: str,
-        output_column_name: Optional[str] = None,
+        output_column_name: str | None = None,
         create_new_dataset: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Apply a feature to the dataset, adding the computed column and persisting to S3.
 
@@ -656,7 +656,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             stats = self._calculate_statistics(result_series)
 
             # Generate S3 key for the updated dataframe
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             if create_new_dataset:
                 new_dataset_id = str(uuid.uuid4())
                 s3_key = f"datasets/{user_id}/{new_dataset_id}/data_{timestamp}.parquet"

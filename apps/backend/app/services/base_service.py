@@ -11,7 +11,7 @@ Provides a standardized interface for service layer operations with:
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Any
 
 from beanie import Document
 from pydantic import BaseModel
@@ -22,13 +22,10 @@ from app.services.exceptions import (
     ValidationError,
 )
 
-# Type variable for Beanie Document subclasses
-T = TypeVar('T', bound=Document)
-
 logger = logging.getLogger(__name__)
 
 
-class BaseService(Generic[T], ABC):
+class BaseService[T: Document](ABC):
     """
     Abstract base service with common CRUD patterns.
 
@@ -60,7 +57,7 @@ class BaseService(Generic[T], ABC):
         # ValidationError: Invalid filter field 'invalid_field' for Dataset
     """
 
-    model_class: Type[T]
+    model_class: type[T]
     resource_name: str = "Resource"
 
     @abstractmethod
@@ -176,9 +173,9 @@ class BaseService(Generic[T], ABC):
     async def get_by_id(
         self,
         resource_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         check_ownership: bool = True
-    ) -> Optional[T]:
+    ) -> T | None:
         """
         Get document by ID with optional user ownership check.
 
@@ -215,7 +212,7 @@ class BaseService(Generic[T], ABC):
     async def get_by_id_or_raise(
         self,
         resource_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         check_ownership: bool = True
     ) -> T:
         """
@@ -251,7 +248,7 @@ class BaseService(Generic[T], ABC):
         sort_field: str = "created_at",
         sort_ascending: bool = False,
         **filters: Any
-    ) -> List[T]:
+    ) -> list[T]:
         """
         List documents for user with pagination and filtering.
 
@@ -355,7 +352,7 @@ class BaseService(Generic[T], ABC):
     async def exists(
         self,
         resource_id: str,
-        user_id: Optional[str] = None
+        user_id: str | None = None
     ) -> bool:
         """
         Check if a resource exists.
@@ -390,8 +387,8 @@ class BaseService(Generic[T], ABC):
         self,
         resource_id: str,
         user_id: str,
-        update_data: Dict[str, Any],
-        allowed_fields: Optional[List[str]] = None
+        update_data: dict[str, Any],
+        allowed_fields: list[str] | None = None
     ) -> T:
         """
         Update document fields.
@@ -478,7 +475,7 @@ class BaseService(Generic[T], ABC):
         return True
 
 
-class PaginatedResult(BaseModel, Generic[T]):
+class PaginatedResult[T: Document](BaseModel):
     """
     Paginated query result container.
 
@@ -490,7 +487,7 @@ class PaginatedResult(BaseModel, Generic[T]):
         has_more: Whether more pages exist
     """
 
-    items: List[Any]  # Use Any since Pydantic has issues with Generic models
+    items: list[Any]  # Use Any since Pydantic has issues with Generic models
     total: int
     skip: int
     limit: int
@@ -499,7 +496,7 @@ class PaginatedResult(BaseModel, Generic[T]):
     @classmethod
     def create(
         cls,
-        items: List[Any],
+        items: list[Any],
         total: int,
         skip: int,
         limit: int

@@ -4,7 +4,6 @@ Feature Store API routes.
 Provides REST endpoints for managing features, versions, and collections.
 """
 
-from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -40,16 +39,16 @@ class FeatureCreateRequest(BaseModel):
 
 class FeatureUpdateRequest(BaseModel):
     """Request schema for updating a feature."""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    tags: Optional[list[str]] = None
-    definition_code: Optional[str] = None
-    definition_type: Optional[str] = None
-    input_requirements: Optional[dict[str, str]] = None
-    output_type: Optional[str] = None
-    output_column_name: Optional[str] = None
-    changes_description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    tags: list[str] | None = None
+    definition_code: str | None = None
+    definition_type: str | None = None
+    input_requirements: dict[str, str] | None = None
+    output_type: str | None = None
+    output_column_name: str | None = None
+    changes_description: str | None = None
 
 
 class FeatureResponse(BaseModel):
@@ -58,7 +57,7 @@ class FeatureResponse(BaseModel):
     name: str
     description: str
     category: str
-    tags: List[str]
+    tags: list[str]
     definition_type: str
     output_type: str
     output_column_name: str
@@ -71,7 +70,7 @@ class FeatureResponse(BaseModel):
 
 class FeatureListResponse(BaseModel):
     """Response schema for paginated feature list."""
-    items: List[FeatureResponse]
+    items: list[FeatureResponse]
     total: int
     skip: int
     limit: int
@@ -94,14 +93,14 @@ class ApplyFeatureResponse(BaseModel):
 class CompatibilityResponse(BaseModel):
     """Response schema for compatibility check."""
     is_compatible: bool
-    missing_columns: List[str]
-    type_mismatches: Dict[str, Dict[str, str]]
-    suggestions: List[str]
+    missing_columns: list[str]
+    type_mismatches: dict[str, dict[str, str]]
+    suggestions: list[str]
 
 
 class ShareFeatureRequest(BaseModel):
     """Request schema for sharing a feature."""
-    user_ids: List[str] = Field(..., description="User IDs to share with")
+    user_ids: list[str] = Field(..., description="User IDs to share with")
 
 
 class CollectionCreateRequest(BaseModel):
@@ -109,8 +108,8 @@ class CollectionCreateRequest(BaseModel):
     name: str
     description: str
     domain: str
-    feature_ids: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
+    feature_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     is_public: bool = Field(default=False)
 
 
@@ -168,9 +167,9 @@ async def create_feature(
 
 @router.get("/features", response_model=FeatureListResponse)
 async def list_features(
-    q: Optional[str] = Query(None, description="Search query"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    tags: Optional[str] = Query(None, description="Filter by tags (comma-separated)"),
+    q: str | None = Query(None, description="Search query"),
+    category: str | None = Query(None, description="Filter by category"),
+    tags: str | None = Query(None, description="Filter by tags (comma-separated)"),
     skip: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     user_id: str = Depends(get_current_user_id)
@@ -227,7 +226,7 @@ async def list_features(
 @router.get("/features/{feature_id}", response_model=FeatureResponse)
 async def get_feature(
     feature_id: str,
-    version: Optional[int] = Query(None, description="Specific version to retrieve"),
+    version: int | None = Query(None, description="Specific version to retrieve"),
     user_id: str = Depends(get_current_user_id)
 ):
     """

@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -21,7 +20,7 @@ router = APIRouter()
 async def get_histogram(
     dataset_id: str,
     column_name: str,
-    num_bins: Optional[int] = 50,
+    num_bins: int | None = 50,
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Get histogram data for a numeric column"""
@@ -93,7 +92,7 @@ async def get_scatter_plot(
     dataset_id: str,
     x_column: str,
     y_column: str,
-    filters: Optional[str] = Query(None),
+    filters: str | None = Query(None),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Get scatter plot data for two columns"""
@@ -158,7 +157,7 @@ async def get_line_chart(
     dataset_id: str,
     x_column: str,
     y_columns: str = Query(...),
-    filters: Optional[str] = Query(None),
+    filters: str | None = Query(None),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Get line chart data"""
@@ -237,7 +236,7 @@ async def get_time_series(
     dataset_id: str,
     time_column: str,
     value_column: str,
-    filters: Optional[str] = Query(None),
+    filters: str | None = Query(None),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Get time series data"""

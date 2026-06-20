@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -60,7 +60,7 @@ def mock_ai_summary():
         relationships=["Relationship 1", "Relationship 2"],
         suggestions=["Suggestion 1", "Suggestion 2"],
         rawMarkdown="# Test Dataset Analysis\n\nThis is a test analysis.",
-        createdAt=datetime.now(timezone.utc))
+        createdAt=datetime.now(UTC))
 
 
 @pytest.mark.asyncio

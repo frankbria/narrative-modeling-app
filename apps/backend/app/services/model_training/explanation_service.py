@@ -4,7 +4,7 @@ AI-powered explanation service for model training decisions
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from openai import OpenAI
 
@@ -14,7 +14,7 @@ from .problem_detector import ProblemType
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client (will be initialized by app startup)
-client: Optional[OpenAI] = None
+client: OpenAI | None = None
 
 
 def initialize_openai_client():
@@ -42,7 +42,7 @@ class ExplanationService:
 
     async def explain_algorithm_selection(
         self,
-        algorithms: List[AlgorithmRecommendation],
+        algorithms: list[AlgorithmRecommendation],
         data_profile: DataProfile,
         problem_type: ProblemType
     ) -> str:
@@ -76,9 +76,9 @@ class ExplanationService:
 
     async def explain_best_model(
         self,
-        best_model: Dict[str, Any],
-        all_models: List[Dict[str, Any]],
-        comparison_metrics: Dict[str, Any]
+        best_model: dict[str, Any],
+        all_models: list[dict[str, Any]],
+        comparison_metrics: dict[str, Any]
     ) -> str:
         """
         Generate explanation for why a specific model was chosen as best
@@ -110,8 +110,8 @@ class ExplanationService:
 
     async def explain_model_tradeoffs(
         self,
-        model_a: Dict[str, Any],
-        model_b: Dict[str, Any]
+        model_a: dict[str, Any],
+        model_b: dict[str, Any]
     ) -> str:
         """
         Generate explanation of trade-offs between two models
@@ -173,7 +173,7 @@ class ExplanationService:
 
     def _build_algorithm_selection_prompt(
         self,
-        algorithms: List[AlgorithmRecommendation],
+        algorithms: list[AlgorithmRecommendation],
         data_profile: DataProfile,
         problem_type: ProblemType
     ) -> str:
@@ -204,9 +204,9 @@ Focus on how the dataset characteristics influenced the selection.
 
     def _build_best_model_prompt(
         self,
-        best_model: Dict[str, Any],
-        all_models: List[Dict[str, Any]],
-        comparison_metrics: Dict[str, Any]
+        best_model: dict[str, Any],
+        all_models: list[dict[str, Any]],
+        comparison_metrics: dict[str, Any]
     ) -> str:
         """Build prompt for best model explanation"""
         model_comparison = "\n".join([
@@ -236,8 +236,8 @@ Highlight its advantages and any trade-offs compared to other models.
 
     def _build_tradeoff_prompt(
         self,
-        model_a: Dict[str, Any],
-        model_b: Dict[str, Any]
+        model_a: dict[str, Any],
+        model_b: dict[str, Any]
     ) -> str:
         """Build prompt for model tradeoff explanation"""
         prompt = f"""
@@ -260,7 +260,7 @@ Help the user understand when they might prefer one over the other.
 
     def _fallback_algorithm_explanation(
         self,
-        algorithms: List[AlgorithmRecommendation],
+        algorithms: list[AlgorithmRecommendation],
         data_profile: DataProfile
     ) -> str:
         """Fallback explanation when OpenAI is not available"""
@@ -294,8 +294,8 @@ Help the user understand when they might prefer one over the other.
 
     def _fallback_best_model_explanation(
         self,
-        best_model: Dict[str, Any],
-        all_models: List[Dict[str, Any]]
+        best_model: dict[str, Any],
+        all_models: list[dict[str, Any]]
     ) -> str:
         """Fallback explanation for best model"""
         model_name = best_model.get('name', 'Unknown')
@@ -320,8 +320,8 @@ Help the user understand when they might prefer one over the other.
 
     def _fallback_tradeoff_explanation(
         self,
-        model_a: Dict[str, Any],
-        model_b: Dict[str, Any]
+        model_a: dict[str, Any],
+        model_b: dict[str, Any]
     ) -> str:
         """Fallback explanation for model tradeoffs"""
         name_a = model_a.get('name', 'Model A')

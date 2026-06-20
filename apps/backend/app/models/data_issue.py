@@ -5,9 +5,9 @@ This model represents detected data quality issues and their suggested fixes.
 It provides audit trail for issue detection and fix application.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class IssueType(str, Enum):
@@ -45,11 +45,11 @@ class SuggestedFix(BaseModel):
 
     fix_id: str = Field(default_factory=lambda: str(PydanticObjectId()))
     transformation_type: str = Field(..., description="Type of transformation to apply")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
     explanation: str = Field(default="", description="Plain-language explanation of the fix")
     ai_generated: bool = Field(default=False, description="Whether this fix was suggested by AI")
     confidence_score: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence in this fix")
-    preview_impact: Optional[Dict[str, Any]] = Field(default=None, description="Preview of fix impact")
+    preview_impact: dict[str, Any] | None = Field(default=None, description="Preview of fix impact")
     estimated_rows_affected: int = Field(default=0, ge=0, description="Estimated rows affected")
     estimated_data_loss: float = Field(default=0.0, ge=0.0, le=100.0, description="Estimated data loss %")
     is_safe: bool = Field(default=True, description="Whether fix is safe to apply automatically")
@@ -61,20 +61,20 @@ class DataIssue(BaseModel):
     issue_id: str = Field(default_factory=lambda: str(PydanticObjectId()))
     issue_type: IssueType = Field(..., description="Type of data issue")
     severity: IssueSeverity = Field(..., description="Severity level")
-    affected_column: Optional[str] = Field(None, description="Column affected by the issue")
-    affected_columns: List[str] = Field(default_factory=list, description="Multiple columns affected")
+    affected_column: str | None = Field(None, description="Column affected by the issue")
+    affected_columns: list[str] = Field(default_factory=list, description="Multiple columns affected")
     affected_rows: int = Field(default=0, ge=0, description="Number of rows affected")
     affected_percentage: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of rows affected")
     description: str = Field(..., description="Human-readable description of the issue")
     impact: str = Field(default="", description="Potential impact on analysis")
-    suggested_fixes: List[SuggestedFix] = Field(default_factory=list, description="Suggested fixes for this issue")
+    suggested_fixes: list[SuggestedFix] = Field(default_factory=list, description="Suggested fixes for this issue")
     ai_generated: bool = Field(default=False, description="Whether detected by AI analysis")
-    ai_explanation: Optional[str] = Field(None, description="AI-generated explanation")
+    ai_explanation: str | None = Field(None, description="AI-generated explanation")
     detected_at: datetime = Field(default_factory=get_current_time)
 
     # Additional metadata for context
-    example_values: List[Any] = Field(default_factory=list, description="Example problematic values")
-    column_stats: Optional[Dict[str, Any]] = Field(None, description="Relevant column statistics")
+    example_values: list[Any] = Field(default_factory=list, description="Example problematic values")
+    column_stats: dict[str, Any] | None = Field(None, description="Relevant column statistics")
 
 
 class AppliedFix(BaseModel):
@@ -83,12 +83,12 @@ class AppliedFix(BaseModel):
     fix_id: str = Field(..., description="ID of the applied fix")
     issue_id: str = Field(..., description="ID of the issue this fix addressed")
     transformation_type: str = Field(..., description="Type of transformation applied")
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
     applied_at: datetime = Field(default_factory=get_current_time)
     applied_by: str = Field(..., description="User ID who applied the fix")
     rows_affected: int = Field(default=0, ge=0)
     success: bool = Field(default=True)
-    error_message: Optional[str] = Field(None)
+    error_message: str | None = Field(None)
     rollback_available: bool = Field(default=False)
 
 
@@ -122,14 +122,14 @@ class DataIssueRecord(Document):
     user_id: Annotated[str, Indexed()] = Field(..., description="User who owns this dataset")
 
     # Detection results
-    issues: List[DataIssue] = Field(default_factory=list, description="Detected issues")
+    issues: list[DataIssue] = Field(default_factory=list, description="Detected issues")
     summary: DetectionSummary = Field(default_factory=DetectionSummary)
 
     # Fix history
-    applied_fixes: List[AppliedFix] = Field(default_factory=list, description="History of applied fixes")
+    applied_fixes: list[AppliedFix] = Field(default_factory=list, description="History of applied fixes")
 
     # Detection options used
-    detection_options: Dict[str, Any] = Field(default_factory=dict)
+    detection_options: dict[str, Any] = Field(default_factory=dict)
     include_ai_analysis: bool = Field(default=True)
 
     # Timestamps
@@ -170,15 +170,15 @@ class DataIssueRecord(Document):
         self.last_updated = get_current_time()
         self.version += 1
 
-    def get_issues_by_severity(self, severity: IssueSeverity) -> List[DataIssue]:
+    def get_issues_by_severity(self, severity: IssueSeverity) -> list[DataIssue]:
         """Get issues filtered by severity."""
         return [issue for issue in self.issues if issue.severity == severity]
 
-    def get_issues_by_type(self, issue_type: IssueType) -> List[DataIssue]:
+    def get_issues_by_type(self, issue_type: IssueType) -> list[DataIssue]:
         """Get issues filtered by type."""
         return [issue for issue in self.issues if issue.issue_type == issue_type]
 
-    def get_auto_fixable_issues(self) -> List[DataIssue]:
+    def get_auto_fixable_issues(self) -> list[DataIssue]:
         """Get issues that have safe automatic fixes."""
         return [
             issue for issue in self.issues

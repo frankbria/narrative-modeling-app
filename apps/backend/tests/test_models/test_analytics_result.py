@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from beanie import Link, PydanticObjectId
@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initializ
 
 def test_analytics_result_creation():
     """Test creating an AnalyticsResult instance with all fields."""
-    current_time = datetime.now(timezone.utc)
+    current_time = datetime.now(UTC)
     dataset_id = PydanticObjectId()
     plot_id = PydanticObjectId()
 
@@ -67,7 +67,7 @@ def test_analytics_result_default_timestamp():
     )
 
     assert isinstance(analytics_result.createdAt, datetime)
-    assert analytics_result.createdAt.tzinfo == timezone.utc
+    assert analytics_result.createdAt.tzinfo == UTC
 
 
 def test_analytics_result_model_settings():

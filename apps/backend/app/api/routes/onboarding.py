@@ -1,7 +1,6 @@
 """
 Onboarding API routes for guiding new users through the platform
 """
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -30,7 +29,7 @@ async def get_onboarding_status(
     return OnboardingStatusResponse(**status)
 
 
-@router.get("/steps", response_model=List[OnboardingStepResponse])
+@router.get("/steps", response_model=list[OnboardingStepResponse])
 async def get_onboarding_steps(
     user_id: str = Depends(get_current_user_id)
 ):
@@ -122,7 +121,7 @@ async def get_tutorial_progress(
     return TutorialProgressResponse(**progress)
 
 
-@router.get("/sample-datasets", response_model=List[SampleDatasetResponse])
+@router.get("/sample-datasets", response_model=list[SampleDatasetResponse])
 async def get_sample_datasets(
     user_id: str = Depends(get_current_user_id)
 ):
@@ -197,7 +196,7 @@ async def get_user_achievements(
 
 @router.get("/help-tips")
 async def get_contextual_help(
-    current_step: Optional[str] = None,
+    current_step: str | None = None,
     user_id: str = Depends(get_current_user_id)
 ):
     """Get contextual help tips based on current step"""

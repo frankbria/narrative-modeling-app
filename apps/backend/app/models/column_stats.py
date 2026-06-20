@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from beanie import Document, Indexed, Link
 from pydantic import BaseModel, Field
@@ -8,14 +7,14 @@ from app.models.user_data import UserData
 
 
 def get_current_time() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class NumericHistogram(BaseModel):
     """Model for storing numeric histogram data"""
 
-    bin_edges: List[float]
-    bin_counts: List[int]
+    bin_edges: list[float]
+    bin_counts: list[int]
     bin_width: float
     min_value: float
     max_value: float
@@ -24,8 +23,8 @@ class NumericHistogram(BaseModel):
 class CategoricalValueCounts(BaseModel):
     """Model for storing categorical value counts"""
 
-    values: List[str]
-    counts: List[int]
+    values: list[str]
+    counts: list[int]
     top_n: int = 10  # Number of top values to store
 
 
@@ -42,28 +41,28 @@ class ColumnStats(Document):
     unique: int
 
     # Numeric statistics
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    mean: Optional[float] = None
-    median: Optional[float] = None
-    std: Optional[float] = None
-    q1: Optional[float] = None  # First quartile
-    q3: Optional[float] = None  # Third quartile
-    skewness: Optional[float] = None
-    kurtosis: Optional[float] = None
+    min_value: float | None = None
+    max_value: float | None = None
+    mean: float | None = None
+    median: float | None = None
+    std: float | None = None
+    q1: float | None = None  # First quartile
+    q3: float | None = None  # Third quartile
+    skewness: float | None = None
+    kurtosis: float | None = None
 
     # Text statistics
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    avg_length: Optional[float] = None
+    min_length: int | None = None
+    max_length: int | None = None
+    avg_length: float | None = None
 
     # Date statistics
-    min_date: Optional[datetime] = None
-    max_date: Optional[datetime] = None
+    min_date: datetime | None = None
+    max_date: datetime | None = None
 
     # Histogram data
-    numeric_histogram: Optional[NumericHistogram] = None
-    categorical_value_counts: Optional[CategoricalValueCounts] = None
+    numeric_histogram: NumericHistogram | None = None
+    categorical_value_counts: CategoricalValueCounts | None = None
 
     # Metadata
     created_at: datetime = Field(default_factory=get_current_time)

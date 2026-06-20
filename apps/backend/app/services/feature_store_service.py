@@ -8,8 +8,8 @@ including CRUD operations, feature application, versioning, and sharing.
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 
@@ -46,7 +46,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
     async def save_feature(
         self,
-        feature_data: Dict[str, Any],
+        feature_data: dict[str, Any],
         user_id: str
     ) -> StoredFeature:
         """
@@ -112,7 +112,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         self,
         feature_id: str,
         user_id: str,
-        version: Optional[int] = None
+        version: int | None = None
     ) -> StoredFeature:
         """
         Get feature by ID with permission check.
@@ -165,11 +165,11 @@ class FeatureStoreService(BaseService[StoredFeature]):
     async def search_features(
         self,
         user_id: str,
-        query: Optional[str] = None,
-        filters: Dict[str, Any] = {},
+        query: str | None = None,
+        filters: dict[str, Any] = {},
         skip: int = 0,
         limit: int = 20
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search features with text query and filters.
 
@@ -237,7 +237,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         self,
         feature_id: str,
         user_id: str,
-        updates: Dict[str, Any]
+        updates: dict[str, Any]
     ) -> StoredFeature:
         """
         Update feature and create new version if definition changed.
@@ -321,7 +321,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         feature_id: str,
         dataset_id: str,
         user_id: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Check if feature is compatible with dataset schema.
 
@@ -375,7 +375,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         feature_id: str,
         dataset_id: str,
         user_id: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Apply feature to a dataset.
 
@@ -445,7 +445,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         self,
         feature_id: str,
         user_id: str,
-        share_with_user_ids: List[str]
+        share_with_user_ids: list[str]
     ) -> StoredFeature:
         """
         Share feature with other users.
@@ -501,7 +501,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         self,
         feature_id: str,
         user_id: str
-    ) -> List[FeatureVersion]:
+    ) -> list[FeatureVersion]:
         """
         Get version history for a feature.
 
@@ -527,7 +527,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         feature_id: str,
         user_id: str,
         format: str = "json"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Export feature definition.
 
@@ -553,7 +553,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
                 }
                 for v in versions
             ],
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
             "format_version": "1.0"
         }
 
@@ -561,7 +561,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
     async def import_feature(
         self,
-        feature_data: Dict[str, Any],
+        feature_data: dict[str, Any],
         user_id: str
     ) -> StoredFeature:
         """
@@ -585,7 +585,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
     async def create_collection(
         self,
-        collection_data: Dict[str, Any],
+        collection_data: dict[str, Any],
         user_id: str
     ) -> FeatureCollection:
         """
@@ -700,7 +700,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         user_id: str,
         skip: int = 0,
         limit: int = 20
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List collections for user.
 

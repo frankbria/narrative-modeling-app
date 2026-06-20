@@ -5,7 +5,7 @@ These schemas define request/response models for the preview API endpoint,
 used to show users what transformations will do before applying them.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class PreviewRequest(BaseModel):
     Note: dataset_id comes from the URL path, not the request body.
     """
 
-    operations: List[TransformationStepRequest] = Field(
+    operations: list[TransformationStepRequest] = Field(
         ..., description="List of transformation steps to preview"
     )
     sample_size: int = Field(
@@ -61,7 +61,7 @@ class ImpactStatistics(BaseModel):
 
     rows_affected: int = Field(..., description="Number of rows with any changes")
     values_changed: int = Field(..., description="Total number of cells modified")
-    columns_affected: List[str] = Field(
+    columns_affected: list[str] = Field(
         ..., description="Columns that have changes"
     )
     quality_score_before: float = Field(
@@ -76,7 +76,7 @@ class ImpactStatistics(BaseModel):
         le=1.0,
         description="Overall quality score after transformation (0-1)",
     )
-    value_distributions: Dict[str, Dict[str, Any]] = Field(
+    value_distributions: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="Value distribution changes per affected column (before/after)",
     )
@@ -106,20 +106,20 @@ class PreviewResult(BaseModel):
     Contains original data, transformed data, impact statistics, and any warnings/errors.
     """
 
-    original_data: List[Dict[str, Any]] = Field(
+    original_data: list[dict[str, Any]] = Field(
         ..., description="Original dataset sample (before transformation)"
     )
-    transformed_data: List[Dict[str, Any]] = Field(
+    transformed_data: list[dict[str, Any]] = Field(
         ..., description="Transformed dataset sample (after transformation)"
     )
     impact_stats: ImpactStatistics = Field(
         ..., description="Statistical impact of transformations"
     )
-    warnings: List[str] = Field(
+    warnings: list[str] = Field(
         default_factory=list,
         description="Non-fatal warnings during preview generation",
     )
-    errors: List[str] = Field(
+    errors: list[str] = Field(
         default_factory=list, description="Errors encountered during transformation"
     )
 
@@ -159,10 +159,10 @@ class PreviewResponse(BaseModel):
     """
 
     success: bool = Field(..., description="Whether preview generation succeeded")
-    preview_result: Optional[PreviewResult] = Field(
+    preview_result: PreviewResult | None = Field(
         None, description="Preview result (null if success=false)"
     )
-    error: Optional[str] = Field(
+    error: str | None = Field(
         None, description="Error message (null if success=true)"
     )
     cache_hit: bool = Field(

@@ -8,7 +8,7 @@ as a string array; stage values are the lowercase WorkflowStage enum values).
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 MAX_STAGE_DATA_BYTES = 256 * 1024
 
 
-def _check_stage_data_size(v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _check_stage_data_size(v: dict[str, Any] | None) -> dict[str, Any] | None:
     if v is not None and len(json.dumps(v, default=str)) > MAX_STAGE_DATA_BYTES:
         raise ValueError(
             f"stage_data exceeds {MAX_STAGE_DATA_BYTES} bytes when serialized"
@@ -30,37 +30,37 @@ class WorkflowCreateRequest(BaseModel):
     """Body for POST /workflows/{dataset_id}."""
 
     current_stage: str = Field(..., description="Stage the user is currently on")
-    completed_stages: List[str] = Field(
+    completed_stages: list[str] = Field(
         default_factory=list, description="Stages the user has completed"
     )
-    stage_data: Dict[str, Any] = Field(
+    stage_data: dict[str, Any] = Field(
         default_factory=dict, description="Key selections per stage"
     )
-    model_id: Optional[str] = Field(None, description="Trained model id, if any")
-    deployment_id: Optional[str] = Field(None, description="Deployment id, if any")
+    model_id: str | None = Field(None, description="Trained model id, if any")
+    deployment_id: str | None = Field(None, description="Deployment id, if any")
 
     model_config = {"populate_by_name": True}
 
     @field_validator("stage_data")
     @classmethod
     def check_stage_data_size(
-        cls, v: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        cls, v: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         return _check_stage_data_size(v)
 
 
 class WorkflowUpdateRequest(BaseModel):
     """Body for PUT /workflows/{dataset_id} — all fields optional (partial update)."""
 
-    current_stage: Optional[str] = None
-    completed_stages: Optional[List[str]] = None
-    stage_data: Optional[Dict[str, Any]] = None
-    model_id: Optional[str] = Field(
+    current_stage: str | None = None
+    completed_stages: list[str] | None = None
+    stage_data: dict[str, Any] | None = None
+    model_id: str | None = Field(
         None,
         description="Trained model id. Explicit null is a no-op (cannot unset); "
         "workflow progress is forward-only in beta.",
     )
-    deployment_id: Optional[str] = Field(
+    deployment_id: str | None = Field(
         None,
         description="Deployment id. Explicit null is a no-op (cannot unset); "
         "workflow progress is forward-only in beta.",
@@ -71,8 +71,8 @@ class WorkflowUpdateRequest(BaseModel):
     @field_validator("stage_data")
     @classmethod
     def check_stage_data_size(
-        cls, v: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        cls, v: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         return _check_stage_data_size(v)
 
 
@@ -82,10 +82,10 @@ class WorkflowResponse(BaseModel):
     workflow_id: str
     dataset_id: str
     current_stage: str
-    completed_stages: List[str]
-    stage_data: Dict[str, Any]
-    model_id: Optional[str] = None
-    deployment_id: Optional[str] = None
+    completed_stages: list[str]
+    stage_data: dict[str, Any]
+    model_id: str | None = None
+    deployment_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -97,10 +97,10 @@ class StateHistoryEntryResponse(BaseModel):
 
     version: int
     current_stage: str
-    completed_stages: List[str]
-    stage_data: Dict[str, Any]
-    model_id: Optional[str] = None
-    deployment_id: Optional[str] = None
+    completed_stages: list[str]
+    stage_data: dict[str, Any]
+    model_id: str | None = None
+    deployment_id: str | None = None
     timestamp: datetime
 
     model_config = {"populate_by_name": True}
@@ -120,6 +120,6 @@ class WorkflowHistoryResponse(BaseModel):
     latest_version: int = Field(
         0, description="Lifetime version counter (0 when history is empty)"
     )
-    entries: List[StateHistoryEntryResponse]
+    entries: list[StateHistoryEntryResponse]
 
     model_config = {"populate_by_name": True}

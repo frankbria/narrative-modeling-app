@@ -7,7 +7,7 @@ and engineering operations.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -40,7 +40,7 @@ class FeatureSuggestion(BaseModel):
     name: str = Field(..., description="Feature name")
     description: str = Field(..., description="Human-readable description of the feature")
     feature_type: FeatureType = Field(..., description="Type of feature transformation")
-    formula: Optional[str] = Field(None, description="Mathematical formula or logic for the feature")
+    formula: str | None = Field(None, description="Mathematical formula or logic for the feature")
     expected_importance: float = Field(
         default=0.5,
         ge=0.0,
@@ -52,11 +52,11 @@ class FeatureSuggestion(BaseModel):
         default=ComputationCost.LOW,
         description="Estimated computation cost"
     )
-    input_columns: List[str] = Field(
+    input_columns: list[str] = Field(
         default_factory=list,
         description="Source columns required for this feature"
     )
-    parameters: Dict[str, Any] = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Feature-specific parameters"
     )
@@ -87,11 +87,11 @@ class FeatureSuggestion(BaseModel):
 class FeatureSuggestionRequest(BaseModel):
     """Request model for generating feature suggestions"""
 
-    target_column: Optional[str] = Field(
+    target_column: str | None = Field(
         None,
         description="Target column for ML task (optional, auto-detected if not provided)"
     )
-    problem_type: Optional[str] = Field(
+    problem_type: str | None = Field(
         None,
         description="ML problem type (auto-detected if not provided)"
     )
@@ -105,7 +105,7 @@ class FeatureSuggestionRequest(BaseModel):
         default=True,
         description="Whether to include AI-generated suggestions"
     )
-    feature_types: Optional[List[FeatureType]] = Field(
+    feature_types: list[FeatureType] | None = Field(
         None,
         description="Filter suggestions by feature types (all types if not specified)"
     )
@@ -127,26 +127,26 @@ class FeatureSuggestionResponse(BaseModel):
     """Response model for feature suggestions"""
 
     dataset_id: str = Field(..., description="Dataset identifier")
-    suggestions: List[FeatureSuggestion] = Field(
+    suggestions: list[FeatureSuggestion] = Field(
         default_factory=list,
         description="List of feature suggestions"
     )
-    detected_problem_type: Optional[str] = Field(
+    detected_problem_type: str | None = Field(
         None,
         description="Auto-detected problem type"
     )
-    detected_target_column: Optional[str] = Field(
+    detected_target_column: str | None = Field(
         None,
         description="Auto-detected or specified target column"
     )
-    detected_domain: Optional[str] = Field(
+    detected_domain: str | None = Field(
         None,
         description="Auto-detected data domain (e.g., 'financial', 'healthcare')"
     )
     total_suggestions: int = Field(..., ge=0, description="Total number of suggestions")
     rule_based_count: int = Field(default=0, ge=0, description="Number of rule-based suggestions")
     ai_count: int = Field(default=0, ge=0, description="Number of AI-generated suggestions")
-    metadata: Dict[str, Any] = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional metadata about the suggestions"
     )
@@ -177,11 +177,11 @@ class FeatureFeedbackRequest(BaseModel):
     """Request model for recording user feedback on a suggestion"""
 
     accepted: bool = Field(..., description="Whether the suggestion was accepted")
-    modified_parameters: Optional[Dict[str, Any]] = Field(
+    modified_parameters: dict[str, Any] | None = Field(
         None,
         description="Modified parameters if user customized the suggestion"
     )
-    reason: Optional[str] = Field(
+    reason: str | None = Field(
         None,
         max_length=500,
         description="Optional reason for rejection"
@@ -213,15 +213,15 @@ class FeatureFeedbackResponse(BaseModel):
 class GenerateMoreRequest(BaseModel):
     """Request model for generating additional suggestions"""
 
-    excluded_suggestion_ids: List[str] = Field(
+    excluded_suggestion_ids: list[str] = Field(
         default_factory=list,
         description="IDs of suggestions to exclude"
     )
-    target_column: Optional[str] = Field(
+    target_column: str | None = Field(
         None,
         description="Target column"
     )
-    problem_type: Optional[str] = Field(
+    problem_type: str | None = Field(
         None,
         description="Problem type"
     )
@@ -231,7 +231,7 @@ class GenerateMoreRequest(BaseModel):
         le=20,
         description="Number of additional suggestions"
     )
-    prefer_feature_types: Optional[List[FeatureType]] = Field(
+    prefer_feature_types: list[FeatureType] | None = Field(
         None,
         description="Preferred feature types for new suggestions"
     )
@@ -253,7 +253,7 @@ class ApplyFeatureRequest(BaseModel):
     """Request model for applying a feature suggestion"""
 
     suggestion_id: str = Field(..., description="Suggestion to apply")
-    parameters: Optional[Dict[str, Any]] = Field(
+    parameters: dict[str, Any] | None = Field(
         None,
         description="Override parameters"
     )
@@ -271,12 +271,12 @@ class ApplyFeatureRequest(BaseModel):
 class ApplyMultipleFeaturesRequest(BaseModel):
     """Request model for applying multiple feature suggestions"""
 
-    suggestion_ids: List[str] = Field(
+    suggestion_ids: list[str] = Field(
         ...,
         min_length=1,
         description="List of suggestion IDs to apply"
     )
-    parameter_overrides: Optional[Dict[str, Dict[str, Any]]] = Field(
+    parameter_overrides: dict[str, dict[str, Any]] | None = Field(
         None,
         description="Parameter overrides per suggestion ID"
     )
@@ -297,16 +297,16 @@ class ApplyFeatureResponse(BaseModel):
     """Response model for feature application"""
 
     dataset_id: str = Field(..., description="Dataset identifier")
-    applied_features: List[str] = Field(
+    applied_features: list[str] = Field(
         default_factory=list,
         description="Names of successfully applied features"
     )
-    failed_features: List[Dict[str, str]] = Field(
+    failed_features: list[dict[str, str]] = Field(
         default_factory=list,
         description="Features that failed with error messages"
     )
     new_column_count: int = Field(..., ge=0, description="Number of new columns added")
-    preview_data: Optional[List[Dict[str, Any]]] = Field(
+    preview_data: list[dict[str, Any]] | None = Field(
         None,
         description="Preview of data with new features"
     )
@@ -319,19 +319,19 @@ class FeatureExplanationResponse(BaseModel):
     suggestion_id: str = Field(..., description="Suggestion identifier")
     name: str = Field(..., description="Feature name")
     detailed_explanation: str = Field(..., description="Detailed explanation in markdown")
-    example_calculations: List[Dict[str, Any]] = Field(
+    example_calculations: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Example calculations showing input/output"
     )
-    similar_features: List[str] = Field(
+    similar_features: list[str] = Field(
         default_factory=list,
         description="Names of similar features"
     )
-    use_cases: List[str] = Field(
+    use_cases: list[str] = Field(
         default_factory=list,
         description="Common use cases for this feature type"
     )
-    considerations: List[str] = Field(
+    considerations: list[str] = Field(
         default_factory=list,
         description="Important considerations when using this feature"
     )
@@ -346,8 +346,8 @@ class FeatureFeedbackRecord(BaseModel):
     dataset_id: str = Field(..., description="Dataset identifier")
     feature_type: FeatureType = Field(..., description="Type of feature")
     accepted: bool = Field(..., description="Whether accepted")
-    modified_parameters: Optional[Dict[str, Any]] = None
-    reason: Optional[str] = None
+    modified_parameters: dict[str, Any] | None = None
+    reason: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = {

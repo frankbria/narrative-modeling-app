@@ -2,7 +2,7 @@
 Model export API routes
 """
 import io
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -26,7 +26,7 @@ class ExportFormat(BaseModel):
 
 
 class ExportFormatsResponse(BaseModel):
-    formats: List[ExportFormat]
+    formats: list[ExportFormat]
 
 
 # API Routes
@@ -152,7 +152,7 @@ async def export_docker_container(
 async def export_model_custom(
     model_id: str,
     format_type: str,
-    options: Dict[str, Any] = None,
+    options: dict[str, Any] = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Export model with custom options"""

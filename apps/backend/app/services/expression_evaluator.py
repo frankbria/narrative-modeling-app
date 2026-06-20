@@ -6,7 +6,7 @@ NO eval() or exec() is used - only explicit pandas/numpy function mappings.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class ExpressionError(Exception):
     """Base exception for expression evaluation errors."""
 
-    def __init__(self, message: str, node_id: Optional[str] = None):
+    def __init__(self, message: str, node_id: str | None = None):
         self.message = message
         self.node_id = node_id
         super().__init__(message)
@@ -52,7 +52,7 @@ class ExpressionEvaluator:
     """
 
     # Binary operation mappings
-    BINARY_OPERATIONS: Dict[str, str] = {
+    BINARY_OPERATIONS: dict[str, str] = {
         "add": "add",
         "subtract": "sub",
         "multiply": "mul",
@@ -62,7 +62,7 @@ class ExpressionEvaluator:
     }
 
     # Comparison operation mappings
-    COMPARISON_OPERATIONS: Dict[str, str] = {
+    COMPARISON_OPERATIONS: dict[str, str] = {
         "equal": "eq",
         "not_equal": "ne",
         "greater_than": "gt",
@@ -72,7 +72,7 @@ class ExpressionEvaluator:
     }
 
     # Mathematical function mappings
-    MATH_FUNCTIONS: Dict[str, Any] = {
+    MATH_FUNCTIONS: dict[str, Any] = {
         "abs": np.abs,
         "log": np.log,
         "log10": np.log10,
@@ -86,7 +86,7 @@ class ExpressionEvaluator:
     }
 
     # Statistical function mappings (require different handling)
-    STAT_FUNCTIONS: Dict[str, str] = {
+    STAT_FUNCTIONS: dict[str, str] = {
         "mean": "mean",
         "median": "median",
         "std": "std",
@@ -97,14 +97,14 @@ class ExpressionEvaluator:
 
     def __init__(self):
         """Initialize the expression evaluator."""
-        self.warnings: List[str] = []
+        self.warnings: list[str] = []
 
     def evaluate(
         self,
         expression_tree: ExpressionNode,
         dataframe: pd.DataFrame,
         feature_name: str = "computed_feature"
-    ) -> Tuple[pd.Series, List[str]]:
+    ) -> tuple[pd.Series, list[str]]:
         """
         Evaluate an expression tree on a dataframe.
 
@@ -144,7 +144,7 @@ class ExpressionEvaluator:
         self,
         node: ExpressionNode,
         df: pd.DataFrame
-    ) -> Union[pd.Series, Any]:
+    ) -> pd.Series | Any:
         """
         Recursively evaluate a single node.
 
@@ -185,7 +185,7 @@ class ExpressionEvaluator:
         self,
         node: ExpressionNode,
         df: pd.DataFrame
-    ) -> Union[pd.Series, Any]:
+    ) -> pd.Series | Any:
         """Evaluate a constant value node."""
         # Return scalar - will be broadcast by pandas operations
         return node.value
@@ -570,7 +570,7 @@ class ExpressionEvaluator:
 
     def _to_series(
         self,
-        value: Union[pd.Series, Any],
+        value: pd.Series | Any,
         df: pd.DataFrame
     ) -> pd.Series:
         """Convert a value to a Series if it isn't already."""
@@ -586,8 +586,8 @@ class ExpressionEvaluator:
     def validate_expression(
         self,
         expression_tree: ExpressionNode,
-        column_info: Dict[str, str]
-    ) -> Tuple[bool, List[str], List[str], Optional[str]]:
+        column_info: dict[str, str]
+    ) -> tuple[bool, list[str], list[str], str | None]:
         """
         Validate an expression tree without evaluating it.
 
@@ -598,8 +598,8 @@ class ExpressionEvaluator:
         Returns:
             Tuple of (is_valid, errors, warnings, inferred_type)
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Check input columns exist
         input_columns = expression_tree.get_input_columns()
@@ -608,7 +608,7 @@ class ExpressionEvaluator:
                 errors.append(f"Column '{col}' not found in dataset")
 
         # Validate tree structure
-        def validate_node(node: ExpressionNode, path: str = "root") -> Optional[str]:
+        def validate_node(node: ExpressionNode, path: str = "root") -> str | None:
             """Recursively validate node and return inferred type."""
             if node.node_type == NodeType.COLUMN:
                 col_name = str(node.value)

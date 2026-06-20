@@ -8,7 +8,7 @@ Run with: pytest tests/integration/test_redis_fixtures.py -v -m integration
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -91,7 +91,7 @@ async def test_redis_job_status_update(test_redis_job, redis_client):
 
     # Update status
     job_data["status"] = "running"
-    job_data["started_at"] = datetime.now(timezone.utc).isoformat()
+    job_data["started_at"] = datetime.now(UTC).isoformat()
 
     # Save updated data
     await redis_client.set(job_key, json.dumps(job_data))
@@ -203,7 +203,7 @@ async def test_redis_pub_sub(redis_client):
         if message:
             data = json.loads(message["data"])
             assert data["job_id"] == "test_job"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # Pub/sub can be flaky in tests, just verify subscription worked
         pass
 

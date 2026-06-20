@@ -6,7 +6,6 @@ Implements Story 12.2: Data Versioning API.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -35,7 +34,7 @@ async def list_dataset_versions(
     dataset_id: str,
     limit: int = 50,
     skip: int = 0,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """

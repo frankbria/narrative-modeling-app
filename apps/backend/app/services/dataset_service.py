@@ -5,7 +5,7 @@ This service handles CRUD operations for datasets using the new DatasetMetadata 
 while maintaining backward compatibility with the legacy UserData model through dual-write.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.models.dataset import AISummary, DatasetMetadata, PIIReport, SchemaField
 from app.models.user_data import AISummary as LegacyAISummary
@@ -39,16 +39,16 @@ class DatasetService(BaseService[DatasetMetadata]):
         s3_url: str,
         num_rows: int,
         num_columns: int,
-        columns: List[str],
-        data_schema: List[SchemaField],
-        file_size: Optional[int] = None,
-        statistics: Optional[Dict[str, Any]] = None,
-        quality_report: Optional[Dict[str, Any]] = None,
-        data_preview: Optional[List[Dict[str, Any]]] = None,
-        ai_summary: Optional[AISummary] = None,
-        pii_report: Optional[PIIReport] = None,
-        inferred_schema: Optional[Dict[str, Any]] = None,
-        onboarding_progress: Optional[Dict[str, Any]] = None,
+        columns: list[str],
+        data_schema: list[SchemaField],
+        file_size: int | None = None,
+        statistics: dict[str, Any] | None = None,
+        quality_report: dict[str, Any] | None = None,
+        data_preview: list[dict[str, Any]] | None = None,
+        ai_summary: AISummary | None = None,
+        pii_report: PIIReport | None = None,
+        inferred_schema: dict[str, Any] | None = None,
+        onboarding_progress: dict[str, Any] | None = None,
         **kwargs
     ) -> DatasetMetadata:
         """
@@ -133,20 +133,20 @@ class DatasetService(BaseService[DatasetMetadata]):
         dataset_id: str,
         filename: str,
         original_filename: str,
-        file_type: Optional[str],
+        file_type: str | None,
         file_path: str,
         s3_url: str,
         num_rows: int,
         num_columns: int,
-        columns: List[str],
-        data_schema: List[SchemaField],
-        statistics: Optional[Dict[str, Any]],
-        quality_report: Optional[Dict[str, Any]],
-        data_preview: Optional[List[Dict[str, Any]]],
-        ai_summary: Optional[AISummary],
-        pii_report: Optional[PIIReport],
-        inferred_schema: Optional[Dict[str, Any]],
-        onboarding_progress: Optional[Dict[str, Any]]
+        columns: list[str],
+        data_schema: list[SchemaField],
+        statistics: dict[str, Any] | None,
+        quality_report: dict[str, Any] | None,
+        data_preview: list[dict[str, Any]] | None,
+        ai_summary: AISummary | None,
+        pii_report: PIIReport | None,
+        inferred_schema: dict[str, Any] | None,
+        onboarding_progress: dict[str, Any] | None
     ) -> None:
         """
         Create legacy UserData for backward compatibility.
@@ -232,9 +232,9 @@ class DatasetService(BaseService[DatasetMetadata]):
     async def get_dataset(
         self, 
         dataset_id: str, 
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         check_ownership: bool = True
-    ) -> Optional[DatasetMetadata]:
+    ) -> DatasetMetadata | None:
         """
         Retrieve dataset metadata by dataset ID.
 
@@ -258,7 +258,7 @@ class DatasetService(BaseService[DatasetMetadata]):
     async def get_dataset_or_raise(
         self,
         dataset_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         check_ownership: bool = True
     ) -> DatasetMetadata:
         """
@@ -291,7 +291,7 @@ class DatasetService(BaseService[DatasetMetadata]):
         user_id: str,
         skip: int = 0,
         limit: int = 1000
-    ) -> List[DatasetMetadata]:
+    ) -> list[DatasetMetadata]:
         """
         List all datasets for a user, sorted chronologically (newest first).
 
@@ -320,9 +320,9 @@ class DatasetService(BaseService[DatasetMetadata]):
     async def update_dataset(
         self,
         dataset_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         **update_fields
-    ) -> Optional[DatasetMetadata]:
+    ) -> DatasetMetadata | None:
         """
         Update dataset metadata fields.
 
@@ -366,7 +366,7 @@ class DatasetService(BaseService[DatasetMetadata]):
     async def delete_dataset(
         self,
         dataset_id: str,
-        user_id: Optional[str] = None
+        user_id: str | None = None
     ) -> bool:
         """
         Delete dataset metadata.
@@ -400,10 +400,10 @@ class DatasetService(BaseService[DatasetMetadata]):
     async def mark_dataset_processed(
         self,
         dataset_id: str,
-        statistics: Optional[Dict[str, Any]] = None,
-        quality_report: Optional[Dict[str, Any]] = None,
-        inferred_schema: Optional[Dict[str, Any]] = None
-    ) -> Optional[DatasetMetadata]:
+        statistics: dict[str, Any] | None = None,
+        quality_report: dict[str, Any] | None = None,
+        inferred_schema: dict[str, Any] | None = None
+    ) -> DatasetMetadata | None:
         """
         Mark dataset as processed and optionally update processing results.
 
@@ -435,7 +435,7 @@ class DatasetService(BaseService[DatasetMetadata]):
 
         return dataset
 
-    async def get_datasets_with_pii(self, user_id: str) -> List[DatasetMetadata]:
+    async def get_datasets_with_pii(self, user_id: str) -> list[DatasetMetadata]:
         """
         Get all datasets for a user that contain PII.
 
@@ -448,7 +448,7 @@ class DatasetService(BaseService[DatasetMetadata]):
         all_datasets = await self.list_datasets(user_id)
         return [dataset for dataset in all_datasets if dataset.has_pii()]
 
-    async def get_unprocessed_datasets(self, user_id: str) -> List[DatasetMetadata]:
+    async def get_unprocessed_datasets(self, user_id: str) -> list[DatasetMetadata]:
         """
         Get all unprocessed datasets for a user, sorted chronologically.
 

@@ -9,7 +9,7 @@ rewritten to use existing fixtures.
 """
 
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -132,7 +132,7 @@ class TestSimpleUploadWorkflow:
                     columns=["id", "value"],
                     data_schema=[],
                     file_type="csv",
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                     is_processed=False
                 )
                 mock_insert.return_value = mock_dataset

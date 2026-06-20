@@ -1,7 +1,7 @@
 """
 Shared fixtures for benchmark tests.
 """
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -77,7 +77,7 @@ def benchmark_data_50k() -> pd.DataFrame:
 
 
 @pytest.fixture
-def performance_targets() -> Dict[str, float]:
+def performance_targets() -> dict[str, float]:
     """
     Define performance targets for benchmark tests.
 
@@ -98,7 +98,7 @@ def performance_targets() -> Dict[str, float]:
 
 
 @pytest.fixture
-def trained_model_small(benchmark_data_1k) -> Tuple[Any, pd.DataFrame]:
+def trained_model_small(benchmark_data_1k) -> tuple[Any, pd.DataFrame]:
     """
     Provide a pre-trained model for prediction benchmarks.
     Returns (model, test_data).
@@ -122,7 +122,7 @@ def trained_model_small(benchmark_data_1k) -> Tuple[Any, pd.DataFrame]:
 
 
 @pytest.fixture
-def trained_model_large(benchmark_data_10k) -> Tuple[Any, pd.DataFrame]:
+def trained_model_large(benchmark_data_10k) -> tuple[Any, pd.DataFrame]:
     """
     Provide a larger pre-trained model for batch prediction benchmarks.
     Returns (model, test_data).

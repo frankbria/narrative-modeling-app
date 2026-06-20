@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,7 +12,7 @@ def test_get_current_time():
     """Test the get_current_time function."""
     current_time = get_current_time()
     assert isinstance(current_time, datetime)
-    assert current_time.tzinfo == timezone.utc
+    assert current_time.tzinfo == UTC
 
 
 def test_schema_field_creation():
@@ -154,8 +154,8 @@ def test_user_data_default_timestamps():
 
     assert isinstance(user_data.created_at, datetime)
     assert isinstance(user_data.updated_at, datetime)
-    assert user_data.created_at.tzinfo == timezone.utc
-    assert user_data.updated_at.tzinfo == timezone.utc
+    assert user_data.created_at.tzinfo == UTC
+    assert user_data.updated_at.tzinfo == UTC
 
 
 def test_user_data_optional_ai_summary():

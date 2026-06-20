@@ -3,7 +3,6 @@
 import io
 import logging
 import os
-from typing import List
 
 import pandas as pd
 from beanie import PydanticObjectId
@@ -19,7 +18,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/dataset/{dataset_id}", response_model=List[ColumnStats])
+@router.get("/dataset/{dataset_id}", response_model=list[ColumnStats])
 async def get_column_stats(
     dataset_id: str, user_id: str = Depends(get_current_user_id)
 ):

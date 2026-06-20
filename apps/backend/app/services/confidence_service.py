@@ -20,7 +20,8 @@ The helpers never raise on bad input; calibration degrades to
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
@@ -44,8 +45,8 @@ class ConfidenceService:
     """Stateless helpers for confidence scoring and calibration."""
 
     def confidence_from_proba(
-        self, proba_row: Optional[Sequence[float]]
-    ) -> Optional[float]:
+        self, proba_row: Sequence[float] | None
+    ) -> float | None:
         """Confidence (0-1) for a single prediction = max class probability.
 
         Returns ``None`` when no probabilities are available (e.g. regression
@@ -63,7 +64,7 @@ class ConfidenceService:
 
     def is_low_confidence(
         self,
-        confidence_score: Optional[float],
+        confidence_score: float | None,
         threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD,
     ) -> bool:
         """True when ``confidence_score`` is below ``threshold``.
@@ -79,8 +80,8 @@ class ConfidenceService:
         estimator: Any,
         X_cal: Any,
         y_cal: Any,
-        method: Optional[str] = None,
-    ) -> Tuple[Optional[CalibratedClassifierCV], Optional[str], Optional[float]]:
+        method: str | None = None,
+    ) -> tuple[CalibratedClassifierCV | None, str | None, float | None]:
         """Calibrate a fitted classifier on a held-out split.
 
         Wraps ``estimator`` (already fitted) in
@@ -125,7 +126,7 @@ class ConfidenceService:
 
     def _calibration_brier(
         self, calibrated: CalibratedClassifierCV, X_cal: Any, y_arr: np.ndarray
-    ) -> Optional[float]:
+    ) -> float | None:
         """Calibration quality: Brier score (binary) or log loss (multiclass).
 
         Measured in-sample on ``X_cal`` (the calibration-fit data), so it is an
@@ -143,7 +144,7 @@ class ConfidenceService:
             logger.warning("Could not compute calibration score: %s", exc)
             return None
 
-    def residual_std(self, y_test: Any, y_pred: Any) -> Optional[float]:
+    def residual_std(self, y_test: Any, y_pred: Any) -> float | None:
         """Standard deviation of held-out regression residuals, or ``None``."""
         try:
             residuals = np.asarray(y_test, dtype=float) - np.asarray(
@@ -158,9 +159,9 @@ class ConfidenceService:
     def regression_interval(
         self,
         prediction: float,
-        residual_std: Optional[float],
+        residual_std: float | None,
         z: float = _Z_95,
-    ) -> Optional[List[float]]:
+    ) -> list[float] | None:
         """Symmetric ~95% prediction interval ``[low, high]`` around a value.
 
         Returns ``None`` when no residual spread is known (the model predates

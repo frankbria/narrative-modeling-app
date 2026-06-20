@@ -15,7 +15,7 @@ Tests cover:
 - Edge cases and error conditions
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -38,7 +38,7 @@ class TestGetCurrentTime:
     def test_get_current_time_has_utc_timezone(self):
         """🔴 RED: Test that returned datetime has UTC timezone."""
         current_time = get_current_time()
-        assert current_time.tzinfo == timezone.utc
+        assert current_time.tzinfo == UTC
 
 
 class TestStoredFeature:
@@ -102,10 +102,10 @@ class TestStoredFeature:
             "is_public": True,
             "shared_with": ["user_001", "user_002"],
             "usage_count": 42,
-            "last_used_at": datetime.now(timezone.utc),
+            "last_used_at": datetime.now(UTC),
             "applied_to_datasets": ["dataset_1", "dataset_2"],
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
             "created_by": "user_789"
         }
 
@@ -370,7 +370,7 @@ class TestFeatureVersion:
             "changes_description": "Initial version",
             "changed_fields": [],
             "created_by": "user_789",
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
 
         version = FeatureVersion.model_construct(**version_data)
@@ -396,7 +396,7 @@ class TestFeatureVersion:
             "changes_description": "Changed multiplier from 2 to 3",
             "changed_fields": ["definition_code"],
             "created_by": "user_789",
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
 
         version = FeatureVersion.model_construct(**version_data)
@@ -418,7 +418,7 @@ class TestFeatureVersion:
             "changes_description": "Initial",
             "changed_fields": [],
             "created_by": "user_123",
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
 
         version2_data = {
@@ -432,7 +432,7 @@ class TestFeatureVersion:
             "changes_description": "Changed multiplier",
             "changed_fields": ["definition_code"],
             "created_by": "user_123",
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
 
         version1 = FeatureVersion.model_construct(**version1_data)
@@ -489,8 +489,8 @@ class TestFeatureCollection:
             "is_public": True,
             "shared_with": ["user_001"],
             "tags": ["complete", "healthcare"],
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
             "created_by": "user_789"
         }
 

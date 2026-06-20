@@ -2,7 +2,7 @@
 Cache management API endpoints
 """
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/info")
 async def get_cache_info(
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get cache statistics and information"""
     try:
         info = await cache_service.get_cache_info()
@@ -38,7 +38,7 @@ async def get_cache_info(
 async def invalidate_user_cache(
     user_id: str,
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Invalidate all cache entries for a specific user"""
     try:
         # Users can only invalidate their own cache (or admins can invalidate any)
@@ -63,7 +63,7 @@ async def invalidate_user_cache(
 async def invalidate_data_cache(
     data_id: str,
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Invalidate all cache entries for a specific dataset"""
     try:
         deleted_count = await cache_service.invalidate_data_cache(data_id)
@@ -81,7 +81,7 @@ async def invalidate_data_cache(
 async def delete_cache_key(
     cache_key: str,
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Delete a specific cache key"""
     try:
         success = await cache_service.delete(cache_key)
@@ -98,7 +98,7 @@ async def delete_cache_key(
 async def check_cache_key_exists(
     cache_key: str,
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Check if a cache key exists"""
     try:
         exists = await cache_service.exists(cache_key)
@@ -116,7 +116,7 @@ async def check_cache_key_exists(
 async def warmup_user_cache(
     user_id: str,
     current_user: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Pre-warm common cache entries for a user"""
     try:
         if current_user != user_id:

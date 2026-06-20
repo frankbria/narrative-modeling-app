@@ -2,7 +2,7 @@
 Onboarding service for managing user tutorial and guidance experience
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.models.user_data import UserData
 from app.schemas.onboarding import (
@@ -20,7 +20,7 @@ class OnboardingService:
     def __init__(self):
         self.s3_service = S3Service()
         
-    async def get_user_onboarding_status(self, user_id: str) -> Dict[str, Any]:
+    async def get_user_onboarding_status(self, user_id: str) -> dict[str, Any]:
         """Get user's current onboarding status"""
         
         # Get or create user progress
@@ -59,7 +59,7 @@ class OnboardingService:
             "last_activity_at": progress.last_activity_at
         }
     
-    async def get_onboarding_steps(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_onboarding_steps(self, user_id: str) -> list[dict[str, Any]]:
         """Get all onboarding steps with user's progress"""
         
         progress = await self._get_or_create_user_progress(user_id)
@@ -97,7 +97,7 @@ class OnboardingService:
         
         return steps
     
-    async def get_onboarding_step(self, user_id: str, step_id: str) -> Optional[Dict[str, Any]]:
+    async def get_onboarding_step(self, user_id: str, step_id: str) -> dict[str, Any] | None:
         """Get detailed information about a specific step"""
         
         steps = await self.get_onboarding_steps(user_id)
@@ -107,8 +107,8 @@ class OnboardingService:
         self, 
         user_id: str, 
         step_id: str, 
-        completion_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        completion_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Mark a step as completed and update user progress"""
         
         progress = await self._get_or_create_user_progress(user_id)
@@ -165,7 +165,7 @@ class OnboardingService:
             "achievements": achievements
         }
     
-    async def skip_step(self, user_id: str, step_id: str) -> Dict[str, Any]:
+    async def skip_step(self, user_id: str, step_id: str) -> dict[str, Any]:
         """Skip a step if it's skippable"""
         
         progress = await self._get_or_create_user_progress(user_id)
@@ -208,7 +208,7 @@ class OnboardingService:
             "progress_percentage": progress_percentage
         }
     
-    async def get_tutorial_progress(self, user_id: str) -> Dict[str, Any]:
+    async def get_tutorial_progress(self, user_id: str) -> dict[str, Any]:
         """Get detailed tutorial progress with metrics"""
         
         progress = await self._get_or_create_user_progress(user_id)
@@ -233,7 +233,7 @@ class OnboardingService:
             "sample_datasets_used": progress.sample_datasets_loaded
         }
     
-    async def get_sample_datasets(self) -> List[Dict[str, Any]]:
+    async def get_sample_datasets(self) -> list[dict[str, Any]]:
         """Get available sample datasets for onboarding"""
         
         return [
@@ -323,7 +323,7 @@ class OnboardingService:
             }
         ]
     
-    async def load_sample_dataset(self, user_id: str, dataset_id: str) -> Dict[str, Any]:
+    async def load_sample_dataset(self, user_id: str, dataset_id: str) -> dict[str, Any]:
         """Load a sample dataset for the user"""
         
         # Get dataset info
@@ -444,13 +444,13 @@ class OnboardingService:
         
         await self._save_user_progress(user_id, progress)
     
-    async def get_user_achievements(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_user_achievements(self, user_id: str) -> list[dict[str, Any]]:
         """Get user's onboarding achievements"""
         
         progress = await self._get_or_create_user_progress(user_id)
         return progress.achievements
     
-    async def get_contextual_help(self, user_id: str, current_step: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_contextual_help(self, user_id: str, current_step: str | None = None) -> list[dict[str, Any]]:
         """Get contextual help tips based on current step"""
         
         help_tips = {
@@ -509,7 +509,7 @@ class OnboardingService:
         
         return help_tips.get("welcome", [])
     
-    def get_help_articles(self) -> List[Dict[str, Any]]:
+    def get_help_articles(self) -> list[dict[str, Any]]:
         """Get available help articles"""
         
         return [
@@ -533,7 +533,7 @@ class OnboardingService:
             }
         ]
     
-    def get_video_tutorials(self) -> List[Dict[str, Any]]:
+    def get_video_tutorials(self) -> list[dict[str, Any]]:
         """Get available video tutorials"""
         
         return [
@@ -557,7 +557,7 @@ class OnboardingService:
             }
         ]
     
-    def _get_onboarding_steps_config(self) -> List[Dict[str, Any]]:
+    def _get_onboarding_steps_config(self) -> list[dict[str, Any]]:
         """Get configuration for all onboarding steps"""
         
         return [
@@ -719,7 +719,7 @@ class OnboardingService:
             }
         ]
     
-    def _get_next_step(self, progress: OnboardingUserProgress) -> Optional[str]:
+    def _get_next_step(self, progress: OnboardingUserProgress) -> str | None:
         """Find the next uncompleted step"""
         
         all_steps = self._get_onboarding_steps_config()
@@ -731,7 +731,7 @@ class OnboardingService:
         
         return None
     
-    async def _check_achievements(self, progress: OnboardingUserProgress) -> List[Dict[str, Any]]:
+    async def _check_achievements(self, progress: OnboardingUserProgress) -> list[dict[str, Any]]:
         """Check for new achievements based on progress"""
         
         new_achievements = []

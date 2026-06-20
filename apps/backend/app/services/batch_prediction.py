@@ -8,9 +8,10 @@ import logging
 import os
 import statistics
 import tempfile
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from io import BytesIO, StringIO
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -125,7 +126,7 @@ class BatchPredictionService:
 
     async def _prepare_input_data(
         self, input_data: Any, user_id: str, model_id: str
-    ) -> Tuple[str, int]:
+    ) -> tuple[str, int]:
         """Prepare and upload input data to S3"""
 
         # Generate unique S3 path
@@ -200,7 +201,7 @@ class BatchPredictionService:
             )
 
             # Process data in chunks
-            predictions: List[Dict[str, Any]] = []
+            predictions: list[dict[str, Any]] = []
             chunk_num = 0
             total_success = 0
             total_error = 0
@@ -258,7 +259,7 @@ class BatchPredictionService:
 
     async def _read_data_chunks(
         self, s3_path: str, chunk_size: int
-    ) -> AsyncGenerator[pd.DataFrame, None]:
+    ) -> AsyncGenerator[pd.DataFrame]:
         """Read data from S3 in chunks"""
 
         # Download file from S3 (s3_path is an object key)
@@ -286,13 +287,13 @@ class BatchPredictionService:
         feature_engineer: Any,
         model: MLModel,
         config: BatchPredictionConfig,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Make predictions for a chunk of data"""
 
         predictions = []
         # Rows needing a per-prediction explanation, explained in one batched
         # pass after the loop (issue #80).
-        to_explain: List[Dict[str, Any]] = []
+        to_explain: list[dict[str, Any]] = []
         is_classification = str(model.problem_type).endswith("classification")
 
         for index, row in chunk_df.iterrows():
@@ -386,7 +387,7 @@ class BatchPredictionService:
 
     async def _attach_explanations(
         self,
-        to_explain: List[Dict[str, Any]],
+        to_explain: list[dict[str, Any]],
         trained_model: Any,
         model: MLModel,
     ) -> None:
@@ -450,9 +451,9 @@ class BatchPredictionService:
 
     def _calculate_summary_statistics(
         self,
-        predictions: List[Dict[str, Any]],
+        predictions: list[dict[str, Any]],
         model: MLModel,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Aggregate batch results into summary statistics (issue #82).
 
         Produces a prediction distribution (per class for classification, value
@@ -465,8 +466,8 @@ class BatchPredictionService:
         errors = [p for p in predictions if p.get("error") is not None]
         is_classification = str(model.problem_type).endswith("classification")
 
-        prediction_distribution: Dict[str, int] = {}
-        prediction_value_stats: Dict[str, float] = {}
+        prediction_distribution: dict[str, int] = {}
+        prediction_value_stats: dict[str, float] = {}
         if is_classification:
             for p in successful:
                 key = str(p["prediction"])
@@ -487,7 +488,7 @@ class BatchPredictionService:
         confidences = [
             p["confidence"] for p in successful if p.get("confidence") is not None
         ]
-        confidence_stats: Dict[str, float] = {}
+        confidence_stats: dict[str, float] = {}
         if confidences:
             confidence_stats = {
                 "min": min(confidences),
@@ -503,7 +504,7 @@ class BatchPredictionService:
 
         success_count = len(successful)
         total = len(predictions)
-        summary: Dict[str, Any] = {
+        summary: dict[str, Any] = {
             "total_predictions": total,
             "success_count": success_count,
             "error_count": len(errors),
@@ -516,12 +517,12 @@ class BatchPredictionService:
             summary["prediction_value_stats"] = prediction_value_stats
         return summary
 
-    def _results_to_dataframe(self, predictions: List[Dict[str, Any]]) -> pd.DataFrame:
+    def _results_to_dataframe(self, predictions: list[dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
         the original input columns plus prediction/confidence/error columns."""
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for p in predictions:
-            row: Dict[str, Any] = dict(p.get("input_data", {}) or {})
+            row: dict[str, Any] = dict(p.get("input_data", {}) or {})
             if "prediction" in p:
                 row["prediction"] = p["prediction"]
             if p.get("confidence") is not None:
@@ -542,7 +543,7 @@ class BatchPredictionService:
     async def _save_results(
         self,
         job: BatchJob,
-        predictions: List[Dict[str, Any]],
+        predictions: list[dict[str, Any]],
         config: BatchPredictionConfig,
     ) -> str:
         """Save prediction results to S3"""
@@ -570,7 +571,7 @@ class BatchPredictionService:
 
         return output_key
 
-    async def get_job_status(self, job_id: str, user_id: str) -> Optional[BatchJob]:
+    async def get_job_status(self, job_id: str, user_id: str) -> BatchJob | None:
         """Get job status and progress"""
 
         return await BatchJob.find_one({"job_id": job_id, "user_id": user_id})
@@ -578,10 +579,10 @@ class BatchPredictionService:
     async def list_user_jobs(
         self,
         user_id: str,
-        job_type: Optional[JobType] = None,
-        status: Optional[JobStatus] = None,
+        job_type: JobType | None = None,
+        status: JobStatus | None = None,
         limit: int = 50,
-    ) -> List[BatchJob]:
+    ) -> list[BatchJob]:
         """List user's batch jobs"""
 
         query = {"user_id": user_id}
@@ -637,7 +638,7 @@ class BatchPredictionService:
 
         return True
 
-    async def download_results(self, job_id: str, user_id: str) -> Optional[bytes]:
+    async def download_results(self, job_id: str, user_id: str) -> bytes | None:
         """Download job results"""
 
         job = await BatchJob.find_one(

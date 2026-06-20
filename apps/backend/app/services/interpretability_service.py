@@ -24,8 +24,9 @@ Contributions and importances are expressed over the *engineered* feature space
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -67,8 +68,8 @@ class GlobalShapResult:
     """Global SHAP summary for a model (the 'SHAP summary plot' data)."""
 
     explainer_type: str  # "tree" | "linear"
-    shap_importance: Dict[str, float]  # mean |SHAP| per feature (>= 0)
-    base_value: Optional[float]
+    shap_importance: dict[str, float]  # mean |SHAP| per feature (>= 0)
+    base_value: float | None
     n_samples: int  # rows actually explained (after sampling)
 
 
@@ -77,7 +78,7 @@ class InstanceShapResult:
     """Per-prediction SHAP contributions (waterfall-style data)."""
 
     contributions: np.ndarray  # signed per-feature contribution for one row
-    base_value: Optional[float]
+    base_value: float | None
     explainer_type: str  # "tree"
 
 
@@ -86,7 +87,7 @@ class InterpretabilityService:
 
     # -- explainer selection ------------------------------------------------
 
-    def select_explainer_type(self, estimator: Any) -> Optional[str]:
+    def select_explainer_type(self, estimator: Any) -> str | None:
         """Return ``"tree"``, ``"linear"``, or ``None`` for the estimator."""
         base = unwrap_estimator(estimator)
         if hasattr(base, "feature_importances_"):
@@ -104,7 +105,7 @@ class InterpretabilityService:
         feature_names: Sequence[str],
         problem_type: str = "classification",
         max_samples: int = DEFAULT_MAX_SAMPLES,
-    ) -> Optional[GlobalShapResult]:
+    ) -> GlobalShapResult | None:
         """Mean |SHAP| per feature over a sample of ``X``; ``None`` if blocked.
 
         ``X`` is the engineered feature matrix (DataFrame or ndarray) aligned
@@ -126,7 +127,7 @@ class InterpretabilityService:
         feature_names: Sequence[str],
         problem_type: str,
         max_samples: int,
-    ) -> Optional[GlobalShapResult]:
+    ) -> GlobalShapResult | None:
         explainer_type = self.select_explainer_type(estimator)
         if explainer_type is None:
             return None
@@ -174,7 +175,7 @@ class InterpretabilityService:
         feature_names: Sequence[str],
         prediction: Any = None,
         problem_type: str = "classification",
-    ) -> Optional[InstanceShapResult]:
+    ) -> InstanceShapResult | None:
         """Per-row SHAP contributions for tree models; ``None`` otherwise.
 
         Only tree/ensemble models are explained per-instance: ``TreeExplainer``
@@ -196,7 +197,7 @@ class InterpretabilityService:
         x_row: Sequence[float],
         feature_names: Sequence[str],
         prediction: Any,
-    ) -> Optional[InstanceShapResult]:
+    ) -> InstanceShapResult | None:
         base = unwrap_estimator(estimator)
         if not hasattr(base, "feature_importances_"):
             return None  # tree-only at prediction time (no background data)
@@ -228,9 +229,9 @@ class InterpretabilityService:
         estimator: Any,
         X: Any,
         feature_names: Sequence[str],
-        predictions: Optional[Sequence[Any]] = None,
+        predictions: Sequence[Any] | None = None,
         problem_type: str = "classification",
-    ) -> Optional[list]:
+    ) -> list | None:
         """Per-row SHAP contributions for a whole matrix, building once.
 
         Tree-only (like ``compute_instance_shap``). Builds a single
@@ -252,8 +253,8 @@ class InterpretabilityService:
         estimator: Any,
         X: Any,
         feature_names: Sequence[str],
-        predictions: Optional[Sequence[Any]],
-    ) -> Optional[list]:
+        predictions: Sequence[Any] | None,
+    ) -> list | None:
         base = unwrap_estimator(estimator)
         if not hasattr(base, "feature_importances_"):
             return None
@@ -285,7 +286,7 @@ class InterpretabilityService:
     # -- plain language -----------------------------------------------------
 
     def top_drivers_text(
-        self, shap_importance: Dict[str, float], top_n: int = 3
+        self, shap_importance: dict[str, float], top_n: int = 3
     ) -> str:
         """Plain-language summary of the most influential features."""
         if not isinstance(shap_importance, dict) or not shap_importance:
@@ -304,7 +305,7 @@ class InterpretabilityService:
     # -- helpers ------------------------------------------------------------
 
     @staticmethod
-    def _sample_matrix(X: Any, max_samples: int) -> Optional[np.ndarray]:
+    def _sample_matrix(X: Any, max_samples: int) -> np.ndarray | None:
         """Down-sample ``X`` to at most ``max_samples`` rows as a float ndarray."""
         if X is None:
             return None
@@ -318,7 +319,7 @@ class InterpretabilityService:
         return arr
 
     @staticmethod
-    def _scalar_base_value(explanation: Any) -> Optional[float]:
+    def _scalar_base_value(explanation: Any) -> float | None:
         """Best-effort single scalar base value from a SHAP Explanation."""
         try:
             base = np.asarray(explanation.base_values, dtype=float)
@@ -327,7 +328,7 @@ class InterpretabilityService:
             return None
 
     @staticmethod
-    def _base_value_for_class(explanation: Any, idx: int) -> Optional[float]:
+    def _base_value_for_class(explanation: Any, idx: int) -> float | None:
         try:
             base = np.asarray(explanation.base_values, dtype=float)
             flat = base.reshape(-1) if base.ndim <= 1 else base[0]

@@ -5,9 +5,9 @@ This model stores feature definitions created by the Visual Feature Builder,
 including expression trees, metadata, and validation status.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class NodeType(str, Enum):
@@ -123,16 +123,16 @@ class ExpressionNode(BaseModel):
     # - function: function name (abs, log, etc.)
     # - constant: the constant value
     # - conditional: "if"
-    value: Union[str, float, int, bool, None] = Field(None, description="Node value (meaning depends on node_type)")
+    value: str | float | int | bool | None = Field(None, description="Node value (meaning depends on node_type)")
 
     # Children for operations and functions
-    children: List["ExpressionNode"] = Field(default_factory=list, description="Child nodes for operations/functions")
+    children: list["ExpressionNode"] = Field(default_factory=list, description="Child nodes for operations/functions")
 
     # Additional parameters for functions (e.g., rounding precision)
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Additional parameters for functions")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Additional parameters for functions")
 
     # Position for visual rendering (stored for UI persistence)
-    position: Optional[Dict[str, float]] = Field(None, description="Position for visual rendering {'x': float, 'y': float}")
+    position: dict[str, float] | None = Field(None, description="Position for visual rendering {'x': float, 'y': float}")
 
     @field_validator('node_type', mode='before')
     @classmethod
@@ -161,7 +161,7 @@ class ExpressionNode(BaseModel):
                 pass  # Allow incomplete trees during construction
         return self
 
-    def get_input_columns(self) -> List[str]:
+    def get_input_columns(self) -> list[str]:
         """Recursively get all column names used in this node and its children."""
         columns = []
         if self.node_type == NodeType.COLUMN and self.value:
@@ -212,20 +212,20 @@ class FeatureValidationResult(BaseModel):
     """Validation result for a feature expression."""
 
     is_valid: bool = Field(..., description="Whether the expression is valid")
-    errors: List[str] = Field(default_factory=list, description="Validation errors")
-    warnings: List[str] = Field(default_factory=list, description="Validation warnings")
-    inferred_type: Optional[OutputType] = Field(None, description="Inferred output type")
+    errors: list[str] = Field(default_factory=list, description="Validation errors")
+    warnings: list[str] = Field(default_factory=list, description="Validation warnings")
+    inferred_type: OutputType | None = Field(None, description="Inferred output type")
     validated_at: datetime = Field(default_factory=get_current_time)
 
 
 class FeatureStatistics(BaseModel):
     """Statistics for a computed feature."""
 
-    mean: Optional[float] = Field(None, description="Mean value")
-    median: Optional[float] = Field(None, description="Median value")
-    std: Optional[float] = Field(None, description="Standard deviation")
-    min_value: Optional[float] = Field(None, alias="min", description="Minimum value")
-    max_value: Optional[float] = Field(None, alias="max", description="Maximum value")
+    mean: float | None = Field(None, description="Mean value")
+    median: float | None = Field(None, description="Median value")
+    std: float | None = Field(None, description="Standard deviation")
+    min_value: float | None = Field(None, alias="min", description="Minimum value")
+    max_value: float | None = Field(None, alias="max", description="Maximum value")
     null_count: int = Field(default=0, ge=0, description="Number of null values")
     unique_count: int = Field(default=0, ge=0, description="Number of unique values")
     total_count: int = Field(default=0, ge=0, description="Total number of values")
@@ -250,26 +250,26 @@ class FeatureDefinition(Document):
 
     # Feature metadata
     name: str = Field(..., min_length=1, max_length=255, description="Feature name")
-    description: Optional[str] = Field(None, max_length=1000, description="Feature description")
-    tags: List[str] = Field(default_factory=list, description="Tags for categorization")
+    description: str | None = Field(None, max_length=1000, description="Feature description")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
 
     # Expression definition
     expression_tree: ExpressionNode = Field(..., description="Root node of the expression tree")
-    formula_string: Optional[str] = Field(None, description="Human-readable formula (auto-generated)")
+    formula_string: str | None = Field(None, description="Human-readable formula (auto-generated)")
 
     # Input/Output
-    input_columns: List[str] = Field(default_factory=list, description="Columns used in the expression")
+    input_columns: list[str] = Field(default_factory=list, description="Columns used in the expression")
     output_type: OutputType = Field(default=OutputType.NUMERIC, description="Expected output type")
 
     # Validation
-    validation_result: Optional[FeatureValidationResult] = None
+    validation_result: FeatureValidationResult | None = None
     is_valid: bool = Field(default=False, description="Whether feature is valid and ready to use")
 
     # Statistics (computed during preview)
-    statistics: Optional[FeatureStatistics] = None
+    statistics: FeatureStatistics | None = None
 
     # Visual state (for UI persistence)
-    canvas_state: Optional[Dict[str, Any]] = Field(None, description="Canvas state for ReactFlow")
+    canvas_state: dict[str, Any] | None = Field(None, description="Canvas state for ReactFlow")
 
     # Timestamps
     created_at: datetime = Field(default_factory=get_current_time)
@@ -325,8 +325,8 @@ class FeatureDefinition(Document):
         Returns:
             FeatureValidationResult with validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not self.expression_tree:
             errors.append("Expression tree is empty")
@@ -382,7 +382,7 @@ class FeatureDefinition(Document):
         self.is_valid = True
         self.update_timestamp()
 
-    def mark_invalid(self, errors: List[str]) -> None:
+    def mark_invalid(self, errors: list[str]) -> None:
         """Mark feature as invalid with error messages."""
         self.is_valid = False
         self.validation_result = FeatureValidationResult(

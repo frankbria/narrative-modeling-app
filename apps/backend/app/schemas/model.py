@@ -6,7 +6,7 @@ using ModelConfig model.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -20,11 +20,11 @@ class ModelTrainRequest(BaseModel):
 
     dataset_id: str = Field(..., description="Dataset to train on")
     name: str = Field(..., description="Human-readable model name")
-    description: Optional[str] = Field(None, description="Model description")
+    description: str | None = Field(None, description="Model description")
     problem_type: ProblemType = Field(..., description="ML problem type")
     algorithm: str = Field(..., description="Algorithm to use")
     target_column: str = Field(..., description="Target column name")
-    feature_columns: List[str] = Field(..., description="Feature column names")
+    feature_columns: list[str] = Field(..., description="Feature column names")
 
     # Training configuration
     train_test_split: float = Field(default=0.8, gt=0.0, lt=1.0)
@@ -32,7 +32,7 @@ class ModelTrainRequest(BaseModel):
     validation_strategy: str = Field(default="k-fold")
 
     # Hyperparameters (optional)
-    hyperparameters: Optional[Dict[str, Any]] = None
+    hyperparameters: dict[str, Any] | None = None
 
     # Advanced options
     early_stopping: bool = Field(default=False)
@@ -42,22 +42,22 @@ class ModelTrainRequest(BaseModel):
 class ModelUpdateRequest(BaseModel):
     """Request schema for updating model configuration."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
-    notes: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    notes: str | None = None
 
 
 class ModelDeployRequest(BaseModel):
     """Request schema for deploying a model."""
 
-    endpoint: Optional[str] = Field(None, description="Deployment endpoint URL")
+    endpoint: str | None = Field(None, description="Deployment endpoint URL")
 
 
 class ModelPredictionRequest(BaseModel):
     """Request schema for making predictions."""
 
-    input_data: List[Dict[str, Any]] = Field(
+    input_data: list[dict[str, Any]] = Field(
         ..., description="Input data for prediction"
     )
 
@@ -68,14 +68,14 @@ class ModelPredictionRequest(BaseModel):
 class FeatureConfigResponse(BaseModel):
     """Response schema for feature configuration."""
 
-    feature_names: List[str]
+    feature_names: list[str]
     target_column: str
-    engineered_features: List[str] = Field(default_factory=list)
-    dropped_features: List[str] = Field(default_factory=list)
-    feature_importance: Optional[Dict[str, float]] = None
-    numeric_features: List[str] = Field(default_factory=list)
-    categorical_features: List[str] = Field(default_factory=list)
-    datetime_features: List[str] = Field(default_factory=list)
+    engineered_features: list[str] = Field(default_factory=list)
+    dropped_features: list[str] = Field(default_factory=list)
+    feature_importance: dict[str, float] | None = None
+    numeric_features: list[str] = Field(default_factory=list)
+    categorical_features: list[str] = Field(default_factory=list)
+    datetime_features: list[str] = Field(default_factory=list)
 
 
 class PerformanceMetricsResponse(BaseModel):
@@ -85,20 +85,20 @@ class PerformanceMetricsResponse(BaseModel):
     test_score: float
 
     # Classification metrics
-    accuracy: Optional[float] = None
-    precision: Optional[float] = None
-    recall: Optional[float] = None
-    f1_score: Optional[float] = None
-    roc_auc: Optional[float] = None
+    accuracy: float | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1_score: float | None = None
+    roc_auc: float | None = None
 
     # Regression metrics
-    rmse: Optional[float] = None
-    mae: Optional[float] = None
-    r2_score: Optional[float] = None
+    rmse: float | None = None
+    mae: float | None = None
+    r2_score: float | None = None
 
     # Additional metrics
-    additional_metrics: Dict[str, Any] = Field(default_factory=dict)
-    confusion_matrix: Optional[List[List[int]]] = None
+    additional_metrics: dict[str, Any] = Field(default_factory=dict)
+    confusion_matrix: list[list[int]] | None = None
 
 
 class TrainingConfigResponse(BaseModel):
@@ -118,12 +118,12 @@ class DeploymentConfigResponse(BaseModel):
     """Response schema for deployment configuration."""
 
     is_deployed: bool
-    deployed_at: Optional[datetime] = None
-    deployment_endpoint: Optional[str] = None
+    deployed_at: datetime | None = None
+    deployment_endpoint: str | None = None
     prediction_count: int = 0
-    last_prediction_at: Optional[datetime] = None
-    average_prediction_time: Optional[float] = None
-    error_rate: Optional[float] = None
+    last_prediction_at: datetime | None = None
+    average_prediction_time: float | None = None
+    error_rate: float | None = None
 
 
 class ModelConfigResponse(BaseModel):
@@ -135,12 +135,12 @@ class ModelConfigResponse(BaseModel):
 
     # Model metadata
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     problem_type: str
     algorithm: str
 
     # Configuration
-    hyperparameters: Dict[str, Any] = Field(default_factory=dict)
+    hyperparameters: dict[str, Any] = Field(default_factory=dict)
     feature_config: FeatureConfigResponse
     training_config: TrainingConfigResponse
 
@@ -149,8 +149,8 @@ class ModelConfigResponse(BaseModel):
 
     # Storage
     model_path: str
-    model_file_url: Optional[str] = None
-    feature_transformer_path: Optional[str] = None
+    model_file_url: str | None = None
+    feature_transformer_path: str | None = None
     model_size: int
 
     # Status and lifecycle
@@ -160,17 +160,17 @@ class ModelConfigResponse(BaseModel):
     # Versioning
     version: str
     is_active: bool
-    parent_model_id: Optional[str] = None
+    parent_model_id: str | None = None
 
     # Timestamps
     created_at: datetime
     updated_at: datetime
-    trained_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
+    trained_at: datetime | None = None
+    last_used_at: datetime | None = None
 
     # Metadata
-    tags: List[str] = Field(default_factory=list)
-    notes: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    notes: str | None = None
 
 
 class ModelListItem(BaseModel):
@@ -178,7 +178,7 @@ class ModelListItem(BaseModel):
 
     model_id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     problem_type: str
     algorithm: str
     status: str
@@ -186,13 +186,13 @@ class ModelListItem(BaseModel):
     is_active: bool
     is_deployed: bool
     created_at: datetime
-    trained_at: Optional[datetime] = None
+    trained_at: datetime | None = None
 
 
 class ModelListResponse(BaseModel):
     """Response schema for list models endpoint."""
 
-    models: List[ModelListItem] = Field(default_factory=list)
+    models: list[ModelListItem] = Field(default_factory=list)
     total: int = Field(..., ge=0, description="Total number of models")
 
 
@@ -212,7 +212,7 @@ class ModelDeployResponse(BaseModel):
     model_id: str = Field(..., description="Model identifier")
     status: str = Field(..., description="Deployment status")
     deployed_at: datetime
-    deployment_endpoint: Optional[str] = None
+    deployment_endpoint: str | None = None
     message: str = Field(..., description="Status message")
 
 
@@ -220,7 +220,7 @@ class ModelPredictionResponse(BaseModel):
     """Response schema for model predictions."""
 
     model_id: str = Field(..., description="Model used for prediction")
-    predictions: List[Any] = Field(..., description="Prediction results")
+    predictions: list[Any] = Field(..., description="Prediction results")
     prediction_time_ms: float = Field(
         ..., description="Prediction time in milliseconds"
     )
@@ -240,7 +240,7 @@ class PredictionConfidence(BaseModel):
     is_calibrated: bool = Field(
         ..., description="Whether the score comes from a calibrated model"
     )
-    calibration_method: Optional[str] = Field(
+    calibration_method: str | None = Field(
         None, description="Calibration method used ('sigmoid' or 'isotonic')"
     )
     is_low_confidence: bool = Field(
@@ -260,7 +260,7 @@ class FeatureContribution(BaseModel):
     contribution: float = Field(
         ..., description="Signed contribution (positive raises the prediction)"
     )
-    feature_value: Optional[float] = Field(
+    feature_value: float | None = Field(
         None, description="Engineered feature value for this prediction"
     )
 
@@ -268,7 +268,7 @@ class FeatureContribution(BaseModel):
 class PredictionExplanation(BaseModel):
     """Per-prediction, model-native explanation (no SHAP — see issue #80)."""
 
-    top_features: List[FeatureContribution] = Field(
+    top_features: list[FeatureContribution] = Field(
         default_factory=list, description="Top contributing features"
     )
     explanation_text: str = Field(
@@ -298,11 +298,11 @@ class ModelPerformanceSummaryResponse(BaseModel):
     problem_type: str
 
     # Problem-specific metrics
-    classification_metrics: Optional[Dict[str, float]] = None
-    regression_metrics: Optional[Dict[str, float]] = None
+    classification_metrics: dict[str, float] | None = None
+    regression_metrics: dict[str, float] | None = None
 
     # Feature importance
-    top_features: List[Dict[str, Any]] = Field(default_factory=list)
+    top_features: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ModelStatusUpdateResponse(BaseModel):

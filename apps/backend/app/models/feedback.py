@@ -6,8 +6,8 @@ the team can collect launch-readiness signal (ratings, bug reports, feature
 requests) tied to the page the user was on.
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
@@ -15,7 +15,7 @@ from pydantic import Field
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Feedback(Document):
@@ -30,7 +30,7 @@ class Feedback(Document):
         ..., description="Feedback category (bug, feature_request, general, onboarding)"
     )
     message: str = Field(..., description="Free-text feedback message")
-    page_context: Optional[str] = Field(
+    page_context: str | None = Field(
         None, description="Path/URL the user was on when submitting"
     )
     created_at: datetime = Field(default_factory=get_current_time)

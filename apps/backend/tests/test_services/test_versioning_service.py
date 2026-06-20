@@ -6,7 +6,7 @@ Uses proper mocking to avoid Beanie initialization requirements.
 """
 
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -435,8 +435,8 @@ class TestVersionManagement:
     @pytest.mark.asyncio
     async def test_cleanup_old_versions(self, versioning_service):
         """Test cleaning up old versions."""
-        old_date = datetime.now(timezone.utc) - timedelta(days=60)
-        now = datetime.now(timezone.utc)
+        old_date = datetime.now(UTC) - timedelta(days=60)
+        now = datetime.now(UTC)
 
         with patch('app.services.versioning_service.DatasetVersion') as MockDatasetVersion:
             versions = [

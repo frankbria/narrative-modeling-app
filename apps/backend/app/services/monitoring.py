@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class MetricEvent:
     name: str
     value: float
     timestamp: datetime
-    tags: Dict[str, str]
+    tags: dict[str, str]
 
 
 class ApplicationMonitor:
@@ -49,17 +49,17 @@ class ApplicationMonitor:
             'total_bytes': 0
         }
     
-    def increment(self, metric_name: str, value: int = 1, tags: Optional[Dict[str, str]] = None):
+    def increment(self, metric_name: str, value: int = 1, tags: dict[str, str] | None = None):
         """Increment a counter metric"""
         self.counters[metric_name] += value
         self._record_event(metric_name, value, tags or {})
     
-    def gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]] = None):
+    def gauge(self, metric_name: str, value: float, tags: dict[str, str] | None = None):
         """Set a gauge metric"""
         self.gauges[metric_name] = value
         self._record_event(metric_name, value, tags or {})
     
-    def timing(self, metric_name: str, duration: float, tags: Optional[Dict[str, str]] = None):
+    def timing(self, metric_name: str, duration: float, tags: dict[str, str] | None = None):
         """Record timing metric"""
         self.timers[metric_name].append(duration)
         # Keep only recent timings
@@ -67,11 +67,11 @@ class ApplicationMonitor:
             self.timers[metric_name] = self.timers[metric_name][-1000:]
         self._record_event(f"{metric_name}.timing", duration, tags or {})
     
-    def timer(self, metric_name: str, tags: Optional[Dict[str, str]] = None):
+    def timer(self, metric_name: str, tags: dict[str, str] | None = None):
         """Context manager for timing operations"""
         return TimerContext(self, metric_name, tags or {})
     
-    def time_it(self, metric_name: str, tags: Optional[Dict[str, str]] = None):
+    def time_it(self, metric_name: str, tags: dict[str, str] | None = None):
         """Decorator for timing functions"""
         def decorator(func):
             @wraps(func)
@@ -120,7 +120,7 @@ class ApplicationMonitor:
         self.upload_stats['total_bytes'] += file_size
     
     def record_security_event(self, event_type: str, user_id: str, 
-                             details: Dict[str, Any], severity: str = 'info'):
+                             details: dict[str, Any], severity: str = 'info'):
         """Record security-related events"""
         event = {
             'timestamp': datetime.utcnow(),
@@ -151,7 +151,7 @@ class ApplicationMonitor:
             severity='warning' if risk_level == 'high' else 'info'
         )
     
-    def get_health_metrics(self) -> Dict[str, Any]:
+    def get_health_metrics(self) -> dict[str, Any]:
         """Get current health metrics"""
         now = datetime.utcnow()
         one_minute_ago = now - timedelta(minutes=1)
@@ -179,7 +179,7 @@ class ApplicationMonitor:
             'active_counters': len(self.counters),
         }
     
-    def get_security_summary(self) -> Dict[str, Any]:
+    def get_security_summary(self) -> dict[str, Any]:
         """Get security event summary"""
         now = datetime.utcnow()
         one_hour_ago = now - timedelta(hours=1)
@@ -203,7 +203,7 @@ class ApplicationMonitor:
             ])
         }
     
-    def _record_event(self, name: str, value: float, tags: Dict[str, str]):
+    def _record_event(self, name: str, value: float, tags: dict[str, str]):
         """Record a metric event"""
         event = MetricEvent(
             name=name,
@@ -233,7 +233,7 @@ class ApplicationMonitor:
         
         return len(error_events) / len(recent_api_events) * 100
     
-    def _get_memory_usage(self) -> Dict[str, Any]:
+    def _get_memory_usage(self) -> dict[str, Any]:
         """Get memory usage statistics"""
         import os
 
@@ -252,7 +252,7 @@ class ApplicationMonitor:
 class TimerContext:
     """Context manager for timing operations"""
     
-    def __init__(self, monitor: ApplicationMonitor, metric_name: str, tags: Dict[str, str]):
+    def __init__(self, monitor: ApplicationMonitor, metric_name: str, tags: dict[str, str]):
         self.monitor = monitor
         self.metric_name = metric_name
         self.tags = tags

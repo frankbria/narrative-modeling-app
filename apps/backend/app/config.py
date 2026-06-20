@@ -1,7 +1,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, field_validator
@@ -20,7 +19,7 @@ ALLOWED_SKIP_AUTH_ENVIRONMENTS = {"development", "test"}
 PRODUCTION_LIKE_ENVIRONMENTS = {"production", "prod", "staging", "live", "release"}
 
 
-def environment_signals() -> List[str]:
+def environment_signals() -> list[str]:
     """All explicitly set environment signals (ENVIRONMENT, legacy NODE_ENV),
     normalized to lowercase.
 
@@ -56,7 +55,7 @@ def get_environment(default: str = "development") -> str:
 
 
 def validate_skip_auth(
-    skip_auth: Optional[bool] = None, environment: Optional[str] = None
+    skip_auth: bool | None = None, environment: str | None = None
 ) -> None:
     """Fail hard if SKIP_AUTH is enabled outside development/test (issue #149).
 
@@ -149,7 +148,7 @@ class Settings(BaseModel):
 
     # CORS settings
     @property
-    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+    def BACKEND_CORS_ORIGINS(self) -> list[str]:
         cors_origins = os.getenv("BACKEND_CORS_ORIGINS", '["*"]')
         if cors_origins:
             import json

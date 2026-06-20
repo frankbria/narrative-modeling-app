@@ -25,7 +25,6 @@ still passes back through CORS and gains its headers, so browsers can read it.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -53,13 +52,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,
-        store: Optional[RateLimitStore] = None,
+        store: RateLimitStore | None = None,
         *,
-        enabled: Optional[bool] = None,
-        default_requests: Optional[int] = None,
-        default_window_seconds: Optional[int] = None,
-        apikey_window_seconds: Optional[int] = None,
-        trust_forwarded_for: Optional[bool] = None,
+        enabled: bool | None = None,
+        default_requests: int | None = None,
+        default_window_seconds: int | None = None,
+        apikey_window_seconds: int | None = None,
+        trust_forwarded_for: bool | None = None,
         apikey_auth_prefix: str = _APIKEY_AUTH_PREFIX,
     ) -> None:
         super().__init__(app)
@@ -90,7 +89,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         self._apikey_auth_prefix = apikey_auth_prefix
 
-    def _resolve_store(self, request: Request) -> Optional[RateLimitStore]:
+    def _resolve_store(self, request: Request) -> RateLimitStore | None:
         if self._store is not None:
             return self._store
         return getattr(request.app.state, "rate_limit_store", None)
@@ -133,7 +132,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return False
         return request.url.path.startswith(_API_V1_PREFIX)
 
-    async def _resolve_identity(self, request: Request) -> Tuple[str, int, int]:
+    async def _resolve_identity(self, request: Request) -> tuple[str, int, int]:
         """Return ``(bucket_key, limit, window_seconds)`` for this request."""
         # 1. API key (per-key override) — only on the routes that authenticate with
         # X-API-Key, so the header can't be used to opt into a key budget elsewhere.
@@ -168,7 +167,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def _identity_from_api_key(
         self, raw_key: str
-    ) -> Optional[Tuple[str, int, int]]:
+    ) -> tuple[str, int, int] | None:
         """Resolve a bucket from a raw API key, or None if it can't be looked up."""
         try:
             from app.models.api_key import APIKey
@@ -185,7 +184,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
             return None
 
-    async def _user_id_from_request(self, request: Request) -> Optional[str]:
+    async def _user_id_from_request(self, request: Request) -> str | None:
         """Best-effort authenticated user id; reuses the existing optional auth path."""
         auth_header = request.headers.get("authorization")
         if not auth_header:

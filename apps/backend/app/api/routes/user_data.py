@@ -3,7 +3,7 @@
 import io
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from beanie import PydanticObjectId
@@ -34,8 +34,8 @@ async def create_user_data(
     return UserDataResponse.model_validate(doc_dict)
 
 
-@router.get("/", response_model=List[UserDataResponse])
-async def get_user_data_for_user(user_id: str = Depends(get_current_user_id)) -> List[UserDataResponse]:
+@router.get("/", response_model=list[UserDataResponse])
+async def get_user_data_for_user(user_id: str = Depends(get_current_user_id)) -> list[UserDataResponse]:
     user_data_list = await UserData.find(UserData.user_id == user_id).to_list()
     # Convert to response models with proper ID handling
     response_list = []
@@ -76,8 +76,8 @@ async def get_latest_user_data(user_id: str = Depends(get_current_user_id)) -> U
             status_code=500, detail=f"Error getting latest user data: {str(e)}"
         )
 
-@router.get("/preview", response_model=Dict[str, Any])
-async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> Dict[str, Any]:
+@router.get("/preview", response_model=dict[str, Any])
+async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
     """
     Get the most recent uploaded file's preview data for a user.
     """
@@ -252,7 +252,7 @@ async def update_user_data(
 @router.delete("/{id}")
 async def delete_user_data(
     id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
-) -> Dict[str, bool]:
+) -> dict[str, bool]:
     doc = await UserData.get(id)
     if not doc or doc.user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -260,10 +260,10 @@ async def delete_user_data(
     return {"success": True}
 
 
-@router.get("/{id}/ai-summary", response_model=Dict[str, Any])
+@router.get("/{id}/ai-summary", response_model=dict[str, Any])
 async def get_ai_summary(
     id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get the AI summary for a specific user data entry.
     Returns the raw markdown and a structured context string for the frontend chat.
@@ -333,10 +333,10 @@ async def get_ai_summary(
         )
 
 
-@router.get("/{id}/eda-summary", response_model=Dict[str, Any])
+@router.get("/{id}/eda-summary", response_model=dict[str, Any])
 async def get_eda_summary(
     id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate and return an Exploratory Data Analysis (EDA) summary for a specific dataset.
     This endpoint will analyze the dataset and provide insights about its structure and content.

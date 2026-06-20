@@ -5,7 +5,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from beanie import PydanticObjectId
@@ -25,11 +25,11 @@ class PredictionLog:
         self,
         model_id: str,
         prediction_id: str,
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         prediction: Any,
-        probability: Optional[float] = None,
+        probability: float | None = None,
         latency_ms: float = 0,
-        api_key_id: Optional[str] = None
+        api_key_id: str | None = None
     ):
         """Log a prediction event"""
         async with self.lock:
@@ -51,7 +51,7 @@ class PredictionLog:
         self,
         model_id: str,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get recent predictions for a model"""
         async with self.lock:
             return self.logs[model_id][-limit:]
@@ -67,11 +67,11 @@ class PredictionMonitoringService:
     @staticmethod
     async def log_prediction(
         model_id: str,
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         prediction: Any,
-        probability: Optional[float] = None,
+        probability: float | None = None,
         latency_ms: float = 0,
-        api_key_id: Optional[str] = None
+        api_key_id: str | None = None
     ) -> str:
         """Log a prediction for monitoring"""
         prediction_id = f"pred_{PydanticObjectId()}"
@@ -102,7 +102,7 @@ class PredictionMonitoringService:
     async def get_model_metrics(
         model_id: str,
         hours: int = 24
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get model performance metrics for the last N hours"""
         recent_preds = await prediction_log.get_recent_predictions(model_id, limit=10000)
         
@@ -159,7 +159,7 @@ class PredictionMonitoringService:
     async def get_prediction_distribution(
         model_id: str,
         hours: int = 24
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get distribution of predictions"""
         recent_preds = await prediction_log.get_recent_predictions(model_id, limit=10000)
         
@@ -188,8 +188,8 @@ class PredictionMonitoringService:
     @staticmethod
     async def detect_drift(
         model_id: str,
-        feature_stats: Dict[str, Dict[str, float]]
-    ) -> Dict[str, Any]:
+        feature_stats: dict[str, dict[str, float]]
+    ) -> dict[str, Any]:
         """Detect data drift by comparing current feature stats with training stats"""
         # This is a simplified version - production would use statistical tests
         model = await MLModel.find_one({"model_id": model_id})
@@ -209,7 +209,7 @@ class PredictionMonitoringService:
     async def get_usage_by_api_key(
         model_id: str,
         hours: int = 24
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """Get prediction usage grouped by API key"""
         recent_preds = await prediction_log.get_recent_predictions(model_id, limit=10000)
         
