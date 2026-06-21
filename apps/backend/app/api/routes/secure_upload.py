@@ -191,10 +191,10 @@ async def confirm_pii_upload(
     """
     
     # Similar to secure_upload but skips PII blocking
-    content = await file.read()
-
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
+
+    content = await file.read()
 
     if file.filename.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(content))
