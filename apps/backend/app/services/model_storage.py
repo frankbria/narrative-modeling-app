@@ -16,6 +16,10 @@ import numpy as np
 from app.models.ml_model import MLModel
 from app.services.model_training.automl_engine import ModelCandidate
 from app.services.model_training.feature_engineer import FeatureEngineer
+from app.services.model_versioning_service import (
+    capture_environment,
+    model_versioning_service,
+)
 from app.services.s3_service import S3Service
 
 logger = logging.getLogger(__name__)
@@ -188,12 +192,24 @@ class ModelStorageService:
                     f"Failed to upload SHAP summary for {model_id}: {exc}"
                 )
 
+        # Version lineage (issue #78): chain this run onto the previous version
+        # in its family (same user/dataset/name) and capture the runtime
+        # environment for reproducibility. Best-effort — never fail the save.
+        model_name = model_metadata.get("name", f"{model_candidate.name} Model")
+        try:
+            parent_model_id = await model_versioning_service.resolve_parent(
+                user_id, dataset_id, model_name
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to resolve parent version for {model_id}: {exc}")
+            parent_model_id = None
+
         # Create model document
         ml_model = MLModel(
             user_id=user_id,
             dataset_id=dataset_id,
             model_id=model_id,
-            name=model_metadata.get("name", f"{model_candidate.name} Model"),
+            name=model_name,
             description=model_metadata.get("description"),
             problem_type=model_metadata["problem_type"],
             algorithm=model_candidate.name,
@@ -223,6 +239,11 @@ class ModelStorageService:
             tuning_time=model_metadata.get("tuning_time"),
             improvement_from_tuning=model_metadata.get("improvement_from_tuning"),
             tuning_results=model_metadata.get("tuning_results"),
+            # Versioning & lineage (issue #78).
+            parent_model_id=parent_model_id,
+            dataset_version_id=model_metadata.get("dataset_version_id"),
+            version_notes=model_metadata.get("version_notes"),
+            environment_metadata=capture_environment(),
             training_config=model_metadata.get("training_config", {})
         )
         

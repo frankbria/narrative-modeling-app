@@ -147,6 +147,44 @@ export interface ModelComparisonResponse {
   models: ModelEvaluationSummary[]
 }
 
+// Model versioning & history (issue #78). Mirrors app/schemas/evaluation.py.
+
+export interface ModelVersionEntry {
+  model_id: string
+  version_number: number
+  name: string
+  algorithm: string
+  problem_type: string
+  cv_score: number | null
+  test_score: number | null
+  is_production: boolean
+  is_active: boolean
+  created_at: string | null
+  promoted_at: string | null
+  dataset_id: string
+  dataset_version_id: string | null
+  parent_model_id: string | null
+  feature_names: string[]
+  environment_metadata: Record<string, string> | null
+  version_notes: string | null
+}
+
+export interface ModelVersionListResponse {
+  model_id: string
+  dataset_id: string
+  name: string
+  total: number
+  production_model_id: string | null
+  versions: ModelVersionEntry[]
+}
+
+export interface PromoteVersionResponse {
+  model_id: string
+  is_production: boolean
+  promoted_at: string | null
+  demoted_model_ids: string[]
+}
+
 /** Type guard: classification vs regression metrics. */
 export function isClassificationMetrics(
   metrics: ClassificationMetrics | RegressionMetrics
