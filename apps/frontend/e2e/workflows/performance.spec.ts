@@ -15,6 +15,8 @@
 import { test, expect } from '../fixtures';
 import { PerformanceMonitor } from '../helpers';
 import { UploadPage } from '../pages/UploadPage';
+import { EvaluatePage } from '../pages/EvaluatePage';
+import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
 import {
   BINARY_CLASS_DATASET,
   BINARY_CLASS_TARGET,
@@ -437,27 +439,36 @@ test.describe('Performance - Frontend Rendering', () => {
     expect(metric.value).toBeLessThanOrEqual(1000);
   });
 
-  // #195 / follow-up #234 [P4.12]: these charts render only on the stage-gated
+  // #234 [P4.12]: these charts render only on the stage-gated
   // /evaluate/[datasetId] page (not /models/{id}), which requires the
   // WorkflowContext to carry state.modelId — only set by full UI-workflow
-  // training, not the trainModel API fixture. Reaching it needs workflow-seeding
-  // for the evaluation stage (the trickier evaluate-gating case the
-  // single-prediction/predict pattern doesn't cover). Deferred to [P4.12].
-  test.fixme('should render confusion matrix chart within 2s', async ({
+  // training, not the trainModel API fixture. seedEvaluationWorkflow primes the
+  // backend + localStorage workflow state so /evaluate renders for an
+  // API-trained model. Manual @perf (real training); not in the @smoke gate.
+  test('should render confusion matrix chart within 2s @perf', async ({
     authenticatedPage,
     uploadTestDataset,
     trainModel,
   }) => {
+    test.slow();
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    // [P4.12] will seed the workflow with this model id so /evaluate renders.
-    await trainModel(datasetId, BINARY_CLASS_TARGET);
+    const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
+    await seedEvaluationWorkflow(
+      authenticatedPage,
+      authenticatedPage.request,
+      datasetId,
+      modelId
+    );
 
+    const evaluatePage = new EvaluatePage(authenticatedPage);
     await authenticatedPage.goto(`/evaluate/${datasetId}`);
+    await evaluatePage.waitForDashboard();
+    await evaluatePage.switchToTab('Confusion Matrix');
 
     const metric = await perfMonitor.measureRenderTime(
       authenticatedPage,
       'Confusion Matrix Chart',
-      '[data-testid="confusion-matrix"], canvas, svg',
+      '[data-testid="confusion-matrix"]',
       'Confusion Matrix Chart',
       2000
     );
@@ -465,23 +476,31 @@ test.describe('Performance - Frontend Rendering', () => {
     expect(metric.value).toBeLessThanOrEqual(2000);
   });
 
-  // #195 / follow-up #234 [P4.12]: same /evaluate stage-gating as the confusion
-  // matrix test above.
-  test.fixme('should render ROC curve chart within 2s', async ({
+  // #234 [P4.12]: same /evaluate stage-gating as the confusion matrix test above.
+  test('should render ROC curve chart within 2s @perf', async ({
     authenticatedPage,
     uploadTestDataset,
     trainModel,
   }) => {
+    test.slow();
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    // [P4.12] will seed the workflow with this model id so /evaluate renders.
-    await trainModel(datasetId, BINARY_CLASS_TARGET);
+    const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
+    await seedEvaluationWorkflow(
+      authenticatedPage,
+      authenticatedPage.request,
+      datasetId,
+      modelId
+    );
 
+    const evaluatePage = new EvaluatePage(authenticatedPage);
     await authenticatedPage.goto(`/evaluate/${datasetId}`);
+    await evaluatePage.waitForDashboard();
+    await evaluatePage.switchToTab('Curves');
 
     const metric = await perfMonitor.measureRenderTime(
       authenticatedPage,
       'ROC Curve Chart',
-      '[data-testid="roc-curve"], canvas, svg',
+      '[data-testid="roc-curve"]',
       'ROC Curve Chart',
       2000
     );

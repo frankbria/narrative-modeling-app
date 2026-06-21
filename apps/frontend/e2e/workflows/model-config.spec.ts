@@ -21,10 +21,12 @@
 
 import { test, expect } from '../fixtures';
 import { ModelConfigPage } from '../pages/ModelConfigPage';
+import { EvaluatePage } from '../pages/EvaluatePage';
 import {
   BINARY_CLASS_DATASET,
   BINARY_CLASS_TARGET,
 } from '../helpers/binaryClassificationData';
+import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
 import { API_BASE, ML_AUTH } from '../helpers/mlApi';
 
 test.describe('Model Config Workflow', () => {
@@ -255,64 +257,58 @@ test.describe('Model Config Workflow', () => {
     }
   });
 
-  // #195 / follow-up #234 [P4.12]: the model-comparison UI lives on the stage-gated
-  // /evaluate Compare tab (#79), not the model list — so this test's
-  // `if (compareButton.isVisible()) … else log` path never asserts. Making it
-  // real needs the same /evaluate workflow-seeding as the descoped render tests.
-  // Deferred to [P4.12].
-  test.fixme('should compare multiple models', async ({ authenticatedPage, trainModel }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    // Train first model
-    const modelId1 = await trainModel(datasetId, 'purchased');
-
-    // Train second model with different algorithm
-    await modelPage.gotoTraining(datasetId);
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('logistic_regression');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    const modelId2 = await modelPage.getModelId();
+  // #234 [P4.12]: the model-comparison UI lives on the stage-gated /evaluate
+  // Compare tab (#79). The shared beforeEach uploads the un-trainable sample.csv,
+  // so this test uploads its own binary-classification dataset, trains two real
+  // models on it, seeds the evaluation workflow so /evaluate renders, then
+  // exercises the real Compare tab + ModelComparisonTable. Manual chromium-full
+  // only (two real trainings); not promoted to @smoke (#157).
+  test('should compare multiple models', async ({
+    authenticatedPage,
+    uploadTestDataset,
+    trainModel,
+    cleanupModel,
+    cleanupDataset,
+  }) => {
+    test.slow();
+    const compareDatasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
+    const modelId1 = await trainModel(compareDatasetId, BINARY_CLASS_TARGET);
+    const modelId2 = await trainModel(compareDatasetId, BINARY_CLASS_TARGET);
 
     try {
-      // Navigate to model list or comparison page
-      await modelPage.gotoModelList();
+      await seedEvaluationWorkflow(
+        authenticatedPage,
+        authenticatedPage.request,
+        compareDatasetId,
+        modelId1
+      );
 
-      // Compare models
-      const compareButton = authenticatedPage.locator('button:has-text("Compare"), [data-testid="compare-models"]');
+      const evaluatePage = new EvaluatePage(authenticatedPage);
+      await authenticatedPage.goto(`/evaluate/${compareDatasetId}`);
+      await evaluatePage.waitForDashboard();
+      await evaluatePage.switchToTab('Compare');
 
-      if (await compareButton.isVisible({ timeout: 5000 })) {
-        await compareButton.click();
+      // Select both trained models and run the comparison.
+      await authenticatedPage.locator(`#compare-${modelId1}`).check();
+      await authenticatedPage.locator(`#compare-${modelId2}`).check();
+      await evaluatePage.runComparison();
 
-        // Select models to compare
-        await authenticatedPage.locator(`input[value="${modelId1}"], [data-model="${modelId1}"]`).check();
-        await authenticatedPage.locator(`input[value="${modelId2}"], [data-model="${modelId2}"]`).check();
-
-        // Confirm comparison
-        await authenticatedPage.locator('button:has-text("Compare"), [data-testid="confirm-compare"]').click();
-
-        // Verify comparison view shows both models
-        await expect(
-          authenticatedPage.locator('text=/Comparison|Model Comparison/i')
-        ).toBeVisible({ timeout: 5000 });
-
-        // Verify both model IDs or names are shown
-        await expect(authenticatedPage.locator(`text=${modelId1.substring(0, 8)}`)).toBeVisible({ timeout: 5000 });
-      } else {
-        console.log('Model comparison feature not yet implemented');
-      }
-
-      // Clean up second model
-      await authenticatedPage.request.delete(`/api/v1/models/${modelId2}`).catch(() => {});
-      await authenticatedPage.request.delete(`/api/v1/models/${modelId1}`).catch(() => {});
-    } catch (error) {
-      await authenticatedPage.request.delete(`/api/v1/models/${modelId2}`).catch(() => {});
-      await authenticatedPage.request.delete(`/api/v1/models/${modelId1}`).catch(() => {});
-      throw error;
+      // ModelComparisonTable renders a cell per (metric × model); assert both
+      // models have cells and that the best-per-metric highlighting ran.
+      await expect(
+        authenticatedPage.locator(`[data-testid$="-${modelId1}"]`).first()
+      ).toBeVisible({ timeout: 15000 });
+      await expect(
+        authenticatedPage.locator(`[data-testid$="-${modelId2}"]`).first()
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.locator('[data-best="true"]').first()
+      ).toBeVisible();
+    } finally {
+      await cleanupModel(modelId1);
+      await cleanupModel(modelId2);
+      await cleanupDataset(compareDatasetId);
     }
-
-    modelId = modelId1;
   });
 
   test('should support model versioning', async ({ authenticatedPage }) => {
