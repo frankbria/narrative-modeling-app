@@ -68,11 +68,16 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
     }
   }
 
+  // The /ml/compare backend accepts at most 5 models, so cap selection there.
+  const MAX_COMPARE = 5
+
   const toggleSelect = (id: string) => {
     setComparison(null)
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    )
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id)
+      if (prev.length >= MAX_COMPARE) return prev // ignore beyond the limit
+      return [...prev, id]
+    })
   }
 
   const handleCompare = async () => {
@@ -116,7 +121,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
           </CardTitle>
           <CardDescription>
             {data.total} version{data.total === 1 ? '' : 's'} of &ldquo;{data.name}&rdquo;
-            {' '}trained on this dataset. Select 2+ to compare; promote any version to
+            {' '}trained on this dataset. Select 2–5 to compare; promote any version to
             production (promoting an older version rolls back).
           </CardDescription>
         </CardHeader>
@@ -150,6 +155,10 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
                         type="checkbox"
                         aria-label={`Select version ${v.version_number}`}
                         checked={selected.includes(v.model_id)}
+                        disabled={
+                          !selected.includes(v.model_id) &&
+                          selected.length >= MAX_COMPARE
+                        }
                         onChange={() => toggleSelect(v.model_id)}
                       />
                     </td>

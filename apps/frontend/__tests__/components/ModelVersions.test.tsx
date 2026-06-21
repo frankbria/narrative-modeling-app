@@ -129,6 +129,28 @@ describe('ModelVersions', () => {
     expect(await screen.findByText('Side-by-side comparison')).toBeInTheDocument()
   })
 
+  it('caps comparison selection at 5 (the /ml/compare limit)', async () => {
+    const base = makeVersions()
+    const many = {
+      ...base,
+      total: 6,
+      versions: Array.from({ length: 6 }, (_, i) => ({
+        ...base.versions[0],
+        model_id: `m${i}`,
+        version_number: i + 1,
+      })),
+    }
+    mockService.getModelVersions.mockResolvedValue(many)
+    render(<ModelVersions modelId="m5" />)
+
+    await screen.findByText('Version History')
+    for (let i = 1; i <= 5; i++) {
+      fireEvent.click(screen.getByLabelText(`Select version ${i}`))
+    }
+    // The 6th checkbox is disabled once 5 are selected.
+    expect(screen.getByLabelText('Select version 6')).toBeDisabled()
+  })
+
   it('shows an error when loading fails', async () => {
     mockService.getModelVersions.mockRejectedValue(new Error('boom'))
     render(<ModelVersions modelId="v2" />)

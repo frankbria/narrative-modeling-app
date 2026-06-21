@@ -204,6 +204,27 @@ class ModelStorageService:
             logger.warning(f"Failed to resolve parent version for {model_id}: {exc}")
             parent_model_id = None
 
+        # Link the dataset version this model was trained on (issue #78 AC1).
+        # Prefer an explicit id from the caller; otherwise best-effort resolve the
+        # latest DatasetVersion for the dataset so the lineage column is populated
+        # whenever the dataset-versioning system has tracked it.
+        dataset_version_id = model_metadata.get("dataset_version_id")
+        if dataset_version_id is None:
+            try:
+                from app.models.version import DatasetVersion
+
+                latest = (
+                    await DatasetVersion.find(DatasetVersion.dataset_id == dataset_id)
+                    .sort("-version_number")
+                    .first_or_none()
+                )
+                if latest is not None:
+                    dataset_version_id = latest.version_id
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to resolve dataset version for {model_id}: {exc}"
+                )
+
         # Create model document
         ml_model = MLModel(
             user_id=user_id,
@@ -241,7 +262,7 @@ class ModelStorageService:
             tuning_results=model_metadata.get("tuning_results"),
             # Versioning & lineage (issue #78).
             parent_model_id=parent_model_id,
-            dataset_version_id=model_metadata.get("dataset_version_id"),
+            dataset_version_id=dataset_version_id,
             version_notes=model_metadata.get("version_notes"),
             environment_metadata=capture_environment(),
             training_config=model_metadata.get("training_config", {})

@@ -16,6 +16,8 @@ from __future__ import annotations
 import platform
 from datetime import UTC, datetime
 
+from beanie.odm.operators.update.general import Set
+
 from app.models.ml_model import MLModel
 from app.services.exceptions import NotFoundError
 
@@ -94,13 +96,25 @@ class ModelVersioningService:
         """
         family = await self.list_family(model_id, user_id)
         target = next(m for m in family if m.model_id == model_id)
+        demoted = [
+            m.model_id
+            for m in family
+            if m.model_id != model_id and m.is_production
+        ]
 
-        demoted: list[str] = []
-        for member in family:
-            if member.model_id != model_id and member.is_production:
-                member.is_production = False
-                await member.save()
-                demoted.append(member.model_id)
+        # Demote the whole family in one bulk write, then promote the target.
+        # ponytail: read-then-promote across two concurrent promotions is
+        # last-writer-wins (the same accepted beta limitation as #87 workflow
+        # state — a Mongo transaction would need a replica set we don't run in
+        # tests). The bulk demote keeps the window tiny, and the version browser
+        # reads production_model_id as the *first* is_production member, so the
+        # UI still shows a single production version even if a race flagged two.
+        await MLModel.find(
+            MLModel.user_id == user_id,
+            MLModel.dataset_id == target.dataset_id,
+            MLModel.name == target.name,
+            MLModel.is_production == True,  # noqa: E712 (Beanie needs ==)
+        ).update(Set({MLModel.is_production: False}))
 
         target.is_production = True
         target.promoted_at = datetime.now(UTC)
