@@ -13,8 +13,9 @@ Errors cluster — far fewer than 213 distinct edits:
 - Zero-risk mechanical: var-annotated (34, 16 files); annotation-unchecked notes (10)
 - Medium: arg-type (rest), assignment (25), dict-item (12), operator, call-arg, index, return-value, list-item, misc, attr-defined
 
-## Re-sync
-`cd apps/backend && uv run mypy app/ | uv run mypy-baseline sync` → commit shrunk baseline with fixes.
+## Done
+Baseline burned to zero and deleted; CI gate is now a plain `uv run mypy app/`
+(the `mypy-baseline` tool was removed). `uv run mypy app/` → Success, 152 files.
 
 ## Verify
-Full backend suite must stay green (the None-guards change error semantics 500→404).
+Full backend suite stays green (the None-guards change error semantics 500→404).

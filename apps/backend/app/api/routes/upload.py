@@ -52,15 +52,15 @@ async def upload_file(
         )
 
         # Read file content
-        content = await file.read()
-        logger.info(f"File content size: {len(content)} bytes")
-
-        # Ensure a filename is present before inspecting its extension
+        # Ensure a filename is present before reading the upload into memory
         if not file.filename:
             raise HTTPException(
                 status_code=400,
                 detail="Missing filename. Please upload a CSV, Excel, or TXT file.",
             )
+
+        content = await file.read()
+        logger.info(f"File content size: {len(content)} bytes")
 
         # Determine file type and read accordingly
         if file.filename.endswith(".csv"):
