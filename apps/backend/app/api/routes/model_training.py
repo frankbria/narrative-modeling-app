@@ -1272,7 +1272,9 @@ async def list_model_versions(
     production_id = next(
         (m.model_id for m in family if m.is_production), None
     )
-    anchor = next(m for m in family if m.model_id == model_id)
+    anchor = next((m for m in family if m.model_id == model_id), None)
+    if anchor is None:  # anchor deleted between the two reads in list_family
+        raise HTTPException(status_code=404, detail="Model not found")
     return ModelVersionListResponse(
         model_id=model_id,
         dataset_id=anchor.dataset_id,

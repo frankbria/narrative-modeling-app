@@ -50,7 +50,10 @@ async def family():
     yield models
     # Scoped cleanup: only the models this fixture created (the test user is
     # shared across the suite, so don't delete everything it owns).
-    await MLModel.find(In(MLModel.model_id, [m.model_id for m in models])).delete()
+    await MLModel.find(
+        MLModel.user_id == USER,
+        In(MLModel.model_id, [m.model_id for m in models]),
+    ).delete()
 
 
 class TestListVersions:

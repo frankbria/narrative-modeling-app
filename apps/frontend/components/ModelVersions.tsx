@@ -51,6 +51,9 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
   }, [modelId])
 
   useEffect(() => {
+    // Reset per-model selection/comparison when navigating between models.
+    setSelected([])
+    setComparison(null)
     load()
   }, [load])
 

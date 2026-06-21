@@ -214,7 +214,10 @@ class ModelStorageService:
                 from app.models.version import DatasetVersion
 
                 latest = (
-                    await DatasetVersion.find(DatasetVersion.dataset_id == dataset_id)
+                    await DatasetVersion.find(
+                        DatasetVersion.dataset_id == dataset_id,
+                        DatasetVersion.user_id == user_id,
+                    )
                     .sort("-version_number")
                     .first_or_none()
                 )

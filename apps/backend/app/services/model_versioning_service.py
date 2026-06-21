@@ -96,12 +96,20 @@ class ModelVersioningService:
         it. Rolling back = calling this on an older version.
         """
         family = await self.list_family(model_id, user_id)
-        target = next(m for m in family if m.model_id == model_id)
+        target = next((m for m in family if m.model_id == model_id), None)
+        if target is None:  # anchor deleted between the two reads in list_family
+            raise NotFoundError(
+                resource_type="Model", resource_id=model_id, code="MODEL_NOT_FOUND"
+            )
         demoted = [
             m.model_id
             for m in family
             if m.model_id != model_id and m.is_production
         ]
+
+        # Idempotent no-op: target already the sole production version.
+        if target.is_production and not demoted:
+            return target, demoted
 
         # Demote the whole family in one bulk write, then promote the target.
         # Beta limitation: two concurrent promotions are last-writer-wins (the
