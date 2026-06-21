@@ -5,7 +5,7 @@ Core AutoML engine for automated model selection and training
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Optional
 
@@ -32,6 +32,7 @@ from app.services.interpretability_service import (
 )
 
 from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
+from .hyperparameter_tuner import HyperparameterTuner, TuningConfig, TuningResult
 from .problem_detector import ProblemDetector, ProblemType
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,14 @@ class AutoMLResult:
     # (KNN, kernel SVM), which fall back to model-native importance.
     shap_global: Optional["GlobalShapResult"] = None
     shap_explainer_type: str | None = None
+    # Hyperparameter tuning summary (issue #77). Populated only when tuning was
+    # enabled. ``tuning_results`` maps each tuned algorithm name to its serialized
+    # ``TuningResult`` (best params + inline visualization data);
+    # ``improvement_from_tuning`` is the best model's CV-score gain over its
+    # default hyperparameters. All ``None`` when tuning was off.
+    tuning_results: dict[str, dict[str, Any]] | None = None
+    tuning_strategy: str | None = None
+    improvement_from_tuning: float | None = None
 
 
 class AutoMLEngine:
@@ -125,15 +134,22 @@ class AutoMLEngine:
         cv_folds: int = 5,
         test_size: float = 0.2,
         random_state: int = 42,
+        enable_tuning: bool = False,
+        tuning_config: TuningConfig | None = None,
     ):
         self.max_models = max_models
         self.time_limit = time_limit
         self.cv_folds = cv_folds
         self.test_size = test_size
         self.random_state = random_state
+        # Hyperparameter tuning (issue #77) is opt-in. When enabled, each
+        # candidate is tuned before training and the best params are applied.
+        self.enable_tuning = enable_tuning
+        self.tuning_config = tuning_config
 
         self.problem_detector = ProblemDetector()
         self.feature_engineer = FeatureEngineer()
+        self._tuner = HyperparameterTuner()
 
     async def run(
         self,
@@ -237,6 +253,22 @@ class AutoMLEngine:
         selected_candidates = candidates[: self.max_models]
         total_candidates = len(selected_candidates)
         trained_models = []
+
+        # Optional hyperparameter tuning (issue #77). Runs before the training
+        # loop so the best params are applied to each candidate's estimator and
+        # then fitted/CV'd normally below. Best-effort: a candidate that can't be
+        # tuned simply keeps its default hyperparameters.
+        tuning_results: dict[str, dict[str, Any]] = {}
+        if self.enable_tuning:
+            tuning_results = await self._tune_candidates(
+                selected_candidates,
+                X_train_transformed,
+                y_train,
+                problem_type,
+                is_classification,
+                event_callback,
+                cancel_check,
+            )
 
         await self._emit_event(
             event_callback,
@@ -471,6 +503,17 @@ class AutoMLEngine:
             residual_std=residual_std,
             shap_global=shap_global,
             shap_explainer_type=shap_global.explainer_type if shap_global else None,
+            tuning_results=tuning_results or None,
+            tuning_strategy=(
+                (self.tuning_config or TuningConfig()).strategy
+                if self.enable_tuning
+                else None
+            ),
+            improvement_from_tuning=(
+                tuning_results.get(best_model.name, {}).get("improvement_over_default")
+                if tuning_results
+                else None
+            ),
             metadata={
                 "n_samples": len(df),
                 "n_features_original": len(X.columns),
@@ -629,6 +672,90 @@ class AutoMLEngine:
                 ),
             )
         return result
+
+    async def _tune_candidates(
+        self,
+        candidates: list[ModelCandidate],
+        X_train_transformed: pd.DataFrame,
+        y_train: pd.Series,
+        problem_type: ProblemType,
+        is_classification: bool,
+        event_callback: Callable[["TrainingEvent"], Awaitable[None]] | None,
+        cancel_check: Callable[[], Awaitable[bool]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Tune each candidate's hyperparameters in place (issue #77).
+
+        For every candidate with a tunable search space, runs the configured
+        strategy on the training split (off the event loop), applies the best
+        params to the candidate's estimator, and records the serialized
+        ``TuningResult``. Honours cancellation between candidates; tuning errors
+        are swallowed (the candidate keeps its default hyperparameters).
+        """
+        config = self.tuning_config or TuningConfig()
+        # The engine owns the scoring metric for the problem type; the tuner must
+        # optimize the same objective the model is later selected on.
+        config = replace(config, scoring=self._get_scoring_metric(problem_type))
+
+        results: dict[str, dict[str, Any]] = {}
+        await self._emit_event(
+            event_callback,
+            TrainingEvent(
+                level="info",
+                message=f"Tuning hyperparameters ({config.strategy}) for {len(candidates)} candidates",
+                stage="tuning",
+            ),
+        )
+
+        for candidate in candidates:
+            if await self._is_cancelled(cancel_check):
+                raise TrainingCancelledError(
+                    f"Training cancelled during tuning of {candidate.name}"
+                )
+            try:
+                result: TuningResult | None = await asyncio.to_thread(
+                    self._tuner.tune,
+                    candidate.name,
+                    candidate.estimator,
+                    X_train_transformed,
+                    y_train,
+                    config,
+                    is_classification,
+                )
+            except Exception as exc:  # tuning must never break training
+                logger.warning(f"Tuning {candidate.name} failed: {exc}")
+                result = None
+
+            if result is None or not result.best_params:
+                continue
+
+            try:
+                candidate.estimator.set_params(**result.best_params)
+                candidate.hyperparameters = {**candidate.hyperparameters, **result.best_params}
+            except Exception as exc:  # invalid params for this estimator: skip
+                logger.warning(f"Applying tuned params to {candidate.name} failed: {exc}")
+                continue
+
+            results[candidate.name] = result.to_dict()
+            await self._emit_event(
+                event_callback,
+                TrainingEvent(
+                    level="info",
+                    message=(
+                        f"{candidate.name} tuned ({result.strategy}): "
+                        f"score {result.default_score:.4f} -> {result.best_score:.4f} "
+                        f"(+{result.improvement_over_default:.4f}) over "
+                        f"{result.n_trials_completed} trials"
+                    ),
+                    stage="tuning",
+                    candidate={
+                        "algorithm": candidate.name,
+                        "best_score": result.best_score,
+                        "default_score": result.default_score,
+                        "improvement_over_default": result.improvement_over_default,
+                    },
+                ),
+            )
+        return results
 
     @staticmethod
     def _assess_class_balance(

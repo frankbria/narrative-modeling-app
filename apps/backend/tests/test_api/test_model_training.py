@@ -70,6 +70,11 @@ def sample_ml_model():
     # SHAP interpretability metadata (issue #80) — defaults for a pre-#80 model.
     mock_model.shap_values_path = None
     mock_model.shap_explainer_type = None
+    # Hyperparameter tuning metadata (issue #77) — defaults for an untuned model.
+    mock_model.tuning_strategy = None
+    mock_model.tuning_time = None
+    mock_model.improvement_from_tuning = None
+    mock_model.tuning_results = None
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
     mock_model.version = "1.0.0"
     mock_model.created_at = datetime.now(UTC)
