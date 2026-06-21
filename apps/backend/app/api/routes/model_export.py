@@ -152,7 +152,7 @@ async def export_docker_container(
 async def export_model_custom(
     model_id: str,
     format_type: str,
-    options: dict[str, Any] = None,
+    options: dict[str, Any] | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """Export model with custom options"""

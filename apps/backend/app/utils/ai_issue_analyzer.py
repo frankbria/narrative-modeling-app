@@ -121,7 +121,7 @@ class AIIssueAnalyzer:
         selected_cols = self._select_columns_for_analysis(sample_df, column_types)
 
         # Build safe sample data
-        sample_data = {
+        sample_data: dict[str, Any] = {
             "row_count": len(df),
             "column_count": len(df.columns),
             "sample_size": n_rows,
@@ -170,7 +170,7 @@ class AIIssueAnalyzer:
         column_types: dict[str, str],
     ) -> list[str]:
         """Select most relevant columns for AI analysis."""
-        selected = []
+        selected: list[str] = []
 
         # Prioritize columns with issues
         for col in df.columns:

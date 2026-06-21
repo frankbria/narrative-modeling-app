@@ -62,9 +62,12 @@ async def secure_upload(
                 detail=f"Unsupported file type: {file.content_type}"
             )
         
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="Missing filename")
+
         # Read file content
         content = await file.read()
-        
+
         # Load into DataFrame
         try:
             if file.filename.endswith('.csv'):
@@ -188,8 +191,11 @@ async def confirm_pii_upload(
     """
     
     # Similar to secure_upload but skips PII blocking
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
     content = await file.read()
-    
+
     if file.filename.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(content))
     elif file.filename.endswith(('.xlsx', '.xls')):
@@ -242,7 +248,7 @@ async def confirm_pii_upload(
     await user_data.insert()
     
     # Use masked data for AI analysis
-    background_tasks.add_task(generate_ai_summary_safe, user_data.id, df_processed)
+    background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df_processed)
     
     return {
         "status": "success",
@@ -327,6 +333,8 @@ async def complete_chunked_upload(
     
     # Get session info to get original filename
     session = upload_handler._get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Upload session not found")
     filename = session["filename"]
     
     # Load and process file (similar to secure_upload)
@@ -366,9 +374,9 @@ async def complete_chunked_upload(
     # Background AI summary
     if pii_report["has_pii"]:
         masked_df = pii_detector.mask_pii(df, pii_detections)
-        background_tasks.add_task(generate_ai_summary_safe, user_data.id, masked_df)
+        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), masked_df)
     else:
-        background_tasks.add_task(generate_ai_summary_safe, user_data.id, df)
+        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
     
     rate_limiter.end_upload(current_user_id)
     

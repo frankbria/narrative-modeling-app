@@ -36,7 +36,9 @@ class ColumnStats(Document):
     data_type: str  # 'numeric', 'categorical', 'date', 'text', 'boolean'
 
     # Basic statistics
-    count: int
+    # `count` shadows Beanie's inherited `count()` query method; renaming would
+    # change the persisted field name and the constructor kwarg used elsewhere.
+    count: int  # type: ignore[assignment]
     missing: int
     unique: int
 

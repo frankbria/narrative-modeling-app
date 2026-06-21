@@ -81,7 +81,7 @@ class QualityAssessmentService:
         self, 
         df: pd.DataFrame, 
         column_types: dict[str, str],
-        column_stats: dict[str, Any] | None = None
+        column_stats: dict[str, Any] | list[Any] | None = None
     ) -> QualityReport:
         """
         Assess data quality across multiple dimensions
@@ -111,7 +111,7 @@ class QualityAssessmentService:
         
         # Overall quality score
         if dimension_scores:
-            overall_score = np.mean(list(dimension_scores.values()))
+            overall_score = float(np.mean(list(dimension_scores.values())))
         else:
             overall_score = 0.0  # Empty dataframe has no quality
         
@@ -204,7 +204,7 @@ class QualityAssessmentService:
 
     def _assess_consistency(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data consistency"""
-        issues = []
+        issues: list[QualityIssue] = []
         consistency_score = 1.0
         
         # Skip if all values are null
@@ -277,7 +277,7 @@ class QualityAssessmentService:
 
     def _assess_validity(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data validity"""
-        issues = []
+        issues: list[QualityIssue] = []
         validity_score = 1.0
         
         non_null = series.dropna()
@@ -356,8 +356,8 @@ class QualityAssessmentService:
 
     def _assess_uniqueness(self, series: pd.Series, col_name: str, col_type: str) -> tuple[float, list[QualityIssue]]:
         """Assess data uniqueness"""
-        issues = []
-        
+        issues: list[QualityIssue] = []
+
         non_null = series.dropna()
         if len(non_null) == 0:
             return 1.0, issues
@@ -404,11 +404,11 @@ class QualityAssessmentService:
             # Return zeros for empty dataframe
             return {dim: 0.0 for dim in QualityDimension}
         
-        dimension_scores = {
-            QualityDimension.COMPLETENESS: np.mean([cs.completeness_score for cs in column_scores]),
-            QualityDimension.CONSISTENCY: np.mean([cs.consistency_score for cs in column_scores]),
-            QualityDimension.VALIDITY: np.mean([cs.validity_score for cs in column_scores]),
-            QualityDimension.UNIQUENESS: np.mean([cs.uniqueness_score for cs in column_scores])
+        dimension_scores: dict[QualityDimension, float] = {
+            QualityDimension.COMPLETENESS: float(np.mean([cs.completeness_score for cs in column_scores])),
+            QualityDimension.CONSISTENCY: float(np.mean([cs.consistency_score for cs in column_scores])),
+            QualityDimension.VALIDITY: float(np.mean([cs.validity_score for cs in column_scores])),
+            QualityDimension.UNIQUENESS: float(np.mean([cs.uniqueness_score for cs in column_scores]))
         }
         
         # Add accuracy and timeliness as placeholders (would need domain knowledge)
@@ -422,7 +422,7 @@ class QualityAssessmentService:
         recommendations = []
         
         # Group issues by dimension
-        dimension_issues = {}
+        dimension_issues: dict[QualityDimension, list[QualityIssue]] = {}
         for issue in issues:
             if issue.dimension not in dimension_issues:
                 dimension_issues[issue.dimension] = []

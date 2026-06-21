@@ -53,7 +53,6 @@ dev = [
     "mongomock-motor>=0.0.36",
     "pytest-cov>=6.1.1",
     "mypy>=1.13.0",
-    "mypy-baseline>=0.7.4,<1",
 ]
 # SHAP interpretability stack, isolated so production can build a slim image
 # without it (issue #204). shap is the sole root pulling numba+llvmlite
@@ -92,10 +91,9 @@ extend-select = ["I", "UP"]
 "tests/benchmarks/test_transformation_perf.py" = ["E402"]
 
 [tool.mypy]
-# Blocking gate (issue #219). CI runs `mypy app/ | mypy-baseline filter`: the
-# pre-existing errors recorded in `mypy-baseline.txt` are tolerated, but any NEW
-# type error fails the build. Burn the baseline down over time (#226); never
-# grow it. The pydantic plugin teaches mypy about model field defaults.
+# Blocking gate (issue #219). CI runs a plain `mypy app/` and fails on any error.
+# The baseline of pre-existing errors was burned down to zero and removed (#226).
+# The pydantic plugin teaches mypy about model field defaults.
 plugins = ["pydantic.mypy"]
 python_version = "3.13"
 ignore_missing_imports = true

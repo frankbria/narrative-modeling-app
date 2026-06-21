@@ -95,7 +95,7 @@ class ExpressionEvaluator:
         "sum": "sum",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the expression evaluator."""
         self.warnings: list[str] = []
 

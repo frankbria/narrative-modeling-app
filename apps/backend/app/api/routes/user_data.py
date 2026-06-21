@@ -56,7 +56,7 @@ async def get_latest_user_data(user_id: str = Depends(get_current_user_id)) -> U
         # Get the most recent user data document
         user_data = (
             await UserData.find(UserData.user_id == user_id)
-            .sort(-UserData.created_at)
+            .sort("-created_at")
             .first_or_none()
         )
 
@@ -85,7 +85,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> dict[
         # Get the most recent user data document
         user_data = (
             await UserData.find(UserData.user_id == user_id)
-            .sort(-UserData.created_at)
+            .sort("-created_at")
             .first_or_none()
         )
 

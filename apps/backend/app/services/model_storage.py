@@ -310,8 +310,9 @@ class ModelStorageService:
                 await self.s3_service.delete_file(evaluation_key)
 
             # Delete SHAP summary if present (issue #80)
-            if getattr(ml_model, "shap_values_path", None):
-                shap_key = ml_model.shap_values_path.replace(
+            shap_values_path = getattr(ml_model, "shap_values_path", None)
+            if shap_values_path:
+                shap_key = shap_values_path.replace(
                     f"s3://{self.s3_service.bucket_name}/", ""
                 )
                 await self.s3_service.delete_file(shap_key)

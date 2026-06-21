@@ -261,7 +261,7 @@ class ABTestingService:
     async def get_experiment_metrics(experiment: ABTest) -> dict[str, Any]:
         """Get comprehensive metrics for an experiment"""
         
-        metrics = {
+        metrics: dict[str, Any] = {
             "experiment_id": experiment.experiment_id,
             "name": experiment.name,
             "status": experiment.status,
@@ -278,7 +278,7 @@ class ABTestingService:
             metrics["duration"] = duration.total_seconds()
         
         for variant in experiment.variants:
-            variant_metrics = {
+            variant_metrics: dict[str, Any] = {
                 "variant_id": variant.variant_id,
                 "name": variant.name,
                 "model_id": variant.model_id,

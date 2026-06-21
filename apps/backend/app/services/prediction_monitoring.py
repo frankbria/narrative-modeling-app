@@ -174,7 +174,7 @@ class PredictionMonitoringService:
         ]
         
         # Count predictions by value
-        distribution = defaultdict(int)
+        distribution: defaultdict[str, int] = defaultdict(int)
         for pred in filtered_preds:
             pred_value = str(pred["prediction"])
             distribution[pred_value] += 1
@@ -224,7 +224,7 @@ class PredictionMonitoringService:
         ]
         
         # Count by API key
-        usage = defaultdict(int)
+        usage: defaultdict[str, int] = defaultdict(int)
         for pred in filtered_preds:
             api_key = pred.get("api_key_id", "unknown")
             usage[api_key] += 1

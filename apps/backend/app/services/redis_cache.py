@@ -5,8 +5,9 @@ import json
 import logging
 import os
 import pickle
+from collections.abc import Awaitable
 from functools import wraps
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 from redis.asyncio import Redis
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class RedisCacheService:
     """Service for Redis caching operations"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.redis_client: Redis | None = None
         self.default_ttl = int(os.getenv("CACHE_DEFAULT_TTL", "3600"))  # 1 hour
@@ -163,7 +164,10 @@ class RedisCacheService:
                 field: self._serialize_value(value)
                 for field, value in mapping.items()
             }
-            await self.redis_client.hset(key, mapping=serialized_mapping)
+            await cast(
+                Awaitable[int],
+                self.redis_client.hset(key, mapping=serialized_mapping),
+            )
             
             if ttl:
                 await self.redis_client.expire(key, ttl)
@@ -178,7 +182,9 @@ class RedisCacheService:
             return None
             
         try:
-            data = await self.redis_client.hgetall(key)
+            data = await cast(
+                Awaitable[dict[Any, Any]], self.redis_client.hgetall(key)
+            )
             if not data:
                 return None
                 
@@ -197,7 +203,9 @@ class RedisCacheService:
             return None
             
         try:
-            data = await self.redis_client.hget(key, field)
+            data = await cast(
+                Awaitable[bytes | None], self.redis_client.hget(key, field)
+            )
             if data is None:
                 return None
             return self._deserialize_value(data)
@@ -215,7 +223,10 @@ class RedisCacheService:
             await self.redis_client.delete(key)
             if values:
                 serialized_values = [self._serialize_value(v) for v in values]
-                await self.redis_client.lpush(key, *serialized_values)
+                await cast(
+                    Awaitable[int],
+                    self.redis_client.lpush(key, *serialized_values),
+                )
                 
             if ttl:
                 await self.redis_client.expire(key, ttl)
@@ -230,7 +241,9 @@ class RedisCacheService:
             return None
             
         try:
-            data = await self.redis_client.lrange(key, 0, -1)
+            data = await cast(
+                Awaitable[list[Any]], self.redis_client.lrange(key, 0, -1)
+            )
             if not data:
                 return []
             return [self._deserialize_value(item) for item in reversed(data)]

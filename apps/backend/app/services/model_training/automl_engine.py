@@ -350,8 +350,16 @@ class AutoMLEngine:
         # Select best model
         if not trained_models:
             raise ValueError("No models were successfully trained")
-        best_model = max(trained_models, key=lambda m: m.cv_score)
-        ranked_models = sorted(trained_models, key=lambda m: m.cv_score, reverse=True)
+        # cv_score is Optional; treat a missing score as worst so ordering is total.
+        best_model = max(
+            trained_models,
+            key=lambda m: m.cv_score if m.cv_score is not None else float("-inf"),
+        )
+        ranked_models = sorted(
+            trained_models,
+            key=lambda m: m.cv_score if m.cv_score is not None else float("-inf"),
+            reverse=True,
+        )
 
         # Get feature importance if available. Extracted from the RAW estimator
         # *before* calibration, because the calibrated wrapper hides
@@ -482,7 +490,7 @@ class AutoMLEngine:
 
     @staticmethod
     async def _report_progress(
-        progress_callback: Callable[[int, int, str], Awaitable[None]] | None,
+        progress_callback: Callable[[int, int, str | None], Awaitable[None]] | None,
         completed: int,
         total: int,
         current_algorithm: str | None,

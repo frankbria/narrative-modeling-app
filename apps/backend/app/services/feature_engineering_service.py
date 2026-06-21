@@ -473,7 +473,7 @@ class FeatureEngineeringService:
 
     def _suggest_aggregation_features(self, analysis: DatasetAnalysis) -> list[FeatureSuggestion]:
         """Suggest aggregation features based on categorical groupings"""
-        suggestions = []
+        suggestions: list[FeatureSuggestion] = []
         target = analysis.target_column
 
         if not analysis.categorical_columns:
@@ -870,7 +870,7 @@ Domain: {analysis.domain.value}"""
             )
 
             content = response.choices[0].message.content
-            suggestions_data = json.loads(content)
+            suggestions_data = json.loads(content or "[]")
 
             # Handle different JSON structures
             if isinstance(suggestions_data, dict):

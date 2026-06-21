@@ -34,6 +34,7 @@ class ProcessingResponse(BaseModel):
     """Response model for data processing"""
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
+        populate_by_name=True,
         json_encoders={
             np.integer: lambda v: int(v),
             np.floating: lambda v: float(v),
@@ -41,11 +42,11 @@ class ProcessingResponse(BaseModel):
             np.bool_: lambda v: bool(v)
         }
     )
-    
+
     status: str
     file_id: str
     processing_id: str
-    schema: dict[str, Any]
+    data_schema: dict[str, Any] = Field(alias="schema")
     statistics: dict[str, Any]
     quality_report: dict[str, Any]
     preview: dict[str, Any]

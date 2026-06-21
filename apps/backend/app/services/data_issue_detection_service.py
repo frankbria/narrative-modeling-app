@@ -382,8 +382,8 @@ class DataIssueDetectionService:
 
     def _find_casing_duplicates(self, values: np.ndarray) -> list[str]:
         """Find values that are duplicates when compared case-insensitively."""
-        lower_map = {}
-        duplicates = []
+        lower_map: dict[str, str] = {}
+        duplicates: list[str] = []
         for v in values:
             lower = str(v).lower()
             if lower in lower_map:

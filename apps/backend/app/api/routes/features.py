@@ -683,7 +683,7 @@ async def get_available_operations(
         OperationInfo(type="not", symbol="NOT", label="Not", description="Logical NOT", category="logical", num_operands=1, input_types=["boolean"], output_type="boolean"),
     ]
 
-    by_category = {}
+    by_category: dict[str, list[OperationInfo]] = {}
     for op in operations:
         if op.category not in by_category:
             by_category[op.category] = []
@@ -748,7 +748,7 @@ async def get_available_functions(
         FunctionInfo(type="is_null", label="Is Null", signature="is_null(x)", description="Check if null", category="utility", num_args=1, input_types=["any"], output_type="boolean"),
     ]
 
-    by_category = {}
+    by_category: dict[str, list[FunctionInfo]] = {}
     for func in functions:
         if func.category not in by_category:
             by_category[func.category] = []

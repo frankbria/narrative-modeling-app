@@ -117,7 +117,7 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
 )
 async def suggest_features(
     dataset_id: str = Path(..., description="Dataset identifier"),
-    request: FeatureSuggestionRequest = None,
+    request: FeatureSuggestionRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ) -> FeatureSuggestionResponse:
     """Generate feature suggestions for a dataset"""

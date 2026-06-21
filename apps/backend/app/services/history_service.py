@@ -362,10 +362,3 @@ class HistoryService:
         logger.info(f"Cleared transformation history for dataset {dataset_id}")
 
         return True
-
-
-# Global service instance
-history_service = HistoryService(
-    versioning_service=None,  # Will be injected via dependency
-    transformation_service=None  # Will be injected via dependency
-)

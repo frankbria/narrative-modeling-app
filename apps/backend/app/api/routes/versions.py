@@ -109,7 +109,7 @@ async def create_dataset_version(
         # Get the latest version to use as parent
         latest_version = await DatasetVersion.find({
             "dataset_id": dataset_id
-        }).sort(-DatasetVersion.version_number).first_or_none()
+        }).sort("-version_number").first_or_none()
 
         if not latest_version:
             raise HTTPException(

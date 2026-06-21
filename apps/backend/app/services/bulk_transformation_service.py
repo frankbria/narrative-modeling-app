@@ -91,11 +91,11 @@ def safe_regex_search(pattern: str, text: str, timeout: int = REGEX_TIMEOUT_SECO
 class BulkTransformationService:
     """Service for bulk transformation operations on multiple columns."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize service with transformation engine."""
         self.engine = TransformationEngine()
         # Track active background tasks for proper cleanup and cancellation
-        self._active_tasks: dict[str, asyncio.Task] = {}
+        self._active_tasks: dict[str, asyncio.Task[None]] = {}
 
     def _cleanup_task(self, job_id: str, task: asyncio.Task) -> None:
         """Callback to clean up task reference when done."""

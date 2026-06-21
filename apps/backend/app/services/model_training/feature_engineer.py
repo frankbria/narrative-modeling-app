@@ -65,6 +65,8 @@ def parse_feature_definition(definition_code: str | None) -> ExpressionNode:
         # RecursionError: pathologically deep JSON blows the parser's stack
         # before any tree validation can run — treat it as an invalid
         # definition (422), not a server error (500).
+        if not isinstance(definition_code, str):
+            raise TypeError("Feature definition must be a JSON string")
         data = json.loads(definition_code)
     except (json.JSONDecodeError, TypeError, RecursionError) as e:
         raise UnsafeFeatureDefinitionError(
@@ -172,10 +174,10 @@ class FeatureEngineer:
     
     def __init__(self, config: FeatureEngineeringConfig | None = None):
         self.config = config or FeatureEngineeringConfig()
-        self.transformers = {}
-        self.feature_names = []
-        self.numeric_features = []
-        self.categorical_features = []
+        self.transformers: dict[str, Any] = {}
+        self.feature_names: list[str] = []
+        self.numeric_features: list[str] = []
+        self.categorical_features: list[str] = []
     
     async def fit_transform(
         self,

@@ -28,7 +28,7 @@ class AnalysisRequest(BaseModel):
 @router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse)
 async def analyze_with_ai(
     file_id: str = Path(..., description="File ID"),
-    request: AnalysisRequest = None,
+    request: AnalysisRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -60,9 +60,9 @@ async def analyze_with_ai(
         # Perform AI analysis
         analysis_result = await mcp_service.analyze_dataset(
             file_id=str(user_data.id),
-            schema=user_data.schema,
-            statistics=user_data.statistics,
-            quality_report=user_data.quality_report,
+            schema=user_data.schema or {},
+            statistics=user_data.statistics or {},
+            quality_report=user_data.quality_report or {},
             sample_data=sample_data,
             analysis_type=request.analysis_type
         )

@@ -347,7 +347,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         # Convert to list of dicts, handling various types
         records = []
         for _, row in sample_df.iterrows():
-            record = {}
+            record: dict[str, Any] = {}
             for col, val in row.items():
                 if pd.isna(val):
                     record[col] = None
@@ -690,8 +690,9 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 new_schema.append(SchemaField(
                     field_name=column_name,
                     field_type=self._infer_output_type(result_series),
-                    nullable=bool(stats["null_count"] > 0),
-                    unique=bool(stats["unique_count"] == stats["total_count"])
+                    inferred_dtype=str(result_series.dtype),
+                    unique_values=int(stats["unique_count"]),
+                    missing_values=int(stats["null_count"]),
                 ))
 
                 await self.dataset_service.create_dataset(
@@ -722,8 +723,9 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 dataset.data_schema.append(SchemaField(
                     field_name=column_name,
                     field_type=self._infer_output_type(result_series),
-                    nullable=bool(stats["null_count"] > 0),
-                    unique=bool(stats["unique_count"] == stats["total_count"])
+                    inferred_dtype=str(result_series.dtype),
+                    unique_values=int(stats["unique_count"]),
+                    missing_values=int(stats["null_count"]),
                 ))
                 await dataset.save()
 

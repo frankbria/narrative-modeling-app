@@ -23,6 +23,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.batch_job import JobStatus
 from app.models.ml_model import MLModel
 from app.models.training_job import (
+    LogLevel,
     ModelComparisonEntry,
     TrainingJob,
     TrainingLogEntry,
@@ -401,7 +402,14 @@ async def train_model_task(
         async def on_event(event: TrainingEvent):
             if not training_job:
                 return
-            entry = training_job.add_log(event.level, event.message, stage=event.stage)
+            level: LogLevel
+            if event.level == "warning":
+                level = "warning"
+            elif event.level == "error":
+                level = "error"
+            else:
+                level = "info"
+            entry = training_job.add_log(level, event.message, stage=event.stage)
             fields_to_set: dict[Any, Any] = {
                 TrainingJob.progress: training_job.progress,
                 TrainingJob.updated_at: training_job.updated_at,
@@ -644,8 +652,8 @@ def _best_comparison_score(job: TrainingJob) -> float | None:
         row.test_score if row.test_score is not None else row.cv_score
         for row in job.model_comparison
     ]
-    scores = [score for score in scores if score is not None]
-    return max(scores) if scores else None
+    valid_scores: list[float] = [score for score in scores if score is not None]
+    return max(valid_scores) if valid_scores else None
 
 
 # NOTE: registered before the dynamic GET /{model_id} route so "jobs" is never
@@ -1134,7 +1142,7 @@ async def get_shap_summary(
             evaluated_at=datetime.now(UTC),
         )
 
-    importance = shap_artifacts.get("shap_importance")
+    importance: dict[str, float] = shap_artifacts["shap_importance"]
     return ShapSummaryResponse(
         model_id=model_id,
         partial=False,
@@ -1186,8 +1194,9 @@ def _categorical_options(feature_engineer, column: str) -> list[str] | None:
         transformers = getattr(feature_engineer, "transformers", {}) or {}
         if getattr(feature_engineer.config, "encoding_method", None) == "onehot":
             encoder = transformers.get("encoder")
-            idx = feature_engineer.categorical_features.index(column)
-            return [str(c) for c in encoder.categories_[idx]]
+            if encoder is not None:
+                idx = feature_engineer.categorical_features.index(column)
+                return [str(c) for c in encoder.categories_[idx]]
         label_encoders = transformers.get("label_encoders", {}) or {}
         encoder = label_encoders.get(column)
         if encoder is not None:
@@ -1300,6 +1309,8 @@ async def predict(
     ml_model = await MLModel.find_one(
         MLModel.model_id == model_id, MLModel.user_id == current_user_id
     )
+    if not ml_model:
+        raise HTTPException(status_code=404, detail="Model not found")
 
     if not request.data:
         raise HTTPException(status_code=422, detail="No input records provided")

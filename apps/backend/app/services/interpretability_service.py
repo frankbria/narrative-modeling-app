@@ -171,7 +171,7 @@ class InterpretabilityService:
     def compute_instance_shap(
         self,
         estimator: Any,
-        x_row: Sequence[float],
+        x_row: Sequence[float] | np.ndarray,
         feature_names: Sequence[str],
         prediction: Any = None,
         problem_type: str = "classification",
@@ -194,7 +194,7 @@ class InterpretabilityService:
     def _compute_instance_shap(
         self,
         estimator: Any,
-        x_row: Sequence[float],
+        x_row: Sequence[float] | np.ndarray,
         feature_names: Sequence[str],
         prediction: Any,
     ) -> InstanceShapResult | None:

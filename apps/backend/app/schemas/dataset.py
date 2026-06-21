@@ -146,7 +146,11 @@ class DatasetSchemaResponse(BaseModel):
     """Response schema for dataset schema endpoint."""
 
     dataset_id: str = Field(..., description="Dataset ID")
-    schema: list[dict[str, Any]] = Field(..., description="Field-level schema")
+    # `schema` shadows Pydantic's deprecated `BaseModel.schema()`; it is part of
+    # the public response contract and cannot be renamed.
+    schema: list[dict[str, Any]] = Field(  # type: ignore[assignment]
+        ..., description="Field-level schema"
+    )
     num_fields: int = Field(..., ge=0, description="Number of fields in schema")
 
 

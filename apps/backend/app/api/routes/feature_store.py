@@ -4,6 +4,7 @@ Feature Store API routes.
 Provides REST endpoints for managing features, versions, and collections.
 """
 
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -182,7 +183,7 @@ async def list_features(
     """
     service = FeatureStoreService()
 
-    filters = {}
+    filters: dict[str, Any] = {}
     if category:
         filters["category"] = category
     if tags:

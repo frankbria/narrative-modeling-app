@@ -162,14 +162,17 @@ class ExplanationService:
             }
         ]
 
+        if client is None:
+            raise RuntimeError("OpenAI client is not initialized")
+
         response = client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]  # plain dicts accepted at runtime
             temperature=0.7,
             max_tokens=500
         )
 
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
 
     def _build_algorithm_selection_prompt(
         self,

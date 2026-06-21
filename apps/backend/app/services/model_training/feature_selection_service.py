@@ -50,7 +50,7 @@ class FeatureSelectionConfig:
     correlation_threshold: float = 0.7
     problem_type: str | None = None
     sample_size: int | None = None
-    algorithm_params: dict[str, Any] = None
+    algorithm_params: dict[str, Any] | None = None
 
     def __post_init__(self):
         if self.algorithm_params is None:
@@ -230,7 +230,7 @@ class FeatureSelectionService:
         normalized_scores = self._normalize_scores(scores)
         feature_scores = self._create_feature_scores(
             normalized_scores,
-            selected=None  # All features
+            selected_features=None  # All features
         )
 
         return feature_scores
@@ -326,7 +326,7 @@ class FeatureSelectionService:
         consensus = set.intersection(*all_selected_features) if all_selected_features else set()
 
         # Calculate overlap matrix
-        overlap_matrix = {}
+        overlap_matrix: dict[str, dict[str, int]] = {}
         for i, method1 in enumerate(methods):
             overlap_matrix[method1] = {}
             for j, method2 in enumerate(methods):
