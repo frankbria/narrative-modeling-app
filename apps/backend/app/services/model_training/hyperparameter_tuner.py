@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import asdict, dataclass, field
+from threading import Event
 from typing import Any
 
 import numpy as np
@@ -270,12 +272,19 @@ class HyperparameterTuner:
         y: Any,
         config: TuningConfig,
         is_classification: bool,
+        cancel_event: Event | None = None,
     ) -> TuningResult | None:
         """Tune ``estimator`` for ``algorithm`` and return the best params + viz.
 
         Returns ``None`` when the algorithm has no search space or tuning fails —
-        the caller keeps the estimator's default hyperparameters.
+        the caller keeps the estimator's default hyperparameters. The caller
+        compares ``improvement_over_default`` and only applies the params when
+        they actually beat the defaults. ``cancel_event``, when set, stops the
+        Bayesian search between trials (grid/random are single sklearn calls and
+        cannot be interrupted mid-search).
         """
+        if cancel_event is not None and cancel_event.is_set():
+            return None
         space = self.get_search_space(
             algorithm,
             n_samples=_n_rows(X),
@@ -285,7 +294,7 @@ class HyperparameterTuner:
             return None
 
         scoring = config.scoring or ("roc_auc" if is_classification else "r2")
-        start = _now()
+        start = time.monotonic()
         try:
             default_score = float(
                 np.mean(
@@ -310,7 +319,7 @@ class HyperparameterTuner:
                 )
             else:  # bayesian (may degrade to random if optuna is missing)
                 result = self._tune_bayesian(
-                    estimator, X, y, space, config, scoring, is_classification
+                    estimator, X, y, space, config, scoring, is_classification, cancel_event
                 )
                 if result is None:
                     strategy = "random"
@@ -331,7 +340,7 @@ class HyperparameterTuner:
             default_score=default_score,
             improvement_over_default=best_score - default_score,
             n_trials_completed=len(trials),
-            total_time=_now() - start,
+            total_time=time.monotonic() - start,
             parameter_importance=importance,
             optimization_history=_history(trials),
             all_trials=trials,
@@ -382,7 +391,7 @@ class HyperparameterTuner:
         )
 
     def _tune_bayesian(
-        self, estimator, X, y, space, config, scoring, is_classification
+        self, estimator, X, y, space, config, scoring, is_classification, cancel_event=None
     ) -> tuple[dict, float, list[TrialResult], dict[str, float] | None] | None:
         """Optuna TPE search with median pruning. ``None`` if optuna is absent."""
         try:
@@ -422,8 +431,16 @@ class HyperparameterTuner:
             sampler=TPESampler(seed=config.random_state),
             pruner=MedianPruner(),
         )
+
+        # Stop between trials when the run is cancelled, so a cancellation isn't
+        # stuck behind the full time_budget (issue #77 review).
+        def _cancel_callback(study_: Any, _trial: Any) -> None:
+            if cancel_event is not None and cancel_event.is_set():
+                study_.stop()
+
         study.optimize(
             objective,
+            callbacks=[_cancel_callback],
             n_trials=config.n_trials,
             timeout=config.time_budget,
             n_jobs=config.n_jobs,
@@ -455,12 +472,6 @@ class HyperparameterTuner:
 
 
 # -- helpers ---------------------------------------------------------------------
-
-
-def _now() -> float:
-    import time
-
-    return time.monotonic()
 
 
 def _n_rows(X: Any) -> int | None:

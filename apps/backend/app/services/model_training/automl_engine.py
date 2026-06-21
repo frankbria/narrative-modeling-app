@@ -7,6 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from threading import Event
 from typing import Any, Optional
 
 import lightgbm as lgb
@@ -122,6 +123,15 @@ class AutoMLResult:
     tuning_results: dict[str, dict[str, Any]] | None = None
     tuning_strategy: str | None = None
     improvement_from_tuning: float | None = None
+
+
+def _applied_improvement(payload: dict[str, Any] | None) -> float | None:
+    """The tuning gain the deployed model kept (see ``improvement_from_tuning``)."""
+    if not payload:
+        return None
+    if payload.get("applied"):
+        return payload.get("improvement_over_default")
+    return 0.0
 
 
 class AutoMLEngine:
@@ -509,10 +519,11 @@ class AutoMLEngine:
                 if self.enable_tuning
                 else None
             ),
-            improvement_from_tuning=(
-                tuning_results.get(best_model.name, {}).get("improvement_over_default")
-                if tuning_results
-                else None
+            # Gain the deployed best model actually got from tuning: its recorded
+            # improvement when the tuned params were applied, 0.0 when tuning ran
+            # but didn't beat the defaults, None when tuning was off.
+            improvement_from_tuning=_applied_improvement(
+                tuning_results.get(best_model.name) if tuning_results else None
             ),
             metadata={
                 "n_samples": len(df),
@@ -683,13 +694,20 @@ class AutoMLEngine:
         event_callback: Callable[["TrainingEvent"], Awaitable[None]] | None,
         cancel_check: Callable[[], Awaitable[bool]] | None,
     ) -> dict[str, dict[str, Any]]:
-        """Tune each candidate's hyperparameters in place (issue #77).
+        """Tune each candidate's hyperparameters (issue #77).
 
         For every candidate with a tunable search space, runs the configured
-        strategy on the training split (off the event loop), applies the best
-        params to the candidate's estimator, and records the serialized
-        ``TuningResult``. Honours cancellation between candidates; tuning errors
-        are swallowed (the candidate keeps its default hyperparameters).
+        strategy on the training split (off the event loop) and records the
+        serialized ``TuningResult`` (so the visualization endpoint shows every
+        search). The tuned params are only *applied* to the estimator when they
+        actually beat the defaults (``improvement_over_default > 0``) — tuning is
+        a safety-netted improvement, never a regression. Tuning errors are
+        swallowed (the candidate keeps its default hyperparameters).
+
+        Cancellation is honoured between candidates and, for the Bayesian
+        strategy, between trials via a ``cancel_event`` updated by a background
+        poller (grid/random are single sklearn calls and can't be interrupted
+        mid-search).
         """
         config = self.tuning_config or TuningConfig()
         # The engine owns the scoring metric for the problem type; the tuner must
@@ -706,56 +724,102 @@ class AutoMLEngine:
             ),
         )
 
-        for candidate in candidates:
-            if await self._is_cancelled(cancel_check):
-                raise TrainingCancelledError(
-                    f"Training cancelled during tuning of {candidate.name}"
-                )
-            try:
-                result: TuningResult | None = await asyncio.to_thread(
-                    self._tuner.tune,
-                    candidate.name,
-                    candidate.estimator,
-                    X_train_transformed,
-                    y_train,
-                    config,
-                    is_classification,
-                )
-            except Exception as exc:  # tuning must never break training
-                logger.warning(f"Tuning {candidate.name} failed: {exc}")
-                result = None
+        # Bridge the async cancellation check to the sync tuner thread: a poller
+        # task refreshes a threading.Event the optuna study stops on.
+        cancel_event = Event()
+        poller = (
+            asyncio.create_task(self._poll_cancellation(cancel_check, cancel_event))
+            if cancel_check is not None
+            else None
+        )
+        try:
+            for candidate in candidates:
+                if cancel_event.is_set() or await self._is_cancelled(cancel_check):
+                    raise TrainingCancelledError(
+                        f"Training cancelled during tuning of {candidate.name}"
+                    )
+                try:
+                    result: TuningResult | None = await asyncio.to_thread(
+                        self._tuner.tune,
+                        candidate.name,
+                        candidate.estimator,
+                        X_train_transformed,
+                        y_train,
+                        config,
+                        is_classification,
+                        cancel_event,
+                    )
+                except Exception as exc:  # tuning must never break training
+                    logger.warning(f"Tuning {candidate.name} failed: {exc}")
+                    result = None
 
-            if result is None or not result.best_params:
-                continue
+                if result is None or not result.best_params:
+                    continue
 
-            try:
-                candidate.estimator.set_params(**result.best_params)
-                candidate.hyperparameters = {**candidate.hyperparameters, **result.best_params}
-            except Exception as exc:  # invalid params for this estimator: skip
-                logger.warning(f"Applying tuned params to {candidate.name} failed: {exc}")
-                continue
+                applied = result.improvement_over_default > 0
+                if applied:
+                    try:
+                        candidate.estimator.set_params(**result.best_params)
+                        candidate.hyperparameters = {
+                            **candidate.hyperparameters,
+                            **result.best_params,
+                        }
+                    except Exception as exc:  # invalid params for this estimator
+                        logger.warning(
+                            f"Applying tuned params to {candidate.name} failed: {exc}"
+                        )
+                        applied = False
 
-            results[candidate.name] = result.to_dict()
-            await self._emit_event(
-                event_callback,
-                TrainingEvent(
-                    level="info",
-                    message=(
-                        f"{candidate.name} tuned ({result.strategy}): "
-                        f"score {result.default_score:.4f} -> {result.best_score:.4f} "
-                        f"(+{result.improvement_over_default:.4f}) over "
-                        f"{result.n_trials_completed} trials"
+                payload = result.to_dict()
+                payload["applied"] = applied
+                results[candidate.name] = payload
+                await self._emit_event(
+                    event_callback,
+                    TrainingEvent(
+                        level="info",
+                        message=(
+                            f"{candidate.name} tuned ({result.strategy}): "
+                            f"score {result.default_score:.4f} -> {result.best_score:.4f} "
+                            f"(+{result.improvement_over_default:.4f}) over "
+                            f"{result.n_trials_completed} trials"
+                            f"{'' if applied else ' (kept defaults — no improvement)'}"
+                        ),
+                        stage="tuning",
+                        candidate={
+                            "algorithm": candidate.name,
+                            "best_score": result.best_score,
+                            "default_score": result.default_score,
+                            "improvement_over_default": result.improvement_over_default,
+                        },
                     ),
-                    stage="tuning",
-                    candidate={
-                        "algorithm": candidate.name,
-                        "best_score": result.best_score,
-                        "default_score": result.default_score,
-                        "improvement_over_default": result.improvement_over_default,
-                    },
-                ),
-            )
+                )
+        finally:
+            if poller is not None:
+                poller.cancel()
         return results
+
+    @staticmethod
+    async def _poll_cancellation(
+        cancel_check: Callable[[], Awaitable[bool]] | None,
+        cancel_event: Event,
+        interval_seconds: float = 2.0,
+    ) -> None:
+        """Set ``cancel_event`` when the async cancel check first returns True.
+
+        Runs as a background task while a tuning thread is busy so a cancellation
+        can stop the Bayesian study between trials instead of waiting out the
+        whole time budget. Exits once the flag is set (or on task cancel).
+        """
+        if cancel_check is None:
+            return
+        try:
+            while not cancel_event.is_set():
+                if await AutoMLEngine._is_cancelled(cancel_check):
+                    cancel_event.set()
+                    return
+                await asyncio.sleep(interval_seconds)
+        except asyncio.CancelledError:
+            pass
 
     @staticmethod
     def _assess_class_balance(

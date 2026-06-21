@@ -83,8 +83,6 @@ class TestStrategies:
         assert isinstance(result, TuningResult)
         assert result.best_params  # non-empty
         assert result.n_trials_completed > 0
-        # Best score is at least the default (tuning selects the default if nothing beats it...
-        # not guaranteed for tiny random runs, but it must be a real float).
         assert isinstance(result.best_score, float)
         assert result.optimization_history  # history populated for the chart
 
@@ -151,6 +149,18 @@ class TestResilience:
             is None
         )
 
+    def test_preset_cancel_event_returns_none(self, tuner, classification_xy):
+        from threading import Event
+
+        X, y = classification_xy
+        cancel = Event()
+        cancel.set()
+        cfg = TuningConfig(strategy="bayesian", n_trials=20, cv_folds=3, scoring="roc_auc", n_jobs=1)
+        result = tuner.tune(
+            "Random Forest", RandomForestClassifier(), X, y, cfg, True, cancel
+        )
+        assert result is None
+
     def test_bayesian_degrades_to_random_without_optuna(
         self, tuner, classification_xy, monkeypatch
     ):
@@ -210,6 +220,19 @@ class TestEngineIntegration:
             assert "best_params" in payload
             assert "optimization_history" in payload
             assert "improvement_over_default" in payload
+            # Every recorded payload says whether its params were applied; params
+            # are only applied when they beat the defaults (no-regression guard).
+            assert "applied" in payload
+            if payload["applied"]:
+                assert payload["improvement_over_default"] > 0
+
+    def test_applied_improvement_helper(self):
+        from app.services.model_training.automl_engine import _applied_improvement
+
+        assert _applied_improvement(None) is None
+        assert _applied_improvement({"applied": True, "improvement_over_default": 0.05}) == 0.05
+        # Recorded but not applied (defaults won) -> the deployed model gained 0.
+        assert _applied_improvement({"applied": False, "improvement_over_default": -0.01}) == 0.0
 
     @pytest.mark.asyncio
     async def test_tuning_disabled_by_default(self):

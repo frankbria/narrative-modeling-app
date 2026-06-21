@@ -483,8 +483,14 @@ async def train_model_task(
             # SHAP interpretability (issue #80).
             "shap_explainer_type": result.shap_explainer_type,
             # Hyperparameter tuning (issue #77). None when tuning was off.
+            # tuning_time is the sum of the per-algorithm search durations, NOT
+            # the full AutoML wall time (result.training_time).
             "tuning_strategy": result.tuning_strategy,
-            "tuning_time": result.training_time if result.tuning_results else None,
+            "tuning_time": (
+                sum(r.get("total_time", 0.0) for r in result.tuning_results.values())
+                if result.tuning_results
+                else None
+            ),
             "improvement_from_tuning": result.improvement_from_tuning,
             "tuning_results": result.tuning_results,
             "training_config": training_config,
