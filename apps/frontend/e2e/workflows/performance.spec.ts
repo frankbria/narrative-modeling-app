@@ -449,31 +449,38 @@ test.describe('Performance - Frontend Rendering', () => {
     authenticatedPage,
     uploadTestDataset,
     trainModel,
+    cleanupModel,
+    cleanupDataset,
   }) => {
     test.slow();
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
-    await seedEvaluationWorkflow(
-      authenticatedPage,
-      authenticatedPage.request,
-      datasetId,
-      modelId
-    );
+    try {
+      await seedEvaluationWorkflow(
+        authenticatedPage,
+        authenticatedPage.request,
+        datasetId,
+        modelId
+      );
 
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await authenticatedPage.goto(`/evaluate/${datasetId}`);
-    await evaluatePage.waitForDashboard();
-    await evaluatePage.switchToTab('Confusion Matrix');
+      const evaluatePage = new EvaluatePage(authenticatedPage);
+      await authenticatedPage.goto(`/evaluate/${datasetId}`);
+      await evaluatePage.waitForDashboard();
+      await evaluatePage.switchToTab('Confusion Matrix');
 
-    const metric = await perfMonitor.measureRenderTime(
-      authenticatedPage,
-      'Confusion Matrix Chart',
-      '[data-testid="confusion-matrix"]',
-      'Confusion Matrix Chart',
-      2000
-    );
+      const metric = await perfMonitor.measureRenderTime(
+        authenticatedPage,
+        'Confusion Matrix Chart',
+        '[data-testid="confusion-matrix"]',
+        'Confusion Matrix Chart',
+        2000
+      );
 
-    expect(metric.value).toBeLessThanOrEqual(2000);
+      expect(metric.value).toBeLessThanOrEqual(2000);
+    } finally {
+      await cleanupModel(modelId);
+      await cleanupDataset(datasetId);
+    }
   });
 
   // #234 [P4.12]: same /evaluate stage-gating as the confusion matrix test above.
@@ -481,31 +488,38 @@ test.describe('Performance - Frontend Rendering', () => {
     authenticatedPage,
     uploadTestDataset,
     trainModel,
+    cleanupModel,
+    cleanupDataset,
   }) => {
     test.slow();
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
-    await seedEvaluationWorkflow(
-      authenticatedPage,
-      authenticatedPage.request,
-      datasetId,
-      modelId
-    );
+    try {
+      await seedEvaluationWorkflow(
+        authenticatedPage,
+        authenticatedPage.request,
+        datasetId,
+        modelId
+      );
 
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await authenticatedPage.goto(`/evaluate/${datasetId}`);
-    await evaluatePage.waitForDashboard();
-    await evaluatePage.switchToTab('Curves');
+      const evaluatePage = new EvaluatePage(authenticatedPage);
+      await authenticatedPage.goto(`/evaluate/${datasetId}`);
+      await evaluatePage.waitForDashboard();
+      await evaluatePage.switchToTab('Curves');
 
-    const metric = await perfMonitor.measureRenderTime(
-      authenticatedPage,
-      'ROC Curve Chart',
-      '[data-testid="roc-curve"]',
-      'ROC Curve Chart',
-      2000
-    );
+      const metric = await perfMonitor.measureRenderTime(
+        authenticatedPage,
+        'ROC Curve Chart',
+        '[data-testid="roc-curve"]',
+        'ROC Curve Chart',
+        2000
+      );
 
-    expect(metric.value).toBeLessThanOrEqual(2000);
+      expect(metric.value).toBeLessThanOrEqual(2000);
+    } finally {
+      await cleanupModel(modelId);
+      await cleanupDataset(datasetId);
+    }
   });
 
   test('should validate form (20 fields) within 100ms', async ({ authenticatedPage }) => {
