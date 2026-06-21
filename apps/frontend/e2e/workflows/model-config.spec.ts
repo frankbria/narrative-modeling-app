@@ -21,6 +21,11 @@
 
 import { test, expect } from '../fixtures';
 import { ModelConfigPage } from '../pages/ModelConfigPage';
+import {
+  BINARY_CLASS_DATASET,
+  BINARY_CLASS_TARGET,
+} from '../helpers/binaryClassificationData';
+import { API_BASE, ML_AUTH } from '../helpers/mlApi';
 
 test.describe('Model Config Workflow', () => {
   let datasetId: string;
@@ -250,7 +255,12 @@ test.describe('Model Config Workflow', () => {
     }
   });
 
-  test('should compare multiple models', async ({ authenticatedPage, trainModel }) => {
+  // #195 / follow-up #234 [P4.12]: the model-comparison UI lives on the stage-gated
+  // /evaluate Compare tab (#79), not the model list — so this test's
+  // `if (compareButton.isVisible()) … else log` path never asserts. Making it
+  // real needs the same /evaluate workflow-seeding as the descoped render tests.
+  // Deferred to [P4.12].
+  test.fixme('should compare multiple models', async ({ authenticatedPage, trainModel }) => {
     const modelPage = new ModelConfigPage(authenticatedPage);
 
     // Train first model
@@ -698,43 +708,36 @@ test.describe('Model Config API Integration', () => {
     }
   });
 
-  test('should validate training metrics structure', async ({ request, trainModel }) => {
-    // Train model
-    const modelId = await trainModel(datasetId, 'purchased');
+  test('should validate training metrics structure', async ({ request, uploadTestDataset, trainModel }) => {
+    test.setTimeout(120000); // real AutoML training runs well past the 30s default
+    // #195: the shared beforeEach uploads the un-trainable sample.csv; override
+    // with a trainable dataset in-test so AutoML actually fits a model.
+    const trainableDatasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
+    const modelId = await trainModel(trainableDatasetId, BINARY_CLASS_TARGET);
 
     try {
-      // Fetch model metrics via API
-      const response = await request.get(`/api/v1/models/${modelId}`);
+      // Metrics live on the model document at GET /api/v1/ml/{id} (there is no
+      // /models/{id} or training_metrics field — that was the stale contract).
+      const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH });
+      expect(response.ok()).toBeTruthy();
 
-      if (response.ok()) {
-        const model = await response.json();
+      const model = await response.json();
+      expect(model).toHaveProperty('metrics');
 
-        // Validate training_metrics field exists
-        expect(model).toHaveProperty('training_metrics');
+      const metrics = model.metrics;
+      expect(metrics).toBeTruthy();
+      expect(typeof metrics).toBe('object');
 
-        const metrics = model.training_metrics;
-
-        // Validate metrics structure
-        expect(metrics).toBeTruthy();
-        expect(typeof metrics).toBe('object');
-
-        // Verify at least one metric is present
-        const metricKeys = Object.keys(metrics);
-        expect(metricKeys.length).toBeGreaterThan(0);
-
-        // Verify metric values are numbers
-        for (const key of metricKeys) {
-          if (typeof metrics[key] === 'number') {
-            expect(metrics[key]).toBeGreaterThanOrEqual(0);
-          }
+      // At least one metric is present and numeric metrics are non-negative.
+      const metricKeys = Object.keys(metrics);
+      expect(metricKeys.length).toBeGreaterThan(0);
+      for (const key of metricKeys) {
+        if (typeof metrics[key] === 'number') {
+          expect(metrics[key]).toBeGreaterThanOrEqual(0);
         }
       }
-
-      // Clean up
-      await request.delete(`/api/v1/models/${modelId}`).catch(() => {});
-    } catch (error) {
-      await request.delete(`/api/v1/models/${modelId}`).catch(() => {});
-      throw error;
+    } finally {
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
     }
   });
 });
