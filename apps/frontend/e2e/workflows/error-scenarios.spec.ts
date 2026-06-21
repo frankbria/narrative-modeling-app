@@ -17,7 +17,11 @@ import { test, expect } from '../fixtures';
 import { UploadPage } from '../pages/UploadPage';
 import { TransformPage } from '../pages/TransformPage';
 import { TrainPage } from '../pages/TrainPage';
-import { PredictPage } from '../pages/PredictPage';
+import {
+  BINARY_CLASS_DATASET,
+  BINARY_CLASS_TARGET,
+} from '../helpers/binaryClassificationData';
+import { seedPredictionWorkflow } from '../helpers/seedWorkflow';
 import { join } from 'path';
 
 test.describe('Network and API Error Handling', () => {
@@ -168,25 +172,31 @@ test.describe('Validation and Data Error Scenarios', () => {
     }
   });
 
-  test('should prevent prediction with missing feature values', async ({ authenticatedPage, uploadTestDataset, trainModel }) => {
-    const datasetId = await uploadTestDataset();
-    const modelId = await trainModel(datasetId, 'purchased');
+  test('should prevent prediction with missing feature values', async ({
+    authenticatedPage,
+    request,
+    uploadTestDataset,
+    trainModel,
+  }) => {
+    test.setTimeout(120000); // real AutoML training runs well past the 30s default
+    const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
+    const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
 
-    await authenticatedPage.goto(`/models/${modelId}/predict`);
+    // /predict is stage-gated (#87/#88): seed the workflow to the prediction
+    // stage so the page renders the form instead of redirecting to /upload.
+    await seedPredictionWorkflow(authenticatedPage, request, datasetId, modelId);
 
-    const predictPage = new PredictPage(authenticatedPage);
+    await authenticatedPage.goto(`/predict/${datasetId}`);
 
-    // Try to predict without filling all required fields
-    const predictButton = authenticatedPage.locator('button:has-text(/predict|submit/i)');
+    // The prediction form must render (not redirect away).
+    await expect(authenticatedPage).toHaveURL(/\/predict\//, { timeout: 10000 });
 
-    if (await predictButton.isVisible({ timeout: 5000 })) {
-      await predictButton.click();
-
-      // Should show validation error for missing fields
-      await expect(
-        authenticatedPage.locator('text=/required|fill.*field|missing.*value/i')
-      ).toBeVisible({ timeout: 5000 });
-    }
+    // With required feature values unfilled the form is invalid, so the
+    // Make Prediction button is disabled — the client-side guard (#82) that
+    // prevents predicting with missing values.
+    const predictButton = authenticatedPage.getByTestId('make-prediction');
+    await expect(predictButton).toBeVisible({ timeout: 10000 });
+    await expect(predictButton).toBeDisabled();
   });
 
   test('should validate transformation prerequisites', async ({ authenticatedPage, uploadTestDataset }) => {
