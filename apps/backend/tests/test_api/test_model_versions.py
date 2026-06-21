@@ -9,6 +9,7 @@ as ``test_user_123``.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from beanie.odm.operators.find.comparison import In
 
 from app.models.ml_model import MLModel
 
@@ -47,7 +48,9 @@ async def family():
     for m in models:
         await m.insert()
     yield models
-    await MLModel.find(MLModel.user_id == USER).delete()
+    # Scoped cleanup: only the models this fixture created (the test user is
+    # shared across the suite, so don't delete everything it owns).
+    await MLModel.find(In(MLModel.model_id, [m.model_id for m in models])).delete()
 
 
 class TestListVersions:

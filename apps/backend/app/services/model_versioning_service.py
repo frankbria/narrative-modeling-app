@@ -13,6 +13,7 @@ both acceptance criteria.
 
 from __future__ import annotations
 
+import importlib
 import platform
 from datetime import UTC, datetime
 
@@ -34,7 +35,7 @@ def capture_environment() -> dict[str, str]:
     }
     for lib in ("sklearn", "xgboost", "lightgbm", "numpy"):
         try:
-            module = __import__(lib)
+            module = importlib.import_module(lib)
             env[lib] = getattr(module, "__version__", "unknown")
         except Exception:
             continue
@@ -103,12 +104,13 @@ class ModelVersioningService:
         ]
 
         # Demote the whole family in one bulk write, then promote the target.
-        # ponytail: read-then-promote across two concurrent promotions is
-        # last-writer-wins (the same accepted beta limitation as #87 workflow
-        # state — a Mongo transaction would need a replica set we don't run in
-        # tests). The bulk demote keeps the window tiny, and the version browser
-        # reads production_model_id as the *first* is_production member, so the
-        # UI still shows a single production version even if a race flagged two.
+        # Beta limitation: two concurrent promotions are last-writer-wins (the
+        # same accepted limitation as #87 workflow state — a serialized
+        # demote+promote would need a Mongo transaction, which needs a replica
+        # set we don't run in tests). The bulk demote keeps the window tiny, but
+        # if a second promote lands between this demote and the target save below,
+        # two members can briefly carry is_production=True; the version browser
+        # then reports whichever appears first by created_at as production_model_id.
         await MLModel.find(
             MLModel.user_id == user_id,
             MLModel.dataset_id == target.dataset_id,

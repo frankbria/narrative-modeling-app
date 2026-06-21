@@ -151,6 +151,21 @@ describe('ModelVersions', () => {
     expect(screen.getByLabelText('Select version 6')).toBeDisabled()
   })
 
+  it('shows an empty state when there are no versions', async () => {
+    mockService.getModelVersions.mockResolvedValue({
+      model_id: 'v2',
+      dataset_id: 'ds-1',
+      name: 'Churn',
+      total: 0,
+      production_model_id: null,
+      versions: [],
+    })
+    render(<ModelVersions modelId="v2" />)
+    expect(
+      await screen.findByText('No versions found for this model.')
+    ).toBeInTheDocument()
+  })
+
   it('shows an error when loading fails', async () => {
     mockService.getModelVersions.mockRejectedValue(new Error('boom'))
     render(<ModelVersions modelId="v2" />)

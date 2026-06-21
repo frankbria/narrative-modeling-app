@@ -5,7 +5,7 @@ mirrors these models field-for-field. Change both together.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -217,7 +217,9 @@ class ModelVersionEntry(BaseModel):
     dataset_version_id: str | None = None
     parent_model_id: str | None = None
     feature_names: list[str] = Field(default_factory=list)
-    environment_metadata: dict[str, str] | None = None
+    # Matches MLModel.environment_metadata (dict[str, Any]); values are strings
+    # today but typed permissively to avoid a serialization trap if widened.
+    environment_metadata: dict[str, Any] | None = None
     version_notes: str | None = None
 
 

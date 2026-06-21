@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from beanie.odm.operators.find.comparison import In
 
 from app.models.ml_model import MLModel
 from app.services.model_versioning_service import (
@@ -48,7 +49,44 @@ async def test_resolve_parent_chains_to_latest_family_member(setup_database):
             is None
         )
     finally:
-        await MLModel.find(MLModel.user_id == USER).delete()
+        await MLModel.find(In(MLModel.model_id, ["m1", "m2"])).delete()
+
+
+@pytest.mark.asyncio
+async def test_promote_and_get_production_version(setup_database):
+    await _model("p1", "Promo", 0).insert()
+    await _model("p2", "Promo", 10).insert()
+    try:
+        # No production version until one is promoted.
+        assert (
+            await model_versioning_service.get_production_version(
+                USER, "ds-lineage", "Promo"
+            )
+            is None
+        )
+
+        promoted, demoted = await model_versioning_service.promote_to_production(
+            "p2", USER
+        )
+        assert promoted.is_production is True
+        assert demoted == []
+        current = await model_versioning_service.get_production_version(
+            USER, "ds-lineage", "Promo"
+        )
+        assert current is not None and current.model_id == "p2"
+
+        # Re-promoting the current production version is an idempotent no-op.
+        again, demoted2 = await model_versioning_service.promote_to_production(
+            "p2", USER
+        )
+        assert again.is_production is True
+        assert demoted2 == []
+        current = await model_versioning_service.get_production_version(
+            USER, "ds-lineage", "Promo"
+        )
+        assert current.model_id == "p2"
+    finally:
+        await MLModel.find(In(MLModel.model_id, ["p1", "p2"])).delete()
 
 
 def test_capture_environment_records_python_and_sklearn():

@@ -165,7 +165,7 @@ export interface ModelVersionEntry {
   dataset_version_id: string | null
   parent_model_id: string | null
   feature_names: string[]
-  environment_metadata: Record<string, string> | null
+  environment_metadata: Record<string, unknown> | null
   version_notes: string | null
 }
 
