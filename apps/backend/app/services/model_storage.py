@@ -218,6 +218,11 @@ class ModelStorageService:
             calibration_method=model_metadata.get("calibration_method"),
             calibration_score=model_metadata.get("calibration_score"),
             residual_std=model_metadata.get("residual_std"),
+            # Hyperparameter tuning (issue #77).
+            tuning_strategy=model_metadata.get("tuning_strategy"),
+            tuning_time=model_metadata.get("tuning_time"),
+            improvement_from_tuning=model_metadata.get("improvement_from_tuning"),
+            tuning_results=model_metadata.get("tuning_results"),
             training_config=model_metadata.get("training_config", {})
         )
         

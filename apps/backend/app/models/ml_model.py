@@ -79,6 +79,17 @@ class MLModel(Document):
         None  # held-out residual std for regression intervals
     )
 
+    # Hyperparameter tuning (issue #77). All optional so models trained without
+    # tuning (the default) keep working. ``tuning_results`` is the serialized
+    # per-algorithm payload (best params + inline visualization data: parameter
+    # importance, optimization history, improvement vs default) surfaced by
+    # ``GET /{model_id}/tuning-results``; ``improvement_from_tuning`` is the best
+    # model's CV-score gain over its default hyperparameters.
+    tuning_strategy: str | None = None
+    tuning_time: float | None = None
+    improvement_from_tuning: float | None = None
+    tuning_results: dict[str, Any] | None = None
+
     # Training configuration
     training_config: dict[str, Any] = Field(default_factory=dict)
 

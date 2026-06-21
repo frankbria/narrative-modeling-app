@@ -66,11 +66,19 @@ dev = [
 interpretability = [
     "shap>=0.46.0",
 ]
+# Hyperparameter tuning stack (issue #77), isolated on the same removable-lever
+# pattern as interpretability. optuna powers Bayesian optimization; grid/random
+# search use scikit-learn (always present). The Bayesian path lazy-imports optuna
+# and degrades to random search when it's absent, so a slim image built with
+# `uv sync --no-dev --no-group tuning` still trains and tunes (grid/random only).
+tuning = [
+    "optuna>=4.1.0",
+]
 
 [tool.uv]
-# Keep shap installed by default (beta requires SHAP). --no-dev still installs
-# interpretability; only an explicit --no-group interpretability drops it.
-default-groups = ["dev", "interpretability"]
+# Keep shap + optuna installed by default (beta ships both). --no-dev still
+# installs interpretability and tuning; only an explicit --no-group drops them.
+default-groups = ["dev", "interpretability", "tuning"]
 
 [tool.ruff.lint]
 # On top of the default rule set (E, F): import-sorting (isort, "I", issue #176)

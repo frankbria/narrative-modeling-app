@@ -55,6 +55,7 @@ from app.services.model_training import (
     FeatureEngineeringConfig,
     TrainingCancelledError,
     TrainingEvent,
+    TuningConfig,
 )
 from app.services.model_training.algorithm_selector import AlgorithmSelector
 from app.services.model_training.comparison import (
@@ -368,13 +369,24 @@ async def train_model_task(
         if request.feature_config:
             feature_config = FeatureEngineeringConfig(**request.feature_config)
 
-        # Create AutoML engine
+        # Create AutoML engine. Hyperparameter tuning (issue #77) is opt-in via
+        # the existing training_config dict — no request-schema change. When
+        # enable_tuning is set, the nested tuning_config keys feed TuningConfig
+        # (an unknown strategy raises in __post_init__, surfaced as a failed job).
         training_config = request.training_config or {}
+        tuning_engine_config = None
+        if training_config.get("enable_tuning"):
+            raw_tuning = dict(training_config.get("tuning_config") or {})
+            if training_config.get("tuning_strategy"):
+                raw_tuning.setdefault("strategy", training_config["tuning_strategy"])
+            tuning_engine_config = TuningConfig(**raw_tuning)
         engine = AutoMLEngine(
             max_models=training_config.get("max_models", 5),
             cv_folds=training_config.get("cv_folds", 5),
             test_size=training_config.get("test_size", 0.2),
             random_state=42,
+            enable_tuning=bool(training_config.get("enable_tuning")),
+            tuning_config=tuning_engine_config,
         )
 
         # Progress callback persists per-algorithm progress to the TrainingJob.
@@ -470,6 +482,17 @@ async def train_model_task(
             "residual_std": result.residual_std,
             # SHAP interpretability (issue #80).
             "shap_explainer_type": result.shap_explainer_type,
+            # Hyperparameter tuning (issue #77). None when tuning was off.
+            # tuning_time is the sum of the per-algorithm search durations, NOT
+            # the full AutoML wall time (result.training_time).
+            "tuning_strategy": result.tuning_strategy,
+            "tuning_time": (
+                sum(r.get("total_time", 0.0) for r in result.tuning_results.values())
+                if result.tuning_results
+                else None
+            ),
+            "improvement_from_tuning": result.improvement_from_tuning,
+            "tuning_results": result.tuning_results,
             "training_config": training_config,
         }
 
@@ -1153,6 +1176,49 @@ async def get_shap_summary(
         plain_language=_interpretability_service.top_drivers_text(importance),
         evaluated_at=datetime.now(UTC),
     )
+
+
+@router.get("/{model_id}/tuning-results")
+async def get_tuning_results(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+) -> dict[str, Any]:
+    """Hyperparameter-tuning visualization data for a model (issue #77).
+
+    Returns the per-algorithm tuning payload captured at training time — best
+    params, parameter importance, optimization history, and improvement over the
+    default hyperparameters. For models trained without tuning (the default, and
+    every pre-#77 model), ``partial=true`` with an explanatory message and no
+    results — the endpoint never 500s for an owned model. 404 for
+    unknown/foreign models. Registered before ``/{model_id}`` so the literal
+    path segment wins over the catch-all id route.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    if not model.tuning_results:
+        return {
+            "model_id": model_id,
+            "partial": True,
+            "tuning_strategy": None,
+            "improvement_from_tuning": None,
+            "results": {},
+            "message": (
+                "Hyperparameter tuning was not run for this model. Enable it via "
+                "training_config.enable_tuning to optimize hyperparameters."
+            ),
+        }
+
+    return {
+        "model_id": model_id,
+        "partial": False,
+        "tuning_strategy": model.tuning_strategy,
+        "improvement_from_tuning": model.improvement_from_tuning,
+        "results": model.tuning_results,
+        "message": None,
+    }
 
 
 @router.get("/{model_id}", response_model=MLModel)
