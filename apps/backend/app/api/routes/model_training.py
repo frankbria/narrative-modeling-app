@@ -36,6 +36,9 @@ from app.schemas.evaluation import (
     ModelComparisonResponse,
     ModelEvaluationResponse,
     ModelEvaluationSummary,
+    ModelVersionEntry,
+    ModelVersionListResponse,
+    PromoteVersionResponse,
     RankedFeature,
     RegressionMetrics,
     ShapSummaryResponse,
@@ -43,6 +46,7 @@ from app.schemas.evaluation import (
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.evaluation_explanation_service import evaluation_explanation_service
+from app.services.exceptions import NotFoundError
 from app.services.interpretability_service import InterpretabilityService
 from app.services.metrics_service import MetricsService
 from app.services.model_storage import (
@@ -62,6 +66,7 @@ from app.services.model_training.comparison import (
     build_best_model_explanation,
     build_data_profile,
 )
+from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.s3_service import get_file_from_s3
 from app.utils.s3 import parse_s3_url
@@ -1219,6 +1224,89 @@ async def get_tuning_results(
         "results": model.tuning_results,
         "message": None,
     }
+
+
+def _version_entry(model: MLModel, version_number: int) -> ModelVersionEntry:
+    """Map an ``MLModel`` to a version-browser row (issue #78)."""
+    return ModelVersionEntry(
+        model_id=model.model_id,
+        version_number=version_number,
+        name=model.name,
+        algorithm=model.algorithm,
+        problem_type=model.problem_type,
+        cv_score=model.cv_score,
+        test_score=model.test_score,
+        is_production=model.is_production,
+        is_active=model.is_active,
+        created_at=model.created_at,
+        promoted_at=model.promoted_at,
+        dataset_id=model.dataset_id,
+        dataset_version_id=model.dataset_version_id,
+        parent_model_id=model.parent_model_id,
+        feature_names=model.feature_names,
+        environment_metadata=model.environment_metadata,
+        version_notes=model.version_notes,
+    )
+
+
+@router.get("/{model_id}/versions", response_model=ModelVersionListResponse)
+async def list_model_versions(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """List a model's version history (issue #78).
+
+    A version family is every model the user trained on the same dataset under
+    the same name; versions are ordered oldest → newest with sequential version
+    numbers, and each row carries its lineage (dataset version, features,
+    environment). 404 for unknown/foreign models. Registered before the
+    catch-all ``/{model_id}`` so the literal sub-path wins.
+    """
+    try:
+        family = await model_versioning_service.list_family(model_id, current_user_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Model not found") from exc
+
+    versions = [
+        _version_entry(model, idx) for idx, model in enumerate(family, start=1)
+    ]
+    production_id = next(
+        (m.model_id for m in family if m.is_production), None
+    )
+    anchor = next((m for m in family if m.model_id == model_id), None)
+    if anchor is None:  # anchor deleted between the two reads in list_family
+        raise HTTPException(status_code=404, detail="Model not found")
+    return ModelVersionListResponse(
+        model_id=model_id,
+        dataset_id=anchor.dataset_id,
+        name=anchor.name,
+        total=len(versions),
+        production_model_id=production_id,
+        versions=versions,
+    )
+
+
+@router.post("/{model_id}/promote", response_model=PromoteVersionResponse)
+async def promote_model_version(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """Promote a version to production, demoting its siblings (issue #78).
+
+    Rolling back is the same operation applied to an older version. 404 for
+    unknown/foreign models.
+    """
+    try:
+        promoted, demoted = await model_versioning_service.promote_to_production(
+            model_id, current_user_id
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Model not found") from exc
+
+    return PromoteVersionResponse(
+        model_id=promoted.model_id,
+        is_production=promoted.is_production,
+        promoted_at=promoted.promoted_at,
+        demoted_model_ids=demoted,
+    )
 
 
 @router.get("/{model_id}", response_model=MLModel)

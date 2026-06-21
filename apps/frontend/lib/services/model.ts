@@ -6,6 +6,8 @@ import { getAuthToken } from '@/lib/auth-helpers'
 import type {
   ModelComparisonResponse,
   ModelEvaluationResponse,
+  ModelVersionListResponse,
+  PromoteVersionResponse,
   ShapSummaryResponse
 } from '@/lib/types/evaluation'
 
@@ -497,6 +499,57 @@ export class ModelService {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
       throw new Error(error.detail || 'Failed to compare models')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * List a model's version history (issue #78). A version family is every model
+   * trained on the same dataset under the same name, ordered oldest → newest.
+   *
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async getModelVersions(
+    modelId: string,
+    token: string | null
+  ): Promise<ModelVersionListResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/versions`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch model versions')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Promote a version to production, demoting its siblings (issue #78).
+   * Rolling back is the same call applied to an older version.
+   *
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async promoteModelVersion(
+    modelId: string,
+    token: string | null
+  ): Promise<PromoteVersionResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/promote`,
+      {
+        method: 'POST',
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to promote model version')
     }
 
     return response.json()

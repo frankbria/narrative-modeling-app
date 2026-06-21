@@ -75,6 +75,13 @@ def sample_ml_model():
     mock_model.tuning_time = None
     mock_model.improvement_from_tuning = None
     mock_model.tuning_results = None
+    # Versioning & lineage metadata (issue #78) — defaults for a pre-#78 model.
+    mock_model.parent_model_id = None
+    mock_model.is_production = False
+    mock_model.promoted_at = None
+    mock_model.environment_metadata = None
+    mock_model.dataset_version_id = None
+    mock_model.version_notes = None
     mock_model.training_config = {"max_models": 5, "cv_folds": 5}
     mock_model.version = "1.0.0"
     mock_model.created_at = datetime.now(UTC)

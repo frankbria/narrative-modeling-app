@@ -90,6 +90,20 @@ class MLModel(Document):
     improvement_from_tuning: float | None = None
     tuning_results: dict[str, Any] | None = None
 
+    # Model versioning & lineage (issue #78). All optional/defaulted so pre-#78
+    # models degrade: they appear as standalone v1 with no production flag.
+    # A "version family" = all models sharing (user_id, dataset_id, name);
+    # ``parent_model_id`` links each version to the previous one in its family.
+    parent_model_id: str | None = None
+    is_production: bool = False  # the promoted version within its family
+    promoted_at: datetime | None = None
+    # Runtime environment captured at training time (python/sklearn/xgboost
+    # versions, platform) for reproducibility.
+    environment_metadata: dict[str, Any] | None = None
+    # The specific DatasetVersion the model was trained on, when available.
+    dataset_version_id: str | None = None
+    version_notes: str | None = None  # user-provided note for this version
+
     # Training configuration
     training_config: dict[str, Any] = Field(default_factory=dict)
 
@@ -101,6 +115,8 @@ class MLModel(Document):
             "model_id",
             [("user_id", 1), ("created_at", -1)],
             [("dataset_id", 1), ("is_active", 1)],
+            # Version-family lookup (issue #78).
+            [("user_id", 1), ("dataset_id", 1), ("name", 1)],
         ]
 
     class Config:

@@ -5,7 +5,7 @@ mirrors these models field-for-field. Change both together.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -192,3 +192,53 @@ class ModelComparisonResponse(BaseModel):
     problem_type: str
     dataset_id: str
     models: list[ModelEvaluationSummary]
+
+
+# --- Model versioning & history (issue #78) -------------------------------
+# Mirrored by apps/frontend/lib/types/evaluation.ts — change both together.
+
+
+class ModelVersionEntry(BaseModel):
+    """One version (one MLModel) in a model's version family."""
+
+    model_id: str
+    version_number: int  # sequential within the family, 1 = oldest
+    name: str
+    algorithm: str
+    problem_type: str
+    cv_score: float | None = None
+    test_score: float | None = None
+    is_production: bool = False
+    is_active: bool = True
+    created_at: datetime | None = None
+    promoted_at: datetime | None = None
+    # Lineage: which data/features produced this model.
+    dataset_id: str
+    dataset_version_id: str | None = None
+    parent_model_id: str | None = None
+    feature_names: list[str] = Field(default_factory=list)
+    # Matches MLModel.environment_metadata (dict[str, Any]); values are strings
+    # today but typed permissively to avoid a serialization trap if widened.
+    environment_metadata: dict[str, Any] | None = None
+    version_notes: str | None = None
+
+
+class ModelVersionListResponse(BaseModel):
+    """Response for GET /api/v1/ml/{model_id}/versions."""
+
+    model_id: str  # the queried model
+    dataset_id: str
+    name: str
+    total: int
+    production_model_id: str | None = None
+    versions: list[ModelVersionEntry]
+
+
+class PromoteVersionResponse(BaseModel):
+    """Response for POST /api/v1/ml/{model_id}/promote (also covers rollback —
+    rolling back is just promoting an older version)."""
+
+    model_id: str
+    is_production: bool
+    promoted_at: datetime | None = None
+    demoted_model_ids: list[str] = Field(default_factory=list)
