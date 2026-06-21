@@ -16,6 +16,10 @@ export async function seedPredictionWorkflow(
   modelId: string
 ): Promise<void> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  // The `dev-user-default` token differs from the fixtures' `e2e-test-token`,
+  // but under SKIP_AUTH both resolve to the same default user — so the seeded
+  // workflow is owned by the user the page loads as. (Same equivalence noted in
+  // data-preparation.spec.ts.)
   const headers = {
     Authorization: 'Bearer dev-user-default',
     'Content-Type': 'application/json',

@@ -25,11 +25,7 @@ import {
   BINARY_CLASS_DATASET,
   BINARY_CLASS_TARGET,
 } from '../helpers/binaryClassificationData';
-
-// Direct backend base + auth: Next.js does not proxy /api/v1, and the SKIP_AUTH
-// backend still requires an Authorization header for HTTPBearer.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-const ML_AUTH = { Authorization: 'Bearer e2e-test-token' };
+import { API_BASE, ML_AUTH } from '../helpers/mlApi';
 
 test.describe('Model Config Workflow', () => {
   let datasetId: string;

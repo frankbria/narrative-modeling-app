@@ -21,12 +21,8 @@ import {
   BINARY_CLASS_ROW,
   makeBinaryClassRows,
 } from '../helpers/binaryClassificationData';
+import { API_BASE, ML_AUTH } from '../helpers/mlApi';
 import { join } from 'path';
-
-// Direct backend base + auth header: Next.js does not proxy /api/v1, and the
-// SKIP_AUTH backend still requires an Authorization header for HTTPBearer.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-const ML_AUTH = { Authorization: 'Bearer e2e-test-token' };
 
 let perfMonitor: PerformanceMonitor;
 
@@ -274,24 +270,30 @@ test.describe('Performance - API Response Times', () => {
     // /predict-batch surface — the array call is the batch path.
     const batchData = makeBinaryClassRows(100);
 
-    const metric = await perfMonitor.measureApiCall(
-      'Batch Prediction API',
-      async () => {
-        const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
-          headers: ML_AUTH,
-          data: { data: batchData },
-          timeout: 5000,
-        });
-        expect(response.ok()).toBeTruthy();
-        const body = await response.json();
-        expect(Array.isArray(body.predictions)).toBeTruthy();
-        expect(body.predictions.length).toBe(100);
-      },
-      'Batch Prediction (100 rows)',
-      5000
-    );
+    try {
+      const metric = await perfMonitor.measureApiCall(
+        'Batch Prediction API',
+        async () => {
+          // No request-level timeout: the 5000ms budget is asserted on the
+          // recorded metric below, so a slow call yields a clean budget failure
+          // (test.setTimeout is the hard backstop).
+          const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
+            headers: ML_AUTH,
+            data: { data: batchData },
+          });
+          expect(response.ok()).toBeTruthy();
+          const body = await response.json();
+          expect(Array.isArray(body.predictions)).toBeTruthy();
+          expect(body.predictions.length).toBe(100);
+        },
+        'Batch Prediction (100 rows)',
+        5000
+      );
 
-    expect(metric.value).toBeLessThanOrEqual(5000);
+      expect(metric.value).toBeLessThanOrEqual(5000);
+    } finally {
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+    }
   });
 
   test('should compare versions (10k rows) within 10s', async ({
@@ -374,19 +376,23 @@ test.describe('Performance - Database Query Performance', () => {
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
 
-    const metric = await perfMonitor.measureApiCall(
-      'Model Metrics Query',
-      async () => {
-        const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH });
-        expect(response.ok()).toBeTruthy();
-        const body = await response.json();
-        expect(body).toHaveProperty('metrics');
-      },
-      'Model Metrics Retrieval',
-      500
-    );
+    try {
+      const metric = await perfMonitor.measureApiCall(
+        'Model Metrics Query',
+        async () => {
+          const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH });
+          expect(response.ok()).toBeTruthy();
+          const body = await response.json();
+          expect(body).toHaveProperty('metrics');
+        },
+        'Model Metrics Retrieval',
+        500
+      );
 
-    expect(metric.value).toBeLessThanOrEqual(500);
+      expect(metric.value).toBeLessThanOrEqual(500);
+    } finally {
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+    }
   });
 
   test('should fetch version history (20 versions) within 2s', async ({
@@ -443,7 +449,8 @@ test.describe('Performance - Frontend Rendering', () => {
     trainModel,
   }) => {
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
+    // [P4.12] will seed the workflow with this model id so /evaluate renders.
+    await trainModel(datasetId, BINARY_CLASS_TARGET);
 
     await authenticatedPage.goto(`/evaluate/${datasetId}`);
 
@@ -456,7 +463,6 @@ test.describe('Performance - Frontend Rendering', () => {
     );
 
     expect(metric.value).toBeLessThanOrEqual(2000);
-    void modelId;
   });
 
   // #195 / follow-up #234 [P4.12]: same /evaluate stage-gating as the confusion
@@ -467,7 +473,8 @@ test.describe('Performance - Frontend Rendering', () => {
     trainModel,
   }) => {
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
+    // [P4.12] will seed the workflow with this model id so /evaluate renders.
+    await trainModel(datasetId, BINARY_CLASS_TARGET);
 
     await authenticatedPage.goto(`/evaluate/${datasetId}`);
 
@@ -480,7 +487,6 @@ test.describe('Performance - Frontend Rendering', () => {
     );
 
     expect(metric.value).toBeLessThanOrEqual(2000);
-    void modelId;
   });
 
   test('should validate form (20 fields) within 100ms', async ({ authenticatedPage }) => {
@@ -554,24 +560,28 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
 
-    const predictionOperations = Array.from({ length: 10 }, () => async () => {
-      const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
-        headers: ML_AUTH,
-        data: { data: [BINARY_CLASS_ROW] },
+    try {
+      const predictionOperations = Array.from({ length: 10 }, () => async () => {
+        const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
+          headers: ML_AUTH,
+          data: { data: [BINARY_CLASS_ROW] },
+        });
+        expect(response.ok()).toBeTruthy();
+        const body = await response.json();
+        expect(body.predictions.length).toBe(1);
       });
-      expect(response.ok()).toBeTruthy();
-      const body = await response.json();
-      expect(body.predictions.length).toBe(1);
-    });
 
-    const metric = await perfMonitor.measureConcurrentOperations(
-      'Concurrent Predictions',
-      predictionOperations,
-      '10 Concurrent Predictions',
-      1000
-    );
+      const metric = await perfMonitor.measureConcurrentOperations(
+        'Concurrent Predictions',
+        predictionOperations,
+        '10 Concurrent Predictions',
+        1000
+      );
 
-    expect(metric.value).toBeLessThanOrEqual(1000);
+      expect(metric.value).toBeLessThanOrEqual(1000);
+    } finally {
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+    }
   });
 });
 
