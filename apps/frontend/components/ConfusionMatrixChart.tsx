@@ -88,7 +88,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
     selected !== null ? data.matrix[selected.row][selected.col] : 0
 
   return (
-    <div className="w-full">
+    <div className="w-full" data-testid="confusion-matrix">
       <div ref={containerRef} className="w-full overflow-x-auto">
         <svg
           width="100%"

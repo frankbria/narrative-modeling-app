@@ -465,7 +465,7 @@ export default function EvaluatePage() {
           {showCurvesTab && (
             <TabsContent value="curves" className="space-y-8 mt-4">
               {evaluation.roc_curve && (
-                <div>
+                <div data-testid="roc-curve">
                   <h3 className="font-semibold text-lg mb-2">ROC Curve</h3>
                   <ROCCurveChart data={evaluation.roc_curve} />
                 </div>
