@@ -8,10 +8,9 @@ This document describes the test infrastructure setup for the backend applicatio
 
 ## Type checking (mypy, blocking — issue #219)
 
-CI runs mypy as a **blocking** gate, filtered through a [`mypy-baseline`](https://github.com/orsinium-labs/mypy-baseline) baseline (`apps/backend/mypy-baseline.txt`): the pre-existing errors recorded there are tolerated, but any **new** type error fails the build.
+CI runs mypy as a **blocking** gate: a plain `uv run mypy app/` that fails on any error. The pre-existing-error baseline (`apps/backend/mypy-baseline.txt`) was burned down to zero and removed (#226), so there is nothing to tolerate.
 
-- **Check locally the way CI does:** `uv run mypy app/ | uv run mypy-baseline filter`
-- **After fixing a baselined error (or a refactor that shifts line anchors and breaks CI):** re-sync so the resolved lines drop out — `uv run mypy app/ | uv run mypy-baseline sync` — and commit the smaller `mypy-baseline.txt`. Never let it grow; the burndown to zero is tracked in #226.
+- **Check locally the way CI does:** `uv run mypy app/` — must report `Success: no issues found`.
 
 ## Service Prerequisites
 
