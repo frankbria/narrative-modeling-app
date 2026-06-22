@@ -202,6 +202,43 @@ def test_cases_cover_every_reported_confusion_pair(service):
         assert (pair.actual, pair.predicted) in case_pairs
 
 
+def test_malformed_x_test_degrades_to_no_matrix(service):
+    """X_test present but wrong column count → no usable matrix → partial."""
+    x, yt, yp, proba, labels, names = _classification_fixture(n=120)
+    # Drop a column so X_test no longer matches feature_names.
+    bad_x = x[:, :2]
+    data = service.analyze(
+        problem_type="classification",
+        y_test=yt, y_pred=yp, y_proba=proba, class_labels=labels,
+        x_test=bad_x, feature_names=names,
+    )
+    assert data.has_feature_matrix is False
+    assert data.segments == [] and data.clusters == [] and data.patterns == []
+    assert data.distribution is not None and data.confusion_pairs
+
+
+def test_misaligned_x_test_row_count_degrades(service):
+    """X_test row count != y length → degrade (avoids silent misalignment)."""
+    x, yt, yp, proba, labels, names = _classification_fixture(n=120)
+    short_x = x[:50]  # fewer rows than y
+    data = service.analyze(
+        problem_type="classification",
+        y_test=yt, y_pred=yp, y_proba=proba, class_labels=labels,
+        x_test=short_x, feature_names=names,
+    )
+    assert data.has_feature_matrix is False
+    assert data.segments == []
+
+
+def test_sanitize_strips_control_chars_and_truncates():
+    from app.services.error_analysis_service import _sanitize
+
+    # Control chars (NUL, ESC) are stripped; printable chars survive.
+    assert _sanitize("ag\x00e\x1b") == "age"
+    assert len(_sanitize("x" * 500)) == 200
+    assert _sanitize("age in [18, 25)") == "age in [18, 25)"
+
+
 def test_analyze_never_raises_on_garbage(service):
     # Mismatched/garbage inputs must degrade, not raise.
     data = service.analyze(

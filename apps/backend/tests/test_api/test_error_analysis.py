@@ -122,6 +122,9 @@ class TestErrorAnalysisEndpoint:
         assert body["partial"] is True
         assert body["distribution"] is None
         assert body["suggestions"] == []
+        # Early-return path still populates identity fields.
+        assert body["model_name"] == "Model m_noart"
+        assert body["evaluated_at"]
 
     @pytest.mark.asyncio
     async def test_full_classification_analysis(self, async_authorized_client):
@@ -152,6 +155,20 @@ class TestErrorAnalysisEndpoint:
         body = resp.json()
         assert body["partial"] is True
         assert body["confusion_pairs"]
+        assert body["segments"] == []
+        assert body["message"]
+
+    @pytest.mark.asyncio
+    async def test_malformed_x_test_reports_partial(self, async_authorized_client):
+        """X_test present but wrong shape → partial (not falsely full)."""
+        payload = _classification_payload()
+        payload["X_test"] = [[1.0], [2.0]]  # wrong shape, mismatched length
+        async with _models({"model_id": "m_badx"}):
+            with _patch_artifacts(payload):
+                resp = await async_authorized_client.get("/api/v1/ml/m_badx/errors")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["partial"] is True
         assert body["segments"] == []
         assert body["message"]
 

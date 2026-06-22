@@ -1272,7 +1272,6 @@ async def get_error_analysis(
             evaluated_at=datetime.now(UTC),
         )
 
-    has_matrix = bool(artifacts.get("X_test")) and bool(artifacts.get("feature_names"))
     data = error_analysis_service.analyze(
         problem_type=model.problem_type,
         y_test=artifacts["y_test"],
@@ -1298,7 +1297,10 @@ async def get_error_analysis(
         model_name=model.name,
         algorithm=model.algorithm,
         problem_type=model.problem_type,
-        partial=not has_matrix,
+        # Drive `partial` off the analysis result, not raw artifact presence: a
+        # malformed/misaligned X_test coerces to no usable matrix, so segments/
+        # clusters/patterns are empty and the model is genuinely partial.
+        partial=not data.has_feature_matrix,
         distribution=data.distribution,
         confusion_pairs=data.confusion_pairs,
         segments=data.segments,

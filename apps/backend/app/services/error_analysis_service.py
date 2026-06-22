@@ -67,6 +67,14 @@ def _as_str_array(values: Any) -> np.ndarray:
     return np.asarray([str(v) for v in values])
 
 
+def _sanitize(value: str, max_len: int = 200) -> str:
+    """Strip control chars and cap length before a user-controlled string (a
+    feature name, class label, or algorithm) reaches the OpenAI prompt or a
+    user-facing suggestion — a light defense against prompt injection."""
+    cleaned = "".join(ch for ch in str(value) if ch == " " or ch.isprintable())
+    return cleaned[:max_len]
+
+
 def _feature_matrix(
     x_test: Any, feature_names: list[str] | None
 ) -> tuple[np.ndarray | None, list[str]]:
@@ -126,8 +134,11 @@ class ErrorAnalysisService:
 
         errors = self._error_indicator(is_classification, yt, yp)
         x_arr, feat_names = _feature_matrix(x_test, feature_names)
-        if x_arr is not None:
-            x_arr = x_arr[:n]
+        # X_test must align row-for-row with the y arrays; a mismatched length
+        # (truncated/corrupted artifact) would silently misalign every
+        # feature-based section, so degrade to no matrix instead.
+        if x_arr is not None and x_arr.shape[0] != n:
+            x_arr, feat_names = None, []
 
         data = ErrorAnalysisData(has_feature_matrix=x_arr is not None)
         data.distribution = self._safe(
@@ -339,8 +350,9 @@ class ErrorAnalysisService:
         def walk(node: int, conditions: list[str]) -> None:
             left, right = t.children_left[node], t.children_right[node]
             if left == right:  # leaf
-                # tree_.value holds per-class PROPORTIONS (sklearn 1.x); use
-                # n_node_samples for the count and derive the error count.
+                # tree_.value holds per-class PROPORTIONS (sklearn >=1.4; target
+                # is 1.7) not counts; use n_node_samples for the sample count
+                # and derive the error count from the proportion.
                 samples = int(t.n_node_samples[node])
                 rate = float(t.value[node][0][err_col])
                 err_count = int(round(rate * samples))
@@ -460,26 +472,32 @@ class ErrorAnalysisService:
     ) -> dict[str, Any]:
         dist = data.distribution
         return {
-            "problem_type": problem_type,
-            "algorithm": algorithm or "the selected algorithm",
+            "problem_type": _sanitize(problem_type),
+            "algorithm": _sanitize(algorithm or "the selected algorithm"),
             "overall_error_rate": dist.overall_error_rate if dist else None,
             "total_errors": dist.total_errors if dist else 0,
             "worst_classes": (
-                sorted(
-                    (dist.per_class_error_rate or {}).items(),
-                    key=lambda kv: kv[1],
-                    reverse=True,
-                )[:3]
+                [
+                    (_sanitize(label), rate)
+                    for label, rate in sorted(
+                        (dist.per_class_error_rate or {}).items(),
+                        key=lambda kv: kv[1],
+                        reverse=True,
+                    )[:3]
+                ]
                 if dist
                 else []
             ),
             "top_confusion_pairs": [
-                (p.actual, p.predicted, p.count) for p in data.confusion_pairs[:3]
+                (_sanitize(p.actual), _sanitize(p.predicted), p.count)
+                for p in data.confusion_pairs[:3]
             ],
             "top_segments": [
-                (s.range_label, s.error_rate) for s in data.segments[:3]
+                (_sanitize(s.range_label), s.error_rate) for s in data.segments[:3]
             ],
-            "top_patterns": [(p.rule, p.error_rate) for p in data.patterns[:3]],
+            "top_patterns": [
+                (_sanitize(p.rule), p.error_rate) for p in data.patterns[:3]
+            ],
         }
 
     @staticmethod

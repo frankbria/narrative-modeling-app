@@ -297,16 +297,33 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCases.map((c) => (
-                    <tr key={c.index} className="border-b last:border-0">
-                      <td className="py-2 pr-4 font-mono">{c.index}</td>
-                      <td className="py-2 pr-4 font-mono">{c.actual}</td>
-                      <td className="py-2 pr-4 font-mono">{c.predicted}</td>
-                      <td className="py-2 pr-4">
-                        {c.confidence != null ? pct(c.confidence) : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredCases.map((c) => {
+                    const featureEntries = Object.entries(c.top_features)
+                    return (
+                      <tr key={c.index} className="border-b last:border-0 align-top">
+                        <td className="py-2 pr-4 font-mono">{c.index}</td>
+                        <td className="py-2 pr-4 font-mono">{c.actual}</td>
+                        <td className="py-2 pr-4 font-mono">{c.predicted}</td>
+                        <td className="py-2 pr-4">
+                          {c.confidence != null ? pct(c.confidence) : '—'}
+                          {featureEntries.length > 0 && (
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-xs text-muted-foreground">
+                                features
+                              </summary>
+                              <div className="mt-1 text-xs font-mono text-muted-foreground">
+                                {featureEntries.map(([name, value]) => (
+                                  <div key={name}>
+                                    {name}: {value}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
