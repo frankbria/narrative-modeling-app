@@ -158,6 +158,50 @@ def test_regression_uses_residual_threshold(service):
     assert data.cases[0].confidence is None
 
 
+def test_regression_constant_bias_is_all_errors(service):
+    """Every prediction off by a constant nonzero amount = systematic error."""
+    yt = np.arange(50, dtype=float)
+    yp = yt + 10.0  # constant +10 bias -> residual std == 0
+    data = service.analyze(
+        problem_type="regression",
+        y_test=yt, y_pred=yp, y_proba=None, class_labels=None,
+        x_test=None, feature_names=None,
+    )
+    assert data.distribution.total_errors == len(yt)
+
+
+def test_regression_zero_residual_has_no_errors(service):
+    yt = np.arange(50, dtype=float)
+    data = service.analyze(
+        problem_type="regression",
+        y_test=yt, y_pred=yt.copy(), y_proba=None, class_labels=None,
+        x_test=None, feature_names=None,
+    )
+    assert data.distribution.total_errors == 0
+
+
+def test_cases_cover_every_reported_confusion_pair(service):
+    """With >max_cases errors, each ranked confusion pair must keep cases so the
+    client-side drill-down never shows an empty list."""
+    rng = np.random.default_rng(7)
+    n = 1000
+    yt = rng.choice(["A", "B", "C"], size=n)
+    yp = yt.copy()
+    # Inject 3 distinct confusion pairs, the rarest grouped at the END of the
+    # array (would be dropped by a naive first-N cap).
+    yp[:300] = np.where(yt[:300] == "A", "B", yp[:300])  # A->B (early, common)
+    yp[-40:] = np.where(yt[-40:] == "C", "A", yp[-40:])  # C->A (late, rare)
+    data = service.analyze(
+        problem_type="classification",
+        y_test=yt, y_pred=yp, y_proba=None, class_labels=["A", "B", "C"],
+        x_test=None, feature_names=None, max_cases=200,
+    )
+    assert len(data.cases) <= 200
+    case_pairs = {(c.actual, c.predicted) for c in data.cases}
+    for pair in data.confusion_pairs:
+        assert (pair.actual, pair.predicted) in case_pairs
+
+
 def test_analyze_never_raises_on_garbage(service):
     # Mismatched/garbage inputs must degrade, not raise.
     data = service.analyze(

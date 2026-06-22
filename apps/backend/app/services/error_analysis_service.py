@@ -163,7 +163,9 @@ class ErrorAnalysisService:
         resid = np.asarray(yp, dtype=float) - np.asarray(yt, dtype=float)
         std = float(np.std(resid))
         if std == 0:
-            return np.zeros(len(resid), dtype=bool)
+            # Constant residual: all-zero → no errors; constant nonzero bias
+            # (e.g. every prediction off by +10) → every row is an error.
+            return np.abs(resid) > 0
         return np.abs(resid) > REGRESSION_ERROR_SIGMA * std
 
     def _safe(self, name: str, fn: Any, *args: Any) -> Any:
@@ -378,7 +380,30 @@ class ErrorAnalysisService:
                 proba = np.asarray(y_proba, dtype=float)
             except (ValueError, TypeError):
                 proba = None
-        err_idx = np.where(errors)[0][:max_cases]
+        all_err = np.where(errors)[0]
+        if is_classification and len(all_err) > max_cases:
+            # Round-robin across confusion-pair groups so every reported pair
+            # keeps at least some cases — otherwise a first-N-by-index cap could
+            # drop all examples of a pair that the dashboard still ranks, and
+            # clicking it (client-side drill-down) would show nothing.
+            yt_s = _as_str_array(yt)
+            yp_s = _as_str_array(yp)
+            groups: dict[tuple[str, str], list[int]] = {}
+            for idx in all_err:
+                groups.setdefault((yt_s[idx], yp_s[idx]), []).append(int(idx))
+            ordered = sorted(groups.values(), key=len, reverse=True)
+            selected: list[int] = []
+            pos = 0
+            while len(selected) < max_cases and any(pos < len(g) for g in ordered):
+                for g in ordered:
+                    if pos < len(g):
+                        selected.append(g[pos])
+                        if len(selected) >= max_cases:
+                            break
+                pos += 1
+            err_idx = np.array(sorted(selected))
+        else:
+            err_idx = all_err[:max_cases]
         show = feat_names[:MAX_TOP_FEATURES_PER_CASE]
         cases: list[ErrorCase] = []
         for i in err_idx:

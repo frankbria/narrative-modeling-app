@@ -53,5 +53,7 @@ Real surface is **`MLModel` / `/api/v1/ml/`** (memory: two-model-surfaces). Cuts
 ## Known limitations
 - Error analysis uses **engineered** features (same as SHAP #80); no original-space reconstruction.
 - Clustering = KMeans (k by simple heuristic), not DBSCAN/t-SNE. Segments = quantile bins.
-- Drill-down is client-side; no server-side `POST /error-patterns`.
+- Drill-down is client-side; no server-side `POST /error-patterns`. Cases are
+  capped at 200 but round-robin across confusion pairs so every ranked pair keeps
+  examples (codex review fix).
 - Pre-#81 models (no `X_test`) → distribution/pairs/cases only, segments/clusters/patterns empty.
