@@ -4,6 +4,7 @@
 
 import { getAuthToken } from '@/lib/auth-helpers'
 import type {
+  ErrorAnalysisResponse,
   ModelComparisonResponse,
   ModelEvaluationResponse,
   ModelVersionListResponse,
@@ -477,6 +478,35 @@ export class ModelService {
   }
 
   /**
+   * Error analysis for a model (issue #81): distribution, confusion pairs,
+   * high-error segments, clusters, decision-tree patterns, error cases, and AI
+   * suggestions. Degrades to `partial` for models without a stored feature
+   * matrix; the endpoint never 500s for an owned model.
+   *
+   * @param modelId - Id of the model to analyze.
+   * @param token - Bearer token, or `null` to omit the Authorization header.
+   * @throws Error with the backend `detail` message on a non-OK response.
+   */
+  static async getErrorAnalysis(
+    modelId: string,
+    token: string | null
+  ): Promise<ErrorAnalysisResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/errors`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to fetch error analysis')
+    }
+
+    return response.json()
+  }
+
+  /**
    * Compare 2-5 models trained on the same dataset (issue #79).
    *
    * @param modelIds - Ids of the models to compare.
@@ -822,6 +852,12 @@ class ModelServiceClient {
   async getEvaluation(modelId: string): Promise<ModelEvaluationResponse> {
     const token = await getAuthToken()
     return ModelService.getEvaluation(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a model's error analysis. */
+  async getErrorAnalysis(modelId: string): Promise<ErrorAnalysisResponse> {
+    const token = await getAuthToken()
+    return ModelService.getErrorAnalysis(modelId, token)
   }
 
   /** Resolve the auth token automatically and compare models. */

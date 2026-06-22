@@ -50,6 +50,31 @@ describe('modelService instance export', () => {
     expect(url).toContain('dataset_id=ds-99');
   });
 
+  it('getErrorAnalysis() resolves the token and requests the errors endpoint', async () => {
+    const analysis = { model_id: 'm9', partial: false, confusion_pairs: [] };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(analysis),
+    });
+
+    const result = await modelService.getErrorAnalysis('m9');
+
+    expect(result).toEqual(analysis);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('http://localhost:8000/api/v1/ml/m9/errors');
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer svc-token');
+  });
+
+  it('getErrorAnalysis() throws the backend detail on a non-OK response', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      json: jest.fn().mockResolvedValue({ detail: 'nope' }),
+    });
+
+    await expect(modelService.getErrorAnalysis('m9')).rejects.toThrow('nope');
+  });
+
   it('getModel() resolves the token and requests the model detail endpoint', async () => {
     const model = { model_id: 'm7', name: 'Detail', is_active: true };
     (global.fetch as jest.Mock).mockResolvedValue({

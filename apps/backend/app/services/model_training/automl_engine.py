@@ -100,6 +100,10 @@ class AutoMLResult:
     y_pred: np.ndarray | None = None
     y_proba: np.ndarray | None = None
     class_labels: list[str] | None = None
+    # Held-out transformed feature matrix for error analysis (issue #81), aligned
+    # row-for-row with ``y_test``/``y_pred``. ``None`` when unavailable; columns
+    # follow ``feature_names``.
+    x_test: np.ndarray | None = None
     # Confidence/uncertainty metadata (issue #83). ``best_model.estimator`` is
     # swapped for its calibrated wrapper when ``is_calibrated`` is True, so the
     # persisted model yields calibrated probabilities. ``residual_std`` powers
@@ -507,6 +511,7 @@ class AutoMLEngine:
             y_pred=y_pred_best,
             y_proba=y_proba_best,
             class_labels=class_labels,
+            x_test=np.asarray(X_test_transformed),
             is_calibrated=is_calibrated,
             calibration_method=calibration_method,
             calibration_score=calibration_score,

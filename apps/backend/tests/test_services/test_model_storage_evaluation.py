@@ -68,6 +68,35 @@ class TestBuildEvaluationPayload:
         assert round_tripped["class_labels"] is None
 
     @pytest.mark.unit
+    def test_feature_matrix_persisted_for_error_analysis(self):
+        """X_test + feature_names land in the payload when provided (#81)."""
+        payload = build_evaluation_payload(
+            problem_type="binary_classification",
+            y_test=np.array(["yes", "no"]),
+            y_pred=np.array(["yes", "yes"]),
+            y_proba=None,
+            class_labels=["no", "yes"],
+            x_test=np.array([[1.0, 2.0], [3.0, 4.0]]),
+            feature_names=["a", "b"],
+        )
+        round_tripped = json.loads(json.dumps(payload, allow_nan=False))
+        assert round_tripped["X_test"] == [[1.0, 2.0], [3.0, 4.0]]
+        assert round_tripped["feature_names"] == ["a", "b"]
+
+    @pytest.mark.unit
+    def test_feature_matrix_omitted_when_absent(self):
+        """Pre-#81 callers omit X_test → keys simply absent (degrade to partial)."""
+        payload = build_evaluation_payload(
+            problem_type="regression",
+            y_test=np.array([1.0]),
+            y_pred=np.array([1.1]),
+            y_proba=None,
+            class_labels=None,
+        )
+        assert "X_test" not in payload
+        assert "feature_names" not in payload
+
+    @pytest.mark.unit
     def test_numpy_bool_labels(self):
         payload = build_evaluation_payload(
             problem_type="binary_classification",

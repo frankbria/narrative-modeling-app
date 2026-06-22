@@ -1,39 +1,57 @@
-# Issue #78 — [P5.2] Model versioning and history tracking
+# Issue #81 — Error Analysis Tools (adapted plan)
 
-## Architecture decision (verified against code)
-- Real models = **`MLModel`** (`app/models/ml_model.py`, `/api/v1/ml/` routes, created at training in `model_storage.save_model`). The frontend `ModelService` + every live model page use `/ml/`.
-- **`ModelConfig`** (`app/models/model.py`, `/models/` routes) already has `parent_model_id` + `deployment_config` + `mark_deployed()`, BUT it is a **dead/legacy surface** — never created by the real training flow. CodeRabbit's plan targets it (wrong). Traycer's plan creates brand-new `ModelVersion`/`ModelLineage` documents + 4 pages + React Flow (massively over-scoped).
-- **Chosen: build versioning on `MLModel`.** No new documents, no new deps.
+**Phase 5.3 post-beta V2.** Build error-analysis tools: misclassification patterns, error
+clustering/segments, confusion pairs, AI suggestions, error-case browser with drill-down.
 
-## Version family grouping (no retrain wiring needed)
-- A **model family** = all `MLModel`s sharing `(user_id, dataset_id, name)`. Version number = chronological order within the family. Gives instant version history from existing data, zero migration.
-- Add optional `parent_model_id` for explicit lineage; grouping-by-name is the primary mechanism.
+## Scope decisions (vs. stale Traycer plan)
+The Traycer/CodeRabbit plans target the **dead legacy `ModelConfig` / `/models/` surface**.
+Real surface is **`MLModel` / `/api/v1/ml/`** (memory: two-model-surfaces). Cuts:
+
+- **Reuse #79's `evaluation_data.json`** — persist the held-out **transformed feature matrix
+  `X_test` + `feature_names` into the SAME payload**. No new MLModel field, no new S3 file,
+  no new loader (reuse `load_evaluation_artifacts`). Pre-#81 models lack `X_test` → `partial`.
+- **One endpoint** `GET /api/v1/ml/{model_id}/errors`. Drop `POST /error-patterns` — drill-down
+  is **client-side filtering** of returned cases. Never 500 for owned models; 404 foreign.
+- **AI suggestions** via the OpenAI circuit breaker + deterministic rule-based fallback,
+  mirroring `EvaluationExplanationService` (NOT MCP — that's not the real AI path).
+- **Frontend: one `ErrorAnalysisDashboard`** in a new **"Errors" tab** on `app/model/[id]/page.tsx`.
+  Reuse `ConfusionMatrixChart` + `BarChart` + tables. **Drop** the 4 bespoke viz components
+  (PatternTree/ClusterScatter/SegmentChart/ConfusionMatrixHeatmap) and the dedicated route.
 
 ## Backend
-1. `MLModel`: add optional fields (all default → pre-#78 models degrade): `parent_model_id`, `is_production` (bool=False), `promoted_at`, `environment_metadata` (dict), `dataset_version_id`.
-2. `app/services/model_versioning_service.py` (lean, mirrors `versioning_service.py`):
-   - `list_versions(model_id, user_id)` → resolve family by (dataset_id,name), order by created_at, assign version_number, flag is_production.
-   - `promote_to_production(model_id, user_id)` → set is_production on target, demote siblings, stamp promoted_at. **Rollback == promote an older version** (same op — documented, no separate endpoint).
-   - `get_production_version(dataset_id, name, user_id)`.
-3. Endpoints under `/ml/` (registered before dynamic `/{model_id}`):
-   - `GET  /ml/{model_id}/versions` → version browser data (version#, status, algorithm, scores, dataset_version_id, features, env).
-   - `POST /ml/{model_id}/promote` → promote to production (handles rollback).
-   - **Comparison: reuse existing `POST /ml/compare` (#79).**
-4. Training (`model_storage.save_model`): best-effort capture `environment_metadata` (python/sklearn/xgboost versions) + `dataset_version_id` (if available) + `parent_model_id` (current production in family) when creating `MLModel`.
+1. `automl_engine.py`: add `X_test: np.ndarray | None` to `AutoMLResult`; set it from
+   `X_test_transformed.to_numpy()` (already in memory at line ~255). `feature_names` already exists.
+2. `model_storage.py::build_evaluation_payload`: add optional `X_test`/`feature_names` args →
+   JSON-safe rows under `payload["X_test"]` + `payload["feature_names"]`.
+3. `model_training.py` (~509): pass `X_test=result.X_test, feature_names=result.feature_names`.
+4. `app/schemas/error_analysis.py`: `ErrorDistribution`, `ConfusionPair`, `ErrorSegment`,
+   `ErrorCluster`, `ErrorPattern`, `ErrorCase`, `ErrorAnalysisResponse` (with `partial`).
+5. `app/services/error_analysis_service.py` — stateless, **never raises**:
+   - distribution: overall + per-class error rate (y arrays)
+   - confusion pairs: off-diagonal counts, reuse `MetricsService.compute_confusion_matrix`
+   - segments: per-feature quantile binning, error rate per bin (needs X_test)
+   - clusters: KMeans on scaled error rows, label by top distinguishing features (needs X_test)
+   - patterns: shallow `DecisionTreeClassifier` surrogate on error indicator → readable rules (X_test)
+   - cases: index/actual/predicted/confidence (+ top feature values); regression = residual-based
+   - `generate_suggestions`: rule-based + optional OpenAI (circuit breaker)
+6. `model_training.py`: `GET /{model_id}/errors` registered **before** catch-all `/{model_id}`.
 
 ## Frontend
-1. `lib/services/model.ts`: add `getVersions(modelId)` + `promoteVersion(modelId)` + types.
-2. `app/model/[id]/page.tsx`: add a **"Versions" tab** — table (version#, status badge, algorithm, CV/test scores, created, Promote button), per-row dataset version + feature set (= lineage), reuse `ModelComparisonTable` for side-by-side when 2+ selected. No new pages, no React Flow.
+7. `lib/types/evaluation.ts`: mirror error-analysis schemas.
+8. `lib/services/model.ts`: `getErrorAnalysis(modelId)`.
+9. `components/ErrorAnalysisDashboard.tsx`: overview cards + sections (distribution, confusion
+   pairs, patterns, segments, clusters, cases w/ confusion-pair filter, AI suggestions).
+10. `app/model/[id]/page.tsx`: add "Errors" tab → `<ErrorAnalysisDashboard modelId={modelId} />`.
 
-## Tests
-- Backend: `tests/test_services/test_model_versioning_service.py`, `tests/test_api/test_model_versions.py` (list/promote/rollback/ownership/degradation).
-- Frontend: extend model detail page test for the Versions tab + service mocks.
+## Tests (TDD)
+- `tests/test_services/test_error_analysis_service.py` (distribution/pairs/segments/clusters/
+  patterns/cases/suggestions + empty-errors + regression + never-raises)
+- `tests/test_api/test_error_analysis.py` (full / partial / 404 / regression)
+- extend `test_model_storage.py` (X_test in payload)
+- `__tests__/components/ErrorAnalysisDashboard.test.tsx`, extend `model.test.ts`
 
-## Acceptance Criteria
-- [ ] AC1 Automatic version creation per run with metadata (dataset version, feature set, algorithm, params, metrics, timestamps, environment)
-- [ ] AC2 Version browser UI + side-by-side comparison
-- [ ] AC3 Promote to production / rollback
-- [ ] AC4 Model lineage visualization (which data/features produced which models)
-
-## Skipped vs Traycer (add when needed)
-Separate ModelVersion/ModelLineage documents, 4 new pages, React Flow dep, archive/retention policy, audit log, delete endpoint.
+## Known limitations
+- Error analysis uses **engineered** features (same as SHAP #80); no original-space reconstruction.
+- Clustering = KMeans (k by simple heuristic), not DBSCAN/t-SNE. Segments = quantile bins.
+- Drill-down is client-side; no server-side `POST /error-patterns`.
+- Pre-#81 models (no `X_test`) → distribution/pairs/cases only, segments/clusters/patterns empty.

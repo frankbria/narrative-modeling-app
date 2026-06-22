@@ -191,3 +191,69 @@ export function isClassificationMetrics(
 ): metrics is ClassificationMetrics {
   return 'accuracy' in metrics
 }
+
+// --- Error analysis (issue #81) — mirrors app/schemas/error_analysis.py ---
+
+export interface ErrorDistribution {
+  total_samples: number
+  total_errors: number
+  overall_error_rate: number
+  per_class_error_rate: Record<string, number>
+}
+
+export interface ConfusionPair {
+  actual: string
+  predicted: string
+  count: number
+  rate: number
+}
+
+export interface ErrorSegment {
+  feature: string
+  range_label: string
+  lower: number | null
+  upper: number | null
+  error_rate: number
+  error_count: number
+  sample_count: number
+}
+
+export interface ErrorCluster {
+  cluster_id: number
+  size: number
+  characteristics: string[]
+  dominant_confusion: string | null
+}
+
+export interface ErrorPattern {
+  rule: string
+  error_rate: number
+  error_count: number
+  sample_count: number
+}
+
+export interface ErrorCase {
+  index: number
+  actual: string
+  predicted: string
+  confidence: number | null
+  top_features: Record<string, number>
+}
+
+export interface ErrorAnalysisResponse {
+  model_id: string
+  model_name: string | null
+  algorithm: string | null
+  problem_type: string
+  partial: boolean
+  distribution: ErrorDistribution | null
+  confusion_pairs: ConfusionPair[]
+  segments: ErrorSegment[]
+  clusters: ErrorCluster[]
+  patterns: ErrorPattern[]
+  cases: ErrorCase[]
+  suggestions: string[]
+  suggestions_generated_by: 'openai' | 'fallback'
+  message: string | null
+  evaluated_at: string
+}
