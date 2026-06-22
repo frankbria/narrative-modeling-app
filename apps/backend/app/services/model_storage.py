@@ -55,13 +55,22 @@ def build_evaluation_payload(
     y_pred: Any,
     y_proba: Any | None,
     class_labels: list[str] | None,
+    x_test: Any | None = None,
+    feature_names: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the JSON-safe evaluation-artifact payload persisted to S3.
 
     Arrays may be numpy arrays, pandas Series, or plain lists; all values are
     converted to JSON-safe builtins (issue #79).
+
+    ``x_test`` (the held-out transformed feature matrix) + ``feature_names`` are
+    persisted for error analysis (issue #81); both are optional, so pre-#81
+    models simply lack them and the error-analysis endpoint degrades to
+    ``partial`` (no segments/clusters/patterns).
+    ponytail: full held-out X persisted; sample it if held-out sets ever grow
+    large enough to bloat the JSON.
     """
-    return {
+    payload = {
         "problem_type": problem_type,
         "y_test": _to_json_safe(np.asarray(y_test)),
         "y_pred": _to_json_safe(np.asarray(y_pred)),
@@ -71,6 +80,10 @@ def build_evaluation_payload(
         ),
         "created_at": datetime.now(UTC).isoformat(),
     }
+    if x_test is not None and feature_names:
+        payload["X_test"] = _to_json_safe(np.asarray(x_test))
+        payload["feature_names"] = [str(name) for name in feature_names]
+    return payload
 
 
 def build_shap_payload(shap_global: Any) -> dict[str, Any] | None:

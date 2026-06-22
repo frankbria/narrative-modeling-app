@@ -29,6 +29,7 @@ from app.models.training_job import (
     TrainingLogEntry,
 )
 from app.models.user_data import UserData
+from app.schemas.error_analysis import ErrorAnalysisResponse
 from app.schemas.evaluation import (
     ClassificationMetrics,
     FeatureImportanceResponse,
@@ -45,6 +46,7 @@ from app.schemas.evaluation import (
 )
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
+from app.services.error_analysis_service import error_analysis_service
 from app.services.evaluation_explanation_service import evaluation_explanation_service
 from app.services.exceptions import NotFoundError
 from app.services.interpretability_service import InterpretabilityService
@@ -512,6 +514,8 @@ async def train_model_task(
                     y_pred=result.y_pred,
                     y_proba=result.y_proba,
                     class_labels=result.class_labels,
+                    x_test=result.x_test,
+                    feature_names=result.feature_names,
                 )
             except Exception as exc:
                 logger.warning(
@@ -1224,6 +1228,90 @@ async def get_tuning_results(
         "results": model.tuning_results,
         "message": None,
     }
+
+
+@router.get("/{model_id}/errors", response_model=ErrorAnalysisResponse)
+async def get_error_analysis(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """Error analysis for a model (issue #81).
+
+    Surfaces error distribution, commonly-confused class pairs, high-error
+    feature segments, error clusters, decision-tree error patterns, a browsable
+    list of error cases, and AI improvement suggestions (rule-based fallback when
+    OpenAI is unavailable). Computed on-demand from the held-out arrays + feature
+    matrix persisted at training time. Models trained before #81 (no feature
+    matrix) — or whose artifacts are missing — degrade to ``partial=true`` with
+    distribution / confusion pairs / cases only; an owned model never 500s. 404
+    for unknown/foreign models. Registered before ``/{model_id}`` so the literal
+    path segment wins over the catch-all id route.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    artifacts = await MetricsService.load_evaluation_artifacts(model)
+    if (
+        not artifacts
+        or artifacts.get("y_test") is None
+        or artifacts.get("y_pred") is None
+    ):
+        return ErrorAnalysisResponse(
+            model_id=model_id,
+            model_name=model.name,
+            algorithm=model.algorithm,
+            problem_type=model.problem_type,
+            partial=True,
+            message=(
+                "Error analysis is unavailable for this model. It may have been "
+                "trained before evaluation artifacts were captured."
+            ),
+            suggestions=[],
+            evaluated_at=datetime.now(UTC),
+        )
+
+    data = error_analysis_service.analyze(
+        problem_type=model.problem_type,
+        y_test=artifacts["y_test"],
+        y_pred=artifacts["y_pred"],
+        y_proba=artifacts.get("y_proba"),
+        class_labels=artifacts.get("class_labels"),
+        x_test=artifacts.get("X_test"),
+        feature_names=artifacts.get("feature_names"),
+    )
+    suggestions, generated_by = await error_analysis_service.generate_suggestions(
+        data, problem_type=model.problem_type, algorithm=model.algorithm
+    )
+
+    message = None
+    if not data.has_feature_matrix:
+        message = (
+            "This model has no stored feature matrix (trained before #81), so "
+            "high-error segments, clusters, and patterns are unavailable. "
+            "Distribution, confusion pairs, and error cases are still shown."
+        )
+    return ErrorAnalysisResponse(
+        model_id=model_id,
+        model_name=model.name,
+        algorithm=model.algorithm,
+        problem_type=model.problem_type,
+        # Drive `partial` off the analysis result, not raw artifact presence: a
+        # malformed/misaligned X_test coerces to no usable matrix, so segments/
+        # clusters/patterns are empty and the model is genuinely partial.
+        partial=not data.has_feature_matrix,
+        distribution=data.distribution,
+        confusion_pairs=data.confusion_pairs,
+        segments=data.segments,
+        clusters=data.clusters,
+        patterns=data.patterns,
+        cases=data.cases,
+        suggestions=suggestions,
+        suggestions_generated_by=generated_by,
+        message=message,
+        evaluated_at=datetime.now(UTC),
+    )
 
 
 def _version_entry(model: MLModel, version_number: int) -> ModelVersionEntry:

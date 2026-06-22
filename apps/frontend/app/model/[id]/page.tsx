@@ -28,6 +28,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ModelPerformanceChart } from '@/components/ModelPerformanceChart'
 import { ModelVersions } from '@/components/ModelVersions'
+import { ErrorAnalysisDashboard } from '@/components/ErrorAnalysisDashboard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function ModelDetailPage() {
@@ -231,9 +232,10 @@ export default function ModelDetailPage() {
 
       {/* Detailed Information */}
       <Tabs defaultValue="performance" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
+          <TabsTrigger value="errors">Errors</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
@@ -292,6 +294,10 @@ export default function ModelDetailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="errors" className="space-y-4">
+          <ErrorAnalysisDashboard modelId={modelId} />
         </TabsContent>
 
         <TabsContent value="versions" className="space-y-4">
