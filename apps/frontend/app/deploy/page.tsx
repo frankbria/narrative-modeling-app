@@ -8,8 +8,11 @@ import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy } from 'lucide-react';
+import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy, BookOpen } from 'lucide-react';
 import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
+import { modelService } from '@/lib/services/model';
+import type { ModelFeatureDescriptor } from '@/lib/services/model';
+import { EndpointTester } from '@/components/EndpointTester';
 
 export default function DeployPage() {
   const { state, completeStage, requestStageRedirect } = useWorkflow();
@@ -18,6 +21,28 @@ export default function DeployPage() {
   const [loading, setLoading] = useState(false);
   const [deployment, setDeployment] = useState<DeployResponse | null>(null);
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'deployed'>('idle');
+  // Real features for the example request (AC3). Empty until loaded.
+  const [exampleFeatures, setExampleFeatures] = useState<ModelFeatureDescriptor[]>([]);
+
+  useEffect(() => {
+    if (deploymentStatus !== 'deployed' || !state.modelId) return;
+    let active = true;
+    modelService
+      .getModelFeatures(state.modelId)
+      .then((data) => {
+        if (active) setExampleFeatures(data.features);
+      })
+      .catch(() => {
+        /* example falls back to a generic body */
+      });
+    return () => {
+      active = false;
+    };
+  }, [deploymentStatus, state.modelId]);
+
+  // FastAPI serves the interactive Swagger UI at the host root `/docs`; API_URL
+  // includes the `/api/v1` prefix, so strip it to reach the docs page.
+  const docsUrl = `${API_URL.replace(/\/api\/v1\/?$/, '')}/docs`;
 
   useEffect(() => {
     // Stage access (with a helpful redirect) is handled by useStageGuard.
@@ -37,9 +62,10 @@ export default function DeployPage() {
   const checkDeploymentStatus = async () => {
     try {
       const token = await getAuthToken();
-      // Deployment status lives on the model record; there is no dedicated
-      // `/deployment` route. Read `deployment_config` from GET /models/{id}.
-      const response = await fetch(`${API_URL}/models/${state.modelId}`, {
+      // Real trained models are MLModel documents served at /ml/{id} (issue #84;
+      // the old /models/{id} ModelConfig surface is dead and 404s). Deployment
+      // state lives on the model record's top-level fields.
+      const response = await fetch(`${API_URL}/ml/${state.modelId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -47,13 +73,12 @@ export default function DeployPage() {
 
       if (response.ok) {
         const data = (await response.json()) as ModelDeploymentView;
-        const config = data.deployment_config;
-        if (config?.is_deployed) {
+        if (data.is_deployed) {
           setDeployment({
             model_id: state.modelId ?? '',
             status: 'deployed',
-            deployed_at: config.deployed_at ?? '',
-            deployment_endpoint: config.deployment_endpoint,
+            deployed_at: data.deployed_at ?? '',
+            deployment_endpoint: data.deployment_endpoint ?? null,
             message: 'Model is deployed'
           });
           setDeploymentStatus('deployed');
@@ -70,13 +95,12 @@ export default function DeployPage() {
 
     try {
       const token = await getAuthToken();
-      // Backend route is PUT /models/{id}/deploy; ModelDeployRequest accepts an
-      // optional `endpoint`. The backend persists it verbatim and does not
-      // synthesize a default, so we supply the production serving URL (the
-      // route registered at /production/v1/models/{id}/predict) — otherwise the
-      // success page would have no endpoint to show.
+      // Backend route is PUT /ml/{id}/deploy on the real MLModel surface (issue
+      // #84). The backend synthesizes the production serving URL when `endpoint`
+      // is omitted, but we supply it explicitly so the URL matches the host the
+      // browser is talking to (the route at /production/v1/models/{id}/predict).
       const servingEndpoint = `${API_URL}/production/v1/models/${state.modelId}`;
-      const response = await fetch(`${API_URL}/models/${state.modelId}/deploy`, {
+      const response = await fetch(`${API_URL}/ml/${state.modelId}/deploy`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -239,14 +263,33 @@ export default function DeployPage() {
             </div>
 
             <div className="bg-blue-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-3">Example Request</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">Example Request</h3>
+                <a
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-blue-700 hover:underline"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  View interactive API docs
+                </a>
+              </div>
               <pre className="bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto text-sm">
 {`curl -X POST ${deployment.deployment_endpoint ?? '<deployment-endpoint>'}/predict \\
   -H "X-API-Key: <your-api-key>" \\
   -H "Content-Type: application/json" \\
   -d '{
     "data": [
-      { "feature1": 123, "feature2": "value" }
+      { ${exampleFeatures.length
+        ? exampleFeatures
+            .map((f) =>
+              f.type === 'number'
+                ? `"${f.name}": 0`
+                : `"${f.name}": ${JSON.stringify(f.options?.[0] ?? 'value')}`
+            )
+            .join(', ')
+        : '"feature1": 0, "feature2": "value"'} }
     ]
   }'`}
               </pre>
@@ -256,6 +299,13 @@ export default function DeployPage() {
                 key from your account settings before calling the endpoint.
               </p>
             </div>
+
+            {deployment.deployment_endpoint && state.modelId && (
+              <EndpointTester
+                modelId={state.modelId}
+                endpoint={deployment.deployment_endpoint}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-lg p-4">

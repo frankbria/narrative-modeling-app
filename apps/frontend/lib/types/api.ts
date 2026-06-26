@@ -8,7 +8,7 @@
  */
 
 /**
- * Response from the model deployment endpoint (`PUT /models/{id}/deploy`).
+ * Response from the model deployment endpoint (`PUT /ml/{id}/deploy`).
  *
  * Mirrors the backend `ModelDeployResponse` Pydantic schema in
  * `apps/backend/app/schemas/model.py` — keep the two in sync. The backend does
@@ -23,17 +23,14 @@ export interface DeployResponse {
 }
 
 /**
- * Narrow view of `GET /models/{id}` (`ModelConfigResponse`) used by the deploy
- * page to detect an already-deployed model on mount. Only the deployment fields
- * the UI reads are typed here; mirrors `DeploymentConfigResponse` in
- * `apps/backend/app/schemas/model.py`.
+ * Narrow view of `GET /ml/{id}` (the `MLModel` document) used by the deploy
+ * page to detect an already-deployed model on mount. Deployment state lives on
+ * the model record's top-level fields (issue #84), not a nested config.
  */
 export interface ModelDeploymentView {
-  deployment_config?: {
-    is_deployed: boolean
-    deployment_endpoint: string | null
-    deployed_at: string | null
-  }
+  is_deployed?: boolean
+  deployment_endpoint?: string | null
+  deployed_at?: string | null
 }
 
 /** A single feature-importance entry. */

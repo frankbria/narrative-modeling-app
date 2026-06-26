@@ -104,6 +104,13 @@ class MLModel(Document):
     dataset_version_id: str | None = None
     version_notes: str | None = None  # user-provided note for this version
 
+    # Deployment (issue #84). All optional/defaulted so pre-#84 models degrade to
+    # "not deployed". Production serving already works by model_id; these fields
+    # just mark a model deployed and surface its live endpoint URL to the UI.
+    is_deployed: bool = False
+    deployment_endpoint: str | None = None
+    deployed_at: datetime | None = None
+
     # Training configuration
     training_config: dict[str, Any] = Field(default_factory=dict)
 

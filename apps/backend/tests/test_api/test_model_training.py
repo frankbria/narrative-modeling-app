@@ -88,6 +88,10 @@ def sample_ml_model():
     mock_model.updated_at = datetime.now(UTC)
     mock_model.last_used_at = None
     mock_model.is_active = True
+    # Deployment fields (issue #84) — required so response_model=MLModel validates.
+    mock_model.is_deployed = False
+    mock_model.deployment_endpoint = None
+    mock_model.deployed_at = None
     mock_model.save = AsyncMock()
     return mock_model
 

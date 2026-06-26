@@ -16,10 +16,11 @@ from beanie import PydanticObjectId
 from beanie.odm.operators.update.array import Push
 from beanie.odm.operators.update.general import Set
 from bson.errors import InvalidId
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.config import settings
 from app.models.batch_job import JobStatus
 from app.models.ml_model import MLModel
 from app.models.training_job import (
@@ -44,7 +45,11 @@ from app.schemas.evaluation import (
     RegressionMetrics,
     ShapSummaryResponse,
 )
-from app.schemas.model import PredictionExplanation
+from app.schemas.model import (
+    ModelDeployRequest,
+    ModelDeployResponse,
+    PredictionExplanation,
+)
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.error_analysis_service import error_analysis_service
 from app.services.evaluation_explanation_service import evaluation_explanation_service
@@ -1394,6 +1399,47 @@ async def promote_model_version(
         is_production=promoted.is_production,
         promoted_at=promoted.promoted_at,
         demoted_model_ids=demoted,
+    )
+
+
+@router.put("/{model_id}/deploy", response_model=ModelDeployResponse)
+async def deploy_model(
+    model_id: str,
+    payload: ModelDeployRequest,
+    http_request: Request,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Deploy a trained model as a production REST endpoint (issue #84).
+
+    The model is served by the existing API-key-authenticated production route
+    (``POST /api/v1/production/v1/models/{model_id}/predict``), so deploying just
+    marks the model and surfaces its live endpoint URL. When no ``endpoint`` is
+    supplied we synthesize the production serving URL from the request host so the
+    caller always gets a usable URL. 404 for unknown/foreign models. Registered
+    before the catch-all ``/{model_id}`` so the literal sub-path wins.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if model is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    endpoint = payload.endpoint or (
+        f"{str(http_request.base_url).rstrip('/')}"
+        f"{settings.API_V1_STR}/production/v1/models/{model_id}"
+    )
+    model.is_deployed = True
+    model.deployment_endpoint = endpoint
+    model.deployed_at = datetime.now(UTC)
+    model.updated_at = datetime.now(UTC)
+    await model.save()
+
+    return ModelDeployResponse(
+        model_id=model_id,
+        status="deployed",
+        deployed_at=model.deployed_at,
+        deployment_endpoint=endpoint,
+        message=f"Model {model_id} deployed successfully",
     )
 
 
