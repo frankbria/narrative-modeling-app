@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -53,6 +53,13 @@ export default function ModelPage() {
   const [trainingMode, setTrainingMode] = useState<TrainingMode>('quick');
   const [recommendedMode, setRecommendedMode] = useState<TrainingMode | undefined>();
   const [recommendationReason, setRecommendationReason] = useState<string | undefined>();
+  // Once the user picks a mode, a late-arriving recommendation must not override it.
+  const modeTouchedRef = useRef(false);
+
+  const handleModeChange = (mode: TrainingMode) => {
+    modeTouchedRef.current = true;
+    setTrainingMode(mode);
+  };
 
   // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
@@ -70,8 +77,10 @@ export default function ModelPage() {
       const rec = await modelService.getModeRecommendation(state.datasetId);
       setRecommendedMode(rec.recommended_mode);
       setRecommendationReason(rec.reason);
-      // Preselect the recommendation (user can still switch).
-      setTrainingMode(rec.recommended_mode);
+      // Preselect the recommendation only if the user hasn't already picked.
+      if (!modeTouchedRef.current) {
+        setTrainingMode(rec.recommended_mode);
+      }
     } catch (error) {
       // Recommendation is advisory — a failure just leaves the Quick default.
       console.error('Failed to load mode recommendation:', error);
@@ -238,7 +247,7 @@ export default function ModelPage() {
             {/* Training mode (issue #101): Quick vs Comprehensive. */}
             <TrainingModeSelector
               value={trainingMode}
-              onChange={setTrainingMode}
+              onChange={handleModeChange}
               recommendedMode={recommendedMode}
               reason={recommendationReason}
             />

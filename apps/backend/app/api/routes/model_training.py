@@ -433,7 +433,11 @@ async def train_model_task(
         )
         tuning_engine_config = None
         if enable_tuning:
-            raw_tuning = dict(training_config.get("tuning_config") or {})
+            # Start from the mode's tuning defaults (e.g. comprehensive's
+            # per-candidate time budget that keeps the up-front tuning phase
+            # within the mode cap), then let an explicit request override.
+            raw_tuning = dict(resolved.get("tuning_config") or {})
+            raw_tuning.update(training_config.get("tuning_config") or {})
             if tuning_strategy:
                 raw_tuning.setdefault("strategy", tuning_strategy)
             tuning_engine_config = TuningConfig(**raw_tuning)

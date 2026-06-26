@@ -41,6 +41,18 @@ class TestResolveModeConfig:
         assert config["tuning_strategy"] == "bayesian"
         assert config["early_stop_score"] is None
 
+    def test_comprehensive_tuning_budget_fits_time_limit(self):
+        """Per-candidate tuning budget x candidates must fit the mode cap.
+
+        Tuning runs before the loop-level time_limit check, so the up-front
+        tuning phase must stay within the advertised cap on its own (codex
+        review fix).
+        """
+        config = resolve_mode_config("comprehensive")
+        per_candidate = config["tuning_config"]["time_budget"]
+        worst_case_tuning = per_candidate * config["max_models"]
+        assert worst_case_tuning <= config["time_limit"]
+
     def test_overrides_win(self):
         config = resolve_mode_config("quick", {"max_models": 7, "time_limit": 60})
         assert config["max_models"] == 7

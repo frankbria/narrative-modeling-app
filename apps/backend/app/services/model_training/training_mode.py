@@ -55,6 +55,12 @@ _MODE_PRESETS: dict[TrainingMode, dict[str, Any]] = {
         "time_limit": 1800,  # 30 min allowed (AC2)
         "enable_tuning": True,  # full tuning (AC2)
         "tuning_strategy": "bayesian",
+        # Per-candidate tuning budget so the up-front tuning phase (which runs
+        # before the loop-level time_limit check) stays within the 30 min cap:
+        # 12 candidates x 120s worst-case ~= 24 min of tuning, leaving headroom
+        # for training. Without this, TuningConfig()'s 600s/candidate default
+        # could spend ~2h tuning before any time check fires.
+        "tuning_config": {"time_budget": 120, "n_trials": 20},
         "early_stop_score": None,  # thorough: don't cut the search short
     },
 }

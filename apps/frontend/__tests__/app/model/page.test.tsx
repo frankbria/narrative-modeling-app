@@ -171,6 +171,48 @@ describe('ModelPage training wiring', () => {
     );
   }, 15000);
 
+  it('keeps a user mode choice made before a slow recommendation resolves', async () => {
+    // Defer the recommendation so the user can pick first (codex P2 fix).
+    let resolveRec: (value: unknown) => void = () => {};
+    mockGetModeRecommendation.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRec = resolve;
+      })
+    );
+    mockTrainModel.mockResolvedValue({ model_id: 'm', status: 'training', message: 'ok' });
+    mockGetTrainingStatus.mockResolvedValue({
+      model_id: 'm',
+      status: 'training',
+      progress: 0,
+      completed_algorithms: 0,
+      total_algorithms: 0,
+      metrics: {},
+      model_comparison: [],
+      algorithm_recommendations: [],
+    });
+
+    render(<ModelPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'target' })).toBeInTheDocument()
+    );
+
+    // User explicitly picks comprehensive before the recommendation arrives.
+    fireEvent.click(screen.getByTestId('mode-option-comprehensive'));
+    // Recommendation (quick) resolves late and must NOT override the pick.
+    resolveRec({ recommended_mode: 'quick', reason: 'big data', n_rows: 1, n_features: 1 });
+    await screen.findByTestId('mode-recommendation');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'target' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
+    await waitFor(() => expect(mockTrainModel).toHaveBeenCalled());
+
+    expect(mockTrainModel).toHaveBeenCalledWith({
+      dataset_id: 'ds-1',
+      target_column: 'target',
+      training_config: { training_mode: 'comprehensive' },
+    });
+  });
+
   it('surfaces a backend failure status as an error message', async () => {
     mockTrainModel.mockResolvedValue({ model_id: 'model_2', status: 'training', message: 'ok' });
     mockGetTrainingStatus.mockResolvedValue({
