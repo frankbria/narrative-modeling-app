@@ -7,6 +7,7 @@ SharedRecipe, and DataIssueRecord unregistered at app startup (issue #160).
 """
 
 from app.models.ab_test import ABTest
+from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.analytics_result import AnalyticsResult
 from app.models.api_key import APIKey
 from app.models.batch_job import BatchJob
@@ -36,6 +37,7 @@ from app.services.transformation_engine.recipe_manager import (
 
 DOCUMENT_MODELS = [
     ABTest,
+    AIRecommendationFeedback,
     AnalyticsResult,
     APIKey,
     BatchJob,

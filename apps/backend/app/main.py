@@ -58,6 +58,7 @@ from app.api.routes import (
     s3,
     data_processing,
     ai_analysis,
+    ai_orchestration,
     model_training,
     production,
     monitoring,
@@ -207,6 +208,11 @@ app.include_router(
     ai_analysis.router,
     prefix=f"{settings.API_V1_STR}/ai",
     tags=["ai_analysis"],
+)
+app.include_router(
+    ai_orchestration.router,
+    prefix=f"{settings.API_V1_STR}/ai",
+    tags=["ai_orchestration"],
 )
 app.include_router(
     model_training.router,
