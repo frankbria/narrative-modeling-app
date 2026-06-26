@@ -81,6 +81,10 @@ from app.services.model_training.comparison import (
     build_best_model_explanation,
     build_data_profile,
 )
+from app.services.model_training.training_mode import (
+    recommend_mode,
+    resolve_mode_config,
+)
 from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.s3_service import get_file_from_s3
@@ -133,6 +137,15 @@ class TrainModelResponse(BaseModel):
     model_id: str
     status: str = "training"
     message: str
+
+
+class ModeRecommendationResponse(BaseModel):
+    """Dataset-based training-mode recommendation (issue #101)."""
+
+    recommended_mode: str
+    reason: str
+    n_rows: int
+    n_features: int
 
 
 class ModelInfo(BaseModel):
@@ -395,19 +408,44 @@ async def train_model_task(
         # enable_tuning is set, the nested tuning_config keys feed TuningConfig
         # (an unknown strategy raises in __post_init__, surfaced as a failed job).
         training_config = request.training_config or {}
+
+        # Training mode (issue #101). A "quick"/"comprehensive" mode fills engine
+        # defaults (algorithm count, time budget, tuning, early-stop score); any
+        # explicit training_config value still wins. An absent/unknown mode
+        # resolves to {} so behaviour is unchanged from pre-#101. The resolved
+        # mode is written back into training_config so it is persisted on the
+        # MLModel (no new MLModel field needed).
+        resolved = resolve_mode_config(
+            training_config.get("training_mode"),
+            overrides={
+                key: training_config.get(key)
+                for key in ("max_models", "time_limit", "cv_folds", "test_size")
+            },
+        )
+        if resolved.get("training_mode"):
+            training_config["training_mode"] = resolved["training_mode"]
+
+        enable_tuning = bool(
+            training_config.get("enable_tuning", resolved.get("enable_tuning"))
+        )
+        tuning_strategy = training_config.get("tuning_strategy") or resolved.get(
+            "tuning_strategy"
+        )
         tuning_engine_config = None
-        if training_config.get("enable_tuning"):
+        if enable_tuning:
             raw_tuning = dict(training_config.get("tuning_config") or {})
-            if training_config.get("tuning_strategy"):
-                raw_tuning.setdefault("strategy", training_config["tuning_strategy"])
+            if tuning_strategy:
+                raw_tuning.setdefault("strategy", tuning_strategy)
             tuning_engine_config = TuningConfig(**raw_tuning)
         engine = AutoMLEngine(
-            max_models=training_config.get("max_models", 5),
-            cv_folds=training_config.get("cv_folds", 5),
-            test_size=training_config.get("test_size", 0.2),
+            max_models=resolved.get("max_models", training_config.get("max_models", 5)),
+            time_limit=resolved.get("time_limit", training_config.get("time_limit")),
+            cv_folds=resolved.get("cv_folds", training_config.get("cv_folds", 5)),
+            test_size=resolved.get("test_size", training_config.get("test_size", 0.2)),
             random_state=42,
-            enable_tuning=bool(training_config.get("enable_tuning")),
+            enable_tuning=enable_tuning,
             tuning_config=tuning_engine_config,
+            early_stop_score=resolved.get("early_stop_score"),
         )
 
         # Progress callback persists per-algorithm progress to the TrainingJob.
@@ -481,6 +519,12 @@ async def train_model_task(
             event_callback=on_event,
             cancel_check=is_cancellation_requested,
         )
+
+        # Record the training-mode outcome (issue #101) in training_config so it
+        # persists on the MLModel alongside the requested mode.
+        training_config["early_stopped"] = result.early_stopped
+        training_config["stop_reason"] = result.stop_reason
+        training_config["algorithms_evaluated"] = result.algorithms_evaluated
 
         # Prepare metadata
         model_metadata: dict[str, Any] = {
@@ -837,6 +881,44 @@ async def compare_models(
             )
             for model in models
         ],
+    )
+
+
+@router.get(
+    "/datasets/{dataset_id}/mode-recommendation",
+    response_model=ModeRecommendationResponse,
+)
+async def get_mode_recommendation(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+) -> ModeRecommendationResponse:
+    """Recommend Quick vs Comprehensive training mode from dataset size (#101).
+
+    Registered before the catch-all ``/{model_id}`` route (a 3-segment path
+    can't be captured by the single-segment ``/{model_id}`` anyway). Owner-scoped:
+    a dataset owned by another user 404s like the train endpoint.
+    """
+    lookup_id: Any = dataset_id
+    try:
+        lookup_id = PydanticObjectId(dataset_id)
+    except (InvalidId, ValueError, TypeError):
+        pass
+    user_data = await UserData.find_one(
+        UserData.id == lookup_id, UserData.user_id == current_user_id
+    )
+    if not user_data:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    n_rows = user_data.row_count or user_data.num_rows or 0
+    # Feature count excludes the (yet-unknown) target column; num_columns - 1 is
+    # a good proxy and the recommendation thresholds are coarse anyway.
+    n_features = max((user_data.num_columns or 0) - 1, 0)
+    recommendation = recommend_mode(n_rows, n_features)
+    return ModeRecommendationResponse(
+        recommended_mode=recommendation["recommended_mode"],
+        reason=recommendation["reason"],
+        n_rows=n_rows,
+        n_features=n_features,
     )
 
 

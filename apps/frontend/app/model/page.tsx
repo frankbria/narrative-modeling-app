@@ -7,10 +7,11 @@ import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { modelService, TrainingStatus } from '@/lib/services/model';
+import { modelService, TrainingStatus, TrainingMode } from '@/lib/services/model';
 import { TrainingProgress } from '@/components/training/TrainingProgress';
 import { TrainingLogs } from '@/components/training/TrainingLogs';
 import { CancelTrainingButton } from '@/components/training/CancelTrainingButton';
+import { TrainingModeSelector } from '@/components/TrainingModeSelector';
 import { Brain, Zap, PlayCircle, AlertCircle, Info, Loader2 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
@@ -47,6 +48,11 @@ export default function ModelPage() {
   const [cancelledNotice, setCancelledNotice] = useState(false);
   const [cancellationRequested, setCancellationRequested] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  // Training mode (issue #101). Defaults to Quick; updated to the dataset-based
+  // recommendation when it loads (before the user interacts).
+  const [trainingMode, setTrainingMode] = useState<TrainingMode>('quick');
+  const [recommendedMode, setRecommendedMode] = useState<TrainingMode | undefined>();
+  const [recommendationReason, setRecommendationReason] = useState<string | undefined>();
 
   // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
@@ -54,8 +60,23 @@ export default function ModelPage() {
   useEffect(() => {
     if (!state.datasetId) return;
     loadDatasetColumns();
+    loadModeRecommendation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.datasetId]);
+
+  const loadModeRecommendation = async () => {
+    if (!state.datasetId) return;
+    try {
+      const rec = await modelService.getModeRecommendation(state.datasetId);
+      setRecommendedMode(rec.recommended_mode);
+      setRecommendationReason(rec.reason);
+      // Preselect the recommendation (user can still switch).
+      setTrainingMode(rec.recommended_mode);
+    } catch (error) {
+      // Recommendation is advisory — a failure just leaves the Quick default.
+      console.error('Failed to load mode recommendation:', error);
+    }
+  };
 
   const loadDatasetColumns = async () => {
     try {
@@ -101,6 +122,7 @@ export default function ModelPage() {
       const result = await modelService.trainModel({
         dataset_id: state.datasetId,
         target_column: modelConfig.target_column,
+        training_config: { training_mode: trainingMode },
       });
 
       setTrainingModelId(result.model_id);
@@ -180,8 +202,8 @@ export default function ModelPage() {
           <div className="space-y-6">
             {/* AutoML auto-detects the problem type and compares several
                 algorithms, so the only required input is the target column.
-                (Manual problem-type / single-algorithm selection and Quick/
-                Comprehensive modes are tracked separately — see issue #101.) */}
+                The training mode (issue #101) tunes how many algorithms run and
+                the time budget. */}
             <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200 flex items-start gap-3">
               <Zap className="w-5 h-5 text-indigo-500 mt-0.5" />
               <div className="text-sm text-indigo-900">
@@ -212,6 +234,14 @@ export default function ModelPage() {
                 The column you want the model to predict.
               </p>
             </div>
+
+            {/* Training mode (issue #101): Quick vs Comprehensive. */}
+            <TrainingModeSelector
+              value={trainingMode}
+              onChange={setTrainingMode}
+              recommendedMode={recommendedMode}
+              reason={recommendationReason}
+            />
 
             {/* Warning */}
             {!modelConfig.target_column && (

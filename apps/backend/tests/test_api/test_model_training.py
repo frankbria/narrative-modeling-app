@@ -1409,3 +1409,89 @@ class TestExtendedStatusFields:
             assert body["estimated_remaining_seconds"] is None
         finally:
             await job.delete()
+
+
+class TestModeRecommendationEndpoint:
+    """GET /api/v1/ml/datasets/{dataset_id}/mode-recommendation (issue #101)."""
+
+    @pytest.mark.asyncio
+    async def test_recommends_comprehensive_for_small_dataset(
+        self, async_authorized_client
+    ):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="test_user_123",
+            filename="small.csv",
+            original_filename="small.csv",
+            s3_url="s3://test-bucket/small.csv",
+            num_rows=500,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["recommended_mode"] == "comprehensive"
+            assert body["n_rows"] == 500
+            # Feature count excludes the target column (num_columns - 1).
+            assert body["n_features"] == 5
+            assert body["reason"]
+        finally:
+            await dataset.delete()
+
+    @pytest.mark.asyncio
+    async def test_recommends_quick_for_large_dataset(self, async_authorized_client):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="test_user_123",
+            filename="big.csv",
+            original_filename="big.csv",
+            s3_url="s3://test-bucket/big.csv",
+            num_rows=200_000,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 200
+            assert resp.json()["recommended_mode"] == "quick"
+        finally:
+            await dataset.delete()
+
+    @pytest.mark.asyncio
+    async def test_unknown_dataset_404(self, async_authorized_client):
+        resp = await async_authorized_client.get(
+            "/api/v1/ml/datasets/000000000000000000000000/mode-recommendation"
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_foreign_dataset_404(self, async_authorized_client):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="someone_else",
+            filename="foreign.csv",
+            original_filename="foreign.csv",
+            s3_url="s3://test-bucket/foreign.csv",
+            num_rows=500,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 404
+        finally:
+            await dataset.delete()

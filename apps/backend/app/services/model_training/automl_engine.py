@@ -15,16 +15,28 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.ensemble import (
+    AdaBoostClassifier,
+    AdaBoostRegressor,
+    ExtraTreesClassifier,
+    ExtraTreesRegressor,
     GradientBoostingClassifier,
     GradientBoostingRegressor,
     RandomForestClassifier,
     RandomForestRegressor,
 )
-from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
+from sklearn.linear_model import (
+    ElasticNet,
+    Lasso,
+    LinearRegression,
+    LogisticRegression,
+    Ridge,
+)
 from sklearn.metrics import accuracy_score, r2_score
 from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC, SVR
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import (
@@ -127,6 +139,14 @@ class AutoMLResult:
     tuning_results: dict[str, dict[str, Any]] | None = None
     tuning_strategy: str | None = None
     improvement_from_tuning: float | None = None
+    # Training-mode outcome (issue #101). ``early_stopped`` is True when the run
+    # ended before exhausting the candidate set; ``stop_reason`` is
+    # ``"time_budget_reached"`` or ``"target_score_reached"`` in that case (else
+    # ``None``). ``algorithms_evaluated`` is the count of candidates actually
+    # trained, which can be fewer than ``max_models`` under a budget/early stop.
+    early_stopped: bool = False
+    stop_reason: str | None = None
+    algorithms_evaluated: int | None = None
 
 
 def _applied_improvement(payload: dict[str, Any] | None) -> float | None:
@@ -150,12 +170,18 @@ class AutoMLEngine:
         random_state: int = 42,
         enable_tuning: bool = False,
         tuning_config: TuningConfig | None = None,
+        early_stop_score: float | None = None,
     ):
         self.max_models = max_models
         self.time_limit = time_limit
         self.cv_folds = cv_folds
         self.test_size = test_size
         self.random_state = random_state
+        # Training-mode controls (issue #101). ``time_limit`` (a wall-clock cap in
+        # seconds) and ``early_stop_score`` (stop once a candidate's CV score
+        # clears this bar) are enforced in the candidate loop. Both default to
+        # ``None`` so pre-#101 callers train the full candidate set as before.
+        self.early_stop_score = early_stop_score
         # Hyperparameter tuning (issue #77) is opt-in. When enabled, each
         # candidate is tuned before training and the best params are applied.
         self.enable_tuning = enable_tuning
@@ -266,7 +292,7 @@ class AutoMLEngine:
         # Train and evaluate models
         selected_candidates = candidates[: self.max_models]
         total_candidates = len(selected_candidates)
-        trained_models = []
+        trained_models: list[ModelCandidate] = []
 
         # Optional hyperparameter tuning (issue #77). Runs before the training
         # loop so the best params are applied to each candidate's estimator and
@@ -293,11 +319,37 @@ class AutoMLEngine:
             ),
         )
 
+        # Training-mode stop tracking (issue #101). Set when the time budget is
+        # exhausted or a candidate clears ``early_stop_score``; surfaced on the
+        # result so the UI/audit can explain why fewer than all candidates ran.
+        stop_reason: str | None = None
+
         for index, candidate in enumerate(selected_candidates):
             if await self._is_cancelled(cancel_check):
                 raise TrainingCancelledError(
                     f"Training cancelled before {candidate.name}"
                 )
+
+            # Time-budget enforcement (issue #101, AC4). Checked between
+            # candidates so we never interrupt an in-progress fit; we only stop
+            # once at least one model has trained so a too-tight budget still
+            # yields a usable result.
+            if self.time_limit and trained_models:
+                elapsed = (datetime.now(UTC) - start_time).total_seconds()
+                if elapsed >= self.time_limit:
+                    stop_reason = "time_budget_reached"
+                    await self._emit_event(
+                        event_callback,
+                        TrainingEvent(
+                            level="info",
+                            message=(
+                                f"Time budget ({self.time_limit}s) reached after "
+                                f"{len(trained_models)} models — stopping early"
+                            ),
+                            stage="training",
+                        ),
+                    )
+                    break
 
             logger.info(f"Training {candidate.name}...")
             await self._report_progress(
@@ -360,6 +412,29 @@ class AutoMLEngine:
                         },
                     ),
                 )
+
+                # Early stopping on a good result (issue #101, AC4). Quick mode
+                # sets ``early_stop_score`` so a clearly-good candidate ends the
+                # search; Comprehensive leaves it ``None`` to stay thorough.
+                if (
+                    self.early_stop_score is not None
+                    and candidate.cv_score is not None
+                    and candidate.cv_score >= self.early_stop_score
+                ):
+                    stop_reason = "target_score_reached"
+                    await self._emit_event(
+                        event_callback,
+                        TrainingEvent(
+                            level="info",
+                            message=(
+                                f"{candidate.name} reached the target score "
+                                f"({candidate.cv_score:.4f} >= "
+                                f"{self.early_stop_score:.2f}) — stopping early"
+                            ),
+                            stage="training",
+                        ),
+                    )
+                    break
 
             except Exception as e:
                 logger.error(f"Error training {candidate.name}: {str(e)}")
@@ -530,6 +605,9 @@ class AutoMLEngine:
             improvement_from_tuning=_applied_improvement(
                 tuning_results.get(best_model.name) if tuning_results else None
             ),
+            early_stopped=stop_reason is not None,
+            stop_reason=stop_reason,
+            algorithms_evaluated=len(trained_models),
             metadata={
                 "n_samples": len(df),
                 "n_features_original": len(X.columns),
@@ -936,6 +1014,48 @@ class AutoMLEngine:
                 )
             )
 
+            # Extra Trees, AdaBoost, Decision Tree, Naive Bayes (issue #101).
+            # Always-on, fast classifiers that broaden Comprehensive mode to 10+
+            # algorithms. Appended after the top candidates so Quick mode (which
+            # takes the first ``max_models``) is unaffected.
+            candidates.append(
+                ModelCandidate(
+                    name="Extra Trees",
+                    estimator=ExtraTreesClassifier(
+                        n_estimators=100,
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                        class_weight=class_weight,
+                    ),
+                    hyperparameters={"n_estimators": 100, "class_weight": class_weight},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="AdaBoost",
+                    estimator=AdaBoostClassifier(
+                        n_estimators=100, random_state=self.random_state
+                    ),
+                    hyperparameters={"n_estimators": 100, "learning_rate": 1.0},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="Decision Tree",
+                    estimator=DecisionTreeClassifier(
+                        random_state=self.random_state, class_weight=class_weight
+                    ),
+                    hyperparameters={"max_depth": None, "class_weight": class_weight},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="Naive Bayes",
+                    estimator=GaussianNB(),
+                    hyperparameters={},
+                )
+            )
+
             # Gradient Boosting
             if n_samples < 10000:  # Slower for large datasets
                 candidates.append(
@@ -1029,6 +1149,50 @@ class AutoMLEngine:
                         verbosity=-1,
                     ),
                     hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
+                )
+            )
+
+            # Extra Trees, AdaBoost, Decision Tree, Lasso, ElasticNet (issue #101).
+            # Always-on regressors that broaden Comprehensive mode to 10+
+            # algorithms. Appended after the top candidates so Quick mode is
+            # unaffected.
+            candidates.append(
+                ModelCandidate(
+                    name="Extra Trees Regressor",
+                    estimator=ExtraTreesRegressor(
+                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                    ),
+                    hyperparameters={"n_estimators": 100},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="AdaBoost Regressor",
+                    estimator=AdaBoostRegressor(
+                        n_estimators=100, random_state=self.random_state
+                    ),
+                    hyperparameters={"n_estimators": 100, "learning_rate": 1.0},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="Decision Tree Regressor",
+                    estimator=DecisionTreeRegressor(random_state=self.random_state),
+                    hyperparameters={"max_depth": None},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="Lasso Regression",
+                    estimator=Lasso(random_state=self.random_state),
+                    hyperparameters={"alpha": 1.0},
+                )
+            )
+            candidates.append(
+                ModelCandidate(
+                    name="ElasticNet Regression",
+                    estimator=ElasticNet(random_state=self.random_state),
+                    hyperparameters={"alpha": 1.0, "l1_ratio": 0.5},
                 )
             )
 

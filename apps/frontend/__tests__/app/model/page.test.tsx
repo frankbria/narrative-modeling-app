@@ -52,12 +52,14 @@ const mockTrainModel = jest.fn();
 const mockGetTrainingStatus = jest.fn();
 const mockGetTrainingLogs = jest.fn();
 const mockCancelTraining = jest.fn();
+const mockGetModeRecommendation = jest.fn();
 jest.mock('@/lib/services/model', () => ({
   modelService: {
     trainModel: (...args: unknown[]) => mockTrainModel(...args),
     getTrainingStatus: (...args: unknown[]) => mockGetTrainingStatus(...args),
     getTrainingLogs: (...args: unknown[]) => mockGetTrainingLogs(...args),
     cancelTraining: (...args: unknown[]) => mockCancelTraining(...args),
+    getModeRecommendation: (...args: unknown[]) => mockGetModeRecommendation(...args),
   },
 }));
 
@@ -79,6 +81,11 @@ async function startTraining() {
   await waitFor(() =>
     expect(screen.getByRole('option', { name: 'target' })).toBeInTheDocument()
   );
+  // Wait for the mode recommendation to apply so the selected training mode is
+  // deterministic before training starts (issue #101).
+  await waitFor(() =>
+    expect(screen.getByTestId('mode-recommendation')).toBeInTheDocument()
+  );
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'target' } });
   fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
   await waitFor(() => expect(mockTrainModel).toHaveBeenCalled());
@@ -88,6 +95,14 @@ describe('ModelPage training wiring', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockColumnsLoaded();
+    // Default: recommendation resolves to comprehensive (issue #101). The page
+    // preselects it, so trainModel sends training_mode: 'comprehensive'.
+    mockGetModeRecommendation.mockResolvedValue({
+      recommended_mode: 'comprehensive',
+      reason: 'small enough to afford a thorough search',
+      n_rows: 100,
+      n_features: 2,
+    });
     mockGetTrainingLogs.mockResolvedValue({
       model_id: 'model_1',
       logs: [],
@@ -129,10 +144,12 @@ describe('ModelPage training wiring', () => {
     render(<ModelPage />);
     await startTraining();
 
-    // trainModel called with the correct real payload.
+    // trainModel called with the correct real payload, including the selected
+    // training mode (preselected from the recommendation — issue #101).
     expect(mockTrainModel).toHaveBeenCalledWith({
       dataset_id: 'ds-1',
       target_column: 'target',
+      training_config: { training_mode: 'comprehensive' },
     });
 
     // TrainingProgress polls the status and surfaces completion.

@@ -623,4 +623,38 @@ describe('modelService instance export', () => {
       );
     });
   });
+
+  describe('getModeRecommendation (issue #101)', () => {
+    it('requests the recommendation endpoint and returns the body', async () => {
+      const rec = {
+        recommended_mode: 'comprehensive',
+        reason: 'small enough to afford a thorough search',
+        n_rows: 500,
+        n_features: 5,
+      };
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(rec),
+      });
+
+      const result = await modelService.getModeRecommendation('ds-1');
+
+      expect(result).toEqual(rec);
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/ml/datasets/ds-1/mode-recommendation');
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer svc-token');
+    });
+
+    it('throws on a non-OK response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({}),
+      });
+
+      await expect(modelService.getModeRecommendation('ds-1')).rejects.toThrow(
+        'Failed to fetch training mode recommendation'
+      );
+    });
+  });
 });
