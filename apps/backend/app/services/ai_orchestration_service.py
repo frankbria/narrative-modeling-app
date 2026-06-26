@@ -276,20 +276,38 @@ class AIOrchestrationService:
                         estimated_impact="Drops mostly-empty columns",
                     )
                 )
-            if impute_cols:
+            # Split by type: median only works on numeric columns; categorical/text
+            # need mode, else FillMissingTransformation silently skips them (codex).
+            numeric_set = set(profile.numeric_columns)
+            numeric_impute = [c for c in impute_cols if c in numeric_set]
+            other_impute = [c for c in impute_cols if c not in numeric_set]
+            if numeric_impute:
                 recs.append(
                     self._rec(
-                        # Use the executable contract (FILL_MISSING + method): the
-                        # transformation engine maps FILL_MISSING, not IMPUTE_* (codex).
+                        # Executable contract: engine maps FILL_MISSING (not IMPUTE_*).
                         TransformationType.FILL_MISSING.value,
                         priority=8,
                         confidence=0.8,
-                        explanation=f"{len(impute_cols)} column(s) have some missing values; "
-                        "median imputation fills gaps robustly without dropping rows.",
-                        parameters={"columns": impute_cols, "method": "median"},
+                        explanation=f"{len(numeric_impute)} numeric column(s) have some missing "
+                        "values; median imputation fills gaps robustly without dropping rows.",
+                        parameters={"columns": numeric_impute, "method": "median"},
                         pros=["Keeps all rows", "Robust to skew/outliers"],
                         cons=["Reduces variance slightly"],
                         estimated_impact="Fills missing numeric values",
+                    )
+                )
+            if other_impute:
+                recs.append(
+                    self._rec(
+                        TransformationType.FILL_MISSING.value,
+                        priority=7,
+                        confidence=0.75,
+                        explanation=f"{len(other_impute)} categorical/text column(s) have some "
+                        "missing values; filling with the most frequent value keeps all rows.",
+                        parameters={"columns": other_impute, "method": "mode"},
+                        pros=["Keeps all rows", "Works on non-numeric columns"],
+                        cons=["Over-represents the most common category"],
+                        estimated_impact="Fills missing categorical values",
                     )
                 )
         if any(

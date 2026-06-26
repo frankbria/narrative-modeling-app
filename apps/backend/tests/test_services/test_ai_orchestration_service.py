@@ -86,6 +86,21 @@ def test_cleaning_splits_drop_and_impute_by_threshold():
     assert by_type[TransformationType.FILL_MISSING.value].parameters["columns"] == ["age"]
 
 
+def test_cleaning_imputes_categorical_with_mode():
+    """Categorical missing values get mode, not median (codex: median is numeric-only)."""
+    svc = _service()
+    profile = _profile(
+        numeric_columns=["age"],
+        categorical_columns=["city"],
+        columns_with_missing={"age": 0.1, "city": 0.1},
+    )
+    recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
+    fills = [r for r in recs if r.tool_type == TransformationType.FILL_MISSING.value]
+    by_method = {r.parameters["method"]: r.parameters["columns"] for r in fills}
+    assert by_method["median"] == ["age"]
+    assert by_method["mode"] == ["city"]
+
+
 def test_feature_engineering_encodes_by_cardinality():
     svc = _service()
     profile = _profile(
