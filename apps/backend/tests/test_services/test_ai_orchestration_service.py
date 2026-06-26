@@ -68,7 +68,8 @@ def test_cleaning_drops_when_mostly_missing():
     profile = _profile(columns_with_missing={"notes": 0.9})
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     tool_types = {r.tool_type for r in recs}
-    assert TransformationType.DROP_MISSING.value in tool_types
+    # Advisory column-drop (not the row-dropping drop_missing transform).
+    assert "drop_columns" in tool_types
     assert TransformationType.FILL_MISSING.value not in tool_types
 
 
@@ -81,7 +82,7 @@ def test_cleaning_splits_drop_and_impute_by_threshold():
     profile = _profile(columns_with_missing={"notes": 0.9, "age": 0.05})
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     by_type = {r.tool_type: r for r in recs}
-    assert by_type[TransformationType.DROP_MISSING.value].parameters["columns"] == ["notes"]
+    assert by_type["drop_columns"].parameters["columns"] == ["notes"]
     assert by_type[TransformationType.FILL_MISSING.value].parameters["columns"] == ["age"]
 
 

@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Canonical execution order used to assemble multi-stage pipelines. Lower rank
 # runs earlier. tool_types not listed sort last (modeling/exploration extras).
 _STAGE_ORDER: dict[str, int] = {
+    "drop_columns": 0,  # advisory column removal — earliest
     TransformationType.REMOVE_DUPLICATES.value: 0,
     TransformationType.TRIM_WHITESPACE.value: 1,
     TransformationType.FIX_CASING.value: 1,
@@ -257,17 +258,22 @@ class AIOrchestrationService:
                 c for c, frac in profile.columns_with_missing.items() if frac <= 0.5
             )
             if drop_cols:
+                # Advisory, not an executable drop_missing: that transform drops
+                # ROWS (and is rejected past 50% row loss), which would nuke the
+                # dataset for a mostly-empty column. Removing the column is a
+                # manual/column-level step, so flag it rather than emit a bogus
+                # executable recommendation (codex).
                 recs.append(
                     self._rec(
-                        TransformationType.DROP_MISSING.value,
+                        "drop_columns",
                         priority=8,
                         confidence=0.7,
-                        explanation=f"{len(drop_cols)} column(s) have over 50% missing values; "
-                        "imputing that much can fabricate signal, so dropping is safer.",
+                        explanation=f"{len(drop_cols)} column(s) are over 50% empty; imputing "
+                        "that much fabricates signal, so consider removing these columns.",
                         parameters={"columns": drop_cols},
                         pros=["Avoids fabricated values"],
-                        cons=["Loses rows or columns"],
-                        estimated_impact="Removes mostly-empty columns/rows",
+                        cons=["Manual column removal (not an automated row-drop)"],
+                        estimated_impact="Drops mostly-empty columns",
                     )
                 )
             if impute_cols:
