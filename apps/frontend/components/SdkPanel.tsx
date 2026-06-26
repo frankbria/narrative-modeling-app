@@ -69,6 +69,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
     const key = `${modelId}:${language}`;
     if (requested.current.has(key)) return;
     requested.current.add(key);
+    setError(null); // clear any prior language's error when switching tabs
     let active = true;
     modelService
       .getSdk(modelId, language)
@@ -126,7 +127,11 @@ export function SdkPanel({ modelId }: { modelId: string }) {
 
       {/* Error is shown inline so the tab bar stays usable and the user can retry
           another language without reloading. */}
-      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-600 mb-3" role="alert" aria-live="polite">
+          {error}
+        </p>
+      )}
 
       <div className="flex gap-2 mb-3" role="tablist" aria-label="SDK language">
         {languages.map((lang) => (

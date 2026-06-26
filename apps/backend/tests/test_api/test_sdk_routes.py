@@ -57,6 +57,27 @@ class TestSdkInfo:
             "/api/v1/production/v1/models/sdk-1"
         )
 
+    @pytest.mark.asyncio
+    async def test_info_prefers_persisted_deployment_endpoint(
+        self, async_authorized_client
+    ):
+        # When the model has a persisted deployment_endpoint (#84), the SDK uses
+        # it verbatim instead of synthesizing one from the request host.
+        model = _model("sdk-deployed")
+        model.deployment_endpoint = (
+            "https://prod.example.com/api/v1/production/v1/models/sdk-deployed"
+        )
+        await model.insert()
+        try:
+            resp = await async_authorized_client.get("/api/v1/ml/sdk-deployed/sdk")
+            assert resp.status_code == 200
+            assert (
+                resp.json()["serving_endpoint"]
+                == "https://prod.example.com/api/v1/production/v1/models/sdk-deployed"
+            )
+        finally:
+            await MLModel.find(MLModel.model_id == "sdk-deployed").delete()
+
 
 class TestSdkSource:
     @pytest.mark.asyncio

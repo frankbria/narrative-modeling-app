@@ -602,5 +602,25 @@ describe('modelService instance export', () => {
       const [url] = (global.fetch as jest.Mock).mock.calls[0];
       expect(url).toBe('http://localhost:8000/api/v1/ml/m1/sdk/postman');
     });
+
+    it('getSdkInfo() throws the backend detail on a non-OK response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ detail: 'Model not found' }),
+      });
+
+      await expect(modelService.getSdkInfo('m1')).rejects.toThrow('Model not found');
+    });
+
+    it('getSdkPostman() throws on a non-OK response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({}),
+      });
+
+      await expect(modelService.getSdkPostman('m1')).rejects.toThrow(
+        'Failed to load Postman collection'
+      );
+    });
   });
 });

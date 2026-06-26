@@ -308,7 +308,9 @@ export default function DeployPage() {
               />
             )}
 
-            {state.modelId && <SdkPanel modelId={state.modelId} />}
+            {state.modelId && (
+              <SdkPanel key={state.modelId} modelId={state.modelId} />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-lg p-4">

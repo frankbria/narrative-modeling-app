@@ -73,7 +73,9 @@ class SDKGenerator:
         self.feature_names = list(feature_names or [])
         self.problem_type = problem_type or "classification"
         self.serving_endpoint = serving_endpoint.rstrip("/")
-        self.class_name = _class_name(model_name or model_id)
+        # Derive the class name from the already-sanitized display name so both
+        # paths use the same cleaned value.
+        self.class_name = _class_name(self.model_name)
 
     # -- shared helpers -------------------------------------------------------
 

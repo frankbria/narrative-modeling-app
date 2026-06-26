@@ -47,6 +47,9 @@ class BatchPredictionConfig(BaseModel):
     webhook_url: str | None = Field(
         default=None, description="URL to POST the job summary to on completion"
     )
+    # Known limitation (#86): stored plaintext at rest — the server needs the raw
+    # key to HMAC-sign the payload at fire time, so it can't be hashed. Masked in
+    # API responses (_redact_config); encrypt-at-rest is the future hardening.
     webhook_secret: str | None = Field(
         default=None, description="Secret used to HMAC-sign the webhook payload"
     )
