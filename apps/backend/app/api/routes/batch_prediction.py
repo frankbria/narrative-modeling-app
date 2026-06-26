@@ -70,6 +70,30 @@ class JobProgressResponse(BaseModel):
     estimated_completion: datetime | None
 
 
+# Any config key ending in one of these is masked in job-status responses, so a
+# future sensitive field (e.g. an auth token) is redacted automatically (#86).
+_SENSITIVE_CONFIG_SUFFIXES = ("_secret", "_token", "_password", "_key")
+
+
+def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Mask sensitive fields before returning a job's config (#86).
+
+    The config dict is otherwise surfaced verbatim by the job-status responses,
+    so anything that looks like a credential (``*_secret``/``*_token``/etc., e.g.
+    the ``webhook_secret`` HMAC signing key) is replaced with ``****``. Note: the
+    progress-polling endpoint returns ``JobProgressResponse`` (no ``config``), so
+    it never carries the secret.
+    """
+    return {
+        key: (
+            "****"
+            if value is not None and key.endswith(_SENSITIVE_CONFIG_SUFFIXES)
+            else value
+        )
+        for key, value in config.items()
+    }
+
+
 # API Routes
 @router.post("/jobs", response_model=BatchJobResponse)
 async def create_batch_job(
@@ -85,6 +109,14 @@ async def create_batch_job(
     ),
     chunk_size: int = Form(default=1000, description="Chunk size"),
     priority: int = Form(default=0, description="Job priority"),
+    webhook_url: str | None = Form(
+        default=None,
+        description="Optional URL to POST the job summary to on completion",
+    ),
+    webhook_secret: str | None = Form(
+        default=None,
+        description="Optional secret used to HMAC-sign the webhook payload",
+    ),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Create a new batch prediction job from uploaded file"""
@@ -116,6 +148,8 @@ async def create_batch_job(
                 include_explanations=include_explanations,
                 chunk_size=chunk_size,
                 priority=priority,
+                webhook_url=webhook_url,
+                webhook_secret=webhook_secret,
             )
 
             # Store input file size
@@ -131,7 +165,7 @@ async def create_batch_job(
             job_type=job.job_type,
             status=job.status,
             progress=job.progress.dict(),
-            config=job.config,
+            config=_redact_config(job.config),
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
@@ -169,7 +203,7 @@ async def list_batch_jobs(
             job_type=job.job_type,
             status=job.status,
             progress=job.progress.dict(),
-            config=job.config,
+            config=_redact_config(job.config),
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
@@ -199,7 +233,7 @@ async def get_batch_job(
         job_type=job.job_type,
         status=job.status,
         progress=job.progress.dict(),
-        config=job.config,
+        config=_redact_config(job.config),
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,

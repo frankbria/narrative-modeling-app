@@ -41,6 +41,18 @@ class BatchPredictionConfig(BaseModel):
     chunk_size: int = Field(
         default=1000, description="Number of records to process per chunk"
     )
+    # Optional async-completion webhook (issue #86). On terminal state the server
+    # POSTs the job summary to ``webhook_url``, HMAC-SHA256-signed with
+    # ``webhook_secret`` (header ``X-Signature``) when a secret is set.
+    webhook_url: str | None = Field(
+        default=None, description="URL to POST the job summary to on completion"
+    )
+    # Known limitation (#86): stored plaintext at rest — the server needs the raw
+    # key to HMAC-sign the payload at fire time, so it can't be hashed. Masked in
+    # API responses (_redact_config); encrypt-at-rest is the future hardening.
+    webhook_secret: str | None = Field(
+        default=None, description="Secret used to HMAC-sign the webhook payload"
+    )
 
 
 class JobProgress(BaseModel):

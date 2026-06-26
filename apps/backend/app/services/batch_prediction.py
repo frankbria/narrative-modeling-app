@@ -3,16 +3,22 @@ Batch prediction service for processing large datasets
 """
 
 import asyncio
+import hashlib
+import hmac
+import ipaddress
 import json
 import logging
 import os
+import socket
 import statistics
 import tempfile
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from io import BytesIO, StringIO
 from typing import Any
+from urllib.parse import urlparse
 
+import httpx
 import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
@@ -71,6 +77,8 @@ class BatchPredictionService:
         chunk_size: int = 1000,
         priority: int = 0,
         auto_start: bool = True,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
     ) -> BatchJob:
         """Create a new batch prediction job.
 
@@ -100,6 +108,8 @@ class BatchPredictionService:
             include_metadata=include_metadata,
             include_explanations=include_explanations,
             chunk_size=chunk_size,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
         ).dict()
 
         # Create job
@@ -259,6 +269,111 @@ class BatchPredictionService:
 
         finally:
             await job.save()
+            # Best-effort async-completion webhook (issue #86). Never blocks/raises.
+            await self._fire_webhook(job)
+
+    @staticmethod
+    async def _is_safe_webhook_url(url: str) -> bool:
+        """Reject SSRF-prone webhook targets (#86 hardening).
+
+        Only http(s) to a host that resolves entirely to public addresses —
+        blocks loopback/private/link-local/reserved (e.g. ``127.0.0.1``,
+        ``169.254.169.254`` cloud-metadata, RFC1918). DNS resolution runs in a
+        thread so it never blocks the event loop. Note: this is a basic resolve-
+        and-check guard, not DNS-rebinding-proof; tighten with an egress proxy or
+        allowlist if webhooks graduate past beta.
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                return False
+            infos = await asyncio.to_thread(
+                socket.getaddrinfo,
+                parsed.hostname,
+                parsed.port or 0,
+                0,
+                socket.IPPROTO_TCP,
+            )
+            for info in infos:
+                ip = ipaddress.ip_address(info[4][0])
+                # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) so a mapped
+                # private/loopback address can't slip past the flag checks.
+                mapped = getattr(ip, "ipv4_mapped", None)
+                if mapped is not None:
+                    ip = mapped
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_multicast
+                    or ip.is_unspecified
+                ):
+                    return False
+            return bool(infos)
+        except Exception:  # noqa: BLE001 - unresolvable/invalid → unsafe
+            return False
+
+    async def _fire_webhook(self, job: BatchJob) -> None:
+        """POST the job summary to the job's webhook URL on terminal state (#86).
+
+        Best-effort: signs the payload with HMAC-SHA256 when a secret is set
+        (header ``X-Signature``), retries once on any failure (including non-2xx
+        responses), and swallows every error so a bad/unreachable webhook can
+        never affect the prediction job. SSRF-guarded via ``_is_safe_webhook_url``.
+        """
+        webhook_url = job.config.get("webhook_url")
+        if not webhook_url:
+            return
+        if not await self._is_safe_webhook_url(webhook_url):
+            # Log only the host (URL may carry credentials in its query string).
+            logger.warning(
+                "Skipping webhook to unsafe/unresolvable host: %s",
+                urlparse(webhook_url).netloc or "<webhook>",
+            )
+            return
+
+        payload = json.dumps(
+            {
+                "job_id": job.job_id,
+                "status": job.status.value,
+                "model_id": job.config.get("model_id"),
+                "summary": job.results,
+                "completed_at": (
+                    job.completed_at.isoformat() if job.completed_at else None
+                ),
+            }
+        ).encode()
+
+        headers = {"Content-Type": "application/json"}
+        secret = job.config.get("webhook_secret")
+        if secret:
+            headers["X-Signature"] = hmac.new(
+                secret.encode(), payload, hashlib.sha256
+            ).hexdigest()
+
+        # Log only the host, never the full URL — a webhook URL can carry tokens
+        # in its query string that must not land in application logs.
+        host = urlparse(webhook_url).netloc or "<webhook>"
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.post(
+                        webhook_url, content=payload, headers=headers
+                    )
+                    # httpx never raises on 4xx/5xx by default — do it explicitly
+                    # so a transient receiver failure is retried, not swallowed.
+                    response.raise_for_status()
+                return
+            except Exception as exc:  # noqa: BLE001 - webhook must never break the job
+                logger.warning(
+                    "Webhook delivery to %s failed (attempt %d): %s",
+                    host,
+                    attempt + 1,
+                    exc,
+                )
+                if attempt == 0:
+                    await asyncio.sleep(1)  # brief backoff before the single retry
 
     async def _read_data_chunks(
         self, s3_path: str, chunk_size: int

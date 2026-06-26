@@ -551,4 +551,76 @@ describe('modelService instance export', () => {
       ).rejects.toThrow('Only CSV files are supported');
     });
   });
+
+  describe('SDK methods (#86)', () => {
+    it('getSdkInfo() hits /ml/{id}/sdk and returns languages', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ languages: ['python', 'curl'] }),
+      });
+
+      const info = await modelService.getSdkInfo('m1');
+
+      expect(info.languages).toEqual(['python', 'curl']);
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m1/sdk');
+    });
+
+    it('getSdk() returns the SDK source text for a language', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue('# python client'),
+      });
+
+      const src = await modelService.getSdk('m1', 'python');
+
+      expect(src).toBe('# python client');
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m1/sdk/python');
+    });
+
+    it('getSdk() throws the backend detail on an unknown language', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ detail: "Language 'ruby' not supported." }),
+      });
+
+      await expect(modelService.getSdk('m1', 'ruby')).rejects.toThrow(
+        "Language 'ruby' not supported."
+      );
+    });
+
+    it('getSdkPostman() hits the postman route and returns JSON', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ info: { name: 'API' } }),
+      });
+
+      const collection = await modelService.getSdkPostman('m1');
+
+      expect(collection).toEqual({ info: { name: 'API' } });
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toBe('http://localhost:8000/api/v1/ml/m1/sdk/postman');
+    });
+
+    it('getSdkInfo() throws the backend detail on a non-OK response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ detail: 'Model not found' }),
+      });
+
+      await expect(modelService.getSdkInfo('m1')).rejects.toThrow('Model not found');
+    });
+
+    it('getSdkPostman() throws on a non-OK response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        json: jest.fn().mockResolvedValue({}),
+      });
+
+      await expect(modelService.getSdkPostman('m1')).rejects.toThrow(
+        'Failed to load Postman collection'
+      );
+    });
+  });
 });

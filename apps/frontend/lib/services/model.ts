@@ -220,6 +220,31 @@ export interface ModelFeaturesResponse {
   target_column: string
 }
 
+/** Minimal Postman collection shape returned per deployment (#86). */
+export interface PostmanCollection {
+  info: { name: string; description?: string; schema: string }
+  variable: Array<{ key: string; value: string; type?: string }>
+  item: Array<Record<string, unknown>>
+}
+
+/** SDK discovery payload for a deployment (#86). */
+export interface SdkInfo {
+  model_id: string
+  model_name: string
+  problem_type: string
+  serving_endpoint: string
+  predict_url: string
+  feature_names: string[]
+  sample_record: Record<string, unknown>
+  languages: string[]
+  install: Record<string, string>
+  auth: string
+  /** Per-SDK README (default language) — AC5 docs, reachable here (#86). */
+  readme?: string
+  /** Framework integration samples keyed by framework name (#86). */
+  frameworks?: Record<string, string>
+}
+
 /** Options for creating a batch prediction job (#82). */
 export interface CreateBatchJobOptions {
   output_format?: 'csv' | 'json'
@@ -654,6 +679,53 @@ export class ModelService {
     return response.json()
   }
 
+  /** SDK discovery payload for a deployment (#86): languages + metadata. */
+  static async getSdkInfo(
+    modelId: string,
+    token: string | null
+  ): Promise<SdkInfo> {
+    const response = await fetch(`${API_BASE_URL}/ml/${modelId}/sdk`, {
+      headers: await this.getHeaders(token)
+    })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to load SDK info')
+    }
+    return response.json()
+  }
+
+  /** Generated SDK source for one language (#86): python|typescript|javascript|curl. */
+  static async getSdk(
+    modelId: string,
+    language: string,
+    token: string | null
+  ): Promise<string> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/sdk/${language}`,
+      { headers: await this.getHeaders(token) }
+    )
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Failed to load SDK')
+    }
+    return response.text()
+  }
+
+  /** Per-deployment Postman collection (#86). */
+  static async getSdkPostman(
+    modelId: string,
+    token: string | null
+  ): Promise<PostmanCollection> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/sdk/postman`,
+      { headers: await this.getHeaders(token) }
+    )
+    if (!response.ok) {
+      throw new Error('Failed to load Postman collection')
+    }
+    return response.json()
+  }
+
   /** Create a batch prediction job from an uploaded CSV file (#82). */
   static async createBatchJob(
     modelId: string,
@@ -891,6 +963,24 @@ class ModelServiceClient {
   async getModelFeatures(modelId: string): Promise<ModelFeaturesResponse> {
     const token = await getAuthToken()
     return ModelService.getModelFeatures(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and fetch SDK info (#86). */
+  async getSdkInfo(modelId: string): Promise<SdkInfo> {
+    const token = await getAuthToken()
+    return ModelService.getSdkInfo(modelId, token)
+  }
+
+  /** Resolve the auth token automatically and fetch one SDK's source (#86). */
+  async getSdk(modelId: string, language: string): Promise<string> {
+    const token = await getAuthToken()
+    return ModelService.getSdk(modelId, language, token)
+  }
+
+  /** Resolve the auth token automatically and fetch the Postman collection (#86). */
+  async getSdkPostman(modelId: string): Promise<PostmanCollection> {
+    const token = await getAuthToken()
+    return ModelService.getSdkPostman(modelId, token)
   }
 
   /** Resolve the auth token automatically and create a batch prediction job. */

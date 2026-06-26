@@ -39,6 +39,11 @@ jest.mock('@/components/EndpointTester', () => ({
   EndpointTester: () => <div data-testid="endpoint-tester" />,
 }));
 
+// SdkPanel has its own suite; stub it (it would otherwise fetch SDK info).
+jest.mock('@/components/SdkPanel', () => ({
+  SdkPanel: () => <div data-testid="sdk-panel" />,
+}));
+
 // The page reads real feature names to build the example request; stub it.
 jest.mock('@/lib/services/model', () => ({
   modelService: {

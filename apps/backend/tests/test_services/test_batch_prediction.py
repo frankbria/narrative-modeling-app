@@ -9,6 +9,7 @@ round-trip test.
 """
 
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -309,3 +310,185 @@ async def test_prepare_input_data_uploads_dataframe():
     assert total == 3
     assert key.endswith("input.csv")
     svc.s3_service.upload_file_obj.assert_awaited_once()
+
+
+# --- Async-completion webhook (issue #86) ---------------------------------
+
+
+def _completed_job(webhook_url=None, webhook_secret=None, status=None):
+    """A minimal terminal-state batch job (no Mongo) for _fire_webhook."""
+    from app.models.batch_job import JobStatus
+
+    job = MagicMock()
+    job.job_id = "batch_1"
+    job.status = status or JobStatus.COMPLETED
+    job.results = {"prediction_distribution": {"yes": 2}}
+    job.completed_at = datetime(2026, 1, 1, 12, 0, 0)
+    job.config = {
+        "model_id": "model_123",
+        "webhook_url": webhook_url,
+        "webhook_secret": webhook_secret,
+    }
+    return job
+
+
+def _patch_httpx(monkeypatch, post, *, safe=True):
+    """Patch httpx.AsyncClient so _fire_webhook's POST is captured.
+
+    ``safe=True`` also stubs DNS resolution to a public IP so the SSRF guard
+    (``_is_safe_webhook_url``) passes for the test's fake host.
+    """
+    client = MagicMock()
+    client.post = post
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.httpx.AsyncClient",
+        lambda *a, **k: client,
+    )
+    # Don't actually wait out the retry backoff in tests.
+    monkeypatch.setattr(
+        "app.services.batch_prediction.asyncio.sleep", AsyncMock()
+    )
+    if safe:
+        monkeypatch.setattr(
+            "app.services.batch_prediction.socket.getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 443))],
+        )
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_noop_without_url(monkeypatch):
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job())
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_posts_signed_summary(monkeypatch):
+    import hashlib
+    import hmac
+
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+
+    job = _completed_job("https://hook.example/cb", "s3cr3t")
+    await _service()._fire_webhook(job)
+
+    post.assert_awaited_once()
+    _, kwargs = post.call_args
+    body = kwargs["content"]
+    payload = json.loads(body)
+    assert payload["job_id"] == "batch_1"
+    assert payload["status"] == "completed"
+    assert payload["summary"] == {"prediction_distribution": {"yes": 2}}
+    # Signature is HMAC-SHA256 of the raw body with the secret.
+    expected = hmac.new(b"s3cr3t", body, hashlib.sha256).hexdigest()
+    assert kwargs["headers"]["X-Signature"] == expected
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_unsigned_when_no_secret(monkeypatch):
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    _, kwargs = post.call_args
+    assert "X-Signature" not in kwargs["headers"]
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_never_raises_on_failure(monkeypatch):
+    post = AsyncMock(side_effect=RuntimeError("boom"))
+    _patch_httpx(monkeypatch, post)
+    # Must swallow the error (and retry once → two attempts).
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    assert post.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_name", ["FAILED", "CANCELLED"])
+async def test_fire_webhook_fires_on_non_completed_terminal_state(
+    monkeypatch, status_name
+):
+    # The webhook fires on every terminal state, not just COMPLETED — the payload
+    # carries the real status so receivers can act on failures/cancellations.
+    from app.models.batch_job import JobStatus
+
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    job = _completed_job("https://hook.example/cb", status=JobStatus[status_name])
+    await _service()._fire_webhook(job)
+    post.assert_awaited_once()
+    _, kwargs = post.call_args
+    assert json.loads(kwargs["content"])["status"] == status_name.lower()
+
+
+def test_create_batch_route_exposes_webhook_form_params():
+    # Guardrail: a refactor that drops the webhook Form params from the route
+    # would silently break webhook registration (review #5).
+    import inspect
+
+    from app.api.routes.batch_prediction import create_batch_job
+
+    params = inspect.signature(create_batch_job).parameters
+    assert "webhook_url" in params
+    assert "webhook_secret" in params
+    # ...and the config model round-trips them through to the job.
+    cfg = BatchPredictionConfig(
+        model_id="m", webhook_url="https://h/cb", webhook_secret="s"
+    ).dict()
+    assert cfg["webhook_url"] == "https://h/cb"
+    assert cfg["webhook_secret"] == "s"
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_retries_on_non_2xx(monkeypatch):
+    # httpx doesn't raise on 5xx by default; _fire_webhook calls raise_for_status
+    # so a non-2xx is retried, not silently treated as delivered (#86 review).
+    response = MagicMock()
+    response.raise_for_status.side_effect = RuntimeError("500")
+    post = AsyncMock(return_value=response)
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    assert post.await_count == 2
+
+
+def test_redact_config_masks_webhook_secret():
+    # The job-status API must never echo the HMAC signing key (review #4).
+    from app.api.routes.batch_prediction import _redact_config
+
+    redacted = _redact_config(
+        {"model_id": "m", "webhook_url": "https://h/cb", "webhook_secret": "s3cr3t"}
+    )
+    assert redacted["webhook_secret"] == "****"
+    assert redacted["webhook_url"] == "https://h/cb"  # non-secret fields preserved
+    # No secret present → unchanged.
+    assert _redact_config({"model_id": "m"}) == {"model_id": "m"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/cb",  # loopback
+        "http://169.254.169.254/latest/meta-data",  # cloud metadata (link-local)
+        "http://10.0.0.5/cb",  # RFC1918 private
+        "ftp://example.com/cb",  # non-http scheme
+        "not-a-url",
+    ],
+)
+async def test_fire_webhook_blocks_ssrf_targets(monkeypatch, url):
+    # The unsafe URL must never fire. Stub getaddrinfo to echo the host's literal
+    # IP so the guard's classification logic is exercised deterministically (not
+    # real DNS, which varies by CI runner for e.g. link-local 169.254.x).
+    def fake_getaddrinfo(host, *a, **k):
+        return [(2, 1, 6, "", (host, 0))]  # host is a literal IP for these cases
+
+    monkeypatch.setattr(
+        "app.services.batch_prediction.socket.getaddrinfo", fake_getaddrinfo
+    )
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post, safe=False)
+    await _service()._fire_webhook(_completed_job(url))
+    post.assert_not_awaited()
