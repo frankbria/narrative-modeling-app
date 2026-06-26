@@ -407,7 +407,9 @@ async def train_model_task(
         # the existing training_config dict — no request-schema change. When
         # enable_tuning is set, the nested tuning_config keys feed TuningConfig
         # (an unknown strategy raises in __post_init__, surfaced as a failed job).
-        training_config = request.training_config or {}
+        # Shallow-copy so the per-request stop-outcome write-back below never
+        # mutates a dict a caller/test might share.
+        training_config = dict(request.training_config or {})
 
         # Training mode (issue #101). A "quick"/"comprehensive" mode fills engine
         # defaults (algorithm count, time budget, tuning, early-stop score); any
@@ -419,7 +421,13 @@ async def train_model_task(
             training_config.get("training_mode"),
             overrides={
                 key: training_config.get(key)
-                for key in ("max_models", "time_limit", "cv_folds", "test_size")
+                for key in (
+                    "max_models",
+                    "time_limit",
+                    "cv_folds",
+                    "test_size",
+                    "early_stop_score",
+                )
             },
         )
         if resolved.get("training_mode"):

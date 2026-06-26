@@ -142,8 +142,9 @@ class AutoMLResult:
     # Training-mode outcome (issue #101). ``early_stopped`` is True when the run
     # ended before exhausting the candidate set; ``stop_reason`` is
     # ``"time_budget_reached"`` or ``"target_score_reached"`` in that case (else
-    # ``None``). ``algorithms_evaluated`` is the count of candidates actually
-    # trained, which can be fewer than ``max_models`` under a budget/early stop.
+    # ``None``). ``algorithms_evaluated`` is the count of candidates that
+    # *successfully* trained (failed fits are skipped and not counted), which can
+    # be fewer than ``max_models`` under a budget/early stop or a candidate error.
     early_stopped: bool = False
     stop_reason: str | None = None
     algorithms_evaluated: int | None = None

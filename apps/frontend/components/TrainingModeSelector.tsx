@@ -80,7 +80,11 @@ export function TrainingModeSelector({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div
+        role="radiogroup"
+        aria-label="Training Mode"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+      >
         {MODE_OPTIONS.map((option) => {
           const selected = value === option.mode;
           return (

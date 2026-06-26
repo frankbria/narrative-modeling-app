@@ -18,18 +18,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-# Engine kwargs honoured when copied out of a resolved mode config.
-_ENGINE_KEYS = (
-    "max_models",
-    "time_limit",
-    "cv_folds",
-    "test_size",
-    "enable_tuning",
-    "early_stop_score",
-)
-
 # Recommend Quick once a dataset is large enough that a tuned, full-catalog run
-# would blow the budget. ponytail: simple size thresholds, revisit if users want
+# would blow the budget. Simple size thresholds — revisit if users want an
 # accuracy-vs-time weighting.
 _LARGE_ROWS = 50_000
 _LARGE_FEATURES = 50
@@ -116,16 +106,3 @@ def recommend_mode(n_rows: int | None, n_features: int | None) -> dict[str, Any]
             "best model."
         )
     return {"recommended_mode": mode.value, "reason": reason}
-
-
-if __name__ == "__main__":  # pragma: no cover - runnable self-check (ponytail)
-    assert resolve_mode_config("quick")["max_models"] == 3
-    assert resolve_mode_config("quick")["time_limit"] == 300
-    assert resolve_mode_config("comprehensive")["enable_tuning"] is True
-    assert resolve_mode_config("comprehensive", {"max_models": 4})["max_models"] == 4
-    assert resolve_mode_config("bogus") == {}
-    assert resolve_mode_config(None) == {}
-    assert recommend_mode(100, 5)["recommended_mode"] == "comprehensive"
-    assert recommend_mode(100_000, 5)["recommended_mode"] == "quick"
-    assert recommend_mode(100, 80)["recommended_mode"] == "quick"
-    print("training_mode self-check passed")

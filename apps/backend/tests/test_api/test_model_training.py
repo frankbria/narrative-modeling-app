@@ -639,6 +639,68 @@ class TestModelTrainingBackgroundTask:
                     mock_run.assert_called_once()
                     mock_save.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_train_task_wires_quick_mode_to_engine(
+        self, sample_dataset, sample_dataframe
+    ):
+        """training_mode=quick resolves to the engine's quick preset (#101)."""
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
+
+        with patch(
+            "app.services.s3_service.S3Service.download_file_bytes",
+            new_callable=AsyncMock,
+        ) as mock_s3:
+            csv_buffer = io.BytesIO()
+            sample_dataframe.to_csv(csv_buffer, index=False)
+            mock_s3.return_value = csv_buffer.getvalue()
+
+            mock_result = AutoMLResult(
+                best_model=ModelCandidate(
+                    name="Logistic Regression",
+                    estimator=MagicMock(),
+                    hyperparameters={},
+                    cv_score=0.9,
+                    test_score=0.88,
+                    training_time=1.0,
+                ),
+                all_models=[],
+                problem_type=ProblemType.BINARY_CLASSIFICATION,
+                feature_names=["feature1"],
+                feature_importance=None,
+                training_time=2.0,
+                metadata={},
+            )
+
+            # Patch the engine class in the route so we can inspect construction.
+            with patch(
+                "app.api.routes.model_training.AutoMLEngine"
+            ) as mock_engine_cls:
+                engine = mock_engine_cls.return_value
+                engine.run = AsyncMock(return_value=mock_result)
+                engine.feature_engineer = MagicMock()
+
+                with patch(
+                    "app.services.model_storage.ModelStorageService.save_model",
+                    new_callable=AsyncMock,
+                ) as mock_save:
+                    mock_save.return_value = MagicMock(model_id="model_q")
+
+                    request = TrainModelRequest(
+                        dataset_id="dataset_123",
+                        target_column="target",
+                        training_config={"training_mode": "quick"},
+                    )
+                    await train_model_task(
+                        sample_dataset, request, "test_user", "model_q"
+                    )
+
+                # Engine built with the quick preset.
+                kwargs = mock_engine_cls.call_args.kwargs
+                assert kwargs["max_models"] == 3
+                assert kwargs["time_limit"] == 300
+                assert kwargs["enable_tuning"] is False
+                assert kwargs["early_stop_score"] == 0.95
+
 
 class TestTrainingStatusEndpoint:
     """Test GET /api/v1/ml/{model_id}/status and job lifecycle tracking."""

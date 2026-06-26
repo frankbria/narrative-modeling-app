@@ -64,6 +64,11 @@ class TestResolveModeConfig:
         config = resolve_mode_config("quick", {"max_models": None})
         assert config["max_models"] == 3
 
+    def test_early_stop_score_overridable(self):
+        # A caller can raise the quick-mode early-stop threshold (codex/review fix).
+        config = resolve_mode_config("quick", {"early_stop_score": 0.99})
+        assert config["early_stop_score"] == 0.99
+
     def test_unknown_mode_is_empty(self):
         assert resolve_mode_config("bogus") == {}
         assert resolve_mode_config(None) == {}

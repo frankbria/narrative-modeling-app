@@ -14,6 +14,9 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
+/** Supported training modes (issue #101). */
+export type TrainingMode = 'quick' | 'comprehensive'
+
 export interface TrainModelRequest {
   dataset_id: string
   target_column: string
@@ -37,9 +40,6 @@ export interface TrainModelRequest {
     training_mode?: TrainingMode
   }
 }
-
-/** Supported training modes (issue #101). */
-export type TrainingMode = 'quick' | 'comprehensive'
 
 /** Dataset-based training-mode recommendation (issue #101). */
 export interface ModeRecommendation {
