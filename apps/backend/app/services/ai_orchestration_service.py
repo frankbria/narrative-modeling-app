@@ -613,15 +613,35 @@ class AIOrchestrationService:
         constraints: ToolConstraints,
         trace: list[str],
     ) -> list[ToolRecommendation]:
+        def adjust(recs: list[ToolRecommendation], up: set[str], down: set[str]) -> None:
+            for r in recs:
+                if r.tool_type in up:
+                    r.priority = min(10, r.priority + 1)
+                elif r.tool_type in down:
+                    r.priority = max(1, r.priority - 1)
+
+        interpretable = {"logistic_regression", "random_forest", TransformationType.LABEL_ENCODE.value}
+        complex_models = {"lightgbm", "xgboost"}
+
         pref = (constraints.interpretability_preference or "").lower()
         if pref == "high":
-            interpretable = {"logistic_regression", "random_forest", TransformationType.LABEL_ENCODE.value}
-            for r in recs:
-                if r.tool_type in interpretable:
-                    r.priority = min(10, r.priority + 1)
-                elif r.tool_type in ("lightgbm", "xgboost"):
-                    r.priority = max(1, r.priority - 1)
+            adjust(recs, interpretable, complex_models)
             trace.append("Applied interpretability=high constraint.")
+        elif pref == "low":
+            adjust(recs, complex_models, interpretable)
+            trace.append("Applied interpretability=low constraint (favoring accuracy).")
+
+        budget = (constraints.time_budget or "").lower()
+        if budget in ("fast", "quick", "speed", "low"):
+            adjust(
+                recs,
+                {"logistic_regression", "lightgbm", TransformationType.LABEL_ENCODE.value},
+                {"train_model", "random_forest", "xgboost"},
+            )
+            trace.append("Applied time_budget=fast constraint (favoring faster tools).")
+        elif budget in ("thorough", "high"):
+            adjust(recs, {"train_model"}, set())
+            trace.append("Applied time_budget=thorough constraint (favoring exhaustive search).")
         return recs
 
     # --------------------------------------------------------- personalization

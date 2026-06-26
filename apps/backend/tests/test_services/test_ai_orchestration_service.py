@@ -161,6 +161,30 @@ def test_interpretability_constraint_boosts_interpretable_tools():
     assert trace
 
 
+def test_interpretability_low_constraint_boosts_complex_models():
+    svc = _service()
+    recs = svc._modeling_recs(_profile(n_rows=50000))
+    lgbm_before = next(r.priority for r in recs if r.tool_type == "lightgbm")
+    trace: list[str] = []
+    svc._apply_constraints(
+        recs, ToolConstraints(interpretability_preference="low"), trace
+    )
+    lgbm_after = next(r.priority for r in recs if r.tool_type == "lightgbm")
+    assert lgbm_after > lgbm_before
+    assert trace
+
+
+def test_time_budget_fast_demotes_slow_automl():
+    svc = _service()
+    recs = svc._modeling_recs(_profile(n_rows=500))
+    train_before = next(r.priority for r in recs if r.tool_type == "train_model")
+    trace: list[str] = []
+    svc._apply_constraints(recs, ToolConstraints(time_budget="fast"), trace)
+    train_after = next(r.priority for r in recs if r.tool_type == "train_model")
+    assert train_after < train_before
+    assert trace
+
+
 @pytest.mark.asyncio
 async def test_optimize_imputation_defaults_to_median():
     svc = _service()
