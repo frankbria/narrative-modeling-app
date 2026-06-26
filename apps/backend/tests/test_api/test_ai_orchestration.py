@@ -5,9 +5,17 @@ MongoDB: recommendations, ownership 404s, feedback persistence, and the
 feedback-driven personalization loop. No OpenAI key required (rule-based core).
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.models.ai_feedback import AIRecommendationFeedback
+from app.models.data_issue import (
+    DataIssue,
+    DataIssueRecord,
+    IssueSeverity,
+    IssueType,
+)
 from app.models.dataset import DatasetMetadata, SchemaField
 
 TEST_USER = "test_user_123"
@@ -133,6 +141,46 @@ class TestOptimizeParameters:
 
 
 @pytest.mark.integration
+class TestUsesLatestIssueRecord:
+    @pytest.mark.asyncio
+    async def test_recommendations_use_newest_detection_run(
+        self, async_authorized_client, setup_database
+    ):
+        """A second, newer DataIssueRecord supersedes the older one (codex fix)."""
+        await _seed_dataset("ds_issues")
+        now = datetime.now(UTC)
+        # Old run: no duplicates.
+        await DataIssueRecord(
+            dataset_id="ds_issues",
+            user_id=TEST_USER,
+            issues=[],
+            detected_at=now - timedelta(hours=1),
+        ).insert()
+        # New run: duplicates detected -> should drive a REMOVE_DUPLICATES rec.
+        await DataIssueRecord(
+            dataset_id="ds_issues",
+            user_id=TEST_USER,
+            issues=[
+                DataIssue(
+                    issue_id="i1",
+                    issue_type=IssueType.DUPLICATES,
+                    severity=IssueSeverity.HIGH,
+                    description="dupes",
+                )
+            ],
+            detected_at=now,
+        ).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/recommend-tools",
+            json={"dataset_id": "ds_issues", "objective": "data_cleaning"},
+        )
+        assert resp.status_code == 200
+        top = resp.json()["recommendations"][0]
+        assert top["tool_type"] == "remove_duplicates"
+
+
+@pytest.mark.integration
 class TestFeedbackAndPersonalization:
     @pytest.mark.asyncio
     async def test_feedback_persists(self, async_authorized_client, setup_database):
@@ -152,6 +200,38 @@ class TestFeedbackAndPersonalization:
         )
         assert stored is not None
         assert stored.action == "accepted"
+
+    @pytest.mark.asyncio
+    async def test_feedback_with_valid_dataset_201(
+        self, async_authorized_client, setup_database
+    ):
+        await _seed_dataset("ds_fb_owned")
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/feedback",
+            json={
+                "recommendation_id": "rec_y",
+                "tool_type": "scale",
+                "action": "accepted",
+                "dataset_id": "ds_fb_owned",
+            },
+        )
+        assert resp.status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_feedback_foreign_dataset_404(
+        self, async_authorized_client, setup_database
+    ):
+        await _seed_dataset("ds_fb_foreign", user_id="someone_else")
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/feedback",
+            json={
+                "recommendation_id": "rec_z",
+                "tool_type": "scale",
+                "action": "accepted",
+                "dataset_id": "ds_fb_foreign",
+            },
+        )
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_rejection_personalizes_recommendations(

@@ -14,6 +14,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.models.dataset import DatasetMetadata
 from app.schemas.ai_orchestration import (
     AIFeedbackRequest,
     AIFeedbackResponse,
@@ -69,6 +70,18 @@ async def submit_recommendation_feedback(
     user_id: str = Depends(get_current_user_id),
 ) -> AIFeedbackResponse:
     """Store user feedback on an AI recommendation."""
+    # When tied to a dataset, validate ownership so feedback can't be persisted
+    # against a foreign/unknown dataset id (consistent with recommend/optimize).
+    if request.dataset_id is not None:
+        owned = await DatasetMetadata.find_one(
+            DatasetMetadata.dataset_id == request.dataset_id,
+            DatasetMetadata.user_id == user_id,
+        )
+        if owned is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dataset not found",
+            )
     try:
         feedback = await ai_orchestration_service.record_feedback(request, user_id)
     except Exception:

@@ -150,9 +150,15 @@ class AIOrchestrationService:
 
         # Fold in detected data issues (best-effort).
         try:
-            issue_record = await DataIssueRecord.find_one(
-                DataIssueRecord.dataset_id == dataset_id,
-                DataIssueRecord.user_id == user_id,
+            # Newest detection run wins — store_detection_results inserts a fresh
+            # record each time, so an unsorted find_one can read stale results.
+            issue_record = (
+                await DataIssueRecord.find(
+                    DataIssueRecord.dataset_id == dataset_id,
+                    DataIssueRecord.user_id == user_id,
+                )
+                .sort("-detected_at")
+                .first_or_none()
             )
             if issue_record is not None:
                 profile.detected_issue_types = [i.issue_type.value for i in issue_record.issues]
@@ -242,31 +248,37 @@ class AIOrchestrationService:
                 )
             )
         if profile.columns_with_missing:
-            worst = max(profile.columns_with_missing.values())
-            cols = sorted(profile.columns_with_missing)
-            if worst > 0.5:
+            # Split by missing rate so lightly-missing columns are imputed, not
+            # dropped alongside the mostly-empty ones (codex review).
+            drop_cols = sorted(
+                c for c, frac in profile.columns_with_missing.items() if frac > 0.5
+            )
+            impute_cols = sorted(
+                c for c, frac in profile.columns_with_missing.items() if frac <= 0.5
+            )
+            if drop_cols:
                 recs.append(
                     self._rec(
                         TransformationType.DROP_MISSING.value,
                         priority=8,
                         confidence=0.7,
-                        explanation=f"{len(cols)} column(s) have over 50% missing values; "
+                        explanation=f"{len(drop_cols)} column(s) have over 50% missing values; "
                         "imputing that much can fabricate signal, so dropping is safer.",
-                        parameters={"columns": cols},
+                        parameters={"columns": drop_cols},
                         pros=["Avoids fabricated values"],
                         cons=["Loses rows or columns"],
                         estimated_impact="Removes mostly-empty columns/rows",
                     )
                 )
-            else:
+            if impute_cols:
                 recs.append(
                     self._rec(
                         TransformationType.IMPUTE_MEDIAN.value,
                         priority=8,
                         confidence=0.8,
-                        explanation=f"{len(cols)} column(s) have some missing values; median "
-                        "imputation fills gaps robustly without dropping rows.",
-                        parameters={"columns": cols, "strategy": "median"},
+                        explanation=f"{len(impute_cols)} column(s) have some missing values; "
+                        "median imputation fills gaps robustly without dropping rows.",
+                        parameters={"columns": impute_cols, "strategy": "median"},
                         pros=["Keeps all rows", "Robust to skew/outliers"],
                         cons=["Reduces variance slightly"],
                         estimated_impact="Fills missing numeric values",

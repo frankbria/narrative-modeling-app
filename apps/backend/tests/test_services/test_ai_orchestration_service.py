@@ -72,6 +72,19 @@ def test_cleaning_drops_when_mostly_missing():
     assert TransformationType.IMPUTE_MEDIAN.value not in tool_types
 
 
+def test_cleaning_splits_drop_and_impute_by_threshold():
+    """A mostly-empty column is dropped while a lightly-missing one is imputed.
+
+    Regression for codex finding: drop must not sweep in lightly-missing columns.
+    """
+    svc = _service()
+    profile = _profile(columns_with_missing={"notes": 0.9, "age": 0.05})
+    recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
+    by_type = {r.tool_type: r for r in recs}
+    assert by_type[TransformationType.DROP_MISSING.value].parameters["columns"] == ["notes"]
+    assert by_type[TransformationType.IMPUTE_MEDIAN.value].parameters["columns"] == ["age"]
+
+
 def test_feature_engineering_encodes_by_cardinality():
     svc = _service()
     profile = _profile(
