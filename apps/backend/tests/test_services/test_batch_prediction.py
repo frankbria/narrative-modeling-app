@@ -332,8 +332,12 @@ def _completed_job(webhook_url=None, webhook_secret=None):
     return job
 
 
-def _patch_httpx(monkeypatch, post):
-    """Patch httpx.AsyncClient so _fire_webhook's POST is captured."""
+def _patch_httpx(monkeypatch, post, *, safe=True):
+    """Patch httpx.AsyncClient so _fire_webhook's POST is captured.
+
+    ``safe=True`` also stubs DNS resolution to a public IP so the SSRF guard
+    (``_is_safe_webhook_url``) passes for the test's fake host.
+    """
     client = MagicMock()
     client.post = post
     client.__aenter__ = AsyncMock(return_value=client)
@@ -342,6 +346,11 @@ def _patch_httpx(monkeypatch, post):
         "app.services.batch_prediction.httpx.AsyncClient",
         lambda *a, **k: client,
     )
+    if safe:
+        monkeypatch.setattr(
+            "app.services.batch_prediction.socket.getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 443))],
+        )
 
 
 @pytest.mark.asyncio
@@ -391,3 +400,35 @@ async def test_fire_webhook_never_raises_on_failure(monkeypatch):
     # Must swallow the error (and retry once → two attempts).
     await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
     assert post.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_retries_on_non_2xx(monkeypatch):
+    # httpx doesn't raise on 5xx by default; _fire_webhook calls raise_for_status
+    # so a non-2xx is retried, not silently treated as delivered (#86 review).
+    response = MagicMock()
+    response.raise_for_status.side_effect = RuntimeError("500")
+    post = AsyncMock(return_value=response)
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    assert post.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/cb",  # loopback
+        "http://169.254.169.254/latest/meta-data",  # cloud metadata (link-local)
+        "http://10.0.0.5/cb",  # RFC1918 private
+        "ftp://example.com/cb",  # non-http scheme
+        "not-a-url",
+    ],
+)
+async def test_fire_webhook_blocks_ssrf_targets(monkeypatch, url):
+    # Real DNS resolution is used here (no getaddrinfo stub) so literal IPs and
+    # bad schemes are rejected before any POST. The unsafe URL must never fire.
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post, safe=False)
+    await _service()._fire_webhook(_completed_job(url))
+    post.assert_not_awaited()

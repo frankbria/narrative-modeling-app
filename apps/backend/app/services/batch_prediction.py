@@ -5,15 +5,18 @@ Batch prediction service for processing large datasets
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
+import socket
 import statistics
 import tempfile
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from io import BytesIO, StringIO
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import numpy as np
@@ -269,15 +272,53 @@ class BatchPredictionService:
             # Best-effort async-completion webhook (issue #86). Never blocks/raises.
             await self._fire_webhook(job)
 
+    @staticmethod
+    def _is_safe_webhook_url(url: str) -> bool:
+        """Reject SSRF-prone webhook targets (#86 hardening).
+
+        Only http(s) to a host that resolves entirely to public addresses —
+        blocks loopback/private/link-local/reserved (e.g. ``127.0.0.1``,
+        ``169.254.169.254`` cloud-metadata, RFC1918). ponytail: basic resolve-
+        and-check guard, not DNS-rebinding-proof; tighten with an egress proxy
+        or allowlist if webhooks graduate past beta.
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                return False
+            infos = socket.getaddrinfo(
+                parsed.hostname, parsed.port or 0, proto=socket.IPPROTO_TCP
+            )
+            for info in infos:
+                ip = ipaddress.ip_address(info[4][0])
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_multicast
+                    or ip.is_unspecified
+                ):
+                    return False
+            return bool(infos)
+        except Exception:  # noqa: BLE001 - unresolvable/invalid → unsafe
+            return False
+
     async def _fire_webhook(self, job: BatchJob) -> None:
         """POST the job summary to the job's webhook URL on terminal state (#86).
 
         Best-effort: signs the payload with HMAC-SHA256 when a secret is set
-        (header ``X-Signature``), retries once, and swallows every error so a
-        bad/unreachable webhook can never affect the prediction job.
+        (header ``X-Signature``), retries once on any failure (including non-2xx
+        responses), and swallows every error so a bad/unreachable webhook can
+        never affect the prediction job. SSRF-guarded via ``_is_safe_webhook_url``.
         """
         webhook_url = job.config.get("webhook_url")
         if not webhook_url:
+            return
+        if not self._is_safe_webhook_url(webhook_url):
+            logger.warning(
+                "Skipping webhook to unsafe/unresolvable URL: %s", webhook_url
+            )
             return
 
         payload = json.dumps(
@@ -302,7 +343,12 @@ class BatchPredictionService:
         for attempt in range(2):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(webhook_url, content=payload, headers=headers)
+                    response = await client.post(
+                        webhook_url, content=payload, headers=headers
+                    )
+                    # httpx never raises on 4xx/5xx by default — do it explicitly
+                    # so a transient receiver failure is retried, not swallowed.
+                    response.raise_for_status()
                 return
             except Exception as exc:  # noqa: BLE001 - webhook must never break the job
                 logger.warning(
