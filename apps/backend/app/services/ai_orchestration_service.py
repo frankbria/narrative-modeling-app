@@ -23,20 +23,43 @@ from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationType
+from app.models.workflow import WorkflowState
 from app.schemas.ai_orchestration import (
     AIFeedbackRequest,
     Objective,
     ParameterAlternative,
     ParameterOptimizationRequest,
     ParameterOptimizationResponse,
+    StageGuidanceResponse,
     ToolConstraints,
     ToolRecommendation,
     ToolRecommendationRequest,
     ToolRecommendationResponse,
+    WorkflowStageId,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
 
 logger = logging.getLogger(__name__)
+
+# Shared AI personality so guidance reads consistently across every stage (#90).
+AI_MENTOR_PERSONA = (
+    "You are a friendly, plain-spoken data-science mentor for a non-expert analyst. "
+    "You are encouraging and educational without being condescending, you prefer "
+    "concrete next steps over jargon, and you build on the decisions the user has "
+    "already made earlier in their workflow."
+)
+
+# One-line focus per workflow stage (the consistent framing for stage guidance).
+_STAGE_FOCUS: dict[str, str] = {
+    WorkflowStageId.DATA_LOADING.value: "Getting clean, well-typed data into the workflow",
+    WorkflowStageId.DATA_PROFILING.value: "Understanding your data's shape, quality, and relationships",
+    WorkflowStageId.DATA_PREPARATION.value: "Cleaning and fixing data-quality issues before modelling",
+    WorkflowStageId.FEATURE_ENGINEERING.value: "Turning raw columns into informative model inputs",
+    WorkflowStageId.MODEL_TRAINING.value: "Choosing and training the right algorithm for your data",
+    WorkflowStageId.MODEL_EVALUATION.value: "Reading the results and judging if the model is good enough",
+    WorkflowStageId.PREDICTION.value: "Making and trusting predictions on new data",
+    WorkflowStageId.DEPLOYMENT.value: "Shipping the model as a reliable, monitored service",
+}
 
 # Canonical execution order used to assemble multi-stage pipelines. Lower rank
 # runs earlier. tool_types not listed sort last (modeling/exploration extras).
@@ -724,6 +747,297 @@ class AIOrchestrationService:
                     "content": "You are a data science assistant. In 2-3 plain-language "
                     "sentences, explain to a non-expert why the recommended tools suit this "
                     "dataset and objective. Respond as JSON: {\"summary\": \"...\"}.",
+                },
+                {"role": "user", "content": json.dumps(context, default=str)},
+            ],
+            temperature=0.3,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        summary = str(data.get("summary", "")).strip()
+        return summary or None
+
+    # --------------------------------------------------------- stage guidance
+    async def generate_stage_guidance(
+        self,
+        profile: OrchestrationProfile,
+        stage: WorkflowStageId,
+        request_context: dict[str, Any] | None,
+        user_id: str,
+    ) -> StageGuidanceResponse:
+        """Consistent, context-aware AI guidance for one workflow stage (#90).
+
+        Rule-based core works fully with no OpenAI key; an optional OpenAI pass
+        enhances only the plain-language summary. Never raises.
+        """
+        reasoning_trace: list[str] = [
+            f"Built profile for dataset {profile.dataset_id}: {profile.summary_text()}"
+        ]
+        accumulated, context_used = await self._accumulate_context(
+            profile.dataset_id, user_id, stage, request_context, reasoning_trace
+        )
+
+        focus = _STAGE_FOCUS.get(stage.value, "Working through this stage")
+        considerations, actions = self._stage_rule_guidance(stage, profile)
+        # Make the no-OpenAI path genuinely context-aware: prior-stage decisions
+        # lead the considerations so later guidance visibly builds on earlier ones.
+        if context_used:
+            considerations = [
+                "Building on your earlier choices (" + "; ".join(context_used) + "), "
+                "keep them consistent with what you decide here."
+            ] + considerations
+        reasoning_trace.append(f"Rule-based engine produced guidance for stage '{stage.value}'.")
+
+        guidance_summary = self._stage_rule_summary(focus, profile, context_used)
+        generated_by = "rule_based"
+        ai_summary = await self._maybe_stage_ai_summary(
+            stage, focus, profile, context_used, considerations, actions
+        )
+        if ai_summary:
+            guidance_summary = ai_summary
+            generated_by = "hybrid"
+            reasoning_trace.append("OpenAI enhanced the plain-language stage guidance.")
+
+        return StageGuidanceResponse(
+            dataset_id=profile.dataset_id,
+            stage=stage,
+            focus=focus,
+            guidance_summary=guidance_summary,
+            key_considerations=considerations,
+            suggested_actions=actions,
+            context_used=context_used,
+            reasoning_trace=reasoning_trace,
+            generated_by=generated_by,
+            partial=profile.partial,
+        )
+
+    async def _accumulate_context(
+        self,
+        dataset_id: str,
+        user_id: str,
+        stage: WorkflowStageId,
+        request_context: dict[str, Any] | None,
+        reasoning_trace: list[str],
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Gather prior-stage decisions so later guidance builds on earlier ones.
+
+        Reads persisted workflow state (#87) best-effort, then merges any explicit
+        accumulated_context from the caller on top.
+        """
+        accumulated: dict[str, Any] = {}
+        context_used: list[str] = []
+
+        workflow: WorkflowState | None = None
+        try:
+            workflow = await WorkflowState.find_one(
+                WorkflowState.user_id == user_id,
+                WorkflowState.dataset_id == dataset_id,
+            )
+        except Exception:  # pragma: no cover - defensive; persisted state is optional
+            logger.debug("Could not load workflow state for %s", dataset_id, exc_info=True)
+
+        if workflow is not None:
+            prior_stages = [s for s in workflow.completed_stages if s != stage.value]
+            for prior in prior_stages:
+                data = workflow.stage_data.get(prior)
+                if data:
+                    accumulated[prior] = data
+                    context_used.append(f"{prior}: {self._summarize_decision(data)}")
+            if prior_stages:
+                reasoning_trace.append(
+                    "Accumulated decisions from completed stage(s): " + ", ".join(prior_stages)
+                )
+
+        if request_context:
+            accumulated.update(request_context)
+            for key, value in request_context.items():
+                context_used.append(f"{key}: {self._summarize_decision(value)}")
+            reasoning_trace.append("Merged caller-supplied accumulated_context.")
+
+        return accumulated, context_used
+
+    @staticmethod
+    def _summarize_decision(value: Any) -> str:
+        """Compact, length-capped string for a prior-stage decision."""
+        if isinstance(value, dict):
+            text = ", ".join(f"{k}={value[k]}" for k in list(value)[:5])
+        elif isinstance(value, list):
+            text = ", ".join(str(v) for v in value[:5])
+        else:
+            text = str(value)
+        return text[:160]
+
+    def _stage_rule_guidance(
+        self,
+        stage: WorkflowStageId,
+        profile: OrchestrationProfile,
+    ) -> tuple[list[str], list[str]]:
+        """Per-stage key considerations + suggested actions (rule-based).
+
+        Accumulated cross-stage context is folded in by the caller
+        (`generate_stage_guidance`), so this stays a pure function of the stage
+        and the dataset profile.
+        """
+        if stage == WorkflowStageId.DATA_PREPARATION:
+            return self._guidance_from_recs(
+                self._cleaning_recs(profile),
+                fallback_action="Your data looks clean — review the profiling report and continue.",
+            )
+        if stage == WorkflowStageId.FEATURE_ENGINEERING:
+            return self._guidance_from_recs(self._feature_recs(profile))
+        if stage == WorkflowStageId.MODEL_TRAINING:
+            return self._guidance_from_recs(self._modeling_recs(profile))
+        if stage == WorkflowStageId.DEPLOYMENT:
+            return self._deployment_guidance(profile)
+        # Stages with their own rich, dedicated AI surfaces (#79/#81/#83/#80) or no
+        # transformation recs: provide concise mentor-voice considerations + actions.
+        return self._STATIC_STAGE_GUIDANCE.get(
+            stage.value,
+            (["Review the available information for this stage."], ["Continue to the next stage."]),
+        )
+
+    @staticmethod
+    def _guidance_from_recs(
+        recs: list[ToolRecommendation],
+        fallback_action: str = "Continue to the next stage.",
+    ) -> tuple[list[str], list[str]]:
+        recs = sorted(recs, key=lambda r: r.priority, reverse=True)
+        considerations = [r.explanation for r in recs] or [
+            "No specific issues were flagged from the current profile."
+        ]
+        actions = [f"{r.tool_type}: {r.estimated_impact or r.explanation}" for r in recs] or [
+            fallback_action
+        ]
+        return considerations, actions
+
+    def _deployment_guidance(
+        self, profile: OrchestrationProfile
+    ) -> tuple[list[str], list[str]]:
+        """Stage 8 deployment guidance — the genuine gap this issue fills."""
+        # Larger datasets / batch-shaped workloads lean toward batch scoring; small
+        # ones suit a low-latency real-time endpoint. A heuristic, not a hard rule.
+        real_time = profile.n_rows < 100_000
+        serving = (
+            "Start with a real-time REST endpoint — your volumes are modest and "
+            "interactive predictions are simplest to reason about."
+            if real_time
+            else "Consider batch scoring — at this data scale, scheduled batch jobs "
+            "are usually cheaper and easier to operate than a hot endpoint."
+        )
+        considerations = [
+            serving,
+            "Decide who calls the model and how (API key per consumer, rate limits).",
+            "Capture a baseline of input distributions now so you can detect drift later.",
+            "Plan a rollback: keep the previous version promotable in case quality drops.",
+        ]
+        actions = [
+            "Deploy the trained model as a versioned production endpoint.",
+            "Enable monitoring: track request volume, latency, error rate, and prediction mix.",
+            "Set alert thresholds on error rate and latency before real traffic arrives.",
+            "Run the pre-deployment checklist: smoke-test the endpoint with a known record.",
+        ]
+        return considerations, actions
+
+    # Mentor-voice guidance for stages that already have dedicated AI analytics
+    # elsewhere (so we complement, not duplicate, those richer surfaces).
+    _STATIC_STAGE_GUIDANCE: dict[str, tuple[list[str], list[str]]] = {
+        WorkflowStageId.DATA_LOADING.value: (
+            [
+                "Confirm the file parsed with the column types you expected.",
+                "Watch for ID-like or constant columns that won't help a model.",
+            ],
+            [
+                "Upload your dataset and verify the row/column counts.",
+                "Continue to profiling to understand the data before changing it.",
+            ],
+        ),
+        WorkflowStageId.DATA_PROFILING.value: (
+            [
+                "Look at missingness, cardinality, and obvious outliers first.",
+                "Note likely target candidates and strongly correlated columns.",
+            ],
+            [
+                "Review the AI data summary and distribution charts.",
+                "Decide which issues to fix in the preparation stage.",
+            ],
+        ),
+        WorkflowStageId.MODEL_EVALUATION.value: (
+            [
+                "Match the metric to the goal: accuracy can mislead on imbalanced data.",
+                "Read the confusion matrix and error analysis for systematic mistakes.",
+            ],
+            [
+                "Open the model report card and confusion matrix.",
+                "Use error analysis to decide whether to revisit features or data.",
+            ],
+        ),
+        WorkflowStageId.PREDICTION.value: (
+            [
+                "Treat low-confidence predictions with caution — they need review.",
+                "Per-prediction explanations show which features drove each result.",
+            ],
+            [
+                "Run a single prediction and read its confidence and explanation.",
+                "For bulk scoring, use batch prediction and check the low-confidence count.",
+            ],
+        ),
+    }
+
+    def _stage_rule_summary(
+        self, focus: str, profile: OrchestrationProfile, context_used: list[str]
+    ) -> str:
+        """Deterministic plain-language summary used when OpenAI is unavailable."""
+        summary = f"This stage is about {focus.lower()}. Your data has {profile.summary_text()}."
+        if context_used:
+            summary += " It also builds on your earlier choices so far."
+        return summary
+
+    async def _maybe_stage_ai_summary(
+        self,
+        stage: WorkflowStageId,
+        focus: str,
+        profile: OrchestrationProfile,
+        context_used: list[str],
+        considerations: list[str],
+        actions: list[str],
+    ) -> str | None:
+        if self.client is None:
+            return None
+        context = {
+            "stage": stage.value,
+            "focus": focus,
+            "profile": profile.summary_text(),
+            "prior_decisions": context_used,
+            "key_considerations": considerations,
+            "suggested_actions": actions,
+        }
+        try:
+            return await self._stage_guidance_summary(context)
+        except Exception as exc:  # includes CircuitBreakerOpen
+            logger.warning("OpenAI stage guidance unavailable: %s", exc)
+            return None
+
+    @with_circuit_breaker(
+        "openai",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(OpenAIError,),
+        fallback_value=None,
+    )
+    async def _stage_guidance_summary(self, context: dict[str, Any]) -> str | None:
+        response = await asyncio.to_thread(
+            cast(Any, self.client).chat.completions.create,
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": AI_MENTOR_PERSONA
+                    + " In 2-4 sentences, summarise what the user should focus on at this "
+                    "workflow stage, weaving in their earlier decisions where relevant. "
+                    'Respond as JSON: {"summary": "..."}.',
                 },
                 {"role": "user", "content": json.dumps(context, default=str)},
             ],

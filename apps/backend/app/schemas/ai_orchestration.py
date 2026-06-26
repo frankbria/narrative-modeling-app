@@ -107,6 +107,51 @@ class ParameterOptimizationResponse(BaseModel):
     partial: bool = False
 
 
+class WorkflowStageId(str, Enum):
+    """The 8 workflow stages (mirrors frontend WorkflowStage values)."""
+
+    DATA_LOADING = "data_loading"
+    DATA_PROFILING = "data_profiling"
+    DATA_PREPARATION = "data_preparation"
+    FEATURE_ENGINEERING = "feature_engineering"
+    MODEL_TRAINING = "model_training"
+    MODEL_EVALUATION = "model_evaluation"
+    PREDICTION = "prediction"
+    DEPLOYMENT = "deployment"
+
+
+class StageGuidanceRequest(BaseModel):
+    """Request for AI guidance at a specific workflow stage (issue #90)."""
+
+    dataset_id: str
+    stage: WorkflowStageId
+    accumulated_context: dict[str, Any] | None = Field(
+        None,
+        description="Explicit prior-stage decisions to factor in; merged on top of "
+        "any persisted workflow state for this dataset.",
+    )
+
+
+class StageGuidanceResponse(BaseModel):
+    """Consistent, context-aware AI guidance for one workflow stage."""
+
+    dataset_id: str
+    stage: WorkflowStageId
+    focus: str = Field(..., description="What this stage is about, in one line")
+    guidance_summary: str = Field(..., description="Plain-language mentor-voice summary")
+    key_considerations: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+    context_used: list[str] = Field(
+        default_factory=list,
+        description="Prior-stage decisions that informed this guidance (accumulation)",
+    )
+    reasoning_trace: list[str] = Field(default_factory=list)
+    generated_by: str = Field(default="rule_based", description="'rule_based' or 'hybrid'")
+    partial: bool = Field(
+        default=False, description="True when the dataset lacks full profiling metadata"
+    )
+
+
 class FeedbackAction(str, Enum):
     """How the user reacted to a recommendation."""
 

@@ -1,43 +1,28 @@
-# Issue #89 — [P5.7] AI decision engine for tool selection and parameter optimization
+# Issue #90 — AI assistance integration across all 8 workflow stages (lean, adapted)
 
-**Plan source:** CodeRabbit comment plan (heavily trimmed — bot plan over-scoped ~13 files / "5-6 weeks").
-**Surface:** Backend only (issue labels: backend, ml-core, phase-5). Frontend wiring deferred.
+**Labels:** enhancement, P2-Medium, backend, ml-core, phase-5 (post-beta V2)
 
-## Adapted (lean) plan — reuse established patterns
+## Why the Traycer plan is over-scoped / stale
+- Its centerpiece `app/services/ai_orchestration_service.py` **already exists** (shipped in #89, the previous commit).
+- 6 of 8 stages already have backend AI: profiling (#2 ai_analysis/ai_summary), data-prep (#3) + feature-eng (#4) via #89 `recommend-tools`/`optimize-parameters`, model-selection (#5) via `explanation_service`, evaluation (#6) via #79 report card + #81 error analysis.
+- Genuine gaps vs the 4 ACs: (a) **Stage 8 deployment has NO AI**, (b) no **shared personality/tone** across services (each has its own inline prompt), (c) no **cross-stage context accumulation**, (d) structured outputs already done.
 
-- OpenAI-with-deterministic-fallback -> EvaluationExplanationService (works fully with NO API key)
-- DataProfile dataclass -> model_training/algorithm_selector.py
-- TransformationType (41-value SSoT) -> app/models/transformation.py
-- Rich metadata exists: DatasetMetadata, ColumnStats, DataIssueRecord, TransformationConfig
-- circuit breaker -> @with_circuit_breaker
+## Adapted scope — one cohesive capability, backend-only
+Build "stage guidance" on the existing #89 `AIOrchestrationService` + #87 `WorkflowState`. Frontend deferred (issue is backend/ml-core labeled — matches #89 precedent).
 
-### Step 1 - Schemas (app/schemas/ai_orchestration.py)
-Objective enum; ToolRecommendation; ToolRecommendationRequest/Response (pipeline_suggestion, reasoning_trace,
-personalization_applied, partial); ParameterOptimizationRequest/Response; AIFeedbackRequest/Response.
+### Backend
+1. **Shared persona** — `AI_MENTOR_PERSONA` constant in `ai_orchestration_service.py`; existing `_openai_summary` + new stage-guidance call both use it -> AC2 consistent tone.
+2. **Schemas** (`app/schemas/ai_orchestration.py`): `WorkflowStageId` enum (8 stages), `StageGuidanceRequest{dataset_id, stage, accumulated_context?}`, `StageGuidanceResponse{focus, guidance_summary, key_considerations[], suggested_actions[], context_used[], reasoning_trace[], generated_by, partial}`.
+3. **`generate_stage_guidance(profile, stage, request_context, user_id)`**:
+   - Context accumulation (AC3): best-effort load persisted `WorkflowState` (#87) -> prior `completed_stages` + `stage_data`; merge request `accumulated_context`; list in `context_used`.
+   - Rule-based per-stage core for all 8 stages (works w/o key); reuse `_cleaning/_feature/_modeling_recs` where natural; **dedicated deployment guidance** (real-time vs batch by problem_type/size, monitoring, pre-deploy checklist) — the gap.
+   - Optional OpenAI enhancement `_stage_guidance_summary()` behind `@with_circuit_breaker("openai", fallback_value=None)`, JSON mode, persona-prefixed; `generated_by` hybrid/rule_based; never raises.
+4. **Endpoint** `POST /api/v1/ai/stage-guidance` (auth, 404 unknown/foreign, never 500).
+5. **Tests**: extend `test_services/test_ai_orchestration_service.py` + `test_api/test_ai_orchestration.py`.
+6. **Docs**: CLAUDE.md #90 note.
 
-### Step 2 - Feedback model (app/models/ai_feedback.py) + register in registry.py
-AIRecommendationFeedback Beanie doc (user_id, dataset_id, recommendation_id, tool_type, action, rating?,
-comment?, modification?, context, created_at; indexes user_id/tool_type/action).
-
-### Step 3 - One service module (app/services/ai_orchestration_service.py)
-AIOrchestrationService (never raises, degrades): build_profile(); rule-based recommenders per objective;
-recommend_tools() rules+optional-OpenAI+feedback-aware ordered pipeline; optimize_parameters() rule-based;
-templated/OpenAI explanations; personalization via feedback counts; module singleton.
-
-### Step 4 - Router (app/api/routes/ai_orchestration.py) + register in main.py
-POST /api/v1/ai/recommend-tools, /optimize-parameters, /feedback. Auth + ownership 404 + partial never-500.
-
-### Step 5 - Tests
-tests/test_services/test_ai_orchestration_service.py + tests/test_api/test_ai_orchestration.py
-
-## Deviations from CodeRabbit plan
-- 7 service files -> ONE module. Dropped practices.json/KnowledgeBase/BestPractice (inline heuristics).
-- Dropped DataProfileBuilder module + FeedbackAnalyzer class. "Learning" = beta-level feedback counts.
-- Endpoint works fully WITHOUT OpenAI key (matches #79). Frontend deferred (backend-labeled issue).
-
-## Acceptance criteria
-- [ ] AI tool selection based on data profile and objective
-- [ ] Parameter optimization suggestions at each stage
-- [ ] Multi-stage pipeline construction
-- [ ] Plain-language explanations for all decisions
-- [ ] Learning from user feedback; context-aware recommendations
+### Dropped from Traycer (with reason)
+- Re-create ai_orchestration_service / 5 new *_ai_service.py — already covered by #89 + this one method.
+- 5 frontend components / WorkflowContext aiContext / ContextualAIHelp — frontend deferred (backend-labeled).
+- Redis caching + per-user rate limit — YAGNI; global rate limiting already exists (#151).
+- Separate ai_prompts.py / ai_responses.py modules — one persona constant + extend existing schemas.

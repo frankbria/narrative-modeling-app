@@ -313,3 +313,77 @@ class TestFeedbackAndPersonalization:
             r["priority"] for r in after_data["recommendations"] if r["tool_type"] == "standardize"
         )
         assert std_after < std_before
+
+
+@pytest.mark.integration
+class TestStageGuidance:
+    """Stage guidance endpoint (issue #90): per-stage AI + context accumulation."""
+
+    @pytest.mark.asyncio
+    async def test_stage_guidance_returns_shape(
+        self, async_authorized_client, setup_database
+    ):
+        await _seed_dataset("ds_stage_1")
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/stage-guidance",
+            json={"dataset_id": "ds_stage_1", "stage": "deployment"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stage"] == "deployment"
+        assert data["focus"]
+        assert data["guidance_summary"]
+        assert data["key_considerations"]
+        assert data["suggested_actions"]
+        assert data["generated_by"] in ("rule_based", "hybrid")
+
+    @pytest.mark.asyncio
+    async def test_stage_guidance_unknown_dataset_404(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/stage-guidance",
+            json={"dataset_id": "missing", "stage": "data_preparation"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_stage_guidance_foreign_dataset_404(
+        self, async_authorized_client, setup_database
+    ):
+        await _seed_dataset("ds_stage_foreign", user_id="someone_else")
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/stage-guidance",
+            json={"dataset_id": "ds_stage_foreign", "stage": "data_preparation"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_stage_guidance_accumulates_persisted_workflow(
+        self, async_authorized_client, setup_database
+    ):
+        """Earlier-stage decisions persisted in WorkflowState inform later guidance."""
+        from app.models.workflow import WorkflowState
+
+        await _seed_dataset("ds_stage_ctx")
+        await WorkflowState(
+            workflow_id="wf_ctx_1",
+            user_id=TEST_USER,
+            dataset_id="ds_stage_ctx",
+            current_stage="model_training",
+            completed_stages=["data_preparation", "feature_engineering"],
+            stage_data={
+                "data_preparation": {"removed_duplicates": True},
+                "feature_engineering": {"selected_features": ["age", "income"]},
+            },
+        ).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/stage-guidance",
+            json={"dataset_id": "ds_stage_ctx", "stage": "model_training"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        joined = " ".join(data["context_used"])
+        assert "data_preparation" in joined or "feature_engineering" in joined
+        assert any("Accumulated decisions" in t for t in data["reasoning_trace"])

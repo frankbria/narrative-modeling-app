@@ -15,6 +15,7 @@ from app.schemas.ai_orchestration import (
     Objective,
     ParameterOptimizationRequest,
     ToolConstraints,
+    WorkflowStageId,
 )
 from app.services.ai_orchestration_service import (
     AIOrchestrationService,
@@ -281,3 +282,87 @@ async def test_optimize_unknown_tool_echoes_params():
     )
     assert resp.optimized_parameters == {"k": 1}
     assert "No specific parameter heuristics" in resp.explanation
+
+
+# --------------------------------------------------------------- stage guidance (#90)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", list(WorkflowStageId))
+async def test_stage_guidance_all_stages_rule_based(stage):
+    """Every one of the 8 stages yields focus + considerations + actions, no key."""
+    svc = _service()
+    resp = await svc.generate_stage_guidance(_profile(), stage, None, "u1")
+    assert resp.stage == stage
+    assert resp.focus
+    assert resp.guidance_summary
+    assert resp.key_considerations
+    assert resp.suggested_actions
+    assert resp.generated_by == "rule_based"
+
+
+@pytest.mark.asyncio
+async def test_deployment_guidance_is_the_filled_gap():
+    """Stage 8 (no prior AI) gets real deployment strategy + monitoring + checklist."""
+    svc = _service()
+    resp = await svc.generate_stage_guidance(_profile(), WorkflowStageId.DEPLOYMENT, None, "u1")
+    blob = " ".join(resp.key_considerations + resp.suggested_actions).lower()
+    assert "monitor" in blob
+    assert "rollback" in blob or "version" in blob
+    assert any("checklist" in a.lower() or "smoke" in a.lower() for a in resp.suggested_actions)
+
+
+@pytest.mark.asyncio
+async def test_deployment_real_time_vs_batch_heuristic():
+    svc = _service()
+    small = await svc.generate_stage_guidance(
+        _profile(n_rows=1000), WorkflowStageId.DEPLOYMENT, None, "u1"
+    )
+    large = await svc.generate_stage_guidance(
+        _profile(n_rows=500_000), WorkflowStageId.DEPLOYMENT, None, "u1"
+    )
+    assert "real-time" in small.key_considerations[0].lower()
+    assert "batch" in large.key_considerations[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_stage_guidance_accumulates_caller_context():
+    """Explicit accumulated_context is threaded into context_used (AC3)."""
+    svc = _service()
+    resp = await svc.generate_stage_guidance(
+        _profile(),
+        WorkflowStageId.MODEL_TRAINING,
+        {"target_column": "churn", "problem_type": "classification"},
+        "u1",
+    )
+    joined = " ".join(resp.context_used)
+    assert "target_column" in joined and "churn" in joined
+    assert any("accumulated_context" in t for t in resp.reasoning_trace)
+    # The rule-based (no-key) path must visibly fold the context into the guidance,
+    # not just echo it in context_used (codex P2): a leading consideration cites it.
+    assert "churn" in resp.key_considerations[0]
+    baseline = await svc.generate_stage_guidance(
+        _profile(), WorkflowStageId.MODEL_TRAINING, None, "u1"
+    )
+    assert resp.key_considerations != baseline.key_considerations
+
+
+def test_summarize_decision_caps_length_and_handles_types():
+    svc = _service()
+    assert svc._summarize_decision({"a": 1, "b": 2}) == "a=1, b=2"
+    assert svc._summarize_decision(["x", "y"]) == "x, y"
+    assert len(svc._summarize_decision("z" * 500)) == 160
+
+
+def test_data_preparation_guidance_reflects_detected_issues():
+    svc = _service()
+    clean, _ = svc._stage_rule_guidance(
+        WorkflowStageId.DATA_PREPARATION, _profile(has_duplicates=False)
+    )
+    dirty, _ = svc._stage_rule_guidance(
+        WorkflowStageId.DATA_PREPARATION,
+        _profile(has_duplicates=True, columns_with_missing={"age": 0.3}),
+    )
+    assert any("duplicate" in c.lower() for c in dirty)
+    # Clean profile still returns guidance (no crash, sensible default).
+    assert clean
