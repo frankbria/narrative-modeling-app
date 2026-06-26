@@ -149,6 +149,12 @@ class AIOrchestrationService:
             if fld.missing_values > 0 and dataset.num_rows > 0:
                 profile.columns_with_missing[name] = fld.missing_values / dataset.num_rows
 
+        # The /api/v1/datasets upload path stores data_schema=[] and puts the real
+        # column metadata in inferred_schema — fall back to it so that common path
+        # gets real recommendations, not partial/generic ones (codex).
+        if not dataset.data_schema and dataset.inferred_schema:
+            self._hydrate_from_inferred(profile, dataset.inferred_schema, dataset.num_rows)
+
         # Fold in detected data issues (best-effort).
         try:
             # Newest detection run wins — store_detection_results inserts a fresh
@@ -172,9 +178,43 @@ class AIOrchestrationService:
         except Exception:  # pragma: no cover - defensive; issues are optional
             logger.debug("Could not load data issues for %s", dataset_id, exc_info=True)
 
-        if not dataset.data_schema:
-            profile.partial = True
+        profile.partial = not (
+            profile.numeric_columns
+            or profile.categorical_columns
+            or profile.datetime_columns
+        )
         return profile
+
+    # inferred_schema (SchemaInference) data_type -> profile bucket mapping
+    _INFERRED_NUMERIC = {"integer", "float", "currency", "percentage"}
+    _INFERRED_DATETIME = {"date", "datetime", "time"}
+    _INFERRED_HIGH_CARD_THRESHOLD = 50
+
+    @classmethod
+    def _hydrate_from_inferred(
+        cls, profile: OrchestrationProfile, inferred_schema: dict[str, Any], n_rows: int
+    ) -> None:
+        """Populate the profile from a SchemaInference dump (inferred_schema)."""
+        for col in inferred_schema.get("columns") or []:
+            name = col.get("name")
+            if not name:
+                continue
+            dtype = str(col.get("data_type", "")).lower()
+            is_numeric = dtype in cls._INFERRED_NUMERIC
+            if is_numeric:
+                profile.numeric_columns.append(name)
+            elif dtype in cls._INFERRED_DATETIME:
+                profile.datetime_columns.append(name)
+            else:
+                profile.categorical_columns.append(name)
+            cardinality = col.get("cardinality") or 0
+            if not is_numeric and cardinality > cls._INFERRED_HIGH_CARD_THRESHOLD:
+                profile.high_cardinality_columns.append(name)
+            if cardinality == 1:
+                profile.constant_columns.append(name)
+            null_count = col.get("null_count") or 0
+            if null_count > 0 and n_rows > 0:
+                profile.columns_with_missing[name] = null_count / n_rows
 
     # -------------------------------------------------------------- recommend
     async def recommend_tools(

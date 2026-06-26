@@ -114,6 +114,48 @@ class TestRecommendTools:
 
 
 @pytest.mark.integration
+class TestInferredSchemaFallback:
+    @pytest.mark.asyncio
+    async def test_recommends_from_inferred_schema_when_data_schema_empty(
+        self, async_authorized_client, setup_database
+    ):
+        """The /datasets upload path stores data_schema=[] + inferred_schema (codex)."""
+        await DatasetMetadata(
+            user_id=TEST_USER,
+            dataset_id="ds_inferred",
+            filename="d.csv",
+            original_filename="d.csv",
+            file_type="csv",
+            file_path="d/ds_inferred.csv",
+            s3_url="s3://b/ds_inferred.csv",
+            num_rows=2000,
+            num_columns=3,
+            columns=["age", "city", "user_id"],
+            is_processed=True,
+            data_schema=[],
+            inferred_schema={
+                "columns": [
+                    {"name": "age", "data_type": "integer", "cardinality": 70, "null_count": 0},
+                    {"name": "city", "data_type": "categorical", "cardinality": 10, "null_count": 0},
+                    {"name": "user_id", "data_type": "string", "cardinality": 2000, "null_count": 0},
+                ]
+            },
+        ).insert()
+        resp = await async_authorized_client.post(
+            "/api/v1/ai/recommend-tools",
+            json={"dataset_id": "ds_inferred", "objective": "feature_engineering"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["partial"] is False
+        tool_types = {r["tool_type"] for r in data["recommendations"]}
+        # age (numeric) -> standardize; city (low-card) -> one_hot; user_id (high-card) -> label
+        assert "standardize" in tool_types
+        assert "one_hot_encode" in tool_types
+        assert "label_encode" in tool_types
+
+
+@pytest.mark.integration
 class TestOptimizeParameters:
     @pytest.mark.asyncio
     async def test_optimize_returns_params(
