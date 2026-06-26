@@ -188,7 +188,8 @@ export function SdkPanel({ modelId }: { modelId: string }) {
           </button>
         </div>
         <pre className="bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto text-sm max-h-96">
-          {source ?? 'Loading…'}
+          {source ??
+            (sourceError ? '(Failed to load — see error above)' : 'Loading…')}
         </pre>
       </div>
 
@@ -198,6 +199,17 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         account settings. Sample values are placeholders — categorical features
         need a real label (see the model&apos;s input schema) to avoid a 422.
       </p>
+
+      {info?.readme && (
+        <details className="mt-3">
+          <summary className="text-sm font-medium cursor-pointer">
+            SDK documentation (README)
+          </summary>
+          <pre className="mt-2 bg-white border p-4 rounded overflow-x-auto text-xs whitespace-pre-wrap">
+            {info.readme}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }

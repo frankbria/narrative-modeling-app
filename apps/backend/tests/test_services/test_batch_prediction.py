@@ -407,18 +407,39 @@ async def test_fire_webhook_never_raises_on_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fire_webhook_fires_on_failed_terminal_state(monkeypatch):
+@pytest.mark.parametrize("status_name", ["FAILED", "CANCELLED"])
+async def test_fire_webhook_fires_on_non_completed_terminal_state(
+    monkeypatch, status_name
+):
     # The webhook fires on every terminal state, not just COMPLETED — the payload
-    # carries the real status so receivers can act on failures (review #4).
+    # carries the real status so receivers can act on failures/cancellations.
     from app.models.batch_job import JobStatus
 
     post = AsyncMock()
     _patch_httpx(monkeypatch, post)
-    job = _completed_job("https://hook.example/cb", status=JobStatus.FAILED)
+    job = _completed_job("https://hook.example/cb", status=JobStatus[status_name])
     await _service()._fire_webhook(job)
     post.assert_awaited_once()
     _, kwargs = post.call_args
-    assert json.loads(kwargs["content"])["status"] == "failed"
+    assert json.loads(kwargs["content"])["status"] == status_name.lower()
+
+
+def test_create_batch_route_exposes_webhook_form_params():
+    # Guardrail: a refactor that drops the webhook Form params from the route
+    # would silently break webhook registration (review #5).
+    import inspect
+
+    from app.api.routes.batch_prediction import create_batch_job
+
+    params = inspect.signature(create_batch_job).parameters
+    assert "webhook_url" in params
+    assert "webhook_secret" in params
+    # ...and the config model round-trips them through to the job.
+    cfg = BatchPredictionConfig(
+        model_id="m", webhook_url="https://h/cb", webhook_secret="s"
+    ).dict()
+    assert cfg["webhook_url"] == "https://h/cb"
+    assert cfg["webhook_secret"] == "s"
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,7 @@ const INFO = {
   languages: ['python', 'typescript', 'javascript', 'curl'],
   install: { python: 'pip install requests' },
   auth: 'X-API-Key',
+  readme: '# Sales — Python SDK\n\npip install requests',
 };
 
 describe('SdkPanel', () => {
@@ -69,6 +70,13 @@ describe('SdkPanel', () => {
     render(<SdkPanel modelId="model-1" />);
     expect(
       await screen.findByText(/Could not load SDK info/i)
+    ).toBeInTheDocument();
+  });
+
+  it('renders the SDK README (AC5) from the info payload', async () => {
+    render(<SdkPanel modelId="model-1" />);
+    expect(
+      await screen.findByText('SDK documentation (README)')
     ).toBeInTheDocument();
   });
 });
