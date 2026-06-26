@@ -34,16 +34,56 @@ export interface APIKeyInfo {
   is_active: boolean
 }
 
+export interface LatencyPercentiles {
+  p50: number
+  p90: number
+  p95: number
+  p99: number
+}
+
 export interface ModelMetrics {
   model_id: string
   model_name: string
   total_predictions: number
+  error_count: number
   avg_latency_ms: number
+  latency_percentiles: LatencyPercentiles
   predictions_per_hour: number
   avg_confidence: number
   error_rate: number
   time_window_hours: number
   last_prediction_at?: string
+}
+
+export interface TimelineBucket {
+  timestamp: string
+  requests: number
+  errors: number
+  avg_latency_ms: number
+}
+
+export interface UsageTimeline {
+  model_id: string
+  bucket_minutes: number
+  time_window_hours: number
+  buckets: TimelineBucket[]
+}
+
+export interface HealthAlert {
+  level: string
+  type: string
+  message: string
+}
+
+export interface DeploymentHealth {
+  model_id: string
+  status: string
+  error_rate: number
+  avg_latency_ms: number
+  requests: number
+  last_request_at: string | null
+  alerts: HealthAlert[]
+  time_window_hours: number
 }
 
 export interface UsageStats {
@@ -137,6 +177,44 @@ export class ProductionService {
 
     if (!response.ok) {
       throw new Error('Failed to fetch model metrics')
+    }
+
+    return response.json()
+  }
+
+  static async getUsageTimeline(
+    modelId: string,
+    hours: number,
+    token: string | null
+  ): Promise<UsageTimeline> {
+    const response = await fetch(
+      `${API_BASE_URL}/monitoring/models/${modelId}/timeline?hours=${hours}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch usage timeline')
+    }
+
+    return response.json()
+  }
+
+  static async getDeploymentHealth(
+    modelId: string,
+    hours: number,
+    token: string | null
+  ): Promise<DeploymentHealth> {
+    const response = await fetch(
+      `${API_BASE_URL}/monitoring/models/${modelId}/health?hours=${hours}`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch deployment health')
     }
 
     return response.json()

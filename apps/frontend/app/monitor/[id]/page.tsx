@@ -4,7 +4,12 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import { ProductionService, ModelMetrics } from '@/lib/services/production'
+import {
+  ProductionService,
+  ModelMetrics,
+  UsageTimeline,
+  DeploymentHealth,
+} from '@/lib/services/production'
 import { ModelService, ModelInfo } from '@/lib/services/model'
 import type { PredictionDistribution } from '@/lib/types/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,20 +25,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { 
-  Activity, 
-  Loader2, 
-  ArrowLeft, 
+import {
+  Activity,
+  Loader2,
+  ArrowLeft,
   TrendingUp,
   Clock,
   Zap,
   AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
   PieChart,
   Target,
-  Brain
+  Brain,
+  LineChart as LineChartIcon
 } from 'lucide-react'
 import Link from 'next/link'
-// Chart imports would go here when implementing charts
+import { LineChart } from '@/components/LineChart'
+import { BarChart } from '@/components/BarChart'
 
 interface PredictionLog {
   prediction_id: string
@@ -53,6 +62,8 @@ export default function ModelMonitoringPage() {
   const [metrics, setMetrics] = useState<ModelMetrics | null>(null)
   const [predictionLogs, setPredictionLogs] = useState<PredictionLog[]>([])
   const [distribution, setDistribution] = useState<PredictionDistribution | null>(null)
+  const [timeline, setTimeline] = useState<UsageTimeline | null>(null)
+  const [health, setHealth] = useState<DeploymentHealth | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [timeWindow, setTimeWindow] = useState('24')
@@ -69,17 +80,23 @@ export default function ModelMonitoringPage() {
       setIsLoading(true)
       const token = await getAuthToken()
       
-      const [modelData, metricsData, logsData, distData] = await Promise.all([
-        ModelService.getModel(modelId, token),
-        ProductionService.getModelMetrics(modelId, parseInt(timeWindow), token),
-        ProductionService.getPredictionLogs(modelId, 100, token),
-        ProductionService.getPredictionDistribution(modelId, parseInt(timeWindow), token)
-      ])
-      
+      const hours = parseInt(timeWindow)
+      const [modelData, metricsData, logsData, distData, timelineData, healthData] =
+        await Promise.all([
+          ModelService.getModel(modelId, token),
+          ProductionService.getModelMetrics(modelId, hours, token),
+          ProductionService.getPredictionLogs(modelId, 100, token),
+          ProductionService.getPredictionDistribution(modelId, hours, token),
+          ProductionService.getUsageTimeline(modelId, hours, token),
+          ProductionService.getDeploymentHealth(modelId, hours, token),
+        ])
+
       setModel(modelData)
       setMetrics(metricsData)
       setPredictionLogs(logsData.logs)
       setDistribution(distData)
+      setTimeline(timelineData)
+      setHealth(healthData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load model monitoring data')
     } finally {
@@ -98,6 +115,19 @@ export default function ModelMonitoringPage() {
       return prediction.toFixed(4)
     }
     return String(prediction)
+  }
+
+  const healthStyle = (status: string) => {
+    switch (status) {
+      case 'healthy':
+        return { className: 'bg-green-500', Icon: CheckCircle2, label: 'Healthy' }
+      case 'degraded':
+        return { className: 'bg-yellow-500', Icon: AlertTriangle, label: 'Degraded' }
+      case 'unhealthy':
+        return { className: 'bg-red-500', Icon: AlertCircle, label: 'Unhealthy' }
+      default:
+        return { className: 'bg-gray-400', Icon: Activity, label: 'No Data' }
+    }
   }
 
   if (!session) {
@@ -146,6 +176,9 @@ export default function ModelMonitoringPage() {
     )
   }
 
+  const hs = health ? healthStyle(health.status) : null
+  const HealthIcon = hs?.Icon
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -184,6 +217,47 @@ export default function ModelMonitoringPage() {
           <Button onClick={fetchModelData}>Refresh</Button>
         </div>
       </div>
+
+      {/* Deployment Health + Alerts */}
+      {health && hs && (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <Badge variant="default" className={hs.className}>
+                  {HealthIcon && <HealthIcon className="h-4 w-4 mr-1" />}
+                  {hs.label}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Error rate {(health.error_rate * 100).toFixed(1)}% ·{' '}
+                  {health.requests.toLocaleString()} requests · last{' '}
+                  {health.last_request_at
+                    ? new Date(health.last_request_at).toLocaleString()
+                    : 'never'}
+                </span>
+              </div>
+            </div>
+            {health.alerts.length > 0 && (
+              <div className="space-y-2">
+                {health.alerts.map((alert, i) => (
+                  <div
+                    key={`${alert.type}-${i}`}
+                    className="flex items-start gap-2 text-sm"
+                    data-testid="health-alert"
+                  >
+                    {alert.level === 'critical' ? (
+                      <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                    )}
+                    <span>{alert.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -261,11 +335,56 @@ export default function ModelMonitoringPage() {
 
       {/* Detailed Tabs */}
       <Tabs defaultValue="predictions" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="predictions">Recent Predictions</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="distribution">Distribution</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="timeline">
+          <Card>
+            <CardHeader>
+              <CardTitle>Usage Over Time</CardTitle>
+              <CardDescription>
+                Request volume and average latency over the last {timeWindow} hours
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!timeline || timeline.buckets.every((b) => b.requests === 0) ? (
+                <div className="text-center py-8">
+                  <LineChartIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No usage data in the selected time window</p>
+                </div>
+              ) : (
+                <div className="w-full overflow-x-auto">
+                  <LineChart
+                    height={360}
+                    data={{
+                      data: timeline.buckets.map((b) => ({
+                        x: new Date(b.timestamp).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }),
+                        Requests: b.requests,
+                        Errors: b.errors,
+                        'Avg Latency (ms)': b.avg_latency_ms,
+                      })),
+                      lines: [
+                        { dataKey: 'Requests', label: 'Requests', color: '#3b82f6' },
+                        { dataKey: 'Errors', label: 'Errors', color: '#ef4444' },
+                        { dataKey: 'Avg Latency (ms)', label: 'Avg Latency (ms)', color: '#f59e0b' },
+                      ],
+                      xLabel: 'Time',
+                      yLabel: 'Count / ms',
+                      showBrush: timeline.buckets.length > 24,
+                    }}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="predictions">
           <Card>
@@ -361,28 +480,25 @@ export default function ModelMonitoringPage() {
                   
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium">Value Distribution</h4>
-                    {Object.entries(distribution.distribution)
-                      .sort(([, a], [, b]) => (b as number) - (a as number))
-                      .slice(0, 10)
-                      .map(([value, count]) => (
-                        <div key={value} className="flex items-center justify-between">
-                          <span className="text-sm">{value}</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-32 bg-secondary rounded-full h-2">
-                              <div
-                                className="bg-primary h-2 rounded-full transition-all"
-                                style={{ 
-                                  width: `${((count as number) / distribution.total) * 100}%` 
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm text-muted-foreground w-16 text-right">
-                              {count as number}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    }
+                    <div className="w-full overflow-x-auto">
+                      <BarChart
+                        height={360}
+                        orientation="horizontal"
+                        data={{
+                          data: Object.entries(distribution.distribution)
+                            .sort(([, a], [, b]) => (b as number) - (a as number))
+                            .slice(0, 10)
+                            .map(([value, count]) => ({
+                              category: value,
+                              value: count as number,
+                            })),
+                          xLabel: 'Prediction Value',
+                          yLabel: 'Count',
+                          sortBy: 'value',
+                          showPercentages: true,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -400,9 +516,24 @@ export default function ModelMonitoringPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
+                <h4 className="text-sm font-medium mb-2">Latency Percentiles</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  {(['p50', 'p90', 'p95', 'p99'] as const).map((p) => (
+                    <div key={p} data-testid={`latency-${p}`}>
+                      <p className="text-xs text-muted-foreground uppercase">{p}</p>
+                      <p className="text-lg font-bold">
+                        {formatLatency(metrics.latency_percentiles?.[p] ?? 0)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <h4 className="text-sm font-medium mb-2">Response Time Trend</h4>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Average latency: {formatLatency(metrics.avg_latency_ms)}
+                  Average latency: {formatLatency(metrics.avg_latency_ms)} · Error rate:{' '}
+                  {(metrics.error_rate * 100).toFixed(1)}% ({metrics.error_count} errors)
                 </p>
                 {metrics.avg_latency_ms < 100 ? (
                   <Badge variant="default" className="bg-green-500">
