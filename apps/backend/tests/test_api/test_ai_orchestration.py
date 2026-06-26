@@ -126,7 +126,7 @@ class TestOptimizeParameters:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["optimized_parameters"]["strategy"] == "median"
+        assert data["optimized_parameters"]["method"] == "median"
         assert data["explanation"]
 
     @pytest.mark.asyncio

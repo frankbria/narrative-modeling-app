@@ -58,7 +58,7 @@ def test_cleaning_recommends_for_detected_issues():
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     tool_types = {r.tool_type for r in recs}
     assert TransformationType.REMOVE_DUPLICATES.value in tool_types
-    assert TransformationType.IMPUTE_MEDIAN.value in tool_types
+    assert TransformationType.FILL_MISSING.value in tool_types
     assert TransformationType.TO_NUMERIC.value in tool_types
     assert all(r.source == "rule_based" for r in recs)
 
@@ -69,7 +69,7 @@ def test_cleaning_drops_when_mostly_missing():
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     tool_types = {r.tool_type for r in recs}
     assert TransformationType.DROP_MISSING.value in tool_types
-    assert TransformationType.IMPUTE_MEDIAN.value not in tool_types
+    assert TransformationType.FILL_MISSING.value not in tool_types
 
 
 def test_cleaning_splits_drop_and_impute_by_threshold():
@@ -82,7 +82,7 @@ def test_cleaning_splits_drop_and_impute_by_threshold():
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     by_type = {r.tool_type: r for r in recs}
     assert by_type[TransformationType.DROP_MISSING.value].parameters["columns"] == ["notes"]
-    assert by_type[TransformationType.IMPUTE_MEDIAN.value].parameters["columns"] == ["age"]
+    assert by_type[TransformationType.FILL_MISSING.value].parameters["columns"] == ["age"]
 
 
 def test_feature_engineering_encodes_by_cardinality():
@@ -154,8 +154,8 @@ async def test_optimize_imputation_defaults_to_median():
             dataset_id="ds_1", tool_type=TransformationType.FILL_MISSING.value
         ),
     )
-    assert resp.optimized_parameters["strategy"] == "median"
-    assert any(a.parameters.get("strategy") == "mean" for a in resp.alternatives)
+    assert resp.optimized_parameters["method"] == "median"
+    assert any(a.parameters.get("method") == "mean" for a in resp.alternatives)
 
 
 @pytest.mark.asyncio

@@ -273,12 +273,14 @@ class AIOrchestrationService:
             if impute_cols:
                 recs.append(
                     self._rec(
-                        TransformationType.IMPUTE_MEDIAN.value,
+                        # Use the executable contract (FILL_MISSING + method): the
+                        # transformation engine maps FILL_MISSING, not IMPUTE_* (codex).
+                        TransformationType.FILL_MISSING.value,
                         priority=8,
                         confidence=0.8,
                         explanation=f"{len(impute_cols)} column(s) have some missing values; "
                         "median imputation fills gaps robustly without dropping rows.",
-                        parameters={"columns": impute_cols, "strategy": "median"},
+                        parameters={"columns": impute_cols, "method": "median"},
                         pros=["Keeps all rows", "Robust to skew/outliers"],
                         cons=["Reduces variance slightly"],
                         estimated_impact="Fills missing numeric values",
@@ -667,7 +669,9 @@ class AIOrchestrationService:
         ):
             # ponytail: default to median (robust) without per-column skew; mean
             # is offered as an alternative. Refine with ColumnStats skew later.
-            optimized = {**current, "strategy": "median"}
+            # 'method' is the executable param name FillMissingTransformation reads
+            # (not 'strategy') — keeps optimized params applyable (codex).
+            optimized = {**current, "method": "median"}
             return ParameterOptimizationResponse(
                 dataset_id=profile.dataset_id,
                 tool_type=tool,
@@ -677,7 +681,7 @@ class AIOrchestrationService:
                 "which is the safer default when distributions are unknown.",
                 alternatives=[
                     ParameterAlternative(
-                        parameters={**current, "strategy": "mean"},
+                        parameters={**current, "method": "mean"},
                         explanation="Use the mean when columns are roughly symmetric (normal).",
                         expected_improvement="Slightly better on symmetric data",
                     )
