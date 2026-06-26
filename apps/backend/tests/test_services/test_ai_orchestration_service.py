@@ -48,6 +48,23 @@ def test_no_openai_key_uses_rule_based_only():
     assert svc.client is None
 
 
+@pytest.mark.asyncio
+async def test_ai_summary_falls_back_gracefully_on_bad_openai_response():
+    """A non-JSON / malformed OpenAI response degrades to None, never raising."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    svc = _service()
+    svc.client = MagicMock()  # pretend a key is configured
+
+    profile = _profile()
+    recs = svc._modeling_recs(profile)
+
+    # _openai_summary raising (bad parse, empty choices, etc.) must be swallowed.
+    with patch.object(svc, "_openai_summary", new=AsyncMock(side_effect=ValueError("bad json"))):
+        result = await svc._maybe_ai_summary(profile, Objective.MODELING, recs)
+    assert result is None
+
+
 def test_cleaning_recommends_for_detected_issues():
     svc = _service()
     profile = _profile(

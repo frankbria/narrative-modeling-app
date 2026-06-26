@@ -598,7 +598,8 @@ class AIOrchestrationService:
         seen: set[str] = set()
         ordered = sorted(
             recs,
-            key=lambda r: (_STAGE_ORDER.get(r.tool_type, 99), -r.priority),
+            # tool_type tertiary key -> deterministic order when stage+priority tie.
+            key=lambda r: (_STAGE_ORDER.get(r.tool_type, 99), -r.priority, r.tool_type),
         )
         pipeline: list[str] = []
         for r in ordered:
