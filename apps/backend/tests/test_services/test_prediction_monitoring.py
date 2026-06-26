@@ -266,6 +266,146 @@ class TestPredictionMonitoringService:
         assert usage.get("unknown", 0) == 1 or usage.get(None, 0) == 1  # None handling may vary
     
     @pytest.mark.asyncio
+    async def test_metrics_error_rate_and_percentiles(self):
+        """error_rate counts errors / total; percentiles over successes (issue #85)"""
+        prediction_log.logs.clear()
+
+        # 8 successes with latencies 10..80, 2 errors.
+        for i in range(8):
+            await prediction_log.log_prediction(
+                model_id="model_e",
+                prediction_id=f"ok_{i}",
+                input_data={},
+                prediction="class_a",
+                latency_ms=(i + 1) * 10,
+            )
+        for i in range(2):
+            await prediction_log.log_prediction(
+                model_id="model_e",
+                prediction_id=f"err_{i}",
+                input_data={},
+                prediction=None,
+                latency_ms=5,
+                error="boom",
+            )
+
+        metrics = await PredictionMonitoringService.get_model_metrics("model_e", 24)
+
+        assert metrics["total_predictions"] == 8  # successes only
+        assert metrics["error_count"] == 2
+        assert metrics["error_rate"] == 0.2  # 2 / 10
+        # Error latency (5ms) must not pollute success percentiles.
+        assert metrics["latency_percentiles"]["p50"] == 45.0
+        assert metrics["latency_percentiles"]["p99"] >= metrics["latency_percentiles"]["p50"]
+
+    @pytest.mark.asyncio
+    async def test_metrics_all_errors(self):
+        """All-error window: error_rate 1.0, no successful latency stats"""
+        prediction_log.logs.clear()
+        for i in range(3):
+            await prediction_log.log_prediction(
+                model_id="model_ae",
+                prediction_id=f"err_{i}",
+                input_data={},
+                prediction=None,
+                error="boom",
+            )
+
+        metrics = await PredictionMonitoringService.get_model_metrics("model_ae", 24)
+        assert metrics["total_predictions"] == 0
+        assert metrics["error_count"] == 3
+        assert metrics["error_rate"] == 1.0
+        assert metrics["avg_latency_ms"] == 0
+
+    @pytest.mark.asyncio
+    async def test_distribution_excludes_errors(self):
+        """Failed-request markers are excluded from the value distribution"""
+        prediction_log.logs.clear()
+        for i in range(4):
+            await prediction_log.log_prediction(
+                model_id="model_d", prediction_id=f"ok_{i}",
+                input_data={}, prediction="class_a",
+            )
+        await prediction_log.log_prediction(
+            model_id="model_d", prediction_id="err",
+            input_data={}, prediction=None, error="boom",
+        )
+
+        dist = await PredictionMonitoringService.get_prediction_distribution("model_d", 24)
+        assert dist["total"] == 4
+        assert dist["distribution"] == {"class_a": 4}
+        assert "None" not in dist["distribution"]
+
+    @pytest.mark.asyncio
+    async def test_usage_timeline_buckets(self):
+        """Timeline returns bucketed requests/errors/latency spanning the window"""
+        prediction_log.logs.clear()
+        for i in range(5):
+            await prediction_log.log_prediction(
+                model_id="model_t", prediction_id=f"ok_{i}",
+                input_data={}, prediction="a", latency_ms=20,
+            )
+        await prediction_log.log_prediction(
+            model_id="model_t", prediction_id="err",
+            input_data={}, prediction=None, error="boom",
+        )
+
+        timeline = await PredictionMonitoringService.get_usage_timeline(
+            "model_t", hours=24, bucket_minutes=60
+        )
+        assert timeline["bucket_minutes"] == 60
+        assert len(timeline["buckets"]) >= 1
+        # All events fall within the window, in the most-recent bucket(s).
+        assert sum(b["requests"] for b in timeline["buckets"]) == 6
+        assert sum(b["errors"] for b in timeline["buckets"]) == 1
+        recent = [b for b in timeline["buckets"] if b["requests"] > 0][-1]
+        assert recent["avg_latency_ms"] == 20.0
+        # Buckets carry ISO timestamps for charting.
+        assert all(isinstance(b["timestamp"], str) for b in timeline["buckets"])
+
+    @pytest.mark.asyncio
+    async def test_health_healthy(self):
+        """Low error/latency → healthy, no alerts"""
+        prediction_log.logs.clear()
+        for i in range(20):
+            await prediction_log.log_prediction(
+                model_id="model_h", prediction_id=f"ok_{i}",
+                input_data={}, prediction="a", latency_ms=30,
+            )
+        health = await PredictionMonitoringService.get_health("model_h", 24)
+        assert health["status"] == "healthy"
+        assert health["alerts"] == []
+        assert health["last_request_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_health_unhealthy_error_alert(self):
+        """High error rate → unhealthy with a critical error_rate alert"""
+        prediction_log.logs.clear()
+        for i in range(5):
+            await prediction_log.log_prediction(
+                model_id="model_u", prediction_id=f"ok_{i}",
+                input_data={}, prediction="a", latency_ms=30,
+            )
+        for i in range(5):
+            await prediction_log.log_prediction(
+                model_id="model_u", prediction_id=f"err_{i}",
+                input_data={}, prediction=None, error="boom",
+            )
+        health = await PredictionMonitoringService.get_health("model_u", 24)
+        assert health["status"] == "unhealthy"
+        assert any(a["type"] == "error_rate" and a["level"] == "critical"
+                   for a in health["alerts"])
+
+    @pytest.mark.asyncio
+    async def test_health_no_data_unknown(self):
+        """No requests → unknown status, no alerts"""
+        prediction_log.logs.clear()
+        health = await PredictionMonitoringService.get_health("model_none", 24)
+        assert health["status"] == "unknown"
+        assert health["requests"] == 0
+        assert health["last_request_at"] is None
+
+    @pytest.mark.asyncio
     async def test_concurrent_logging(self):
         """Test concurrent prediction logging"""
         prediction_log.logs.clear()

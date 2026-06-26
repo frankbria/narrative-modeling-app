@@ -23,12 +23,45 @@ class ModelMetricsResponse(BaseModel):
     model_id: str
     model_name: str
     total_predictions: int
+    error_count: int
     avg_latency_ms: float
+    latency_percentiles: dict[str, float]
     predictions_per_hour: float
     avg_confidence: float
     error_rate: float
     time_window_hours: int
     last_prediction_at: datetime | None
+
+
+class TimelineBucket(BaseModel):
+    timestamp: str
+    requests: int
+    errors: int
+    avg_latency_ms: float
+
+
+class UsageTimelineResponse(BaseModel):
+    model_id: str
+    bucket_minutes: int
+    time_window_hours: int
+    buckets: list[TimelineBucket]
+
+
+class HealthAlert(BaseModel):
+    level: str
+    type: str
+    message: str
+
+
+class DeploymentHealthResponse(BaseModel):
+    model_id: str
+    status: str
+    error_rate: float
+    avg_latency_ms: float
+    requests: int
+    last_request_at: str | None
+    alerts: list[HealthAlert]
+    time_window_hours: int
 
 
 class PredictionDistributionResponse(BaseModel):
@@ -95,6 +128,39 @@ async def get_model_metrics(
         **metrics,
         last_prediction_at=model.last_used_at
     )
+
+
+@router.get("/models/{model_id}/timeline", response_model=UsageTimelineResponse)
+async def get_usage_timeline(
+    model_id: str,
+    hours: int = Query(default=24, ge=1, le=168, description="Time window in hours"),
+    bucket_minutes: int | None = Query(
+        default=None, ge=1, le=1440, description="Bucket size in minutes (auto if omitted)"
+    ),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Get bucketed request/error/latency counts over time for charts."""
+    model = await MLModel.find_one({"model_id": model_id, "user_id": current_user_id})
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    timeline = await monitoring_service.get_usage_timeline(model_id, hours, bucket_minutes)
+    return UsageTimelineResponse(model_id=model_id, **timeline)
+
+
+@router.get("/models/{model_id}/health", response_model=DeploymentHealthResponse)
+async def get_deployment_health(
+    model_id: str,
+    hours: int = Query(default=24, ge=1, le=168, description="Time window in hours"),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Get deployment health status and active error-rate/latency alerts."""
+    model = await MLModel.find_one({"model_id": model_id, "user_id": current_user_id})
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    health = await monitoring_service.get_health(model_id, hours)
+    return DeploymentHealthResponse(model_id=model_id, **health)
 
 
 @router.get("/models/{model_id}/distribution", response_model=PredictionDistributionResponse)

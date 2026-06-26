@@ -17,12 +17,62 @@ from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.model_storage import ModelStorageService
 from app.services.prediction_enrichment import PredictionEnricher
+from app.services.prediction_monitoring import prediction_log
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/production", tags=["production"])
 
 # Stateless — reuse one instance instead of constructing it per request (#83).
 _prediction_enricher = PredictionEnricher()
+
+
+async def _record_serving_metrics(
+    model_id: str,
+    request_data: list[dict[str, Any]],
+    predictions: list[Any],
+    confidence: list[float] | None,
+    latency_ms: float,
+    api_key_id: str | None,
+    error: str | None = None,
+) -> None:
+    """Best-effort per-request monitoring logging (issue #85).
+
+    Logged to the in-memory prediction log only — never touches the DB on the hot
+    path and never raises, so monitoring can't break or slow real predictions.
+    """
+    try:
+        if error is not None:
+            # Log one error entry per input record so error rate stays per-record
+            # consistent with successes — otherwise a failed N-record batch would
+            # under-report error rate vs an N-record success (codex review).
+            n = len(request_data) or 1
+            for i in range(n):
+                await prediction_log.log_prediction(
+                    model_id=model_id,
+                    prediction_id=f"pred_{PydanticObjectId()}",
+                    input_data=request_data[i] if i < len(request_data) else {},
+                    prediction=None,
+                    latency_ms=latency_ms / n,
+                    api_key_id=api_key_id,
+                    error=error,
+                )
+            return
+
+        per_record_latency = latency_ms / (len(predictions) or 1)
+        for i, pred in enumerate(predictions):
+            await prediction_log.log_prediction(
+                model_id=model_id,
+                prediction_id=f"pred_{PydanticObjectId()}",
+                input_data=request_data[i] if i < len(request_data) else {},
+                prediction=pred,
+                probability=(
+                    confidence[i] if confidence and i < len(confidence) else None
+                ),
+                latency_ms=per_record_latency,
+                api_key_id=api_key_id,
+            )
+    except Exception:  # noqa: BLE001 - monitoring must never break serving
+        logger.exception("Failed to record serving metrics for model %s", model_id)
 
 # Rate limiting is enforced globally by RateLimitMiddleware over every /api/v1 route
 # (issue #151), including this endpoint, using the per-key APIKey.rate_limit budget.
@@ -227,6 +277,7 @@ async def production_predict(
     # Load the model
     storage_service = ModelStorageService()
 
+    request_start = datetime.utcnow()
     try:
         # load_model returns a (model, feature_engineer) tuple keyed by
         # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
@@ -292,8 +343,16 @@ async def production_predict(
                 "training_date": model.created_at.isoformat(),
             }
 
-        # Log prediction (async, don't wait)
-        # In production, this would go to a logging service
+        # Record per-request monitoring metrics (issue #85) — best-effort.
+        latency_ms = (datetime.utcnow() - request_start).total_seconds() * 1000
+        await _record_serving_metrics(
+            model_id=model_id,
+            request_data=request.data,
+            predictions=predictions_list,
+            confidence=confidence,
+            latency_ms=latency_ms,
+            api_key_id=api_key.key_id,
+        )
 
         return ProductionPredictResponse(
             predictions=predictions_list,
@@ -312,6 +371,17 @@ async def production_predict(
         )
 
     except Exception as e:
+        # Record the failure so the dashboard's error rate / alerts reflect it.
+        latency_ms = (datetime.utcnow() - request_start).total_seconds() * 1000
+        await _record_serving_metrics(
+            model_id=model_id,
+            request_data=request.data,
+            predictions=[],
+            confidence=None,
+            latency_ms=latency_ms,
+            api_key_id=api_key.key_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 

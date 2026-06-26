@@ -77,6 +77,58 @@ class TestMonitoringAPI:
         assert response.status_code in [200, 404]
     
     @pytest.mark.asyncio
+    async def test_get_usage_timeline(self, mock_async_client):
+        """Test usage timeline endpoint (issue #85)"""
+        response = await mock_async_client.get(
+            "/api/v1/monitoring/models/model_123/timeline?hours=24",
+            headers={"Authorization": "Bearer test_token"}
+        )
+        assert response.status_code in [200, 404]
+
+    @pytest.mark.asyncio
+    async def test_get_usage_timeline_invalid_bucket(self, mock_async_client):
+        """Timeline rejects out-of-range bucket size"""
+        response = await mock_async_client.get(
+            "/api/v1/monitoring/models/model_123/timeline?bucket_minutes=5000",
+            headers={"Authorization": "Bearer test_token"}
+        )
+        assert response.status_code in [422, 404]
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_health(self, mock_async_client):
+        """Test deployment health endpoint (issue #85)"""
+        response = await mock_async_client.get(
+            "/api/v1/monitoring/models/model_123/health",
+            headers={"Authorization": "Bearer test_token"}
+        )
+        assert response.status_code in [200, 404]
+
+    @pytest.mark.asyncio
+    @patch('app.api.routes.monitoring.MLModel')
+    @patch('app.api.routes.monitoring.monitoring_service')
+    async def test_health_response_format(self, mock_service, mock_model):
+        """Health endpoint maps the service payload into the response model"""
+        from app.api.routes.monitoring import get_deployment_health
+
+        mock_model.find_one = AsyncMock(return_value=Mock())
+        mock_service.get_health = AsyncMock(return_value={
+            "status": "degraded",
+            "error_rate": 0.08,
+            "avg_latency_ms": 120.0,
+            "requests": 50,
+            "last_request_at": datetime.utcnow().isoformat(),
+            "alerts": [{"level": "warning", "type": "error_rate", "message": "high"}],
+            "time_window_hours": 24,
+        })
+
+        result = await get_deployment_health(
+            model_id="model_123", hours=24, current_user_id="user_123"
+        )
+        assert result.status == "degraded"
+        assert result.alerts[0].type == "error_rate"
+        assert result.requests == 50
+
+    @pytest.mark.asyncio
     async def test_check_drift(self, mock_async_client):
         """Test drift detection endpoint"""
         response = await mock_async_client.get(
@@ -142,6 +194,8 @@ class TestMonitoringAPI:
         endpoints = [
             "/api/v1/monitoring/overview",
             "/api/v1/monitoring/models/model_123/metrics",
+            "/api/v1/monitoring/models/model_123/timeline",
+            "/api/v1/monitoring/models/model_123/health",
             "/api/v1/monitoring/models/model_123/distribution",
             "/api/v1/monitoring/models/model_123/drift",
             "/api/v1/monitoring/api-keys/usage",
@@ -217,7 +271,9 @@ class TestMonitoringAPI:
         # Mock metrics on the service instance
         mock_service.get_model_metrics = AsyncMock(return_value={
             "total_predictions": 1000,
+            "error_count": 20,
             "avg_latency_ms": 45.5,
+            "latency_percentiles": {"p50": 40.0, "p90": 80.0, "p95": 95.0, "p99": 120.0},
             "predictions_per_hour": 41.7,
             "avg_confidence": 0.85,
             "error_rate": 0.02,
@@ -233,7 +289,9 @@ class TestMonitoringAPI:
         assert result.model_id == "model_123"
         assert result.model_name == "Test Model"
         assert result.total_predictions == 1000
+        assert result.error_count == 20
         assert result.avg_latency_ms == 45.5
+        assert result.latency_percentiles["p95"] == 95.0
         assert result.predictions_per_hour == 41.7
         assert result.avg_confidence == 0.85
         assert result.error_rate == 0.02
