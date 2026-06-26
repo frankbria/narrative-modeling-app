@@ -283,7 +283,11 @@ export default function DeployPage() {
     "data": [
       { ${exampleFeatures.length
         ? exampleFeatures
-            .map((f) => `"${f.name}": ${f.type === 'number' ? '0' : '"value"'}`)
+            .map((f) =>
+              f.type === 'number'
+                ? `"${f.name}": 0`
+                : `"${f.name}": ${JSON.stringify(f.options?.[0] ?? 'value')}`
+            )
             .join(', ')
         : '"feature1": 0, "feature2": "value"'} }
     ]

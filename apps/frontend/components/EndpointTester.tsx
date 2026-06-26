@@ -24,6 +24,9 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
 
   useEffect(() => {
     let active = true;
+    // Drop any stale schema/inputs from a previous model before refetching.
+    setFeatures([]);
+    setValues({});
     modelService
       .getModelFeatures(modelId)
       .then((data) => {

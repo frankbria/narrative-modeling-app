@@ -87,9 +87,17 @@ class TestDeploy:
 
     @pytest.mark.asyncio
     async def test_foreign_model_returns_404(self, async_authorized_client):
+        # This test doesn't use the `deployable` fixture, so clean up its own
+        # insert here (guaranteed even on assertion failure).
         foreign = _model("deploy-foreign", user_id="someone_else")
         await foreign.insert()
-        resp = await async_authorized_client.put(
-            "/api/v1/ml/deploy-foreign/deploy", json={}
-        )
-        assert resp.status_code == 404
+        try:
+            resp = await async_authorized_client.put(
+                "/api/v1/ml/deploy-foreign/deploy", json={}
+            )
+            assert resp.status_code == 404
+        finally:
+            await MLModel.find(
+                MLModel.model_id == "deploy-foreign",
+                MLModel.user_id == "someone_else",
+            ).delete()
