@@ -456,7 +456,12 @@ def webhook():
     if not hmac.compare_digest(signature, expected):
         abort(401)
     payload = request.get_json()
-    print("Batch job completed:", payload["job_id"], payload["status"])
+    # Fires on every terminal state — check status, it may be "failed"/"cancelled"
+    # as well as "completed".
+    if payload["status"] == "completed":
+        print("Batch job done:", payload["job_id"])
+    else:
+        print("Batch job", payload["status"], ":", payload["job_id"])
     return "", 204
 '''
 

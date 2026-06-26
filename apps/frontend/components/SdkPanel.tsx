@@ -44,7 +44,10 @@ export function SdkPanel({ modelId }: { modelId: string }) {
   const [info, setInfo] = useState<SdkInfo | null>(null);
   const [language, setLanguage] = useState('python');
   const [sources, setSources] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
+  // Separate errors so a persistent info-load failure isn't silently dismissed
+  // when the user switches language tabs (which only clears the source error).
+  const [infoError, setInfoError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   // Tracks which languages have been requested so the fetch effect doesn't
   // re-run every time `sources` changes (it only depends on modelId+language).
@@ -58,7 +61,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         if (active) setInfo(data);
       })
       .catch(() => {
-        if (active) setError('Could not load SDK info for this model.');
+        if (active) setInfoError('Could not load SDK info for this model.');
       });
     return () => {
       active = false;
@@ -69,7 +72,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
     const key = `${modelId}:${language}`;
     if (requested.current.has(key)) return;
     requested.current.add(key);
-    setError(null); // clear any prior language's error when switching tabs
+    setSourceError(null); // clear the prior language's source error on switch
     let active = true;
     modelService
       .getSdk(modelId, language)
@@ -78,7 +81,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
       })
       .catch(() => {
         requested.current.delete(key); // allow a retry on next mount/select
-        if (active) setError(`Could not load the ${language} SDK.`);
+        if (active) setSourceError(`Could not load the ${language} SDK.`);
       });
     return () => {
       active = false;
@@ -103,7 +106,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         'application/json'
       );
     } catch {
-      setError('Could not download the Postman collection.');
+      setSourceError('Could not download the Postman collection.');
     }
   };
 
@@ -127,10 +130,11 @@ export function SdkPanel({ modelId }: { modelId: string }) {
 
       {/* Error is shown inline so the tab bar stays usable and the user can retry
           another language without reloading. */}
-      {error && (
-        <p className="text-sm text-red-600 mb-3" role="alert" aria-live="polite">
-          {error}
-        </p>
+      {(infoError || sourceError) && (
+        <div className="mb-3" role="alert" aria-live="polite">
+          {infoError && <p className="text-sm text-red-600">{infoError}</p>}
+          {sourceError && <p className="text-sm text-red-600">{sourceError}</p>}
+        </div>
       )}
 
       <div className="flex gap-2 mb-3" role="tablist" aria-label="SDK language">

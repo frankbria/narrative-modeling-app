@@ -296,6 +296,11 @@ class BatchPredictionService:
             )
             for info in infos:
                 ip = ipaddress.ip_address(info[4][0])
+                # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) so a mapped
+                # private/loopback address can't slip past the flag checks.
+                mapped = getattr(ip, "ipv4_mapped", None)
+                if mapped is not None:
+                    ip = mapped
                 if (
                     ip.is_private
                     or ip.is_loopback

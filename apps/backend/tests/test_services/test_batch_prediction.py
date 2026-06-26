@@ -315,13 +315,13 @@ async def test_prepare_input_data_uploads_dataframe():
 # --- Async-completion webhook (issue #86) ---------------------------------
 
 
-def _completed_job(webhook_url=None, webhook_secret=None):
+def _completed_job(webhook_url=None, webhook_secret=None, status=None):
     """A minimal terminal-state batch job (no Mongo) for _fire_webhook."""
     from app.models.batch_job import JobStatus
 
     job = MagicMock()
     job.job_id = "batch_1"
-    job.status = JobStatus.COMPLETED
+    job.status = status or JobStatus.COMPLETED
     job.results = {"prediction_distribution": {"yes": 2}}
     job.completed_at = datetime(2026, 1, 1, 12, 0, 0)
     job.config = {
@@ -404,6 +404,21 @@ async def test_fire_webhook_never_raises_on_failure(monkeypatch):
     # Must swallow the error (and retry once → two attempts).
     await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
     assert post.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_fires_on_failed_terminal_state(monkeypatch):
+    # The webhook fires on every terminal state, not just COMPLETED — the payload
+    # carries the real status so receivers can act on failures (review #4).
+    from app.models.batch_job import JobStatus
+
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    job = _completed_job("https://hook.example/cb", status=JobStatus.FAILED)
+    await _service()._fire_webhook(job)
+    post.assert_awaited_once()
+    _, kwargs = post.call_args
+    assert json.loads(kwargs["content"])["status"] == "failed"
 
 
 @pytest.mark.asyncio

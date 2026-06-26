@@ -65,6 +65,15 @@ def test_python_sdk_is_valid_python(gen):
     ast.parse(gen.python_sdk())
 
 
+@pytest.mark.parametrize("builder_name", ["typescript_sdk", "javascript_sdk"])
+def test_ts_js_braces_are_balanced(gen, builder_name):
+    # No real parser here, but unbalanced braces are the likely failure mode of
+    # the f-string ``{{`` escaping in the TS/JS templates — catch that cheaply.
+    source = getattr(gen, builder_name)()
+    assert source.count("{") == source.count("}")
+    assert source.count("(") == source.count(")")
+
+
 def test_adversarial_model_name_does_not_break_generated_code():
     # A user-controlled name with docstring/comment terminators must not inject
     # into or break the generated source (review finding #2).

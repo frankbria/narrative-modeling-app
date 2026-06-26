@@ -70,15 +70,28 @@ class JobProgressResponse(BaseModel):
     estimated_completion: datetime | None
 
 
+# Any config key ending in one of these is masked in job-status responses, so a
+# future sensitive field (e.g. an auth token) is redacted automatically (#86).
+_SENSITIVE_CONFIG_SUFFIXES = ("_secret", "_token", "_password", "_key")
+
+
 def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
     """Mask sensitive fields before returning a job's config (#86).
 
-    ``webhook_secret`` is the HMAC signing key — never echo it back in the
-    job-status responses (the config dict is otherwise surfaced verbatim).
+    The config dict is otherwise surfaced verbatim by the job-status responses,
+    so anything that looks like a credential (``*_secret``/``*_token``/etc., e.g.
+    the ``webhook_secret`` HMAC signing key) is replaced with ``****``. Note: the
+    progress-polling endpoint returns ``JobProgressResponse`` (no ``config``), so
+    it never carries the secret.
     """
-    if config.get("webhook_secret") is not None:
-        return {**config, "webhook_secret": "****"}
-    return config
+    return {
+        key: (
+            "****"
+            if value is not None and key.endswith(_SENSITIVE_CONFIG_SUFFIXES)
+            else value
+        )
+        for key, value in config.items()
+    }
 
 
 # API Routes
