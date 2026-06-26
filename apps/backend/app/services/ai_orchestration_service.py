@@ -691,23 +691,38 @@ class AIOrchestrationService:
             TransformationType.FILL_MISSING.value,
             TransformationType.IMPUTE.value,
         ):
-            # ponytail: default to median (robust) without per-column skew; mean
-            # is offered as an alternative. Refine with ColumnStats skew later.
-            # 'method' is the executable param name FillMissingTransformation reads
-            # (not 'strategy') — keeps optimized params applyable (codex).
-            optimized = {**current, "method": "median"}
+            # 'method' is the executable param FillMissingTransformation reads
+            # (not 'strategy'). median/mean apply only to numeric columns, so if
+            # any requested column is non-numeric, recommend mode — else those
+            # columns are silently skipped (codex). Without requested columns,
+            # default to median (numeric assumption) and offer mode/mean.
+            requested = current.get("columns") or []
+            numeric_set = set(profile.numeric_columns)
+            any_non_numeric = bool(requested) and any(c not in numeric_set for c in requested)
+            if any_non_numeric:
+                primary, alt = "mode", "median"
+                explanation = (
+                    "The selected columns include non-numeric fields, so mode (most frequent "
+                    "value) fills them — mean/median apply only to numeric columns."
+                )
+                alt_explanation = "Use median for the numeric columns in your selection."
+            else:
+                primary, alt = "median", "mode"
+                explanation = (
+                    "Median imputation resists outliers and skew better than the mean, the "
+                    "safer default for numeric columns when distributions are unknown."
+                )
+                alt_explanation = "Use mode for categorical columns or mean for symmetric numeric data."
             return ParameterOptimizationResponse(
                 dataset_id=profile.dataset_id,
                 tool_type=tool,
-                optimized_parameters=optimized,
-                expected_improvement="More robust imputation on skewed or outlier-prone columns",
-                explanation="Median imputation resists outliers and skew better than the mean, "
-                "which is the safer default when distributions are unknown.",
+                optimized_parameters={**current, "method": primary},
+                expected_improvement="Imputation method matched to the selected columns' types",
+                explanation=explanation,
                 alternatives=[
                     ParameterAlternative(
-                        parameters={**current, "method": "mean"},
-                        explanation="Use the mean when columns are roughly symmetric (normal).",
-                        expected_improvement="Slightly better on symmetric data",
+                        parameters={**current, "method": alt},
+                        explanation=alt_explanation,
                     )
                 ],
                 partial=profile.partial,
@@ -746,7 +761,16 @@ class AIOrchestrationService:
             TransformationType.LABEL_ENCODE.value,
             TransformationType.ENCODE.value,
         ):
-            high_card = bool(profile.high_cardinality_columns)
+            # Base the choice on the requested columns when supplied, not the
+            # whole dataset — else a low-card one-hot request gets flipped to
+            # label just because some unrelated column is high-card (codex).
+            requested = current.get("columns") or []
+            high_card_set = set(profile.high_cardinality_columns)
+            high_card = (
+                any(c in high_card_set for c in requested)
+                if requested
+                else bool(profile.high_cardinality_columns)
+            )
             chosen = "label" if high_card else "onehot"
             return ParameterOptimizationResponse(
                 dataset_id=profile.dataset_id,

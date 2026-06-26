@@ -171,7 +171,38 @@ async def test_optimize_imputation_defaults_to_median():
         ),
     )
     assert resp.optimized_parameters["method"] == "median"
-    assert any(a.parameters.get("method") == "mean" for a in resp.alternatives)
+    assert any(a.parameters.get("method") == "mode" for a in resp.alternatives)
+
+
+@pytest.mark.asyncio
+async def test_optimize_imputation_uses_mode_for_requested_categorical():
+    """A non-numeric requested column gets mode, not median (codex)."""
+    svc = _service()
+    resp = await svc.optimize_parameters(
+        _profile(numeric_columns=["age"], categorical_columns=["city"]),
+        ParameterOptimizationRequest(
+            dataset_id="ds_1",
+            tool_type=TransformationType.FILL_MISSING.value,
+            current_parameters={"columns": ["city"]},
+        ),
+    )
+    assert resp.optimized_parameters["method"] == "mode"
+
+
+@pytest.mark.asyncio
+async def test_optimize_onehot_respects_requested_low_card_columns():
+    """One-hot for a low-card column isn't flipped to label by an unrelated
+    high-card column elsewhere in the dataset (codex)."""
+    svc = _service()
+    resp = await svc.optimize_parameters(
+        _profile(categorical_columns=["city", "user_id"], high_cardinality_columns=["user_id"]),
+        ParameterOptimizationRequest(
+            dataset_id="ds_1",
+            tool_type=TransformationType.ONE_HOT_ENCODE.value,
+            current_parameters={"columns": ["city"]},
+        ),
+    )
+    assert resp.optimized_parameters["method"] == "onehot"
 
 
 @pytest.mark.asyncio
