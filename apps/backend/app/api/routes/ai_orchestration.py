@@ -3,6 +3,7 @@
 Endpoints (registered under /api/v1/ai):
 - POST /recommend-tools     -> ranked tool recommendations + pipeline suggestion
 - POST /optimize-parameters -> rule-based parameter suggestions for a tool
+- POST /stage-guidance      -> consistent, context-aware AI guidance per stage (#90)
 - POST /feedback            -> store feedback that personalizes future recommendations
 
 All require auth and validate dataset ownership (404 for unknown/foreign datasets).
@@ -20,6 +21,8 @@ from app.schemas.ai_orchestration import (
     AIFeedbackResponse,
     ParameterOptimizationRequest,
     ParameterOptimizationResponse,
+    StageGuidanceRequest,
+    StageGuidanceResponse,
     ToolRecommendationRequest,
     ToolRecommendationResponse,
 )
@@ -58,6 +61,27 @@ async def optimize_parameters(
             detail="Dataset not found",
         )
     return await ai_orchestration_service.optimize_parameters(profile, request)
+
+
+@router.post("/stage-guidance", response_model=StageGuidanceResponse)
+async def stage_guidance(
+    request: StageGuidanceRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> StageGuidanceResponse:
+    """Consistent, context-aware AI guidance for a workflow stage (issue #90).
+
+    Builds on decisions persisted from earlier stages and works fully without an
+    OpenAI key (rule-based core; OpenAI enhances only the summary when present).
+    """
+    profile = await ai_orchestration_service.build_profile(request.dataset_id, user_id)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found",
+        )
+    return await ai_orchestration_service.generate_stage_guidance(
+        profile, request.stage, request.accumulated_context, user_id
+    )
 
 
 @router.post(
