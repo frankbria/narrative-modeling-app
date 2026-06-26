@@ -13,6 +13,7 @@ import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
 import { EndpointTester } from '@/components/EndpointTester';
+import { SdkPanel } from '@/components/SdkPanel';
 
 export default function DeployPage() {
   const { state, completeStage, requestStageRedirect } = useWorkflow();
@@ -306,6 +307,8 @@ export default function DeployPage() {
                 endpoint={deployment.deployment_endpoint}
               />
             )}
+
+            {state.modelId && <SdkPanel modelId={state.modelId} />}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 rounded-lg p-4">

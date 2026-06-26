@@ -85,6 +85,12 @@ async def create_batch_job(
     ),
     chunk_size: int = Form(default=1000, description="Chunk size"),
     priority: int = Form(default=0, description="Job priority"),
+    webhook_url: str | None = Form(
+        default=None, description="Optional URL to POST the job summary to on completion (#86)"
+    ),
+    webhook_secret: str | None = Form(
+        default=None, description="Optional secret to HMAC-sign the webhook payload (#86)"
+    ),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Create a new batch prediction job from uploaded file"""
@@ -116,6 +122,8 @@ async def create_batch_job(
                 include_explanations=include_explanations,
                 chunk_size=chunk_size,
                 priority=priority,
+                webhook_url=webhook_url,
+                webhook_secret=webhook_secret,
             )
 
             # Store input file size

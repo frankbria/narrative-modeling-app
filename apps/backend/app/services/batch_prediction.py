@@ -3,6 +3,8 @@ Batch prediction service for processing large datasets
 """
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -13,6 +15,7 @@ from datetime import datetime
 from io import BytesIO, StringIO
 from typing import Any
 
+import httpx
 import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
@@ -71,6 +74,8 @@ class BatchPredictionService:
         chunk_size: int = 1000,
         priority: int = 0,
         auto_start: bool = True,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
     ) -> BatchJob:
         """Create a new batch prediction job.
 
@@ -100,6 +105,8 @@ class BatchPredictionService:
             include_metadata=include_metadata,
             include_explanations=include_explanations,
             chunk_size=chunk_size,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
         ).dict()
 
         # Create job
@@ -259,6 +266,51 @@ class BatchPredictionService:
 
         finally:
             await job.save()
+            # Best-effort async-completion webhook (issue #86). Never blocks/raises.
+            await self._fire_webhook(job)
+
+    async def _fire_webhook(self, job: BatchJob) -> None:
+        """POST the job summary to the job's webhook URL on terminal state (#86).
+
+        Best-effort: signs the payload with HMAC-SHA256 when a secret is set
+        (header ``X-Signature``), retries once, and swallows every error so a
+        bad/unreachable webhook can never affect the prediction job.
+        """
+        webhook_url = job.config.get("webhook_url")
+        if not webhook_url:
+            return
+
+        payload = json.dumps(
+            {
+                "job_id": job.job_id,
+                "status": job.status.value,
+                "model_id": job.config.get("model_id"),
+                "summary": job.results,
+                "completed_at": (
+                    job.completed_at.isoformat() if job.completed_at else None
+                ),
+            }
+        ).encode()
+
+        headers = {"Content-Type": "application/json"}
+        secret = job.config.get("webhook_secret")
+        if secret:
+            headers["X-Signature"] = hmac.new(
+                secret.encode(), payload, hashlib.sha256
+            ).hexdigest()
+
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    await client.post(webhook_url, content=payload, headers=headers)
+                return
+            except Exception as exc:  # noqa: BLE001 - webhook must never break the job
+                logger.warning(
+                    "Webhook delivery to %s failed (attempt %d): %s",
+                    webhook_url,
+                    attempt + 1,
+                    exc,
+                )
 
     async def _read_data_chunks(
         self, s3_path: str, chunk_size: int

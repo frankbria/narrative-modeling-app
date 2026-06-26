@@ -9,6 +9,7 @@ round-trip test.
 """
 
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -309,3 +310,84 @@ async def test_prepare_input_data_uploads_dataframe():
     assert total == 3
     assert key.endswith("input.csv")
     svc.s3_service.upload_file_obj.assert_awaited_once()
+
+
+# --- Async-completion webhook (issue #86) ---------------------------------
+
+
+def _completed_job(webhook_url=None, webhook_secret=None):
+    """A minimal terminal-state batch job (no Mongo) for _fire_webhook."""
+    from app.models.batch_job import JobStatus
+
+    job = MagicMock()
+    job.job_id = "batch_1"
+    job.status = JobStatus.COMPLETED
+    job.results = {"prediction_distribution": {"yes": 2}}
+    job.completed_at = datetime(2026, 1, 1, 12, 0, 0)
+    job.config = {
+        "model_id": "model_123",
+        "webhook_url": webhook_url,
+        "webhook_secret": webhook_secret,
+    }
+    return job
+
+
+def _patch_httpx(monkeypatch, post):
+    """Patch httpx.AsyncClient so _fire_webhook's POST is captured."""
+    client = MagicMock()
+    client.post = post
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.httpx.AsyncClient",
+        lambda *a, **k: client,
+    )
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_noop_without_url(monkeypatch):
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job())
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_posts_signed_summary(monkeypatch):
+    import hashlib
+    import hmac
+
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+
+    job = _completed_job("https://hook.example/cb", "s3cr3t")
+    await _service()._fire_webhook(job)
+
+    post.assert_awaited_once()
+    _, kwargs = post.call_args
+    body = kwargs["content"]
+    payload = json.loads(body)
+    assert payload["job_id"] == "batch_1"
+    assert payload["status"] == "completed"
+    assert payload["summary"] == {"prediction_distribution": {"yes": 2}}
+    # Signature is HMAC-SHA256 of the raw body with the secret.
+    expected = hmac.new(b"s3cr3t", body, hashlib.sha256).hexdigest()
+    assert kwargs["headers"]["X-Signature"] == expected
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_unsigned_when_no_secret(monkeypatch):
+    post = AsyncMock()
+    _patch_httpx(monkeypatch, post)
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    _, kwargs = post.call_args
+    assert "X-Signature" not in kwargs["headers"]
+
+
+@pytest.mark.asyncio
+async def test_fire_webhook_never_raises_on_failure(monkeypatch):
+    post = AsyncMock(side_effect=RuntimeError("boom"))
+    _patch_httpx(monkeypatch, post)
+    # Must swallow the error (and retry once → two attempts).
+    await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
+    assert post.await_count == 2

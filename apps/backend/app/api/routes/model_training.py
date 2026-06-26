@@ -16,7 +16,15 @@ from beanie import PydanticObjectId
 from beanie.odm.operators.update.array import Push
 from beanie.odm.operators.update.general import Set
 from bson.errors import InvalidId
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
@@ -76,6 +84,7 @@ from app.services.model_training.comparison import (
 from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.s3_service import get_file_from_s3
+from app.services.sdk_generator import SUPPORTED_LANGUAGES, SDKGenerator
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -1400,6 +1409,96 @@ async def promote_model_version(
         promoted_at=promoted.promoted_at,
         demoted_model_ids=demoted,
     )
+
+
+def _serving_endpoint_for(model: MLModel, http_request: Request) -> str:
+    """The model's production serving URL (issue #86 SDKs).
+
+    Prefers a persisted ``deployment_endpoint`` (#84), else synthesizes it from
+    the request host — same scheme as ``deploy_model`` so the SDK always carries a
+    usable URL even before the model is formally deployed.
+    """
+    return model.deployment_endpoint or (
+        f"{str(http_request.base_url).rstrip('/')}"
+        f"{settings.API_V1_STR}/production/v1/models/{model.model_id}"
+    )
+
+
+async def _load_model_for_sdk(model_id: str, user_id: str) -> MLModel:
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == user_id
+    )
+    if model is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return model
+
+
+@router.get("/{model_id}/sdk")
+async def get_sdk_info(
+    model_id: str,
+    http_request: Request,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """SDK discovery payload for a deployment (issue #86): languages, model
+    metadata, sample record, install hints. 404 for unknown/foreign models.
+    Registered before the catch-all ``/{model_id}``."""
+    model = await _load_model_for_sdk(model_id, current_user_id)
+    generator = SDKGenerator(
+        model_id=model.model_id,
+        model_name=model.name,
+        feature_names=model.feature_names,
+        problem_type=model.problem_type,
+        serving_endpoint=_serving_endpoint_for(model, http_request),
+    )
+    return generator.info()
+
+
+@router.get("/{model_id}/sdk/postman")
+async def get_sdk_postman(
+    model_id: str,
+    http_request: Request,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Per-deployment Postman collection (issue #86). 404 unknown/foreign."""
+    model = await _load_model_for_sdk(model_id, current_user_id)
+    generator = SDKGenerator(
+        model_id=model.model_id,
+        model_name=model.name,
+        feature_names=model.feature_names,
+        problem_type=model.problem_type,
+        serving_endpoint=_serving_endpoint_for(model, http_request),
+    )
+    return generator.postman_collection()
+
+
+@router.get("/{model_id}/sdk/{language}")
+async def get_sdk_source(
+    model_id: str,
+    language: str,
+    http_request: Request,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Generated SDK source for one language (issue #86):
+    ``python`` | ``typescript`` | ``javascript`` | ``curl``. 404 for an unknown
+    language or unknown/foreign model. Returned as ``text/plain`` for download."""
+    model = await _load_model_for_sdk(model_id, current_user_id)
+    generator = SDKGenerator(
+        model_id=model.model_id,
+        model_name=model.name,
+        feature_names=model.feature_names,
+        problem_type=model.problem_type,
+        serving_endpoint=_serving_endpoint_for(model, http_request),
+    )
+    source = generator.get(language)
+    if source is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Language '{language}' not supported. "
+                f"Available: {', '.join(SUPPORTED_LANGUAGES)}"
+            ),
+        )
+    return Response(content=source, media_type="text/plain")
 
 
 @router.put("/{model_id}/deploy", response_model=ModelDeployResponse)
