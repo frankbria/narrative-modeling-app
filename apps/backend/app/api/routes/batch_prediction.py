@@ -70,6 +70,17 @@ class JobProgressResponse(BaseModel):
     estimated_completion: datetime | None
 
 
+def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Mask sensitive fields before returning a job's config (#86).
+
+    ``webhook_secret`` is the HMAC signing key — never echo it back in the
+    job-status responses (the config dict is otherwise surfaced verbatim).
+    """
+    if config.get("webhook_secret"):
+        return {**config, "webhook_secret": "****"}
+    return config
+
+
 # API Routes
 @router.post("/jobs", response_model=BatchJobResponse)
 async def create_batch_job(
@@ -86,10 +97,12 @@ async def create_batch_job(
     chunk_size: int = Form(default=1000, description="Chunk size"),
     priority: int = Form(default=0, description="Job priority"),
     webhook_url: str | None = Form(
-        default=None, description="Optional URL to POST the job summary to on completion (#86)"
+        default=None,
+        description="Optional URL to POST the job summary to on completion",
     ),
     webhook_secret: str | None = Form(
-        default=None, description="Optional secret to HMAC-sign the webhook payload (#86)"
+        default=None,
+        description="Optional secret used to HMAC-sign the webhook payload",
     ),
     current_user_id: str = Depends(get_current_user_id),
 ):
@@ -139,7 +152,7 @@ async def create_batch_job(
             job_type=job.job_type,
             status=job.status,
             progress=job.progress.dict(),
-            config=job.config,
+            config=_redact_config(job.config),
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
@@ -177,7 +190,7 @@ async def list_batch_jobs(
             job_type=job.job_type,
             status=job.status,
             progress=job.progress.dict(),
-            config=job.config,
+            config=_redact_config(job.config),
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
@@ -207,7 +220,7 @@ async def get_batch_job(
         job_type=job.job_type,
         status=job.status,
         progress=job.progress.dict(),
-        config=job.config,
+        config=_redact_config(job.config),
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,

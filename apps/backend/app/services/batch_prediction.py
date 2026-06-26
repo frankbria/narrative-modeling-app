@@ -273,21 +273,26 @@ class BatchPredictionService:
             await self._fire_webhook(job)
 
     @staticmethod
-    def _is_safe_webhook_url(url: str) -> bool:
+    async def _is_safe_webhook_url(url: str) -> bool:
         """Reject SSRF-prone webhook targets (#86 hardening).
 
         Only http(s) to a host that resolves entirely to public addresses —
         blocks loopback/private/link-local/reserved (e.g. ``127.0.0.1``,
-        ``169.254.169.254`` cloud-metadata, RFC1918). ponytail: basic resolve-
-        and-check guard, not DNS-rebinding-proof; tighten with an egress proxy
-        or allowlist if webhooks graduate past beta.
+        ``169.254.169.254`` cloud-metadata, RFC1918). DNS resolution runs in a
+        thread so it never blocks the event loop. ponytail: basic resolve-and-
+        check guard, not DNS-rebinding-proof; tighten with an egress proxy or
+        allowlist if webhooks graduate past beta.
         """
         try:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https") or not parsed.hostname:
                 return False
-            infos = socket.getaddrinfo(
-                parsed.hostname, parsed.port or 0, proto=socket.IPPROTO_TCP
+            infos = await asyncio.to_thread(
+                socket.getaddrinfo,
+                parsed.hostname,
+                parsed.port or 0,
+                0,
+                socket.IPPROTO_TCP,
             )
             for info in infos:
                 ip = ipaddress.ip_address(info[4][0])
@@ -315,7 +320,7 @@ class BatchPredictionService:
         webhook_url = job.config.get("webhook_url")
         if not webhook_url:
             return
-        if not self._is_safe_webhook_url(webhook_url):
+        if not await self._is_safe_webhook_url(webhook_url):
             logger.warning(
                 "Skipping webhook to unsafe/unresolvable URL: %s", webhook_url
             )
@@ -357,6 +362,8 @@ class BatchPredictionService:
                     attempt + 1,
                     exc,
                 )
+                if attempt == 0:
+                    await asyncio.sleep(1)  # brief backoff before the single retry
 
     async def _read_data_chunks(
         self, s3_path: str, chunk_size: int

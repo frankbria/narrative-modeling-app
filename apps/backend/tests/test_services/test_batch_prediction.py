@@ -346,6 +346,10 @@ def _patch_httpx(monkeypatch, post, *, safe=True):
         "app.services.batch_prediction.httpx.AsyncClient",
         lambda *a, **k: client,
     )
+    # Don't actually wait out the retry backoff in tests.
+    monkeypatch.setattr(
+        "app.services.batch_prediction.asyncio.sleep", AsyncMock()
+    )
     if safe:
         monkeypatch.setattr(
             "app.services.batch_prediction.socket.getaddrinfo",
@@ -412,6 +416,19 @@ async def test_fire_webhook_retries_on_non_2xx(monkeypatch):
     _patch_httpx(monkeypatch, post)
     await _service()._fire_webhook(_completed_job("https://hook.example/cb"))
     assert post.await_count == 2
+
+
+def test_redact_config_masks_webhook_secret():
+    # The job-status API must never echo the HMAC signing key (review #4).
+    from app.api.routes.batch_prediction import _redact_config
+
+    redacted = _redact_config(
+        {"model_id": "m", "webhook_url": "https://h/cb", "webhook_secret": "s3cr3t"}
+    )
+    assert redacted["webhook_secret"] == "****"
+    assert redacted["webhook_url"] == "https://h/cb"  # non-secret fields preserved
+    # No secret present → unchanged.
+    assert _redact_config({"model_id": "m"}) == {"model_id": "m"}
 
 
 @pytest.mark.asyncio

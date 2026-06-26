@@ -65,6 +65,23 @@ def test_python_sdk_is_valid_python(gen):
     ast.parse(gen.python_sdk())
 
 
+def test_adversarial_model_name_does_not_break_generated_code():
+    # A user-controlled name with docstring/comment terminators must not inject
+    # into or break the generated source (review finding #2).
+    g = SDKGenerator(
+        model_id="m1",
+        model_name='Evil"""\n*/`$ Model',
+        feature_names=["x"],
+        problem_type="classification",
+        serving_endpoint=ENDPOINT,
+    )
+    ast.parse(g.python_sdk())  # would SyntaxError if """ leaked through
+    for token in ['"""', "*/", "`", "$", "\n"]:
+        assert token not in g.model_name
+    # Postman description must round-trip as JSON with a sanitized name.
+    json.dumps(g.postman_collection())
+
+
 def test_postman_collection_is_valid_and_per_deployment(gen):
     collection = gen.postman_collection()
     # Round-trips through JSON (Postman import requires valid JSON).

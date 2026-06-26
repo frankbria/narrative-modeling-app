@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { modelService } from '@/lib/services/model';
 import type { SdkInfo } from '@/lib/services/model';
 import { Copy, Download, Check, Code } from 'lucide-react';
@@ -44,6 +44,9 @@ export function SdkPanel({ modelId }: { modelId: string }) {
   const [sources, setSources] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Tracks which languages have been requested so the fetch effect doesn't
+  // re-run every time `sources` changes (it only depends on modelId+language).
+  const requested = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -61,7 +64,9 @@ export function SdkPanel({ modelId }: { modelId: string }) {
   }, [modelId]);
 
   useEffect(() => {
-    if (sources[language] !== undefined) return;
+    const key = `${modelId}:${language}`;
+    if (requested.current.has(key)) return;
+    requested.current.add(key);
     let active = true;
     modelService
       .getSdk(modelId, language)
@@ -69,12 +74,13 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         if (active) setSources((prev) => ({ ...prev, [language]: src }));
       })
       .catch(() => {
+        requested.current.delete(key); // allow a retry on next mount/select
         if (active) setError(`Could not load the ${language} SDK.`);
       });
     return () => {
       active = false;
     };
-  }, [modelId, language, sources]);
+  }, [modelId, language]);
 
   const source = sources[language];
 

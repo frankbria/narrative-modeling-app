@@ -34,6 +34,18 @@ def _class_name(model_name: str) -> str:
     return f"{pascal}Client"
 
 
+def _safe_display_name(model_name: str) -> str:
+    """Sanitize a model name for embedding in generated source/comments.
+
+    Model names are user-controlled, so a raw name containing ``\"\"\"``, ``*/``,
+    a backtick, ``$`` or a newline could break the generated Python/TS/JS/cURL
+    or inject into it. Keep only readable characters (letters, digits, spaces,
+    and ``-_.``), which leaves normal names like "Sales Prediction Model" intact.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9 _.\-]", "", model_name or "").strip()
+    return cleaned or "Model"
+
+
 class SDKGenerator:
     """Builds deployment-specific SDKs for one model.
 
@@ -56,11 +68,12 @@ class SDKGenerator:
         serving_endpoint: str,
     ) -> None:
         self.model_id = model_id
-        self.model_name = model_name or model_id
+        # Sanitized for safe embedding in generated source/comments (user input).
+        self.model_name = _safe_display_name(model_name or model_id)
         self.feature_names = list(feature_names or [])
         self.problem_type = problem_type or "classification"
         self.serving_endpoint = serving_endpoint.rstrip("/")
-        self.class_name = _class_name(self.model_name)
+        self.class_name = _class_name(model_name or model_id)
 
     # -- shared helpers -------------------------------------------------------
 
