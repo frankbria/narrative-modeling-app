@@ -25,9 +25,9 @@ UNHEALTHY_LATENCY_MS = 5000.0
 class PredictionLog:
     """In-memory prediction log.
 
-    ponytail: in-memory, process-local — metrics reset on restart. Beta relies on
-    basic logging (issue #85 header). Upgrade path: swap for a Beanie time-series
-    collection behind this same interface if cross-restart durability is needed.
+    Process-local — metrics reset on restart. Beta relies on basic logging
+    (issue #85 header). Upgrade path: swap for a Beanie time-series collection
+    behind this same interface if cross-restart durability is needed.
     """
     def __init__(self):
         self.logs = defaultdict(list)
@@ -122,15 +122,11 @@ class PredictionMonitoringService:
         return [p for p in recent if p["timestamp"] > cutoff]
 
     @staticmethod
-    async def get_model_metrics(
-        model_id: str,
-        hours: int = 24
-    ) -> dict[str, Any]:
-        """Get model performance metrics for the last N hours.
+    def _compute_metrics(filtered: list[dict[str, Any]], hours: int) -> dict[str, Any]:
+        """Pure metric computation over an already-fetched event window.
 
-        ``total_predictions`` counts successful predictions; ``error_rate`` is
-        errors / total requests (issue #85 — errors are now logged from the
-        production serving path). Latency percentiles are over successful requests.
+        Split out so ``get_health`` can reuse the same window it already loaded
+        instead of scanning the log a second time (review feedback).
         """
         empty = {
             "total_predictions": 0,
@@ -143,7 +139,6 @@ class PredictionMonitoringService:
             "time_window_hours": hours,
         }
 
-        filtered = await PredictionMonitoringService._window(model_id, hours)
         if not filtered:
             return empty
 
@@ -186,6 +181,17 @@ class PredictionMonitoringService:
         }
 
     @staticmethod
+    async def get_model_metrics(model_id: str, hours: int = 24) -> dict[str, Any]:
+        """Get model performance metrics for the last N hours.
+
+        ``total_predictions`` counts successful predictions; ``error_rate`` is
+        errors / total requests (issue #85 — errors are now logged from the
+        production serving path). Latency percentiles are over successful requests.
+        """
+        filtered = await PredictionMonitoringService._window(model_id, hours)
+        return PredictionMonitoringService._compute_metrics(filtered, hours)
+
+    @staticmethod
     async def get_usage_timeline(
         model_id: str,
         hours: int = 24,
@@ -203,7 +209,9 @@ class PredictionMonitoringService:
         now = datetime.utcnow()
         window_start = now - timedelta(hours=hours)
         bucket = timedelta(minutes=bucket_minutes)
-        n_buckets = max(1, int((hours * 60) // bucket_minutes) + 1)
+        # Buckets span [window_start, now); the index guard below catches an event
+        # landing exactly on the trailing boundary, so no overflow slot is needed.
+        n_buckets = max(1, int((hours * 60) // bucket_minutes))
 
         # Pre-seed empty buckets keyed by bucket index.
         buckets: list[dict[str, Any]] = []
@@ -241,7 +249,8 @@ class PredictionMonitoringService:
     async def get_health(model_id: str, hours: int = 24) -> dict[str, Any]:
         """Deployment health status + threshold-based error-rate/latency alerts."""
         filtered = await PredictionMonitoringService._window(model_id, hours)
-        metrics = await PredictionMonitoringService.get_model_metrics(model_id, hours)
+        # Reuse the window we just loaded instead of re-scanning the log.
+        metrics = PredictionMonitoringService._compute_metrics(filtered, hours)
 
         last_request_at = (
             max(p["timestamp"] for p in filtered).isoformat() if filtered else None

@@ -176,6 +176,9 @@ export default function ModelMonitoringPage() {
     )
   }
 
+  const hs = health ? healthStyle(health.status) : null
+  const HealthIcon = hs?.Icon
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -216,29 +219,22 @@ export default function ModelMonitoringPage() {
       </div>
 
       {/* Deployment Health + Alerts */}
-      {health && (
+      {health && hs && (
         <Card>
           <CardContent className="pt-6 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-3">
-                {(() => {
-                  const { className, Icon, label } = healthStyle(health.status)
-                  return (
-                    <>
-                      <Badge variant="default" className={className}>
-                        <Icon className="h-4 w-4 mr-1" />
-                        {label}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        Error rate {(health.error_rate * 100).toFixed(1)}% ·{' '}
-                        {health.requests.toLocaleString()} requests · last{' '}
-                        {health.last_request_at
-                          ? new Date(health.last_request_at).toLocaleString()
-                          : 'never'}
-                      </span>
-                    </>
-                  )
-                })()}
+                <Badge variant="default" className={hs.className}>
+                  {HealthIcon && <HealthIcon className="h-4 w-4 mr-1" />}
+                  {hs.label}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Error rate {(health.error_rate * 100).toFixed(1)}% ·{' '}
+                  {health.requests.toLocaleString()} requests · last{' '}
+                  {health.last_request_at
+                    ? new Date(health.last_request_at).toLocaleString()
+                    : 'never'}
+                </span>
               </div>
             </div>
             {health.alerts.length > 0 && (

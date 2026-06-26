@@ -106,6 +106,34 @@ class TestMonitoringAPI:
     @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
     @patch('app.api.routes.monitoring.monitoring_service')
+    async def test_timeline_response_format(self, mock_service, mock_model):
+        """Timeline endpoint maps the service payload into the response model"""
+        from app.api.routes.monitoring import get_usage_timeline
+
+        mock_model.find_one = AsyncMock(return_value=Mock())
+        mock_service.get_usage_timeline = AsyncMock(return_value={
+            "bucket_minutes": 60,
+            "time_window_hours": 24,
+            "buckets": [
+                {"timestamp": "2026-06-25T00:00:00", "requests": 5,
+                 "errors": 1, "avg_latency_ms": 20.0},
+                {"timestamp": "2026-06-25T01:00:00", "requests": 0,
+                 "errors": 0, "avg_latency_ms": 0.0},
+            ],
+        })
+
+        result = await get_usage_timeline(
+            model_id="model_123", hours=24, bucket_minutes=60, current_user_id="user_123"
+        )
+        assert result.model_id == "model_123"
+        assert result.bucket_minutes == 60
+        assert len(result.buckets) == 2
+        assert result.buckets[0].requests == 5
+        assert result.buckets[0].errors == 1
+
+    @pytest.mark.asyncio
+    @patch('app.api.routes.monitoring.MLModel')
+    @patch('app.api.routes.monitoring.monitoring_service')
     async def test_health_response_format(self, mock_service, mock_model):
         """Health endpoint maps the service payload into the response model"""
         from app.api.routes.monitoring import get_deployment_health

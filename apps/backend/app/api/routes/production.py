@@ -39,6 +39,11 @@ async def _record_serving_metrics(
 
     Logged to the in-memory prediction log only — never touches the DB on the hot
     path and never raises, so monitoring can't break or slow real predictions.
+
+    Note: batch wall-clock latency is split evenly across records
+    (``latency_ms / n``), so a single slow batch produces N identical per-record
+    latencies — percentiles can look uniform under heavy batch traffic. Accepted
+    beta limitation (no per-record timing on the serving path).
     """
     try:
         if error is not None:
