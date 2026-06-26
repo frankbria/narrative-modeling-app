@@ -34,6 +34,22 @@ jest.mock('@/components/workflow/StageNavigation', () => ({
   StageNavigation: () => <div data-testid="stage-navigation" />,
 }));
 
+// EndpointTester has its own suite; stub it (it would otherwise fetch features).
+jest.mock('@/components/EndpointTester', () => ({
+  EndpointTester: () => <div data-testid="endpoint-tester" />,
+}));
+
+// The page reads real feature names to build the example request; stub it.
+jest.mock('@/lib/services/model', () => ({
+  modelService: {
+    getModelFeatures: jest.fn().mockResolvedValue({
+      features: [{ name: 'age', type: 'number' }],
+      problem_type: 'binary_classification',
+      target_column: 'target',
+    }),
+  },
+}));
+
 const mockCompleteStage = jest.fn();
 const mockRequestStageRedirect = jest.fn();
 
@@ -67,11 +83,14 @@ const DEPLOY_RESPONSE = {
   message: 'Model model-1 deployed successfully',
 };
 
-// GET /models/{id} shape (status check on mount): not yet deployed by default.
+// GET /ml/{id} shape (status check on mount): not yet deployed by default.
+// Deployment state lives on the MLModel record's top-level fields (#84).
 const notDeployedModel = {
   model_id: 'model-1',
   status: 'trained',
-  deployment_config: { is_deployed: false, deployment_endpoint: null, deployed_at: null },
+  is_deployed: false,
+  deployment_endpoint: null,
+  deployed_at: null,
 };
 
 describe('DeployPage', () => {
@@ -82,7 +101,7 @@ describe('DeployPage', () => {
   });
 
   describe('mount status check', () => {
-    it('checks deployment status via GET /models/{id} (not the nonexistent /deployment route)', async () => {
+    it('checks deployment status via GET /ml/{id} (the real MLModel surface)', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(notDeployedModel),
@@ -92,8 +111,8 @@ describe('DeployPage', () => {
 
       await waitFor(() => expect(mockFetch).toHaveBeenCalled());
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toBe('http://localhost:8000/api/v1/models/model-1');
-      expect(url).not.toContain('/deployment');
+      expect(url).toBe('http://localhost:8000/api/v1/ml/model-1');
+      expect(url).not.toContain('/models/');
     });
 
     it('shows the deployed state when the model is already deployed', async () => {
@@ -103,11 +122,9 @@ describe('DeployPage', () => {
           Promise.resolve({
             model_id: 'model-1',
             status: 'deployed',
-            deployment_config: {
-              is_deployed: true,
-              deployment_endpoint: 'https://api.example.com/v1/models/model-1',
-              deployed_at: '2026-06-16T00:00:00Z',
-            },
+            is_deployed: true,
+            deployment_endpoint: 'https://api.example.com/v1/models/model-1',
+            deployed_at: '2026-06-16T00:00:00Z',
           }),
       });
 
@@ -130,7 +147,7 @@ describe('DeployPage', () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(DEPLOY_RESPONSE) });
     });
 
-    it('triggers deployment with PUT to /models/{id}/deploy', async () => {
+    it('triggers deployment with PUT to /ml/{id}/deploy', async () => {
       render(<DeployPage />);
 
       const button = await screen.findByRole('button', { name: /deploy model/i });
@@ -138,7 +155,7 @@ describe('DeployPage', () => {
 
       await waitFor(() => {
         const deployCall = mockFetch.mock.calls.find(
-          ([u]) => (u as string).endsWith('/models/model-1/deploy')
+          ([u]) => (u as string).endsWith('/ml/model-1/deploy')
         );
         expect(deployCall).toBeDefined();
         const init = deployCall![1] as RequestInit;
