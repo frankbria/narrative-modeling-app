@@ -220,6 +220,13 @@ export interface ModelFeaturesResponse {
   target_column: string
 }
 
+/** Minimal Postman collection shape returned per deployment (#86). */
+export interface PostmanCollection {
+  info: { name: string; description?: string; schema: string }
+  variable: Array<{ key: string; value: string; type?: string }>
+  item: Array<Record<string, unknown>>
+}
+
 /** SDK discovery payload for a deployment (#86). */
 export interface SdkInfo {
   model_id: string
@@ -232,6 +239,10 @@ export interface SdkInfo {
   languages: string[]
   install: Record<string, string>
   auth: string
+  /** Per-SDK README (default language) — AC5 docs, reachable here (#86). */
+  readme?: string
+  /** Framework integration samples keyed by framework name (#86). */
+  frameworks?: Record<string, string>
 }
 
 /** Options for creating a batch prediction job (#82). */
@@ -704,7 +715,7 @@ export class ModelService {
   static async getSdkPostman(
     modelId: string,
     token: string | null
-  ): Promise<unknown> {
+  ): Promise<PostmanCollection> {
     const response = await fetch(
       `${API_BASE_URL}/ml/${modelId}/sdk/postman`,
       { headers: await this.getHeaders(token) }
@@ -967,7 +978,7 @@ class ModelServiceClient {
   }
 
   /** Resolve the auth token automatically and fetch the Postman collection (#86). */
-  async getSdkPostman(modelId: string): Promise<unknown> {
+  async getSdkPostman(modelId: string): Promise<PostmanCollection> {
     const token = await getAuthToken()
     return ModelService.getSdkPostman(modelId, token)
   }

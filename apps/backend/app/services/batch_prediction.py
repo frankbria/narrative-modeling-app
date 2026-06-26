@@ -279,8 +279,8 @@ class BatchPredictionService:
         Only http(s) to a host that resolves entirely to public addresses —
         blocks loopback/private/link-local/reserved (e.g. ``127.0.0.1``,
         ``169.254.169.254`` cloud-metadata, RFC1918). DNS resolution runs in a
-        thread so it never blocks the event loop. ponytail: basic resolve-and-
-        check guard, not DNS-rebinding-proof; tighten with an egress proxy or
+        thread so it never blocks the event loop. Note: this is a basic resolve-
+        and-check guard, not DNS-rebinding-proof; tighten with an egress proxy or
         allowlist if webhooks graduate past beta.
         """
         try:
@@ -321,8 +321,10 @@ class BatchPredictionService:
         if not webhook_url:
             return
         if not await self._is_safe_webhook_url(webhook_url):
+            # Log only the host (URL may carry credentials in its query string).
             logger.warning(
-                "Skipping webhook to unsafe/unresolvable URL: %s", webhook_url
+                "Skipping webhook to unsafe/unresolvable host: %s",
+                urlparse(webhook_url).netloc or "<webhook>",
             )
             return
 
@@ -345,6 +347,9 @@ class BatchPredictionService:
                 secret.encode(), payload, hashlib.sha256
             ).hexdigest()
 
+        # Log only the host, never the full URL — a webhook URL can carry tokens
+        # in its query string that must not land in application logs.
+        host = urlparse(webhook_url).netloc or "<webhook>"
         for attempt in range(2):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
@@ -358,7 +363,7 @@ class BatchPredictionService:
             except Exception as exc:  # noqa: BLE001 - webhook must never break the job
                 logger.warning(
                     "Webhook delivery to %s failed (attempt %d): %s",
-                    webhook_url,
+                    host,
                     attempt + 1,
                     exc,
                 )

@@ -443,8 +443,15 @@ def test_redact_config_masks_webhook_secret():
     ],
 )
 async def test_fire_webhook_blocks_ssrf_targets(monkeypatch, url):
-    # Real DNS resolution is used here (no getaddrinfo stub) so literal IPs and
-    # bad schemes are rejected before any POST. The unsafe URL must never fire.
+    # The unsafe URL must never fire. Stub getaddrinfo to echo the host's literal
+    # IP so the guard's classification logic is exercised deterministically (not
+    # real DNS, which varies by CI runner for e.g. link-local 169.254.x).
+    def fake_getaddrinfo(host, *a, **k):
+        return [(2, 1, 6, "", (host, 0))]  # host is a literal IP for these cases
+
+    monkeypatch.setattr(
+        "app.services.batch_prediction.socket.getaddrinfo", fake_getaddrinfo
+    )
     post = AsyncMock()
     _patch_httpx(monkeypatch, post, safe=False)
     await _service()._fire_webhook(_completed_job(url))

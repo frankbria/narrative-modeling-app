@@ -1424,13 +1424,25 @@ def _serving_endpoint_for(model: MLModel, http_request: Request) -> str:
     )
 
 
-async def _load_model_for_sdk(model_id: str, user_id: str) -> MLModel:
+async def _build_sdk_generator(
+    model_id: str, user_id: str, http_request: Request
+) -> SDKGenerator:
+    """Load an owned model and build its SDK generator (issue #86).
+
+    404s for unknown/foreign models. Shared by all three SDK endpoints.
+    """
     model = await MLModel.find_one(
         MLModel.model_id == model_id, MLModel.user_id == user_id
     )
     if model is None:
         raise HTTPException(status_code=404, detail="Model not found")
-    return model
+    return SDKGenerator(
+        model_id=model.model_id,
+        model_name=model.name,
+        feature_names=model.feature_names,
+        problem_type=model.problem_type,
+        serving_endpoint=_serving_endpoint_for(model, http_request),
+    )
 
 
 @router.get("/{model_id}/sdk")
@@ -1440,16 +1452,10 @@ async def get_sdk_info(
     current_user_id: str = Depends(get_current_user_id),
 ):
     """SDK discovery payload for a deployment (issue #86): languages, model
-    metadata, sample record, install hints. 404 for unknown/foreign models.
-    Registered before the catch-all ``/{model_id}``."""
-    model = await _load_model_for_sdk(model_id, current_user_id)
-    generator = SDKGenerator(
-        model_id=model.model_id,
-        model_name=model.name,
-        feature_names=model.feature_names,
-        problem_type=model.problem_type,
-        serving_endpoint=_serving_endpoint_for(model, http_request),
-    )
+    metadata, sample record, install hints, README + framework samples (AC5).
+    404 for unknown/foreign models. Registered before the catch-all
+    ``/{model_id}``."""
+    generator = await _build_sdk_generator(model_id, current_user_id, http_request)
     return generator.info()
 
 
@@ -1460,14 +1466,7 @@ async def get_sdk_postman(
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Per-deployment Postman collection (issue #86). 404 unknown/foreign."""
-    model = await _load_model_for_sdk(model_id, current_user_id)
-    generator = SDKGenerator(
-        model_id=model.model_id,
-        model_name=model.name,
-        feature_names=model.feature_names,
-        problem_type=model.problem_type,
-        serving_endpoint=_serving_endpoint_for(model, http_request),
-    )
+    generator = await _build_sdk_generator(model_id, current_user_id, http_request)
     return generator.postman_collection()
 
 
@@ -1481,14 +1480,7 @@ async def get_sdk_source(
     """Generated SDK source for one language (issue #86):
     ``python`` | ``typescript`` | ``javascript`` | ``curl``. 404 for an unknown
     language or unknown/foreign model. Returned as ``text/plain`` for download."""
-    model = await _load_model_for_sdk(model_id, current_user_id)
-    generator = SDKGenerator(
-        model_id=model.model_id,
-        model_name=model.name,
-        feature_names=model.feature_names,
-        problem_type=model.problem_type,
-        serving_endpoint=_serving_endpoint_for(model, http_request),
-    )
+    generator = await _build_sdk_generator(model_id, current_user_id, http_request)
     source = generator.get(language)
     if source is None:
         raise HTTPException(

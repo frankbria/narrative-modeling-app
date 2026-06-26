@@ -97,6 +97,9 @@ def test_info_payload(gen):
     assert info["predict_url"] == f"{ENDPOINT}/predict"
     assert info["languages"] == list(SUPPORTED_LANGUAGES)
     assert "X-API-Key" in info["auth"]
+    # AC5 docs are reachable via the discovery payload (review finding #3).
+    assert "pip install requests" in info["readme"]
+    assert {"flask", "fastapi", "express", "nextjs"} <= set(info["frameworks"])
 
 
 def test_framework_samples_include_webhook_receiver(gen):

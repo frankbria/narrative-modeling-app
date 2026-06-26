@@ -35,7 +35,9 @@ function download(filename: string, content: string, type = 'text/plain') {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // Defer revoke: in some browsers click() returns before the download starts,
+  // so revoking immediately can abort it.
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 export function SdkPanel({ modelId }: { modelId: string }) {
@@ -104,17 +106,6 @@ export function SdkPanel({ modelId }: { modelId: string }) {
     }
   };
 
-  if (error) {
-    return (
-      <div className="bg-gray-50 rounded-lg p-6">
-        <h3 className="font-semibold mb-2 flex items-center gap-2">
-          <Code className="w-5 h-5" /> Client SDKs
-        </h3>
-        <p className="text-sm text-red-600">{error}</p>
-      </div>
-    );
-  }
-
   const languages = info?.languages ?? ['python', 'typescript', 'javascript', 'curl'];
 
   return (
@@ -133,13 +124,19 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         </button>
       </div>
 
+      {/* Error is shown inline so the tab bar stays usable and the user can retry
+          another language without reloading. */}
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
       <div className="flex gap-2 mb-3" role="tablist" aria-label="SDK language">
         {languages.map((lang) => (
           <button
             key={lang}
+            id={`sdk-tab-${lang}`}
             type="button"
             role="tab"
             aria-selected={language === lang}
+            aria-controls="sdk-panel-content"
             onClick={() => setLanguage(lang)}
             className={`px-3 py-1.5 rounded text-sm font-medium ${
               language === lang
@@ -152,7 +149,12 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         ))}
       </div>
 
-      <div className="relative">
+      <div
+        className="relative"
+        role="tabpanel"
+        id="sdk-panel-content"
+        aria-labelledby={`sdk-tab-${language}`}
+      >
         <div className="absolute right-2 top-2 flex gap-1">
           <button
             type="button"
@@ -184,7 +186,8 @@ export function SdkPanel({ modelId }: { modelId: string }) {
       <p className="text-xs text-gray-500 mt-2">
         Each SDK calls the production endpoint with your{' '}
         <code className="font-mono">X-API-Key</code>. Generate a key from your
-        account settings.
+        account settings. Sample values are placeholders — categorical features
+        need a real label (see the model&apos;s input schema) to avoid a 422.
       </p>
     </div>
   );

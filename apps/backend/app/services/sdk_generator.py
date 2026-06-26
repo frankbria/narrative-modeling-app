@@ -119,6 +119,10 @@ class SDKGenerator:
                 "curl": "no install required",
             },
             "auth": "Send your API key in the 'X-API-Key' header (sk_live_...).",
+            # AC5 SDK docs + framework samples, reachable in this one discovery
+            # call (no per-doc routes). README is per-language; default = python.
+            "readme": self.readme("python"),
+            "frameworks": self.framework_samples(),
         }
 
     # -- Python ---------------------------------------------------------------
@@ -284,7 +288,9 @@ class {self.class_name} {{
 // const client = new {self.class_name}("sk_live_your_key_here");
 // client.predict([{sample}]).then(console.log);
 
-module.exports = {self.class_name};
+// CommonJS export (Node). Guarded so the class still loads in a browser, where
+// `module` is undefined.
+if (typeof module !== "undefined") {{ module.exports = {self.class_name}; }}
 '''
 
     # -- cURL -----------------------------------------------------------------

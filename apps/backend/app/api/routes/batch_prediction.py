@@ -76,7 +76,7 @@ def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
     ``webhook_secret`` is the HMAC signing key — never echo it back in the
     job-status responses (the config dict is otherwise surfaced verbatim).
     """
-    if config.get("webhook_secret"):
+    if config.get("webhook_secret") is not None:
         return {**config, "webhook_secret": "****"}
     return config
 
