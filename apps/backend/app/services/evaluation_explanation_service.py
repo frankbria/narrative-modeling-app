@@ -50,11 +50,15 @@ class EvaluationExplanationService:
         n_test_samples: int,
         model_name: str | None,
         algorithm: str | None,
+        evaluation_on_calibration_set: bool = False,
     ) -> AIExplanation:
         """Build the AIExplanation report card; never raises.
 
         Tries OpenAI when a client is configured and falls back to the
-        deterministic rule-based explanation on any failure.
+        deterministic rule-based explanation on any failure. When
+        ``evaluation_on_calibration_set`` is True (issue #201 small-data
+        fallback), a concern is surfaced that the metrics were measured on the
+        calibrator's own fit data and may be optimistically biased.
         """
         context = self._build_context(
             problem_type,
@@ -65,6 +69,7 @@ class EvaluationExplanationService:
             model_name,
             algorithm,
         )
+        explanation: AIExplanation | None = None
         if self.client is not None:
             try:
                 explanation = await self._generate_openai_explanation(context)
@@ -76,9 +81,17 @@ class EvaluationExplanationService:
                     f"OpenAI report card unavailable, using rule-based fallback: {exc}"
                 )
                 explanation = None
-            if explanation is not None:
-                return explanation
-        return self._generate_fallback_explanation(context)
+        if explanation is None:
+            explanation = self._generate_fallback_explanation(context)
+
+        if evaluation_on_calibration_set:
+            concern = (
+                "Metrics were computed on the calibration set rather than a fully "
+                "held-out test set; reported values may be optimistically biased."
+            )
+            if concern not in explanation.concerns:
+                explanation.concerns = [concern, *explanation.concerns]
+        return explanation
 
     def _build_context(
         self,

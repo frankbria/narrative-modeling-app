@@ -146,6 +146,35 @@ class TestFallbackPath:
         assert result.overall_assessment
 
     @pytest.mark.asyncio
+    async def test_calibration_set_concern_injected(
+        self, classification_metrics, confusion
+    ):
+        """The #201 caveat is surfaced as a concern when eval was on the
+        calibration set (small-data fallback)."""
+        service = EvaluationExplanationService()
+        service.client = None
+
+        result = await service.generate_report_card(
+            **_report_card_kwargs(classification_metrics, confusion),
+            evaluation_on_calibration_set=True,
+        )
+
+        assert any("calibration set" in c for c in result.concerns)
+
+    @pytest.mark.asyncio
+    async def test_calibration_concern_absent_on_honest_split(
+        self, classification_metrics, confusion
+    ):
+        service = EvaluationExplanationService()
+        service.client = None
+
+        result = await service.generate_report_card(
+            **_report_card_kwargs(classification_metrics, confusion),
+        )
+
+        assert not any("calibration set" in c for c in result.concerns)
+
+    @pytest.mark.asyncio
     async def test_failures_are_recorded_by_circuit_breaker(
         self, reset_openai_breaker, classification_metrics, confusion
     ):

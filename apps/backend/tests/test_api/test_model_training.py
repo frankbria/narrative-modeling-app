@@ -66,6 +66,9 @@ def sample_ml_model():
     mock_model.is_calibrated = False
     mock_model.calibration_method = None
     mock_model.calibration_score = None
+    # Calibration/eval honesty flags (issue #201) — defaults for a pre-#201 model.
+    mock_model.calibration_score_is_insample = True
+    mock_model.evaluation_on_calibration_set = False
     mock_model.residual_std = None
     # SHAP interpretability metadata (issue #80) — defaults for a pre-#80 model.
     mock_model.shap_values_path = None

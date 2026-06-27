@@ -78,6 +78,12 @@ export interface ModelEvaluationResponse {
    * issue #79) and only stored scalar metrics are returned.
    */
   partial: boolean
+  /**
+   * True when these metrics were computed on the calibrator's own fit data
+   * rather than a clean held-out set, so they may be optimistically biased
+   * (issue #201 small-data fallback). False on the honest split.
+   */
+  evaluation_on_calibration_set: boolean
   metrics: ClassificationMetrics | RegressionMetrics | null
   /** Scalar metrics persisted at training time (cv_score, test_score, ...) */
   stored_metrics: Record<string, number>

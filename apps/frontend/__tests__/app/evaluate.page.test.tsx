@@ -117,6 +117,7 @@ const classificationEvaluation: ModelEvaluationResponse = {
   algorithm: 'random_forest',
   problem_type: 'binary_classification',
   partial: false,
+  evaluation_on_calibration_set: false,
   metrics: {
     accuracy: 0.91,
     precision_macro: 0.9,
@@ -161,6 +162,7 @@ const regressionEvaluation: ModelEvaluationResponse = {
   algorithm: 'linear_regression',
   problem_type: 'regression',
   partial: false,
+  evaluation_on_calibration_set: false,
   metrics: { mae: 3.2, mse: 16.81, rmse: 4.1, r2: 0.84, mape: 12.5 },
   stored_metrics: { cv_score: 0.83 },
   confusion_matrix: null,

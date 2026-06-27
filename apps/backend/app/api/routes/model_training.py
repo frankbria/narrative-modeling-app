@@ -556,6 +556,9 @@ async def train_model_task(
             "is_calibrated": result.is_calibrated,
             "calibration_method": result.calibration_method,
             "calibration_score": result.calibration_score,
+            # Honesty of the calibration/eval split (issue #201).
+            "calibration_score_is_insample": result.calibration_score_is_insample,
+            "evaluation_on_calibration_set": result.evaluation_on_calibration_set,
             "residual_std": result.residual_std,
             # SHAP interpretability (issue #80).
             "shap_explainer_type": result.shap_explainer_type,
@@ -1081,6 +1084,9 @@ def _partial_evaluation_response(model: MLModel) -> ModelEvaluationResponse:
         algorithm=model.algorithm,
         problem_type=model.problem_type,
         partial=True,
+        evaluation_on_calibration_set=bool(
+            getattr(model, "evaluation_on_calibration_set", False)
+        ),
         metrics=None,
         stored_metrics=_stored_scalar_metrics(model),
         confusion_matrix=None,
@@ -1120,6 +1126,12 @@ async def _full_evaluation_response(
         roc = None
         pr = None
 
+    # Honesty flag (issue #201): True only for the small-data fallback where the
+    # metrics were computed on the calibrator's own fit data.
+    evaluation_on_calibration_set = bool(
+        getattr(model, "evaluation_on_calibration_set", False)
+    )
+
     # The explanation must never break the evaluation: the service already
     # degrades to its rule-based fallback internally, and this guard covers
     # anything unexpected beyond that.
@@ -1133,6 +1145,7 @@ async def _full_evaluation_response(
             n_test_samples=len(y_test),
             model_name=model.name,
             algorithm=model.algorithm,
+            evaluation_on_calibration_set=evaluation_on_calibration_set,
         )
     except Exception as exc:
         logger.warning(f"Report-card generation failed for {model.model_id}: {exc}")
@@ -1143,6 +1156,7 @@ async def _full_evaluation_response(
         algorithm=model.algorithm,
         problem_type=model.problem_type,
         partial=False,
+        evaluation_on_calibration_set=evaluation_on_calibration_set,
         metrics=metrics,
         stored_metrics=_stored_scalar_metrics(model),
         confusion_matrix=confusion,

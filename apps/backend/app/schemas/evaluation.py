@@ -108,6 +108,14 @@ class ModelEvaluationResponse(BaseModel):
             "issue #79) and only stored scalar metrics are returned"
         ),
     )
+    evaluation_on_calibration_set: bool = Field(
+        False,
+        description=(
+            "True when these metrics were computed on the calibrator's own fit "
+            "data rather than a clean held-out set, so they may be optimistically "
+            "biased (issue #201 small-data fallback). False on the honest split."
+        ),
+    )
     metrics: ClassificationMetrics | RegressionMetrics | None = None
     stored_metrics: dict[str, float] = Field(
         default_factory=dict,

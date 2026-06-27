@@ -72,9 +72,16 @@ class MLModel(Document):
     # prediction interval (residual_std=None).
     is_calibrated: bool = False  # persisted model yields calibrated probabilities
     calibration_method: str | None = None  # "sigmoid" or "isotonic"
-    # Brier (binary) / log loss (multiclass) — an IN-SAMPLE diagnostic measured
-    # on the calibration-fit split, so optimistic (see ConfidenceService).
+    # Brier (binary) / log loss (multiclass). With the #201 honest split this is
+    # measured out-of-sample on the clean test set (``calibration_score_is_insample``
+    # False); it is only in-sample/optimistic in the small-data fallback path.
     calibration_score: float | None = None
+    # Honesty flags (issue #201). ``calibration_score_is_insample`` defaults True
+    # so pre-#201 calibration scores (always in-sample) stay correctly labelled;
+    # ``evaluation_on_calibration_set`` defaults False (the #79 dashboard metrics
+    # are honest unless the small-data fallback fit the calibrator on the test set).
+    calibration_score_is_insample: bool = True
+    evaluation_on_calibration_set: bool = False
     residual_std: float | None = (
         None  # held-out residual std for regression intervals
     )

@@ -81,6 +81,8 @@ class ConfidenceService:
         X_cal: Any,
         y_cal: Any,
         method: str | None = None,
+        X_score: Any = None,
+        y_score: Any = None,
     ) -> tuple[CalibratedClassifierCV | None, str | None, float | None]:
         """Calibrate a fitted classifier on a held-out split.
 
@@ -90,12 +92,14 @@ class ConfidenceService:
         ``method`` defaults to ``"isotonic"`` for large calibration sets and
         ``"sigmoid"`` (Platt scaling) otherwise.
 
-        Returns ``(calibrated_estimator, method, brier_score)``. **The Brier /
-        log-loss score is an in-sample diagnostic** — it is measured on the
-        same ``X_cal`` the calibrator was fit on, so it is optimistic and is
-        only meant for rough relative comparison, not as an unbiased estimate.
-        On any failure (e.g. a degenerate single-class calibration set) returns
-        ``(None, None, None)`` and never raises — calibration is best-effort.
+        Returns ``(calibrated_estimator, method, brier_score)``. When
+        ``X_score``/``y_score`` are supplied (issue #201), the Brier / log-loss
+        score is measured on that set — pass a clean holdout the calibrator was
+        NOT fit on for an **out-of-sample** score. With no score set it falls
+        back to scoring on ``X_cal`` itself, which is an **in-sample** diagnostic
+        (optimistic, for rough relative comparison only). On any failure (e.g. a
+        degenerate single-class calibration set) returns ``(None, None, None)``
+        and never raises — calibration is best-effort.
         """
         try:
             y_arr = np.asarray(y_cal)
@@ -118,7 +122,12 @@ class ConfidenceService:
                 FrozenEstimator(estimator), method=chosen
             )
             calibrated.fit(X_cal, y_cal)
-            brier = self._calibration_brier(calibrated, X_cal, y_arr)
+            if X_score is not None and y_score is not None:
+                brier = self._calibration_brier(
+                    calibrated, X_score, np.asarray(y_score)
+                )
+            else:
+                brier = self._calibration_brier(calibrated, X_cal, y_arr)
             return calibrated, chosen, brier
         except Exception as exc:  # noqa: BLE001 - calibration must never break training
             logger.warning("Calibration failed, falling back to raw model: %s", exc)
