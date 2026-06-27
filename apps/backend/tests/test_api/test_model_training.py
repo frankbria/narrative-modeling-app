@@ -639,6 +639,68 @@ class TestModelTrainingBackgroundTask:
                     mock_run.assert_called_once()
                     mock_save.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_train_task_wires_quick_mode_to_engine(
+        self, sample_dataset, sample_dataframe
+    ):
+        """training_mode=quick resolves to the engine's quick preset (#101)."""
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
+
+        with patch(
+            "app.services.s3_service.S3Service.download_file_bytes",
+            new_callable=AsyncMock,
+        ) as mock_s3:
+            csv_buffer = io.BytesIO()
+            sample_dataframe.to_csv(csv_buffer, index=False)
+            mock_s3.return_value = csv_buffer.getvalue()
+
+            mock_result = AutoMLResult(
+                best_model=ModelCandidate(
+                    name="Logistic Regression",
+                    estimator=MagicMock(),
+                    hyperparameters={},
+                    cv_score=0.9,
+                    test_score=0.88,
+                    training_time=1.0,
+                ),
+                all_models=[],
+                problem_type=ProblemType.BINARY_CLASSIFICATION,
+                feature_names=["feature1"],
+                feature_importance=None,
+                training_time=2.0,
+                metadata={},
+            )
+
+            # Patch the engine class in the route so we can inspect construction.
+            with patch(
+                "app.api.routes.model_training.AutoMLEngine"
+            ) as mock_engine_cls:
+                engine = mock_engine_cls.return_value
+                engine.run = AsyncMock(return_value=mock_result)
+                engine.feature_engineer = MagicMock()
+
+                with patch(
+                    "app.services.model_storage.ModelStorageService.save_model",
+                    new_callable=AsyncMock,
+                ) as mock_save:
+                    mock_save.return_value = MagicMock(model_id="model_q")
+
+                    request = TrainModelRequest(
+                        dataset_id="dataset_123",
+                        target_column="target",
+                        training_config={"training_mode": "quick"},
+                    )
+                    await train_model_task(
+                        sample_dataset, request, "test_user", "model_q"
+                    )
+
+                # Engine built with the quick preset.
+                kwargs = mock_engine_cls.call_args.kwargs
+                assert kwargs["max_models"] == 3
+                assert kwargs["time_limit"] == 300
+                assert kwargs["enable_tuning"] is False
+                assert kwargs["early_stop_score"] == 0.95
+
 
 class TestTrainingStatusEndpoint:
     """Test GET /api/v1/ml/{model_id}/status and job lifecycle tracking."""
@@ -1409,3 +1471,89 @@ class TestExtendedStatusFields:
             assert body["estimated_remaining_seconds"] is None
         finally:
             await job.delete()
+
+
+class TestModeRecommendationEndpoint:
+    """GET /api/v1/ml/datasets/{dataset_id}/mode-recommendation (issue #101)."""
+
+    @pytest.mark.asyncio
+    async def test_recommends_comprehensive_for_small_dataset(
+        self, async_authorized_client
+    ):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="test_user_123",
+            filename="small.csv",
+            original_filename="small.csv",
+            s3_url="s3://test-bucket/small.csv",
+            num_rows=500,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["recommended_mode"] == "comprehensive"
+            assert body["n_rows"] == 500
+            # Feature count excludes the target column (num_columns - 1).
+            assert body["n_features"] == 5
+            assert body["reason"]
+        finally:
+            await dataset.delete()
+
+    @pytest.mark.asyncio
+    async def test_recommends_quick_for_large_dataset(self, async_authorized_client):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="test_user_123",
+            filename="big.csv",
+            original_filename="big.csv",
+            s3_url="s3://test-bucket/big.csv",
+            num_rows=200_000,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 200
+            assert resp.json()["recommended_mode"] == "quick"
+        finally:
+            await dataset.delete()
+
+    @pytest.mark.asyncio
+    async def test_unknown_dataset_404(self, async_authorized_client):
+        resp = await async_authorized_client.get(
+            "/api/v1/ml/datasets/000000000000000000000000/mode-recommendation"
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_foreign_dataset_404(self, async_authorized_client):
+        from app.models.user_data import UserData
+
+        dataset = UserData(
+            user_id="someone_else",
+            filename="foreign.csv",
+            original_filename="foreign.csv",
+            s3_url="s3://test-bucket/foreign.csv",
+            num_rows=500,
+            num_columns=6,
+            data_schema=[],
+        )
+        await dataset.insert()
+        try:
+            resp = await async_authorized_client.get(
+                f"/api/v1/ml/datasets/{dataset.id}/mode-recommendation"
+            )
+            assert resp.status_code == 404
+        finally:
+            await dataset.delete()

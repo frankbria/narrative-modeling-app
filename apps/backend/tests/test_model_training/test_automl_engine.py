@@ -794,3 +794,89 @@ class TestAutoMLEngineMonitoring:
             )
 
         assert result.best_model is not None
+
+    # --- Training modes (issue #101) ---------------------------------------
+
+    def test_comprehensive_classification_catalog_has_10_plus(self, engine):
+        """Comprehensive mode must offer 10+ classification algorithms (AC2)."""
+        candidates = engine._get_candidate_models(
+            ProblemType.BINARY_CLASSIFICATION, (1000, 20)
+        )
+        names = [c.name for c in candidates]
+        assert len(names) >= 10
+        # New always-on algorithms (issue #101).
+        for added in ("Extra Trees", "AdaBoost", "Decision Tree", "Naive Bayes"):
+            assert added in names
+
+    def test_comprehensive_regression_catalog_has_10_plus(self, engine):
+        candidates = engine._get_candidate_models(
+            ProblemType.REGRESSION, (1000, 20)
+        )
+        names = [c.name for c in candidates]
+        assert len(names) >= 10
+        for added in (
+            "Extra Trees Regressor",
+            "AdaBoost Regressor",
+            "Decision Tree Regressor",
+            "Lasso Regression",
+            "ElasticNet Regression",
+        ):
+            assert added in names
+
+    def test_quick_mode_top_3_unaffected_by_new_algos(self, engine):
+        """Quick mode takes the first max_models; the strong fast ones lead."""
+        candidates = engine._get_candidate_models(
+            ProblemType.BINARY_CLASSIFICATION, (1000, 20)
+        )
+        assert [c.name for c in candidates[:3]] == [
+            "Logistic Regression",
+            "Random Forest",
+            "XGBoost",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_early_stop_score_stops_run(self, classification_df, mock_detect):
+        """A candidate clearing early_stop_score ends the search (AC4)."""
+        # Any roc_auc >= 0.0, so the first successful candidate trips the stop.
+        engine = AutoMLEngine(
+            max_models=5, cv_folds=3, random_state=42, early_stop_score=0.0
+        )
+        with patch.object(
+            engine.problem_detector, "detect_problem_type", side_effect=mock_detect
+        ):
+            result = await engine.run(classification_df, "target")
+
+        assert result.early_stopped is True
+        assert result.stop_reason == "target_score_reached"
+        assert result.algorithms_evaluated == 1
+
+    @pytest.mark.asyncio
+    async def test_time_limit_stops_run(self, classification_df, mock_detect):
+        """An exhausted time budget stops between candidates (AC4)."""
+        # A tiny budget: the first real fit takes far longer than 1ms, so the
+        # loop breaks before the second candidate.
+        engine = AutoMLEngine(max_models=5, cv_folds=3, random_state=42, time_limit=0.001)
+        with patch.object(
+            engine.problem_detector, "detect_problem_type", side_effect=mock_detect
+        ):
+            result = await engine.run(classification_df, "target")
+
+        assert result.early_stopped is True
+        assert result.stop_reason == "time_budget_reached"
+        # At least one model trained (we never stop before the first).
+        assert result.algorithms_evaluated == 1
+        assert result.best_model is not None
+
+    @pytest.mark.asyncio
+    async def test_no_mode_run_is_not_early_stopped(
+        self, engine, classification_df, mock_detect
+    ):
+        """Without limits the run completes normally (backward compatible)."""
+        with patch.object(
+            engine.problem_detector, "detect_problem_type", side_effect=mock_detect
+        ):
+            result = await engine.run(classification_df, "target")
+
+        assert result.early_stopped is False
+        assert result.stop_reason is None
+        assert result.algorithms_evaluated == len(result.all_models)

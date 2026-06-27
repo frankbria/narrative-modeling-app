@@ -1,28 +1,40 @@
-# Issue #90 — AI assistance integration across all 8 workflow stages (lean, adapted)
+# Issue #101 — Quick / Comprehensive Training Modes
 
-**Labels:** enhancement, P2-Medium, backend, ml-core, phase-5 (post-beta V2)
+## What already exists (Traycer plan is stale — do NOT rebuild)
+- Per-algorithm progress, current_stage, elapsed/estimated-remaining time, polling UI, logs, cancel — all shipped in #76.
+- Hyperparameter tuning (`enable_tuning`/`tuning_config`, bayesian + budgets, optuna early-stop pruner) — shipped in #77.
+- `progress_callback`/`event_callback`/`cancel_check`, `max_models`, candidate model catalog — exist in `AutoMLEngine`.
+- `training_config` dict passthrough on `TrainModelRequest` (no schema change needed — modes ride in it, like #77 did with tuning).
 
-## Why the Traycer plan is over-scoped / stale
-- Its centerpiece `app/services/ai_orchestration_service.py` **already exists** (shipped in #89, the previous commit).
-- 6 of 8 stages already have backend AI: profiling (#2 ai_analysis/ai_summary), data-prep (#3) + feature-eng (#4) via #89 `recommend-tools`/`optimize-parameters`, model-selection (#5) via `explanation_service`, evaluation (#6) via #79 report card + #81 error analysis.
-- Genuine gaps vs the 4 ACs: (a) **Stage 8 deployment has NO AI**, (b) no **shared personality/tone** across services (each has its own inline prompt), (c) no **cross-stage context accumulation**, (d) structured outputs already done.
+## Real gaps (AC ↔ work)
+1. AC1/AC2: mode → engine config mapping (quick: 3 algos, no tuning, 300s; comprehensive: 10+ algos, tuning, 1800s).
+2. AC2 "10+ algorithms": catalog tops out at ~7. Add ~4 always-on sklearn algos (ExtraTrees, AdaBoost, DecisionTree, GaussianNB / Lasso+ElasticNet) → comprehensive lists 10+.
+3. AC4: `time_limit` is accepted by the engine but **never enforced**, and the route never passes it. Add wall-clock enforcement + early-stop-on-good-score in the candidate loop.
+4. AC3: dataset-based recommendation (small endpoint + heuristic) + frontend mode selector with trade-off copy.
+5. AC5: time-remaining progress — already done (#76). No work.
 
-## Adapted scope — one cohesive capability, backend-only
-Build "stage guidance" on the existing #89 `AIOrchestrationService` + #87 `WorkflowState`. Frontend deferred (issue is backend/ml-core labeled — matches #89 precedent).
+## Plan (lean)
 
 ### Backend
-1. **Shared persona** — `AI_MENTOR_PERSONA` constant in `ai_orchestration_service.py`; existing `_openai_summary` + new stage-guidance call both use it -> AC2 consistent tone.
-2. **Schemas** (`app/schemas/ai_orchestration.py`): `WorkflowStageId` enum (8 stages), `StageGuidanceRequest{dataset_id, stage, accumulated_context?}`, `StageGuidanceResponse{focus, guidance_summary, key_considerations[], suggested_actions[], context_used[], reasoning_trace[], generated_by, partial}`.
-3. **`generate_stage_guidance(profile, stage, request_context, user_id)`**:
-   - Context accumulation (AC3): best-effort load persisted `WorkflowState` (#87) -> prior `completed_stages` + `stage_data`; merge request `accumulated_context`; list in `context_used`.
-   - Rule-based per-stage core for all 8 stages (works w/o key); reuse `_cleaning/_feature/_modeling_recs` where natural; **dedicated deployment guidance** (real-time vs batch by problem_type/size, monitoring, pre-deploy checklist) — the gap.
-   - Optional OpenAI enhancement `_stage_guidance_summary()` behind `@with_circuit_breaker("openai", fallback_value=None)`, JSON mode, persona-prefixed; `generated_by` hybrid/rule_based; never raises.
-4. **Endpoint** `POST /api/v1/ai/stage-guidance` (auth, 404 unknown/foreign, never 500).
-5. **Tests**: extend `test_services/test_ai_orchestration_service.py` + `test_api/test_ai_orchestration.py`.
-6. **Docs**: CLAUDE.md #90 note.
+- **New** `app/services/model_training/training_mode.py` (pure): `TrainingMode` enum; `resolve_mode_config(mode, overrides)` -> engine kwargs (max_models, time_limit, enable_tuning, tuning_strategy, early_stop_score) with explicit overrides winning; `recommend_mode(n_rows, n_features)` -> {mode, reason}.
+- **Edit** `automl_engine.py`:
+  - `__init__`: add `early_stop_score: float | None = None`.
+  - Candidate loop: enforce `time_limit` (break after >=1 model when elapsed >= budget) and early-stop when `cv_score >= early_stop_score`. Record `early_stopped`/`stop_reason`/`algorithms_evaluated`.
+  - `_get_candidate_models`: append ~4 always-on algos so full catalog >=10. Quick (first 3) unaffected.
+  - `AutoMLResult`: add `training_mode`, `early_stopped=False`, `stop_reason=None`, `algorithms_evaluated=None`.
+- **Edit** `model_training.py` train route: resolve `training_config["training_mode"]` via `resolve_mode_config` (absent -> today's behaviour unchanged), pass `time_limit` + `early_stop_score` to engine, stash mode/stop_reason in `training_config` (persisted on MLModel — **no new MLModel field**, avoids mock-fixture gotcha). New `GET /ml/datasets/{dataset_id}/mode-recommendation` (owner-scoped, 404 foreign).
 
-### Dropped from Traycer (with reason)
-- Re-create ai_orchestration_service / 5 new *_ai_service.py — already covered by #89 + this one method.
-- 5 frontend components / WorkflowContext aiContext / ContextualAIHelp — frontend deferred (backend-labeled).
-- Redis caching + per-user rate limit — YAGNI; global rate limiting already exists (#151).
-- Separate ai_prompts.py / ai_responses.py modules — one persona constant + extend existing schemas.
+### Frontend
+- **Edit** `lib/services/model.ts`: add `training_mode?` to `training_config` type; add `getModeRecommendation`.
+- **New** `components/TrainingModeSelector.tsx`: two cards (Quick/Comprehensive) + trade-off copy + recommendation banner.
+- **Edit** `app/model/page.tsx`: render selector, fetch recommendation on load, send `training_config.training_mode`.
+
+### Tests (TDD)
+- BE: `test_training_mode.py`; extend automl engine test (time-budget break, early-stop, new algos count >=10); route test (mode wiring + recommendation endpoint 200/404-foreign).
+- FE: `TrainingModeSelector.test.tsx`; extend `model.test.ts` (getModeRecommendation); model page mode wiring.
+
+## Explicitly NOT doing (vs Traycer)
+- No `dataset_profiler.py`, no `training_constants.py`, no new MLModel DB fields, no new MLModel migration.
+- No new `GET /ml/train/{id}/progress` endpoint, no Redis progress cache (status endpoint + polling already exist).
+- No `RecommendationBanner.tsx`/`TrainingProgressDialog.tsx`/rework of `ModelTrainingButton.tsx` (unused).
+- No top-level `TrainModelRequest.training_mode` schema field (rides in training_config).

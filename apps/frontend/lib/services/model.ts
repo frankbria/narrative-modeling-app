@@ -14,6 +14,9 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
+/** Supported training modes (issue #101). */
+export type TrainingMode = 'quick' | 'comprehensive'
+
 export interface TrainModelRequest {
   dataset_id: string
   target_column: string
@@ -31,7 +34,19 @@ export interface TrainModelRequest {
     max_models?: number
     cv_folds?: number
     test_size?: number
+    // Quick / Comprehensive training mode (issue #101). Fills engine defaults
+    // (algorithm count, time budget, tuning, early stopping); explicit values
+    // above still win.
+    training_mode?: TrainingMode
   }
+}
+
+/** Dataset-based training-mode recommendation (issue #101). */
+export interface ModeRecommendation {
+  recommended_mode: TrainingMode
+  reason: string
+  n_rows: number
+  n_features: number
 }
 
 export interface ModelInfo {
@@ -306,6 +321,27 @@ export class ModelService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to start model training')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Fetch a dataset-based Quick/Comprehensive recommendation (issue #101).
+   */
+  static async getModeRecommendation(
+    datasetId: string,
+    token: string | null
+  ): Promise<ModeRecommendation> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/datasets/${datasetId}/mode-recommendation`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch training mode recommendation')
     }
 
     return response.json()
@@ -949,6 +985,12 @@ class ModelServiceClient {
   ): Promise<{ model_id: string; status: string; message: string }> {
     const token = await getAuthToken()
     return ModelService.trainModel(request, token)
+  }
+
+  /** Resolve the auth token automatically and fetch a mode recommendation. */
+  async getModeRecommendation(datasetId: string): Promise<ModeRecommendation> {
+    const token = await getAuthToken()
+    return ModelService.getModeRecommendation(datasetId, token)
   }
 
   async predict(
