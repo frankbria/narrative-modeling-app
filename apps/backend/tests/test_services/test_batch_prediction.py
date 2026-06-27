@@ -237,6 +237,71 @@ async def test_predict_chunk_includes_explanation_when_requested():
     assert results[0]["explanation"]["method"] == "linear_coefficients"
 
 
+class _CountingClassifier:
+    """Classifier that records how many times predict/predict_proba run."""
+
+    def __init__(self) -> None:
+        self.predict_calls = 0
+        self.proba_calls = 0
+
+    def predict(self, X):
+        self.predict_calls += 1
+        return np.array([1] * len(X))
+
+    def predict_proba(self, X):
+        self.proba_calls += 1
+        return np.array([[0.2, 0.8]] * len(X))
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_vectorizes_inference():
+    """predict/predict_proba run once per chunk, not once per row (#202)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123", include_probabilities=True)
+    clf = _CountingClassifier()
+    chunk = pd.DataFrame([{"age": 30}, {"age": 41}, {"age": 52}])
+
+    results = await svc._predict_chunk(
+        chunk, clf, _FakeFeatureEngineer(), _model(), config
+    )
+
+    assert len(results) == 3
+    assert all(r["prediction"] == 1 for r in results)
+    assert all(r["confidence"] == 0.8 for r in results)
+    assert clf.predict_calls == 1
+    assert clf.proba_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_falls_back_to_sequential_on_batch_failure():
+    """A chunk-level failure falls back to row-by-row so a batch-incompatible
+    estimator (or one bad row) doesn't sink the whole chunk (#202)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123", include_probabilities=False)
+
+    class _BatchOnlyFails:
+        """Raises on multi-row calls; only single-row inference succeeds."""
+
+        def predict(self, X):
+            if len(X) != 1:
+                raise ValueError("batch predict not supported")
+            return np.array([1])
+
+        def predict_proba(self, X):
+            if len(X) != 1:
+                raise ValueError("batch predict not supported")
+            return np.array([[0.3, 0.7]])
+
+    chunk = pd.DataFrame([{"age": 30}, {"age": 41}])
+    results = await svc._predict_chunk(
+        chunk, _BatchOnlyFails(), _FakeFeatureEngineer(), _model(), config
+    )
+
+    assert len(results) == 2
+    assert all(r.get("error") is None for r in results)
+    assert all(r["prediction"] == 1 for r in results)
+
+
 def test_summary_counts_low_confidence():
     """Summary reports how many successful predictions were low-confidence (#83)."""
     svc = _service()
