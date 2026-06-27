@@ -820,9 +820,8 @@ class AutoMLEngine:
                 best_model.estimator,
                 X_cal_transformed,
                 y_cal,
-                None,
-                X_test_transformed,
-                y_test,
+                X_score=X_test_transformed,
+                y_score=y_test,
             )
             if calibrated is not None:
                 best_model.estimator = calibrated

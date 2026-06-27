@@ -47,12 +47,14 @@ async def _insert_model(
     problem_type: str = "binary_classification",
     evaluation_data_path=None,
     algorithm: str = "Random Forest",
-    evaluation_on_calibration_set: bool = False,
+    is_calibrated: bool = False,
+    calibration_score_is_insample: bool = True,
 ):
     from app.models.ml_model import MLModel
 
     model = MLModel(
-        evaluation_on_calibration_set=evaluation_on_calibration_set,
+        is_calibrated=is_calibrated,
+        calibration_score_is_insample=calibration_score_is_insample,
         user_id=user_id,
         dataset_id=dataset_id,
         model_id=model_id,
@@ -208,10 +210,12 @@ class TestGetEvaluationEndpoint:
 
         monkeypatch.setattr(evaluation_explanation_service, "client", None)
 
+        # Small-data fallback: calibrated in-sample -> derived caveat True.
         spec = {
             "model_id": "m_cal",
             "evaluation_data_path": "s3://test-bucket/models/u/m/evaluation_data.json",
-            "evaluation_on_calibration_set": True,
+            "is_calibrated": True,
+            "calibration_score_is_insample": True,
         }
         async with _models(spec):
             with _patch_artifacts(CLASSIFICATION_PAYLOAD):
@@ -223,6 +227,25 @@ class TestGetEvaluationEndpoint:
         assert any(
             "calibration set" in c for c in body["ai_explanation"]["concerns"]
         )
+
+    @pytest.mark.asyncio
+    async def test_legacy_calibrated_model_flagged_optimistic(
+        self, async_authorized_client
+    ):
+        """A pre-#201 calibrated model (stored flag absent -> default) is derived
+        as optimistic from is_calibrated + calibration_score_is_insample, not
+        silently shown as honest (claude-review)."""
+        # Simulates a legacy doc: calibrated, no honest split -> in-sample.
+        async with _models(
+            {"model_id": "m_legacy", "is_calibrated": True}
+        ):
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/m_legacy/evaluation"
+            )
+
+        assert resp.status_code == 200
+        # Partial (no artifacts) still derives the caveat correctly.
+        assert resp.json()["evaluation_on_calibration_set"] is True
 
     @pytest.mark.asyncio
     async def test_full_regression_evaluation(

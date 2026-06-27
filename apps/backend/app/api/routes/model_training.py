@@ -1076,6 +1076,20 @@ def _stored_scalar_metrics(model: MLModel) -> dict[str, float]:
     return stored
 
 
+def _eval_on_calibration_set(model: MLModel) -> bool:
+    """Whether the dashboard metrics were measured on the calibrator's fit data.
+
+    Derived from ``is_calibrated`` + ``calibration_score_is_insample`` (issue
+    #201) instead of the stored ``evaluation_on_calibration_set`` so that
+    pre-#201 calibrated models — which have no stored value and were calibrated
+    in-sample — are transparently flagged rather than silently shown as honest.
+    """
+    return bool(
+        getattr(model, "is_calibrated", False)
+        and getattr(model, "calibration_score_is_insample", True)
+    )
+
+
 def _partial_evaluation_response(model: MLModel) -> ModelEvaluationResponse:
     """Stored-scalars-only payload for models without evaluation artifacts."""
     return ModelEvaluationResponse(
@@ -1084,9 +1098,7 @@ def _partial_evaluation_response(model: MLModel) -> ModelEvaluationResponse:
         algorithm=model.algorithm,
         problem_type=model.problem_type,
         partial=True,
-        evaluation_on_calibration_set=bool(
-            getattr(model, "evaluation_on_calibration_set", False)
-        ),
+        evaluation_on_calibration_set=_eval_on_calibration_set(model),
         metrics=None,
         stored_metrics=_stored_scalar_metrics(model),
         confusion_matrix=None,
@@ -1126,11 +1138,11 @@ async def _full_evaluation_response(
         roc = None
         pr = None
 
-    # Honesty flag (issue #201): True only for the small-data fallback where the
-    # metrics were computed on the calibrator's own fit data.
-    evaluation_on_calibration_set = bool(
-        getattr(model, "evaluation_on_calibration_set", False)
-    )
+    # Honesty flag (issue #201): True when the dashboard metrics were computed on
+    # the calibrator's own fit data. Derived rather than read from the stored
+    # field so pre-#201 models (which default the stored flag to False but were
+    # calibrated in-sample) are transparently flagged, not silently shown honest.
+    evaluation_on_calibration_set = _eval_on_calibration_set(model)
 
     # The explanation must never break the evaluation: the service already
     # degrades to its rule-based fallback internally, and this guard covers
