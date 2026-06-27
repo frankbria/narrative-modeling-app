@@ -18,6 +18,7 @@ import { DataPreviewTable } from '@/components/DataPreviewTable'
 import { SchemaViewer } from '@/components/SchemaViewer'
 import { StatisticsDashboard } from '@/components/StatisticsDashboard'
 import { QualityReportCard } from '@/components/QualityReportCard'
+import { QualityDashboard } from '@/components/quality/QualityDashboard'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
 import { InteractiveVisualizationDashboard } from '@/components/InteractiveVisualizationDashboard'
 import type { DatasetSchema, DatasetStatistics, DatasetQualityReport } from '@/lib/types/api'
@@ -474,7 +475,8 @@ export default function DatasetAnalysisPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="quality">
+          <TabsContent value="quality" className="space-y-4">
+            {dataset.id && <QualityDashboard fileId={dataset.id} datasetId={dataset.id} />}
             {dataset.quality_report ? (
               <QualityReportCard report={dataset.quality_report} />
             ) : (

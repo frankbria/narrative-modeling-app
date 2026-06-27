@@ -113,6 +113,75 @@ class TestVersionsAPI:
         )
         return version
 
+    # Test GET /datasets/{id}/quality-trend (issue #102, AC3)
+    @pytest.mark.asyncio
+    async def test_quality_trend_with_lineage(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        sample_dataset_metadata: DatasetMetadata,
+        mock_user_id: str,
+        mock_s3_client,
+    ):
+        """Trend endpoint projects per-version 0-100 quality scores."""
+        steps = [{
+            "step_type": "fill_missing", "parameters": {}, "affected_columns": ["value"],
+            "rows_affected": 0, "execution_time": 0.1
+        }]
+        sample_dataset_metadata.num_rows = 102
+        await versioning_service.create_transformation_version(
+            parent_version_id=base_version.version_id,
+            transformed_content=b"id,value,category\n1,10.5,A\n2,20.3,B\n3,5,C",
+            transformation_steps=steps,
+            dataset_metadata=sample_dataset_metadata,
+            user_id=mock_user_id,
+            description="Filled missing",
+            quality_before={"score_0_100": 60.0},
+            quality_after={"score_0_100": 80.0},
+        )
+
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{base_version.dataset_id}/quality-trend"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dataset_id"] == base_version.dataset_id
+        assert len(data["points"]) == 1
+        point = data["points"][0]
+        assert point["score_before"] == 60.0
+        assert point["score_after"] == 80.0
+        assert point["improvement"] == 20.0
+        assert "fill_missing" in point["transformation"]
+        assert data["overall_improvement"] == 20.0
+        assert data["best_score"] == 80.0
+        assert data["worst_score"] == 60.0
+
+    @pytest.mark.asyncio
+    async def test_quality_trend_empty_when_no_transformations(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+    ):
+        """A dataset with only a base version has an empty trend, not a 500."""
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{base_version.dataset_id}/quality-trend"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["points"] == []
+        assert data["overall_improvement"] is None
+
+    @pytest.mark.asyncio
+    async def test_quality_trend_unknown_dataset_404(
+        self,
+        async_authorized_client: AsyncClient,
+    ):
+        """Unknown/foreign dataset -> 404."""
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{uuid.uuid4()}/quality-trend"
+        )
+        assert response.status_code == 404
+
     # Test GET /datasets/{id}/versions - List all versions
     @pytest.mark.asyncio
     async def test_list_versions_success(

@@ -30,8 +30,14 @@ class TransformationStep(BaseModel):
     @field_validator('step_type')
     @classmethod
     def validate_step_type(cls, v: str) -> str:
-        """Validate step_type is one of known transformation types."""
-        allowed_types = {
+        """Validate step_type is a known transformation type.
+
+        Accepts any canonical TransformationType value (the real transformation flow
+        records these) plus the legacy aliases. Imported lazily to avoid a model cycle.
+        """
+        from app.models.transformation import TransformationType
+
+        allowed_types = {t.value for t in TransformationType} | {
             'drop_missing', 'impute', 'encode', 'scale', 'normalize',
             'feature_engineering', 'outlier_removal', 'custom'
         }

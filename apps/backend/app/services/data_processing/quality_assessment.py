@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.transformation import TransformationType
+
 
 class QualityDimension(str, Enum):
     """Data quality dimensions"""
@@ -19,6 +21,52 @@ class QualityDimension(str, Enum):
     VALIDITY = "validity"
     UNIQUENESS = "uniqueness"
     TIMELINESS = "timeliness"
+
+
+# The five ML-readiness dimensions combined into the headline 0-100 score (issue #102).
+# Timeliness is excluded — it is a hardcoded placeholder, not a measured signal.
+SCORE_DIMENSIONS = (
+    QualityDimension.COMPLETENESS,
+    QualityDimension.VALIDITY,
+    QualityDimension.CONSISTENCY,
+    QualityDimension.UNIQUENESS,
+    QualityDimension.ACCURACY,
+)
+
+
+def _recommended_transformation(issue: "QualityIssue") -> TransformationType | None:
+    """Map a quality issue to the transformation that fixes it (issue #102, AC2).
+
+    Returns the canonical TransformationType so recommendations stay tied to the
+    real transformation tooling. None when no automated fix applies.
+    """
+    desc = issue.description.lower()
+    if issue.dimension == QualityDimension.COMPLETENESS:
+        return TransformationType.FILL_MISSING
+    if issue.dimension == QualityDimension.UNIQUENESS:
+        return TransformationType.REMOVE_DUPLICATES
+    if issue.dimension == QualityDimension.VALIDITY:
+        if "outlier" in desc:
+            return TransformationType.OUTLIER_REMOVAL
+        return TransformationType.STANDARDIZE_FORMAT
+    if issue.dimension == QualityDimension.CONSISTENCY:
+        if "casing" in desc:
+            return TransformationType.FIX_CASING
+        if "non-numeric" in desc:
+            return TransformationType.TO_NUMERIC
+        if "date" in desc:
+            return TransformationType.TO_DATETIME
+        return TransformationType.STANDARDIZE_FORMAT
+    return None
+
+
+class ActionableRecommendation(BaseModel):
+    """A quality recommendation tied to a concrete transformation (issue #102, AC2)."""
+    dimension: QualityDimension
+    description: str
+    transformation_type: str  # canonical TransformationType value
+    affected_columns: list[str] = Field(default_factory=list)
+    severity: str  # "low", "medium", "high"
 
 
 class QualityIssue(BaseModel):
@@ -56,11 +104,14 @@ class QualityReport(BaseModel):
     )
     
     overall_quality_score: float
+    score_0_100: float = 0.0  # 0-100 ML-readiness score over SCORE_DIMENSIONS (issue #102)
     dimension_scores: dict[QualityDimension, float]
+    component_scores: dict[QualityDimension, float] = Field(default_factory=dict)  # 0-100 per dim
     column_scores: list[ColumnQualityScore]
     critical_issues: list[QualityIssue]
     warnings: list[QualityIssue]
     recommendations: list[str]
+    actionable_recommendations: list[ActionableRecommendation] = Field(default_factory=list)
     row_count: int
     column_count: int
     assessed_at: datetime = Field(default_factory=datetime.utcnow)
@@ -121,14 +172,27 @@ class QualityAssessmentService:
         
         # Generate recommendations
         recommendations = self._generate_recommendations(all_issues, column_types)
-        
+        actionable_recommendations = self._generate_actionable_recommendations(all_issues)
+
+        # 0-100 ML-readiness score + per-dimension component scores (issue #102, AC1)
+        component_scores = {
+            dim: round(dimension_scores.get(dim, 0.0) * 100, 1) for dim in SCORE_DIMENSIONS
+        }
+        if component_scores:
+            score_0_100 = round(float(np.mean(list(component_scores.values()))), 1)
+        else:
+            score_0_100 = 0.0
+
         return QualityReport(
             overall_quality_score=float(overall_score),
+            score_0_100=score_0_100,
             dimension_scores=dimension_scores,
+            component_scores=component_scores,
             column_scores=column_scores,
             critical_issues=critical_issues,
             warnings=warnings,
             recommendations=recommendations,
+            actionable_recommendations=actionable_recommendations,
             row_count=len(df),
             column_count=len(df.columns)
         )
@@ -468,6 +532,49 @@ class QualityAssessmentService:
                 f"⚠️ {overall_critical} critical issues found. Prioritize data cleaning before analysis."
             )
         
+        return recommendations
+
+    def _generate_actionable_recommendations(
+        self, issues: list[QualityIssue]
+    ) -> list[ActionableRecommendation]:
+        """Map quality issues to concrete transformations (issue #102, AC2).
+
+        Groups issues by (dimension, transformation) so the frontend can offer a
+        single "apply fix" action per transformation across all affected columns.
+        """
+        severity_rank = {"low": 0, "medium": 1, "high": 2}
+        grouped: dict[tuple[QualityDimension, str], dict[str, Any]] = {}
+
+        for issue in issues:
+            transform = _recommended_transformation(issue)
+            if transform is None:
+                continue
+            key = (issue.dimension, transform.value)
+            entry = grouped.setdefault(
+                key,
+                {"columns": [], "severity": "low", "recommendation": issue.recommendation},
+            )
+            if issue.column and issue.column not in entry["columns"]:
+                entry["columns"].append(issue.column)
+            if severity_rank[issue.severity] > severity_rank[entry["severity"]]:
+                entry["severity"] = issue.severity
+
+        recommendations = []
+        for (dimension, transform_value), entry in grouped.items():
+            cols = entry["columns"]
+            scope = ", ".join(cols) if cols else "the dataset"
+            recommendations.append(
+                ActionableRecommendation(
+                    dimension=dimension,
+                    description=f"Apply '{transform_value}' to {scope}: {entry['recommendation']}",
+                    transformation_type=transform_value,
+                    affected_columns=cols,
+                    severity=entry["severity"],
+                )
+            )
+
+        # Highest-severity first so the dashboard surfaces the most impactful fixes.
+        recommendations.sort(key=lambda r: severity_rank[r.severity], reverse=True)
         return recommendations
 
     def _get_severity(self, affected_percentage: float) -> str:

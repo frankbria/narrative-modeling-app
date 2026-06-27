@@ -226,6 +226,66 @@ class TestDataProcessingAPI:
             assert len(data["quality_report"]["recommendations"]) == 1
     
     @pytest.mark.asyncio
+    async def test_quality_report_consolidated_full(self, async_authorized_client, setup_database):
+        """Consolidated report exposes 0-100 score, components, gates (issue #102)."""
+        quality_data = {
+            "overall_quality_score": 0.86,
+            "score_0_100": 86.0,
+            "dimension_scores": {"completeness": 0.9, "validity": 0.8},
+            "component_scores": {
+                "completeness": 90.0, "validity": 80.0, "consistency": 95.0,
+                "uniqueness": 100.0, "accuracy": 80.0,
+            },
+            "recommendations": ["Fix missing values"],
+            "actionable_recommendations": [{
+                "dimension": "completeness", "description": "Apply 'fill_missing' to age",
+                "transformation_type": "fill_missing", "affected_columns": ["age"],
+                "severity": "high",
+            }],
+            "critical_issues": [{"x": 1}],
+            "warnings": [],
+        }
+        mock_user_data = create_mock_user_data(quality_report=quality_data, is_processed=True)
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            response = await async_authorized_client.get("/api/v1/data/test-file-123/quality-report")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["score_0_100"] == 86.0
+        assert data["partial"] is False
+        assert data["component_scores"]["completeness"] == 90.0
+        assert data["actionable_recommendations"][0]["transformation_type"] == "fill_missing"
+        assert len(data["gates"]) >= 1
+        assert data["gates"][0]["is_blocking"] is False
+        assert data["gates"][0]["passed"] is True
+        assert data["critical_issue_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_quality_report_consolidated_partial_pre_102(self, async_authorized_client, setup_database):
+        """Pre-#102 cached report (no score_0_100) degrades to partial, never 500."""
+        quality_data = {
+            "overall_quality_score": 0.6,
+            "dimension_scores": {
+                "completeness": 0.5, "validity": 0.7, "consistency": 0.9,
+                "uniqueness": 1.0, "accuracy": 0.7,
+            },
+            "recommendations": [],
+        }
+        mock_user_data = create_mock_user_data(quality_report=quality_data, is_processed=True)
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            response = await async_authorized_client.get("/api/v1/data/test-file-123/quality-report")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["partial"] is True
+        assert data["score_0_100"] > 0  # derived from legacy 0-1 dimension scores
+        # completeness 50 < 80 threshold -> gate fails
+        assert data["gates"][0]["passed"] is False
+        assert "completeness" in data["gates"][0]["failing_dimensions"]
+
+    @pytest.mark.asyncio
     async def test_get_data_preview_success(self, async_authorized_client, setup_database, sample_dataframe):
         """Test getting data preview"""
         mock_user_data = create_mock_user_data(is_processed=True)
