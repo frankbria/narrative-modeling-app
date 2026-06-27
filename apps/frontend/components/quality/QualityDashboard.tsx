@@ -43,6 +43,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
     let cancelled = false
     setLoading(true)
     setError(null)
+    setTrend(null)  // avoid rendering the previous dataset's trend during a new load
 
     QualityService.getQualityReport(fileId)
       .then((r) => {
@@ -86,7 +87,8 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
   }
 
   const { label, color } = scoreLabel(report.score_0_100)
-  const trendPoints = trend?.points ?? []
+  // Only plot points with a real post-transformation score (the field is nullable).
+  const trendPoints = (trend?.points ?? []).filter((p) => p.score_after != null)
 
   return (
     <div className="space-y-4" data-testid="quality-dashboard">
@@ -196,7 +198,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
               data={{
                 data: trendPoints.map((p, i) => ({
                   x: p.version_number != null ? `v${p.version_number}` : `step ${i + 1}`,
-                  score: p.score_after ?? 0,
+                  score: p.score_after as number,
                 })),
                 lines: [{ dataKey: 'score', label: 'Quality Score', color: '#82ca9d' }],
                 xLabel: 'Version',

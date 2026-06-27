@@ -494,7 +494,8 @@ class TransformationService(BaseService[TransformationConfig]):
                         "parameters": parameters,
                         "affected_columns": affected_columns,
                         "rows_affected": result.affected_rows,
-                        "execution_time": execution_time_ms
+                        # TransformationStep.execution_time is documented in seconds.
+                        "execution_time": execution_time_ms / 1000
                     }
                 ]
 
