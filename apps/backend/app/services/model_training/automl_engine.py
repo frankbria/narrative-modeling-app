@@ -319,12 +319,19 @@ class AutoMLEngine:
         X_train_transformed = feature_result.X_transformed
 
         # Transform the clean test set and (when carved) the calibration slice.
+        # The calibration-slice transform is best-effort: if X_cal trips the
+        # feature engineer (e.g. a categorical value unseen in X_fit), drop the
+        # carve and let calibration fall back to the test set rather than failing
+        # the whole run (issue #201). Base models stay trained on X_fit.
         X_test_transformed = await self.feature_engineer.transform(X_test)
-        X_cal_transformed = (
-            await self.feature_engineer.transform(X_cal)
-            if X_cal is not None
-            else None
-        )
+        X_cal_transformed = None
+        if X_cal is not None:
+            try:
+                X_cal_transformed = await self.feature_engineer.transform(X_cal)
+            except Exception as exc:  # noqa: BLE001 - never fail training on the carve
+                logger.warning(
+                    "Calibration-slice transform failed, skipping carve: %s", exc
+                )
 
         # Get candidate models
         candidates = self._get_candidate_models(

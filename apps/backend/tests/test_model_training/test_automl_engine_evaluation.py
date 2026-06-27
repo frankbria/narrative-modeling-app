@@ -210,6 +210,44 @@ class TestHonestCalibrationSplit:
         # Same data with fewer folds is fine.
         assert _engine(cv_folds=3)._can_carve_calibration(y) is True
 
+    def test_can_carve_calibration_cv_folds_boundary(self):
+        """Lock the exact cv_folds boundary: int(min*0.8) >= cv_folds."""
+        eng = _engine(cv_folds=5)
+        # min=6 -> int(4.8)=4 < 5 -> no carve.
+        assert eng._can_carve_calibration(pd.Series(["a"] * 94 + ["b"] * 6)) is False
+        # min=7 -> int(5.6)=5 >= 5 -> carve.
+        assert eng._can_carve_calibration(pd.Series(["a"] * 93 + ["b"] * 7)) is True
+
+    @pytest.mark.asyncio
+    async def test_calibration_slice_transform_failure_falls_back(self, binary_df):
+        """If transforming the carved slice raises (e.g. unseen categorical), the
+        engine drops the carve and still completes via test-set calibration
+        rather than failing the run (claude-review)."""
+        engine = _engine()
+
+        real_transform = engine.feature_engineer.transform
+        calls = {"n": 0}
+
+        async def flaky_transform(X):
+            # 1st transform = X_test (clean); 2nd = X_cal (carved) -> raise.
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise ValueError("unseen category in calibration slice")
+            return await real_transform(X)
+
+        with patch.object(
+            engine.feature_engineer, "transform", side_effect=flaky_transform
+        ):
+            result = await _run(
+                engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+            )
+
+        # Training completed; calibration preserved via the test-set fallback and
+        # flagged in-sample because the carve was dropped.
+        assert result.is_calibrated is True
+        assert result.calibration_score_is_insample is True
+        assert result.evaluation_on_calibration_set is True
+
     @pytest.mark.asyncio
     async def test_honest_split_marks_score_out_of_sample(self, binary_df):
         engine = _engine()
