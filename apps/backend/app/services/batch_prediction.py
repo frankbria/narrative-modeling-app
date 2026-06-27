@@ -462,7 +462,7 @@ class BatchPredictionService:
         # Engineered feature rows for the batched explainer (issue #80) — only
         # materialised when explanations are requested, so we never densify a
         # (possibly sparse) feature matrix for the common no-explanation path.
-        want_explanations = getattr(config, "include_explanations", False)
+        want_explanations = config.include_explanations
         X_array = np.asarray(X_transformed) if want_explanations else None
 
         predictions: list[dict[str, Any]] = []

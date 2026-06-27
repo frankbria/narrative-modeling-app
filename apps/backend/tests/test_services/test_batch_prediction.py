@@ -313,7 +313,12 @@ async def test_predict_chunk_falls_back_to_sequential_on_batch_failure():
 @pytest.mark.asyncio
 async def test_vectorized_and_sequential_paths_produce_identical_results():
     """The vectorized and sequential paths assemble identical per-row output for
-    the same input — guards against row-ordering / index-alignment bugs (#202)."""
+    the same input — guards against row-ordering / index-alignment bugs (#202).
+
+    Uses the default ``include_metadata=False`` config: metadata stamps a
+    per-row ``datetime.utcnow()`` in both paths, so wall-clock timestamps would
+    differ between the two runs and break a naive equality check.
+    """
     svc = _service()
     config = BatchPredictionConfig(model_id="model_123", include_probabilities=True)
     chunk = pd.DataFrame([{"age": 30}, {"age": 41}, {"age": 52}])
