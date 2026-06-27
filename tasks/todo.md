@@ -1,41 +1,24 @@
-# Issue #201 — Honest calibration/eval split + out-of-sample calibration score
+# Issue #202 — Vectorize batch `_predict_chunk` inference
 
-## Scope decision (deviates from the CodeRabbit plan)
-- **Item 1 (honest split) + Item 2 (out-of-sample calibration score) only.**
-- **Phase 3 (batch vectorization) EXCLUDED** — the issue body says it "was split to #202".
-- The issue **title** asks for an *honest split*, and the body marks the **real fix** (Option 1:
-  reserve a calibration slice from the training set) as **preferred**. CodeRabbit chose the
-  weakest option (caveat-flag-only), which does not deliver the title. We do the real fix, and
-  keep an honest in-sample flag only for the small-data fallback path.
+Pure performance. `_predict_chunk` currently runs transform/predict/predict_proba
+once **per row** (~3000 sklearn calls per 1000-row chunk). Vectorize to ~3 calls/chunk.
 
-## The fix
-Today: one `train_test_split` → `X_test` is used for candidate test scores **and** calibration
-fit **and** the #79 dashboard arrays. So dashboard metrics + `calibration_score` are in-sample
-(optimistic).
+## Plan (adapted from CodeRabbit comment)
 
-New (classification only): carve a disjoint calibration slice from the **training** set.
-- `X_train, X_test = split(X)`            <- clean holdout (dashboard eval + calibration scoring)
-- `X_fit, X_cal = split(X_train)`         <- X_cal disjoint from base-model training
-- base models fit/CV on `X_fit`; calibrate best on `X_cal`; **score calibration on `X_test`**
-  (out-of-sample); capture #79 arrays on `X_test` (clean -> honest).
-- **Fallback** (data too small / stratify fails): keep current behaviour (calibrate on `X_test`,
-  in-sample) and set the honesty flags True.
-- Regression: unchanged (no calibration; `X_test` already clean).
+1. Extract the current row-by-row loop verbatim → `_predict_chunk_sequential`
+   (the fallback that preserves per-row error isolation).
+2. New `_predict_chunk_vectorized`: one `transform`, one `predict`, one
+   `predict_proba` over the whole chunk; assemble per-row dicts by indexing into
+   the arrays. **Keep the existing batched `_attach_explanations` flow (#80)** —
+   do NOT revert explanations to per-row `explain()` (CodeRabbit Task 6 is stale).
+3. `_predict_chunk` = try vectorized; on any chunk-level exception, fall back to
+   `_predict_chunk_sequential` (preserves the `test_predict_chunk_records_per_row_errors`
+   semantics where one bad row doesn't fail the chunk).
 
-## Steps (TDD)
-1. `confidence_service.calibrate_classifier` — optional `X_score`/`y_score`; brier measured on the
-   score set when given (out-of-sample), else on `X_cal` (in-sample, backward-compatible 3-tuple).
-2. `automl_engine.py` — carve cal slice for classification w/ size+stratify guard; FE fit on `X_fit`;
-   `_calibrate_best_model` returns `(is_calibrated, method, score, is_insample)`; capture eval on
-   `X_test`; `AutoMLResult` gains `calibration_score_is_insample` + `evaluation_on_calibration_set`.
-3. `models/ml_model.py` — add `calibration_score_is_insample: bool = True`,
-   `evaluation_on_calibration_set: bool = False`; update `calibration_score` docstring.
-4. `model_storage.py` — persist the two new keys from `model_metadata`.
-5. `api/routes/model_training.py` — populate the two keys; surface `evaluation_on_calibration_set`
-   on full+partial eval responses; pass it to the report card.
-6. `schemas/evaluation.py` — add `evaluation_on_calibration_set: bool = False` to `ModelEvaluationResponse`.
-7. `services/evaluation_explanation_service.py` — optional flag -> prepend a `concerns` entry.
-8. `lib/types/evaluation.ts` — mirror `evaluation_on_calibration_set`.
-9. Tests: confidence (out-of-sample), automl (honest path flags False / fallback True),
-   `sample_ml_model` mock fixture +2 fields (recurring gotcha), eval route + report-card concern.
-10. Docs: CLAUDE.md #83 note -> record #201.
+## Tests (TDD)
+- predict/predict_proba called **once** per chunk (not per row).
+- vectorized failure falls back to sequential (per-row error record preserved).
+- existing 6 `_predict_chunk` tests stay green (confidence, low-conf, interval, explanation).
+
+## Out of scope
+- No new schema/fields, no API change, no behavioral change to outputs.

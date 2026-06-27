@@ -406,7 +406,142 @@ class BatchPredictionService:
         model: MLModel,
         config: BatchPredictionConfig,
     ) -> list[dict[str, Any]]:
-        """Make predictions for a chunk of data"""
+        """Make predictions for a chunk of data.
+
+        Vectorised (issue #202): transform/predict/predict_proba run once over
+        the whole chunk instead of once per row (~3 sklearn calls per chunk vs
+        ~3·N). On any chunk-level failure, fall back to row-by-row processing so
+        a single bad row (or a batch-incompatible estimator) still yields per-row
+        error isolation. Explanations stay batched via ``_attach_explanations``.
+        """
+        try:
+            return await self._predict_chunk_vectorized(
+                chunk_df, trained_model, feature_engineer, model, config
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
+            # warning + traceback: a systematic failure (e.g. a model/feature
+            # contract change) would silently fall back on every chunk otherwise.
+            logger.warning(
+                "Vectorised chunk inference failed (%s); falling back to row-by-row",
+                exc,
+                exc_info=True,
+            )
+            return await self._predict_chunk_sequential(
+                chunk_df, trained_model, feature_engineer, model, config
+            )
+
+    async def _predict_chunk_vectorized(
+        self,
+        chunk_df: pd.DataFrame,
+        trained_model: Any,
+        feature_engineer: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+    ) -> list[dict[str, Any]]:
+        """Vectorised chunk inference (issue #202).
+
+        Runs feature transform, ``predict`` and (for classifiers) ``predict_proba``
+        once over the entire chunk, then assembles per-row result dicts by indexing
+        into the resulting arrays — no sklearn calls in the assembly loop. Any
+        failure here propagates to ``_predict_chunk``'s row-by-row fallback.
+        """
+        is_classification = str(model.problem_type).endswith("classification")
+
+        # One transform / predict / predict_proba per chunk.
+        if feature_engineer:
+            X_transformed = await feature_engineer.transform(chunk_df)
+        else:
+            X_transformed = chunk_df[model.feature_names]
+
+        preds = trained_model.predict(X_transformed)
+
+        proba_matrix = None
+        if is_classification and hasattr(trained_model, "predict_proba"):
+            proba_matrix = trained_model.predict_proba(X_transformed)
+
+        # Engineered feature rows for the batched explainer (issue #80) — only
+        # materialised when explanations are requested, so we never densify a
+        # (possibly sparse) feature matrix for the common no-explanation path.
+        want_explanations = config.include_explanations
+        X_array = np.asarray(X_transformed) if want_explanations else None
+
+        predictions: list[dict[str, Any]] = []
+        to_explain: list[dict[str, Any]] = []
+
+        for i, (index, row) in enumerate(chunk_df.iterrows()):
+            input_data = row.to_dict()
+            prediction = preds[i]
+            prediction_value = (
+                prediction.item() if hasattr(prediction, "item") else prediction
+            )
+
+            result: dict[str, Any] = {
+                "row_index": index,
+                "prediction": prediction_value,
+                "input_data": input_data,
+            }
+
+            # Probabilities drive confidence + low-confidence flags even when the
+            # caller didn't request the full vectors (#83).
+            if proba_matrix is not None:
+                proba_list = proba_matrix[i].tolist()
+                confidence = self.confidence.confidence_from_proba(proba_list)
+                if confidence is not None:
+                    result["confidence"] = confidence
+                    result["low_confidence"] = self.confidence.is_low_confidence(
+                        confidence
+                    )
+                if config.include_probabilities:
+                    result["probabilities"] = proba_list
+
+            # Regression prediction interval from the model's residual std.
+            if (
+                not is_classification
+                and getattr(model, "residual_std", None) is not None
+            ):
+                interval = self.confidence.regression_interval(
+                    prediction_value, model.residual_std
+                )
+                if interval is not None:
+                    result["prediction_interval"] = interval
+
+            # Per-prediction explanation (opt-in — issue #83/#80). Collected here
+            # and computed in one batched pass after the loop so the explainer is
+            # built once per chunk, not once per row.
+            if want_explanations and X_array is not None:
+                to_explain.append(
+                    {
+                        "result": result,
+                        "x_row": X_array[i],
+                        "prediction": prediction_value,
+                    }
+                )
+
+            if config.include_metadata:
+                result["metadata"] = {
+                    "model_id": model.model_id,
+                    "model_version": model.version,
+                    "prediction_time": datetime.utcnow().isoformat(),
+                }
+
+            predictions.append(result)
+
+        await self._attach_explanations(to_explain, trained_model, model)
+        return predictions
+
+    async def _predict_chunk_sequential(
+        self,
+        chunk_df: pd.DataFrame,
+        trained_model: Any,
+        feature_engineer: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+    ) -> list[dict[str, Any]]:
+        """Row-by-row chunk inference — the fallback for ``_predict_chunk`` (#202).
+
+        Preserves per-row error isolation: a row that fails inference becomes an
+        error record instead of sinking the whole chunk.
+        """
 
         predictions = []
         # Rows needing a per-prediction explanation, explained in one batched
