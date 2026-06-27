@@ -425,3 +425,29 @@ class TestApplyTransformationVersioning:
                 assert "transformation_config_id" in call_args.kwargs
                 # Verify config_id starts with expected prefix (actual ID includes timestamp)
                 assert call_args.kwargs["transformation_config_id"].startswith("config_ds1_")
+
+
+@pytest.mark.unit
+class TestQualityAssessmentHelpers:
+    """Quality helpers used for version trend tracking (issue #102, AC3)."""
+
+    def test_infer_column_types(self, transformation_service, sample_dataframe):
+        types = transformation_service._infer_column_types(sample_dataframe)
+        assert types["id"] == "integer"
+        assert types["age"] == "float"  # has a NaN -> float dtype
+        assert types["department"] == "string"
+
+    @pytest.mark.asyncio
+    async def test_assess_quality_dict_returns_json_native(self, transformation_service, sample_dataframe):
+        result = await transformation_service._assess_quality_dict(sample_dataframe)
+        assert result is not None
+        assert "score_0_100" in result
+        assert isinstance(result["score_0_100"], (int, float))
+        # enum dict keys are serialised to plain strings (mode="json")
+        assert all(isinstance(k, str) for k in result["component_scores"])
+
+    @pytest.mark.asyncio
+    async def test_assess_quality_dict_never_raises(self, transformation_service):
+        # A column-less frame must not blow up the version path; returns a dict or None.
+        result = await transformation_service._assess_quality_dict(pd.DataFrame())
+        assert result is None or "score_0_100" in result

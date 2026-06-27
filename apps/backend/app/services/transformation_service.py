@@ -6,8 +6,11 @@ TransformationConfig model, delegating actual transformation execution to
 the existing TransformationEngine.
 """
 
+import logging
 from datetime import UTC
 from typing import Any
+
+import pandas as pd
 
 from app.models.transformation import (
     TransformationConfig,
@@ -15,11 +18,14 @@ from app.models.transformation import (
     TransformationValidation,
 )
 from app.services.base_service import BaseService
+from app.services.data_processing.quality_assessment import QualityAssessmentService
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TransformationService(BaseService[TransformationConfig]):
@@ -31,6 +37,39 @@ class TransformationService(BaseService[TransformationConfig]):
     def __init__(self):
         """Initialize service with transformation engine."""
         self.engine = TransformationEngine()
+        self.quality_service = QualityAssessmentService()
+
+    @staticmethod
+    def _infer_column_types(df: pd.DataFrame) -> dict[str, str]:
+        """Coarse pandas-dtype -> quality-assessment type map (issue #102).
+
+        Enough for trend scoring; specialised email/phone detection isn't needed here.
+        """
+        types: dict[str, str] = {}
+        for col in df.columns:
+            dtype = df[col].dtype
+            if pd.api.types.is_integer_dtype(dtype):
+                types[col] = "integer"
+            elif pd.api.types.is_float_dtype(dtype):
+                types[col] = "float"
+            elif pd.api.types.is_datetime64_any_dtype(dtype):
+                types[col] = "datetime"
+            elif pd.api.types.is_bool_dtype(dtype):
+                types[col] = "boolean"
+            else:
+                types[col] = "string"
+        return types
+
+    async def _assess_quality_dict(self, df: pd.DataFrame) -> dict[str, Any] | None:
+        """Best-effort quality report as a JSON-native dict, or None on failure."""
+        try:
+            report = await self.quality_service.assess_quality(
+                df, self._infer_column_types(df)
+            )
+            return report.model_dump(mode="json")
+        except Exception as exc:  # never break the transformation on a quality error
+            logger.warning(f"Quality assessment skipped during versioning: {exc}")
+            return None
 
     def _get_id_field(self) -> str:
         """
@@ -357,8 +396,6 @@ class TransformationService(BaseService[TransformationConfig]):
         import time
         from datetime import datetime
 
-        import pandas as pd
-
         from app.models.dataset import DatasetMetadata
         from app.services.redis_cache import cache_service
         from app.services.transformation_engine.data_utils import (
@@ -443,16 +480,29 @@ class TransformationService(BaseService[TransformationConfig]):
                 dataset.num_columns = len(transformed_df.columns)
                 dataset.columns = transformed_df.columns.tolist()
 
-                # Build transformation steps for lineage
+                # Build transformation steps for lineage.
+                # Use the TransformationStep schema field names (step_type/affected_columns/
+                # rows_affected); the previous dict used transformation_type/column/columns,
+                # which raised a ValidationError that aborted every versioned transform.
+                affected_columns = [
+                    c for c in (parameters.get("column"), *(parameters.get("columns") or []))
+                    if c
+                ]
                 transformation_steps = [
                     {
-                        "transformation_type": transformation_type,
-                        "column": parameters.get("column"),
-                        "columns": parameters.get("columns"),
+                        "step_type": transformation_type,
                         "parameters": parameters,
-                        "execution_time": execution_time_ms
+                        "affected_columns": affected_columns,
+                        "rows_affected": result.affected_rows,
+                        # TransformationStep.execution_time is documented in seconds.
+                        "execution_time": execution_time_ms / 1000
                     }
                 ]
+
+                # Quality trend tracking (issue #102, AC3): assess before/after,
+                # best-effort — a quality failure must never break the transformation.
+                quality_before = await self._assess_quality_dict(df)
+                quality_after = await self._assess_quality_dict(transformed_df)
 
                 # Create version with lineage
                 version, lineage = await versioning_service.create_transformation_version(
@@ -462,7 +512,9 @@ class TransformationService(BaseService[TransformationConfig]):
                     dataset_metadata=dataset,
                     user_id=user_id,
                     description=f"Applied {transformation_type} transformation",
-                    transformation_config_id=config_id
+                    transformation_config_id=config_id,
+                    quality_before=quality_before,
+                    quality_after=quality_after
                 )
                 version_id = version.version_id
 

@@ -130,6 +130,66 @@ class TestVersionCreation:
                 )
 
     @pytest.mark.asyncio
+    async def test_create_lineage_populates_quality_improvement(self, versioning_service, mock_dataset_metadata):
+        """_create_lineage records the 0-100 quality delta (issue #102, AC3)."""
+        captured = {}
+
+        def capture(**kwargs):
+            captured.update(kwargs)
+            obj = MagicMock()
+            obj.mark_completed = Mock()
+            obj.insert = AsyncMock()
+            obj.lineage_id = kwargs["lineage_id"]
+            return obj
+
+        parent = MagicMock(version_id="v1", dataset_id="ds1", num_rows=100, num_columns=5)
+        child = MagicMock(version_id="v2", num_rows=90, num_columns=5)
+
+        with patch('app.services.versioning_service.TransformationLineage', side_effect=capture):
+            await versioning_service._create_lineage(
+                parent_version=parent,
+                child_version=child,
+                transformation_steps=[],
+                dataset_metadata=mock_dataset_metadata,
+                user_id="user1",
+                quality_before={"score_0_100": 60.0},
+                quality_after={"score_0_100": 82.5},
+            )
+
+        assert captured["quality_before"] == {"score_0_100": 60.0}
+        assert captured["quality_after"] == {"score_0_100": 82.5}
+        assert captured["quality_improvement"] == 22.5
+
+    @pytest.mark.asyncio
+    async def test_create_lineage_quality_none_when_unavailable(self, versioning_service, mock_dataset_metadata):
+        """No quality dicts -> quality_improvement stays None (backward compat)."""
+        captured = {}
+
+        def capture(**kwargs):
+            captured.update(kwargs)
+            obj = MagicMock()
+            obj.mark_completed = Mock()
+            obj.insert = AsyncMock()
+            obj.lineage_id = kwargs["lineage_id"]
+            return obj
+
+        parent = MagicMock(version_id="v1", dataset_id="ds1", num_rows=100, num_columns=5)
+        child = MagicMock(version_id="v2", num_rows=100, num_columns=5)
+
+        with patch('app.services.versioning_service.TransformationLineage', side_effect=capture):
+            await versioning_service._create_lineage(
+                parent_version=parent,
+                child_version=child,
+                transformation_steps=[],
+                dataset_metadata=mock_dataset_metadata,
+                user_id="user1",
+            )
+
+        assert captured["quality_before"] is None
+        assert captured["quality_after"] is None
+        assert captured["quality_improvement"] is None
+
+    @pytest.mark.asyncio
     async def test_create_transformation_version_parent_not_found(self, versioning_service, mock_dataset_metadata):
         """Test error when parent version not found raises NotFoundError."""
         with patch('app.services.versioning_service.DatasetVersion') as MockDatasetVersion:

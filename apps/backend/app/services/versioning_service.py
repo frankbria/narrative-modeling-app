@@ -132,7 +132,9 @@ class VersioningService(BaseService[DatasetVersion]):
         dataset_metadata: DatasetMetadata,
         user_id: str,
         description: str | None = None,
-        transformation_config_id: str | None = None
+        transformation_config_id: str | None = None,
+        quality_before: dict[str, Any] | None = None,
+        quality_after: dict[str, Any] | None = None
     ) -> tuple[DatasetVersion, TransformationLineage]:
         """
         Create new version after transformation application.
@@ -145,6 +147,8 @@ class VersioningService(BaseService[DatasetVersion]):
             user_id: User performing transformation
             description: Optional version description
             transformation_config_id: Optional reference to full config
+            quality_before: Optional quality report (dict) of the parent data
+            quality_after: Optional quality report (dict) of the transformed data
 
         Returns:
             Tuple of (new_version, lineage)
@@ -187,7 +191,9 @@ class VersioningService(BaseService[DatasetVersion]):
                 transformation_steps=transformation_steps,
                 dataset_metadata=dataset_metadata,
                 user_id=user_id,
-                transformation_config_id=transformation_config_id
+                transformation_config_id=transformation_config_id,
+                quality_before=quality_before,
+                quality_after=quality_after
             )
             return existing_version, lineage
 
@@ -251,7 +257,9 @@ class VersioningService(BaseService[DatasetVersion]):
             transformation_steps=transformation_steps,
             dataset_metadata=dataset_metadata,
             user_id=user_id,
-            transformation_config_id=transformation_config_id
+            transformation_config_id=transformation_config_id,
+            quality_before=quality_before,
+            quality_after=quality_after
         )
 
         # Link lineage to version
@@ -267,7 +275,9 @@ class VersioningService(BaseService[DatasetVersion]):
         transformation_steps: list[dict[str, Any]],
         dataset_metadata: DatasetMetadata,
         user_id: str,
-        transformation_config_id: str | None = None
+        transformation_config_id: str | None = None,
+        quality_before: dict[str, Any] | None = None,
+        quality_after: dict[str, Any] | None = None
     ) -> TransformationLineage:
         """Create transformation lineage record."""
         lineage_id = str(uuid.uuid4())
@@ -277,6 +287,14 @@ class VersioningService(BaseService[DatasetVersion]):
 
         # Calculate total execution time
         total_time = sum(step.execution_time or 0 for step in steps)
+
+        # Quality trend (issue #102, AC3): improvement is the 0-100 score delta.
+        quality_improvement: float | None = None
+        if quality_before and quality_after:
+            before_score = quality_before.get("score_0_100")
+            after_score = quality_after.get("score_0_100")
+            if before_score is not None and after_score is not None:
+                quality_improvement = round(float(after_score) - float(before_score), 1)
 
         lineage = TransformationLineage(
             lineage_id=lineage_id,
@@ -290,7 +308,10 @@ class VersioningService(BaseService[DatasetVersion]):
             rows_before=parent_version.num_rows,
             rows_after=child_version.num_rows,
             columns_before=parent_version.num_columns,
-            columns_after=child_version.num_columns
+            columns_after=child_version.num_columns,
+            quality_before=quality_before,
+            quality_after=quality_after,
+            quality_improvement=quality_improvement
         )
 
         lineage.mark_completed()
@@ -425,6 +446,39 @@ class VersioningService(BaseService[DatasetVersion]):
         versions = await query.sort("-version_number").skip(skip).limit(limit).to_list()
         logger.info(f"Listed {len(versions)} versions for dataset {dataset_id}")
         return versions
+
+    async def get_quality_trend(self, dataset_id: str) -> list[dict[str, Any]]:
+        """Quality score trend across a dataset's versions (issue #102, AC3).
+
+        Reads transformation lineage records (oldest first) and projects each one's
+        before/after 0-100 quality scores. Never raises — returns [] when there is
+        no lineage / no quality data.
+        """
+        lineages = await TransformationLineage.find(
+            TransformationLineage.dataset_id == dataset_id
+        ).sort("+created_at").to_list()
+
+        versions = await DatasetVersion.find(
+            DatasetVersion.dataset_id == dataset_id
+        ).to_list()
+        version_number = {v.version_id: v.version_number for v in versions}
+
+        points: list[dict[str, Any]] = []
+        for lineage in lineages:
+            before = (lineage.quality_before or {}).get("score_0_100")
+            after = (lineage.quality_after or {}).get("score_0_100")
+            transforms = ", ".join(
+                step.step_type for step in lineage.transformation_steps
+            ) or "transformation"
+            points.append({
+                "version_number": version_number.get(lineage.child_version_id),
+                "created_at": lineage.created_at,
+                "score_before": before,
+                "score_after": after,
+                "improvement": lineage.quality_improvement,
+                "transformation": transforms,
+            })
+        return points
 
     async def get_lineage_chain(self, version_id: str) -> list[TransformationLineage]:
         """

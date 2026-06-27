@@ -277,6 +277,51 @@ class TestQualityAssessment:
         assert report.row_count == 0
         assert report.column_count == 0
 
+    async def test_score_0_100_and_component_scores(self, quality_service, perfect_dataframe):
+        """0-100 score and per-dimension component scores are populated (issue #102, AC1)."""
+        column_types = {
+            'id': 'integer', 'name': 'string', 'email': 'email',
+            'age': 'integer', 'created_at': 'datetime'
+        }
+        report = await quality_service.assess_quality(perfect_dataframe, column_types)
+
+        # Headline score is on a 0-100 scale and tracks the 0-1 overall score.
+        assert 0.0 <= report.score_0_100 <= 100.0
+        assert report.score_0_100 > 90.0  # perfect data
+
+        # Component scores cover exactly the 5 AC dimensions, each 0-100.
+        from app.services.data_processing.quality_assessment import SCORE_DIMENSIONS
+        assert set(report.component_scores.keys()) == set(SCORE_DIMENSIONS)
+        assert all(0.0 <= v <= 100.0 for v in report.component_scores.values())
+        assert QualityDimension.TIMELINESS not in report.component_scores
+
+    async def test_score_0_100_empty_dataframe(self, quality_service):
+        """Empty dataframe yields a 0 score, not an error (issue #102)."""
+        report = await quality_service.assess_quality(pd.DataFrame(), {})
+        assert report.score_0_100 == 0.0
+        assert report.component_scores == {} or all(v == 0.0 for v in report.component_scores.values())
+
+    async def test_actionable_recommendations(self, quality_service, problematic_dataframe):
+        """Issues map to concrete transformations (issue #102, AC2)."""
+        from app.models.transformation import TransformationType
+
+        column_types = {
+            'id': 'integer', 'name': 'string', 'email': 'email',
+            'age': 'integer', 'phone': 'phone', 'created_at': 'datetime'
+        }
+        report = await quality_service.assess_quality(problematic_dataframe, column_types)
+
+        assert len(report.actionable_recommendations) > 0
+        valid_types = {t.value for t in TransformationType}
+        for rec in report.actionable_recommendations:
+            assert rec.transformation_type in valid_types
+            assert rec.severity in {"low", "medium", "high"}
+
+        # Missing values -> fill_missing; duplicate IDs -> remove_duplicates
+        rec_types = {r.transformation_type for r in report.actionable_recommendations}
+        assert TransformationType.FILL_MISSING.value in rec_types
+        assert TransformationType.REMOVE_DUPLICATES.value in rec_types
+
     async def test_mixed_quality_summary(self, quality_service, problematic_dataframe):
         """Test quality summary statistics"""
         column_types = {

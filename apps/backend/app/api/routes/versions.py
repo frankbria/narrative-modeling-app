@@ -16,6 +16,8 @@ from app.schemas.version import (
     DatasetVersionCreate,
     DatasetVersionResponse,
     LineageResponse,
+    QualityTrendPoint,
+    QualityTrendResponse,
     VersionComparisonRequest,
     VersionComparisonResponse,
     VersionListResponse,
@@ -78,6 +80,53 @@ async def list_dataset_versions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing versions: {str(e)}"
+        )
+
+
+@router.get("/datasets/{dataset_id}/quality-trend", response_model=QualityTrendResponse)
+async def get_quality_trend(
+    dataset_id: str,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    Quality score trend across a dataset's versions (issue #102, AC3).
+
+    Returns per-transformation 0-100 quality scores plus aggregate metrics.
+    Empty trend when the dataset has no transformation history. Never 500s.
+    """
+    # Ownership check — 404 for unknown or foreign datasets.
+    dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id})
+    if not dataset or dataset.user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
+    try:
+        raw_points = await versioning_service.get_quality_trend(dataset_id)
+        points = [QualityTrendPoint(**p) for p in raw_points]
+
+        scores = [
+            s for p in points for s in (p.score_before, p.score_after) if s is not None
+        ]
+        overall_improvement = None
+        first_before = next((p.score_before for p in points if p.score_before is not None), None)
+        last_after = next((p.score_after for p in reversed(points) if p.score_after is not None), None)
+        if first_before is not None and last_after is not None:
+            overall_improvement = round(last_after - first_before, 1)
+
+        return QualityTrendResponse(
+            dataset_id=dataset_id,
+            points=points,
+            overall_improvement=overall_improvement,
+            best_score=max(scores) if scores else None,
+            worst_score=min(scores) if scores else None,
+        )
+    except Exception as e:
+        logger.error(f"Error building quality trend for dataset {dataset_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error building quality trend: {str(e)}"
         )
 
 

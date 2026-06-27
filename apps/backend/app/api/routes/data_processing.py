@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
+from app.schemas.quality import QualityReportResponse
 from app.services.data_processing.data_processor import DataProcessor
+from app.services.data_processing.quality_assessment import ActionableRecommendation
+from app.services.quality_gate_service import evaluate_gates, overall_score
 from app.services.s3_service import s3_service
 from app.utils.json_encoder import NumpyJSONEncoder, convert_numpy_types
 from app.utils.s3 import parse_s3_url
@@ -227,6 +230,53 @@ async def get_quality_report(
         "filename": user_data.original_filename,
         "quality_report": user_data.quality_report
     }
+
+
+@router.get("/{file_id}/quality-report", response_model=QualityReportResponse)
+async def get_quality_report_consolidated(
+    file_id: str = Path(..., description="File ID"),
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """Consolidated quality report: 0-100 score, components, actionable
+    recommendations, and soft quality gates (issue #102, AC4/AC5).
+
+    Built from the cached quality report. Pre-#102 caches degrade to ``partial=true``
+    (gates derived from legacy dimension scores). Quality trend has its own endpoint
+    (GET /api/v1/datasets/{dataset_id}/quality-trend). Never 500s on stale caches.
+    """
+    user_data = await UserData.find_one(
+        UserData.id == file_id,
+        UserData.user_id == current_user_id
+    )
+    if not user_data:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not user_data.is_processed or not user_data.quality_report:
+        raise HTTPException(status_code=400, detail="File not processed yet")
+
+    report = user_data.quality_report
+    # Pre-#102 cached reports lack the 0-100 score / actionable recs.
+    partial = "score_0_100" not in report
+
+    gates = evaluate_gates(report)
+    actionable = [
+        ActionableRecommendation(**rec)
+        for rec in report.get("actionable_recommendations", [])
+    ]
+
+    return QualityReportResponse(
+        file_id=str(user_data.id),
+        filename=user_data.original_filename,
+        score_0_100=overall_score(report),
+        component_scores={
+            str(k): float(v) for k, v in (report.get("component_scores") or {}).items()
+        },
+        recommendations=report.get("recommendations", []),
+        actionable_recommendations=actionable,
+        gates=gates,
+        critical_issue_count=len(report.get("critical_issues", [])),
+        warning_count=len(report.get("warnings", [])),
+        partial=partial,
+    )
 
 
 @router.get("/{file_id}/preview")

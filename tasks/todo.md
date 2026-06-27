@@ -1,40 +1,107 @@
-# Issue #101 — Quick / Comprehensive Training Modes
+# Issue #102 — Data quality scoring system (P5.10, post-beta V2)
 
-## What already exists (Traycer plan is stale — do NOT rebuild)
-- Per-algorithm progress, current_stage, elapsed/estimated-remaining time, polling UI, logs, cancel — all shipped in #76.
-- Hyperparameter tuning (`enable_tuning`/`tuning_config`, bayesian + budgets, optuna early-stop pruner) — shipped in #77.
-- `progress_callback`/`event_callback`/`cancel_check`, `max_models`, candidate model catalog — exist in `AutoMLEngine`.
-- `training_config` dict passthrough on `TrainModelRequest` (no schema change needed — modes ride in it, like #77 did with tuning).
+**Lean adaptation.** The CodeRabbit plan was heavily over-scoped (new `QualityGate`
+Beanie model + CRUD + presets, a `QualityReportGenerator` with PDF export, a separate
+`ActionableRecommendation` model + a *new* `ISSUE_TO_TRANSFORMATION_MAP` that duplicates
+the existing `FixSuggestionEngine`, configurable per-request dimension weights, 6 new
+frontend components + a new page + new API client/hooks). This plan builds **on the real
+surfaces** that already exist and cuts the gold-plating.
 
-## Real gaps (AC ↔ work)
-1. AC1/AC2: mode → engine config mapping (quick: 3 algos, no tuning, 300s; comprehensive: 10+ algos, tuning, 1800s).
-2. AC2 "10+ algorithms": catalog tops out at ~7. Add ~4 always-on sklearn algos (ExtraTrees, AdaBoost, DecisionTree, GaussianNB / Lasso+ElasticNet) → comprehensive lists 10+.
-3. AC4: `time_limit` is accepted by the engine but **never enforced**, and the route never passes it. Add wall-clock enforcement + early-stop-on-good-score in the candidate loop.
-4. AC3: dataset-based recommendation (small endpoint + heuristic) + frontend mode selector with trade-off copy.
-5. AC5: time-remaining progress — already done (#76). No work.
+## Ground truth (verified in code)
+- `QualityAssessmentService.assess_quality()` already computes 0-1 dimension scores for
+  completeness / consistency / validity / uniqueness (accuracy = validity placeholder,
+  timeliness = 1.0 placeholder) and text `recommendations`. Returns `QualityReport`.
+- `GET /api/v1/data/{file_id}/quality` returns the cached `UserData.quality_report`.
+- `TransformationLineage` (`app/models/version.py`) already has
+  `quality_before/quality_after/quality_improvement` fields — **declared but never
+  populated** (dead). `DatasetVersion` is real and created on transformation.
+- `transformation_service.py` (~L406) has BOTH `df` (before) and `transformed_df` (after)
+  in hand at the exact call to `versioning_service.create_transformation_version()`.
+- `TransformationType` enum (`app/models/transformation.py`) is the canonical transform list.
+- Frontend already has `QualityReportCard.tsx` (rendered in `/explore/[id]` Quality tab),
+  a `LineChart.tsx` Recharts wrapper, and quality types in `lib/types/api.ts`.
 
-## Plan (lean)
+## Acceptance criteria
+- [x] AC1: Overall quality score (0-100) combining completeness, validity, consistency,
+      uniqueness, accuracy — `score_0_100` + `component_scores` on `QualityReport`
+- [x] AC2: Quality improvement recommendations tied to existing transformation tooling —
+      `actionable_recommendations` mapping issues → canonical `TransformationType`
+- [x] AC3: Quality trend tracking across dataset versions — lineage `quality_*` populated +
+      `GET /datasets/{id}/quality-trend`
+- [x] AC4: Optional quality gates for workflow progression — `quality_gate_service` (soft)
+- [x] AC5: Quality report generation + frontend dashboard —
+      `GET /data/{id}/quality-report` + `QualityDashboard` on the explore Quality tab
 
-### Backend
-- **New** `app/services/model_training/training_mode.py` (pure): `TrainingMode` enum; `resolve_mode_config(mode, overrides)` -> engine kwargs (max_models, time_limit, enable_tuning, tuning_strategy, early_stop_score) with explicit overrides winning; `recommend_mode(n_rows, n_features)` -> {mode, reason}.
-- **Edit** `automl_engine.py`:
-  - `__init__`: add `early_stop_score: float | None = None`.
-  - Candidate loop: enforce `time_limit` (break after >=1 model when elapsed >= budget) and early-stop when `cv_score >= early_stop_score`. Record `early_stopped`/`stop_reason`/`algorithms_evaluated`.
-  - `_get_candidate_models`: append ~4 always-on algos so full catalog >=10. Quick (first 3) unaffected.
-  - `AutoMLResult`: add `training_mode`, `early_stopped=False`, `stop_reason=None`, `algorithms_evaluated=None`.
-- **Edit** `model_training.py` train route: resolve `training_config["training_mode"]` via `resolve_mode_config` (absent -> today's behaviour unchanged), pass `time_limit` + `early_stop_score` to engine, stash mode/stop_reason in `training_config` (persisted on MLModel — **no new MLModel field**, avoids mock-fixture gotcha). New `GET /ml/datasets/{dataset_id}/mode-recommendation` (owner-scoped, 404 foreign).
+## Bug fixed in passing (blocked AC3)
+- `TransformationStep(**step)` in `_create_lineage` received `transformation_type`-keyed dicts
+  (wrong field name) and the `step_type` validator only allowed 8 of the 39 `TransformationType`
+  values → `ValidationError` (a `ValueError`) swallowed into an `OperationError`, so **every
+  transform on a dataset with a base version failed**. Fixed: correct dict field names in
+  `transformation_service` + validator now accepts all `TransformationType` values.
 
-### Frontend
-- **Edit** `lib/services/model.ts`: add `training_mode?` to `training_config` type; add `getModeRecommendation`.
-- **New** `components/TrainingModeSelector.tsx`: two cards (Quick/Comprehensive) + trade-off copy + recommendation banner.
-- **Edit** `app/model/page.tsx`: render selector, fetch recommendation on load, send `training_config.training_mode`.
+## Plan
 
-### Tests (TDD)
-- BE: `test_training_mode.py`; extend automl engine test (time-budget break, early-stop, new algos count >=10); route test (mode wiring + recommendation endpoint 200/404-foreign).
-- FE: `TrainingModeSelector.test.tsx`; extend `model.test.ts` (getModeRecommendation); model page mode wiring.
+### Step 1 — 0-100 score + component scores + actionable recommendations (AC1, AC2)
+`app/services/data_processing/quality_assessment.py`
+- Add `score_0_100: float` and `component_scores: dict[str, float]` (0-100, the 5 AC
+  dimensions; exclude the timeliness placeholder) to `QualityReport`, computed equal-weight
+  from existing `dimension_scores`. **No configurable weights** (not in AC; equal weight is
+  the existing behaviour — keeps backward-compat, no query param).
+- Add an `actionable_recommendations: list[ActionableRecommendation]` field: small struct
+  `{dimension, description, transformation_type, affected_columns, severity}` mapping each
+  quality dimension's issues to a canonical `TransformationType` (completeness→`fill_missing`,
+  consistency-casing→`fix_casing`, consistency-numeric→`to_numeric`,
+  consistency-date→`to_datetime`, validity-outlier→`outlier_removal`,
+  uniqueness→`remove_duplicates`). Reuse existing per-issue `affected columns`. Keep the
+  existing text `recommendations` unchanged (backward-compat).
+- Tests: extend `tests/test_processing/test_quality_assessment.py`.
 
-## Explicitly NOT doing (vs Traycer)
-- No `dataset_profiler.py`, no `training_constants.py`, no new MLModel DB fields, no new MLModel migration.
-- No new `GET /ml/train/{id}/progress` endpoint, no Redis progress cache (status endpoint + polling already exist).
-- No `RecommendationBanner.tsx`/`TrainingProgressDialog.tsx`/rework of `ModelTrainingButton.tsx` (unused).
-- No top-level `TrainModelRequest.training_mode` schema field (rides in training_config).
+### Step 2 — Populate quality lineage during transformation (AC3)
+`app/services/versioning_service.py` + `app/services/transformation_service.py`
+- Add optional `quality_before: dict | None`, `quality_after: dict | None` params to
+  `create_transformation_version()` and `_create_lineage()`; when present, set
+  `lineage.quality_before/after` and `quality_improvement = after.score_0_100 -
+  before.score_0_100`. Never fail the transform on a quality error (best-effort).
+- In `transformation_service.py` compute quality on `df` and `transformed_df` (derive a
+  simple column-type map from dtypes) and pass both in.
+- Tests: `tests/test_services/` lineage-quality population (real flow).
+
+### Step 3 — Quality trend endpoint (AC3)
+`app/api/routes/versions.py`
+- `GET /api/v1/datasets/{dataset_id}/quality-trend` (owner-scoped, 404 unknown/foreign):
+  read lineage records for the dataset ordered by version, return per-version
+  `{version_number, created_at, score_before, score_after, improvement, transformation}`
+  plus overall improvement since v1. Empty/no-versions → empty trend (never 500).
+- Tests: `tests/test_api/`.
+
+### Step 4 — Soft quality gates + report endpoint (AC4, AC5 backend)
+- `app/services/quality_gate_service.py` (stateless, no DB model): `evaluate(report)` with
+  default thresholds (ML-ready: overall ≥70, completeness ≥80, validity ≥70) → list of
+  `{gate_name, passed, actual_score, required_score, failing_dimensions, is_blocking:false}`.
+  **No `QualityGate` Beanie model, no CRUD, no presets persistence** — soft/advisory only.
+- `GET /api/v1/data/{file_id}/quality-report` aggregates: `score_0_100`, component scores,
+  actionable recommendations, gate results, and trend (if the dataset has versions). JSON
+  only — **no PDF** (not in AC; defer).
+- Tests: `tests/test_services/` + `tests/test_api/`.
+
+### Step 5 — Frontend quality dashboard (AC5 frontend) — IN SCOPE (user chose lean dashboard)
+`lib/services/quality.ts` (typed client for the report + trend endpoints) +
+a dashboard surface reusing the existing `QualityReportCard` with a 0-100 gauge, the
+existing `LineChart` for the trend, an actionable-recommendations list, and gate status.
+Mirror types in `lib/types/`. Component tests under `__tests__/`.
+
+## Deviations from CodeRabbit plan (why)
+- Drop configurable dimension weights / `weights` query param — not in AC, equal weight is
+  current behaviour. (YAGNI)
+- Drop the new `ActionableRecommendation` *model file* + `ISSUE_TO_TRANSFORMATION_MAP`
+  constant — fold a tiny dimension→`TransformationType` map into the service; reuse the
+  canonical enum instead of duplicating the existing `FixSuggestionEngine` mapping.
+- Drop `QualityGate` Beanie model + `QualityGateService` CRUD + presets — soft gates are a
+  stateless evaluator with default thresholds.
+- Drop PDF export from report generation — JSON only (not in AC).
+- Drop base-version quality backfill / new `initial_quality` field — trend's first
+  `quality_before` already captures the base-version quality.
+
+## Test commands
+- Backend: `cd apps/backend && uv run pytest tests/test_processing/test_quality_assessment.py tests/test_services/ tests/test_api/ -k quality -v`
+- Frontend: `cd apps/frontend && npm test` + `npm run type-check`

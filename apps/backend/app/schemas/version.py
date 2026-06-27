@@ -152,3 +152,26 @@ class VersionPinRequest(BaseModel):
     """Request model for pinning/unpinning a version."""
 
     pinned: bool = Field(..., description="Whether to pin or unpin the version")
+
+
+class QualityTrendPoint(BaseModel):
+    """One transformation step in a dataset's quality trend (issue #102, AC3)."""
+
+    version_number: int | None = Field(None, description="Resulting version number")
+    created_at: datetime
+    score_before: float | None = Field(None, description="0-100 quality score before")
+    score_after: float | None = Field(None, description="0-100 quality score after")
+    improvement: float | None = Field(None, description="score_after - score_before")
+    transformation: str = Field(..., description="Transformation(s) applied")
+
+
+class QualityTrendResponse(BaseModel):
+    """Quality trend across a dataset's versions (issue #102, AC3)."""
+
+    dataset_id: str
+    points: list[QualityTrendPoint]
+    overall_improvement: float | None = Field(
+        None, description="score_after of last point minus score_before of first point"
+    )
+    best_score: float | None = None
+    worst_score: float | None = None
