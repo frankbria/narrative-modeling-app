@@ -47,10 +47,14 @@ async def _insert_model(
     problem_type: str = "binary_classification",
     evaluation_data_path=None,
     algorithm: str = "Random Forest",
+    is_calibrated: bool = False,
+    calibration_score_is_insample: bool = True,
 ):
     from app.models.ml_model import MLModel
 
     model = MLModel(
+        is_calibrated=is_calibrated,
+        calibration_score_is_insample=calibration_score_is_insample,
         user_id=user_id,
         dataset_id=dataset_id,
         model_id=model_id,
@@ -188,6 +192,60 @@ class TestGetEvaluationEndpoint:
         assert body["ai_explanation"]["generated_by"] == "fallback"
         assert body["ai_explanation"]["overall_assessment"]
         assert body["feature_importance"] == {"f1": 0.6, "f2": 0.4}
+        # Honest split (the default) -> no calibration-set caveat (issue #201).
+        assert body["evaluation_on_calibration_set"] is False
+        assert not any(
+            "calibration set" in c for c in body["ai_explanation"]["concerns"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_calibration_set_caveat_surfaced(
+        self, async_authorized_client, monkeypatch
+    ):
+        """A model flagged evaluation_on_calibration_set (issue #201 fallback)
+        surfaces the flag and a report-card concern."""
+        from app.services.evaluation_explanation_service import (
+            evaluation_explanation_service,
+        )
+
+        monkeypatch.setattr(evaluation_explanation_service, "client", None)
+
+        # Small-data fallback: calibrated in-sample -> derived caveat True.
+        spec = {
+            "model_id": "m_cal",
+            "evaluation_data_path": "s3://test-bucket/models/u/m/evaluation_data.json",
+            "is_calibrated": True,
+            "calibration_score_is_insample": True,
+        }
+        async with _models(spec):
+            with _patch_artifacts(CLASSIFICATION_PAYLOAD):
+                resp = await async_authorized_client.get("/api/v1/ml/m_cal/evaluation")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["evaluation_on_calibration_set"] is True
+        assert any(
+            "calibration set" in c for c in body["ai_explanation"]["concerns"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_legacy_calibrated_model_flagged_optimistic(
+        self, async_authorized_client
+    ):
+        """A pre-#201 calibrated model (stored flag absent -> default) is derived
+        as optimistic from is_calibrated + calibration_score_is_insample, not
+        silently shown as honest (claude-review)."""
+        # Simulates a legacy doc: calibrated, no honest split -> in-sample.
+        async with _models(
+            {"model_id": "m_legacy", "is_calibrated": True}
+        ):
+            resp = await async_authorized_client.get(
+                "/api/v1/ml/m_legacy/evaluation"
+            )
+
+        assert resp.status_code == 200
+        # Partial (no artifacts) still derives the caveat correctly.
+        assert resp.json()["evaluation_on_calibration_set"] is True
 
     @pytest.mark.asyncio
     async def test_full_regression_evaluation(

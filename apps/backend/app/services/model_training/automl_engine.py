@@ -50,6 +50,12 @@ from .problem_detector import ProblemDetector, ProblemType
 
 logger = logging.getLogger(__name__)
 
+# Fraction of the TRAINING set reserved as a disjoint calibration slice so the
+# test split stays a clean holdout for honest #79 metrics + an out-of-sample
+# calibration score (issue #201). Classification only; skipped when the data is
+# too small to carve the slice without degenerate (single-class/tiny) splits.
+CALIBRATION_HOLDOUT_FRACTION = 0.2
+
 # Stateless — one shared instance avoids reconstructing it during training (#83).
 _confidence_service = ConfidenceService()
 # SHAP interpretability (issue #80). Stateless; shap is imported lazily inside it.
@@ -123,6 +129,16 @@ class AutoMLResult:
     is_calibrated: bool = False
     calibration_method: str | None = None
     calibration_score: float | None = None
+    # Honesty of the calibration/eval split (issue #201). With the default
+    # three-way classification split, the calibrator is fit on a slice carved
+    # from the TRAINING set and scored on the clean held-out test set, so
+    # ``calibration_score_is_insample`` is False and the #79 dashboard arrays
+    # (captured on that same clean test set) are honest
+    # (``evaluation_on_calibration_set`` False). When the data is too small to
+    # carve a calibration slice we fall back to the old behaviour (calibrate on
+    # the test split) and both flags become True to surface the optimistic bias.
+    calibration_score_is_insample: bool = True
+    evaluation_on_calibration_set: bool = False
     residual_std: float | None = None
     # SHAP global interpretability summary (issue #80). ``shap_global`` is a
     # ``GlobalShapResult`` for the best model, computed on the held-out set from
@@ -256,7 +272,9 @@ class AutoMLEngine:
             ProblemType.MULTICLASS_CLASSIFICATION,
         ]
 
-        # Split data
+        # Split data. ``X_test``/``y_test`` is the clean held-out set used for
+        # candidate test scores, the #79 dashboard arrays, and the out-of-sample
+        # calibration score (issue #201) — nothing is ever fit on it.
         X_train, X_test, y_train, y_test = train_test_split(
             X,
             y,
@@ -265,25 +283,55 @@ class AutoMLEngine:
             stratify=y if is_classification else None,
         )
 
+        # Honest calibration split (issue #201): for classification, carve a
+        # disjoint calibration slice from the TRAINING set so the calibrator is
+        # never fit on the test set. Base models train on ``X_fit`` only;
+        # ``X_cal`` calibrates the best model later. When the data is too small
+        # to carve cleanly we fall back to fitting on the full training set and
+        # calibrating on the test split (the pre-#201 in-sample behaviour).
+        X_fit, y_fit = X_train, y_train
+        X_cal: pd.DataFrame | None = None
+        y_cal: pd.Series | None = None
+        if is_classification and self._can_carve_calibration(y_train):
+            X_fit, X_cal, y_fit, y_cal = train_test_split(
+                X_train,
+                y_train,
+                test_size=CALIBRATION_HOLDOUT_FRACTION,
+                random_state=self.random_state,
+                stratify=y_train,
+            )
+
         # Detect class imbalance and enable basic handling (class weighting).
         # This is the lightweight "basic class-imbalance handling" of the beta
         # scope: no resampling (SMOTE etc.), just class_weight="balanced" on the
         # estimators that support it.
         class_balance_ratio, class_weight = self._assess_class_balance(
-            y_train, is_classification
+            y_fit, is_classification
         )
 
-        # Feature engineering
+        # Feature engineering — fit on the base-model training data only.
         if feature_config:
             self.feature_engineer.config = feature_config
 
         feature_result = await self.feature_engineer.fit_transform(
-            X_train, y_train, problem_type.value
+            X_fit, y_fit, problem_type.value
         )
         X_train_transformed = feature_result.X_transformed
 
-        # Transform test data
+        # Transform the clean test set and (when carved) the calibration slice.
+        # The calibration-slice transform is best-effort: if X_cal trips the
+        # feature engineer (e.g. a categorical value unseen in X_fit), drop the
+        # carve and let calibration fall back to the test set rather than failing
+        # the whole run (issue #201). Base models stay trained on X_fit.
         X_test_transformed = await self.feature_engineer.transform(X_test)
+        X_cal_transformed = None
+        if X_cal is not None:
+            try:
+                X_cal_transformed = await self.feature_engineer.transform(X_cal)
+            except Exception as exc:  # noqa: BLE001 - never fail training on the carve
+                logger.warning(
+                    "Calibration-slice transform failed, skipping carve: %s", exc
+                )
 
         # Get candidate models
         candidates = self._get_candidate_models(
@@ -304,7 +352,7 @@ class AutoMLEngine:
             tuning_results = await self._tune_candidates(
                 selected_candidates,
                 X_train_transformed,
-                y_train,
+                y_fit,
                 problem_type,
                 is_classification,
                 event_callback,
@@ -365,7 +413,7 @@ class AutoMLEngine:
                 # feature depends on.
                 model_start = datetime.now(UTC)
                 await asyncio.to_thread(
-                    candidate.estimator.fit, X_train_transformed, y_train
+                    candidate.estimator.fit, X_train_transformed, y_fit
                 )
                 candidate.training_time = (
                     datetime.now(UTC) - model_start
@@ -376,7 +424,7 @@ class AutoMLEngine:
                     cross_val_score,
                     candidate.estimator,
                     X_train_transformed,
-                    y_train,
+                    y_fit,
                     cv=self.cv_folds,
                     scoring=self._get_scoring_metric(problem_type),
                 )
@@ -513,19 +561,34 @@ class AutoMLEngine:
         # Confidence calibration for issue #83 — classification only. The best
         # estimator is swapped in place for its calibrated wrapper so the
         # *deployed* model yields calibrated probabilities. Best-effort: a
-        # failure leaves the raw model untouched.
+        # failure leaves the raw model untouched. Issue #201: when a calibration
+        # slice was carved (``X_cal_transformed`` present), calibrate on it and
+        # score out-of-sample on the clean test set; otherwise calibrate on the
+        # test set and report the score as in-sample.
         (
             is_calibrated,
             calibration_method,
             calibration_score,
+            calibration_score_is_insample,
         ) = await self._calibrate_best_model(
-            best_model, X_test_transformed, y_test, is_classification
+            best_model,
+            X_cal_transformed,
+            y_cal,
+            X_test_transformed,
+            y_test,
+            is_classification,
         )
 
-        # Capture the (now possibly calibrated) best model's held-out
-        # evaluation artifacts (issue #79) AFTER calibration so the dashboard
-        # metrics describe exactly the model that gets deployed. Calibration is
-        # fit on this same held-out split (a documented beta limitation).
+        # The #79 dashboard arrays are honest unless we fell back to fitting the
+        # calibrator on the test set (then they describe the calibrator's own
+        # fit data and are optimistic — issue #201).
+        evaluation_on_calibration_set = is_calibrated and calibration_score_is_insample
+
+        # Capture the (now possibly calibrated) best model's held-out evaluation
+        # artifacts (issue #79) AFTER calibration so the dashboard metrics
+        # describe exactly the model that gets deployed. With the #201 honest
+        # split this test set was seen by neither the base model nor the
+        # calibrator, so the metrics are unbiased.
         y_pred_best, y_proba_best, class_labels = await self._capture_evaluation_arrays(
             best_model.estimator, X_test_transformed, is_classification
         )
@@ -591,6 +654,8 @@ class AutoMLEngine:
             is_calibrated=is_calibrated,
             calibration_method=calibration_method,
             calibration_score=calibration_score,
+            calibration_score_is_insample=calibration_score_is_insample,
+            evaluation_on_calibration_set=evaluation_on_calibration_set,
             residual_std=residual_std,
             shap_global=shap_global,
             shap_explainer_type=shap_global.explainer_type if shap_global else None,
@@ -700,25 +765,77 @@ class AutoMLEngine:
                     y_proba = None
         return np.asarray(y_pred), y_proba, class_labels
 
+    def _can_carve_calibration(self, y_train: pd.Series) -> bool:
+        """Whether a disjoint calibration slice can be carved from the train set.
+
+        Stratified ``train_test_split`` needs >=2 members of every class on both
+        sides, so we require the calibration slice to hold at least 2 rows per
+        class. The carve must also leave enough of every class in the fit set
+        for ``cv_folds``-fold cross-validation — otherwise a fold can end up
+        with no members of a class and ``cross_val_score`` returns NaN (codex
+        review). Too-small/too-imbalanced data returns False and we keep the
+        pre-#201 single-split behaviour (issue #201).
+        """
+        counts = y_train.value_counts()
+        n_classes = len(counts)
+        n_cal = int(len(y_train) * CALIBRATION_HOLDOUT_FRACTION)
+        # Conservative lower bound on each class's count remaining in the fit set
+        # after a stratified carve (the split keeps at least this many).
+        min_fit_per_class = int(counts.min() * (1 - CALIBRATION_HOLDOUT_FRACTION))
+        return (
+            n_classes >= 2
+            and counts.min() >= 2
+            and n_cal >= 2 * n_classes
+            and min_fit_per_class >= self.cv_folds
+            and (len(y_train) - n_cal) >= n_classes
+        )
+
     async def _calibrate_best_model(
         self,
         best_model: ModelCandidate,
+        X_cal_transformed: pd.DataFrame | None,
+        y_cal: Any,
         X_test_transformed: pd.DataFrame,
         y_test: Any,
         is_classification: bool,
-    ) -> tuple[bool, str | None, float | None]:
-        """Calibrate the best classifier and swap it in place (issue #83).
+    ) -> tuple[bool, str | None, float | None, bool]:
+        """Calibrate the best classifier and swap it in place (issue #83/#201).
 
-        Wraps ``best_model.estimator`` in a calibrated model fit on the
-        held-out split so the persisted model yields calibrated probabilities,
-        then mutates ``best_model.estimator`` to the wrapper. Returns
-        ``(is_calibrated, calibration_method, calibration_score)``. No-op for
-        regression or estimators without ``predict_proba``; best-effort — any
-        failure leaves the raw model untouched.
+        Wraps ``best_model.estimator`` in a calibrated model and mutates
+        ``best_model.estimator`` to the wrapper so the persisted model yields
+        calibrated probabilities. Returns ``(is_calibrated,
+        calibration_method, calibration_score, score_is_insample)``.
+
+        When a disjoint calibration slice is available (``X_cal_transformed``),
+        the calibrator is fit on it and scored on the clean test set —
+        ``score_is_insample`` is False (issue #201). Otherwise it falls back to
+        fitting on the test set (pre-#201 behaviour) and the score is in-sample.
+        No-op for regression or estimators without ``predict_proba``;
+        best-effort — any failure leaves the raw model untouched.
         """
         if not is_classification or not hasattr(best_model.estimator, "predict_proba"):
-            return False, None, None
+            return False, None, None, True
 
+        # Honest path: fit on the carved slice, score out-of-sample on the clean
+        # test set. The carved slice can still be degenerate for very imbalanced
+        # data (a stratified 20% split of e.g. 18/2 can land all-majority in the
+        # slice), so a None result here falls through to the test-set fallback
+        # below rather than dropping calibration the deployed model had pre-#201.
+        if X_cal_transformed is not None:
+            calibrated, method, score = await asyncio.to_thread(
+                _confidence_service.calibrate_classifier,
+                best_model.estimator,
+                X_cal_transformed,
+                y_cal,
+                X_score=X_test_transformed,
+                y_score=y_test,
+            )
+            if calibrated is not None:
+                best_model.estimator = calibrated
+                return True, method, score, False
+
+        # Fallback (no slice carved, or the carved slice was degenerate): fit +
+        # score on the test split. The score is in-sample (optimistic).
         calibrated, method, score = await asyncio.to_thread(
             _confidence_service.calibrate_classifier,
             best_model.estimator,
@@ -726,10 +843,10 @@ class AutoMLEngine:
             y_test,
         )
         if calibrated is None:
-            return False, None, None
+            return False, None, None, True
 
         best_model.estimator = calibrated
-        return True, method, score
+        return True, method, score, True
 
     async def _compute_global_shap(
         self,

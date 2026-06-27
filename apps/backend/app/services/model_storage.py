@@ -270,6 +270,13 @@ class ModelStorageService:
             is_calibrated=model_metadata.get("is_calibrated", False),
             calibration_method=model_metadata.get("calibration_method"),
             calibration_score=model_metadata.get("calibration_score"),
+            # Honesty flags (issue #201).
+            calibration_score_is_insample=model_metadata.get(
+                "calibration_score_is_insample", True
+            ),
+            evaluation_on_calibration_set=model_metadata.get(
+                "evaluation_on_calibration_set", False
+            ),
             residual_std=model_metadata.get("residual_std"),
             # Hyperparameter tuning (issue #77).
             tuning_strategy=model_metadata.get("tuning_strategy"),

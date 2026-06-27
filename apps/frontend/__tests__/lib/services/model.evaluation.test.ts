@@ -14,6 +14,7 @@ const evaluationFixture: ModelEvaluationResponse = {
   algorithm: 'random_forest',
   problem_type: 'binary_classification',
   partial: false,
+  evaluation_on_calibration_set: false,
   metrics: {
     accuracy: 0.91,
     precision_macro: 0.9,

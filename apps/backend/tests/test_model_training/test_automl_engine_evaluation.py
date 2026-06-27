@@ -185,6 +185,131 @@ class TestEvaluationArtifactCapture:
         assert best_row["test_score"] == pytest.approx(expected_score)
 
 
+class TestHonestCalibrationSplit:
+    """Calibration is fit on a slice carved from train, not the test set (#201).
+
+    With the honest split the test set is seen by neither the base model nor the
+    calibrator, so the #79 dashboard arrays are unbiased and the calibration
+    score is out-of-sample.
+    """
+
+    def test_can_carve_calibration_true_for_ample_data(self):
+        y = pd.Series(["yes"] * 60 + ["no"] * 40)
+        assert _engine(cv_folds=3)._can_carve_calibration(y) is True
+
+    def test_can_carve_calibration_false_for_tiny_data(self):
+        y = pd.Series(["yes", "no", "yes", "no"])  # n_cal = int(4*0.2) = 0
+        assert _engine(cv_folds=3)._can_carve_calibration(y) is False
+
+    def test_can_carve_calibration_respects_cv_folds(self):
+        """Carving must leave each class with >= cv_folds members in the fit set,
+        else cross_val_score returns NaN (codex review)."""
+        # Minority class = 5: a 20% carve leaves ~4 < 5 folds -> must not carve.
+        y = pd.Series(["yes"] * 95 + ["no"] * 5)
+        assert _engine(cv_folds=5)._can_carve_calibration(y) is False
+        # Same data with fewer folds is fine.
+        assert _engine(cv_folds=3)._can_carve_calibration(y) is True
+
+    def test_can_carve_calibration_cv_folds_boundary(self):
+        """Lock the exact cv_folds boundary: int(min*0.8) >= cv_folds."""
+        eng = _engine(cv_folds=5)
+        # min=6 -> int(4.8)=4 < 5 -> no carve.
+        assert eng._can_carve_calibration(pd.Series(["a"] * 94 + ["b"] * 6)) is False
+        # min=7 -> int(5.6)=5 >= 5 -> carve.
+        assert eng._can_carve_calibration(pd.Series(["a"] * 93 + ["b"] * 7)) is True
+
+    @pytest.mark.asyncio
+    async def test_calibration_slice_transform_failure_falls_back(self, binary_df):
+        """If transforming the carved slice raises (e.g. unseen categorical), the
+        engine drops the carve and still completes via test-set calibration
+        rather than failing the run (claude-review)."""
+        engine = _engine()
+
+        real_transform = engine.feature_engineer.transform
+        calls = {"n": 0}
+
+        async def flaky_transform(X):
+            # 1st transform = X_test (clean); 2nd = X_cal (carved) -> raise.
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise ValueError("unseen category in calibration slice")
+            return await real_transform(X)
+
+        with patch.object(
+            engine.feature_engineer, "transform", side_effect=flaky_transform
+        ):
+            result = await _run(
+                engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+            )
+
+        # Training completed; calibration preserved via the test-set fallback and
+        # flagged in-sample because the carve was dropped.
+        assert result.is_calibrated is True
+        assert result.calibration_score_is_insample is True
+        assert result.evaluation_on_calibration_set is True
+
+    @pytest.mark.asyncio
+    async def test_honest_split_marks_score_out_of_sample(self, binary_df):
+        engine = _engine()
+        result = await _run(
+            engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+        )
+
+        assert result.is_calibrated is True
+        # Carved a calibration slice -> score is out-of-sample, dashboard honest.
+        assert result.calibration_score_is_insample is False
+        assert result.evaluation_on_calibration_set is False
+
+    @pytest.mark.asyncio
+    async def test_fallback_marks_score_in_sample(self, binary_df):
+        """When no calibration slice can be carved, the engine falls back to
+        calibrating on the test set and flags the optimistic bias."""
+        engine = _engine()
+        with patch.object(
+            AutoMLEngine, "_can_carve_calibration", return_value=False
+        ):
+            result = await _run(
+                engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+            )
+
+        assert result.is_calibrated is True
+        assert result.calibration_score_is_insample is True
+        assert result.evaluation_on_calibration_set is True
+
+    @pytest.mark.asyncio
+    async def test_degenerate_carved_slice_falls_back_to_test_calibration(
+        self, binary_df
+    ):
+        """If the carved calibration slice is degenerate (calibrate returns
+        None), the engine must NOT drop calibration — it falls back to the
+        test-set path and flags the score in-sample (codex review)."""
+        from app.services.model_training import automl_engine as ae
+
+        real_calibrate = ae._confidence_service.calibrate_classifier
+        calls: list[bool] = []
+
+        def fake_calibrate(estimator, X_cal, y_cal, method=None, X_score=None, y_score=None):
+            # First call = the carved-slice (out-of-sample) attempt -> degenerate.
+            if X_score is not None:
+                calls.append(True)
+                return None, None, None
+            # Second call = the test-set fallback -> succeeds.
+            return real_calibrate(estimator, X_cal, y_cal, method)
+
+        engine = _engine()
+        with patch.object(
+            ae._confidence_service, "calibrate_classifier", side_effect=fake_calibrate
+        ):
+            result = await _run(
+                engine, binary_df, "target", ProblemType.BINARY_CLASSIFICATION
+            )
+
+        assert calls == [True]  # the carved attempt was made and failed
+        assert result.is_calibrated is True  # calibration preserved via fallback
+        assert result.calibration_score_is_insample is True
+        assert result.evaluation_on_calibration_set is True
+
+
 class TestGlobalShapCapture:
     """AutoMLResult carries the best model's global SHAP summary (issue #80)."""
 

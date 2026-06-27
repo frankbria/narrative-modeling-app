@@ -101,6 +101,29 @@ class TestCalibrateClassifier:
         result = service.calibrate_classifier(model, X_cal, y_single)
         assert result == (None, None, None)
 
+    def test_out_of_sample_score_uses_score_set(self, service):
+        """When X_score/y_score are passed, the brier is measured on them, not
+        on the calibration-fit data (issue #201 — out-of-sample score)."""
+        X, y = make_classification(
+            n_samples=600, n_features=8, n_informative=5, random_state=7
+        )
+        X_fit, X_rest, y_fit, y_rest = train_test_split(
+            X, y, test_size=0.4, random_state=7
+        )
+        X_cal, X_score, y_cal, y_score = train_test_split(
+            X_rest, y_rest, test_size=0.5, random_state=7
+        )
+        model = RandomForestClassifier(n_estimators=25, random_state=7)
+        model.fit(X_fit, y_fit)
+
+        _, _, in_sample = service.calibrate_classifier(model, X_cal, y_cal)
+        _, _, out_sample = service.calibrate_classifier(
+            model, X_cal, y_cal, X_score=X_score, y_score=y_score
+        )
+        assert in_sample is not None and out_sample is not None
+        # Different sets -> different scores (out-of-sample isn't the fit-set score).
+        assert out_sample != pytest.approx(in_sample)
+
 
 class TestRegressionInterval:
     def test_symmetric_interval(self, service):
