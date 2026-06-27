@@ -282,9 +282,13 @@ async def test_predict_chunk_falls_back_to_sequential_on_batch_failure():
     class _BatchOnlyFails:
         """Raises on multi-row calls; only single-row inference succeeds."""
 
+        def __init__(self) -> None:
+            self.single_row_predicts = 0
+
         def predict(self, X):
             if len(X) != 1:
                 raise ValueError("batch predict not supported")
+            self.single_row_predicts += 1
             return np.array([1])
 
         def predict_proba(self, X):
@@ -292,14 +296,36 @@ async def test_predict_chunk_falls_back_to_sequential_on_batch_failure():
                 raise ValueError("batch predict not supported")
             return np.array([[0.3, 0.7]])
 
+    clf = _BatchOnlyFails()
     chunk = pd.DataFrame([{"age": 30}, {"age": 41}])
     results = await svc._predict_chunk(
-        chunk, _BatchOnlyFails(), _FakeFeatureEngineer(), _model(), config
+        chunk, clf, _FakeFeatureEngineer(), _model(), config
     )
 
     assert len(results) == 2
     assert all(r.get("error") is None for r in results)
     assert all(r["prediction"] == 1 for r in results)
+    # Confirms the sequential path actually ran (one predict per row), not that
+    # the vectorized path somehow succeeded on a 2-row chunk.
+    assert clf.single_row_predicts == 2
+
+
+@pytest.mark.asyncio
+async def test_vectorized_and_sequential_paths_produce_identical_results():
+    """The vectorized and sequential paths assemble identical per-row output for
+    the same input — guards against row-ordering / index-alignment bugs (#202)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="model_123", include_probabilities=True)
+    chunk = pd.DataFrame([{"age": 30}, {"age": 41}, {"age": 52}])
+
+    vectorized = await svc._predict_chunk_vectorized(
+        chunk, _FakeClassifier(), _FakeFeatureEngineer(), _model(), config
+    )
+    sequential = await svc._predict_chunk_sequential(
+        chunk, _FakeClassifier(), _FakeFeatureEngineer(), _model(), config
+    )
+
+    assert vectorized == sequential
 
 
 def test_summary_counts_low_confidence():

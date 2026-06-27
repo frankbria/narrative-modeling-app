@@ -419,9 +419,12 @@ class BatchPredictionService:
                 chunk_df, trained_model, feature_engineer, model, config
             )
         except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
-            logger.info(
+            # warning + traceback: a systematic failure (e.g. a model/feature
+            # contract change) would silently fall back on every chunk otherwise.
+            logger.warning(
                 "Vectorised chunk inference failed (%s); falling back to row-by-row",
                 exc,
+                exc_info=True,
             )
             return await self._predict_chunk_sequential(
                 chunk_df, trained_model, feature_engineer, model, config
@@ -456,8 +459,11 @@ class BatchPredictionService:
         if is_classification and hasattr(trained_model, "predict_proba"):
             proba_matrix = trained_model.predict_proba(X_transformed)
 
-        # Engineered feature rows for the batched explainer (issue #80).
-        X_array = np.asarray(X_transformed)
+        # Engineered feature rows for the batched explainer (issue #80) — only
+        # materialised when explanations are requested, so we never densify a
+        # (possibly sparse) feature matrix for the common no-explanation path.
+        want_explanations = getattr(config, "include_explanations", False)
+        X_array = np.asarray(X_transformed) if want_explanations else None
 
         predictions: list[dict[str, Any]] = []
         to_explain: list[dict[str, Any]] = []
@@ -502,7 +508,7 @@ class BatchPredictionService:
             # Per-prediction explanation (opt-in — issue #83/#80). Collected here
             # and computed in one batched pass after the loop so the explainer is
             # built once per chunk, not once per row.
-            if getattr(config, "include_explanations", False):
+            if want_explanations and X_array is not None:
                 to_explain.append(
                     {
                         "result": result,
