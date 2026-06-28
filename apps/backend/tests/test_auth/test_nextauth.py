@@ -76,6 +76,18 @@ async def test_malformed_token_rejected(mock_env_vars):
 
 
 @pytest.mark.asyncio
+async def test_legacy_nextauth_prefix_token_rejected(mock_env_vars):
+    """The old placeholder credential `nextauth-<user_id>` is not a JWT and
+    must be rejected with 401 under SKIP_AUTH=false (issue #251 AC: it can never
+    be used to impersonate a user)."""
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer("nextauth-other_user"))
+
+    assert exc_info.value.status_code == 401
+    assert "Invalid token" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_wrong_signature_rejected(mock_env_vars):
     """A JWT signed with a different secret is rejected with 401."""
     token = make_token({"sub": SAMPLE_USER_ID}, secret="some-other-secret")
