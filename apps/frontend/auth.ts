@@ -91,7 +91,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token.id) {
         try {
           session.apiToken = mintApiToken(token.id as string)
-        } catch {
+        } catch (err) {
+          // Don't crash session reads, but surface the cause — otherwise a
+          // misconfigured secret silently 401s every API call with no signal.
+          console.error('[auth] mintApiToken failed:', err)
           session.apiToken = undefined
         }
       }

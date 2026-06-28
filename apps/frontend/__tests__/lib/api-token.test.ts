@@ -25,6 +25,11 @@ describe('mintApiToken', () => {
   beforeEach(() => {
     process.env.NEXTAUTH_SECRET = SECRET;
   });
+  // Restore after every test so the delete-secret case can't leak into a later
+  // test if Jest reorders execution.
+  afterEach(() => {
+    process.env.NEXTAUTH_SECRET = SECRET;
+  });
   afterAll(() => {
     process.env.NEXTAUTH_SECRET = orig;
   });
