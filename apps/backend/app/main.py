@@ -55,7 +55,6 @@ from app.api.routes import (
     store,
     visualizations,
     column_stats,
-    s3,
     data_processing,
     ai_analysis,
     ai_orchestration,
@@ -193,11 +192,6 @@ app.include_router(
     column_stats.router,
     prefix=f"{settings.API_V1_STR}/column_stats",
     tags=["column_stats"],
-)
-app.include_router(
-    s3.router,
-    prefix=f"{settings.API_V1_STR}/s3",
-    tags=["s3"],
 )
 app.include_router(
     data_processing.router,

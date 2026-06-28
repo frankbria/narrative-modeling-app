@@ -227,8 +227,9 @@ class TestMainStartupRespectsRealEnvironment:
     def _boot_app_main(
         self, tmp_path, dotenv_text: str, real_env: dict
     ) -> subprocess.CompletedProcess:
-        # app/ plus the top-level packages it imports (utils.aws in routes/s3.py)
-        for package in ("app", "utils"):
+        # app/ is self-contained on the startup path (the former top-level
+        # utils package was removed with the s3 route in #252).
+        for package in ("app",):
             shutil.copytree(
                 BACKEND_DIR / package,
                 tmp_path / package,

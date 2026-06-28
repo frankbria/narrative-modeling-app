@@ -72,7 +72,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Run as a non-root user (issue #176), mirroring the frontend image. Debian slim
 # ships groupadd/useradd (not alpine's addgroup/adduser). uid/gid 1001 matches the
-# frontend's convention. The copied venv/app/utils are chown'd to this user below.
+# frontend's convention. The copied venv/app are chown'd to this user below.
 RUN groupadd --system --gid 1001 appuser \
     && useradd --system --uid 1001 --gid appuser --home-dir /app appuser \
     && mkdir -p "$MPLCONFIGDIR" \
@@ -82,16 +82,14 @@ WORKDIR /app
 
 # Copy only what the server needs at runtime, leaving build/test artifacts
 # (tests/, docs/, tasks/, sample_datasets/, pyproject.toml, uv.lock, …) out of
-# the image: the virtualenv, the `app` package, and the top-level `utils`
-# namespace package (imported by app/api/routes/s3.py). gunicorn runs from
-# WORKDIR /app, so /app is on sys.path and both packages resolve. No compiler
+# the image: the virtualenv and the `app` package. gunicorn runs from
+# WORKDIR /app, so /app is on sys.path and the package resolves. No compiler
 # toolchain is carried forward. --chown hands ownership to the non-root appuser.
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --from=builder --chown=appuser:appuser /app/app /app/app
-COPY --from=builder --chown=appuser:appuser /app/utils /app/utils
 
 # Guard the targeted COPY above: fail the build if the runtime image is missing
-# a top-level package the app imports (e.g. a future sibling of app/ + utils/).
+# a top-level package the app imports (e.g. a future sibling of app/).
 # Import only — no DB/lifespan side effects fire here. Runs as root pre-switch.
 RUN python -c "import app.main"
 
