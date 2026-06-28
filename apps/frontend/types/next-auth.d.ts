@@ -6,5 +6,7 @@ declare module "next-auth" {
       id: string
     } & DefaultSession["user"]
     accessToken?: string
+    /** Backend-verifiable HS256 JWT (sub=userId) for API Authorization. */
+    apiToken?: string
   }
 }

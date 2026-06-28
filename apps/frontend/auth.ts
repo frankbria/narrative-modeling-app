@@ -6,6 +6,7 @@ import GoogleProvider from "next-auth/providers/google"
 import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
 import client from "./lib/db"
+import { mintApiToken } from "./lib/api-token"
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
@@ -82,8 +83,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session?.user) {
         session.user.id = token.id as string
       }
-      // Add the JWT token to the session so we can pass it to the backend
+      // Keep the OAuth provider access token (legacy field).
       session.accessToken = token.accessToken as string | undefined
+      // Mint a backend-verifiable HS256 JWT (sub=userId) so API calls
+      // authenticate under SKIP_AUTH=false. Best-effort: a missing secret
+      // must not crash session reads (the backend then returns 401).
+      if (token.id) {
+        try {
+          session.apiToken = mintApiToken(token.id as string)
+        } catch (err) {
+          // Don't crash session reads, but surface the cause — otherwise a
+          // misconfigured secret silently 401s every API call with no signal.
+          console.error('[auth] mintApiToken failed:', err)
+          session.apiToken = undefined
+        }
+      }
       return session
     },
     async signIn() {
