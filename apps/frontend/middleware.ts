@@ -31,26 +31,35 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  // Authenticated page request — apply existing CORS handling.
-  const origin = request.headers.get('origin') || '*';
+  // Authenticated page request — apply CORS handling. Never reflect an arbitrary
+  // Origin (that is CSRF-friendly): echo the caller's Origin only when it is on
+  // the configured allowlist, otherwise omit Access-Control-Allow-Origin so the
+  // browser blocks the cross-origin read. Same-origin requests need no ACAO.
+  const allowlist = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const requestOrigin = request.headers.get('origin');
+  const allowedOrigin =
+    requestOrigin && allowlist.includes(requestOrigin) ? requestOrigin : null;
+
+  const corsHeaders: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+    'Access-Control-Max-Age': '86400',
+  };
+  if (allowedOrigin) {
+    corsHeaders['Access-Control-Allow-Origin'] = allowedOrigin;
+  }
 
   if (request.method === 'OPTIONS') {
-    return new NextResponse(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
+    return new NextResponse(null, { status: 204, headers: corsHeaders });
   }
 
   const response = NextResponse.next();
-  response.headers.set('Access-Control-Allow-Origin', origin);
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-  response.headers.set('Access-Control-Max-Age', '86400');
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    response.headers.set(key, value);
+  }
 
   return response;
 }

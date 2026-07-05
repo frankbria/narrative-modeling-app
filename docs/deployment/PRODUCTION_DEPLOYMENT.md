@@ -167,7 +167,9 @@ GITHUB_SECRET=your_github_client_secret
 # ═══════════════════════════════════════
 
 BACKEND_SECRET_KEY=your_backend_secret_key_64_chars
-ALLOWED_ORIGINS=https://your-domain.com
+# Explicit origin(s) — the backend refuses '*' in production-like envs (credentialed
+# wildcard CORS lets any site make authenticated requests). Comma-separated or JSON array.
+BACKEND_CORS_ORIGINS=https://your-domain.com
 ENVIRONMENT=production
 LOG_LEVEL=info
 

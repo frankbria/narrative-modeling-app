@@ -115,7 +115,8 @@ nano .env.staging
 - `NEXTAUTH_SECRET`: Generated secret
 - `NEXT_PUBLIC_API_URL`: https://narrative.yourdomain.com/api/v1 (must include `/api/v1`)
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
-- `ALLOWED_ORIGINS`: https://narrative.yourdomain.com
+- `BACKEND_CORS_ORIGINS`: https://narrative.yourdomain.com (explicit origin(s); the backend refuses `*` in production-like envs)
+- `ALLOWED_ORIGINS`: https://narrative.yourdomain.com (frontend page-middleware CORS allowlist)
 - Google/GitHub OAuth credentials (if using authentication)
 
 **Save and secure the file**:
