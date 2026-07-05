@@ -47,6 +47,10 @@ export default async function middleware(request: NextRequest) {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
     'Access-Control-Max-Age': '86400',
+    // The response's ACAO depends on the request Origin (present, absent, or a
+    // specific allowlisted value). Behind a shared cache/CDN (nginx), Vary:
+    // Origin prevents one origin's cached CORS result being replayed for another.
+    Vary: 'Origin',
   };
   if (allowedOrigin) {
     corsHeaders['Access-Control-Allow-Origin'] = allowedOrigin;

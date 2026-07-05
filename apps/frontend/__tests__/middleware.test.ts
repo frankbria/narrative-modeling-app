@@ -96,6 +96,13 @@ describe('middleware CORS allowlist (#256)', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull()
   })
 
+  it('sets Vary: Origin so caches never replay one origin\'s ACAO for another', async () => {
+    const allowed = await middleware(mockRequest('/dashboard', { origin: 'https://app.example.com' }))
+    expect(allowed.headers.get('Vary')).toBe('Origin')
+    const blocked = await middleware(mockRequest('/dashboard', { origin: 'https://evil.example.com' }))
+    expect(blocked.headers.get('Vary')).toBe('Origin')
+  })
+
   it('honors the allowlist on OPTIONS preflight (allowed vs blocked)', async () => {
     const allowed = await middleware(mockRequest('/dashboard', { method: 'OPTIONS', origin: 'https://staging.example.com' }))
     expect(allowed.status).toBe(204)

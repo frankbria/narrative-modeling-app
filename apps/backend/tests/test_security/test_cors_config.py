@@ -56,6 +56,13 @@ class TestResolveCorsOrigins:
         with pytest.raises(ValueError, match="BACKEND_CORS_ORIGINS"):
             resolve_cors_origins(raw, environment="staging")
 
+    def test_wildcard_mixed_with_explicit_origin_still_refused(self):
+        """One explicit origin does not 'dilute' a wildcard — any '*' refuses."""
+        with pytest.raises(ValueError, match="BACKEND_CORS_ORIGINS"):
+            resolve_cors_origins(
+                '["*","https://app.example.com"]', environment="production"
+            )
+
     def test_explicit_origins_allowed_in_production_like(self):
         assert resolve_cors_origins(
             '["https://app.example.com"]', environment="production"
