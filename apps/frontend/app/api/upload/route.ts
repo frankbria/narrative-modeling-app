@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { parse } from 'csv-parse/sync'
+import { auth } from '@/auth'
+import { rateLimit } from '@/lib/api-guards'
 
 // Add proper Next.js API route configuration
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// Per-user throttle to bound parser-amplification abuse.
+const UPLOAD_RATE_LIMIT = { limit: 30, windowMs: 60_000 }
 
 const PREVIEW_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 const PREVIEW_UPLOAD_MAX_LABEL = `${PREVIEW_UPLOAD_MAX_BYTES / (1024 * 1024)}MB`
@@ -38,6 +43,21 @@ function normalizeCell(value: unknown): CellPrimitive {
 
 export async function POST(request: Request) {
   try {
+    // Require an authenticated session before buffering/parsing any file.
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Throttle per user to bound parser-amplification abuse.
+    const limit = rateLimit(`upload:${session.user.id}`, UPLOAD_RATE_LIMIT)
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } }
+      )
+    }
+
     // Get the form data from the request
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -69,7 +89,8 @@ export async function POST(request: Request) {
       const records = parse(content, {
         columns: true,
         skip_empty_lines: true,
-        trim: true
+        trim: true,
+        to: PREVIEW_ROW_LIMIT // stop after the preview; don't scan the whole file
       })
 
       if (records.length === 0) {
