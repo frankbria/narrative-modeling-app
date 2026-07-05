@@ -43,11 +43,20 @@ services:
       # Redis
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}@redis:6379/0
 
-      # S3 Storage (use real AWS S3 for staging)
+      # S3 Storage (use real AWS S3 for staging).
+      # The backend historically read the bucket under three names (uploads:
+      # AWS_BUCKET_NAME, download allowlist: AWS_S3_BUCKET, versioning: S3_BUCKET)
+      # and the region under two (AWS_REGION vs boto3's AWS_DEFAULT_REGION). #257
+      # made the code resolve any of them, but we set every name from the single
+      # ${S3_BUCKET_NAME} / ${AWS_DEFAULT_REGION} source so nothing can drift.
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      AWS_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:?S3_BUCKET_NAME (staging S3 bucket) must be set in .env.staging}
+      AWS_BUCKET_NAME: ${S3_BUCKET_NAME}
+      AWS_S3_BUCKET: ${S3_BUCKET_NAME}
+      S3_BUCKET: ${S3_BUCKET_NAME}
 
       # OpenAI
       OPENAI_API_KEY: ${OPENAI_API_KEY}

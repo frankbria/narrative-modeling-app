@@ -6,6 +6,7 @@ from urllib.parse import unquote
 
 from botocore.exceptions import ClientError
 
+from app.config import resolve_s3_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
 from app.utils.s3 import create_s3_client, parse_s3_url
 
@@ -44,8 +45,11 @@ def download_file_from_s3(s3_url: str) -> str:
                     invalid path structure, or file too large
     """
     try:
-        # SECURITY: Get allowed bucket from environment
-        ALLOWED_BUCKET = os.getenv("AWS_S3_BUCKET")
+        # SECURITY: Get allowed bucket from environment. Prefer the explicit
+        # AWS_S3_BUCKET allowlist var, but fall back to the app's canonical bucket
+        # (any historical name) so a deploy that sets only AWS_BUCKET_NAME still
+        # works (#257). Fail closed (raise) when no bucket is configured at all.
+        ALLOWED_BUCKET = os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
         if not ALLOWED_BUCKET:
             raise ValueError("AWS_S3_BUCKET environment variable not set")
 
