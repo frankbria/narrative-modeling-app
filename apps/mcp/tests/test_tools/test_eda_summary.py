@@ -1,3 +1,5 @@
+import os
+import tempfile
 import types
 from unittest.mock import AsyncMock, patch
 
@@ -94,6 +96,24 @@ async def test_run_eda_summary_success_for_owner(sample_df):
     }
     # Downloaded the DB-sourced URL, never a caller-supplied one.
     mock_dl.assert_called_once_with("s3://app-bucket/data/file.csv")
+
+
+async def test_run_eda_summary_deletes_downloaded_temp_file(sample_df):
+    """The downloaded dataset must not linger on disk (leak + data retention)."""
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    tmp.close()
+    with patch(
+        "mcp.tools.eda_summary.get_user_data_by_id",
+        new=AsyncMock(return_value=_owned(user_id="user-1")),
+    ), patch(
+        "mcp.tools.eda_summary.download_dataset_file", return_value=tmp.name
+    ), patch("pandas.read_csv", return_value=sample_df):
+        result = await run_eda_summary(
+            EdaInput(dataset_id="abc", user_id="user-1")
+        )
+
+    assert result["success"] is True
+    assert not os.path.exists(tmp.name)
 
 
 async def test_run_eda_summary_denied_for_foreign_dataset(sample_df):

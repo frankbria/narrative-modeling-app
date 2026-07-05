@@ -5,6 +5,7 @@ verify ownership before touching S3. Beanie is initialized lazily on first use s
 importing this module never opens a DB connection (keeps unit tests hermetic).
 """
 
+import asyncio
 import logging
 import os
 
@@ -16,15 +17,23 @@ from models.user_data import UserData
 logger = logging.getLogger(__name__)
 
 _initialized = False
+_init_lock = asyncio.Lock()
 
 
 async def _ensure_initialized() -> None:
     global _initialized
     if _initialized:
         return
-    client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
-    await init_beanie(database=client.get_default_database(), document_models=[UserData])
-    _initialized = True
+    # Double-checked under a lock: concurrent first calls must not each build a
+    # Motor client / re-run init_beanie (check-then-act straddles the await).
+    async with _init_lock:
+        if _initialized:
+            return
+        client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+        await init_beanie(
+            database=client.get_default_database(), document_models=[UserData]
+        )
+        _initialized = True
 
 
 async def get_user_data_by_id(dataset_id: str) -> UserData | None:

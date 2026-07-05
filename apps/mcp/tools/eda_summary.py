@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 import logging
+import os
 import pandas as pd
 from typing import Any, Dict
 
@@ -45,6 +46,7 @@ async def run_eda_summary(params: EdaInput) -> dict:
     except PermissionError as e:
         return {"success": False, "message": str(e)}
 
+    local_file_path: str | None = None
     try:
         local_file_path = download_dataset_file(s3_url)
         df = pd.read_csv(local_file_path)
@@ -67,6 +69,14 @@ async def run_eda_summary(params: EdaInput) -> dict:
         # Generic message: never leak S3/parse internals to the caller.
         logger.exception("Failed to run EDA summary tool")
         return {"success": False, "message": "Failed to generate EDA summary"}
+
+    finally:
+        # Never leave the downloaded dataset on disk (leak + data-retention).
+        if local_file_path:
+            try:
+                os.remove(local_file_path)
+            except OSError:
+                pass
 
 
 def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
