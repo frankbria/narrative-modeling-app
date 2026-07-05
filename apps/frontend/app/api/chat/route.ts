@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server'
 import { OpenAI } from 'openai'
+import { auth } from '@/auth'
+import { rateLimit } from '@/lib/api-guards'
 
 // Add proper Next.js API route configuration
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// Per-user throttle for the OpenAI proxy (guards against cost amplification).
+const CHAT_RATE_LIMIT = { limit: 20, windowMs: 60_000 }
 
 // Lazily constructed: the OpenAI SDK throws when apiKey is undefined, which
 // breaks `next build` page-data collection in environments without secrets
@@ -35,6 +40,21 @@ Remember: Your main value is in helping users understand their specific data, no
 
 export async function POST(request: Request) {
   try {
+    // Require an authenticated session — this route is a paid OpenAI proxy.
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Throttle per user to prevent cost-amplification abuse.
+    const limit = rateLimit(`chat:${session.user.id}`, CHAT_RATE_LIMIT)
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) } }
+      )
+    }
+
     const { message, context, messageHistory = [] } = await request.json()
 
     // Construct the messages array with system prompt, context, and history

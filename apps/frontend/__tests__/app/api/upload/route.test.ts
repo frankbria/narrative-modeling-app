@@ -14,6 +14,13 @@
  */
 import ExcelJS from 'exceljs'
 import { POST } from '@/app/api/upload/route'
+import { auth } from '@/auth'
+import { __resetRateLimits } from '@/lib/api-guards'
+
+// Mock the auth module so tests never load NextAuth/MongoDB; default is an
+// authenticated session, overridden per-test for the unauthenticated case.
+jest.mock('@/auth', () => ({ auth: jest.fn() }))
+const mockAuth = auth as jest.MockedFunction<typeof auth>
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -48,6 +55,34 @@ function makeRequestWithFile(file: {
 }
 
 describe('POST /api/upload', () => {
+  beforeEach(() => {
+    __resetRateLimits()
+    // Authenticated by default (id present); the auth suite overrides this.
+    mockAuth.mockResolvedValue({ user: { id: 'test-user' } } as never)
+  })
+
+  describe('authentication & rate limiting', () => {
+    it('returns 401 when there is no session', async () => {
+      mockAuth.mockResolvedValue(null as never)
+      const blob = new Blob(['name\nAlice\n'], { type: 'text/csv' })
+
+      const res = await POST(makeRequest(blob, 'data.csv'))
+      expect(res.status).toBe(401)
+      expect((await res.json()).error).toBe('Unauthorized')
+    })
+
+    it('returns 429 once the per-user limit is exceeded', async () => {
+      const csv = () => new Blob(['name\nAlice\n'], { type: 'text/csv' })
+      // Limit is 30/min; the 31st request in the window is blocked.
+      for (let i = 0; i < 30; i++) {
+        expect((await POST(makeRequest(csv(), 'data.csv'))).status).toBe(200)
+      }
+      const blocked = await POST(makeRequest(csv(), 'data.csv'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('Retry-After')).toBeTruthy()
+    })
+  })
+
   describe('file size guard', () => {
     it('returns 413 before reading an oversized preview file into memory', async () => {
       const file = {
@@ -296,6 +331,21 @@ describe('POST /api/upload', () => {
         ['Bob', '25'],
       ])
       expect(body.fileType).toBe('csv')
+    })
+
+    it('caps the preview at 10 rows without parsing the whole file', async () => {
+      const lines = ['col']
+      for (let i = 0; i < 500; i++) lines.push(`v${i}`)
+      const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv' })
+
+      const res = await POST(makeRequest(blob, 'big.csv'))
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.headers).toEqual(['col'])
+      expect(body.previewData).toHaveLength(10)
+      expect(body.previewData[0]).toEqual(['v0'])
+      expect(body.previewData[9]).toEqual(['v9'])
     })
   })
 
