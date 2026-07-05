@@ -170,6 +170,10 @@ BACKEND_SECRET_KEY=your_backend_secret_key_64_chars
 # Explicit origin(s) — the backend refuses '*' in production-like envs (credentialed
 # wildcard CORS lets any site make authenticated requests). Comma-separated or JSON array.
 BACKEND_CORS_ORIGINS=https://your-domain.com
+# Frontend Next.js page-middleware CORS allowlist (comma-separated). Leave empty for
+# single-origin deployments (same-origin needs no Access-Control-Allow-Origin); set only
+# if a trusted cross-origin site must call the frontend tier.
+ALLOWED_ORIGINS=https://your-domain.com
 ENVIRONMENT=production
 LOG_LEVEL=info
 

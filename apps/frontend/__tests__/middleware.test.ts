@@ -76,8 +76,9 @@ describe('middleware CORS allowlist (#256)', () => {
     process.env.ALLOWED_ORIGINS = 'https://app.example.com, https://staging.example.com'
   })
 
-  afterAll(() => {
-    process.env.ALLOWED_ORIGINS = ORIGINAL
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.ALLOWED_ORIGINS
+    else process.env.ALLOWED_ORIGINS = ORIGINAL
   })
 
   it('echoes an allowlisted Origin', async () => {
