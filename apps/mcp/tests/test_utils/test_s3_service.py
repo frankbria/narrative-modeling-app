@@ -1,6 +1,9 @@
+import os
+import tempfile
+
 import pytest
 
-from mcp.utils.s3_service import parse_and_validate_s3_url
+from mcp.utils.s3_service import download_dataset_file, parse_and_validate_s3_url
 
 BUCKET = "app-bucket"
 
@@ -45,3 +48,37 @@ def test_rejects_unrecognized_url():
 def test_rejects_missing_key():
     with pytest.raises(ValueError):
         parse_and_validate_s3_url("s3://app-bucket/", BUCKET)
+
+
+def test_download_removes_temp_file_on_failed_download(tmp_path, monkeypatch):
+    """A failed S3 download must not leave the just-created temp file behind.
+
+    Real filesystem (temp file created and removed); only the network S3 client
+    is stubbed to force the failure path.
+    """
+    monkeypatch.setenv("AWS_S3_BUCKET", "app-bucket")
+    created: dict[str, str] = {}
+    real_ntf = tempfile.NamedTemporaryFile
+
+    def fake_ntf(*args, **kwargs):
+        kwargs["dir"] = str(tmp_path)
+        f = real_ntf(*args, **kwargs)
+        created["path"] = f.name
+        return f
+
+    monkeypatch.setattr(
+        "mcp.utils.s3_service.tempfile.NamedTemporaryFile", fake_ntf
+    )
+
+    class FailingClient:
+        def download_file(self, *args, **kwargs):
+            raise RuntimeError("AccessDenied")
+
+    monkeypatch.setattr(
+        "mcp.utils.s3_service.boto3.client", lambda *a, **k: FailingClient()
+    )
+
+    with pytest.raises(RuntimeError):
+        download_dataset_file("s3://app-bucket/data/f.csv")
+
+    assert not os.path.exists(created["path"])

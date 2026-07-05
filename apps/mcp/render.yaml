@@ -1,5 +1,3 @@
-startCommand: poetry run python main.py
-buildCommand: | 
-  poetry pip install -e .
-  poetry run pip install -e ./fastmcp
+startCommand: uv run python main.py
+buildCommand: uv sync
 rootDir: apps/mcp

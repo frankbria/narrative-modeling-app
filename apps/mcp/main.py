@@ -2,13 +2,9 @@
 import sys
 import os
 
-sys.path.insert(
-    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "fastmcp", "src"))
-)
-
 try:
     import uvicorn
-    from fastmcp.server.server import FastMCP
+    from mcp.server.fastmcp import FastMCP
 
     from auth import BearerAuthMiddleware, require_api_key
     from tools.eda_summary import EdaInput, run_eda_summary

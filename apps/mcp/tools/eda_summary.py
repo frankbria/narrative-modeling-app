@@ -1,6 +1,7 @@
 # apps/mcp/tools/eda_summary.py
 
 from pydantic import BaseModel, Field
+import asyncio
 import logging
 import os
 import pandas as pd
@@ -46,37 +47,52 @@ async def run_eda_summary(params: EdaInput) -> dict:
     except PermissionError as e:
         return {"success": False, "message": str(e)}
 
-    local_file_path: str | None = None
     try:
-        local_file_path = download_dataset_file(s3_url)
-        df = pd.read_csv(local_file_path)
-
-        result = {
-            "overview": {
-                "shape": list(df.shape),
-                "columns": df.columns.tolist(),
-                "dtypes": df.dtypes.astype(str).to_dict(),
-            },
-            "dataQuality": calculate_data_quality(df),
-            "variableInsights": calculate_variable_insights(df),
-            "transformations": suggest_transformations(df),
-            "groupedInsights": generate_grouped_insights(df),
-        }
-
-        return {"success": True, "data": convert_numpy_types(result)}
+        # Offload the whole blocking pipeline (download → read → analyze →
+        # delete) to a single worker thread. Cleanup lives *inside* the thread:
+        # asyncio.to_thread can't cancel the thread, so a cancelled/timed-out
+        # request would run the coroutine's finally with no path to clean up
+        # while the thread finished the download — leaking the dataset on disk.
+        data = await asyncio.to_thread(_download_and_summarize, s3_url)
+        return {"success": True, "data": data}
 
     except Exception:
         # Generic message: never leak S3/parse internals to the caller.
         logger.exception("Failed to run EDA summary tool")
         return {"success": False, "message": "Failed to generate EDA summary"}
 
+
+def _download_and_summarize(s3_url: str) -> dict:
+    """Download, summarize, and always delete the temp file (blocking).
+
+    Runs in a worker thread; the `finally` guarantees the downloaded dataset is
+    removed regardless of the awaiting request's fate (success or cancellation).
+    """
+    local_file_path = download_dataset_file(s3_url)
+    try:
+        return _build_summary(local_file_path)
     finally:
-        # Never leave the downloaded dataset on disk (leak + data-retention).
-        if local_file_path:
-            try:
-                os.remove(local_file_path)
-            except OSError:
-                pass
+        try:
+            os.remove(local_file_path)
+        except OSError:
+            pass
+
+
+def _build_summary(local_file_path: str) -> dict:
+    """Read the CSV and compute the EDA summary (blocking)."""
+    df = pd.read_csv(local_file_path)
+    result = {
+        "overview": {
+            "shape": list(df.shape),
+            "columns": df.columns.tolist(),
+            "dtypes": df.dtypes.astype(str).to_dict(),
+        },
+        "dataQuality": calculate_data_quality(df),
+        "variableInsights": calculate_variable_insights(df),
+        "transformations": suggest_transformations(df),
+        "groupedInsights": generate_grouped_insights(df),
+    }
+    return convert_numpy_types(result)
 
 
 def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
@@ -120,9 +136,14 @@ def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
         .sort_values(ascending=False)
         .drop_duplicates()
     )
-    correlated = (
-        correlated.loc[(correlated < 1) & (correlated > 0.8)].head(10).to_dict()
-    )
+    # unstack() gives a MultiIndex → tuple keys ("colA", "colB"); JSON (and thus
+    # the FastMCP response) can't serialize tuple keys, so stringify the pair.
+    correlated = {
+        f"{a} & {b}": v
+        for (a, b), v in correlated.loc[
+            (correlated < 1) & (correlated > 0.8)
+        ].head(10).items()
+    }
 
     return convert_numpy_types(
         {

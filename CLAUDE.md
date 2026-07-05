@@ -59,6 +59,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - FastMCP framework
 - Tools for advanced data processing and modeling
 - **Issue #254 (P0.4 security — MCP unauthenticated on 0.0.0.0 + arbitrary S3 download → cross-tenant exfiltration):** the SSE server ran `host="0.0.0.0"` with no auth and `eda_summary` downloaded any caller-supplied `file_uri` with the server's AWS creds and **no owner check** (confused deputy → account-wide, cross-tenant S3 read). Fix (all `apps/mcp/`): `main.py` binds **`127.0.0.1`** by default (`MCP_HOST`), requires **`MCP_API_KEY`** bearer token via a **pure-ASGI** `BearerAuthMiddleware` (`auth.py`; SSE-safe — not `BaseHTTPMiddleware`, which buffers/breaks the stream; `hmac.compare_digest`), and **fails closed** (`require_api_key`) when the key is unset. `EdaInput` now takes **`dataset_id` + `user_id`** (both `min_length=1`); `run_eda_summary` resolves `UserData` (`utils/user_data.py::get_user_data_by_id`, lazy beanie init, returns `None` on bad id), verifies ownership via pure `authorize_dataset(ud, user_id)->s3_url`, and derives the S3 key **server-side** from the stored record — callers never supply a bucket/key/URL. `utils/s3_service.download_dataset_file` pins downloads to the app bucket (`AWS_S3_BUCKET`/`AWS_BUCKET_NAME`) via `parse_and_validate_s3_url` (accepts `s3://b/k` and `https://b.s3[.region].amazonaws.com/k`, rejects other buckets/unrecognized URLs). **Generic errors** everywhere: missing vs. unauthorized vs. S3-failure are indistinguishable (no `AccessDenied`/`NotFound` leak, no enumeration). Restored the empty `UserData` model (lean read-only mirror — user_id/s3_url/file_path; undeclared fields ignored on parse) and added `beanie`/`motor`/`starlette`/`uvicorn` deps the ownership path needs. Tests: `tests/test_auth.py`, `tests/test_utils/test_s3_service.py`, rewritten `tests/test_tools/test_eda_summary.py` (ownership allow/deny, generic errors, `pytest-asyncio` auto mode) — 28 passed. **Gated behind MCP non-startability (separate issue):** vendored FastMCP isn't pip-installed so `import fastmcp` fails at startup (pre-existing, unchanged) — these controls take effect once the server can start; "must be fixed before any MCP deploy." **Follow-up:** the backend `MCPIntegrationService` still POSTs `{schema,statistics,quality_report}` to `/tools/{name}` (a path the SSE server doesn't expose → already 404s/falls back today); wiring it to the new `dataset_id`/`user_id` contract + the MCP/SSE protocol belongs with the startability issue. **Beta trust boundary:** the bearer token is a single shared secret, so MCP trusts the (localhost, authenticated) backend to assert the correct `user_id`; per-user MCP tokens are future hardening.
+- **Issue #255 (P0.5 — MCP server cannot start; single tool incompatible with real datasets):** unblocks #254's controls, which were **gated behind non-startability**. Root cause: `main.py` put the **vendored** `fastmcp/src` on `sys.path` and imported a FastMCP that calls `importlib.metadata.version('fastmcp')` — nothing pip-installs `fastmcp`, so startup raised `PackageNotFoundError` → `sys.exit(1)`. Fix: import `FastMCP` from the installed **`mcp.server.fastmcp`** (the `mcp` SDK, floor bumped `>=1.6.0`→`>=1.25.0`; `.tool()`/`.sse_app()` are drop-in), **delete the vendored `fastmcp/`** tree (143 files) and the `sys.path` hack. AC2 (reuse the backend's `parse_s3_url`) was already satisfied by #254's `utils/s3_service.parse_and_validate_s3_url` — a **superset** (adds bucket allowlisting); kept MCP-local since the backend isn't a dependency of the MCP app. AC3 (temp cleanup in `finally`) also already done in #254. **AC4:** `run_eda_summary` now offloads the blocking S3 download + `pd.read_csv` + pandas analysis via `asyncio.to_thread` (extracted the sync body into `_build_summary`) so the async SSE handler never stalls the loop; temp cleanup stays in the async `finally`. **Deslop:** removed dead `tool_runner.py` (called a nonexistent `eda_summary.run`, imported nowhere) and the empty `tools/model_train.py`/`tools/null_analysis.py` stubs; fixed `render.yaml` (Poetry + `pip install -e ./fastmcp` → `uv sync` / `uv run python main.py`). **Docs (AC6):** rewrote `README.md` to reality (single `eda_summary_tool`, `main.py` entry point — not the fictional `server.py`, actual dir layout, real run command; dropped the ~9 advertised-but-nonexistent tools and the vendored-fastmcp link) and corrected this file's MCP-setup snippet. Tests (AC5): non-mocked real-CSV read + cleanup-on-read-failure in `test_tools/test_eda_summary.py`, subprocess `import main` startup smoke in `tests/test_main_startup.py` (run with cwd=`apps/mcp` so `mcp` resolves to the SDK, not the local app shadowed by pytest's `pythonpath=..`); existing non-mocked URL-parse tests unchanged — 36 passed. **Review fixes (codex/claude-review):** cleanup moved *inside* the worker thread (`_download_and_summarize` owns download+build+`os.remove` in one `finally`) — `asyncio.to_thread` can't cancel the thread, so a split across the `await` boundary would leak the dataset on request cancellation; `download_dataset_file` also removes its own temp file on a failed download; `calculate_variable_insights` **stringifies correlated-pair keys** (`"a & b"`) because `.unstack().to_dict()` yields tuple keys that break the FastMCP JSON response for any dataset with a >0.8-correlated feature pair (verified live); renamed the `utils/__iniy__.py` typo → `__init__.py`. **Beta limitation / follow-up (unchanged from #254):** the backend `MCPIntegrationService` still POSTs `{schema,...}` to `/tools/{name}` (a path the SSE server doesn't expose → 404s/falls back); wiring it to the `dataset_id`/`user_id` SSE contract is a separate integration issue.
 
 ## Testing Commands
 - Backend (full suite): `cd apps/backend && uv run pytest` — requires MongoDB on localhost:27017; optional test Redis (6380) and LocalStack (4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when these are absent)
@@ -95,27 +96,15 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 See `apps/backend/docs/SPRINTS.md` for detailed sprint history.
 
 ## MCP Server Setup
-This project includes a custom MCP server for advanced data processing. To use it with Claude Desktop:
+This project includes a custom MCP server (`apps/mcp/`) exposing the `eda_summary_tool` over an SSE transport. It is intended to be called by the backend on the same host, not wired into Claude Desktop. The entry point is `main.py` (there is no `server.py`); FastMCP comes from the installed `mcp` SDK (`mcp.server.fastmcp`), not a vendored package (issue #255).
 
-```json
-{
-  "mcpServers": {
-    "narrative-modeling": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/path/to/narrative-modeling-app/apps/mcp",
-        "run",
-        "mcp",
-        "dev",
-        "server.py"
-      ]
-    }
-  }
-}
+```bash
+cd apps/mcp
+uv sync
+MCP_API_KEY=<secret> uv run python main.py   # binds 127.0.0.1; fails closed without MCP_API_KEY
 ```
 
-Add this to `~/.config/claude/claude_desktop_config.json` and restart Claude Desktop. Replace `/path/to/narrative-modeling-app` with your actual project path.
+See `apps/mcp/README.md` for the full tool list, required env, and the security model.
 
 Additional recommended MCP servers:
 - **Context7** - For library documentation lookup
