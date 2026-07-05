@@ -74,8 +74,18 @@ def download_dataset_file(s3_url: str) -> str:
         temp_file = tempfile.NamedTemporaryFile(delete=False)
         temp_file_path = temp_file.name
         temp_file.close()
+    except Exception:
+        logger.error("S3 client/temp setup failed", exc_info=True)
+        raise RuntimeError("failed to load dataset file") from None
+
+    try:
         s3_client.download_file(bucket, key, temp_file_path)
         return temp_file_path
     except Exception:
+        # Don't leave the just-created temp file behind on a failed download.
+        try:
+            os.remove(temp_file_path)
+        except OSError:
+            pass
         logger.error("S3 download failed for key in app bucket", exc_info=True)
         raise RuntimeError("failed to load dataset file") from None

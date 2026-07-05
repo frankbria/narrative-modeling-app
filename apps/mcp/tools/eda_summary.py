@@ -47,12 +47,13 @@ async def run_eda_summary(params: EdaInput) -> dict:
     except PermissionError as e:
         return {"success": False, "message": str(e)}
 
-    local_file_path: str | None = None
     try:
-        # Offload the blocking S3 download and pandas work to a worker thread so
-        # the async SSE handler never stalls the event loop.
-        local_file_path = await asyncio.to_thread(download_dataset_file, s3_url)
-        data = await asyncio.to_thread(_build_summary, local_file_path)
+        # Offload the whole blocking pipeline (download → read → analyze →
+        # delete) to a single worker thread. Cleanup lives *inside* the thread:
+        # asyncio.to_thread can't cancel the thread, so a cancelled/timed-out
+        # request would run the coroutine's finally with no path to clean up
+        # while the thread finished the download — leaking the dataset on disk.
+        data = await asyncio.to_thread(_download_and_summarize, s3_url)
         return {"success": True, "data": data}
 
     except Exception:
@@ -60,17 +61,25 @@ async def run_eda_summary(params: EdaInput) -> dict:
         logger.exception("Failed to run EDA summary tool")
         return {"success": False, "message": "Failed to generate EDA summary"}
 
+
+def _download_and_summarize(s3_url: str) -> dict:
+    """Download, summarize, and always delete the temp file (blocking).
+
+    Runs in a worker thread; the `finally` guarantees the downloaded dataset is
+    removed regardless of the awaiting request's fate (success or cancellation).
+    """
+    local_file_path = download_dataset_file(s3_url)
+    try:
+        return _build_summary(local_file_path)
     finally:
-        # Never leave the downloaded dataset on disk (leak + data-retention).
-        if local_file_path:
-            try:
-                os.remove(local_file_path)
-            except OSError:
-                pass
+        try:
+            os.remove(local_file_path)
+        except OSError:
+            pass
 
 
 def _build_summary(local_file_path: str) -> dict:
-    """Read the CSV and compute the EDA summary (blocking; run via to_thread)."""
+    """Read the CSV and compute the EDA summary (blocking)."""
     df = pd.read_csv(local_file_path)
     result = {
         "overview": {
