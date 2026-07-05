@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -97,6 +98,58 @@ def validate_skip_auth(
     )
 
 
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    """Parse an origins list from a JSON array or a comma-separated string.
+
+    Accepts ``["https://a"]`` (config convention) and ``https://a,https://b``
+    (the staging template convention). Unset/blank ⇒ the dev wildcard ``["*"]``.
+    """
+    if not raw or not raw.strip():
+        return ["*"]
+    raw = raw.strip()
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list) and parsed:
+            return [str(o).strip() for o in parsed]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts or ["*"]
+
+
+def resolve_cors_origins(
+    raw: str | None, environment: str | None = None
+) -> list[str]:
+    """Resolve CORS origins, refusing wildcard in production-like envs (#256).
+
+    CORS is registered with ``allow_credentials=True`` (main.py); with a ``"*"``
+    origin Starlette reflects the caller's Origin and sends
+    ``Access-Control-Allow-Credentials: true`` — letting ANY site make
+    authenticated cross-origin requests. So a wildcard (explicit, or the unset
+    default) is refused outside development: the backend fails to start rather
+    than silently running wildcard CORS on a deployment.
+
+    ``environment`` defaults to every set environment signal (a stray
+    ``ENVIRONMENT=development`` must not outvote a real ``NODE_ENV=production``),
+    mirroring ``validate_skip_auth``.
+    """
+    origins = _parse_cors_origins(raw)
+    if environment is not None:
+        prod_like = environment.strip().lower() in PRODUCTION_LIKE_ENVIRONMENTS
+    else:
+        prod_like = is_production_like()
+    if prod_like and "*" in origins:
+        env = environment or get_environment()
+        raise ValueError(
+            f"BACKEND_CORS_ORIGINS must list explicit origin(s) in {env!r} — "
+            "wildcard '*' with credentialed CORS lets any site make "
+            "authenticated cross-origin requests. Set BACKEND_CORS_ORIGINS to "
+            "your deployed frontend origin(s), e.g. "
+            "'https://app.example.com,https://staging.example.com'."
+        )
+    return origins
+
+
 class Settings(BaseModel):
     # MongoDB settings
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
@@ -149,16 +202,7 @@ class Settings(BaseModel):
     # CORS settings
     @property
     def BACKEND_CORS_ORIGINS(self) -> list[str]:
-        cors_origins = os.getenv("BACKEND_CORS_ORIGINS", '["*"]')
-        if cors_origins:
-            import json
-
-            try:
-                return json.loads(cors_origins)
-            except (json.JSONDecodeError, ValueError):
-                pass
-        # Default to allow all origins in development
-        return ["*"]
+        return resolve_cors_origins(os.getenv("BACKEND_CORS_ORIGINS"))
 
     @field_validator("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
     @classmethod

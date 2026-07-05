@@ -54,7 +54,10 @@ services:
 
       # Security
       SECRET_KEY: ${BACKEND_SECRET_KEY}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      # CORS: the backend reads BACKEND_CORS_ORIGINS (config.py). It refuses '*'
+      # in production-like envs, so this MUST list explicit staging origin(s) —
+      # the old ALLOWED_ORIGINS name was read by nothing and left CORS wildcard.
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?BACKEND_CORS_ORIGINS must list explicit staging origin(s) in .env.staging}
       # The backend validates NextAuth JWTs, so it needs the same secret the
       # frontend signs them with (app/auth/nextauth_auth.py).
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env.staging}
@@ -101,6 +104,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_ID: ${GITHUB_ID}
       GITHUB_SECRET: ${GITHUB_SECRET}
+      # CORS allowlist for the Next.js page middleware (middleware.ts). Empty ⇒
+      # no cross-origin Origin is echoed (same-origin needs no ACAO).
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     depends_on:
       - backend
     healthcheck:
