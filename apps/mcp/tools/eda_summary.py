@@ -1,24 +1,54 @@
 # apps/mcp/tools/eda_summary.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import logging
+import os
 import pandas as pd
 from typing import Any, Dict
 
-from utils.s3_service import download_file_from_s3
+from models.user_data import UserData
+from utils.s3_service import download_dataset_file
+from utils.user_data import get_user_data_by_id
 from utils.numpy_json import convert_numpy_types
 
 logger = logging.getLogger(__name__)
 
+# Single generic message for missing datasets AND ownership failures, so a caller
+# can't distinguish "not found" from "not yours" (avoids tenant enumeration).
+_ACCESS_DENIED = "Dataset not found or access denied"
+
 
 class EdaInput(BaseModel):
-    file_uri: str
+    dataset_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
 
 
-def eda_summary(params: EdaInput) -> dict:
-    """Generate an EDA summary for a given CSV file stored at an S3 URI."""
+def authorize_dataset(user_data: UserData | None, requested_user_id: str) -> str:
+    """Return the dataset's server-stored S3 URL iff the caller owns it.
+
+    Raises PermissionError (with a generic message) when the dataset is missing
+    or owned by someone else. Pure/sync so it is fully unit-testable.
+    """
+    if user_data is None or user_data.user_id != requested_user_id:
+        raise PermissionError(_ACCESS_DENIED)
+    return user_data.s3_url
+
+
+async def run_eda_summary(params: EdaInput) -> dict:
+    """Generate an EDA summary for a dataset the caller owns.
+
+    The S3 key is derived server-side from the dataset record — never from the
+    caller — so an untrusted caller cannot read arbitrary S3 objects.
+    """
     try:
-        local_file_path = download_file_from_s3(params.file_uri)
+        user_data = await get_user_data_by_id(params.dataset_id)
+        s3_url = authorize_dataset(user_data, params.user_id)
+    except PermissionError as e:
+        return {"success": False, "message": str(e)}
+
+    local_file_path: str | None = None
+    try:
+        local_file_path = download_dataset_file(s3_url)
         df = pd.read_csv(local_file_path)
 
         result = {
@@ -35,9 +65,18 @@ def eda_summary(params: EdaInput) -> dict:
 
         return {"success": True, "data": convert_numpy_types(result)}
 
-    except Exception as e:
+    except Exception:
+        # Generic message: never leak S3/parse internals to the caller.
         logger.exception("Failed to run EDA summary tool")
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": "Failed to generate EDA summary"}
+
+    finally:
+        # Never leave the downloaded dataset on disk (leak + data-retention).
+        if local_file_path:
+            try:
+                os.remove(local_file_path)
+            except OSError:
+                pass
 
 
 def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
