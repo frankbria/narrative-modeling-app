@@ -163,6 +163,42 @@ async def test_run_eda_summary_download_failure_is_generic():
     assert "AccessDenied" not in result["message"]
 
 
+async def test_run_eda_summary_reads_real_csv_and_cleans_up():
+    """End-to-end over a real on-disk CSV (read_csv not mocked): the summary is
+    built from actual data and the temp file is removed afterward."""
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w")
+    tmp.write("age,city\n30,NYC\n40,LA\n")
+    tmp.close()
+    with patch(
+        "mcp.tools.eda_summary.get_user_data_by_id",
+        new=AsyncMock(return_value=_owned(user_id="user-1")),
+    ), patch(
+        "mcp.tools.eda_summary.download_dataset_file", return_value=tmp.name
+    ):
+        result = await run_eda_summary(EdaInput(dataset_id="abc", user_id="user-1"))
+
+    assert result["success"] is True
+    assert result["data"]["overview"]["columns"] == ["age", "city"]
+    assert result["data"]["overview"]["shape"] == [2, 2]
+    assert not os.path.exists(tmp.name)
+
+
+async def test_run_eda_summary_cleans_up_on_read_failure(sample_df):
+    """A failure while reading the CSV must still delete the downloaded file."""
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    tmp.close()
+    with patch(
+        "mcp.tools.eda_summary.get_user_data_by_id",
+        new=AsyncMock(return_value=_owned(user_id="user-1")),
+    ), patch(
+        "mcp.tools.eda_summary.download_dataset_file", return_value=tmp.name
+    ), patch("pandas.read_csv", side_effect=ValueError("corrupt CSV")):
+        result = await run_eda_summary(EdaInput(dataset_id="abc", user_id="user-1"))
+
+    assert result["success"] is False
+    assert not os.path.exists(tmp.name)
+
+
 # --- Pure analysis helpers (unchanged behavior) -----------------------------
 
 def test_calculate_data_quality(sample_df):

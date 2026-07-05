@@ -1,6 +1,7 @@
 # apps/mcp/tools/eda_summary.py
 
 from pydantic import BaseModel, Field
+import asyncio
 import logging
 import os
 import pandas as pd
@@ -48,22 +49,11 @@ async def run_eda_summary(params: EdaInput) -> dict:
 
     local_file_path: str | None = None
     try:
-        local_file_path = download_dataset_file(s3_url)
-        df = pd.read_csv(local_file_path)
-
-        result = {
-            "overview": {
-                "shape": list(df.shape),
-                "columns": df.columns.tolist(),
-                "dtypes": df.dtypes.astype(str).to_dict(),
-            },
-            "dataQuality": calculate_data_quality(df),
-            "variableInsights": calculate_variable_insights(df),
-            "transformations": suggest_transformations(df),
-            "groupedInsights": generate_grouped_insights(df),
-        }
-
-        return {"success": True, "data": convert_numpy_types(result)}
+        # Offload the blocking S3 download and pandas work to a worker thread so
+        # the async SSE handler never stalls the event loop.
+        local_file_path = await asyncio.to_thread(download_dataset_file, s3_url)
+        data = await asyncio.to_thread(_build_summary, local_file_path)
+        return {"success": True, "data": data}
 
     except Exception:
         # Generic message: never leak S3/parse internals to the caller.
@@ -77,6 +67,23 @@ async def run_eda_summary(params: EdaInput) -> dict:
                 os.remove(local_file_path)
             except OSError:
                 pass
+
+
+def _build_summary(local_file_path: str) -> dict:
+    """Read the CSV and compute the EDA summary (blocking; run via to_thread)."""
+    df = pd.read_csv(local_file_path)
+    result = {
+        "overview": {
+            "shape": list(df.shape),
+            "columns": df.columns.tolist(),
+            "dtypes": df.dtypes.astype(str).to_dict(),
+        },
+        "dataQuality": calculate_data_quality(df),
+        "variableInsights": calculate_variable_insights(df),
+        "transformations": suggest_transformations(df),
+        "groupedInsights": generate_grouped_insights(df),
+    }
+    return convert_numpy_types(result)
 
 
 def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:

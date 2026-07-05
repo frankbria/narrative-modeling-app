@@ -21,8 +21,7 @@ RUN uv sync --frozen
 # Copy application code
 COPY . .
 
-# Set Python path to include fastmcp
-ENV PYTHONPATH=/app:/app/fastmcp/src:$PYTHONPATH
+ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Expose port
 EXPOSE 10000
