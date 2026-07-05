@@ -136,9 +136,14 @@ def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
         .sort_values(ascending=False)
         .drop_duplicates()
     )
-    correlated = (
-        correlated.loc[(correlated < 1) & (correlated > 0.8)].head(10).to_dict()
-    )
+    # unstack() gives a MultiIndex → tuple keys ("colA", "colB"); JSON (and thus
+    # the FastMCP response) can't serialize tuple keys, so stringify the pair.
+    correlated = {
+        f"{a} & {b}": v
+        for (a, b), v in correlated.loc[
+            (correlated < 1) & (correlated > 0.8)
+        ].head(10).items()
+    }
 
     return convert_numpy_types(
         {

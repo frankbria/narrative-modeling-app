@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import types
@@ -219,6 +220,20 @@ def test_calculate_variable_insights(sample_df):
     assert "highCardinality" in insights
     assert "correlatedFeatures" in insights
     assert "high_cardinality" in insights["highCardinality"]
+
+
+def test_calculate_variable_insights_is_json_serializable():
+    """A >0.8-correlated pair must not produce tuple keys (unserializable in the
+    FastMCP JSON response) — regression for the .unstack() MultiIndex bug."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=200)
+    df = pd.DataFrame(
+        {"a": x, "b": x + rng.normal(scale=0.4, size=200), "c": rng.normal(size=200)}
+    )
+    insights = calculate_variable_insights(df)
+    assert insights["correlatedFeatures"], "expected a correlated pair"
+    assert all(isinstance(k, str) for k in insights["correlatedFeatures"])
+    json.dumps(insights)  # must not raise
 
 
 def test_suggest_transformations(sample_df):
