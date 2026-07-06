@@ -2,6 +2,7 @@
 name = "narrative-modeling-app-backend"
 version = "0.1.0"
 description = "Narrative Modeling App"
+license = "AGPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

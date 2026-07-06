@@ -11,6 +11,7 @@ import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
 import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
+import { SourceOffer } from '@/components/SourceOffer'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',
@@ -59,6 +60,9 @@ export default async function RootLayout({
                 {children}
               </main>
             )}
+            {/* AGPL-3.0 §13: source offer visible to all network users,
+                authenticated or not. */}
+            <SourceOffer />
           </WorkflowProvider>
         </SessionProvider>
       </body>

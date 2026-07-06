@@ -290,9 +290,24 @@ app.include_router(
 )
 
 
+# AGPL-3.0 §13: a network-deployed service must offer its users the
+# Corresponding Source. This is the machine-readable half of that offer
+# (the UI half is the frontend SourceOffer link).
+SOURCE_CODE_URL = "https://github.com/frankbria/narrative-modeling-app"
+
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Narrative Modeling API"}
+    return {
+        "message": "Welcome to the Narrative Modeling API",
+        "license": "AGPL-3.0-or-later",
+        "source_code": SOURCE_CODE_URL,
+        "source_offer": (
+            "This program is free software licensed under the GNU AGPL v3. "
+            "In accordance with section 13, the complete corresponding source "
+            f"code is available at {SOURCE_CODE_URL}."
+        ),
+    }
 
 
 @app.get("/metrics")
