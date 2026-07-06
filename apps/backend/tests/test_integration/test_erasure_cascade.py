@@ -12,6 +12,8 @@ Live S3 object deletion is covered by DATA_ERASURE_AND_BACKUP_RUNBOOK.md and the
 existing model_storage S3 tests.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from app.models.column_stats import ColumnStats
@@ -235,6 +237,24 @@ async def test_erase_dataset_by_non_owner_is_noop(setup_database):
     # Victim's data is fully intact.
     after = await _residual_counts(ud.id)
     assert all(c >= 1 for c in after.values()), after
+
+
+async def test_erase_still_removes_data_when_audit_write_fails(setup_database):
+    """If the audit insert fails, the erasure still completes and the failure is
+    recorded on the manifest (data removal must not depend on the audit write)."""
+    await _seed_string_space()
+
+    with patch(
+        "app.services.erasure_service.ErasureAuditLog.insert",
+        side_effect=RuntimeError("mongo down"),
+    ):
+        manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+
+    # Data is still gone despite the audit failure.
+    assert await DatasetMetadata.find(DatasetMetadata.dataset_id == DATASET_ID).count() == 0
+    assert await WorkflowState.find(WorkflowState.dataset_id == DATASET_ID).count() == 0
+    # Failure recorded (sanitized message, no raw exception detail).
+    assert any("audit write failed" in f for f in manifest.failures)
 
 
 async def test_erase_user_sweeps_all_owned_datasets(setup_database):

@@ -33,10 +33,9 @@ class ErasureAuditLog(Document):
 
     class Settings:
         name = "erasure_audit_log"
+        # erasure_id/actor_id/subject_user_id are already indexed via their
+        # field-level Indexed() annotation; only created_at needs listing here.
         indexes = [
-            "erasure_id",
-            "actor_id",
-            "subject_user_id",
             "created_at",
         ]
 

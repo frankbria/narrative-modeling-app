@@ -248,8 +248,11 @@ class DatasetErasureService:
             try:
                 await self.model_storage.delete_model(m.model_id, user_id)
                 manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
-                # delete_model removes the per-model artifact prefix.
-                manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
+                # Only record the artifact prefix when S3 is live — in mock mode
+                # delete_model issues no real S3 delete, so the audit log must not
+                # claim one happened.
+                if not self.model_storage.s3_service.is_mock_mode:
+                    manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
             except Exception as e:  # noqa: BLE001
                 manifest.failures.append(f"delete_model {m.model_id}: {e}")
 

@@ -377,6 +377,10 @@ class DatasetService(BaseService[DatasetMetadata]):
         viz-cache are removed too — not just the ``DatasetMetadata`` row. The
         sweep is idempotent, so a re-run clears any residuals.
 
+        Note: unlike the pre-#259 implementation, this **does not raise
+        NotFoundError** for a missing dataset — erasure is idempotent, so it
+        returns False instead. The API route pre-checks existence for its 404.
+
         Args:
             dataset_id: Dataset identifier
             user_id: Owner id (looked up from the parent when omitted, for
