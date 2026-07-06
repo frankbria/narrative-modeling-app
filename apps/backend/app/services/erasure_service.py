@@ -191,7 +191,9 @@ class DatasetErasureService:
         # Link[UserData] children. There is no id link, so resolve it by
         # (user_id, s3_url) — else erasing a string dataset_id orphans that PII
         # (the central bug in issue #259).
-        if parent_meta is not None and parent_ud is None:
+        if parent_meta is not None and parent_ud is None and parent_meta.s3_url:
+            # Guard on a truthy s3_url: `s3_url == None`/"" would match unrelated
+            # UserData rows with a null/empty url for this user.
             parent_ud = await UserData.find_one(
                 UserData.user_id == user_id, UserData.s3_url == parent_meta.s3_url
             )
@@ -267,8 +269,13 @@ class DatasetErasureService:
 
     async def _delete_doc(self, doc: Document, name: str, manifest: DeletionManifest) -> None:
         try:
-            await doc.delete()
-            manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + 1
+            result = await doc.delete()
+            # Count only an actual deletion — a doc already removed (e.g. a
+            # dual-write twin swept in an earlier pass) returns deleted_count=0
+            # and must not inflate the manifest. (result is None on some Beanie
+            # paths -> treat as deleted.)
+            if result is None or result.deleted_count:
+                manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + 1
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"delete {name} doc: {e}")
 
@@ -308,6 +315,8 @@ class DatasetErasureService:
 
     async def _evict_redis(self, dataset_id: str, manifest: DeletionManifest) -> None:
         try:
+            # delete_pattern uses Redis KEYS (O(N), blocking) — fine at beta scale;
+            # swap for a SCAN-based sweep if the viz-cache keyspace grows large.
             evicted = await cache_service.delete_pattern(f"viz:{dataset_id}:*")
             manifest.redis_keys_evicted += evicted or 0
         except Exception as e:  # noqa: BLE001

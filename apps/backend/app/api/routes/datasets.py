@@ -489,6 +489,9 @@ async def erase_dataset(
     )
 
 
+# NOTE: user-scoped, but lives on the datasets router because erasure is
+# implemented here; it resolves to /api/v1/users/me/erase. Move to a users.py
+# router if that surface grows.
 @router.post("/users/me/erase", response_model=EraseResponse)
 async def erase_current_user_data(
     request: ErasureRequest | None = Body(None),

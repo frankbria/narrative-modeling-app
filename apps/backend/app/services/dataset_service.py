@@ -391,7 +391,9 @@ class DatasetService(BaseService[DatasetMetadata]):
             dataset = await self.get_dataset(dataset_id, check_ownership=False)
             if not dataset:
                 return False
-            owner_id = dataset.user_id
+            # `or ""` guards the (near-dead) legacy no-user path: subject_user_id
+            # is a required str, and an unowned "" scopes the cascade to nothing.
+            owner_id = dataset.user_id or ""
 
         manifest = await dataset_erasure_service.erase_dataset(
             dataset_id, owner_id, actor_id=owner_id
