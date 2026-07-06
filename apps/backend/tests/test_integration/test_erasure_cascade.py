@@ -194,6 +194,33 @@ async def test_erase_dataset_leaves_zero_residuals(setup_database):
     assert again.total_documents_deleted == 0
 
 
+async def test_erase_string_dataset_also_erases_dual_written_userdata(setup_database):
+    """Erasing a DatasetMetadata by its string id must also erase the dual-written
+    legacy UserData (shared s3_url) + its PII/Link children — the core #259 bug."""
+    shared_url = f"s3://{BUCKET}/datasets/{USER}/{DATASET_ID}_d.csv"
+    await DatasetMetadata(
+        user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=f"datasets/{USER}/{DATASET_ID}_d.csv",
+        s3_url=shared_url, num_rows=10, num_columns=3,
+    ).insert()
+    # The dual-written twin: same user + same s3_url, carrying PII. No id link.
+    twin = await UserData(
+        user_id=USER, filename="d.csv", original_filename="d.csv", s3_url=shared_url,
+        num_rows=10, num_columns=3, data_schema=[], contains_pii=True,
+        pii_report={"emails": 2}, data_preview=[{"email": "x@y.com"}],
+    ).insert()
+    await VisualizationCache(dataset_id=twin, visualization_type="histogram", data={"b": [1]}).insert()
+
+    # Erase by the STRING dataset_id only.
+    manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+
+    assert await DatasetMetadata.find(DatasetMetadata.dataset_id == DATASET_ID).count() == 0
+    assert await UserData.find(UserData.id == twin.id).count() == 0, "dual-written PII row orphaned!"
+    assert await VisualizationCache.find({"dataset_id.$id": twin.id}).count() == 0
+    assert manifest.documents_deleted.get("user_data") == 1
+    assert manifest.documents_deleted.get("dataset_metadata") == 1
+
+
 async def test_erase_dataset_by_non_owner_is_noop(setup_database):
     """A caller who does not own the dataset erases NOTHING (cross-tenant guard)."""
     await _seed_string_space()

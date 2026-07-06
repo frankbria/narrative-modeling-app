@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from beanie import PydanticObjectId
+from beanie import Document, PydanticObjectId
 
 from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.analytics_result import AnalyticsResult
@@ -114,7 +114,7 @@ class DatasetErasureService:
             target_type="dataset", target_id=dataset_id, subject_user_id=user_id
         )
         found = await self._erase_one_dataset(dataset_id, user_id, manifest)
-        manifest.idempotent_noop = not found and manifest.total_documents_deleted == 0
+        manifest.idempotent_noop = not found and self._is_empty(manifest)
         await self._write_audit("dataset", dataset_id, user_id, actor_id or user_id, reason, manifest)
         return manifest
 
@@ -140,9 +140,18 @@ class DatasetErasureService:
         # dataset, feedback, etc.). Best-effort sweep by user_id.
         await self._sweep_user_scoped(user_id, manifest)
 
-        manifest.idempotent_noop = manifest.total_documents_deleted == 0 and not manifest.s3_objects_deleted
+        manifest.idempotent_noop = self._is_empty(manifest)
         await self._write_audit("user", user_id, user_id, actor_id or user_id, reason, manifest)
         return manifest
+
+    @staticmethod
+    def _is_empty(manifest: DeletionManifest) -> bool:
+        """Nothing was actually removed from any store."""
+        return (
+            manifest.total_documents_deleted == 0
+            and not manifest.s3_objects_deleted
+            and manifest.redis_keys_evicted == 0
+        )
 
     # ---- cascade core ---------------------------------------------------
 
@@ -161,6 +170,11 @@ class DatasetErasureService:
         children collections aren't all user-scoped) — the ownership chain runs
         through the parent, so we require it before deleting anything.
         """
+        # Scope tombstone retention to THIS dataset's cascade (erase_user shares
+        # one manifest across many datasets — an earlier dataset's failure must
+        # not retain later, cleanly-erased datasets' parents).
+        failures_start = len(manifest.failures)
+
         # Resolve parent(s) in either id-space (ownership-checked).
         parent_meta = _parent if isinstance(_parent, DatasetMetadata) else None
         parent_ud = _parent if isinstance(_parent, UserData) else None
@@ -170,6 +184,17 @@ class DatasetErasureService:
                 DatasetMetadata.user_id == user_id,
             )
             parent_ud = await self._get_userdata(dataset_id, user_id)
+
+        # Dual-write: a DatasetMetadata-backed dataset (created via
+        # DatasetService.create_dataset) ALSO has a legacy UserData row sharing
+        # its s3_url and carrying PII (contains_pii/pii_report/data_preview) +
+        # Link[UserData] children. There is no id link, so resolve it by
+        # (user_id, s3_url) — else erasing a string dataset_id orphans that PII
+        # (the central bug in issue #259).
+        if parent_meta is not None and parent_ud is None:
+            parent_ud = await UserData.find_one(
+                UserData.user_id == user_id, UserData.s3_url == parent_meta.s3_url
+            )
 
         # No owned parent -> nothing this caller may erase. Idempotent no-op.
         if parent_meta is None and parent_ud is None:
@@ -188,9 +213,8 @@ class DatasetErasureService:
                 manifest,
             )
             await self._evict_redis(dataset_id, manifest)
-            await self._delete_parent_if_clean(parent_meta, "dataset_metadata", manifest)
 
-        # --- legacy UserData id-space (only if that parent is owned) ---
+        # --- legacy UserData id-space (dual-write twin or a legacy-only upload) ---
         if parent_ud is not None:
             for model_cls, field in _LINK_KEYED_MODELS:
                 await self._delete_many(model_cls, {f"{field}.$id": parent_ud.id}, manifest)
@@ -199,7 +223,13 @@ class DatasetErasureService:
                 manifest,
             )
             await self._evict_redis(str(parent_ud.id), manifest)
-            await self._delete_parent_if_clean(parent_ud, "user_data", manifest)
+
+        # Parents LAST — retained as re-discoverable tombstones if THIS dataset's
+        # cascade left residuals, so the owner can re-run to finish.
+        if parent_meta is not None:
+            await self._delete_parent_if_clean(parent_meta, "dataset_metadata", manifest, failures_start)
+        if parent_ud is not None:
+            await self._delete_parent_if_clean(parent_ud, "user_data", manifest, failures_start)
 
         return True
 
@@ -223,29 +253,42 @@ class DatasetErasureService:
 
     # ---- primitives (each guarded; records failures, never raises) ------
 
-    async def _delete_many(self, model_cls, query: dict, manifest: DeletionManifest) -> None:
-        name = model_cls.Settings.name
+    async def _delete_many(
+        self, model_cls: type[Document], query: dict, manifest: DeletionManifest
+    ) -> None:
         try:
+            name = model_cls.Settings.name
             result = await model_cls.find(query).delete()
             count = getattr(result, "deleted_count", 0) or 0
             if count:
                 manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + count
         except Exception as e:  # noqa: BLE001
-            manifest.failures.append(f"delete {name}: {e}")
+            manifest.failures.append(f"delete {getattr(model_cls, '__name__', '?')}: {e}")
 
-    async def _delete_doc(self, doc, name: str, manifest: DeletionManifest) -> None:
+    async def _delete_doc(self, doc: Document, name: str, manifest: DeletionManifest) -> None:
         try:
             await doc.delete()
             manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + 1
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"delete {name} doc: {e}")
 
-    async def _delete_parent_if_clean(self, doc, name: str, manifest: DeletionManifest) -> None:
+    async def _delete_parent_if_clean(
+        self, doc: Document, name: str, manifest: DeletionManifest, failures_start: int
+    ) -> None:
         """Delete the parent LAST — but keep it as a re-discoverable tombstone if a
-        child/S3 step failed, so the owner can re-run the erase to clear residuals."""
-        if manifest.failures:
-            manifest.failures.append(
-                f"retained {name} parent as tombstone (residual failures present; re-run erase)"
+        **Mongo child** deletion failed in THIS dataset's cascade, so the owner can
+        re-run the erase to finish clearing the child documents.
+
+        S3/Redis failures do NOT block parent deletion: Mongo is the source of
+        truth for discoverability, users expect DELETE to remove the dataset, and
+        an orphaned S3 object is recorded in ``manifest.failures`` (covered by the
+        AC3 S3 lifecycle/versioning and a re-runnable POST /erase). The tombstone
+        note goes to ``notes`` (informational), not ``failures``."""
+        new_failures = manifest.failures[failures_start:]
+        blocking = [f for f in new_failures if not f.startswith(("s3 delete", "redis evict"))]
+        if blocking:
+            manifest.notes.append(
+                f"retained {name} parent as tombstone (Mongo residual present; re-run erase)"
             )
             return
         await self._delete_doc(doc, name, manifest)
@@ -286,8 +329,11 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"sweep ml_models: {e}")
 
+        # Only sweep collections that actually have a user_id field (some
+        # dataset-keyed children don't — querying them by user_id is a no-op).
         for model_cls in [BatchJob, ABTest, Feedback, *_STRING_KEYED_MODELS]:
-            await self._delete_many(model_cls, {"user_id": user_id}, manifest)
+            if "user_id" in model_cls.model_fields:
+                await self._delete_many(model_cls, {"user_id": user_id}, manifest)
 
     # ---- helpers --------------------------------------------------------
 
@@ -306,8 +352,14 @@ class DatasetErasureService:
         actor_id: str,
         reason: str | None,
         manifest: DeletionManifest,
-    ) -> str:
+    ) -> None:
+        # Don't record (or mint an id for) a pure no-op — nothing was erased, so
+        # there is nothing to audit. Prevents an authenticated caller from
+        # spamming the append-only log with erase attempts on data they don't own.
+        if self._is_empty(manifest):
+            return
         erasure_id = uuid.uuid4().hex
+        manifest.erasure_id = erasure_id  # single id shared by response + audit
         try:
             await ErasureAuditLog(
                 erasure_id=erasure_id,
@@ -321,8 +373,7 @@ class DatasetErasureService:
             ).insert()
         except Exception as e:  # noqa: BLE001 - audit failure must not lose the erasure result
             logger.error(f"Failed to write erasure audit log for {target_type} {target_id}: {e}")
-            manifest.failures.append(f"audit write: {e}")
-        return erasure_id
+            manifest.failures.append("audit write failed (see server logs)")
 
 
 def _as_object_id(value: str) -> PydanticObjectId | None:

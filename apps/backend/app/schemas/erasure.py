@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 def _now() -> datetime:
@@ -24,6 +24,9 @@ class DeletionManifest(BaseModel):
     target_type: str = Field(..., description="'dataset' or 'user'")
     target_id: str = Field(..., description="dataset_id / UserData id, or user id")
     subject_user_id: str = Field(..., description="Owner of the erased data")
+    erasure_id: str | None = Field(
+        None, description="Id of the ErasureAuditLog entry recording this erasure (None on no-op)"
+    )
 
     documents_deleted: dict[str, int] = Field(
         default_factory=dict,
@@ -36,25 +39,44 @@ class DeletionManifest(BaseModel):
 
     failures: list[str] = Field(
         default_factory=list,
-        description="Human-readable descriptions of steps that failed (empty => clean erasure)",
+        description="Descriptions of steps that FAILED (empty => clean erasure)",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Informational, non-error context (e.g. a retained tombstone)",
     )
     idempotent_noop: bool = Field(
         False, description="True if the target was already fully erased (nothing to do)"
     )
     completed_at: datetime = Field(default_factory=_now)
 
+    # computed_field so these serialize into the audit-log manifest snapshot
+    # (bare @property is excluded by Pydantic v2 model_dump).
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_documents_deleted(self) -> int:
         return sum(self.documents_deleted.values())
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def status(self) -> str:
         return "completed_with_residuals" if self.failures else "completed"
 
 
+class ErasureRequest(BaseModel):
+    """Optional body for an erasure request.
+
+    ``reason`` lives in the body (not the query string) so GDPR/CCPA request
+    reasons don't leak into access logs, and is length-bounded so it can't
+    bloat the append-only audit log.
+    """
+
+    reason: str | None = Field(None, max_length=500, description="Optional reason (e.g. 'gdpr_request')")
+
+
 class EraseResponse(BaseModel):
     """API response for an erasure request."""
 
-    erasure_id: str
+    erasure_id: str | None = Field(None, description="Audit-log id (None if nothing was erased)")
     status: str
     manifest: DeletionManifest

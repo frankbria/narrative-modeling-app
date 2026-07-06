@@ -37,7 +37,7 @@ from app.schemas.dataset import (
     DatasetUpdateRequest,
     DatasetUploadResponse,
 )
-from app.schemas.erasure import EraseResponse
+from app.schemas.erasure import EraseResponse, ErasureRequest
 from app.schemas.feature_selection import (
     FeatureImportanceRequest,
     FeatureImportanceResponse,
@@ -465,7 +465,7 @@ async def delete_dataset(
 @router.post("/datasets/{dataset_id}/erase", response_model=EraseResponse)
 async def erase_dataset(
     dataset_id: str,
-    reason: str | None = None,
+    request: ErasureRequest | None = Body(None),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """
@@ -474,20 +474,24 @@ async def erase_dataset(
     Cascade-erases the dataset across both id-spaces and returns a deletion
     manifest recording exactly what was removed (per-collection counts, S3
     objects, Redis keys, and any failures). The operation is recorded in an
-    append-only audit log. Idempotent: erasing an already-erased dataset
-    returns a no-op manifest.
+    append-only audit log; the returned ``erasure_id`` identifies that entry
+    (``None`` when nothing was erased). Idempotent: erasing an already-erased or
+    unowned dataset returns a no-op manifest.
     """
     manifest = await dataset_erasure_service.erase_dataset(
-        dataset_id, current_user_id, actor_id=current_user_id, reason=reason
+        dataset_id,
+        current_user_id,
+        actor_id=current_user_id,
+        reason=request.reason if request else None,
     )
     return EraseResponse(
-        erasure_id=uuid.uuid4().hex, status=manifest.status, manifest=manifest
+        erasure_id=manifest.erasure_id, status=manifest.status, manifest=manifest
     )
 
 
 @router.post("/users/me/erase", response_model=EraseResponse)
 async def erase_current_user_data(
-    reason: str | None = None,
+    request: ErasureRequest | None = Body(None),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """
@@ -499,10 +503,12 @@ async def erase_current_user_data(
     the account/auth record itself — only the user's data.
     """
     manifest = await dataset_erasure_service.erase_user(
-        current_user_id, actor_id=current_user_id, reason=reason
+        current_user_id,
+        actor_id=current_user_id,
+        reason=request.reason if request else None,
     )
     return EraseResponse(
-        erasure_id=uuid.uuid4().hex, status=manifest.status, manifest=manifest
+        erasure_id=manifest.erasure_id, status=manifest.status, manifest=manifest
     )
 
 
