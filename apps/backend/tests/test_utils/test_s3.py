@@ -6,11 +6,23 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 from app.utils.s3 import (
+    create_s3_client,
     get_file_from_s3,
     get_s3_client,
     parse_s3_url,
     upload_file_to_s3,
 )
+
+
+def test_create_s3_client_falls_back_to_aws_default_region(monkeypatch):
+    """The boto3 client picks up AWS_DEFAULT_REGION when AWS_REGION is unset —
+    the exact region mismatch that broke staging (#257)."""
+    monkeypatch.delenv("AWS_REGION", raising=False)
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-central-1")
+    with patch("boto3.client") as mock_boto3_client:
+        create_s3_client()
+    _, kwargs = mock_boto3_client.call_args
+    assert kwargs["region_name"] == "eu-central-1"
 
 
 @pytest.fixture

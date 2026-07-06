@@ -45,6 +45,14 @@ class TestResolveS3Bucket:
         monkeypatch.setenv("AWS_BUCKET_NAME", "winner")
         assert resolve_s3_bucket() == "winner"
 
+    def test_precedence_full_chain(self, monkeypatch):
+        # Set every name; each earlier name must win over all later ones.
+        for name in _ALL_BUCKET_VARS:
+            monkeypatch.setenv(name, f"val-{name}")
+        for i, name in enumerate(S3_BUCKET_ENV_NAMES):
+            assert resolve_s3_bucket() == f"val-{name}"
+            monkeypatch.delenv(name, raising=False)  # drop the winner; next wins
+
     def test_strips_and_skips_blank(self, monkeypatch):
         monkeypatch.setenv("AWS_BUCKET_NAME", "   ")
         monkeypatch.setenv("AWS_S3_BUCKET", "  real-bucket  ")

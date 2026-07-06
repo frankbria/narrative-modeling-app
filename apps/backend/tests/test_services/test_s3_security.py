@@ -117,21 +117,25 @@ class TestS3SecurityValidation:
 
             error_message = get_error_message(exc_info.value)
             assert "AWS_S3_BUCKET" in error_message
-            assert "not set" in error_message
+            assert "not configured" in error_message
 
-    def test_bucket_falls_back_to_canonical_name(self):
+    def test_bucket_falls_back_to_canonical_name(self, monkeypatch):
         """When AWS_S3_BUCKET is unset the allowlist falls back to the app's
         canonical bucket (AWS_BUCKET_NAME) so a deploy that sets only one name
         still works (#257). A cross-bucket URL is still rejected against it."""
-        with patch.dict('os.environ', {'AWS_BUCKET_NAME': 'fallback-bucket'}, clear=True):
-            with pytest.raises((ValueError, RetryError, CircuitBreakerOpen)) as exc_info:
-                download_file_from_s3(
-                    "https://other-bucket.s3.amazonaws.com/datasets/user1/file.csv"
-                )
-            # "not allowed" proves the allowlist resolved to fallback-bucket
-            # (not None → would have raised "AWS_S3_BUCKET ... not set" instead).
-            error_message = get_error_message(exc_info.value)
-            assert "not allowed" in error_message or "Circuit breaker" in error_message
+        # Clear only the bucket vars (not creds/other env) so unrelated CI
+        # credentials stay intact; AWS_BUCKET_NAME is then the sole bucket source.
+        for _name in ("AWS_S3_BUCKET", "S3_BUCKET", "S3_BUCKET_NAME"):
+            monkeypatch.delenv(_name, raising=False)
+        monkeypatch.setenv("AWS_BUCKET_NAME", "fallback-bucket")
+        with pytest.raises((ValueError, RetryError, CircuitBreakerOpen)) as exc_info:
+            download_file_from_s3(
+                "https://other-bucket.s3.amazonaws.com/datasets/user1/file.csv"
+            )
+        # "not allowed" proves the allowlist resolved to fallback-bucket
+        # (not None → would have raised "not configured" instead).
+        error_message = get_error_message(exc_info.value)
+        assert "not allowed" in error_message or "Circuit breaker" in error_message
 
     def test_path_traversal_prevention(self):
         """
