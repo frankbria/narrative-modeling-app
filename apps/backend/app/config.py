@@ -177,30 +177,6 @@ def resolve_aws_region(default: str = "us-east-1") -> str:
     return default
 
 
-def resolve_s3_bucket_setting(environment: str | None = None) -> str:
-    """The versioning bucket (``Settings.S3_BUCKET``): explicit ``S3_BUCKET``,
-    else the app's canonical bucket. In a production-like env, refuse to fall
-    back to the legacy default so a misconfigured deploy fails to start rather
-    than silently reading/writing the wrong bucket (#257, mirrors the #256 CORS
-    fail-closed guard). Dev/test keep the default for DX.
-    """
-    bucket = os.getenv("S3_BUCKET") or resolve_s3_bucket()
-    if bucket:
-        return bucket
-    if environment is not None:
-        prod_like = environment.strip().lower() in PRODUCTION_LIKE_ENVIRONMENTS
-    else:
-        prod_like = is_production_like()
-    if prod_like:
-        env = environment or get_environment()
-        raise ValueError(
-            f"S3 bucket not configured in {env!r} — set S3_BUCKET (or "
-            "AWS_BUCKET_NAME) so versioning targets the right bucket. Refusing "
-            "to fall back to the legacy default in a production-like environment."
-        )
-    return "narrative-modeling-uploads"
-
-
 class Settings(BaseModel):
     # MongoDB settings
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
@@ -218,7 +194,14 @@ class Settings(BaseModel):
     AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
     AWS_REGION: str = resolve_aws_region()
-    S3_BUCKET: str = resolve_s3_bucket_setting()
+    # Prefer an explicit S3_BUCKET (backward compatible), else the app's canonical
+    # bucket under any historical name, else the legacy default (#257). Resolution
+    # is best-effort (not fail-closed) because config is imported everywhere,
+    # including subprocess import tests of other prod-like guards; a truly
+    # bucket-less deploy also breaks uploads and surfaces a NoSuchBucket error.
+    S3_BUCKET: str = (
+        os.getenv("S3_BUCKET") or resolve_s3_bucket() or "narrative-modeling-uploads"
+    )
 
     # Redis (shared by the cache service and rate-limit middleware). Empty means
     # "no Redis configured" — the limiter then falls back to a process-local

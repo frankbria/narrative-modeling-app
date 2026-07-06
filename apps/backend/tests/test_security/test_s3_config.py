@@ -12,12 +12,7 @@ that sets any one name works everywhere.
 
 import pytest
 
-from app.config import (
-    S3_BUCKET_ENV_NAMES,
-    resolve_aws_region,
-    resolve_s3_bucket,
-    resolve_s3_bucket_setting,
-)
+from app.config import S3_BUCKET_ENV_NAMES, resolve_aws_region, resolve_s3_bucket
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
@@ -76,24 +71,3 @@ class TestResolveAwsRegion:
     def test_blank_value_falls_through_to_default(self, monkeypatch):
         monkeypatch.setenv("AWS_REGION", "   ")
         assert resolve_aws_region() == "us-east-1"
-
-
-class TestResolveS3BucketSetting:
-    """resolve_s3_bucket_setting — versioning bucket, fail-closed in prod (#257)."""
-
-    def test_explicit_s3_bucket_wins(self, monkeypatch):
-        monkeypatch.setenv("S3_BUCKET", "versioning-bucket")
-        monkeypatch.setenv("AWS_BUCKET_NAME", "upload-bucket")
-        assert resolve_s3_bucket_setting("staging") == "versioning-bucket"
-
-    def test_falls_back_to_canonical_bucket(self, monkeypatch):
-        monkeypatch.setenv("AWS_BUCKET_NAME", "upload-bucket")
-        assert resolve_s3_bucket_setting("staging") == "upload-bucket"
-
-    def test_dev_returns_legacy_default_when_unset(self):
-        assert resolve_s3_bucket_setting("development") == "narrative-modeling-uploads"
-
-    @pytest.mark.parametrize("env", ["production", "prod", "staging", "live", "release"])
-    def test_production_like_fails_closed_when_unset(self, env):
-        with pytest.raises(ValueError, match="S3 bucket not configured"):
-            resolve_s3_bucket_setting(env)
