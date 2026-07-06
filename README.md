@@ -121,8 +121,13 @@ Quick links:
 
 ## 📚 License
 
-Copyright © Frank Bria
-Future deployment engine intended for release under an open-source license (MIT or Apache 2.0 TBD)
+This project is licensed under the **GNU Affero General Public License v3.0 or later** (`AGPL-3.0-or-later`).
+
+Copyright © 2025-2026 Noatak Enterprises, LLC, dba Bria Strategy Group
+
+Because the AGPL covers network use (§13), the complete corresponding source code
+of the deployed service is available at
+<https://github.com/frankbria/narrative-modeling-app>. See [LICENSE](LICENSE) for the full terms.
 
 ---
 

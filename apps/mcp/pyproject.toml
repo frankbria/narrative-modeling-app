@@ -4,6 +4,7 @@
 name = "mcp-modeling-server"
 version = "0.1.0"
 description = "FastMCP server for Narrative Modeling App"
+license = "AGPL-3.0-or-later"
 authors = [
     { name = "Frank Bria", email = "frank.bria@gmail.com" }
 ]
