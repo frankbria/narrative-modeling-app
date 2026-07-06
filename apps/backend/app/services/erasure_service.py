@@ -153,7 +153,14 @@ class DatasetErasureService:
         manifest: DeletionManifest,
         _parent: DatasetMetadata | UserData | None = None,
     ) -> bool:
-        """Sweep all children/artifacts for one dataset. Returns True if a parent existed."""
+        """Sweep all children/artifacts for one dataset. Returns True if an owned parent existed.
+
+        SECURITY: children are swept ONLY for an id-space whose parent document
+        is owned by ``user_id``. Without this gate a caller could erase another
+        tenant's children by passing a dataset_id/ObjectId they don't own (the
+        children collections aren't all user-scoped) — the ownership chain runs
+        through the parent, so we require it before deleting anything.
+        """
         # Resolve parent(s) in either id-space (ownership-checked).
         parent_meta = _parent if isinstance(_parent, DatasetMetadata) else None
         parent_ud = _parent if isinstance(_parent, UserData) else None
@@ -164,37 +171,37 @@ class DatasetErasureService:
             )
             parent_ud = await self._get_userdata(dataset_id, user_id)
 
-        # 1. MLModel children first (delete_model sweeps their S3 artifacts + doc).
-        await self._erase_models(dataset_id, user_id, manifest)
+        # No owned parent -> nothing this caller may erase. Idempotent no-op.
+        if parent_meta is None and parent_ud is None:
+            return False
 
-        # 2. Remaining string-keyed children.
-        for model_cls in _STRING_KEYED_MODELS:
-            await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
+        # --- string / DatasetMetadata id-space (only if that parent is owned) ---
+        if parent_meta is not None:
+            # 1. MLModel children first (delete_model sweeps their S3 artifacts + doc).
+            await self._erase_models(dataset_id, user_id, manifest)
+            # 2. Remaining string-keyed children.
+            for model_cls in _STRING_KEYED_MODELS:
+                await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
+            # 3. S3 source + redis, then parent LAST.
+            await self._delete_s3(
+                _s3_key(parent_meta.file_path or parent_meta.s3_url, self.s3_service.bucket_name),
+                manifest,
+            )
+            await self._evict_redis(dataset_id, manifest)
+            await self._delete_parent_if_clean(parent_meta, "dataset_metadata", manifest)
 
-        # 3. Legacy UserData Link-keyed children (only when the id is an ObjectId).
-        ud_oid = parent_ud.id if parent_ud else _as_object_id(dataset_id)
-        if ud_oid is not None:
+        # --- legacy UserData id-space (only if that parent is owned) ---
+        if parent_ud is not None:
             for model_cls, field in _LINK_KEYED_MODELS:
-                await self._delete_many(model_cls, {f"{field}.$id": ud_oid}, manifest)
-
-        # 4. S3 source object(s).
-        if parent_meta is not None:
-            await self._delete_s3(_s3_key(parent_meta.file_path or parent_meta.s3_url, self.s3_service.bucket_name), manifest)
-        if parent_ud is not None:
-            await self._delete_s3(_s3_key(parent_ud.file_path or parent_ud.s3_url, self.s3_service.bucket_name), manifest)
-
-        # 5. Redis viz-cache eviction (keys namespaced ``viz:{id}:*``).
-        await self._evict_redis(dataset_id, manifest)
-        if parent_ud is not None:
+                await self._delete_many(model_cls, {f"{field}.$id": parent_ud.id}, manifest)
+            await self._delete_s3(
+                _s3_key(parent_ud.file_path or parent_ud.s3_url, self.s3_service.bucket_name),
+                manifest,
+            )
             await self._evict_redis(str(parent_ud.id), manifest)
+            await self._delete_parent_if_clean(parent_ud, "user_data", manifest)
 
-        # 6. Parent document(s) LAST.
-        if parent_meta is not None:
-            await self._delete_doc(parent_meta, "dataset_metadata", manifest)
-        if parent_ud is not None:
-            await self._delete_doc(parent_ud, "user_data", manifest)
-
-        return parent_meta is not None or parent_ud is not None
+        return True
 
     async def _erase_models(self, dataset_id: str, user_id: str, manifest: DeletionManifest) -> None:
         """Delete every MLModel for the dataset, sweeping its S3 artifacts via delete_model."""
@@ -232,6 +239,16 @@ class DatasetErasureService:
             manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + 1
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"delete {name} doc: {e}")
+
+    async def _delete_parent_if_clean(self, doc, name: str, manifest: DeletionManifest) -> None:
+        """Delete the parent LAST — but keep it as a re-discoverable tombstone if a
+        child/S3 step failed, so the owner can re-run the erase to clear residuals."""
+        if manifest.failures:
+            manifest.failures.append(
+                f"retained {name} parent as tombstone (residual failures present; re-run erase)"
+            )
+            return
+        await self._delete_doc(doc, name, manifest)
 
     async def _delete_s3(self, key: str | None, manifest: DeletionManifest) -> None:
         if not key:

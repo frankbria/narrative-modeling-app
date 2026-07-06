@@ -194,6 +194,22 @@ async def test_erase_dataset_leaves_zero_residuals(setup_database):
     assert again.total_documents_deleted == 0
 
 
+async def test_erase_dataset_by_non_owner_is_noop(setup_database):
+    """A caller who does not own the dataset erases NOTHING (cross-tenant guard)."""
+    await _seed_string_space()
+    ud = await _seed_userdata_space()
+
+    # An attacker who knows the ids but owns neither.
+    m1 = await dataset_erasure_service.erase_dataset(DATASET_ID, "attacker", actor_id="attacker")
+    m2 = await dataset_erasure_service.erase_dataset(str(ud.id), "attacker", actor_id="attacker")
+
+    assert m1.idempotent_noop and m1.total_documents_deleted == 0
+    assert m2.idempotent_noop and m2.total_documents_deleted == 0
+    # Victim's data is fully intact.
+    after = await _residual_counts(ud.id)
+    assert all(c >= 1 for c in after.values()), after
+
+
 async def test_erase_user_sweeps_all_owned_datasets(setup_database):
     await _seed_string_space()
     ud = await _seed_userdata_space()
