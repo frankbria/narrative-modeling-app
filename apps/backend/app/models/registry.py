@@ -15,6 +15,7 @@ from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
 from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
+from app.models.erasure_audit import ErasureAuditLog
 from app.models.feature import FeatureDefinition
 from app.models.feature_store import FeatureCollection, FeatureVersion, StoredFeature
 from app.models.feedback import Feedback
@@ -46,6 +47,7 @@ DOCUMENT_MODELS = [
     DataIssueRecord,
     DatasetMetadata,
     DatasetVersion,
+    ErasureAuditLog,
     FeatureCollection,
     FeatureDefinition,
     FeatureVersion,
