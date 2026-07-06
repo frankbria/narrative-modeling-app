@@ -273,11 +273,11 @@ class DatasetErasureService:
     async def _delete_doc(self, doc: Document, name: str, manifest: DeletionManifest) -> None:
         try:
             result = await doc.delete()
-            # Count only an actual deletion — a doc already removed (e.g. a
+            # Count only a confirmed deletion — a doc already removed (e.g. a
             # dual-write twin swept in an earlier pass) returns deleted_count=0
-            # and must not inflate the manifest. (result is None on some Beanie
-            # paths -> treat as deleted.)
-            if result is None or result.deleted_count:
+            # and must not inflate the manifest/audit. A None result (bulk-writer
+            # paths, not used here) is not a confirmed delete -> don't count.
+            if result is not None and result.deleted_count:
                 manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + 1
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"delete {name} doc: {e}")
@@ -337,7 +337,8 @@ class DatasetErasureService:
             for m in leftover:
                 await self.model_storage.delete_model(m.model_id, user_id)
                 manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
-                manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
+                if not self.model_storage.s3_service.is_mock_mode:
+                    manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"sweep ml_models: {e}")
 
