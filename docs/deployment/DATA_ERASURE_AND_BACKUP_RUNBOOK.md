@@ -104,7 +104,7 @@ delete-object --version-id <marker>`); confirm the object is readable again.
 
 ## Beta limitations / follow-up (ops issue)
 - Atlas backup + S3 versioning/lifecycle enablement is **manual cloud config** —
-  track live enablement + the first restore drill in the ops follow-up issue.
+  live enablement + the first restore drill are tracked in **issue #299**.
 - Erasure is best-effort, not a distributed transaction (Mongo transactions need
   a replica set the local/CI tier lacks). Idempotent re-run is the recovery
   mechanism; the manifest records any residual failures.
