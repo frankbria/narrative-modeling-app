@@ -8,6 +8,8 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 
+from app.config import resolve_aws_region
+
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -36,7 +38,7 @@ def create_s3_client():
     client_kwargs = {
         "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID"),
         "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "region_name": os.getenv("AWS_REGION", "us-east-1"),
+        "region_name": resolve_aws_region(),
     }
     endpoint_url = os.getenv("AWS_ENDPOINT_URL")
     if endpoint_url:
