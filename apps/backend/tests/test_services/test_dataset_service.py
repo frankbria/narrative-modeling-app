@@ -316,45 +316,55 @@ class TestDatasetService:
             assert exc_info.value.details["resource_id"] == dataset_id
 
     @pytest.mark.asyncio
-    async def test_delete_dataset_calls_delete(self):
-        """Test delete_dataset calls delete on dataset."""
+    async def test_delete_dataset_delegates_to_cascade_erasure(self):
+        """delete_dataset cascade-erases via the erasure service (issue #259)."""
         # ARRANGE
+        from app.schemas.erasure import DeletionManifest
         dataset_id = "dataset_123"
         user_id = "user_123"
-        mock_dataset = MagicMock()
-        mock_dataset.delete = AsyncMock()
+        manifest = DeletionManifest(
+            target_type="dataset", target_id=dataset_id, subject_user_id=user_id,
+            documents_deleted={"dataset_metadata": 1},
+        )
 
         # ACT & ASSERT
-        with patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
-            mock_delete.return_value = True
+        with patch(
+            "app.services.dataset_service.dataset_erasure_service.erase_dataset",
+            new_callable=AsyncMock,
+        ) as mock_erase:
+            mock_erase.return_value = manifest
 
             result = await self.service.delete_dataset(dataset_id, user_id=user_id)
 
-            # Verify delete was called with correct params (soft_delete not soft)
-            mock_delete.assert_called_once_with(resource_id=dataset_id, user_id=user_id, soft_delete=False)
+            mock_erase.assert_called_once_with(dataset_id, user_id, actor_id=user_id)
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_delete_dataset_raises_not_found_when_not_found(self):
-        """Test delete_dataset raises NotFoundError when dataset doesn't exist."""
+    async def test_delete_dataset_idempotent_noop_returns_false(self):
+        """Erasing an already-gone dataset is an idempotent no-op (returns False).
+
+        Erasure is idempotent by design (GDPR right-to-erasure); the API route
+        still returns 404 for a missing dataset by checking existence first.
+        """
         # ARRANGE
-        from app.services.exceptions import NotFoundError
+        from app.schemas.erasure import DeletionManifest
         dataset_id = "nonexistent"
         user_id = "user_123"
+        noop = DeletionManifest(
+            target_type="dataset", target_id=dataset_id, subject_user_id=user_id,
+            idempotent_noop=True,
+        )
 
         # ACT & ASSERT
-        with patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
-            mock_delete.side_effect = NotFoundError(
-                message="Dataset not found",
-                resource_type="Dataset",
-                resource_id=dataset_id
-            )
+        with patch(
+            "app.services.dataset_service.dataset_erasure_service.erase_dataset",
+            new_callable=AsyncMock,
+        ) as mock_erase:
+            mock_erase.return_value = noop
 
-            with pytest.raises(NotFoundError) as exc_info:
-                await self.service.delete_dataset(dataset_id, user_id=user_id)
+            result = await self.service.delete_dataset(dataset_id, user_id=user_id)
 
-            assert exc_info.value.details["resource_type"] == "Dataset"
-            assert exc_info.value.details["resource_id"] == dataset_id
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_mark_dataset_processed_updates_status(self):

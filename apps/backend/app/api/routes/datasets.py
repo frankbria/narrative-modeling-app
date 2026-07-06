@@ -37,6 +37,7 @@ from app.schemas.dataset import (
     DatasetUpdateRequest,
     DatasetUploadResponse,
 )
+from app.schemas.erasure import EraseResponse
 from app.schemas.feature_selection import (
     FeatureImportanceRequest,
     FeatureImportanceResponse,
@@ -51,6 +52,7 @@ from app.schemas.feature_selection import (
 from app.schemas.preview import PreviewRequest, PreviewResponse
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.dataset_service import DatasetService
+from app.services.erasure_service import dataset_erasure_service
 from app.services.model_training.feature_selection_service import (
     FeatureSelectionConfig,
     FeatureSelectionService,
@@ -408,7 +410,10 @@ async def delete_dataset(
     """
     Delete a dataset.
 
-    This will remove the dataset metadata. S3 cleanup is handled separately.
+    Cascade-deletes the dataset: the S3 source object, every child document
+    keyed by ``dataset_id`` (versions, lineage, workflow, training jobs, ML
+    models + their S3 artifacts, viz cache, column stats, features, etc.), and
+    the Redis viz-cache. Idempotent (issue #259).
     """
     try:
         logger.info(f"Deleting dataset {dataset_id}")
@@ -429,8 +434,10 @@ async def delete_dataset(
                 detail="Access denied to this dataset"
             )
 
-        # Delete dataset
-        success = await service.delete_dataset(dataset_id=dataset_id)
+        # Cascade-delete dataset + all children/artifacts
+        success = await service.delete_dataset(
+            dataset_id=dataset_id, user_id=current_user_id
+        )
 
         if success:
             logger.info(f"Dataset {dataset_id} deleted successfully")
@@ -453,6 +460,50 @@ async def delete_dataset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while deleting the dataset. Please try again or contact support."
         )
+
+
+@router.post("/datasets/{dataset_id}/erase", response_model=EraseResponse)
+async def erase_dataset(
+    dataset_id: str,
+    reason: str | None = None,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Right-to-erasure for a single dataset (issue #259).
+
+    Cascade-erases the dataset across both id-spaces and returns a deletion
+    manifest recording exactly what was removed (per-collection counts, S3
+    objects, Redis keys, and any failures). The operation is recorded in an
+    append-only audit log. Idempotent: erasing an already-erased dataset
+    returns a no-op manifest.
+    """
+    manifest = await dataset_erasure_service.erase_dataset(
+        dataset_id, current_user_id, actor_id=current_user_id, reason=reason
+    )
+    return EraseResponse(
+        erasure_id=uuid.uuid4().hex, status=manifest.status, manifest=manifest
+    )
+
+
+@router.post("/users/me/erase", response_model=EraseResponse)
+async def erase_current_user_data(
+    reason: str | None = None,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Right-to-erasure for all data owned by the authenticated user (issue #259).
+
+    Cascade-erases every dataset the user owns (both id-spaces) plus leftover
+    user-scoped records (models, jobs, feedback), returning an aggregate
+    deletion manifest. Recorded in the append-only audit log. Does not delete
+    the account/auth record itself — only the user's data.
+    """
+    manifest = await dataset_erasure_service.erase_user(
+        current_user_id, actor_id=current_user_id, reason=reason
+    )
+    return EraseResponse(
+        erasure_id=uuid.uuid4().hex, status=manifest.status, manifest=manifest
+    )
 
 
 @router.get("/datasets/{dataset_id}/schema", response_model=DatasetSchemaResponse)

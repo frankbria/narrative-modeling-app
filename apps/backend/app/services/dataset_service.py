@@ -12,6 +12,7 @@ from app.models.user_data import AISummary as LegacyAISummary
 from app.models.user_data import SchemaField as LegacySchemaField
 from app.models.user_data import UserData
 from app.services.base_service import BaseService
+from app.services.erasure_service import dataset_erasure_service
 
 
 class DatasetService(BaseService[DatasetMetadata]):
@@ -369,33 +370,33 @@ class DatasetService(BaseService[DatasetMetadata]):
         user_id: str | None = None
     ) -> bool:
         """
-        Delete dataset metadata.
+        Cascade-delete a dataset and every child document/artifact (issue #259).
+
+        Delegates to the erasure service so the S3 source object, all child
+        documents keyed by ``dataset_id``, per-model S3 artifacts, and the Redis
+        viz-cache are removed too — not just the ``DatasetMetadata`` row. The
+        sweep is idempotent, so a re-run clears any residuals.
 
         Args:
             dataset_id: Dataset identifier
-            user_id: User ID for ownership check (optional for backward compatibility)
+            user_id: Owner id (looked up from the parent when omitted, for
+                backward compatibility)
 
         Returns:
-            True if deleted, False if not found
-
-        Raises:
-            PermissionDeniedError: If user doesn't own the dataset (when user_id provided)
+            True if a dataset existed and was erased, False if not found
         """
-        # For backward compatibility, allow deletes without user_id check
-        if user_id:
-            return await self.delete(
-                resource_id=dataset_id,
-                user_id=user_id,
-                soft_delete=False
-            )
-        else:
-            # Legacy path: no ownership check
+        # Resolve owner when the caller didn't scope it (legacy path).
+        owner_id = user_id
+        if owner_id is None:
             dataset = await self.get_dataset(dataset_id, check_ownership=False)
             if not dataset:
                 return False
+            owner_id = dataset.user_id
 
-            await dataset.delete()
-            return True
+        manifest = await dataset_erasure_service.erase_dataset(
+            dataset_id, owner_id, actor_id=owner_id
+        )
+        return not manifest.idempotent_noop
 
     async def mark_dataset_processed(
         self,
