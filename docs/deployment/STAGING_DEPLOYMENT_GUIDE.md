@@ -230,6 +230,12 @@ ufw status
 # (3011) and backend (8010) on localhost, and Redis (6381) is internal.
 # MongoDB is in Atlas — ensure the server's public IP is in the Atlas
 # project's IP Access List instead.
+#
+# Do NOT `ufw allow` 3011/8010/6381 (issue #258). Those ports are published on
+# 127.0.0.1 only in docker-compose.staging.yml, so they are already unreachable
+# from outside the host. Opening them in UFW would not even help: Docker's
+# iptables DNAT rules are evaluated before UFW, so a public bind leaks past the
+# firewall — loopback binding in compose is the real control.
 
 # Reload firewall
 ufw reload
