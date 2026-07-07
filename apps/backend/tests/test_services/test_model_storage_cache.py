@@ -6,6 +6,7 @@ feature transformer from S3 on every prediction. A bounded TTL-LRU cache keyed b
 is invalidated on delete/retrain/deploy.
 """
 
+import threading
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,6 +15,7 @@ import app.services.model_storage as model_storage
 from app.services.model_storage import (
     ModelStorageService,
     _ModelArtifactCache,
+    get_inference_lock,
     invalidate_model_cache,
 )
 
@@ -84,6 +86,22 @@ class TestModelArtifactCache:
         for cache in (_ModelArtifactCache(0, 100.0), _ModelArtifactCache(4, 0.0)):
             cache.put(("m1", "u1"), "a")
             assert cache.get(("m1", "u1")) is None
+
+
+class TestInferenceLock:
+    """Per-model inference lock guards the shared cached estimator (issue #265)."""
+
+    @pytest.mark.unit
+    def test_same_key_returns_same_lock(self):
+        lock = get_inference_lock("m1", "u1")
+        assert isinstance(lock, type(threading.Lock()))
+        assert get_inference_lock("m1", "u1") is lock  # reused, so it can guard
+
+    @pytest.mark.unit
+    def test_different_model_or_user_gets_distinct_lock(self):
+        base = get_inference_lock("m1", "u1")
+        assert get_inference_lock("m2", "u1") is not base  # other model → parallel
+        assert get_inference_lock("m1", "u2") is not base  # other user → parallel
 
 
 def _mock_ml_model():

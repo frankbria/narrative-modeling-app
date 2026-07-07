@@ -85,10 +85,36 @@ class _ModelArtifactCache:
 
 _model_cache = _ModelArtifactCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
 
+# Per-model inference locks (issue #265). The artifact cache hands out ONE shared
+# estimator per (model_id, user_id); some boosters (LightGBM / older XGBoost) are
+# not safe for concurrent ``predict`` from multiple ``asyncio.to_thread`` worker
+# threads, so serving serializes inference per model. Different models still run in
+# parallel. ponytail: locks are tiny and never evicted — negligible at beta model
+# counts; bound this map if the served-model population ever explodes.
+_inference_locks: dict[tuple[str, str], threading.Lock] = {}
+_inference_locks_guard = threading.Lock()
+
 
 def invalidate_model_cache(model_id: str, user_id: str) -> None:
     """Evict a model's cached artifacts (on retrain/delete/deploy — issue #265)."""
     _model_cache.invalidate((model_id, user_id))
+
+
+def get_inference_lock(model_id: str, user_id: str) -> threading.Lock:
+    """Return the per-model lock that serializes inference on the shared estimator.
+
+    Serving loads one cached estimator per ``(model_id, user_id)`` and runs
+    ``predict``/``predict_proba`` off the event loop via ``asyncio.to_thread``;
+    holding this lock around those calls prevents concurrent worker threads from
+    racing inside a non-thread-safe booster (issue #265).
+    """
+    key = (model_id, user_id)
+    with _inference_locks_guard:
+        lock = _inference_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _inference_locks[key] = lock
+        return lock
 
 
 def _to_json_safe(value: Any) -> Any:
