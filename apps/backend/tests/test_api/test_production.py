@@ -506,10 +506,12 @@ class TestProductionPredictErrorHandling:
 
     def test_request_caps_records_at_max(self):
         """The request schema rejects payloads over MAX_PREDICT_RECORDS (#264)."""
+        from pydantic import ValidationError
+
         from app.api.routes.production import MAX_PREDICT_RECORDS
 
         oversized = [{"feature1": 1.0}] * (MAX_PREDICT_RECORDS + 1)
-        with pytest.raises(ValueError):  # pydantic ValidationError subclasses ValueError
+        with pytest.raises(ValidationError):
             ProductionPredictRequest(data=oversized)
 
         # Exactly at the cap is accepted.
