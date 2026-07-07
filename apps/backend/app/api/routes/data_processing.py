@@ -359,35 +359,84 @@ async def get_data_preview(
         }
 
 
+def _serialize_dataframe(df, export_format: str) -> bytes:
+    """Serialize a DataFrame to the requested export format's bytes."""
+    import io
+
+    if export_format == "csv":
+        return df.to_csv(index=False).encode()
+    if export_format == "json":
+        return df.to_json(orient="records").encode()
+    if export_format == "parquet":
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        return buf.getvalue()
+    if export_format == "excel":
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        return buf.getvalue()
+    raise ValueError(f"Unsupported export format: {export_format}")
+
+
 @router.post("/{file_id}/export")
 async def export_processed_data(
     file_id: str = Path(..., description="File ID"),
     format: str = Query("csv", description="Export format", pattern="^(csv|excel|json|parquet)$"),
-    include_stats: bool = Query(False, description="Include statistics in export"),
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Export processed data in various formats"""
+    """Export processed data as a real, downloadable file.
+
+    Reads the source file from S3, converts it to the requested format, uploads
+    the artifact, and returns a working presigned download URL (valid 1 hour).
+    """
+    import io
+
+    import pandas as pd
+
     user_data = await UserData.find_one(
         UserData.id == file_id,
         UserData.user_id == current_user_id
     )
-    
+
     if not user_data:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
-    
-    # TODO: Implement actual export functionality
-    # For now, return export metadata
-    
+
     export_filename = f"{user_data.original_filename.rsplit('.', 1)[0]}_processed.{format}"
-    
+
+    try:
+        # Load the source file from S3 (same shapes the preview endpoint handles)
+        _, file_key = parse_s3_url(user_data.s3_url)
+        file_bytes = await s3_service.download_file_bytes(file_key)
+
+        if user_data.file_type == "csv" or user_data.original_filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        elif user_data.file_type in ("excel", "xls", "xlsx") or user_data.original_filename.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(file_bytes))
+        elif user_data.file_type == "parquet" or user_data.original_filename.endswith(".parquet"):
+            df = pd.read_parquet(io.BytesIO(file_bytes))
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot export unsupported source file type: {user_data.file_type}",
+            )
+
+        export_bytes = _serialize_dataframe(df, format)
+        export_key = f"exports/{current_user_id}/{file_id}/{export_filename}"
+        await s3_service.upload_file_obj(io.BytesIO(export_bytes), export_key)
+        download_url = s3_service.generate_presigned_url(export_key)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Export failed for file %s: %s", file_id, e)
+        raise HTTPException(status_code=500, detail="Export failed") from e
+
     return {
         "file_id": str(user_data.id),
         "export_format": format,
         "export_filename": export_filename,
-        "include_stats": include_stats,
         "status": "export_ready",
-        "download_url": f"/api/v1/data/{file_id}/download?format={format}"
+        "download_url": download_url,
     }

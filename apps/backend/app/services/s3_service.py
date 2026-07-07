@@ -175,6 +175,16 @@ class S3Service:
     def get_file_url(self, file_key: str) -> str:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
+
+    def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
+        """Presigned GET URL for temporary browser-downloadable access."""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
+        return self.s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket_name, "Key": file_key},
+            ExpiresIn=expires_in,
+        )
     
     @with_circuit_breaker(
         "s3",
