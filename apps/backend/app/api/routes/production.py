@@ -2,7 +2,6 @@
 Production model serving API routes
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -23,7 +22,7 @@ from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
-from app.services.model_storage import ModelStorageService
+from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.prediction_monitoring import prediction_log
 
@@ -332,28 +331,34 @@ async def production_predict(
         # Transform + predict. A bad feature value (e.g. an unknown category the
         # encoder never saw) surfaces as a sklearn ValueError/KeyError → 422, not
         # a 500 leak. Inference is CPU-bound, so it runs off the event loop.
+        want_proba = model.problem_type.endswith("classification") and hasattr(
+            trained_model, "predict_proba"
+        )
+
+        def _infer(X):
+            preds = trained_model.predict(X)
+            proba = None
+            if want_proba:
+                try:
+                    proba = trained_model.predict_proba(X)
+                except Exception:  # noqa: BLE001 - probabilities are optional
+                    proba = None
+            return preds, proba
+
         try:
             if feature_engineer:
                 X_transformed = await feature_engineer.transform(df)
             else:
                 X_transformed = df[model.feature_names]
 
-            predictions = await asyncio.to_thread(trained_model.predict, X_transformed)
-
-            # Compute probabilities whenever the (calibrated) classifier supports
-            # them; they drive confidence + low-confidence flags regardless of
-            # whether the caller asked to see the full vectors (issue #83).
-            proba_list = None
-            if model.problem_type.endswith("classification") and hasattr(
-                trained_model, "predict_proba"
-            ):
-                try:
-                    proba_arr = await asyncio.to_thread(
-                        trained_model.predict_proba, X_transformed
-                    )
-                    proba_list = proba_arr.tolist()
-                except Exception:  # noqa: BLE001 - probabilities are optional
-                    proba_list = None
+            # Inference runs off the loop and serialized per model on the shared
+            # cached estimator (issue #265). Probabilities drive confidence +
+            # low-confidence flags regardless of whether the caller asked to see
+            # the full vectors (issue #83).
+            predictions, proba_arr = await run_locked_inference(
+                model_id, api_key.user_id, lambda: _infer(X_transformed)
+            )
+            proba_list = proba_arr.tolist() if proba_arr is not None else None
         except (ValueError, KeyError) as exc:
             # A client-supplied bad value (unknown category, wrong dtype). Return
             # a fixed sanitized 422 — the raw sklearn/pandas message can echo

@@ -68,6 +68,8 @@ from app.services.model_storage import (
     ModelStorageService,
     build_evaluation_payload,
     build_shap_payload,
+    invalidate_model_cache,
+    run_locked_inference,
 )
 from app.services.model_training import (
     AutoMLEngine,
@@ -1645,6 +1647,9 @@ async def deploy_model(
     model.updated_at = datetime.now(UTC)
     await model.save()
 
+    # Evict cached artifacts so serving picks up the deploy transition (#265).
+    invalidate_model_cache(model_id, current_user_id)
+
     return ModelDeployResponse(
         model_id=model_id,
         status="deployed",
@@ -1831,23 +1836,32 @@ async def predict(
     # Apply the fitted pipeline and run inference. A bad feature value (e.g. an
     # unknown category the encoder was never fitted on) surfaces as a sklearn
     # ValueError — return it as a clear 422 rather than a 500 traceback leak.
+    want_proba = hasattr(model, "predict_proba")
+
+    def _infer(X):
+        # Compute probabilities whenever the (now calibrated) classifier supports
+        # them — they drive confidence + low-confidence flags even if the caller
+        # didn't ask to see the full vectors (#83). The `probabilities` field is
+        # only returned when requested (#82).
+        preds = model.predict(X)
+        proba = None
+        if want_proba:
+            try:
+                proba = model.predict_proba(X)
+            except Exception:  # noqa: BLE001 - probabilities are optional
+                proba = None
+        return preds, proba
+
     try:
         if feature_engineer:
             input_df = await feature_engineer.transform(input_df)
 
-        # Make predictions
-        predictions = model.predict(input_df)
-
-        # Compute probabilities whenever the (now calibrated) classifier
-        # supports them — they drive confidence + low-confidence flags even if
-        # the caller didn't ask to see the full probability vectors (#83). The
-        # `probabilities` field itself is only returned when requested (#82).
-        proba_list = None
-        if hasattr(model, "predict_proba"):
-            try:
-                proba_list = model.predict_proba(input_df).tolist()
-            except Exception:  # noqa: BLE001 - probabilities are optional
-                proba_list = None
+        # Inference runs off the loop and serialized per model on the shared
+        # cached estimator (issue #265).
+        predictions, proba_arr = await run_locked_inference(
+            model_id, current_user_id, lambda: _infer(input_df)
+        )
+        proba_list = proba_arr.tolist() if proba_arr is not None else None
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid feature value(s): {exc}")
 

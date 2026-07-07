@@ -2,11 +2,17 @@
 Model storage service for saving and loading ML models
 """
 
+import asyncio
 import io
 import json
 import logging
 import math
+import os
+import threading
+import time
 import uuid
+from collections import OrderedDict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,6 +29,114 @@ from app.services.model_versioning_service import (
 from app.services.s3_service import S3Service
 
 logger = logging.getLogger(__name__)
+
+# Model-artifact cache config (issue #265). Bounds memory: entries hold a whole
+# deserialized estimator + feature transformer, so keep the count small.
+_CACHE_MAX_SIZE = int(os.getenv("MODEL_CACHE_MAX_SIZE", "8"))
+_CACHE_TTL_SECONDS = float(os.getenv("MODEL_CACHE_TTL_SECONDS", "900"))
+
+
+class _ModelArtifactCache:
+    """Bounded TTL-LRU of ``(estimator, feature_engineer)`` by ``(model_id, user_id)``.
+
+    Kills the per-prediction S3 download + ``joblib.load`` that dominated serving
+    latency (issue #265). Disabled when ``max_size`` or ``ttl`` is non-positive.
+
+    ponytail: single lock over an ``OrderedDict`` — ample for beta request rates
+    on one process; swap for Redis if serving ever fans out across workers.
+    """
+
+    def __init__(self, max_size: int, ttl: float):
+        self._max = max_size
+        self._ttl = ttl
+        self._data: OrderedDict[tuple[str, str], tuple[float, Any]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[str, str]) -> Any | None:
+        if self._max <= 0 or self._ttl <= 0:
+            return None
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            expires_at, value = entry
+            if time.monotonic() >= expires_at:
+                del self._data[key]
+                return None
+            self._data.move_to_end(key)
+            return value
+
+    def put(self, key: tuple[str, str], value: Any) -> None:
+        if self._max <= 0 or self._ttl <= 0:
+            return
+        with self._lock:
+            self._data[key] = (time.monotonic() + self._ttl, value)
+            self._data.move_to_end(key)
+            while len(self._data) > self._max:
+                self._data.popitem(last=False)
+
+    def invalidate(self, key: tuple[str, str]) -> None:
+        with self._lock:
+            self._data.pop(key, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+
+
+_model_cache = _ModelArtifactCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
+
+# Per-model inference locks (issue #265). The artifact cache hands out ONE shared
+# estimator per (model_id, user_id); some boosters (LightGBM / older XGBoost) are
+# not safe for concurrent ``predict`` from multiple ``asyncio.to_thread`` worker
+# threads, so serving serializes inference per model. Different models still run in
+# parallel. ponytail: locks are tiny and never evicted — negligible at beta model
+# counts; bound this map if the served-model population ever explodes.
+_inference_locks: dict[tuple[str, str], threading.Lock] = {}
+_inference_locks_guard = threading.Lock()
+
+
+def invalidate_model_cache(model_id: str, user_id: str) -> None:
+    """Evict a model's cached artifacts (on retrain/delete/deploy — issue #265)."""
+    _model_cache.invalidate((model_id, user_id))
+
+
+def get_inference_lock(model_id: str, user_id: str) -> threading.Lock:
+    """Return the per-model lock that serializes inference on the shared estimator.
+
+    Serving loads one cached estimator per ``(model_id, user_id)`` and runs
+    ``predict``/``predict_proba`` off the event loop via ``asyncio.to_thread``;
+    holding this lock around those calls prevents concurrent worker threads from
+    racing inside a non-thread-safe booster (issue #265).
+    """
+    key = (model_id, user_id)
+    with _inference_locks_guard:
+        lock = _inference_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _inference_locks[key] = lock
+        return lock
+
+
+async def run_locked_inference[T](
+    model_id: str, user_id: str, func: Callable[[], T]
+) -> T:
+    """Run a synchronous inference callable off the loop, serialized per model.
+
+    The artifact cache hands out ONE shared estimator per ``(model_id, user_id)``,
+    so every ``predict``/``predict_proba`` path (production, internal, batch) must
+    funnel through this: it runs ``func`` in a worker thread (so waiting on the
+    lock never stalls the event loop) while the per-model lock prevents concurrent
+    threads from racing inside a non-thread-safe booster (issue #265). Different
+    models still run in parallel.
+    """
+    lock = get_inference_lock(model_id, user_id)
+
+    def _run() -> T:
+        with lock:
+            return func()
+
+    return await asyncio.to_thread(_run)
 
 
 def _to_json_safe(value: Any) -> Any:
@@ -293,7 +407,10 @@ class ModelStorageService:
         
         # Save to database
         await ml_model.insert()
-        
+
+        # Evict any stale cache entry for this id (defensive; retrain — issue #265).
+        _model_cache.invalidate((model_id, user_id))
+
         logger.info(f"Saved model {model_id} for user {user_id}")
         return ml_model
     
@@ -308,22 +425,29 @@ class ModelStorageService:
         Returns:
             Tuple of (model, feature_engineer)
         """
+        # Serve hot artifacts from the cache: the key encodes user_id, so a hit is
+        # already ownership-scoped and needs no S3/Mongo round trip (issue #265).
+        cache_key = (model_id, user_id)
+        cached = _model_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         # Get model metadata
         ml_model = await MLModel.find_one(
             MLModel.model_id == model_id,
             MLModel.user_id == user_id
         )
-        
+
         if not ml_model:
             raise ValueError(f"Model {model_id} not found for user {user_id}")
-        
+
         # Extract S3 key from path
         model_key = ml_model.model_path.replace(f"s3://{self.s3_service.bucket_name}/", "")
-        
-        # Download model
+
+        # Download model. joblib.load unpickles CPU-bound → run it off the loop.
         model_data = await self.s3_service.download_file_obj(model_key)
-        model = joblib.load(io.BytesIO(model_data))
-        
+        model = await asyncio.to_thread(joblib.load, io.BytesIO(model_data))
+
         # Load feature transformer if exists
         feature_engineer = None
         if ml_model.feature_transformer_path:
@@ -331,13 +455,19 @@ class ModelStorageService:
                 f"s3://{self.s3_service.bucket_name}/", ""
             )
             transformer_data = await self.s3_service.download_file_obj(transformer_key)
-            feature_engineer = joblib.load(io.BytesIO(transformer_data))
-        
-        # Update last used timestamp
+            feature_engineer = await asyncio.to_thread(
+                joblib.load, io.BytesIO(transformer_data)
+            )
+
+        # Update last used timestamp. ponytail: only stamped on a cache miss —
+        # the production serving path also updates it per-prediction via the
+        # monitoring service, so the hot path stays free of a DB write.
         ml_model.last_used_at = datetime.now(UTC)
         await ml_model.save()
-        
-        return model, feature_engineer
+
+        result = (model, feature_engineer)
+        _model_cache.put(cache_key, result)
+        return result
     
     async def delete_model(self, model_id: str, user_id: str) -> bool:
         """
@@ -391,7 +521,10 @@ class ModelStorageService:
         
         # Delete from database
         await ml_model.delete()
-        
+
+        # Drop cached artifacts so a re-created id can't serve the old model (#265).
+        _model_cache.invalidate((model_id, user_id))
+
         logger.info(f"Deleted model {model_id} for user {user_id}")
         return True
     

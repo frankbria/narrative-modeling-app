@@ -27,7 +27,7 @@ from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, Job
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import InterpretabilityService
-from app.services.model_storage import ModelStorageService
+from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
 
@@ -453,11 +453,18 @@ class BatchPredictionService:
         else:
             X_transformed = chunk_df[model.feature_names]
 
-        preds = trained_model.predict(X_transformed)
+        # Inference runs off the loop and serialized per model on the shared
+        # cached estimator (issue #265).
+        want_proba = is_classification and hasattr(trained_model, "predict_proba")
 
-        proba_matrix = None
-        if is_classification and hasattr(trained_model, "predict_proba"):
-            proba_matrix = trained_model.predict_proba(X_transformed)
+        def _infer(X):
+            p = trained_model.predict(X)
+            pm = trained_model.predict_proba(X) if want_proba else None
+            return p, pm
+
+        preds, proba_matrix = await run_locked_inference(
+            model.model_id, model.user_id, lambda: _infer(X_transformed)
+        )
 
         # Engineered feature rows for the batched explainer (issue #80) — only
         # materialised when explanations are requested, so we never densify a
@@ -548,6 +555,14 @@ class BatchPredictionService:
         # pass after the loop (issue #80).
         to_explain: list[dict[str, Any]] = []
         is_classification = str(model.problem_type).endswith("classification")
+        want_proba = is_classification and hasattr(trained_model, "predict_proba")
+
+        def _infer(X):
+            # Off the loop + serialized per model on the shared cached estimator
+            # (issue #265). Loop-invariant, so defined once outside the row loop.
+            p = trained_model.predict(X)
+            pm = trained_model.predict_proba(X) if want_proba else None
+            return p, pm
 
         for index, row in chunk_df.iterrows():
             try:
@@ -562,8 +577,10 @@ class BatchPredictionService:
                 else:
                     X_transformed = pd.DataFrame([input_data])[model.feature_names]
 
-                # Make prediction
-                prediction = trained_model.predict(X_transformed)[0]
+                pred_arr, proba_matrix = await run_locked_inference(
+                    model.model_id, model.user_id, lambda: _infer(X_transformed)
+                )
+                prediction = pred_arr[0]
                 prediction_value = (
                     prediction.item() if hasattr(prediction, "item") else prediction
                 )
@@ -574,8 +591,8 @@ class BatchPredictionService:
                 probabilities = None
                 confidence = None
                 low_confidence = None
-                if is_classification and hasattr(trained_model, "predict_proba"):
-                    proba_row = trained_model.predict_proba(X_transformed)[0]
+                if proba_matrix is not None:
+                    proba_row = proba_matrix[0]
                     proba_list = proba_row.tolist()
                     confidence = self.confidence.confidence_from_proba(proba_list)
                     if confidence is not None:

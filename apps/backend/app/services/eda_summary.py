@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 
@@ -109,7 +110,9 @@ def generate_grouped_insights(df: pd.DataFrame) -> dict[str, Any]:
 
 
 async def generate_eda_summary(user_data: UserData) -> dict[str, Any]:
-    local_file_path = download_file_from_s3(user_data.s3_url)
+    # download_file_from_s3 is blocking (boto3 + up-to-60s tenacity backoff) —
+    # run it off the event loop so one slow download can't stall the loop (#265).
+    local_file_path = await asyncio.to_thread(download_file_from_s3, user_data.s3_url)
     df = pd.read_csv(local_file_path)
 
     eda_summary = {

@@ -1,6 +1,7 @@
 """
 Data utilities for transformation service
 """
+import asyncio
 import logging
 import os
 import tempfile
@@ -25,8 +26,8 @@ async def get_dataframe_from_s3(s3_url: str, nrows: int | None = None) -> pd.Dat
         Pandas DataFrame
     """
     try:
-        # Download file from S3
-        temp_file_path = download_file_from_s3(s3_url)
+        # Download file from S3 (blocking boto3 — keep it off the event loop, #265)
+        temp_file_path = await asyncio.to_thread(download_file_from_s3, s3_url)
         
         # Determine file type and read accordingly
         if temp_file_path.endswith('.parquet'):
