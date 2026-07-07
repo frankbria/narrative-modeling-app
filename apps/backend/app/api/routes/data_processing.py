@@ -363,6 +363,11 @@ async def get_data_preview(
         }
 
 
+# Cap the source size for export: it is read + reserialized wholly in memory
+# (~3x), so a large file under concurrent load could exhaust container RAM.
+MAX_EXPORT_SOURCE_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
 def _read_source_dataframe(user_data: UserData, file_bytes: bytes):
     """Read an uploaded source file into a DataFrame (matches the upload readers).
 
@@ -436,8 +441,25 @@ async def export_processed_data(
 
     try:
         # Load the source file from S3 (same shapes the preview endpoint handles)
-        # TODO(GA): whole-file in-memory read (~3x size); add a size guard before GA.
         _, file_key = parse_s3_url(user_data.s3_url)
+
+        # Export reads + reserializes the whole file in memory (~3x its size), so
+        # reject oversized sources up front via head_object. Best-effort: a stat
+        # failure shouldn't block an export that would otherwise work — the
+        # download below would fail loudly anyway.
+        try:
+            source_size = await s3_service.get_file_size(file_key)
+        except Exception:
+            source_size = None
+        if source_size is not None and source_size > MAX_EXPORT_SOURCE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Source file too large to export "
+                    f"({source_size} bytes; max {MAX_EXPORT_SOURCE_BYTES})."
+                ),
+            )
+
         file_bytes = await s3_service.download_file_bytes(file_key)
 
         # Offload the blocking pandas read/serialize off the event loop (same

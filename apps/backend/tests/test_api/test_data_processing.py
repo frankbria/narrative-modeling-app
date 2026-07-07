@@ -476,6 +476,28 @@ class TestDataProcessingAPI:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_export_rejects_oversized_source(
+        self, async_authorized_client, setup_database
+    ):
+        """A source larger than MAX_EXPORT_SOURCE_BYTES is rejected with 413."""
+        from app.api.routes.data_processing import MAX_EXPORT_SOURCE_BYTES
+
+        mock_user_data = create_mock_user_data(is_processed=True)
+
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            with patch('app.services.s3_service.s3_service.get_file_size',
+                       new_callable=AsyncMock, return_value=MAX_EXPORT_SOURCE_BYTES + 1), \
+                 patch('app.services.s3_service.s3_service.download_file_bytes',
+                       new_callable=AsyncMock) as mock_download:
+                response = await async_authorized_client.post(
+                    "/api/v1/data/test-file-123/export?format=csv"
+                )
+
+        assert response.status_code == 413
+        mock_download.assert_not_awaited()  # never downloaded the oversized file
+
+    @pytest.mark.asyncio
     async def test_export_data_fails_loudly_on_s3_error(
         self, async_authorized_client, setup_database
     ):

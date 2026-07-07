@@ -176,6 +176,20 @@ class S3Service:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
 
+    @with_circuit_breaker(
+        "s3",
+        max_attempts=3,
+        failure_threshold=5,
+        recovery_timeout=60.0,
+        exceptions=(ClientError,),
+    )
+    async def get_file_size(self, file_key: str) -> int:
+        """Return an object's size in bytes via head_object (no download)."""
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError("S3Service is in mock mode - cannot stat files")
+        response = self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
+        return response["ContentLength"]
+
     def generate_presigned_url(
         self, file_key: str, expires_in: int = 3600, filename: str | None = None
     ) -> str:
