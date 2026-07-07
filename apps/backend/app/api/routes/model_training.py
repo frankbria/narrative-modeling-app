@@ -1669,7 +1669,7 @@ async def get_model(model_id: str, current_user_id: str = Depends(get_current_us
     return model
 
 
-def _required_input_features(feature_engineer, ml_model) -> list[str]:
+def required_input_features(feature_engineer, ml_model) -> list[str]:
     """The raw input columns a record must supply.
 
     When a feature engineer was fitted at training time, the model consumes the
@@ -1815,7 +1815,7 @@ async def predict(
         raise HTTPException(status_code=422, detail="No input records provided")
 
     # Validate that every record carries the required raw input features.
-    required = _required_input_features(feature_engineer, ml_model)
+    required = required_input_features(feature_engineer, ml_model)
     missing = sorted(
         {f for record in request.data for f in required if f not in record}
     )

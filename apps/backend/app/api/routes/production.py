@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # the two twins stay in lockstep (#264) instead of drifting a second copy.
 from app.api.routes.model_training import (
     MAX_PREDICT_RECORDS,
-    _required_input_features,
+    required_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.api_key import APIKey
@@ -315,7 +315,7 @@ async def production_predict(
     if not request.data:
         raise HTTPException(status_code=422, detail="No input records provided")
 
-    required = _required_input_features(feature_engineer, model)
+    required = required_input_features(feature_engineer, model)
     missing = sorted({f for record in request.data for f in required if f not in record})
     if missing:
         raise HTTPException(

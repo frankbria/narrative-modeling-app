@@ -329,8 +329,9 @@ class TestProductionPredictErrorHandling:
             feature_importance=None,
         )
 
-    def _patch_load(self, model, load_return):
-        """Patch model lookup + artifact load together."""
+    def _patch_load(self, model):
+        """Patch model lookup + artifact load; caller sets load_model's return
+        inside the ``with`` block."""
         find = patch(
             "app.models.ml_model.MLModel.find_one",
             new_callable=AsyncMock,
@@ -346,7 +347,7 @@ class TestProductionPredictErrorHandling:
     async def test_missing_feature_returns_422(self):
         """A record missing a required raw input feature → 422, not 500."""
         model = self._model()
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (MagicMock(), None)  # no feature engineer
             request = ProductionPredictRequest(data=[{"feature1": 1.0}])  # feature2 missing
@@ -360,8 +361,9 @@ class TestProductionPredictErrorHandling:
 
     @pytest.mark.asyncio
     async def test_empty_data_returns_422(self):
+        """An empty records list is a client error → 422, not a 500."""
         model = self._model()
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (MagicMock(), None)
             request = ProductionPredictRequest(data=[])
@@ -378,7 +380,7 @@ class TestProductionPredictErrorHandling:
         trained = MagicMock()
         raw = "y contains previously unseen labels: 'SECRET-COLUMN'"
         trained.predict.side_effect = ValueError(raw)
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (trained, None)
             request = ProductionPredictRequest(
@@ -393,13 +395,32 @@ class TestProductionPredictErrorHandling:
         assert raw not in exc.value.detail  # sanitized: no raw sklearn text leaked
 
     @pytest.mark.asyncio
+    async def test_invalid_feature_keyerror_returns_422(self):
+        """A KeyError from the transform/lookup path is also mapped to 422."""
+        model = self._model()
+        trained = MagicMock()
+        trained.predict.side_effect = KeyError("feature2")
+        find, load = self._patch_load(model)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}]
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 422
+        assert "Invalid feature value" in exc.value.detail
+
+    @pytest.mark.asyncio
     async def test_true_fault_returns_generic_500_without_leak(self):
         """An unexpected server fault → 500 that does NOT echo the internal message."""
         model = self._model()
         trained = MagicMock()
         secret = "connection string mongodb://secret@host leaked"
         trained.predict.side_effect = RuntimeError(secret)
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (trained, None)
             request = ProductionPredictRequest(
@@ -416,7 +437,7 @@ class TestProductionPredictErrorHandling:
     @pytest.mark.asyncio
     async def test_load_failure_returns_404(self):
         model = self._model()
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             leaky = ValueError("failed to load s3://internal-bucket/models/secret.pkl")
             mock_load.side_effect = leaky
@@ -431,13 +452,14 @@ class TestProductionPredictErrorHandling:
         assert "s3://" not in exc.value.detail  # no internal path leaked
 
     @pytest.mark.asyncio
-    async def test_happy_path_offloads_inference(self):
-        """Valid request predicts via the (to_thread) path and returns a response."""
+    async def test_happy_path_returns_predictions(self):
+        """A valid request runs the full inference path (predict/predict_proba
+        via asyncio.to_thread) and returns a populated response."""
         model = self._model()
         trained = MagicMock()
         trained.predict.return_value = np.array([0, 1])
         trained.predict_proba.return_value = np.array([[0.8, 0.2], [0.3, 0.7]])
-        find, load = self._patch_load(model, None)
+        find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (trained, None)
             request = ProductionPredictRequest(
