@@ -20,17 +20,24 @@ function base64url(input: string): string {
  *
  * Runs only in the Node runtime (the NextAuth config is Node-only via the
  * MongoDB adapter), so `node:crypto` is available — no extra dependency.
+ *
+ * The optional `email` claim lets the backend mirror the invite-only allowlist
+ * gate (issue #261) as defense-in-depth; omitted when the user has no email.
  */
-export function mintApiToken(userId: string): string {
+export function mintApiToken(userId: string, email?: string | null): string {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) {
     throw new Error('NEXTAUTH_SECRET is not set; cannot mint API token');
   }
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = base64url(
-    JSON.stringify({ sub: userId, iat: now, exp: now + API_TOKEN_TTL_SECONDS }),
-  );
+  const claims: Record<string, unknown> = {
+    sub: userId,
+    iat: now,
+    exp: now + API_TOKEN_TTL_SECONDS,
+  };
+  if (email) claims.email = email;
+  const payload = base64url(JSON.stringify(claims));
   const signingInput = `${header}.${payload}`;
   const signature = createHmac('sha256', secret).update(signingInput).digest('base64url');
   return `${signingInput}.${signature}`;

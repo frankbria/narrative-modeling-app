@@ -117,6 +117,7 @@ nano .env.staging
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
 - `BACKEND_CORS_ORIGINS`: https://narrative.yourdomain.com (explicit origin(s); the backend refuses `*` in production-like envs)
 - `ALLOWED_ORIGINS`: https://narrative.yourdomain.com (frontend page-middleware CORS allowlist)
+- `INVITE_ALLOWLIST`: comma-separated invitee emails (**required** — the invite-only beta gate; compose refuses to start if unset). See [Managing beta invitees](#managing-beta-invitees).
 - Google/GitHub OAuth credentials (if using authentication)
 
 **Save and secure the file**:
@@ -416,10 +417,62 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 
 ---
 
+## Managing beta invitees
+
+The launch is a **free, invite-only beta**. Signup is gated by an email
+allowlist (issue #261) — OAuth is open to any Google/GitHub account, so without
+this gate anyone could sign in and consume compute.
+
+**How it works:**
+- `INVITE_ALLOWLIST` is a comma-separated list of invitee emails, shared by the
+  frontend and backend services (see `docker-compose.staging.yml`).
+- The **NextAuth `signIn` callback** (`apps/frontend/auth.ts`) is the primary
+  gate: a non-listed email never gets a session — they land on the
+  **"Invite Required"** page (`/auth/error?error=AccessDenied`) with a
+  *Request access* button.
+- The **FastAPI backend** (`app/auth/nextauth_auth.py`) mirrors the check and
+  returns **403** for any authenticated request whose token email isn't listed
+  (defense-in-depth; catches revocation within the ~1h token TTL).
+- An **empty** `INVITE_ALLOWLIST` disables the gate. Staging compose therefore
+  **fails to start** if it's unset (`${INVITE_ALLOWLIST:?...}`).
+
+> **First activation:** when the gate is first enabled (or on this feature's
+> initial deploy), every *active* session must refresh its token before it
+> carries the `email` claim the backend mirror checks — so **all** existing
+> sessions (not just un-invited ones) will re-auth within the token TTL (≤1h).
+> Expected and self-healing; no action needed.
+
+**To add an invitee:**
+1. Edit `.env.staging` and append the email to `INVITE_ALLOWLIST`
+   (e.g. `INVITE_ALLOWLIST=alice@example.com,bob@example.com,carol@example.com`).
+2. Re-apply so both services pick up the new value:
+   ```bash
+   docker compose -f docker-compose.staging.yml up -d
+   ```
+   (No rebuild needed — it's a runtime env var.)
+
+**To revoke access:** remove the email and `up -d`. Any live *session* token for
+that user stops working within the token TTL (≤1h) via the backend mirror.
+
+> **Scope note (defense-in-depth):** the backend mirror covers session-authed
+> routes (`get_current_user_id`). Production model-serving routes authenticate
+> with an **API key** (`X-API-Key`, `verify_api_key`) and are *not* re-checked
+> against `INVITE_ALLOWLIST`. This is safe for the beta because API keys can only
+> be created by an already-invited user, so an outsider can never mint one. If
+> you de-allowlist a user who already holds an API key, revoke their key
+> explicitly (`DELETE /api/v1/production/api-keys/{id}`) — the allowlist alone
+> won't disable it. The primary `signIn` gate remains the load-bearing control.
+
+**Optional:** set `NEXT_PUBLIC_INVITE_REQUEST_URL` to a form/mailto link for the
+*Request access* button (defaults to a mailto when unset).
+
+---
+
 ## Security Checklist
 
 Post-deployment security verification:
 
+- [ ] `INVITE_ALLOWLIST` set to the intended beta cohort (both services)
 - [ ] All services running with authentication enabled
 - [ ] Atlas IP Access List restricted to the staging server (no 0.0.0.0/0)
 - [ ] Redis requires password

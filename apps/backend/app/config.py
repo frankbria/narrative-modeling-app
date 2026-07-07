@@ -150,6 +150,37 @@ def resolve_cors_origins(
     return origins
 
 
+# Invite-only beta gate (issue #261). The primary control is the NextAuth
+# `signIn` callback (frontend), which blocks non-allowlisted users before any
+# session/token is minted. The backend mirrors the same INVITE_ALLOWLIST check
+# in get_current_user_id as defense-in-depth (catches allowlist revocation
+# within the token TTL). Both tiers share these pure helpers' semantics.
+def parse_invite_allowlist(raw: str | None) -> set[str]:
+    """Parse INVITE_ALLOWLIST (comma-separated emails) into a lowercased set.
+
+    Empty/unset ⇒ empty set ⇒ the invite gate is disabled (allow all). Mirrors
+    the frontend `parseAllowlist` so both tiers read one source of truth.
+    """
+    if not raw or not raw.strip():
+        return set()
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def is_email_allowed(email: str | None, allowlist: set[str]) -> bool:
+    """True if the invite gate admits ``email``.
+
+    An empty allowlist disables the gate (everyone allowed). When active, the
+    email must be listed (case-insensitive); a missing email is rejected — but
+    by construction every admitted user has an email (the signIn gate rejects
+    email-less sign-ins), so this only bites forged/stale tokens.
+    """
+    if not allowlist:
+        return True
+    if not email:
+        return False
+    return email.strip().lower() in allowlist
+
+
 # One logical S3 bucket has historically been read under several env var names
 # (#257): uploads via AWS_BUCKET_NAME/S3_BUCKET_NAME, the download allowlist via
 # AWS_S3_BUCKET, versioning via S3_BUCKET. A deploy that sets only one name left

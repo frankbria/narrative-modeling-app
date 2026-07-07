@@ -78,6 +78,11 @@ services:
       # The backend validates NextAuth JWTs, so it needs the same secret the
       # frontend signs them with (app/auth/nextauth_auth.py).
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env.staging}
+      # Invite-only beta gate (#261): comma-separated allowlist of invitee
+      # emails. Required for staging — an empty value disables the gate, which
+      # would leave the "invite-only" beta open to any Google/GitHub account.
+      # The frontend signIn callback is the primary gate; the backend mirrors it.
+      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:?INVITE_ALLOWLIST (comma-separated invitee emails) must be set in .env.staging}
     volumes:
       - backend_logs:/app/logs
     depends_on:
@@ -117,6 +122,12 @@ services:
       # host arrives via X-Forwarded-Host, so it must be trusted explicitly.
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      # Invite-only beta gate (#261) — same allowlist the backend mirrors. The
+      # NextAuth signIn callback (auth.ts) rejects non-listed emails here.
+      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:?INVITE_ALLOWLIST (comma-separated invitee emails) must be set in .env.staging}
+      # Optional: where rejected users are pointed to request access (mailto or
+      # a form URL). Defaults to a mailto in the error page when unset.
+      NEXT_PUBLIC_INVITE_REQUEST_URL: ${NEXT_PUBLIC_INVITE_REQUEST_URL:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_ID: ${GITHUB_ID}
