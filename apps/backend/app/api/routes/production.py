@@ -2,14 +2,22 @@
 Production model serving API routes
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+import pandas as pd
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+# Reuse the internal predict route's record cap + required-feature resolver so
+# the two twins stay in lockstep (#264) instead of drifting a second copy.
+from app.api.routes.model_training import (
+    MAX_PREDICT_RECORDS,
+    required_input_features,
+)
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
@@ -106,7 +114,11 @@ class APIKeyResponse(BaseModel):
 
 
 class ProductionPredictRequest(BaseModel):
-    data: list[dict[str, Any]] = Field(..., description="Input data for prediction")
+    data: list[dict[str, Any]] = Field(
+        ...,
+        max_length=MAX_PREDICT_RECORDS,
+        description="Input data for prediction",
+    )
     include_metadata: bool = Field(default=False, description="Include model metadata")
     include_probabilities: bool = Field(
         default=True, description="Include probabilities for classification"
@@ -283,37 +295,75 @@ async def production_predict(
     storage_service = ModelStorageService()
 
     request_start = datetime.utcnow()
+
+    # load_model returns a (model, feature_engineer) tuple keyed by
+    # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
     try:
-        # load_model returns a (model, feature_engineer) tuple keyed by
-        # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
         trained_model, feature_engineer = await storage_service.load_model(
             model_id, api_key.user_id
         )
+    except ValueError as e:
+        # The model record was already found + ownership-verified above, so a
+        # load failure here means the artifact is missing/corrupt — the model
+        # exists, its deployment is broken. Return 503 (not 404, which would
+        # misdirect operators to a "bad model id") and never echo str(e), which
+        # may carry S3 paths / internal detail on this untrusted path (#264).
+        logger.warning("Model load failed for %s: %s", model_id, e)
+        raise HTTPException(status_code=503, detail="Model temporarily unavailable")
 
-        # Transform input data if feature engineer exists
-        import pandas as pd
+    # Validate the request BEFORE running inference, mirroring the internal
+    # /ml/{id}/predict twin (#264): a missing feature / unknown category is a
+    # client error → 422 with a sanitized message, never a 500 that echoes an
+    # internal traceback on the least-trusted (paying-customer) path.
+    if not request.data:
+        raise HTTPException(status_code=422, detail="No input records provided")
 
+    required = required_input_features(feature_engineer, model)
+    missing = sorted({f for record in request.data for f in required if f not in record})
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required feature(s): {', '.join(missing)}",
+        )
+
+    try:
         df = pd.DataFrame(request.data)
 
-        if feature_engineer:
-            X_transformed = await feature_engineer.transform(df)
-        else:
-            X_transformed = df[model.feature_names]
+        # Transform + predict. A bad feature value (e.g. an unknown category the
+        # encoder never saw) surfaces as a sklearn ValueError/KeyError → 422, not
+        # a 500 leak. Inference is CPU-bound, so it runs off the event loop.
+        try:
+            if feature_engineer:
+                X_transformed = await feature_engineer.transform(df)
+            else:
+                X_transformed = df[model.feature_names]
 
-        # Make predictions
-        predictions = trained_model.predict(X_transformed)
+            predictions = await asyncio.to_thread(trained_model.predict, X_transformed)
 
-        # Compute probabilities whenever the (calibrated) classifier supports
-        # them; they drive confidence + low-confidence flags regardless of
-        # whether the caller asked to see the full vectors (issue #83).
-        proba_list = None
-        if model.problem_type.endswith("classification") and hasattr(
-            trained_model, "predict_proba"
-        ):
-            try:
-                proba_list = trained_model.predict_proba(X_transformed).tolist()
-            except Exception:  # noqa: BLE001 - probabilities are optional
-                proba_list = None
+            # Compute probabilities whenever the (calibrated) classifier supports
+            # them; they drive confidence + low-confidence flags regardless of
+            # whether the caller asked to see the full vectors (issue #83).
+            proba_list = None
+            if model.problem_type.endswith("classification") and hasattr(
+                trained_model, "predict_proba"
+            ):
+                try:
+                    proba_arr = await asyncio.to_thread(
+                        trained_model.predict_proba, X_transformed
+                    )
+                    proba_list = proba_arr.tolist()
+                except Exception:  # noqa: BLE001 - probabilities are optional
+                    proba_list = None
+        except (ValueError, KeyError) as exc:
+            # A client-supplied bad value (unknown category, wrong dtype). Return
+            # a fixed sanitized 422 — the raw sklearn/pandas message can echo
+            # internal column names / input values, so it's logged, not returned
+            # (#264, stricter than the internal twin because this path is public).
+            logger.info("Invalid feature value for model %s: %s", model_id, exc)
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid feature value(s) in one or more records.",
+            )
 
         predictions_list = predictions.tolist()
 
@@ -375,8 +425,14 @@ async def production_predict(
             explanations=explanations,
         )
 
+    except HTTPException:
+        # Client errors (404/422) raised above are already correct — don't let
+        # the catch-all below re-wrap them into a 500 (#264).
+        raise
     except Exception as e:
-        # Record the failure so the dashboard's error rate / alerts reflect it.
+        # A true server fault. Record it so the dashboard's error rate / alerts
+        # reflect it, but return a generic 500 — never echo str(e) to the caller.
+        logger.exception("Production prediction failed for model %s", model_id)
         latency_ms = (datetime.utcnow() - request_start).total_seconds() * 1000
         await _record_serving_metrics(
             model_id=model_id,
@@ -387,7 +443,7 @@ async def production_predict(
             api_key_id=api_key.key_id,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Prediction failed")
 
 
 @router.get("/v1/models/{model_id}/info")
