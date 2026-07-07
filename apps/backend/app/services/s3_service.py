@@ -176,14 +176,23 @@ class S3Service:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
 
-    def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
-        """Presigned GET URL for temporary browser-downloadable access."""
+    def generate_presigned_url(
+        self, file_key: str, expires_in: int = 3600, filename: str | None = None
+    ) -> str:
+        """Presigned GET URL for temporary browser-downloadable access.
+
+        Synchronous by design: boto3's ``generate_presigned_url`` is a local HMAC
+        signing operation with no network I/O, so it is safe to call from an async
+        route without blocking the event loop (hence no circuit breaker either).
+        Pass ``filename`` to force a clean download name via Content-Disposition.
+        """
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
+        params: dict[str, str] = {"Bucket": self.bucket_name, "Key": file_key}
+        if filename:
+            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
         return self.s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self.bucket_name, "Key": file_key},
-            ExpiresIn=expires_in,
+            "get_object", Params=params, ExpiresIn=expires_in
         )
     
     @with_circuit_breaker(

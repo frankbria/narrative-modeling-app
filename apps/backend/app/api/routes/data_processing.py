@@ -2,8 +2,10 @@
 API routes for data processing functionality
 """
 
+import io
 import json
 import logging
+import os
 from typing import Any
 
 import numpy as np
@@ -359,10 +361,33 @@ async def get_data_preview(
         }
 
 
+def _read_source_dataframe(user_data, file_bytes: bytes):
+    """Read an uploaded source file into a DataFrame (matches the upload readers).
+
+    Raises HTTPException(422) for source types we cannot read.
+    """
+    import pandas as pd
+
+    name = user_data.original_filename or ""
+    ftype = user_data.file_type
+    if ftype == "csv" or name.endswith(".csv"):
+        return pd.read_csv(io.BytesIO(file_bytes))
+    if ftype == "txt" or name.endswith(".txt"):
+        return pd.read_csv(io.BytesIO(file_bytes), sep="\t")  # upload stores txt as TSV
+    if ftype in ("excel", "xls", "xlsx") or name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(io.BytesIO(file_bytes))
+    if ftype == "parquet" or name.endswith(".parquet"):
+        return pd.read_parquet(io.BytesIO(file_bytes))
+    if ftype == "json" or name.endswith(".json"):
+        return pd.read_json(io.BytesIO(file_bytes))
+    raise HTTPException(
+        status_code=422,
+        detail=f"Cannot export unsupported source file type: {ftype}",
+    )
+
+
 def _serialize_dataframe(df, export_format: str) -> bytes:
     """Serialize a DataFrame to the requested export format's bytes."""
-    import io
-
     if export_format == "csv":
         return df.to_csv(index=False).encode()
     if export_format == "json":
@@ -389,10 +414,6 @@ async def export_processed_data(
     Reads the source file from S3, converts it to the requested format, uploads
     the artifact, and returns a working presigned download URL (valid 1 hour).
     """
-    import io
-
-    import pandas as pd
-
     user_data = await UserData.find_one(
         UserData.id == file_id,
         UserData.user_id == current_user_id
@@ -404,29 +425,21 @@ async def export_processed_data(
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
 
-    export_filename = f"{user_data.original_filename.rsplit('.', 1)[0]}_processed.{format}"
+    # original_filename is user-controlled; strip any path so a crafted name
+    # (e.g. "../../x.csv") can't escape the exports/{user}/{file}/ key prefix.
+    safe_stem = os.path.basename(user_data.original_filename or "export").rsplit(".", 1)[0] or "export"
+    export_filename = f"{safe_stem}_processed.{format}"
 
     try:
         # Load the source file from S3 (same shapes the preview endpoint handles)
         _, file_key = parse_s3_url(user_data.s3_url)
         file_bytes = await s3_service.download_file_bytes(file_key)
 
-        if user_data.file_type == "csv" or user_data.original_filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_bytes))
-        elif user_data.file_type in ("excel", "xls", "xlsx") or user_data.original_filename.endswith((".xlsx", ".xls")):
-            df = pd.read_excel(io.BytesIO(file_bytes))
-        elif user_data.file_type == "parquet" or user_data.original_filename.endswith(".parquet"):
-            df = pd.read_parquet(io.BytesIO(file_bytes))
-        else:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Cannot export unsupported source file type: {user_data.file_type}",
-            )
-
+        df = _read_source_dataframe(user_data, file_bytes)
         export_bytes = _serialize_dataframe(df, format)
         export_key = f"exports/{current_user_id}/{file_id}/{export_filename}"
         await s3_service.upload_file_obj(io.BytesIO(export_bytes), export_key)
-        download_url = s3_service.generate_presigned_url(export_key)
+        download_url = s3_service.generate_presigned_url(export_key, filename=export_filename)
     except HTTPException:
         raise
     except Exception as e:
