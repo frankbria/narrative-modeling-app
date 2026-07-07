@@ -68,6 +68,7 @@ from app.services.model_storage import (
     ModelStorageService,
     build_evaluation_payload,
     build_shap_payload,
+    invalidate_model_cache,
 )
 from app.services.model_training import (
     AutoMLEngine,
@@ -1644,6 +1645,9 @@ async def deploy_model(
     model.deployed_at = datetime.now(UTC)
     model.updated_at = datetime.now(UTC)
     await model.save()
+
+    # Evict cached artifacts so serving picks up the deploy transition (#265).
+    invalidate_model_cache(model_id, current_user_id)
 
     return ModelDeployResponse(
         model_id=model_id,

@@ -5,6 +5,7 @@ Provides endpoints for AI-powered feature suggestions, feedback recording,
 and feature application.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -55,9 +56,9 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
             detail="Access denied to this dataset"
         )
 
-    # Download and parse file
+    # Download and parse file (blocking boto3 → off the event loop, #265)
     try:
-        file_path = download_file_from_s3(dataset.s3_url)
+        file_path = await asyncio.to_thread(download_file_from_s3, dataset.s3_url)
         file_type = dataset.file_type.lower()
 
         # Explicit whitelist validation for security

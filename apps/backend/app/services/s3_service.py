@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -165,9 +166,13 @@ class S3Service:
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot download files")
 
-        try:
+        def _download() -> bytes:
+            # boto3 is blocking; run the request + body read off the event loop.
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
             return response['Body'].read()
+
+        try:
+            return await asyncio.to_thread(_download)
         except ClientError as e:
             logger.error(f"Error downloading file from S3: {str(e)}")
             raise
@@ -187,7 +192,9 @@ class S3Service:
         """Return an object's size in bytes via head_object (no download)."""
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot stat files")
-        response = self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
+        response = await asyncio.to_thread(
+            self.s3_client.head_object, Bucket=self.bucket_name, Key=file_key
+        )
         return response["ContentLength"]
 
     def generate_presigned_url(
@@ -225,7 +232,9 @@ class S3Service:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
 
         try:
-            self.s3_client.upload_fileobj(file_obj, self.bucket_name, file_key)
+            await asyncio.to_thread(
+                self.s3_client.upload_fileobj, file_obj, self.bucket_name, file_key
+            )
             logger.info(f"File uploaded successfully to {file_key}")
             return self.get_file_url(file_key)
         except ClientError as e:
@@ -249,7 +258,9 @@ class S3Service:
             raise RuntimeError("S3Service is in mock mode - cannot delete files")
 
         try:
-            self.s3_client.delete_object(Bucket=self.bucket_name, Key=file_key)
+            await asyncio.to_thread(
+                self.s3_client.delete_object, Bucket=self.bucket_name, Key=file_key
+            )
             logger.info(f"File deleted successfully: {file_key}")
             return True
         except ClientError as e:
