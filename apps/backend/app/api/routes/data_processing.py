@@ -2,6 +2,7 @@
 API routes for data processing functionality
 """
 
+import asyncio
 import io
 import json
 import logging
@@ -439,8 +440,10 @@ async def export_processed_data(
         _, file_key = parse_s3_url(user_data.s3_url)
         file_bytes = await s3_service.download_file_bytes(file_key)
 
-        df = _read_source_dataframe(user_data, file_bytes)
-        export_bytes = _serialize_dataframe(df, format)
+        # Offload the blocking pandas read/serialize off the event loop (same
+        # pattern as the MCP server's eda_summary, issue #255).
+        df = await asyncio.to_thread(_read_source_dataframe, user_data, file_bytes)
+        export_bytes = await asyncio.to_thread(_serialize_dataframe, df, format)
         export_key = f"exports/{current_user_id}/{file_id}/{export_filename}"
         await s3_service.upload_file_obj(io.BytesIO(export_bytes), export_key)
         download_url = s3_service.generate_presigned_url(export_key, filename=export_filename)

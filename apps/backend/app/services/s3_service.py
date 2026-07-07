@@ -190,7 +190,10 @@ class S3Service:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
         params: dict[str, str] = {"Bucket": self.bucket_name, "Key": file_key}
         if filename:
-            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+            # Escape internally too so this reusable primitive is safe regardless
+            # of the caller: a raw quote/semicolon can't malform the header.
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "download"
+            params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
         return self.s3_client.generate_presigned_url(
             "get_object", Params=params, ExpiresIn=expires_in
         )
