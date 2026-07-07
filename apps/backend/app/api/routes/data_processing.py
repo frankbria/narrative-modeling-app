@@ -2,8 +2,12 @@
 API routes for data processing functionality
 """
 
+import asyncio
+import io
 import json
 import logging
+import os
+import re
 from typing import Any
 
 import numpy as np
@@ -359,35 +363,122 @@ async def get_data_preview(
         }
 
 
+# Cap the source size for export: it is read + reserialized wholly in memory
+# (~3x), so a large file under concurrent load could exhaust container RAM.
+MAX_EXPORT_SOURCE_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+def _read_source_dataframe(user_data: UserData, file_bytes: bytes):
+    """Read an uploaded source file into a DataFrame (matches the upload readers).
+
+    Raises HTTPException(422) for source types we cannot read.
+    """
+    import pandas as pd
+
+    name = user_data.original_filename or ""
+    ftype = user_data.file_type
+    if ftype == "csv" or name.endswith(".csv"):
+        return pd.read_csv(io.BytesIO(file_bytes))
+    if ftype == "txt" or name.endswith(".txt"):
+        return pd.read_csv(io.BytesIO(file_bytes), sep="\t")  # upload stores txt as TSV
+    if ftype in ("excel", "xls", "xlsx") or name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(io.BytesIO(file_bytes))
+    if ftype == "parquet" or name.endswith(".parquet"):
+        return pd.read_parquet(io.BytesIO(file_bytes))
+    if ftype == "json" or name.endswith(".json"):
+        return pd.read_json(io.BytesIO(file_bytes))
+    raise HTTPException(
+        status_code=422,
+        detail=f"Cannot export unsupported source file type: {ftype}",
+    )
+
+
+def _serialize_dataframe(df, export_format: str) -> bytes:
+    """Serialize a DataFrame to the requested export format's bytes."""
+    if export_format == "csv":
+        return df.to_csv(index=False).encode()
+    if export_format == "json":
+        return df.to_json(orient="records").encode()
+    if export_format == "parquet":
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        return buf.getvalue()
+    if export_format == "excel":
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        return buf.getvalue()
+    raise ValueError(f"Unsupported export format: {export_format}")
+
+
 @router.post("/{file_id}/export")
 async def export_processed_data(
     file_id: str = Path(..., description="File ID"),
     format: str = Query("csv", description="Export format", pattern="^(csv|excel|json|parquet)$"),
-    include_stats: bool = Query(False, description="Include statistics in export"),
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Export processed data in various formats"""
+    """Export processed data as a real, downloadable file.
+
+    Reads the source file from S3, converts it to the requested format, uploads
+    the artifact, and returns a working presigned download URL (valid 1 hour).
+    """
     user_data = await UserData.find_one(
         UserData.id == file_id,
         UserData.user_id == current_user_id
     )
-    
+
     if not user_data:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
-    
-    # TODO: Implement actual export functionality
-    # For now, return export metadata
-    
-    export_filename = f"{user_data.original_filename.rsplit('.', 1)[0]}_processed.{format}"
-    
+
+    # original_filename is user-controlled. basename() blocks path traversal into
+    # the S3 key; the char allow-list also blocks quote/semicolon/backslash so the
+    # name is safe to embed in the Content-Disposition download header.
+    stem = os.path.basename(user_data.original_filename or "export").rsplit(".", 1)[0]
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]", "_", stem) or "export"
+    export_filename = f"{safe_stem}_processed.{format}"
+
+    try:
+        # Load the source file from S3 (same shapes the preview endpoint handles)
+        _, file_key = parse_s3_url(user_data.s3_url)
+
+        # Export reads + reserializes the whole file in memory (~3x its size), so
+        # reject oversized sources up front via head_object. Best-effort: a stat
+        # failure shouldn't block an export that would otherwise work — the
+        # download below would fail loudly anyway.
+        try:
+            source_size = await s3_service.get_file_size(file_key)
+        except Exception:
+            source_size = None
+        if source_size is not None and source_size > MAX_EXPORT_SOURCE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Source file too large to export "
+                    f"({source_size} bytes; max {MAX_EXPORT_SOURCE_BYTES})."
+                ),
+            )
+
+        file_bytes = await s3_service.download_file_bytes(file_key)
+
+        # Offload the blocking pandas read/serialize off the event loop (same
+        # pattern as the MCP server's eda_summary, issue #255).
+        df = await asyncio.to_thread(_read_source_dataframe, user_data, file_bytes)
+        export_bytes = await asyncio.to_thread(_serialize_dataframe, df, format)
+        export_key = f"exports/{current_user_id}/{file_id}/{export_filename}"
+        await s3_service.upload_file_obj(io.BytesIO(export_bytes), export_key)
+        download_url = s3_service.generate_presigned_url(export_key, filename=export_filename)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Export failed for file %s: %s", file_id, e)
+        raise HTTPException(status_code=500, detail="Export failed") from e
+
     return {
         "file_id": str(user_data.id),
         "export_format": format,
         "export_filename": export_filename,
-        "include_stats": include_stats,
         "status": "export_ready",
-        "download_url": f"/api/v1/data/{file_id}/download?format={format}"
+        "download_url": download_url,
     }
