@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -115,6 +116,27 @@ def get_inference_lock(model_id: str, user_id: str) -> threading.Lock:
             lock = threading.Lock()
             _inference_locks[key] = lock
         return lock
+
+
+async def run_locked_inference[T](
+    model_id: str, user_id: str, func: Callable[[], T]
+) -> T:
+    """Run a synchronous inference callable off the loop, serialized per model.
+
+    The artifact cache hands out ONE shared estimator per ``(model_id, user_id)``,
+    so every ``predict``/``predict_proba`` path (production, internal, batch) must
+    funnel through this: it runs ``func`` in a worker thread (so waiting on the
+    lock never stalls the event loop) while the per-model lock prevents concurrent
+    threads from racing inside a non-thread-safe booster (issue #265). Different
+    models still run in parallel.
+    """
+    lock = get_inference_lock(model_id, user_id)
+
+    def _run() -> T:
+        with lock:
+            return func()
+
+    return await asyncio.to_thread(_run)
 
 
 def _to_json_safe(value: Any) -> Any:

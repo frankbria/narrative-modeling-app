@@ -2,7 +2,6 @@
 Production model serving API routes
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -23,7 +22,7 @@ from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
-from app.services.model_storage import ModelStorageService, get_inference_lock
+from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.prediction_monitoring import prediction_log
 
@@ -335,20 +334,15 @@ async def production_predict(
         want_proba = model.problem_type.endswith("classification") and hasattr(
             trained_model, "predict_proba"
         )
-        inference_lock = get_inference_lock(model_id, api_key.user_id)
 
         def _infer(X):
-            # Serialize inference on the shared cached estimator: concurrent
-            # to_thread worker threads must not race inside a non-thread-safe
-            # booster (issue #265). Per-model lock — other models still parallel.
-            with inference_lock:
-                preds = trained_model.predict(X)
-                proba = None
-                if want_proba:
-                    try:
-                        proba = trained_model.predict_proba(X)
-                    except Exception:  # noqa: BLE001 - probabilities are optional
-                        proba = None
+            preds = trained_model.predict(X)
+            proba = None
+            if want_proba:
+                try:
+                    proba = trained_model.predict_proba(X)
+                except Exception:  # noqa: BLE001 - probabilities are optional
+                    proba = None
             return preds, proba
 
         try:
@@ -357,9 +351,13 @@ async def production_predict(
             else:
                 X_transformed = df[model.feature_names]
 
-            # Probabilities drive confidence + low-confidence flags regardless of
-            # whether the caller asked to see the full vectors (issue #83).
-            predictions, proba_arr = await asyncio.to_thread(_infer, X_transformed)
+            # Inference runs off the loop and serialized per model on the shared
+            # cached estimator (issue #265). Probabilities drive confidence +
+            # low-confidence flags regardless of whether the caller asked to see
+            # the full vectors (issue #83).
+            predictions, proba_arr = await run_locked_inference(
+                model_id, api_key.user_id, lambda: _infer(X_transformed)
+            )
             proba_list = proba_arr.tolist() if proba_arr is not None else None
         except (ValueError, KeyError) as exc:
             # A client-supplied bad value (unknown category, wrong dtype). Return
