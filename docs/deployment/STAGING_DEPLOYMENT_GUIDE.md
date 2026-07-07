@@ -436,6 +436,12 @@ this gate anyone could sign in and consume compute.
 - An **empty** `INVITE_ALLOWLIST` disables the gate. Staging compose therefore
   **fails to start** if it's unset (`${INVITE_ALLOWLIST:?...}`).
 
+> **First activation:** when the gate is first enabled (or on this feature's
+> initial deploy), every *active* session must refresh its token before it
+> carries the `email` claim the backend mirror checks — so **all** existing
+> sessions (not just un-invited ones) will re-auth within the token TTL (≤1h).
+> Expected and self-healing; no action needed.
+
 **To add an invitee:**
 1. Edit `.env.staging` and append the email to `INVITE_ALLOWLIST`
    (e.g. `INVITE_ALLOWLIST=alice@example.com,bob@example.com,carol@example.com`).

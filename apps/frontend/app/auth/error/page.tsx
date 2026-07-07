@@ -50,18 +50,20 @@ export default function AuthErrorPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* asChild renders a single <a>/<Link> styled as a button — nesting a
+              real <button> inside an anchor is invalid HTML and breaks a11y. */}
           {error === 'AccessDenied' && (
-            <a href={requestAccessUrl}>
-              <Button className="w-full">
-                Request access
-              </Button>
-            </a>
-          )}
-          <Link href="/auth/signin">
-            <Button variant={error === 'AccessDenied' ? 'outline' : 'default'} className="w-full">
-              Back to Sign In
+            <Button asChild className="w-full">
+              <a href={requestAccessUrl}>Request access</a>
             </Button>
-          </Link>
+          )}
+          <Button
+            asChild
+            variant={error === 'AccessDenied' ? 'outline' : 'default'}
+            className="w-full"
+          >
+            <Link href="/auth/signin">Back to Sign In</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

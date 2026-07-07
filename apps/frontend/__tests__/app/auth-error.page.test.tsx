@@ -21,15 +21,16 @@ describe('AuthErrorPage', () => {
     render(<AuthErrorPage />);
     expect(screen.getByText('Invite Required')).toBeInTheDocument();
     expect(screen.getByText(/invite-only beta/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /request access/i })).toBeInTheDocument();
+    // asChild renders the action as a real <a> (role "link"), not a nested <button>.
+    expect(screen.getByRole('link', { name: /request access/i })).toBeInTheDocument();
   });
 
-  it('shows no Request access button for unrelated errors', () => {
+  it('shows no Request access action for unrelated errors', () => {
     mockError = 'Configuration';
     render(<AuthErrorPage />);
     expect(screen.getByText('Authentication Error')).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /request access/i }),
+      screen.queryByRole('link', { name: /request access/i }),
     ).not.toBeInTheDocument();
   });
 });
