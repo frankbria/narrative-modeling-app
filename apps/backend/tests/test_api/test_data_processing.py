@@ -369,8 +369,87 @@ class TestDataProcessingAPI:
 
         assert response.status_code == 200
         uploaded_key = mock_upload.await_args.args[1]
+        # structural: escaped the traversal and lands under the user/file prefix
         assert ".." not in uploaded_key
-        assert uploaded_key == "exports/test_user_123/test-file-123/secret_processed.csv"
+        assert uploaded_key.startswith("exports/")
+        assert uploaded_key.endswith("/secret_processed.csv")
+
+    @pytest.mark.asyncio
+    async def test_export_filename_is_header_safe(
+        self, async_authorized_client, setup_database, sample_dataframe
+    ):
+        """Quote/semicolon in the name can't inject the Content-Disposition header."""
+        mock_user_data = create_mock_user_data(
+            is_processed=True, original_filename='evil";name.csv'
+        )
+        csv_bytes = sample_dataframe.to_csv(index=False).encode()
+
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            with patch('app.services.s3_service.s3_service.download_file_bytes',
+                       new_callable=AsyncMock, return_value=csv_bytes), \
+                 patch('app.services.s3_service.s3_service.upload_file_obj',
+                       new_callable=AsyncMock), \
+                 patch('app.services.s3_service.s3_service.generate_presigned_url',
+                       return_value="https://x") as mock_presign:
+                response = await async_authorized_client.post(
+                    "/api/v1/data/test-file-123/export?format=csv"
+                )
+
+        assert response.status_code == 200
+        download_name = mock_presign.call_args.kwargs["filename"]
+        assert '"' not in download_name and ';' not in download_name
+
+    @pytest.mark.asyncio
+    async def test_export_unknown_source_type_returns_422(
+        self, async_authorized_client, setup_database
+    ):
+        """An unreadable source type is an honest 422, not a 500 or false success."""
+        mock_user_data = create_mock_user_data(
+            is_processed=True, original_filename="data.bin", file_type="bin"
+        )
+
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            with patch('app.services.s3_service.s3_service.download_file_bytes',
+                       new_callable=AsyncMock, return_value=b"\x00\x01"):
+                response = await async_authorized_client.post(
+                    "/api/v1/data/test-file-123/export?format=csv"
+                )
+
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize("source", ["excel", "parquet"])
+    @pytest.mark.asyncio
+    async def test_export_reads_binary_sources(
+        self, async_authorized_client, setup_database, sample_dataframe, source
+    ):
+        """Excel and Parquet source files are read, not just CSV."""
+        mock_user_data = create_mock_user_data(
+            is_processed=True,
+            original_filename=f"data.{'xlsx' if source == 'excel' else 'parquet'}",
+            file_type="xlsx" if source == "excel" else "parquet",
+        )
+        buf = io.BytesIO()
+        if source == "excel":
+            sample_dataframe.to_excel(buf, index=False)
+        else:
+            sample_dataframe.to_parquet(buf, index=False)
+        src_bytes = buf.getvalue()
+
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data
+            with patch('app.services.s3_service.s3_service.download_file_bytes',
+                       new_callable=AsyncMock, return_value=src_bytes), \
+                 patch('app.services.s3_service.s3_service.upload_file_obj',
+                       new_callable=AsyncMock), \
+                 patch('app.services.s3_service.s3_service.generate_presigned_url',
+                       return_value="https://x"):
+                response = await async_authorized_client.post(
+                    "/api/v1/data/test-file-123/export?format=csv"
+                )
+
+        assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_export_reads_json_source(

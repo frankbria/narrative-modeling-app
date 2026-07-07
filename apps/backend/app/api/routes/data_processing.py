@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import re
 from typing import Any
 
 import numpy as np
@@ -425,13 +426,16 @@ async def export_processed_data(
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
 
-    # original_filename is user-controlled; strip any path so a crafted name
-    # (e.g. "../../x.csv") can't escape the exports/{user}/{file}/ key prefix.
-    safe_stem = os.path.basename(user_data.original_filename or "export").rsplit(".", 1)[0] or "export"
+    # original_filename is user-controlled. basename() blocks path traversal into
+    # the S3 key; the char allow-list also blocks quote/semicolon/backslash so the
+    # name is safe to embed in the Content-Disposition download header.
+    stem = os.path.basename(user_data.original_filename or "export").rsplit(".", 1)[0]
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]", "_", stem) or "export"
     export_filename = f"{safe_stem}_processed.{format}"
 
     try:
         # Load the source file from S3 (same shapes the preview endpoint handles)
+        # ponytail: whole-file in-memory read (~3x size); add a size guard before GA.
         _, file_key = parse_s3_url(user_data.s3_url)
         file_bytes = await s3_service.download_file_bytes(file_key)
 
