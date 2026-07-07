@@ -7,6 +7,7 @@ import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
 import client from "./lib/db"
 import { mintApiToken } from "./lib/api-token"
+import { isEmailAllowed } from "./lib/invite-allowlist"
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
@@ -90,7 +91,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // must not crash session reads (the backend then returns 401).
       if (token.id) {
         try {
-          session.apiToken = mintApiToken(token.id as string)
+          // Carry the email claim so the backend can mirror the invite gate.
+          session.apiToken = mintApiToken(
+            token.id as string,
+            token.email as string | null | undefined,
+          )
         } catch (err) {
           // Don't crash session reads, but surface the cause — otherwise a
           // misconfigured secret silently 401s every API call with no signal.
@@ -100,10 +105,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session
     },
-    async signIn() {
-      // You can add custom logic here if needed
-      // Return true to allow sign in
-      return true
+    async signIn({ user }) {
+      // Invite-only beta gate (issue #261). Runs server-side in NextAuth, so a
+      // rejected user never gets a session or a minted API token — the primary
+      // control; the FastAPI backend mirrors it as defense-in-depth. Returning
+      // false redirects to /auth/error?error=AccessDenied (see that page for
+      // the "request access" message). An empty INVITE_ALLOWLIST disables the
+      // gate (dev/test/un-configured deploys).
+      return isEmailAllowed(user?.email)
     },
   },
   secret: process.env.NEXTAUTH_SECRET,

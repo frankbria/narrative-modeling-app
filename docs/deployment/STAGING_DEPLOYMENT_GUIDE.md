@@ -117,6 +117,7 @@ nano .env.staging
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
 - `BACKEND_CORS_ORIGINS`: https://narrative.yourdomain.com (explicit origin(s); the backend refuses `*` in production-like envs)
 - `ALLOWED_ORIGINS`: https://narrative.yourdomain.com (frontend page-middleware CORS allowlist)
+- `INVITE_ALLOWLIST`: comma-separated invitee emails (**required** — the invite-only beta gate; compose refuses to start if unset). See [Managing beta invitees](#managing-beta-invitees).
 - Google/GitHub OAuth credentials (if using authentication)
 
 **Save and secure the file**:
@@ -416,10 +417,47 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 
 ---
 
+## Managing beta invitees
+
+The launch is a **free, invite-only beta**. Signup is gated by an email
+allowlist (issue #261) — OAuth is open to any Google/GitHub account, so without
+this gate anyone could sign in and consume compute.
+
+**How it works:**
+- `INVITE_ALLOWLIST` is a comma-separated list of invitee emails, shared by the
+  frontend and backend services (see `docker-compose.staging.yml`).
+- The **NextAuth `signIn` callback** (`apps/frontend/auth.ts`) is the primary
+  gate: a non-listed email never gets a session — they land on the
+  **"Invite Required"** page (`/auth/error?error=AccessDenied`) with a
+  *Request access* button.
+- The **FastAPI backend** (`app/auth/nextauth_auth.py`) mirrors the check and
+  returns **403** for any authenticated request whose token email isn't listed
+  (defense-in-depth; catches revocation within the ~1h token TTL).
+- An **empty** `INVITE_ALLOWLIST` disables the gate. Staging compose therefore
+  **fails to start** if it's unset (`${INVITE_ALLOWLIST:?...}`).
+
+**To add an invitee:**
+1. Edit `.env.staging` and append the email to `INVITE_ALLOWLIST`
+   (e.g. `INVITE_ALLOWLIST=alice@example.com,bob@example.com,carol@example.com`).
+2. Re-apply so both services pick up the new value:
+   ```bash
+   docker compose -f docker-compose.staging.yml up -d
+   ```
+   (No rebuild needed — it's a runtime env var.)
+
+**To revoke access:** remove the email and `up -d`. Any live token for that user
+stops working within the token TTL (≤1h) via the backend mirror.
+
+**Optional:** set `NEXT_PUBLIC_INVITE_REQUEST_URL` to a form/mailto link for the
+*Request access* button (defaults to a mailto when unset).
+
+---
+
 ## Security Checklist
 
 Post-deployment security verification:
 
+- [ ] `INVITE_ALLOWLIST` set to the intended beta cohort (both services)
 - [ ] All services running with authentication enabled
 - [ ] Atlas IP Access List restricted to the staging server (no 0.0.0.0/0)
 - [ ] Redis requires password

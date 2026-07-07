@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 # matching app.config — a stray .env must not override production settings)
 load_dotenv()
 
-from app.config import validate_skip_auth  # noqa: E402
+from app.config import (  # noqa: E402
+    is_email_allowed,
+    parse_invite_allowlist,
+    validate_skip_auth,
+)
 
 # Get NextAuth configuration
 NEXTAUTH_SECRET = os.getenv("NEXTAUTH_SECRET")
@@ -77,6 +81,18 @@ async def get_current_user_id(
             # In that case, we'd need to validate with the NextAuth API
             logger.error("No user ID found in token")
             raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        # Invite-only beta gate (issue #261): defense-in-depth mirror of the
+        # NextAuth signIn allowlist. Read fresh each request so an updated
+        # allowlist takes effect without a restart. Enforced only when
+        # INVITE_ALLOWLIST is set; the email claim is minted by the frontend.
+        allowlist = parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST"))
+        if allowlist and not is_email_allowed(payload.get("email"), allowlist):
+            logger.warning("Invite gate: rejected non-allowlisted user")
+            raise HTTPException(
+                status_code=403,
+                detail="Access is limited to invited beta users.",
+            )
 
         return user_id
 
