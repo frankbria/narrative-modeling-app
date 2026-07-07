@@ -362,7 +362,7 @@ async def get_data_preview(
         }
 
 
-def _read_source_dataframe(user_data, file_bytes: bytes):
+def _read_source_dataframe(user_data: UserData, file_bytes: bytes):
     """Read an uploaded source file into a DataFrame (matches the upload readers).
 
     Raises HTTPException(422) for source types we cannot read.
@@ -435,7 +435,7 @@ async def export_processed_data(
 
     try:
         # Load the source file from S3 (same shapes the preview endpoint handles)
-        # ponytail: whole-file in-memory read (~3x size); add a size guard before GA.
+        # TODO(GA): whole-file in-memory read (~3x size); add a size guard before GA.
         _, file_key = parse_s3_url(user_data.s3_url)
         file_bytes = await s3_service.download_file_bytes(file_key)
 
