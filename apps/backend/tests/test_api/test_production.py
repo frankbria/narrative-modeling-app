@@ -1,11 +1,17 @@
 """
 Tests for production API endpoints
 """
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import numpy as np
 import pytest
+from fastapi import HTTPException
 
-from app.api.routes.production import hash_api_key
+from app.api.routes.production import (
+    ProductionPredictRequest,
+    hash_api_key,
+    production_predict,
+)
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 
@@ -295,3 +301,165 @@ class TestServingMetricsLogging:
             latency_ms=1.0,
             api_key_id=None,
         )
+
+
+class TestProductionPredictErrorHandling:
+    """Production serving predict mirrors the internal /ml twin (issue #264):
+    client errors → 422 with a sanitized message, 500 reserved for true faults
+    without echoing internal text, and a bounded record cap."""
+
+    @staticmethod
+    def _api_key() -> MagicMock:
+        key = MagicMock(user_id="user_123", key_id="key_1")
+        key.has_model_access.return_value = True
+        return key
+
+    @staticmethod
+    def _model(problem_type: str = "binary_classification") -> MagicMock:
+        return MagicMock(
+            feature_names=["feature1", "feature2"],
+            problem_type=problem_type,
+            n_features=2,
+            name="Test Model",
+            algorithm="Random Forest",
+            version="1.0.0",
+            residual_std=None,
+            is_calibrated=False,
+            calibration_method=None,
+            feature_importance=None,
+        )
+
+    def _patch_load(self, model, load_return):
+        """Patch model lookup + artifact load together."""
+        find = patch(
+            "app.models.ml_model.MLModel.find_one",
+            new_callable=AsyncMock,
+            return_value=model,
+        )
+        load = patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+        )
+        return find, load
+
+    @pytest.mark.asyncio
+    async def test_missing_feature_returns_422(self):
+        """A record missing a required raw input feature → 422, not 500."""
+        model = self._model()
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            mock_load.return_value = (MagicMock(), None)  # no feature engineer
+            request = ProductionPredictRequest(data=[{"feature1": 1.0}])  # feature2 missing
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 422
+        assert "feature2" in exc.value.detail
+        assert "Missing required feature" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_empty_data_returns_422(self):
+        model = self._model()
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            mock_load.return_value = (MagicMock(), None)
+            request = ProductionPredictRequest(data=[])
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_invalid_feature_value_returns_422(self):
+        """A sklearn ValueError (e.g. unknown category) → 422 sanitized, not 500."""
+        model = self._model()
+        trained = MagicMock()
+        raw = "y contains previously unseen labels: 'SECRET-COLUMN'"
+        trained.predict.side_effect = ValueError(raw)
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}]
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 422
+        assert "Invalid feature value" in exc.value.detail
+        assert raw not in exc.value.detail  # sanitized: no raw sklearn text leaked
+
+    @pytest.mark.asyncio
+    async def test_true_fault_returns_generic_500_without_leak(self):
+        """An unexpected server fault → 500 that does NOT echo the internal message."""
+        model = self._model()
+        trained = MagicMock()
+        secret = "connection string mongodb://secret@host leaked"
+        trained.predict.side_effect = RuntimeError(secret)
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}]
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 500
+        assert exc.value.detail == "Prediction failed"
+        assert secret not in exc.value.detail  # no internal disclosure
+
+    @pytest.mark.asyncio
+    async def test_load_failure_returns_404(self):
+        model = self._model()
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            leaky = ValueError("failed to load s3://internal-bucket/models/secret.pkl")
+            mock_load.side_effect = leaky
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}]
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 404
+        assert "s3://" not in exc.value.detail  # no internal path leaked
+
+    @pytest.mark.asyncio
+    async def test_happy_path_offloads_inference(self):
+        """Valid request predicts via the (to_thread) path and returns a response."""
+        model = self._model()
+        trained = MagicMock()
+        trained.predict.return_value = np.array([0, 1])
+        trained.predict_proba.return_value = np.array([[0.8, 0.2], [0.3, 0.7]])
+        find, load = self._patch_load(model, None)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[
+                    {"feature1": 1.0, "feature2": 2.0},
+                    {"feature1": 3.0, "feature2": 4.0},
+                ]
+            )
+
+            response = await production_predict("model_123", request, self._api_key())
+
+        assert response.predictions == [0, 1]
+        trained.predict.assert_called_once()
+        trained.predict_proba.assert_called_once()
+
+    def test_request_caps_records_at_max(self):
+        """The request schema rejects payloads over MAX_PREDICT_RECORDS (#264)."""
+        from app.api.routes.production import MAX_PREDICT_RECORDS
+
+        oversized = [{"feature1": 1.0}] * (MAX_PREDICT_RECORDS + 1)
+        with pytest.raises(ValueError):  # pydantic ValidationError subclasses ValueError
+            ProductionPredictRequest(data=oversized)
+
+        # Exactly at the cap is accepted.
+        ProductionPredictRequest(data=[{"feature1": 1.0}] * MAX_PREDICT_RECORDS)
