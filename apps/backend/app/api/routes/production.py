@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+import pandas as pd
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -302,11 +303,13 @@ async def production_predict(
             model_id, api_key.user_id
         )
     except ValueError as e:
-        # Existence was already checked above, so a load failure here is an
-        # unexpected artifact problem. Return a fixed 404 — never echo str(e),
-        # which may carry S3 paths/internal detail on this untrusted path (#264).
+        # The model record was already found + ownership-verified above, so a
+        # load failure here means the artifact is missing/corrupt — the model
+        # exists, its deployment is broken. Return 503 (not 404, which would
+        # misdirect operators to a "bad model id") and never echo str(e), which
+        # may carry S3 paths / internal detail on this untrusted path (#264).
         logger.warning("Model load failed for %s: %s", model_id, e)
-        raise HTTPException(status_code=404, detail="Model not found or inactive")
+        raise HTTPException(status_code=503, detail="Model temporarily unavailable")
 
     # Validate the request BEFORE running inference, mirroring the internal
     # /ml/{id}/predict twin (#264): a missing feature / unknown category is a
@@ -324,8 +327,6 @@ async def production_predict(
         )
 
     try:
-        import pandas as pd
-
         df = pd.DataFrame(request.data)
 
         # Transform + predict. A bad feature value (e.g. an unknown category the

@@ -435,7 +435,9 @@ class TestProductionPredictErrorHandling:
         assert secret not in exc.value.detail  # no internal disclosure
 
     @pytest.mark.asyncio
-    async def test_load_failure_returns_404(self):
+    async def test_load_failure_returns_503_without_leak(self):
+        """The model exists but its artifact won't load → 503 (broken deployment),
+        never a 404 mis-signal and never leaking the S3 path."""
         model = self._model()
         find, load = self._patch_load(model)
         with find, load as mock_load:
@@ -448,8 +450,33 @@ class TestProductionPredictErrorHandling:
             with pytest.raises(HTTPException) as exc:
                 await production_predict("model_123", request, self._api_key())
 
-        assert exc.value.status_code == 404
+        assert exc.value.status_code == 503
         assert "s3://" not in exc.value.detail  # no internal path leaked
+
+    @pytest.mark.asyncio
+    async def test_transform_valueerror_returns_422(self):
+        """A ValueError from feature_engineer.transform (e.g. an unknown category
+        at encode time) is also mapped to a sanitized 422, matching the internal
+        twin's security guarantee — not only predict-level errors."""
+        model = self._model()
+        trained = MagicMock()
+        engineer = MagicMock()
+        raw = "Found unknown categories ['LEAK'] in column 0 during transform"
+        engineer.transform = AsyncMock(side_effect=ValueError(raw))
+        find, load = self._patch_load(model)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, engineer)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}]
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await production_predict("model_123", request, self._api_key())
+
+        assert exc.value.status_code == 422
+        assert "Invalid feature value" in exc.value.detail
+        assert raw not in exc.value.detail
+        trained.predict.assert_not_called()  # failed before inference
 
     @pytest.mark.asyncio
     async def test_happy_path_returns_predictions(self):
@@ -474,6 +501,8 @@ class TestProductionPredictErrorHandling:
         assert response.predictions == [0, 1]
         trained.predict.assert_called_once()
         trained.predict_proba.assert_called_once()
+        # Enrichment pipeline ran end-to-end: confidence derived from proba.
+        assert response.confidence == [0.8, 0.7]
 
     def test_request_caps_records_at_max(self):
         """The request schema rejects payloads over MAX_PREDICT_RECORDS (#264)."""
