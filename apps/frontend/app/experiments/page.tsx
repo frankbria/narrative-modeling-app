@@ -25,6 +25,7 @@ export default function ExperimentsPage() {
   const router = useRouter();
   const [experiments, setExperiments] = useState<ABTest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
 
   useEffect(() => {
@@ -35,11 +36,13 @@ export default function ExperimentsPage() {
   const loadExperiments = async () => {
     try {
       setLoading(true);
+      setError(null);
       const status = activeTab === "all" ? undefined : activeTab;
       const data = await abTestingService.listExperiments(status);
       setExperiments(data);
-    } catch (error) {
-      console.error("Failed to load experiments:", error);
+    } catch (err) {
+      console.error("Failed to load experiments:", err);
+      setError("Failed to load experiments. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -163,6 +166,13 @@ export default function ExperimentsPage() {
             <TabsContent value={activeTab} className="mt-4">
               {loading ? (
                 <div className="text-center py-8">Loading experiments...</div>
+              ) : error ? (
+                <div className="text-center py-8" role="alert">
+                  <p className="text-destructive mb-4">{error}</p>
+                  <Button variant="outline" onClick={loadExperiments}>
+                    Retry
+                  </Button>
+                </div>
               ) : experiments.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground mb-4">No experiments found</p>
