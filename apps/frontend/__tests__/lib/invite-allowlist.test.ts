@@ -77,4 +77,10 @@ describe('isSignInAllowed', () => {
     expect(isSignInAllowed('credentials', 'test@narrativeml.com', '')).toBe(true);
     expect(isSignInAllowed('credentials', 'test@narrativeml.com', undefined)).toBe(true);
   });
+
+  it('treats a null/undefined provider as the OAuth (email) path', () => {
+    // NextAuth may call signIn with a null account on some adapter paths.
+    expect(isSignInAllowed(null, 'alice@example.com', LIST)).toBe(true);
+    expect(isSignInAllowed(undefined, 'eve@evil.com', LIST)).toBe(false);
+  });
 });

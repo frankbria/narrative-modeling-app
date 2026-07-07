@@ -92,6 +92,17 @@ class TestBackendMirrorEnforcement:
         assert exc.value.status_code == 403
 
     @pytest.mark.asyncio
+    async def test_no_email_claim_denied_when_gate_active(self, auth_enabled):
+        # A token minted before this PR (no email claim) is rejected while the
+        # gate is active. Intentional/fail-closed: the frontend re-mints an
+        # email-bearing token on the next session read, so the transition
+        # self-heals within the token TTL.
+        with patch.dict("os.environ", {"INVITE_ALLOWLIST": "alice@example.com"}):
+            with pytest.raises(HTTPException) as exc:
+                await get_current_user_id(_bearer({"sub": "user_alice"}))
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
     async def test_gate_off_when_empty_allows_any_email(self, auth_enabled):
         # Empty INVITE_ALLOWLIST → gate disabled → any signed token passes.
         with patch.dict("os.environ", {"INVITE_ALLOWLIST": ""}):
