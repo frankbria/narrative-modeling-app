@@ -2,6 +2,12 @@
  * A/B Testing service for experiment management
  */
 
+import { getAuthToken } from '@/lib/auth-helpers';
+
+// Absolute backend base URL (includes /api/v1). A relative URL would resolve
+// against the frontend origin, which has no rewrite to the backend (issue #262).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
 export interface Variant {
   variant_id: string;
   model_id: string;
@@ -79,15 +85,21 @@ export interface ExperimentMetrics {
 }
 
 class ABTestingService {
-  private baseUrl = '/api/v1/ab-testing';
+  private baseUrl = `${API_BASE_URL}/ab-testing`;
+
+  /** Build auth headers from the backend-verifiable NextAuth JWT (issue #262). */
+  private async authHeaders(json = false): Promise<HeadersInit> {
+    const token = await getAuthToken();
+    return {
+      ...(json && { 'Content-Type': 'application/json' }),
+      ...(token && { Authorization: `Bearer ${token}` }),
+    };
+  }
 
   async createExperiment(request: CreateExperimentRequest): Promise<ABTest> {
     const response = await fetch(`${this.baseUrl}/experiments`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(true),
       body: JSON.stringify(request),
     });
 
@@ -99,15 +111,13 @@ class ABTestingService {
   }
 
   async listExperiments(status?: string): Promise<ABTest[]> {
-    const url = new URL(`${this.baseUrl}/experiments`, window.location.origin);
+    const url = new URL(`${this.baseUrl}/experiments`);
     if (status) {
       url.searchParams.append('status', status);
     }
 
     const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -119,9 +129,7 @@ class ABTestingService {
 
   async getExperiment(experimentId: string): Promise<ABTest> {
     const response = await fetch(`${this.baseUrl}/experiments/${experimentId}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -134,9 +142,7 @@ class ABTestingService {
   async startExperiment(experimentId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/experiments/${experimentId}/start`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -147,9 +153,7 @@ class ABTestingService {
   async pauseExperiment(experimentId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/experiments/${experimentId}/pause`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -164,9 +168,7 @@ class ABTestingService {
   }> {
     const response = await fetch(`${this.baseUrl}/experiments/${experimentId}/complete`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -177,13 +179,11 @@ class ABTestingService {
   }
 
   async getVariantAssignment(experimentId: string, userIdentifier: string): Promise<VariantAssignment> {
-    const url = new URL(`${this.baseUrl}/experiments/${experimentId}/assign-variant`, window.location.origin);
+    const url = new URL(`${this.baseUrl}/experiments/${experimentId}/assign-variant`);
     url.searchParams.append('user_identifier', userIdentifier);
 
     const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -195,9 +195,7 @@ class ABTestingService {
 
   async getExperimentMetrics(experimentId: string): Promise<ExperimentMetrics> {
     const response = await fetch(`${this.baseUrl}/experiments/${experimentId}/metrics`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(),
     });
 
     if (!response.ok) {
@@ -216,10 +214,7 @@ class ABTestingService {
   ): Promise<void> {
     const response = await fetch(`${this.baseUrl}/track-prediction`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-      },
+      headers: await this.authHeaders(true),
       body: JSON.stringify({
         experiment_id: experimentId,
         variant_id: variantId,
