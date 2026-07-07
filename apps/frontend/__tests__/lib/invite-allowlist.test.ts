@@ -5,7 +5,7 @@
  * allowlisted one is admitted, plus the gate-disabled (empty list) default.
  */
 
-import { parseAllowlist, isEmailAllowed } from '@/lib/invite-allowlist';
+import { parseAllowlist, isEmailAllowed, isSignInAllowed } from '@/lib/invite-allowlist';
 
 describe('parseAllowlist', () => {
   it('returns an empty set for unset/empty input', () => {
@@ -46,7 +46,7 @@ describe('isEmailAllowed', () => {
     expect(isEmailAllowed(null, '')).toBe(true);
   });
 
-  it('reads process.env.INVITE_ALLOWLIST by default', () => {
+  it('reads process.env.INVITE_ALLOWLIST by default (email path)', () => {
     const prev = process.env.INVITE_ALLOWLIST;
     process.env.INVITE_ALLOWLIST = 'alice@example.com';
     try {
@@ -56,5 +56,25 @@ describe('isEmailAllowed', () => {
       if (prev === undefined) delete process.env.INVITE_ALLOWLIST;
       else process.env.INVITE_ALLOWLIST = prev;
     }
+  });
+});
+
+describe('isSignInAllowed', () => {
+  const LIST = 'alice@example.com';
+
+  it('checks OAuth sign-ins against the allowlist by email', () => {
+    expect(isSignInAllowed('google', 'alice@example.com', LIST)).toBe(true);
+    expect(isSignInAllowed('github', 'eve@evil.com', LIST)).toBe(false);
+  });
+
+  it('rejects the credentials provider when the gate is active, even with an allowlisted email', () => {
+    // The credentials provider self-attests its email, so an allowlisted value
+    // submitted through it must NOT pass while the gate is on.
+    expect(isSignInAllowed('credentials', 'alice@example.com', LIST)).toBe(false);
+  });
+
+  it('allows the credentials provider when the gate is disabled (dev/test)', () => {
+    expect(isSignInAllowed('credentials', 'test@narrativeml.com', '')).toBe(true);
+    expect(isSignInAllowed('credentials', 'test@narrativeml.com', undefined)).toBe(true);
   });
 });

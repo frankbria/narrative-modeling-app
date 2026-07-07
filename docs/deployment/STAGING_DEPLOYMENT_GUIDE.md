@@ -445,8 +445,17 @@ this gate anyone could sign in and consume compute.
    ```
    (No rebuild needed — it's a runtime env var.)
 
-**To revoke access:** remove the email and `up -d`. Any live token for that user
-stops working within the token TTL (≤1h) via the backend mirror.
+**To revoke access:** remove the email and `up -d`. Any live *session* token for
+that user stops working within the token TTL (≤1h) via the backend mirror.
+
+> **Scope note (defense-in-depth):** the backend mirror covers session-authed
+> routes (`get_current_user_id`). Production model-serving routes authenticate
+> with an **API key** (`X-API-Key`, `verify_api_key`) and are *not* re-checked
+> against `INVITE_ALLOWLIST`. This is safe for the beta because API keys can only
+> be created by an already-invited user, so an outsider can never mint one. If
+> you de-allowlist a user who already holds an API key, revoke their key
+> explicitly (`DELETE /api/v1/production/api-keys/{id}`) — the allowlist alone
+> won't disable it. The primary `signIn` gate remains the load-bearing control.
 
 **Optional:** set `NEXT_PUBLIC_INVITE_REQUEST_URL` to a form/mailto link for the
 *Request access* button (defaults to a mailto when unset).

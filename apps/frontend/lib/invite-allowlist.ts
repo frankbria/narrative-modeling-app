@@ -43,3 +43,22 @@ export function isEmailAllowed(
   if (!email) return false;
   return allowlist.has(email.trim().toLowerCase());
 }
+
+/**
+ * Decide whether a sign-in attempt passes the invite gate.
+ *
+ * The credentials provider (registered only in dev/test) self-attests its
+ * email, so it must never satisfy the email gate — it may pass only when the
+ * gate is disabled (empty allowlist). Federated OAuth providers are checked
+ * against the allowlist by their attested email.
+ *
+ * @param raw defaults to `process.env.INVITE_ALLOWLIST` (injectable for tests).
+ */
+export function isSignInAllowed(
+  provider: string | null | undefined,
+  email: string | null | undefined,
+  raw: string | undefined | null = process.env.INVITE_ALLOWLIST,
+): boolean {
+  if (provider === 'credentials') return isEmailAllowed(null, raw);
+  return isEmailAllowed(email, raw);
+}
