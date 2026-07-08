@@ -63,7 +63,58 @@ class TestRedisCacheService:
         serialized = self.cache_service._serialize_value(value)
         deserialized = self.cache_service._deserialize_value(serialized)
         assert deserialized == value
-        
+
+    @pytest.mark.asyncio
+    async def test_complex_object_blob_is_signed_pickle(self):
+        """Non-JSON objects round-trip through an HMAC-signed pickle (issue #266)."""
+        import datetime
+
+        from app.services.redis_cache import _SIGNED_PICKLE_PREFIX
+
+        value = {"when": datetime.datetime(2026, 7, 7)}  # not JSON-serializable
+        serialized = self.cache_service._serialize_value(value)
+        assert serialized.startswith(_SIGNED_PICKLE_PREFIX)  # signed, not raw pickle
+        assert self.cache_service._deserialize_value(serialized) == value
+
+    @pytest.mark.asyncio
+    async def test_tampered_signed_pickle_is_refused(self):
+        """A flipped byte in the pickle payload fails the HMAC → refuse to unpickle."""
+        serialized = self.cache_service._serialize_value({"a": {"b": 1}})
+        tampered = serialized[:-1] + bytes([serialized[-1] ^ 0xFF])
+        with pytest.raises(ValueError):
+            self.cache_service._deserialize_value(tampered)
+
+    @pytest.mark.asyncio
+    async def test_unsigned_raw_pickle_is_refused(self):
+        """Legacy/attacker raw pickle (no signature, not JSON) is never unpickled."""
+        import pickle
+
+        raw = pickle.dumps({"malicious": object()})
+        with pytest.raises(ValueError):
+            self.cache_service._deserialize_value(raw)
+
+    @pytest.mark.asyncio
+    async def test_get_hash_with_unsigned_field_is_a_miss(self):
+        """A legacy raw-pickle hash field degrades to a cache miss, not a 500 (#266)."""
+        import pickle
+
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={b"f": pickle.dumps({"complex": object()})}
+        )
+        self.cache_service.redis_client = mock_redis
+        assert await self.cache_service.get_hash("k") is None
+
+    @pytest.mark.asyncio
+    async def test_get_list_with_unsigned_item_is_a_miss(self):
+        """A legacy raw-pickle list item degrades to a cache miss, not a 500 (#266)."""
+        import pickle
+
+        mock_redis = AsyncMock()
+        mock_redis.lrange = AsyncMock(return_value=[pickle.dumps({"complex": object()})])
+        self.cache_service.redis_client = mock_redis
+        assert await self.cache_service.get_list("k") is None
+
     @pytest.mark.asyncio
     async def test_set_get_operations(self):
         """Test basic set/get operations with mocked Redis"""

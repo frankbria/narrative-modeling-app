@@ -12,7 +12,15 @@ from typing import Any, cast
 import redis.asyncio as redis
 from redis.asyncio import Redis
 
+from app.utils.artifact_signing import sign_bytes, verify_bytes
+
 logger = logging.getLogger(__name__)
+
+# Prefix marking an HMAC-signed pickle blob (issue #266). JSON output never
+# starts with a NUL byte, so this can't collide with the JSON path. Layout:
+#   _SIGNED_PICKLE_PREFIX + <64-hex-char signature> + b":" + <pickle bytes>
+_SIGNED_PICKLE_PREFIX = b"\x00SPKL:"
+_SIG_HEX_LEN = 64  # sha256 hex digest length
 
 
 class RedisCacheService:
@@ -45,21 +53,38 @@ class RedisCacheService:
             self.redis_client = None
             
     def _serialize_value(self, value: Any) -> bytes:
-        """Serialize value for storage"""
+        """Serialize value for storage.
+
+        Simple types go out as plain JSON (safe — JSON never executes code).
+        Complex objects fall back to pickle, but the blob is HMAC-signed so it
+        can be authenticated before ``pickle.loads`` on read (issue #266).
+        """
         if isinstance(value, (str, int, float, bool)):
             return json.dumps(value).encode('utf-8')
-        else:
-            # Use pickle for complex objects
-            return pickle.dumps(value)
-            
+        # Sign the pickle so a Redis tamperer can't turn our loads() into RCE.
+        payload = pickle.dumps(value)
+        return _SIGNED_PICKLE_PREFIX + sign_bytes(payload).encode('ascii') + b":" + payload
+
     def _deserialize_value(self, data: bytes) -> Any:
-        """Deserialize value from storage"""
+        """Deserialize value from storage.
+
+        A signed-pickle blob is only unpickled after its HMAC verifies; an
+        unsigned or tampered pickle raises (the caller treats it as a cache
+        miss) rather than executing attacker-controlled bytes (issue #266).
+        """
+        if data.startswith(_SIGNED_PICKLE_PREFIX):
+            body = data[len(_SIGNED_PICKLE_PREFIX):]
+            signature = body[:_SIG_HEX_LEN].decode('ascii', errors='replace')
+            payload = body[_SIG_HEX_LEN + 1:]  # skip the ":" separator
+            if not verify_bytes(payload, signature):
+                raise ValueError("Redis pickle signature mismatch; refusing to unpickle")
+            return pickle.loads(payload)  # nosec B301 - HMAC-verified above
         try:
-            # Try JSON first
+            # Try JSON (safe path).
             return json.loads(data.decode('utf-8'))
         except (json.JSONDecodeError, UnicodeDecodeError):
-            # Fall back to pickle
-            return pickle.loads(data)
+            # Unsigned legacy/raw pickle — never unpickle unauthenticated bytes.
+            raise ValueError("Unsigned Redis value; refusing to unpickle")
             
     async def set(
         self, 
@@ -90,6 +115,12 @@ class RedisCacheService:
             if data is None:
                 return None
             return self._deserialize_value(data)
+        except ValueError as e:
+            # Expected: an unsigned legacy or tampered blob — treat as a miss.
+            # WARNING (not ERROR) so a first-deploy wave of legacy entries aging
+            # out of cache doesn't look like an incident (issue #266).
+            logger.warning("Cache key %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get cache key {key}: {e}")
             return None
@@ -193,6 +224,11 @@ class RedisCacheService:
                 field.decode('utf-8'): self._deserialize_value(value)
                 for field, value in data.items()
             }
+        except ValueError as e:
+            # Expected: an unsigned legacy or tampered field — treat as a miss
+            # at WARNING, not ERROR (issue #266; consistent with get()).
+            logger.warning("Hash %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get hash {key}: {e}")
             return None
@@ -209,6 +245,9 @@ class RedisCacheService:
             if data is None:
                 return None
             return self._deserialize_value(data)
+        except ValueError as e:
+            logger.warning("Hash field %s.%s treated as miss: %s", key, field, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get hash field {key}.{field}: {e}")
             return None
@@ -247,6 +286,9 @@ class RedisCacheService:
             if not data:
                 return []
             return [self._deserialize_value(item) for item in reversed(data)]
+        except ValueError as e:
+            logger.warning("List %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get list {key}: {e}")
             return None
