@@ -435,7 +435,7 @@ class ModelStorageService:
           compatible; the IAM bucket-write restriction (AC1) backstops legacy
           artifacts until they are retrained.
         """
-        if signature is None:
+        if not signature:  # None or "" → pre-#266 / unsigned; verify_bytes agrees
             logger.warning(
                 "Loading unsigned %s artifact for model %s (pre-#266). Retrain to "
                 "sign it; bucket-write IAM restriction is the backstop.",

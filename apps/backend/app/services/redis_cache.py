@@ -224,6 +224,11 @@ class RedisCacheService:
                 field.decode('utf-8'): self._deserialize_value(value)
                 for field, value in data.items()
             }
+        except ValueError as e:
+            # Expected: an unsigned legacy or tampered field — treat as a miss
+            # at WARNING, not ERROR (issue #266; consistent with get()).
+            logger.warning("Hash %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get hash {key}: {e}")
             return None
@@ -240,6 +245,9 @@ class RedisCacheService:
             if data is None:
                 return None
             return self._deserialize_value(data)
+        except ValueError as e:
+            logger.warning("Hash field %s.%s treated as miss: %s", key, field, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get hash field {key}.{field}: {e}")
             return None
@@ -278,6 +286,9 @@ class RedisCacheService:
             if not data:
                 return []
             return [self._deserialize_value(item) for item in reversed(data)]
+        except ValueError as e:
+            logger.warning("List %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get list {key}: {e}")
             return None

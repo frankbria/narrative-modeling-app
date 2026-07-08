@@ -63,11 +63,12 @@ async def test_tampered_bytes_are_refused(monkeypatch):
     good_sig = sign_bytes(b"original artifact")
     service = _service(b"\x80\x04MALICIOUS payload")
     # joblib.load must never be reached; make it explode if it is.
-    monkeypatch.setattr(
-        model_storage.joblib,
-        "load",
-        lambda buf: pytest.fail("joblib.load ran on tampered bytes"),
-    )
+    def _must_not_run(buf):
+        # Raise a real AssertionError — pytest.fail() inside a to_thread worker
+        # surfaces as a confusing background exception rather than a clean failure.
+        raise AssertionError("joblib.load ran on tampered bytes")
+
+    monkeypatch.setattr(model_storage.joblib, "load", _must_not_run)
     monkeypatch.setattr(
         model_storage.MLModel,
         "find_one",
