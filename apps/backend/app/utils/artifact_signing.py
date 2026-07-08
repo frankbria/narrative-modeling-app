@@ -61,4 +61,9 @@ def verify_bytes(data: bytes, signature: str | None) -> bool:
     """
     if not signature:
         return False
-    return hmac.compare_digest(sign_bytes(data), signature)
+    try:
+        # compare_digest raises TypeError on a non-ASCII str (reachable when the
+        # signature came from attacker-controlled bytes); treat that as invalid.
+        return hmac.compare_digest(sign_bytes(data), signature)
+    except (TypeError, ValueError):
+        return False

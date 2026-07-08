@@ -25,6 +25,11 @@ class TestArtifactSigning:
     def test_wrong_signature_fails(self):
         assert verify_bytes(b"data", "deadbeef") is False
 
+    def test_non_ascii_signature_returns_false_not_raises(self):
+        # A signature built from attacker bytes may contain non-ASCII chars, which
+        # would make hmac.compare_digest raise; verify must return False instead.
+        assert verify_bytes(b"data", "�� bad sig") is False
+
     def test_signature_is_deterministic_and_hex(self):
         sig = sign_bytes(b"data")
         assert sig == sign_bytes(b"data")
