@@ -442,12 +442,19 @@ class ModelStorageService:
                 artifact,
                 model_id,
             )
-        elif not verify_bytes(data, signature):
-            raise ValueError(
-                f"Artifact signature mismatch for the {artifact} of model "
-                f"{model_id}; refusing to deserialize possibly-tampered bytes."
-            )
-        return await asyncio.to_thread(joblib.load, io.BytesIO(data))
+
+        def _verify_then_load() -> Any:
+            # Both the HMAC (SHA-256 over the whole artifact — ~10-100ms for large
+            # models) and joblib.load are CPU-bound; run them together off the
+            # event loop (issue #266, consistent with #265).
+            if signature and not verify_bytes(data, signature):
+                raise ValueError(
+                    f"Artifact signature mismatch for the {artifact} of model "
+                    f"{model_id}; refusing to deserialize possibly-tampered bytes."
+                )
+            return joblib.load(io.BytesIO(data))
+
+        return await asyncio.to_thread(_verify_then_load)
 
     async def load_model(self, model_id: str, user_id: str) -> tuple[Any, FeatureEngineer | None]:
         """
