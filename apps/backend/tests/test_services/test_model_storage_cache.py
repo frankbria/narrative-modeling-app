@@ -108,6 +108,8 @@ def _mock_ml_model():
     ml = MagicMock()
     ml.model_path = "s3://bucket/models/u1/m1/model.pkl"
     ml.feature_transformer_path = None
+    ml.model_signature = None  # pre-#266: loads with a warning, no verification
+    ml.feature_transformer_signature = None
     ml.save = AsyncMock()
     return ml
 

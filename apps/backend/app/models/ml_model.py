@@ -43,6 +43,14 @@ class MLModel(Document):
     # trained before the evaluation dashboard existed (backward compatible)
     evaluation_data_path: str | None = None
 
+    # HMAC-SHA256 signatures of the serialized artifacts (issue #266). Stored in
+    # trusted Mongo while the artifacts live in less-trusted S3, so a bucket
+    # tamperer cannot forge a matching signature. Verified before joblib.load in
+    # ``ModelStorageService.load_model``. None for pre-#266 models (they load with
+    # a warning — backward compatible; the IAM bucket-write restriction backstops).
+    model_signature: str | None = None
+    feature_transformer_signature: str | None = None
+
     # Versioning
     version: str = Field(
         default="1.0.0", description="Semantic version (major.minor.patch)"

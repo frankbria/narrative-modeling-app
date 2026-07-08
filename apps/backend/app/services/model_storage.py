@@ -27,6 +27,7 @@ from app.services.model_versioning_service import (
     model_versioning_service,
 )
 from app.services.s3_service import S3Service
+from app.utils.artifact_signing import sign_bytes, verify_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -260,23 +261,29 @@ class ModelStorageService:
         if model_id is None:
             model_id = f"model_{uuid.uuid4().hex[:12]}"
         
-        # Serialize model
+        # Serialize model + sign the exact bytes we upload (issue #266). The
+        # signature is stored on the Mongo doc below and re-checked before
+        # joblib.load, so a bucket tamperer cannot swap in a malicious pickle.
         model_buffer = io.BytesIO()
         joblib.dump(model_candidate.estimator, model_buffer)
+        model_bytes = model_buffer.getvalue()
+        model_signature = sign_bytes(model_bytes)
         model_buffer.seek(0)
-        model_size = model_buffer.getbuffer().nbytes
-        
+        model_size = len(model_bytes)
+
         # Upload model to S3
         model_key = f"{self.models_prefix}{user_id}/{model_id}/model.pkl"
         await self.s3_service.upload_file_obj(model_buffer, model_key)
-        
+
         # Serialize feature engineer if it has transformers
         feature_transformer_path = None
+        feature_transformer_signature = None
         if feature_engineer.transformers:
             transformer_buffer = io.BytesIO()
             joblib.dump(feature_engineer, transformer_buffer)
+            feature_transformer_signature = sign_bytes(transformer_buffer.getvalue())
             transformer_buffer.seek(0)
-            
+
             transformer_key = f"{self.models_prefix}{user_id}/{model_id}/feature_transformer.pkl"
             await self.s3_service.upload_file_obj(transformer_buffer, transformer_key)
             feature_transformer_path = f"s3://{self.s3_service.bucket_name}/{transformer_key}"
@@ -375,6 +382,9 @@ class ModelStorageService:
             n_features=len(model_metadata["feature_names"]),
             model_path=f"s3://{self.s3_service.bucket_name}/{model_key}",
             feature_transformer_path=feature_transformer_path,
+            # Artifact integrity signatures (issue #266).
+            model_signature=model_signature,
+            feature_transformer_signature=feature_transformer_signature,
             evaluation_data_path=evaluation_data_path,
             feature_importance=model_metadata.get("feature_importance"),
             # SHAP interpretability (issue #80).
@@ -414,6 +424,31 @@ class ModelStorageService:
         logger.info(f"Saved model {model_id} for user {user_id}")
         return ml_model
     
+    async def _verify_and_load(
+        self, data: bytes, signature: str | None, model_id: str, artifact: str
+    ) -> Any:
+        """Verify an artifact's HMAC (issue #266), then joblib.load it off the loop.
+
+        - Signature present + mismatch → refuse: the bytes are not what we wrote,
+          and joblib.load would execute attacker-controlled pickle. Raise.
+        - Signature absent (pre-#266 model) → load with a warning. Backward
+          compatible; the IAM bucket-write restriction (AC1) backstops legacy
+          artifacts until they are retrained.
+        """
+        if signature is None:
+            logger.warning(
+                "Loading unsigned %s artifact for model %s (pre-#266). Retrain to "
+                "sign it; bucket-write IAM restriction is the backstop.",
+                artifact,
+                model_id,
+            )
+        elif not verify_bytes(data, signature):
+            raise ValueError(
+                f"Artifact signature mismatch for the {artifact} of model "
+                f"{model_id}; refusing to deserialize possibly-tampered bytes."
+            )
+        return await asyncio.to_thread(joblib.load, io.BytesIO(data))
+
     async def load_model(self, model_id: str, user_id: str) -> tuple[Any, FeatureEngineer | None]:
         """
         Load a model and its feature transformer
@@ -444,9 +479,11 @@ class ModelStorageService:
         # Extract S3 key from path
         model_key = ml_model.model_path.replace(f"s3://{self.s3_service.bucket_name}/", "")
 
-        # Download model. joblib.load unpickles CPU-bound → run it off the loop.
+        # Download model, verify its signature, then joblib.load off the loop.
         model_data = await self.s3_service.download_file_obj(model_key)
-        model = await asyncio.to_thread(joblib.load, io.BytesIO(model_data))
+        model = await self._verify_and_load(
+            model_data, ml_model.model_signature, model_id, "model"
+        )
 
         # Load feature transformer if exists
         feature_engineer = None
@@ -455,8 +492,11 @@ class ModelStorageService:
                 f"s3://{self.s3_service.bucket_name}/", ""
             )
             transformer_data = await self.s3_service.download_file_obj(transformer_key)
-            feature_engineer = await asyncio.to_thread(
-                joblib.load, io.BytesIO(transformer_data)
+            feature_engineer = await self._verify_and_load(
+                transformer_data,
+                ml_model.feature_transformer_signature,
+                model_id,
+                "feature_transformer",
             )
 
         # Update last used timestamp. ponytail: only stamped on a cache miss —
