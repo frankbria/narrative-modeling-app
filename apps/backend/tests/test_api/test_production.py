@@ -1,11 +1,19 @@
 """
-Tests for production API endpoints
+Tests for production API endpoints.
+
+The HTTP-level cases run against the *real* app (``async_authorized_client``,
+which mounts the production router) with real MongoDB documents and assert exact
+statuses + bodies — replacing the pre-#267 suite that drove a stub app mounting
+only two routers, so every ``/api/v1/production/*`` request 404'd and the
+``in [200, 404, 422]`` assertions tested nothing.
 """
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 from fastapi import HTTPException
+from sklearn.ensemble import RandomForestClassifier
 
 from app.api.routes.production import (
     ProductionPredictRequest,
@@ -15,192 +23,331 @@ from app.api.routes.production import (
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 
+TEST_USER = "test_user_123"  # matches async_authorized_client's overridden auth
 
-class TestProductionAPI:
-    """Test cases for production API endpoints"""
-    
-    @pytest.fixture
-    def mock_api_key(self):
-        """Create a mock API key"""
-        return APIKey(
-            key_id="key_test123",
-            key_hash=hash_api_key("sk_live_test123"),
-            name="Test API Key",
-            user_id="user_123",
-            rate_limit=1000,
-            is_active=True,
-            model_ids=[]
-        )
-    
-    @pytest.fixture
-    def mock_ml_model(self):
-        """Create a mock ML model"""
-        return MLModel(
-            user_id="user_123",
-            dataset_id="dataset_123",
-            model_id="model_123",
-            name="Test Model",
-            problem_type="binary_classification",
-            algorithm="Random Forest",
-            target_column="target",
-            feature_names=["feature1", "feature2", "feature3"],
-            cv_score=0.85,
-            test_score=0.83,
-            training_time=45.2,
-            model_size=1048576,
-            n_samples_train=1000,
-            n_features=3,
-            model_path="s3://bucket/models/model_123.pkl",
-            version="1.0.0",
-            is_active=True
-        )
-    
+
+def _make_model(
+    model_id: str = "model_123",
+    user_id: str = TEST_USER,
+    feature_names: list[str] | None = None,
+    is_active: bool = True,
+) -> MLModel:
+    return MLModel(
+        user_id=user_id,
+        dataset_id="dataset_123",
+        model_id=model_id,
+        name="Test Model",
+        problem_type="binary_classification",
+        algorithm="Random Forest",
+        target_column="target",
+        feature_names=feature_names or ["feature1", "feature2", "feature3"],
+        cv_score=0.85,
+        test_score=0.83,
+        training_time=45.2,
+        model_size=1048576,
+        n_samples_train=1000,
+        n_features=len(feature_names or ["feature1", "feature2", "feature3"]),
+        model_path="s3://bucket/models/model_123.pkl",
+        version="1.0.0",
+        is_active=is_active,
+    )
+
+
+def _make_api_key(
+    raw_key: str,
+    user_id: str = TEST_USER,
+    model_ids: list[str] | None = None,
+) -> APIKey:
+    return APIKey(
+        key_id=f"key_{raw_key[-8:]}",
+        key_hash=hash_api_key(raw_key),
+        name="Test API Key",
+        user_id=user_id,
+        rate_limit=1000,
+        is_active=True,
+        model_ids=model_ids or [],
+    )
+
+
+class TestProductionUnit:
+    """Pure-unit cases with no app/DB dependency."""
+
+    def test_hash_api_key(self):
+        """Hashing is deterministic, SHA256-shaped, and collision-free per key."""
+        key = "sk_live_test123"
+        hash1 = hash_api_key(key)
+        hash2 = hash_api_key(key)
+
+        assert hash1 == hash2
+        assert len(hash1) == 64
+        assert all(c in "0123456789abcdef" for c in hash1)
+        assert hash1 != hash_api_key("sk_live_different")
+
     @pytest.mark.asyncio
-    async def test_create_api_key_success(self, mock_async_client):
-        """Test successful API key creation"""
-        response = await mock_async_client.post(
+    async def test_verify_api_key_format(self):
+        """A key missing the sk_live_ prefix (or empty) is rejected 401."""
+        from app.api.routes.production import verify_api_key
+
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_api_key(api_key="invalid_format")
+        assert exc_info.value.status_code == 401
+
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_api_key(api_key="")
+        assert exc_info.value.status_code == 401
+
+
+class TestApiKeyModelAccess:
+    """Exercise the REAL APIKey.has_model_access — the cross-tenant authz control
+    the production route relies on (pre-#267 this test redefined a local copy and
+    never touched the shipped method). Beanie isn't initialized here, so we invoke
+    the real unbound method with a duck-typed ``self`` carrying model_ids; the
+    integration serving tests below cover it through the route as well."""
+
+    @staticmethod
+    def _access(model_ids: list[str], model_id: str) -> bool:
+        return APIKey.has_model_access(SimpleNamespace(model_ids=model_ids), model_id)
+
+    def test_scoped_key_allows_only_listed_models(self):
+        listed = ["model_123", "model_456"]
+        assert self._access(listed, "model_123") is True
+        assert self._access(listed, "model_456") is True
+        assert self._access(listed, "model_789") is False
+
+    def test_unscoped_key_allows_all_models(self):
+        assert self._access([], "model_123") is True
+        assert self._access([], "any_model") is True
+
+
+@pytest.mark.integration
+class TestProductionAPIKeyManagement:
+    """API-key CRUD against the real app + MongoDB (session-authed surface)."""
+
+    @pytest.mark.asyncio
+    async def test_create_list_and_revoke_api_key(
+        self, async_authorized_client, setup_database
+    ):
+        # Create — returns the plaintext key exactly once.
+        create = await async_authorized_client.post(
             "/api/v1/production/api-keys",
             json={
                 "name": "Production Key",
                 "description": "Test key for production",
                 "rate_limit": 5000,
-                "expires_in_days": 30
+                "expires_in_days": 30,
             },
-            headers={"Authorization": "Bearer test_token"}
         )
-        
-        # Should return 404 as routes aren't registered in test
-        assert response.status_code in [200, 404, 422]
-    
-    @pytest.mark.asyncio
-    async def test_create_api_key_invalid_data(self, mock_async_client):
-        """Test API key creation with invalid data"""
-        response = await mock_async_client.post(
-            "/api/v1/production/api-keys",
-            json={
-                "name": "",  # Empty name should fail
-                "rate_limit": -100  # Negative rate limit
-            },
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [400, 404, 422]
-    
-    @pytest.mark.asyncio
-    async def test_list_api_keys(self, mock_async_client):
-        """Test listing API keys"""
-        response = await mock_async_client.get(
-            "/api/v1/production/api-keys",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_revoke_api_key(self, mock_async_client):
-        """Test revoking an API key"""
-        response = await mock_async_client.delete(
-            "/api/v1/production/api-keys/key_123",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_production_predict_no_api_key(self, mock_async_client):
-        """Test prediction without API key"""
-        response = await mock_async_client.post(
-            "/api/v1/production/v1/models/model_123/predict",
-            json={
-                "data": [{"feature1": 1, "feature2": "value"}]
-            }
-        )
-        
-        assert response.status_code in [401, 404, 422]
-    
-    @pytest.mark.asyncio
-    async def test_production_predict_invalid_api_key(self, mock_async_client):
-        """Test prediction with invalid API key"""
-        response = await mock_async_client.post(
-            "/api/v1/production/v1/models/model_123/predict",
-            json={
-                "data": [{"feature1": 1, "feature2": "value"}]
-            },
-            headers={"X-API-Key": "invalid_key"}
-        )
-        
-        assert response.status_code in [401, 404]
-    
-    def test_hash_api_key(self):
-        """Test API key hashing"""
-        key = "sk_live_test123"
-        hash1 = hash_api_key(key)
-        hash2 = hash_api_key(key)
-        
-        # Same key should produce same hash
-        assert hash1 == hash2
-        
-        # Hash should be SHA256 (64 hex chars)
-        assert len(hash1) == 64
-        assert all(c in '0123456789abcdef' for c in hash1)
-        
-        # Different keys should produce different hashes
-        hash3 = hash_api_key("sk_live_different")
-        assert hash1 != hash3
-    
-    @pytest.mark.asyncio
-    async def test_verify_api_key_format(self):
-        """Test API key format validation"""
-        from fastapi import HTTPException
+        assert create.status_code == 200
+        body = create.json()
+        assert body["name"] == "Production Key"
+        assert body["rate_limit"] == 5000
+        assert body["api_key"].startswith("sk_live_")
+        key_id = body["key_id"]
 
-        from app.api.routes.production import verify_api_key
-        
-        # Test invalid format
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(api_key="invalid_format")
-        assert exc_info.value.status_code == 401
-        
-        # Test empty key
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(api_key="")
-        assert exc_info.value.status_code == 401
-    
+        # List — the new key is present (plaintext key never re-exposed).
+        listed = await async_authorized_client.get("/api/v1/production/api-keys")
+        assert listed.status_code == 200
+        keys = listed.json()
+        entry = next(k for k in keys if k["key_id"] == key_id)
+        assert entry["name"] == "Production Key"
+        assert entry["is_active"] is True
+        assert "api_key" not in entry
+
+        # Revoke — flips is_active off.
+        revoke = await async_authorized_client.delete(
+            f"/api/v1/production/api-keys/{key_id}"
+        )
+        assert revoke.status_code == 200
+        assert revoke.json() == {"message": "API key revoked successfully"}
+
+        after = (await async_authorized_client.get("/api/v1/production/api-keys")).json()
+        assert next(k for k in after if k["key_id"] == key_id)["is_active"] is False
+
     @pytest.mark.asyncio
-    async def test_get_model_info(self, mock_async_client):
-        """Test getting model information"""
-        response = await mock_async_client.get(
+    async def test_create_api_key_invalid_data_rejected(
+        self, async_authorized_client, setup_database
+    ):
+        """A malformed body (missing the required name) is a 422, not a silent pass."""
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys", json={"rate_limit": 5000}
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_revoke_unknown_key_returns_404(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.delete(
+            "/api/v1/production/api-keys/key_does_not_exist"
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.integration
+class TestProductionServing:
+    """The core deployed-model REST API driven end to end with real API-key auth,
+    real MongoDB documents, and (for the happy path) a real fitted estimator."""
+
+    @pytest.mark.asyncio
+    async def test_predict_without_api_key_returns_422(
+        self, async_authorized_client, setup_database
+    ):
+        """X-API-Key is a required header — omitting it is a 422 (FastAPI validation)."""
+        resp = await async_authorized_client.post(
+            "/api/v1/production/v1/models/model_123/predict",
+            json={"data": [{"feature1": 1, "feature2": "value"}]},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_predict_with_malformed_api_key_returns_401(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.post(
+            "/api/v1/production/v1/models/model_123/predict",
+            json={"data": [{"feature1": 1}]},
+            headers={"X-API-Key": "not_a_real_key"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid API key format"
+
+    @pytest.mark.asyncio
+    async def test_predict_with_unknown_api_key_returns_401(
+        self, async_authorized_client, setup_database
+    ):
+        """A well-formed but unregistered sk_live_ key is rejected 401."""
+        resp = await async_authorized_client.post(
+            "/api/v1/production/v1/models/model_123/predict",
+            json={"data": [{"feature1": 1}]},
+            headers={"X-API-Key": "sk_live_unregistered_key_value_0000"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid API key"
+
+    @pytest.mark.asyncio
+    async def test_predict_forbidden_when_key_lacks_model_access(
+        self, async_authorized_client, setup_database
+    ):
+        """A key scoped to other models gets 403 via the real has_model_access —
+        before any model lookup."""
+        raw = "sk_live_scoped_serving_key_00001"
+        await _make_api_key(raw, model_ids=["some_other_model"]).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/production/v1/models/model_123/predict",
+            json={"data": [{"feature1": 1, "feature2": 2, "feature3": 3}]},
+            headers={"X-API-Key": raw},
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "API key does not have access to this model"
+
+    @pytest.mark.asyncio
+    async def test_predict_cross_tenant_model_returns_404(
+        self, async_authorized_client, setup_database
+    ):
+        """An all-access key can't reach a model owned by a different user: the
+        MLModel lookup is scoped to the key's own user_id, so it 404s."""
+        await _make_model(model_id="owned_by_a", user_id="owner_a").insert()
+        raw = "sk_live_tenant_b_key_000000000001"
+        await _make_api_key(raw, user_id="tenant_b", model_ids=[]).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/production/v1/models/owned_by_a/predict",
+            json={"data": [{"feature1": 1, "feature2": 2, "feature3": 3}]},
+            headers={"X-API-Key": raw},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Model not found or inactive"
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_serving_with_real_fitted_model(
+        self, async_authorized_client, setup_database
+    ):
+        """Full serving path: real API-key auth → real has_model_access → real
+        MLModel lookup → real fitted RandomForest inference → enriched response.
+        Only the S3 artifact download (load_model) is stubbed with a genuinely
+        fitted estimator."""
+        features = ["feature1", "feature2", "feature3"]
+        await _make_model(feature_names=features).insert()
+        raw = "sk_live_e2e_serving_key_0000000001"
+        await _make_api_key(raw, model_ids=[]).insert()
+
+        # A real, fitted classifier whose columns match model.feature_names.
+        rng = np.random.default_rng(0)
+        import pandas as pd
+
+        X = pd.DataFrame(rng.random((40, 3)), columns=features)
+        y = (X["feature1"] > 0.5).astype(int)
+        clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(X, y)
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+            return_value=(clf, None),  # no feature engineer -> df[feature_names]
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/production/v1/models/model_123/predict",
+                json={
+                    "data": [
+                        {"feature1": 0.9, "feature2": 0.1, "feature3": 0.2},
+                        {"feature1": 0.1, "feature2": 0.8, "feature3": 0.3},
+                    ]
+                },
+                headers={"X-API-Key": raw},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["predictions"]) == 2
+        assert body["model_version"] == "1.0.0"
+        # Enrichment ran end to end: per-record confidence derived from proba.
+        assert body["confidence"] is not None
+        assert len(body["confidence"]) == 2
+        assert all(0.0 <= c <= 1.0 for c in body["confidence"])
+
+    @pytest.mark.asyncio
+    async def test_missing_required_feature_returns_422_over_http(
+        self, async_authorized_client, setup_database
+    ):
+        """A record missing a required raw feature is a client 422 through the
+        real HTTP stack, naming the missing feature (not a 500 leak)."""
+        features = ["feature1", "feature2", "feature3"]
+        await _make_model(feature_names=features).insert()
+        raw = "sk_live_missing_feature_key_000001"
+        await _make_api_key(raw, model_ids=[]).insert()
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), None),
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/production/v1/models/model_123/predict",
+                json={"data": [{"feature1": 1.0}]},  # feature2, feature3 missing
+                headers={"X-API-Key": raw},
+            )
+
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "feature2" in detail and "feature3" in detail
+
+    @pytest.mark.asyncio
+    async def test_get_model_info_returns_metadata(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        raw = "sk_live_info_key_00000000000000001"
+        await _make_api_key(raw, model_ids=[]).insert()
+
+        resp = await async_authorized_client.get(
             "/api/v1/production/v1/models/model_123/info",
-            headers={"X-API-Key": "sk_live_test123"}
+            headers={"X-API-Key": raw},
         )
-        
-        assert response.status_code in [200, 401, 404]
-    
-    # Rate limiting moved out of this route in #151. It is now enforced globally by
-    # RateLimitMiddleware over every /api/v1 route (using the per-key APIKey.rate_limit
-    # budget). See tests/test_middleware/test_rate_limit.py and
-    # tests/test_integration/test_rate_limit_integration.py.
-
-    def test_api_key_model_access(self):
-        """Test API key model access control"""
-        # Test the has_model_access logic
-        def mock_has_model_access(self, model_id):
-            if not self.model_ids:
-                return True
-            return model_id in self.model_ids
-        
-        # Key with specific model access
-        api_key = Mock()
-        api_key.model_ids = ["model_123", "model_456"]
-        
-        assert mock_has_model_access(api_key, "model_123") is True
-        assert mock_has_model_access(api_key, "model_789") is False
-        
-        # Key with all model access
-        api_key_all = Mock()
-        api_key_all.model_ids = []  # Empty = all models
-
-        assert mock_has_model_access(api_key_all, "model_123") is True
-        assert mock_has_model_access(api_key_all, "any_model") is True
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["model_id"] == "model_123"
+        assert body["algorithm"] == "Random Forest"
+        assert body["performance"]["cv_score"] == 0.85
 
 
 class TestServingMetricsLogging:

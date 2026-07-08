@@ -1,107 +1,229 @@
 """
-Tests for monitoring API endpoints
+Tests for monitoring API endpoints.
+
+HTTP-level cases run against the real app (``async_authorized_client``, which
+mounts the monitoring router) with real MongoDB documents and assert exact
+statuses — replacing the pre-#267 suite that drove a stub app mounting only two
+routers, so every ``/api/v1/monitoring/*`` request 404'd and ``in [200, 404]``
+tested nothing. The response-formatting cases call the route functions directly
+with a mocked monitoring service (fast, no DB) and stay as-is.
 """
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 
+TEST_USER = "test_user_123"  # matches async_authorized_client's overridden auth
 
-class TestMonitoringAPI:
-    """Test cases for monitoring API endpoints"""
-    
-    @pytest.fixture
-    def mock_ml_model(self):
-        """Create a mock ML model"""
-        return MLModel(
-            user_id="user_123",
-            dataset_id="dataset_123",
-            model_id="model_123",
-            name="Test Model",
-            problem_type="binary_classification",
-            algorithm="Random Forest",
-            target_column="target",
-            feature_names=["feature1", "feature2"],
-            cv_score=0.85,
-            test_score=0.83,
-            training_time=45.2,
-            model_size=1048576,
-            n_samples_train=1000,
-            n_features=2,
-            model_path="s3://bucket/models/model_123.pkl",
-            version="1.0.0",
-            is_active=True,
-            last_used_at=datetime.utcnow()
-        )
-    
+
+def _make_model(model_id: str = "model_123", user_id: str = TEST_USER) -> MLModel:
+    return MLModel(
+        user_id=user_id,
+        dataset_id="dataset_123",
+        model_id=model_id,
+        name="Test Model",
+        problem_type="binary_classification",
+        algorithm="Random Forest",
+        target_column="target",
+        feature_names=["feature1", "feature2"],
+        cv_score=0.85,
+        test_score=0.83,
+        training_time=45.2,
+        model_size=1048576,
+        n_samples_train=1000,
+        n_features=2,
+        model_path="s3://bucket/models/model_123.pkl",
+        version="1.0.0",
+        is_active=True,
+        last_used_at=datetime.utcnow(),
+    )
+
+
+@pytest.mark.integration
+class TestMonitoringAPIIntegration:
+    """Drive the real monitoring routes end to end with real MongoDB ownership."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_prediction_log(self):
+        """The monitoring metrics read a process-global in-memory prediction log
+        that ``setup_database`` (Mongo-only) never touches — clear it so per-model
+        counts are deterministic regardless of what serving tests ran before."""
+        from app.services.prediction_monitoring import prediction_log
+
+        prediction_log.logs.clear()
+        yield
+        prediction_log.logs.clear()
+
     @pytest.mark.asyncio
-    async def test_get_model_metrics(self, mock_async_client):
-        """Test getting model metrics"""
-        response = await mock_async_client.get(
+    async def test_get_model_metrics_for_owned_model(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/metrics"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["model_id"] == "model_123"
+        assert body["model_name"] == "Test Model"
+        assert body["total_predictions"] == 0  # no predictions logged yet
+        assert body["time_window_hours"] == 24
+
+    @pytest.mark.asyncio
+    async def test_get_model_metrics_custom_window(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/metrics?hours=48"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["time_window_hours"] == 48
+
+    @pytest.mark.asyncio
+    async def test_get_model_metrics_unknown_model_404(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/nope/metrics"
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Model not found"
+
+    @pytest.mark.asyncio
+    async def test_get_model_metrics_invalid_hours_422(
+        self, async_authorized_client, setup_database
+    ):
+        """hours>168 is rejected by Query validation before the route body runs."""
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/metrics?hours=200"
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_cross_tenant_metrics_404(
+        self, async_authorized_client, setup_database
+    ):
+        """A model owned by another user is invisible (find_one is user-scoped)."""
+        await _make_model(model_id="foreign", user_id="someone_else").insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/foreign/metrics"
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_prediction_distribution(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/distribution"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["model_id"] == "model_123"
+
+    @pytest.mark.asyncio
+    async def test_get_usage_timeline(self, async_authorized_client, setup_database):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/timeline?hours=24"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["model_id"] == "model_123"
+
+    @pytest.mark.asyncio
+    async def test_get_usage_timeline_invalid_bucket_422(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/timeline?bucket_minutes=5000"
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_health(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/health"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["model_id"] == "model_123"
+        assert body["status"] in {"healthy", "degraded", "unhealthy", "unknown"}
+
+    @pytest.mark.asyncio
+    async def test_check_drift(self, async_authorized_client, setup_database):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/drift"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["model_id"] == "model_123"
+
+    @pytest.mark.asyncio
+    async def test_get_usage_overview(self, async_authorized_client, setup_database):
+        await _make_model(model_id="m1").insert()
+        await _make_model(model_id="m2").insert()
+        resp = await async_authorized_client.get("/api/v1/monitoring/overview")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_models"] == 2
+        assert body["active_models"] == 2
+        assert len(body["models"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_api_key_usage(self, async_authorized_client, setup_database):
+        await APIKey(
+            key_id="mk1",
+            key_hash=APIKey.hash_key("sk_live_monitoring_usage_key_0001"),
+            name="usage-key",
+            user_id=TEST_USER,
+        ).insert()
+        resp = await async_authorized_client.get("/api/v1/monitoring/api-keys/usage")
+        assert resp.status_code == 200
+        assert any(k["api_key_id"] == "mk1" for k in resp.json())
+
+    @pytest.mark.asyncio
+    async def test_get_prediction_logs(
+        self, async_authorized_client, setup_database
+    ):
+        await _make_model().insert()
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/logs"
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_prediction_logs_invalid_limit_422(
+        self, async_authorized_client, setup_database
+    ):
+        resp = await async_authorized_client.get(
+            "/api/v1/monitoring/models/model_123/logs?limit=2000"
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_monitoring_requires_auth(self, async_test_client, setup_database):
+        """Without a bearer token the HTTPBearer dependency rejects with 403 —
+        driven by the unauthenticated client (no auth override)."""
+        for endpoint in (
+            "/api/v1/monitoring/overview",
             "/api/v1/monitoring/models/model_123/metrics",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_model_metrics_with_hours(self, mock_async_client):
-        """Test getting model metrics with custom time window"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/metrics?hours=48",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_model_metrics_invalid_hours(self, mock_async_client):
-        """Test getting model metrics with invalid hours"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/metrics?hours=200",  # > 168
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [422, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_prediction_distribution(self, mock_async_client):
-        """Test getting prediction distribution"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/distribution",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_usage_timeline(self, mock_async_client):
-        """Test usage timeline endpoint (issue #85)"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/timeline?hours=24",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        assert response.status_code in [200, 404]
-
-    @pytest.mark.asyncio
-    async def test_get_usage_timeline_invalid_bucket(self, mock_async_client):
-        """Timeline rejects out-of-range bucket size"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/timeline?bucket_minutes=5000",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        assert response.status_code in [422, 404]
-
-    @pytest.mark.asyncio
-    async def test_get_deployment_health(self, mock_async_client):
-        """Test deployment health endpoint (issue #85)"""
-        response = await mock_async_client.get(
             "/api/v1/monitoring/models/model_123/health",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        assert response.status_code in [200, 404]
+            "/api/v1/monitoring/api-keys/usage",
+        ):
+            resp = await async_test_client.get(endpoint)
+            assert resp.status_code == 403
+
+
+class TestMonitoringRouteFormatting:
+    """Response-model mapping, exercised by calling the route functions directly
+    with a mocked monitoring service (no app/DB needed)."""
 
     @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
@@ -157,84 +279,6 @@ class TestMonitoringAPI:
         assert result.requests == 50
 
     @pytest.mark.asyncio
-    async def test_check_drift(self, mock_async_client):
-        """Test drift detection endpoint"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/drift",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_usage_overview(self, mock_async_client):
-        """Test getting usage overview"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/overview",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_api_key_usage(self, mock_async_client):
-        """Test getting API key usage statistics"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/api-keys/usage",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_prediction_logs(self, mock_async_client):
-        """Test getting prediction logs"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/logs",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_prediction_logs_with_limit(self, mock_async_client):
-        """Test getting prediction logs with limit"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/logs?limit=50",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [200, 404]
-    
-    @pytest.mark.asyncio
-    async def test_get_prediction_logs_invalid_limit(self, mock_async_client):
-        """Test getting prediction logs with invalid limit"""
-        response = await mock_async_client.get(
-            "/api/v1/monitoring/models/model_123/logs?limit=2000",  # > 1000
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code in [422, 404]
-    
-    @pytest.mark.asyncio
-    async def test_monitoring_unauthorized(self, mock_async_client):
-        """Test monitoring endpoints without authorization"""
-        endpoints = [
-            "/api/v1/monitoring/overview",
-            "/api/v1/monitoring/models/model_123/metrics",
-            "/api/v1/monitoring/models/model_123/timeline",
-            "/api/v1/monitoring/models/model_123/health",
-            "/api/v1/monitoring/models/model_123/distribution",
-            "/api/v1/monitoring/models/model_123/drift",
-            "/api/v1/monitoring/api-keys/usage",
-            "/api/v1/monitoring/models/model_123/logs"
-        ]
-        
-        for endpoint in endpoints:
-            response = await mock_async_client.get(endpoint)
-            assert response.status_code in [401, 404, 422]
-    
-    @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
     @patch('app.api.routes.monitoring.APIKey')
     @patch('app.api.routes.monitoring.monitoring_service')
@@ -282,7 +326,7 @@ class TestMonitoringAPI:
         assert result.total_api_keys == 3
         assert result.active_api_keys == 2
         assert len(result.models) == 2
-    
+
     @pytest.mark.asyncio
     @patch('app.api.routes.monitoring.MLModel')
     @patch('app.api.routes.monitoring.monitoring_service')
