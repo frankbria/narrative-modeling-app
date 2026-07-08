@@ -115,6 +115,12 @@ class RedisCacheService:
             if data is None:
                 return None
             return self._deserialize_value(data)
+        except ValueError as e:
+            # Expected: an unsigned legacy or tampered blob — treat as a miss.
+            # WARNING (not ERROR) so a first-deploy wave of legacy entries aging
+            # out of cache doesn't look like an incident (issue #266).
+            logger.warning("Cache key %s treated as miss: %s", key, e)
+            return None
         except Exception as e:
             logger.error(f"Failed to get cache key {key}: {e}")
             return None

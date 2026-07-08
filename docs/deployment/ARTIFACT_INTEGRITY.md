@@ -38,6 +38,11 @@ independently of the auth secret.
 
 > Rotating the signing secret invalidates existing signatures: previously-signed
 > models will fail verification and must be retrained. Rotate deliberately.
+>
+> **Before rotating `NEXTAUTH_SECRET`** (e.g. responding to an auth-credential
+> breach), first set `ARTIFACT_SIGNING_KEY` to the *current* `NEXTAUTH_SECRET`
+> value. That decouples artifact trust from the auth secret so rotating auth does
+> not silently invalidate every signed model and force a mass retrain.
 
 ## 2. Infrastructure control — restrict bucket writes to the backend IAM role
 

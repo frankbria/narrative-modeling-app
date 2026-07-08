@@ -88,8 +88,12 @@ async def test_unsigned_legacy_model_loads_with_warning(monkeypatch, caplog):
         AsyncMock(return_value=_mock_ml_model(None)),
     )
 
+    loaded = MagicMock(return_value="ESTIMATOR")
+    monkeypatch.setattr(model_storage.joblib, "load", loaded)
+
     with caplog.at_level("WARNING"):
         model, _ = await service.load_model("m1", "u1")
 
     assert model == "ESTIMATOR"
+    loaded.assert_called_once()  # actually deserialized, not a hardcoded sentinel
     assert any("unsigned" in r.message.lower() for r in caplog.records)
