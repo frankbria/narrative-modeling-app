@@ -76,6 +76,7 @@ This is a Narrative Modeling App - an AI-guided platform that democratizes machi
 - Frontend (unit tests): `cd apps/frontend && npm test`
 - Frontend (type check): `cd apps/frontend && npm run type-check`
 - MCP: `cd apps/mcp && uv run pytest tests/` (scope to `tests/`; the vendored `fastmcp/tests/` is the upstream library's own suite)
+- **Route-test footgun (issue #267):** `tests/test_api/conftest.py::mock_async_client` builds a *stub* FastAPI app mounting **only** `health` + `secure_upload`, so any request to another router (`/api/v1/production/*`, `/api/v1/monitoring/*`, `/ml/*`, …) 404s unconditionally — assertions like `in [200, 404, 422]` then pass vacuously. For real route tests use **`async_authorized_client`** (drives the full `app.main.app` with the auth dependency overridden) + real Mongo docs and assert **exact** statuses/bodies. For the X-API-Key production-serving surface, insert a real `APIKey` and pass the raw `sk_live_…` header (that surface uses `verify_api_key`, not the session override). Monitoring metrics read a **process-global in-memory** `prediction_log` that `setup_database` (Mongo-only) never clears — reset it (autouse `prediction_log.logs.clear()`) when asserting per-model counts.
 
 ## Test Suite Status
 - Backend: full suite green locally (~1,460 passed, ~39 service-gated/documented skips) ✅ — fixed in issue #160
