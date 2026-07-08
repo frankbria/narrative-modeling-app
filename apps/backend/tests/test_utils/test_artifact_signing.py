@@ -2,8 +2,6 @@
 
 import importlib
 
-import pytest
-
 from app.utils import artifact_signing
 from app.utils.artifact_signing import sign_bytes, verify_bytes
 
