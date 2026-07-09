@@ -160,7 +160,8 @@ async def readiness_check():
         if not isinstance(result, Exception):
             return result
         logger.error(f"{name} health check raised: {str(result)}")
-        return {"status": "unhealthy", "error": "unavailable"}
+        # latency_ms: None keeps the shape consistent with the other checks.
+        return {"status": "unhealthy", "latency_ms": None, "error": "unavailable"}
 
     checks = {
         "mongodb": _check_or_generic("MongoDB", mongodb_check),

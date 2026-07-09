@@ -131,6 +131,16 @@ async def test_inbound_request_id_is_echoed():
     assert r.json()["request_id"] == "trace-abc-123"
 
 
+@pytest.mark.asyncio
+async def test_unsafe_inbound_request_id_is_replaced():
+    """An inbound id with unsafe chars / excess length is not reflected."""
+    async with await _client(build_app()) as c:
+        r = await c.get("/ok", headers={"X-Request-ID": "bad id with spaces & <html>"})
+    echoed = r.headers["X-Request-ID"]
+    assert echoed != "bad id with spaces & <html>"
+    assert echoed.isalnum()  # freshly minted uuid4().hex
+
+
 def test_real_app_registers_handlers():
     """The production app wires the handlers + middleware."""
     from starlette.exceptions import HTTPException as StarletteHTTPException

@@ -18,6 +18,7 @@ every unhandled exception across the app is sanitized here, instead of patching
 """
 
 import logging
+import re
 import uuid
 
 from fastapi import FastAPI, Request
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 GENERIC_5XX_DETAIL = "Internal server error"
+
+# An inbound X-Request-ID is untrusted: reflecting it into a response header +
+# body means a bad value could smuggle control chars into logs/headers. Accept
+# only a safe charset+length, else mint a fresh id.
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 # Status-appropriate generic messages. The client learns the *class* of failure
 # (500 internal vs 503 unavailable) but never the underlying exception text —
@@ -50,7 +56,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     """Attach a request id to ``request.state`` and the response header."""
 
     async def dispatch(self, request: Request, call_next):
-        rid = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        inbound = request.headers.get(REQUEST_ID_HEADER, "").strip()
+        rid = inbound if _SAFE_REQUEST_ID.match(inbound) else uuid.uuid4().hex
         request.state.request_id = rid
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = rid
