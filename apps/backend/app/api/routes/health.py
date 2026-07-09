@@ -41,7 +41,7 @@ async def check_mongodb_connection() -> dict[str, Any]:
         return {
             "status": "unhealthy",
             "latency_ms": round(latency_ms, 2),
-            "error": str(e)
+            "error": "unavailable"  # detail logged server-side (issue #269)
         }
 
 async def check_s3_access() -> dict[str, Any]:
@@ -78,7 +78,7 @@ async def check_s3_access() -> dict[str, Any]:
         return {
             "status": "unhealthy",
             "latency_ms": round(latency_ms, 2),
-            "error": str(e)
+            "error": "unavailable"  # detail logged server-side (issue #269)
         }
 
 async def check_openai_api() -> dict[str, Any]:
@@ -123,7 +123,7 @@ async def check_openai_api() -> dict[str, Any]:
         return {
             "status": "unhealthy",
             "latency_ms": round(latency_ms, 2),
-            "error": str(e)
+            "error": "unavailable"  # detail logged server-side (issue #269)
         }
 
 @router.get("/health")
@@ -154,19 +154,18 @@ async def readiness_check():
         return_exceptions=True
     )
 
+    # Gather may return an Exception per check; log its text server-side but never
+    # serialize it into this unauthenticated response body (issue #269).
+    def _check_or_generic(name: str, result: Any) -> dict[str, Any]:
+        if not isinstance(result, Exception):
+            return result
+        logger.error(f"{name} health check raised: {str(result)}")
+        return {"status": "unhealthy", "error": "unavailable"}
+
     checks = {
-        "mongodb": mongodb_check if not isinstance(mongodb_check, Exception) else {
-            "status": "unhealthy",
-            "error": str(mongodb_check)
-        },
-        "s3": s3_check if not isinstance(s3_check, Exception) else {
-            "status": "unhealthy",
-            "error": str(s3_check)
-        },
-        "openai": openai_check if not isinstance(openai_check, Exception) else {
-            "status": "unhealthy",
-            "error": str(openai_check)
-        }
+        "mongodb": _check_or_generic("MongoDB", mongodb_check),
+        "s3": _check_or_generic("S3", s3_check),
+        "openai": _check_or_generic("OpenAI", openai_check),
     }
 
     # Determine overall health status

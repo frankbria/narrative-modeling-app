@@ -533,4 +533,9 @@ class TestDataProcessingAPI:
                 )
                 
                 assert response.status_code == 500
-                assert "Error processing dataset" in response.json()["detail"]
+                # Generic body, no internal detail leaked (issue #269).
+                body = response.json()
+                assert body["detail"] == "Internal server error"
+                assert body.get("request_id")
+                assert "Failed to retrieve file" not in response.text
+                assert "Error processing dataset" not in response.text
