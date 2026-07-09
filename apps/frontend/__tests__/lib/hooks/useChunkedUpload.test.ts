@@ -25,6 +25,9 @@ describe('useChunkedUpload', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    // Guarantee real timers are restored even if a test throws mid-way while
+    // fake timers are active — otherwise the leak contaminates later tests.
+    jest.useRealTimers();
   });
 
   const makeJsonResponse = (body: Record<string, unknown>) => ({
@@ -134,7 +137,6 @@ describe('useChunkedUpload', () => {
       await jest.advanceTimersByTimeAsync(1500); // drive the backoff timer
       returned = await p;
     });
-    jest.useRealTimers();
 
     expect(returned).toEqual({ file_id: 'file-2' });
     // Two chunk attempts for the single chunk (initial + one retry).
@@ -158,7 +160,6 @@ describe('useChunkedUpload', () => {
       await jest.advanceTimersByTimeAsync(10_000); // drive all backoff timers
       await p;
     });
-    jest.useRealTimers();
 
     // 1 initial + 2 retries = 3 chunk attempts, then it gives up.
     expect(urls().filter((u) => u.includes('/chunk/0'))).toHaveLength(3);

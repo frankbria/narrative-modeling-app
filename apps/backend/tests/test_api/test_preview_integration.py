@@ -138,10 +138,14 @@ class TestPreviewAPIValidation:
         assert body["error"] is None
 
     @pytest.mark.asyncio
-    async def test_preview_multiple_operations_succeeds(
+    async def test_preview_accepts_extra_steps_but_previews_only_the_first(
         self, async_authorized_client, setup_database
     ):
-        """Multiple transformation steps are accepted -> exactly 200."""
+        """A request with multiple steps is accepted (200), but the route
+        previews ONLY transformation_steps[0] (transformations.py:98,118) — the
+        second step is not applied. This documents the real contract rather than
+        implying every step is previewed.
+        """
         await _seed_dataset("preview_ok_2")
 
         with patch(S3_PATCH_TARGET, new=AsyncMock(return_value=_sample_df())):
