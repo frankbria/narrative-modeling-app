@@ -34,14 +34,22 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
+// Stable, assertable router spies. Previously useRouter() returned a fresh
+// jest.fn() on every call, so a test could never assert router.push(...) via
+// the global mock. These module-level spies persist across renders and are
+// cleared before each test; a test that doesn't re-mock next/navigation can
+// assert redirects via global.__NEXT_ROUTER_MOCKS__.push.
+const routerMocks = {
+  push: jest.fn(),
+  replace: jest.fn(),
+  prefetch: jest.fn(),
+  back: jest.fn(),
+}
+global.__NEXT_ROUTER_MOCKS__ = routerMocks
+
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    prefetch: jest.fn(),
-    back: jest.fn(),
-  }),
+  useRouter: () => routerMocks,
   useParams: () => ({
     id: 'test-dataset-id'
   }),
@@ -87,11 +95,19 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// Setup mock responses
+// Reset shared spies before each test.
 beforeEach(() => {
-  fetch.mockClear()
-  global.fetch.mockResolvedValue({
-    ok: true,
-    json: jest.fn().mockResolvedValue({}),
-  })
+  routerMocks.push.mockClear()
+  routerMocks.replace.mockClear()
+  routerMocks.prefetch.mockClear()
+  routerMocks.back.mockClear()
+
+  // Default fetch REJECTS. Previously it resolved to `{ ok: true, json: () => ({}) }`,
+  // which silently returned empty success for any unmocked request — hiding
+  // contract/redirect regressions (a component fetching real data got `{}` and
+  // still "passed"). Tests that hit the network must stub fetch explicitly.
+  fetch.mockReset()
+  global.fetch.mockRejectedValue(
+    new Error('Unmocked fetch call — stub global.fetch explicitly in this test')
+  )
 })

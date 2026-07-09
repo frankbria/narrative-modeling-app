@@ -81,6 +81,14 @@ jest.mock('@/components/QualityReportCard', () => {
   }
 })
 
+// QualityDashboard (added to the quality tab in #102) does its own data fetch;
+// stub it so the tab renders deterministically without hitting the network.
+jest.mock('@/components/quality/QualityDashboard', () => ({
+  QualityDashboard: ({ fileId }: any) => (
+    <div data-testid="quality-dashboard">Quality dashboard for {fileId}</div>
+  )
+}))
+
 jest.mock('@/components/AIInsightsPanel', () => {
   return {
     AIInsightsPanel: ({ datasetId }: any) => (
@@ -142,6 +150,15 @@ const mockUnprocessedDataset = {
 // Helper to render component (WorkflowProvider is mocked above)
 const renderWithWorkflow = (component: React.ReactElement, datasetId?: string) => {
   return render(component)
+}
+
+// Radix tab triggers do not switch on a bare click() in JSDOM; they need the
+// full pointer sequence (proven by the visualizations test above).
+const activateTab = (name: RegExp) => {
+  const tab = screen.getByRole('tab', { name })
+  fireEvent.mouseDown(tab)
+  fireEvent.mouseUp(tab)
+  fireEvent.click(tab)
 }
 
 describe('DatasetAnalysisPage', () => {
@@ -229,12 +246,16 @@ describe('DatasetAnalysisPage', () => {
     }, { timeout: 3000 })
   })
 
-  it.skip('shows processing state for unprocessed datasets', async () => {
-    // TODO: Fix this test - requires proper component rendering for unprocessed state
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
-    })
+  it('shows processing state for unprocessed datasets', async () => {
+    // Metadata says unprocessed; the follow-up /data/process call is made but
+    // returns non-ok so the dataset stays unprocessed and the processing UI
+    // remains visible (previously the default mock flipped it to processed).
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 })
 
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
 
@@ -262,32 +283,27 @@ describe('DatasetAnalysisPage', () => {
     expect(screen.getByText('AI Insights')).toBeInTheDocument()
   })
 
-  it.skip('switches between tabs correctly', async () => {
-    // TODO: Fix this test - requires proper tab switching with Radix UI tabs
+  it('switches between tabs correctly', async () => {
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
 
     await waitFor(() => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    // Check overview tab content is visible by default
+    // Overview tab content is visible by default
     expect(screen.getByTestId('data-preview-table')).toBeInTheDocument()
 
-    // Switch to schema tab
-    fireEvent.click(screen.getByText('Schema'))
-    expect(screen.getByTestId('schema-viewer')).toBeInTheDocument()
+    activateTab(/schema/i)
+    await waitFor(() => expect(screen.getByTestId('schema-viewer')).toBeInTheDocument())
 
-    // Switch to statistics tab
-    fireEvent.click(screen.getByText('Statistics'))
-    expect(screen.getByTestId('statistics-dashboard')).toBeInTheDocument()
+    activateTab(/statistics/i)
+    await waitFor(() => expect(screen.getByTestId('statistics-dashboard')).toBeInTheDocument())
 
-    // Switch to quality tab
-    fireEvent.click(screen.getByText('Quality'))
-    expect(screen.getByTestId('quality-report-card')).toBeInTheDocument()
+    activateTab(/quality/i)
+    await waitFor(() => expect(screen.getByTestId('quality-report-card')).toBeInTheDocument())
 
-    // Switch to insights tab
-    fireEvent.click(screen.getByText('AI Insights'))
-    expect(screen.getByTestId('ai-insights-panel')).toBeInTheDocument()
+    activateTab(/ai insights/i)
+    await waitFor(() => expect(screen.getByTestId('ai-insights-panel')).toBeInTheDocument())
   })
 
   it('handles export functionality', async () => {
@@ -330,8 +346,7 @@ describe('DatasetAnalysisPage', () => {
     expect(window.open).toHaveBeenCalledWith(exportResponse.download_url, '_blank')
   })
 
-  it.skip('starts processing for unprocessed datasets', async () => {
-    // TODO: Fix this test - requires proper async processing state handling
+  it('starts processing for unprocessed datasets', async () => {
     ;(global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -344,11 +359,7 @@ describe('DatasetAnalysisPage', () => {
 
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
 
-    await waitFor(() => {
-      expect(screen.getByText('Processing...')).toBeInTheDocument()
-    })
-
-    // Should make API call to start processing
+    // An unprocessed dataset triggers a POST to /data/process.
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         'http://localhost:8000/api/v1/data/process',
@@ -488,12 +499,14 @@ describe('DatasetAnalysisPage', () => {
     expect(screen.getByText(/Processed 12\/1\/2023/)).toBeInTheDocument()
   })
 
-  it.skip('disables export button for unprocessed datasets', async () => {
-    // TODO: Fix this test - button disabled state not working with mocked unprocessed state
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
-    })
+  it('disables export button for unprocessed datasets', async () => {
+    // Keep the dataset unprocessed: metadata unprocessed + /data/process non-ok.
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockUnprocessedDataset),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 })
 
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
 
@@ -501,18 +514,17 @@ describe('DatasetAnalysisPage', () => {
       expect(screen.getByText('Export Data')).toBeInTheDocument()
     })
 
-    const exportButton = screen.getByText('Export Data')
-    expect(exportButton).toBeDisabled()
+    // Export is gated on is_processed (disabled={!dataset.is_processed}).
+    expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
   })
 
-  it.skip('handles missing schema gracefully', async () => {
-    // TODO: Fix this test - requires proper tab rendering with null schema
+  it('handles missing schema gracefully', async () => {
     const datasetWithoutSchema = {
       ...mockProcessedDataset,
       schema: null
     }
 
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutSchema),
     })
@@ -523,18 +535,19 @@ describe('DatasetAnalysisPage', () => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    fireEvent.click(screen.getByText('Schema'))
-    expect(screen.getByText('Schema information not available')).toBeInTheDocument()
+    activateTab(/schema/i)
+    await waitFor(() =>
+      expect(screen.getByText('Schema information not available')).toBeInTheDocument()
+    )
   })
 
-  it.skip('handles missing statistics gracefully', async () => {
-    // TODO: Fix this test - requires proper tab rendering with null statistics
+  it('handles missing statistics gracefully', async () => {
     const datasetWithoutStats = {
       ...mockProcessedDataset,
       statistics: null
     }
 
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutStats),
     })
@@ -545,18 +558,19 @@ describe('DatasetAnalysisPage', () => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    fireEvent.click(screen.getByText('Statistics'))
-    expect(screen.getByText('Statistics not available')).toBeInTheDocument()
+    activateTab(/statistics/i)
+    await waitFor(() =>
+      expect(screen.getByText('Statistics not available')).toBeInTheDocument()
+    )
   })
 
-  it.skip('handles missing quality report gracefully', async () => {
-    // TODO: Fix this test - requires proper tab rendering with null quality_report
+  it('handles missing quality report gracefully', async () => {
     const datasetWithoutQuality = {
       ...mockProcessedDataset,
       quality_report: null
     }
 
-    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+    ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue(datasetWithoutQuality),
     })
@@ -567,7 +581,10 @@ describe('DatasetAnalysisPage', () => {
       expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
     }, { timeout: 3000 })
 
-    fireEvent.click(screen.getByText('Quality'))
-    expect(screen.getByText('Quality report not available')).toBeInTheDocument()
+    activateTab(/quality/i)
+    // QualityReportCard degrades to a fallback when quality_report is null.
+    await waitFor(() =>
+      expect(screen.getByText('Quality report not available')).toBeInTheDocument()
+    )
   })
 })
