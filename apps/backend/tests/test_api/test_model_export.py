@@ -405,8 +405,9 @@ class TestModelExportRoutes:
         # Make request
         response = client.get(f"/api/v1/models/{mock_model_id}/export/python")
         
-        # Verify error response
+        # Verify error response is generic (issue #269: no internal leak)
         assert response.status_code == 500
         data = response.json()
-        assert "Export failed" in data["detail"]
-        assert "Internal service error" in data["detail"]
+        assert data["detail"] == "Internal server error"
+        assert data.get("request_id")
+        assert "Internal service error" not in response.text

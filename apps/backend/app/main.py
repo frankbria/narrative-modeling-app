@@ -40,6 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from app.middleware.api_version import APIVersionMiddleware
+from app.middleware.error_handlers import RequestIDMiddleware, register_error_handlers
 from app.middleware.metrics import MetricsMiddleware, get_metrics
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.rate_limit import build_rate_limit_store
@@ -159,6 +160,15 @@ app.add_middleware(APIVersionMiddleware)
 
 # ✅ Apply Prometheus metrics middleware
 app.add_middleware(MetricsMiddleware)
+
+# ✅ Request-id stamping (#269). Added last ⇒ outermost, so every request gets
+# an id before any inner middleware/handler runs and it can be echoed on every
+# response (including sanitized 5xx errors) for log correlation.
+app.add_middleware(RequestIDMiddleware)
+
+# ✅ Sanitizing exception handlers (#269): generic {detail, request_id} on 5xx,
+# full detail logged server-side; safe 4xx validation text passes through.
+register_error_handlers(app)
 
 # ✅ Include routers
 # Health check routes at root level (no version prefix)

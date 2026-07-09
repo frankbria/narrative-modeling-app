@@ -75,9 +75,11 @@ export async function POST(request: Request) {
     const reply = response.choices[0]?.message?.content || ''
     return NextResponse.json({ reply })
   } catch (error: unknown) {
+    // Log detail server-side; return a generic message (issue #269 — don't
+    // leak upstream/library internals to the client).
     console.error('OpenAI Error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'An error occurred' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

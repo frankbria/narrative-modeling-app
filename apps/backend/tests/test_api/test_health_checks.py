@@ -93,6 +93,22 @@ class TestReadinessChecks:
                     assert data["checks"]["mongodb"]["status"] == "unhealthy"
                     assert "error" in data["checks"]["mongodb"]
 
+    async def test_ready_does_not_leak_check_exception_text(self):
+        """A check that RAISES must not leak its exception text into the
+        unauthenticated /health/ready body (issue #269)."""
+        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
+            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
+                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+                    mock_mongo.side_effect = Exception("mongodb://user:pass@secret-host:27017 refused")
+                    mock_s3.return_value = {"status": "healthy", "latency_ms": 1.0}
+                    mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
+
+                    response = client.get("/health/ready")
+                    assert response.status_code == 503
+                    assert "secret-host" not in response.text
+                    assert "user:pass" not in response.text
+                    assert response.json()["checks"]["mongodb"]["error"] == "unavailable"
+
     async def test_s3_unhealthy_still_ready(self):
         """Test readiness endpoint when S3 is unhealthy (S3 is optional)"""
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
@@ -213,8 +229,9 @@ class TestIndividualHealthChecks:
             result = await check_mongodb_connection()
 
             assert result["status"] == "unhealthy"
-            assert "error" in result
-            assert "Connection refused" in result["error"]
+            # Generic error, no raw exception text leaked (issue #269).
+            assert result["error"] == "unavailable"
+            assert "Connection refused" not in str(result)
 
     async def test_s3_check_success(self):
         """Test S3 health check when access succeeds"""
@@ -266,8 +283,9 @@ class TestIndividualHealthChecks:
                 result = await check_s3_access()
 
                 assert result["status"] == "unhealthy"
-                assert "error" in result
-                assert "Access denied" in result["error"]
+                # Generic error, no raw exception text leaked (issue #269).
+                assert result["error"] == "unavailable"
+                assert "Access denied" not in str(result)
 
     async def test_openai_check_not_configured(self):
         """Test OpenAI health check when API key is not configured"""

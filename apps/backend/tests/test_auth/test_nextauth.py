@@ -72,7 +72,8 @@ async def test_malformed_token_rejected(mock_env_vars):
         await get_current_user_id(bearer("not-a-jwt"))
 
     assert exc_info.value.status_code == 401
-    assert "Invalid token" in str(exc_info.value.detail)
+    # Fixed message, no JWT-library internals leaked (issue #269).
+    assert exc_info.value.detail == "Invalid authentication token"
 
 
 @pytest.mark.asyncio
@@ -84,7 +85,7 @@ async def test_legacy_nextauth_prefix_token_rejected(mock_env_vars):
         await get_current_user_id(bearer("nextauth-other_user"))
 
     assert exc_info.value.status_code == 401
-    assert "Invalid token" in str(exc_info.value.detail)
+    assert exc_info.value.detail == "Invalid authentication token"
 
 
 @pytest.mark.asyncio
@@ -96,7 +97,20 @@ async def test_wrong_signature_rejected(mock_env_vars):
         await get_current_user_id(bearer(token))
 
     assert exc_info.value.status_code == 401
-    assert "Invalid token" in str(exc_info.value.detail)
+    assert exc_info.value.detail == "Invalid authentication token"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_decode_error_is_401_not_500(mock_env_vars):
+    """A non-JWT exception during decode is a fixed 401, not a leaky 500
+    (issue #269: auth-as-500 pollutes error-rate metrics and leaks internals)."""
+    with patch("app.auth.nextauth_auth.jwt.decode", side_effect=Exception("boom internal")):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user_id(bearer("anything"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid authentication token"
+    assert "boom internal" not in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio

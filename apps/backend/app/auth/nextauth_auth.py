@@ -100,15 +100,20 @@ async def get_current_user_id(
         logger.error("Token has expired")
         raise HTTPException(status_code=401, detail="Token has expired")
     except JWTError as e:
+        # Log library internals server-side; return a fixed message (issue #269
+        # — never echo JWT/stack details to the client).
         logger.error(f"JWT validation error: {str(e)}")
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
     except HTTPException:
         # Deliberate auth failures (e.g. missing user id claim -> 401) must not
         # be converted into 500s by the generic handler below
         raise
     except Exception as e:
+        # An unexpected decode/verify failure is still an auth failure: return a
+        # fixed 401 (not a leaky 500 — issue #269; 401 also keeps genuine auth
+        # rejections out of the 5xx error-rate metrics).
         logger.error(f"Authentication error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 # For backward compatibility during migration
 async def get_current_user_id_optional(

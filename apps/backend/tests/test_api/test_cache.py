@@ -55,7 +55,9 @@ class TestCacheAPI:
 
             assert response.status_code == 503
             data = response.json()
-            assert "Cache service unavailable" in data["detail"]
+            # 5xx bodies are sanitized to a status-appropriate generic (issue #269).
+            assert data["detail"] == "Service temporarily unavailable"
+            assert data.get("request_id")
 
     @pytest.mark.asyncio
     async def test_invalidate_user_cache(self, async_authorized_client: AsyncClient):
@@ -192,7 +194,10 @@ class TestCacheAPI:
 
             assert response.status_code == 500
             data = response.json()
-            assert "Failed to invalidate user cache" in data["detail"]
+            # Generic body, no internal leak (issue #269).
+            assert data["detail"] == "Internal server error"
+            assert data.get("request_id")
+            assert "Redis connection error" not in response.text
 
     @pytest.mark.asyncio
     async def test_cache_statistics_calculation(self, async_authorized_client: AsyncClient):

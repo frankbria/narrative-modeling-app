@@ -186,9 +186,12 @@ class TestAIAnalysisAPI:
 
                 response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
 
-                # Should fail with 500 error
+                # Should fail with a generic 500 (issue #269: no internal leak)
                 assert response.status_code == 500
-                assert "AI analysis failed" in response.json()["detail"]
+                body = response.json()
+                assert body["detail"] == "Internal server error"
+                assert body.get("request_id")
+                assert "MCP service unavailable" not in response.text
     
     @pytest.mark.asyncio
     async def test_summarize_with_cache(self, authorized_client, mock_user_data_with_analysis, mock_ai_summary):
