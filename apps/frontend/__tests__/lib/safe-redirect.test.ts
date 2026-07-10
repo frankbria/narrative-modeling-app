@@ -39,6 +39,12 @@ describe('sanitizeCallbackUrl', () => {
     expect(sanitizeCallbackUrl('/explore?q=a%2Fb')).toBe('/explore?q=a%2Fb');
   });
 
+  it('treats a double-encoded prefix as a same-origin path (not a bypass)', () => {
+    // /%252F single-decodes to /%2F (still a same-origin path, not //host), and
+    // router.push() does not double-decode, so this is intentionally allowed.
+    expect(sanitizeCallbackUrl('/%252Fevil.example')).toBe('/%252Fevil.example');
+  });
+
   it('rejects paths that do not start with a single slash', () => {
     expect(sanitizeCallbackUrl('upload')).toBe('/upload');
     expect(sanitizeCallbackUrl(' /upload')).toBe('/upload'); // leading space

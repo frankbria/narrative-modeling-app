@@ -40,6 +40,9 @@ describe('SignInPage open-redirect guard (issue #271)', () => {
     expect(push).toHaveBeenCalledWith('/explore/abc');
   });
 
+  // All sign-in buttons (Google/GitHub, and the dev-only credentials form) read
+  // the same sanitized `callbackUrl` variable, so proving one OAuth path proves
+  // them all — the credentials path is identical code, gated to development.
   it('passes the sanitized URL (not the off-site one) to signIn on the OAuth path', () => {
     sessionStatus = 'unauthenticated';
     search = new URLSearchParams({ callbackUrl: 'https://evil.example' });

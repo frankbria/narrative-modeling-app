@@ -31,7 +31,7 @@ export function missingAuthEnv(
   nodeEnv: string | undefined,
 ): string[] {
   if (nodeEnv !== 'production') return [];
-  return REQUIRED_PROD_AUTH_ENV.filter((k) => !env[k] || env[k]!.trim() === '');
+  return REQUIRED_PROD_AUTH_ENV.filter((k) => !env[k]?.trim());
 }
 
 /**
