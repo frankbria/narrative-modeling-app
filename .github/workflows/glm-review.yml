@@ -1,0 +1,33 @@
+name: GLM Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths-ignore:
+      - "**/*.md"
+      - ".gitignore"
+
+# Cancel superseded runs on rapid pushes (mirrors claude-code-review.yml, post-#187).
+concurrency:
+  group: glm-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Only review substantial changes (5+ files, or 20+ additions, or 20+ deletions)
+    if: |
+      github.event.pull_request.changed_files >= 5 ||
+      github.event.pull_request.additions >= 20 ||
+      github.event.pull_request.deletions >= 20
+    # Pinned to a commit SHA (not @main) so an upstream push can't silently run
+    # here with write perms + the ZHIPU_API_KEY secret — matches the repo's
+    # action-pinning policy (see claude-code-review.yml).
+    # Runaway guard lives in the called workflow (review.yml sets timeout-minutes:
+    # 20 on its job); a caller that uses a reusable workflow can't set timeout-minutes.
+    uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main @ 2026-07-10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write         # PR review/issue comments are posted under the issues API
+
+    secrets:
+      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
