@@ -8,6 +8,8 @@ updates:
   # Backend production image — refreshes `FROM python:3.13-slim@sha256:…` and the
   # `COPY --from=ghcr.io/astral-sh/uv:0.5.31@sha256:…` tool digest.
   - package-ecosystem: "docker"
+    cooldown:
+      default-days: 14
     directory: "/apps/backend"
     schedule:
       interval: "weekly"
@@ -27,6 +29,8 @@ updates:
 
   # Frontend production image — refreshes the `node:20-alpine@sha256:…` base digest.
   - package-ecosystem: "docker"
+    cooldown:
+      default-days: 14
     directory: "/apps/frontend"
     schedule:
       interval: "weekly"
@@ -39,6 +43,8 @@ updates:
   # Staging compose — refreshes the `redis:7-alpine@sha256:…` digest pinned in the
   # repo-root `docker-compose.staging.yml` (deploy path, not CI).
   - package-ecosystem: "docker"
+    cooldown:
+      default-days: 14
     directory: "/"
     schedule:
       interval: "weekly"
@@ -53,6 +59,8 @@ updates:
   # weekly PR; majors (pytest 9, pyarrow 23, lxml 6, …) come as separate PRs so
   # they get individual review + a full CI run.
   - package-ecosystem: "pip"
+    cooldown:
+      default-days: 14
     directory: "/apps/backend"
     schedule:
       interval: "weekly"
@@ -69,6 +77,11 @@ updates:
 
   # Frontend npm deps (issue #270) — mirrors the advisory `npm audit` CI job.
   - package-ecosystem: "npm"
+    cooldown:
+      default-days: 14
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     directory: "/apps/frontend"
     schedule:
       interval: "weekly"
@@ -86,6 +99,11 @@ updates:
   # Workflow actions — refreshes the commit-SHA pins (keeps the `# vN` tag comments
   # accurate). Grouped so all action bumps land in one PR per week.
   - package-ecosystem: "github-actions"
+    cooldown:
+      default-days: 14
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     directory: "/"
     schedule:
       interval: "weekly"
