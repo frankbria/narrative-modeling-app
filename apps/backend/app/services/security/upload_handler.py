@@ -13,6 +13,8 @@ from typing import Any
 import aiofiles
 from fastapi import HTTPException
 
+from app.utils.upload_limits import MAX_UPLOAD_BYTES
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,11 @@ class ChunkedUploadHandler:
     def __init__(self, 
                  temp_dir: str = "/tmp/uploads",
                  chunk_size: int = 5 * 1024 * 1024,  # 5MB chunks
-                 max_file_size: int = 100 * 1024 * 1024 * 1024,  # 100GB
+                 # Same 100 MB cap as read_upload_capped / BodySizeLimitMiddleware
+                 # (issue #270). Bounds chunked disk usage at init: without this the
+                 # old 100 GB default let ~100 GB of ≤100 MB chunks land on disk
+                 # before the completion size-check fired (disk-DoS).
+                 max_file_size: int = MAX_UPLOAD_BYTES,
                  session_timeout: int = 24):  # hours
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -41,7 +47,7 @@ class ChunkedUploadHandler:
         if file_size > self.max_file_size:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large. Maximum size is {self.max_file_size / (1024**3):.1f}GB"
+                detail=f"File too large. Maximum size is {self.max_file_size // (1024 * 1024)} MB"
             )
         
         # Generate session ID

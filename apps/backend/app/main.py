@@ -40,6 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from app.middleware.api_version import APIVersionMiddleware
+from app.middleware.body_size_limit import BodySizeLimitMiddleware
 from app.middleware.error_handlers import RequestIDMiddleware, register_error_handlers
 from app.middleware.metrics import MetricsMiddleware, get_metrics
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -145,6 +146,12 @@ app.state.rate_limit_store = None
 # CORS middleware (added next) stays outermost and still decorates the 429 with
 # CORS headers so browsers can read it.
 app.add_middleware(RateLimitMiddleware)
+
+# ✅ Upload byte cap (#270). Added before CORS so it stays inner and CORS still
+# decorates the 413; rejects an oversized Content-Length before the multipart
+# parser spools the body. Pairs with nginx client_max_body_size (edge) and the
+# in-route read_upload_capped (memory bound).
+app.add_middleware(BodySizeLimitMiddleware)
 
 # ✅ Apply CORS to the correct app instance
 app.add_middleware(

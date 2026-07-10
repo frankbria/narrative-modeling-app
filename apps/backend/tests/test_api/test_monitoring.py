@@ -209,8 +209,10 @@ class TestMonitoringAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_monitoring_requires_auth(self, async_test_client, setup_database):
-        """Without a bearer token the HTTPBearer dependency rejects with 403 —
-        driven by the unauthenticated client (no auth override)."""
+        """Without a bearer token the HTTPBearer dependency rejects with 401
+        (missing credentials) — driven by the unauthenticated client (no auth
+        override). starlette>=1.x returns 401, not 403, for missing bearer
+        credentials (issue #270 upgrade)."""
         for endpoint in (
             "/api/v1/monitoring/overview",
             "/api/v1/monitoring/models/model_123/metrics",
@@ -218,7 +220,7 @@ class TestMonitoringAPIIntegration:
             "/api/v1/monitoring/api-keys/usage",
         ):
             resp = await async_test_client.get(endpoint)
-            assert resp.status_code == 403
+            assert resp.status_code == 401
 
 
 class TestMonitoringRouteFormatting:

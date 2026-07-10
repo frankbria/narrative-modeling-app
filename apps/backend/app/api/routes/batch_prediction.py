@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
+from app.utils.upload_limits import read_upload_capped
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
 
@@ -127,7 +128,7 @@ async def create_batch_job(
 
     try:
         # Read file content
-        content = await file.read()
+        content = await read_upload_capped(file)
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(
@@ -176,6 +177,9 @@ async def create_batch_job(
             output_path=job.output_path,
         )
 
+    except HTTPException:
+        # Preserve client errors (e.g. 413 too large) instead of masking as 500.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to create batch job: {str(e)}"

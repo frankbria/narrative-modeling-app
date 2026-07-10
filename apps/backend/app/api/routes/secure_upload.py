@@ -15,6 +15,7 @@ from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
 from app.utils.s3 import upload_file_to_s3
 from app.utils.schema_inference import generate_s3_filename, infer_schema
+from app.utils.upload_limits import MAX_UPLOAD_BYTES, read_upload_capped
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def secure_upload(
             raise HTTPException(status_code=400, detail="Missing filename")
 
         # Read file content
-        content = await file.read()
+        content = await read_upload_capped(file)
 
         # Load into DataFrame
         try:
@@ -194,7 +195,7 @@ async def confirm_pii_upload(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
-    content = await file.read()
+    content = await read_upload_capped(file)
 
     if file.filename.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(content))
@@ -295,7 +296,7 @@ async def upload_chunk(
     Upload a single chunk
     """
     
-    chunk_data = await file.read()
+    chunk_data = await read_upload_capped(file)
     result = await upload_handler.upload_chunk(session_id, chunk_number, chunk_data, chunk_hash)
     
     if result.get("complete"):
@@ -326,7 +327,18 @@ async def complete_chunked_upload(
     """
     
     temp_path = await upload_handler.complete_upload(session_id)
-    
+
+    # Cap the assembled-file read: chunked sessions allow very large files, so
+    # reading the whole thing into memory here would reintroduce the memory-DoS
+    # (issue #270). Reject over MAX_UPLOAD_BYTES before loading it into RAM.
+    if temp_path.stat().st_size > MAX_UPLOAD_BYTES:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum upload size is "
+            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+        )
+
     # Process the complete file
     with open(temp_path, 'rb') as f:
         content = f.read()

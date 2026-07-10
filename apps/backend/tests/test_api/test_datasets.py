@@ -123,13 +123,14 @@ class TestDatasetRoutes:
     async def test_list_datasets_unauthorized(self, async_test_client, setup_database):
         """
         🔴 RED: Test listing datasets without authentication.
-        Should return 403 Forbidden (FastAPI HTTPBearer dependency behavior).
+        Should return 401 Unauthorized (FastAPI HTTPBearer returns 401 for
+        missing credentials as of starlette>=1.x; issue #270 upgrade).
         """
         # ACT: Call endpoint without auth
         response = await async_test_client.get("/api/v1/datasets")
 
-        # ASSERT: Verify unauthorized (403 is returned by HTTPBearer when credentials missing)
-        assert response.status_code == 403
+        # ASSERT: 401 is returned by HTTPBearer when credentials are missing
+        assert response.status_code == 401
 
     # =====================================================================
     # POST /api/v1/datasets/upload - Upload Dataset
