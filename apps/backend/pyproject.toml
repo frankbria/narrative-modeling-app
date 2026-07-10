@@ -22,9 +22,9 @@ dependencies = [
     "psutil>=6.1.0",
     "pydantic>=2.11.5",
     "pydantic-settings>=2.9.1",
-    "pytest>=8.4.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.23.0",
-    "python-dotenv>=1.1.0",
+    "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
     # The multipart form parser central to uploads — 0.0.31 clears a run of
     # parser DoS/allocation CVEs (CVE-2026-53538/53539/53540 et al.). Issue #270.
@@ -45,7 +45,7 @@ dependencies = [
     "uvicorn>=0.34.3",
     "aiofiles>=24.1.0",
     "scipy>=1.11.0",
-    "pyarrow>=14.0.0",
+    "pyarrow>=23.0.1",
     "openpyxl>=3.1.0",
     "xlrd>=2.0.0",
     "xgboost>=3.0.2",
