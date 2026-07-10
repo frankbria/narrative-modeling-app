@@ -6,6 +6,11 @@ on:
       - "**/*.md"
       - ".gitignore"
 
+# Cancel superseded runs on rapid pushes (mirrors claude-code-review.yml, post-#187).
+concurrency:
+  group: glm-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     # Only review substantial changes (5+ files, or 20+ additions, or 20+ deletions)
@@ -13,11 +18,13 @@ jobs:
       github.event.pull_request.changed_files >= 5 ||
       github.event.pull_request.additions >= 20 ||
       github.event.pull_request.deletions >= 20
-    uses: frankbria/glm-review/.github/workflows/review.yml@main
+    # Pinned to a commit SHA (not @main) so an upstream push can't silently run
+    # here with write perms + the ZHIPU_API_KEY secret — matches the repo's
+    # action-pinning policy (see claude-code-review.yml).
+    uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main @ 2026-07-10
     permissions:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
     secrets:
       ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
