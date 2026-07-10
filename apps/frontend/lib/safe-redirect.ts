@@ -22,5 +22,6 @@ export function sanitizeCallbackUrl(
   if (raw[0] !== '/') return fallback; // must be root-relative (rejects scheme, bare paths, leading whitespace)
   if (raw[1] === '/') return fallback; // reject protocol-relative //host
   if (raw.includes('\\')) return fallback; // reject backslash (browser-normalized to '/')
+  if (/^\/%(2f|5c)/i.test(raw)) return fallback; // reject a leading encoded slash/backslash (/%2Fhost) that could decode to //host
   return raw;
 }

@@ -29,6 +29,16 @@ describe('sanitizeCallbackUrl', () => {
     expect(sanitizeCallbackUrl('\\evil.example')).toBe('/upload');
   });
 
+  it('rejects a leading URL-encoded slash/backslash', () => {
+    expect(sanitizeCallbackUrl('/%2Fevil.example')).toBe('/upload');
+    expect(sanitizeCallbackUrl('/%2fevil.example')).toBe('/upload');
+    expect(sanitizeCallbackUrl('/%5Cevil.example')).toBe('/upload');
+  });
+
+  it('allows encoded slashes that appear later (legit query values)', () => {
+    expect(sanitizeCallbackUrl('/explore?q=a%2Fb')).toBe('/explore?q=a%2Fb');
+  });
+
   it('rejects paths that do not start with a single slash', () => {
     expect(sanitizeCallbackUrl('upload')).toBe('/upload');
     expect(sanitizeCallbackUrl(' /upload')).toBe('/upload'); // leading space
