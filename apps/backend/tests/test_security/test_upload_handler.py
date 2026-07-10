@@ -170,3 +170,17 @@ class TestChunkedUploadHandler:
         # Check progress again
         result = await self.handler.resume_upload(session_id)
         assert result["progress"] > 50  # More than half complete
+
+
+async def test_init_upload_rejects_over_cap():
+    """Chunked init caps declared size at MAX_UPLOAD_BYTES so ~100 GB of
+    chunks can't land on disk before completion (issue #270 disk-DoS)."""
+    from fastapi import HTTPException
+
+    from app.utils.upload_limits import MAX_UPLOAD_BYTES
+
+    handler = ChunkedUploadHandler()
+    assert handler.max_file_size == MAX_UPLOAD_BYTES  # not the old 100 GB
+    with pytest.raises(HTTPException) as exc:
+        await handler.init_upload("huge.csv", MAX_UPLOAD_BYTES + 1)
+    assert exc.value.status_code == 413
