@@ -48,6 +48,41 @@ updates:
       - "dependencies"
       - "docker"
 
+  # Backend Python deps (issue #270) — opens PRs for CVE fixes surfaced by the
+  # advisory pip-audit CI job. Grouped so patch/minor security bumps land in one
+  # weekly PR; majors (pytest 9, pyarrow 23, lxml 6, …) come as separate PRs so
+  # they get individual review + a full CI run.
+  - package-ecosystem: "pip"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "security"
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Frontend npm deps (issue #270) — mirrors the advisory `npm audit` CI job.
+  - package-ecosystem: "npm"
+    directory: "/apps/frontend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "security"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
   # Workflow actions — refreshes the commit-SHA pins (keeps the `# vN` tag comments
   # accurate). Grouped so all action bumps land in one PR per week.
   - package-ecosystem: "github-actions"

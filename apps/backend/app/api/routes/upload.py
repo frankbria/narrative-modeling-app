@@ -19,6 +19,7 @@ from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
 from app.utils.s3 import create_s3_client, upload_file_to_s3
 from app.utils.schema_inference import generate_s3_filename, infer_schema
+from app.utils.upload_limits import read_upload_capped
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ async def upload_file(
                 detail="Missing filename. Please upload a CSV, Excel, or TXT file.",
             )
 
-        content = await file.read()
+        content = await read_upload_capped(file)
         logger.info(f"File content size: {len(content)} bytes")
 
         # Determine file type and read accordingly
@@ -199,6 +200,10 @@ async def upload_file(
             "schema": schema_fields,
         }
 
+    except HTTPException:
+        # Preserve client errors (e.g. 400 bad file, 413 too large) instead of
+        # re-wrapping them as a 500.
+        raise
     except Exception as e:
         logger.exception("Error processing file: %s", e)
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")

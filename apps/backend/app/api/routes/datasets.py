@@ -58,6 +58,7 @@ from app.services.model_training.feature_selection_service import (
     FeatureSelectionService,
 )
 from app.utils.s3 import upload_file_to_s3
+from app.utils.upload_limits import read_upload_capped
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ async def upload_dataset(
         dataset_id = f"dataset_{uuid.uuid4().hex[:16]}"
 
         # Read file content
-        file_content = await file.read()
+        file_content = await read_upload_capped(file)
         file_size = len(file_content)
 
         # Upload to S3

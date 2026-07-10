@@ -213,3 +213,34 @@ class TestSecureUploadAPI:
         
         # All sessions should be unique
         assert len(set(tasks)) == 3
+
+class TestChunkedCompletionSizeCap:
+    """Issue #270: chunked upload completion must not read an oversized assembled
+    file into memory (chunked sessions allow very large files)."""
+
+    async def test_chunked_completion_rejects_oversized_file_413(self, tmp_path, monkeypatch):
+        from unittest.mock import AsyncMock, patch
+
+        import pytest
+        from fastapi import BackgroundTasks, HTTPException
+
+        from app.api.routes import secure_upload
+
+        monkeypatch.setattr(secure_upload, "MAX_UPLOAD_BYTES", 10)
+        assembled = tmp_path / "assembled.csv"
+        assembled.write_bytes(b"x" * 5000)  # 5 KB, over the 10 B cap
+
+        with patch.object(
+            secure_upload.upload_handler,
+            "complete_upload",
+            AsyncMock(return_value=assembled),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await secure_upload.complete_chunked_upload(
+                    session_id="s1",
+                    background_tasks=BackgroundTasks(),
+                    current_user_id="u1",
+                )
+
+        assert exc.value.status_code == 413
+        assert not assembled.exists()  # oversized temp file cleaned up, not read
