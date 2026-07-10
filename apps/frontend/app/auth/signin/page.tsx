@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Loader2 } from "lucide-react";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
+import { sanitizeCallbackUrl } from "@/lib/safe-redirect";
 
 export default function SignInPage() {
   const { status } = useSession();
@@ -20,8 +21,10 @@ export default function SignInPage() {
   const [password, setPassword] = useState('test-password-123');
   const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // Get callback URL from search params or default to /upload
-  const callbackUrl = searchParams.get('callbackUrl') || '/upload';
+  // Get callback URL from search params, defaulting to /upload. Sanitized to a
+  // same-origin relative path so `?callbackUrl=https://evil.example` can't
+  // redirect an authenticated user off-site (open redirect, issue #271).
+  const callbackUrl = sanitizeCallbackUrl(searchParams.get('callbackUrl'));
   
   useEffect(() => {
     // If already authenticated, redirect to callback URL
