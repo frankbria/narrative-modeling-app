@@ -176,6 +176,8 @@ For local development without OAuth setup, use `SKIP_AUTH=true` as shown above. 
 
 The backend only honors `SKIP_AUTH=true` when `ENVIRONMENT` is explicitly `development` or `test`. In any other environment — including when `ENVIRONMENT` is unset — startup fails hard with a `RuntimeError` (issue #149).
 
+⚠️ **Bind SKIP_AUTH instances to localhost (`127.0.0.1`) only — never network-expose them (issue #272).** With `SKIP_AUTH=true` there is no authentication and every request maps to the single `dev-user-default` identity, so any host that can reach the port has full, unauthenticated access. If you run the backend directly, bind it to loopback (e.g. `uvicorn app.main:app --host 127.0.0.1`); do not put a SKIP_AUTH backend behind a public reverse proxy.
+
 ### Production Mode (Real OAuth)
 When ready for production authentication:
 

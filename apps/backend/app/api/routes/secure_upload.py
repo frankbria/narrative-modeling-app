@@ -419,7 +419,17 @@ async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
 
 
 @router.get("/cleanup")
-async def cleanup_expired_sessions():
-    """Admin endpoint to cleanup expired upload sessions"""
+async def cleanup_expired_sessions(
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Reap expired upload sessions (temp files + metadata).
+
+    Requires authentication (issue #272): the endpoint was previously
+    unauthenticated, letting any network caller spam it. It only removes
+    already-expired sessions, so any valid account is sufficient — there is no
+    admin-role system to gate further, and the operation cannot touch active
+    uploads. ponytail: per-worker in-memory sessions (see upload_handler); a
+    scheduled reaper is the upgrade path if temp-file accumulation matters.
+    """
     cleaned = upload_handler.cleanup_expired_sessions()
     return {"cleaned_sessions": cleaned}

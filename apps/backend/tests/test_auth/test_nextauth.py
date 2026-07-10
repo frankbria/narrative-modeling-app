@@ -153,13 +153,16 @@ async def test_missing_secret_is_configuration_error():
 
 
 class TestSkipAuthDevelopmentMode:
-    """SKIP_AUTH=true bypasses JWT validation with deterministic mapping."""
+    """SKIP_AUTH=true bypasses JWT validation, mapping every request to one
+    fixed dev identity (issue #272 — no verbatim dev-identity impersonation)."""
 
     @pytest.mark.asyncio
-    async def test_dev_prefixed_token_returns_itself(self):
+    async def test_dev_prefixed_token_no_longer_returns_itself(self):
+        # Regression (issue #272): a forged "dev-"-prefixed bearer must NOT be
+        # honored verbatim as the user id — it maps to the fixed dev user.
         with patch("app.auth.nextauth_auth.SKIP_AUTH", True):
             user_id = await get_current_user_id(bearer("dev-alice"))
-            assert user_id == "dev-alice"
+            assert user_id == "dev-user-default"
 
     @pytest.mark.asyncio
     async def test_other_tokens_map_to_default_dev_user(self):
