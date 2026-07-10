@@ -21,10 +21,13 @@ jobs:
     # Pinned to a commit SHA (not @main) so an upstream push can't silently run
     # here with write perms + the ZHIPU_API_KEY secret — matches the repo's
     # action-pinning policy (see claude-code-review.yml).
+    # Runaway guard lives in the called workflow (review.yml sets timeout-minutes:
+    # 20 on its job); a caller that uses a reusable workflow can't set timeout-minutes.
     uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main @ 2026-07-10
     permissions:
       contents: read
       pull-requests: write
-      issues: write
+      issues: write         # PR review/issue comments are posted under the issues API
+
     secrets:
       ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
