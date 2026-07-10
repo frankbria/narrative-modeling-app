@@ -93,7 +93,9 @@ def validate_skip_auth(
 
     logger.warning(
         "⚠️  SKIP_AUTH is enabled (environment=%s)! All authentication is "
-        "bypassed — never use this outside development/test.",
+        "bypassed — never use this outside development/test, and bind the "
+        "server to localhost (127.0.0.1) only; a network-exposed SKIP_AUTH "
+        "instance is open to identity forgery (issue #272).",
         ", ".join(normalized),
     )
 

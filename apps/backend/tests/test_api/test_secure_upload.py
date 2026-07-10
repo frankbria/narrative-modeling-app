@@ -4,7 +4,39 @@ Tests for Secure Upload API endpoints
 
 import io
 
-from httpx import AsyncClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+
+class TestCleanupEndpointAuth:
+    """/cleanup now requires authentication (issue #272)."""
+
+    async def test_cleanup_requires_auth(self):
+        """An unauthenticated GET /cleanup is rejected (was open to any caller)."""
+        # Build an app WITHOUT the auth dependency override so the real
+        # HTTPBearer runs and rejects the missing credential.
+        from app.api.routes import secure_upload
+
+        app = FastAPI()
+        app.include_router(secure_upload.router, prefix="/api/v1/upload")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/v1/upload/cleanup")
+
+        # HTTPBearer returns 401 for a missing credential (post-starlette bump).
+        assert response.status_code == 401
+
+    async def test_cleanup_succeeds_when_authenticated(
+        self, mock_async_client: AsyncClient, mock_upload_handler
+    ):
+        """With a valid identity the reaper runs and returns the cleaned count."""
+        mock_upload_handler.cleanup_expired_sessions.return_value = 3
+
+        response = await mock_async_client.get("/api/v1/upload/cleanup")
+
+        assert response.status_code == 200
+        assert response.json() == {"cleaned_sessions": 3}
+        mock_upload_handler.cleanup_expired_sessions.assert_called_once()
 
 
 class TestSecureUploadAPI:

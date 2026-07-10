@@ -44,13 +44,12 @@ async def get_current_user_id(
     """
     # Skip authentication in development if SKIP_AUTH is true
     if SKIP_AUTH:
-        # Development mode user mapping:
-        # - Tokens starting with "dev-" return the token itself as user ID
-        # - All other tokens return "dev-user-default" as user ID
-        # This ensures consistent data access in development
-        token = credentials.credentials
-        if token.startswith("dev-"):
-            return token
+        # Every request maps to a single fixed dev identity. The old "dev-"
+        # prefix branch returned the bearer string verbatim as the user id,
+        # which let any caller impersonate an arbitrary dev identity by forging
+        # the token (issue #272). SKIP_AUTH is confined to localhost dev/test
+        # (issue #149); real multi-user testing uses a signed JWT (the frontend
+        # mints one via mintApiToken) or a FastAPI dependency override.
         return "dev-user-default"
     
     if not NEXTAUTH_SECRET:
