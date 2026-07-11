@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Edge,
@@ -40,6 +40,14 @@ interface TransformationPipelineProps {
   showViewToggle?: boolean;
 }
 
+/** Shape of a transformation type as returned by GET /transformations/available. */
+interface TransformationTypeMeta {
+  type: string;
+  label?: string;
+  description?: string;
+  parameters_schema?: Record<string, unknown>;
+}
+
 // React Flow's NodeTypes registry expects components keyed by a generic
 // NodeProps signature; our node component is typed for its specific node data,
 // so the registry object is cast to NodeTypes (xyflow's documented pattern).
@@ -72,8 +80,11 @@ export default function TransformationPipeline({
     showViewToggle ? 'chain' : 'visual'
   );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [transformationTypes, setTransformationTypes] = useState<Record<string, unknown>[]>([]);
+  const [transformationTypes, setTransformationTypes] = useState<TransformationTypeMeta[]>([]);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  // Monotonic counter for collision-free node IDs (mirrors FeatureBuilder);
+  // Date.now()+length can collide on rapid adds within the same millisecond.
+  const nodeIdCounterRef = useRef(0);
 
   // Load initial data preview
   useEffect(() => {
@@ -166,9 +177,11 @@ export default function TransformationPipeline({
     (transformationType: string, position?: { x: number; y: number }) => {
       if (!transformationType) return;
 
+      nodeIdCounterRef.current += 1;
+      const id = `node-${nodeIdCounterRef.current}`;
       setNodes((nds) => {
         const newNode: TransformationFlowNode = {
-          id: `node-${Date.now()}-${nds.length + 1}`,
+          id,
           type: 'transformation',
           position: position ?? { x: 250, y: 80 + nds.length * 120 },
           data: {
@@ -202,12 +215,16 @@ export default function TransformationPipeline({
 
   // Chain view operates over the same React Flow `nodes` (single source of
   // truth) mapped to the linear step shape the accessible list expects.
-  const chainSteps: ChainStep[] = nodes.map((node) => ({
-    id: node.id,
-    type: node.data.type,
-    label: node.data.label,
-    parameters: node.data.parameters as ChainStep['parameters'],
-  }));
+  const chainSteps: ChainStep[] = useMemo(
+    () =>
+      nodes.map((node) => ({
+        id: node.id,
+        type: node.data.type,
+        label: node.data.label,
+        parameters: node.data.parameters as ChainStep['parameters'],
+      })),
+    [nodes]
+  );
 
   const handleChainReorder = useCallback(
     (startIndex: number, endIndex: number) => {
@@ -224,23 +241,42 @@ export default function TransformationPipeline({
 
   const handleChainDelete = useCallback(
     (index: number) => {
-      setNodes((nds) => {
-        const removed = nds[index];
-        if (removed) {
-          setEdges((eds) =>
-            eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
-          );
-        }
-        return nds.filter((_, i) => i !== index);
-      });
+      const removed = nodes[index];
+      setNodes((nds) => nds.filter((_, i) => i !== index));
+      if (removed) {
+        setEdges((eds) =>
+          eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
+        );
+      }
       setHasUnsavedChanges(true);
     },
-    [setNodes, setEdges]
+    [nodes, setNodes, setEdges]
   );
 
   const handleChainEdit = useCallback((index: number) => {
     setEditingIndex(index);
   }, []);
+
+  // The node being edited, plus a stable `existingConfig` so re-renders while
+  // the dialog is open don't reset its form (the dialog resets on
+  // existingConfig identity change). Keyed on the node id + params, not the
+  // per-render node object.
+  const editingNode = editingIndex !== null ? nodes[editingIndex] ?? null : null;
+  const editingConfig = useMemo(
+    () =>
+      editingNode
+        ? {
+            type: editingNode.data.type,
+            label: editingNode.data.label,
+            parameters: editingNode.data.parameters,
+          }
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingNode?.id, editingNode?.data.parameters]
+  );
+  const editingTypeMeta = editingNode
+    ? transformationTypes.find((t) => t.type === editingNode.data.type)
+    : undefined;
 
   const handleSaveEdit = useCallback(
     (config: TransformationConfig) => {
@@ -562,34 +598,22 @@ export default function TransformationPipeline({
       </div>
 
       {/* Edit-parameters dialog (keyboard-accessible) for the Chain view */}
-      {editingIndex !== null && nodes[editingIndex] && (() => {
-        const editingType = nodes[editingIndex].data.type;
-        const typeMeta = transformationTypes.find((t) => t.type === editingType);
-        return (
-          <TransformationConfigDialog
-            open={editingIndex !== null}
-            onOpenChange={(open) => {
-              if (!open) setEditingIndex(null);
-            }}
-            transformationType={editingType}
-            transformationLabel={
-              (typeMeta?.label as string | undefined) ?? nodes[editingIndex].data.label
-            }
-            transformationDescription={(typeMeta?.description as string | undefined) ?? ''}
-            parametersSchema={
-              (typeMeta?.parameters_schema as Record<string, unknown> | undefined) ?? {}
-            }
-            existingConfig={{
-              type: editingType,
-              label: nodes[editingIndex].data.label,
-              parameters: nodes[editingIndex].data.parameters,
-            }}
-            availableColumns={availableColumns}
-            datasetId={datasetId}
-            onAdd={handleSaveEdit}
-          />
-        );
-      })()}
+      {editingNode && editingConfig && (
+        <TransformationConfigDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setEditingIndex(null);
+          }}
+          transformationType={editingNode.data.type}
+          transformationLabel={editingTypeMeta?.label ?? editingNode.data.label}
+          transformationDescription={editingTypeMeta?.description ?? ''}
+          parametersSchema={editingTypeMeta?.parameters_schema ?? {}}
+          existingConfig={editingConfig}
+          availableColumns={availableColumns}
+          datasetId={datasetId}
+          onAdd={handleSaveEdit}
+        />
+      )}
 
       {/* Recipe Manager Modal */}
       {showRecipeManager && (

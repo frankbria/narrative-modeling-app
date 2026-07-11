@@ -59,11 +59,25 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
 
     // Move the first step down using the keyboard shortcut the list advertises.
     steps[0].focus();
+    expect(steps[0]).toHaveFocus(); // list items are focusable (tabIndex=0)
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
 
     steps = screen.getAllByRole('listitem');
     expect(within(steps[0]).getByText('Trim Whitespace')).toBeInTheDocument();
     expect(within(steps[1]).getByText('Remove Duplicates')).toBeInTheDocument();
+  });
+
+  it('opens the keyboard-accessible edit dialog from the Chain view', async () => {
+    const user = userEvent.setup();
+    render(<TransformationPipeline datasetId="dataset-1" />);
+
+    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
+
+    const editButton = screen.getByRole('button', { name: /edit step 1/i });
+    editButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('suppresses the built-in toggle when a host provides its own (showViewToggle=false)', () => {
