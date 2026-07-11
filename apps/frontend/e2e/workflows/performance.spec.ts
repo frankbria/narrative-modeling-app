@@ -160,26 +160,30 @@ test.describe('Performance - API Response Times', () => {
     expect(metric.value).toBeLessThanOrEqual(3000);
   });
 
-  test('should complete model training (500 rows) within 30s', async ({
+  test('should accept a training request (500 rows) within 30s', async ({
     request,
     uploadTestDataset,
   }) => {
     const datasetId = await uploadTestDataset();
 
+    // #274: legacy /models/train is removed. Real training is POST /ml/train,
+    // which runs AutoML as a background job and returns a model_id immediately —
+    // so this measures how fast the submit is accepted, not full training time.
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
     const metric = await perfMonitor.measureApiCall(
-      'Model Training API',
+      'Model Training Submit API',
       async () => {
-        const response = await request.post('/api/v1/models/train', {
+        const response = await request.post(`${apiBase}/ml/train`, {
+          headers: { Authorization: 'Bearer e2e-test-token' },
           data: {
             dataset_id: datasetId,
             target_column: 'purchased',
-            algorithm: 'random_forest',
           },
           timeout: 30000,
         });
         expect(response.ok()).toBeTruthy();
       },
-      'Model Training (500 rows)',
+      'Model Training Submit (500 rows)',
       30000
     );
 

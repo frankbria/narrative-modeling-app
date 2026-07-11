@@ -209,9 +209,11 @@ function FeatureEngineeringContent({
       }
 
       const result = await response.json();
+      // #274: this endpoint is preview-only — the columns are computed but not
+      // saved to the dataset. Report honestly so users don't assume it persisted.
       setApplyResult({
         success: true,
-        message: `Successfully applied ${result.applied_features.length} features`,
+        message: `Previewed ${result.applied_features.length} feature(s). These are not saved — use the transformation pipeline to persist them.`,
       });
     } catch (err) {
       setApplyResult({

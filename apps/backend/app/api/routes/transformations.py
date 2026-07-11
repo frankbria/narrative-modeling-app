@@ -413,9 +413,13 @@ async def auto_clean_dataset(
             })
         
         if request.options.get("handle_missing") == "drop":
-            # For now, we'll skip dropping missing values as it's not implemented
-            # TODO: Implement drop_missing transformation
-            pass
+            # Drop any row with a missing value (#274). The engine rejects the
+            # step if it would discard >50% of rows, so this fails loudly rather
+            # than silently gutting the dataset.
+            transformations.append({
+                "type": "drop_missing",
+                "parameters": {"how": "any"}
+            })
         elif request.options.get("handle_missing") == "impute":
             transformations.append({
                 "type": "fill_missing",

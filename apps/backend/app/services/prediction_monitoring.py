@@ -21,6 +21,17 @@ UNHEALTHY_ERROR_RATE = 0.20
 DEGRADED_LATENCY_MS = 1000.0
 UNHEALTHY_LATENCY_MS = 5000.0
 
+# Drift detection (issue #274). We have no stored training-time feature
+# distributions, so drift is assessed as a *temporal* shift within the serving
+# window: the older half of logged inputs is the reference, the recent half is
+# "current". A feature is flagged when its standardized mean shift crosses
+# DRIFT_THRESHOLD (~2 sigma). Below DRIFT_MIN_TOTAL predictions we return an
+# honest "not assessed" result rather than a false "no drift".
+# ponytail: standardized mean-shift heuristic; PSI/KS-test per-feature is the
+# upgrade path once training-time stats are persisted.
+DRIFT_MIN_TOTAL = 20
+DRIFT_THRESHOLD = 2.0
+
 
 class PredictionLog:
     """In-memory prediction log.
@@ -338,24 +349,108 @@ class PredictionMonitoringService:
         }
     
     @staticmethod
-    async def detect_drift(
-        model_id: str,
-        feature_stats: dict[str, dict[str, float]]
-    ) -> dict[str, Any]:
-        """Detect data drift by comparing current feature stats with training stats"""
-        # This is a simplified version - production would use statistical tests
-        model = await MLModel.find_one({"model_id": model_id})
-        if not model:
-            return {"drift_detected": False, "message": "Model not found"}
-        
-        # In production, we'd compare with stored training statistics
-        # For now, return a placeholder
+    async def detect_drift(model_id: str) -> dict[str, Any]:
+        """Detect input-data drift for a model from its logged predictions.
+
+        Compares the recent half of logged inputs against the older half
+        (temporal drift within the serving window). Numeric features only.
+        Returns an honest ``assessed=False`` result when there is too little
+        history — never a fabricated "no drift".
+        """
+        recent = await prediction_log.get_recent_predictions(model_id, limit=10000)
+        inputs = [
+            p["input_data"] for p in recent
+            if not p.get("error") and isinstance(p.get("input_data"), dict)
+        ]
+
+        if len(inputs) < DRIFT_MIN_TOTAL:
+            return {
+                "assessed": False,
+                "sample_size": len(inputs),
+                "drift_detected": False,
+                "drift_score": 0.0,
+                "features_with_drift": [],
+                "recommendation": (
+                    f"Insufficient prediction history to assess drift "
+                    f"({len(inputs)}/{DRIFT_MIN_TOTAL} predictions logged)."
+                ),
+            }
+
+        # prediction_log returns events in insertion (chronological) order, so
+        # the first half is the older reference and the second half is current.
+        midpoint = len(inputs) // 2
+        reference, current = inputs[:midpoint], inputs[midpoint:]
+
+        drift_scores = PredictionMonitoringService._feature_drift_scores(reference, current)
+
+        if not drift_scores:
+            return {
+                "assessed": False,
+                "sample_size": len(inputs),
+                "drift_detected": False,
+                "drift_score": 0.0,
+                "features_with_drift": [],
+                "recommendation": "No numeric features available to assess drift.",
+            }
+
+        features_with_drift = sorted(
+            f for f, score in drift_scores.items() if score >= DRIFT_THRESHOLD
+        )
+        max_score = round(max(drift_scores.values()), 4)
+
+        if features_with_drift:
+            recommendation = (
+                f"Input drift detected in {len(features_with_drift)} feature(s): "
+                f"{', '.join(features_with_drift)}. Consider retraining on recent data."
+            )
+        else:
+            recommendation = "No significant input drift detected."
+
         return {
-            "drift_detected": False,
-            "drift_score": 0.0,
-            "features_with_drift": [],
-            "recommendation": "No significant drift detected"
+            "assessed": True,
+            "sample_size": len(inputs),
+            "drift_detected": bool(features_with_drift),
+            "drift_score": max_score,
+            "features_with_drift": features_with_drift,
+            "recommendation": recommendation,
         }
+
+    @staticmethod
+    def _feature_drift_scores(
+        reference: list[dict[str, Any]],
+        current: list[dict[str, Any]],
+    ) -> dict[str, float]:
+        """Standardized mean shift per numeric feature common to both windows.
+
+        Score = |mean(current) - mean(reference)| / (std(reference) + eps).
+        Only features numeric in both windows are scored.
+        """
+        def numeric_series(rows: list[dict[str, Any]], key: str) -> list[float]:
+            vals = []
+            for row in rows:
+                v = row.get(key)
+                if isinstance(v, bool) or v is None:
+                    continue
+                if isinstance(v, (int, float)):
+                    vals.append(float(v))
+            return vals
+
+        common_keys = set(reference[0]) & set(current[0]) if reference and current else set()
+        scores: dict[str, float] = {}
+        eps = 1e-9
+        for key in common_keys:
+            ref_vals = numeric_series(reference, key)
+            cur_vals = numeric_series(current, key)
+            # Require both windows to be (mostly) numeric for this feature.
+            if len(ref_vals) < len(reference) or len(cur_vals) < len(current):
+                continue
+            if not ref_vals or not cur_vals:
+                continue
+            ref_mean = float(np.mean(ref_vals))
+            ref_std = float(np.std(ref_vals))
+            cur_mean = float(np.mean(cur_vals))
+            scores[key] = abs(cur_mean - ref_mean) / (ref_std + eps)
+        return scores
     
     @staticmethod
     async def get_usage_by_api_key(

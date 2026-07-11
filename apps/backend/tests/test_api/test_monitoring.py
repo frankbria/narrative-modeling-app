@@ -163,7 +163,13 @@ class TestMonitoringAPIIntegration:
             "/api/v1/monitoring/models/model_123/drift"
         )
         assert resp.status_code == 200
-        assert resp.json()["model_id"] == "model_123"
+        body = resp.json()
+        assert body["model_id"] == "model_123"
+        # #274: with no logged predictions the endpoint reports NOT assessed —
+        # never a fabricated "no drift detected".
+        assert body["assessed"] is False
+        assert body["sample_size"] == 0
+        assert "insufficient" in body["recommendation"].lower()
 
     @pytest.mark.asyncio
     async def test_get_usage_overview(self, async_authorized_client, setup_database):

@@ -2,7 +2,7 @@
 Tests for prediction monitoring service
 """
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -229,19 +229,62 @@ class TestPredictionMonitoringService:
         assert dist["distribution"]["class_c"] == 2
     
     @pytest.mark.asyncio
-    @patch('app.services.prediction_monitoring.MLModel')
-    async def test_detect_drift(self, mock_model_class):
-        """Test drift detection (placeholder)"""
-        # Mock model
-        mock_model = Mock()
-        mock_model_class.find_one = AsyncMock(return_value=mock_model)
-        
-        result = await PredictionMonitoringService.detect_drift("model_123", {})
-        
+    async def test_detect_drift_insufficient_data_is_honest(self):
+        """Below the minimum sample count, drift is reported as NOT assessed (#274)."""
+        prediction_log.logs.clear()
+        for i in range(5):  # < DRIFT_MIN_TOTAL
+            await prediction_log.log_prediction(
+                model_id="drift_model",
+                prediction_id=f"pred_{i}",
+                input_data={"x": float(i)},
+                prediction="a",
+            )
+
+        result = await PredictionMonitoringService.detect_drift("drift_model")
+
+        assert result["assessed"] is False
+        assert result["sample_size"] == 5
         assert result["drift_detected"] is False
-        assert result["drift_score"] == 0.0
+        assert "insufficient" in result["recommendation"].lower()
+
+    @pytest.mark.asyncio
+    async def test_detect_drift_flags_shifted_feature(self):
+        """A feature whose distribution shifts across the window is flagged (#274)."""
+        prediction_log.logs.clear()
+        # Older half: x ~ 0; recent half: x ~ 100 → large standardized shift.
+        for i in range(15):
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"old_{i}",
+                input_data={"x": float(i % 3)}, prediction="a",
+            )
+        for i in range(15):
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"new_{i}",
+                input_data={"x": 100.0 + (i % 3)}, prediction="a",
+            )
+
+        result = await PredictionMonitoringService.detect_drift("drift_model")
+
+        assert result["assessed"] is True
+        assert result["drift_detected"] is True
+        assert "x" in result["features_with_drift"]
+        assert result["drift_score"] > 0
+
+    @pytest.mark.asyncio
+    async def test_detect_drift_stable_feature_not_flagged(self):
+        """A stable feature distribution is not flagged as drift (#274)."""
+        prediction_log.logs.clear()
+        for i in range(40):
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"pred_{i}",
+                input_data={"x": float(i % 5)}, prediction="a",
+            )
+
+        result = await PredictionMonitoringService.detect_drift("drift_model")
+
+        assert result["assessed"] is True
+        assert result["drift_detected"] is False
         assert result["features_with_drift"] == []
-        assert "recommendation" in result
     
     @pytest.mark.asyncio
     async def test_get_usage_by_api_key(self):

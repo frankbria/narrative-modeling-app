@@ -667,41 +667,21 @@ test.describe('Model Config API Integration', () => {
     }
   });
 
-  test('should validate ModelConfig API response', async ({ request }) => {
-    // Create model via API
+  test('legacy /models/train is removed (410)', async ({ request }) => {
+    // #274: the legacy ModelConfig train endpoint reported status="training" but
+    // never trained. It now returns 410 Gone → real training is POST /ml/train.
     const response = await request.post('/api/v1/models/train', {
       data: {
         dataset_id: datasetId,
         target_column: 'purchased',
         algorithm: 'random_forest',
         problem_type: 'classification',
-        hyperparameters: {
-          n_estimators: 100,
-          max_depth: 10,
-        },
       },
     });
 
-    if (response.ok()) {
-      const model = await response.json();
-
-      // Validate ModelConfig fields
-      expect(model).toHaveProperty('id');
-      expect(model).toHaveProperty('dataset_id');
-      expect(model).toHaveProperty('algorithm');
-      expect(model).toHaveProperty('problem_type');
-      expect(model).toHaveProperty('target_column');
-      expect(model).toHaveProperty('hyperparameters');
-
-      expect(model.algorithm).toBe('random_forest');
-      expect(model.problem_type).toBe('classification');
-      expect(model.target_column).toBe('purchased');
-
-      // Clean up
-      await request.delete(`/api/v1/models/${model.id}`).catch(() => {});
-    } else {
-      console.log('Model training API may not be available - status:', response.status());
-    }
+    expect(response.status()).toBe(410);
+    const body = await response.json();
+    expect(body.detail).toContain('ml/train');
   });
 
   test('should validate training metrics structure', async ({ request, uploadTestDataset, trainModel }) => {

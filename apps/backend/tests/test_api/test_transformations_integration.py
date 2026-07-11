@@ -415,10 +415,40 @@ class TestAutoClean:
                 "/api/v1/transformations/auto-clean",
                 json=request
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_auto_clean_drop_missing_actually_drops(self, authorized_client, mock_user_data, mock_s3_operations):
+        """handle_missing='drop' must really drop rows, not silently no-op (#274).
+
+        The sample dataframe has 2 rows with a NaN, so a wired drop_missing step
+        removes them. Before #274 this branch was `pass` and reported success
+        while doing nothing.
+        """
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
+            request = {
+                "dataset_id": str(mock_user_data.id),
+                "options": {
+                    "remove_duplicates": False,
+                    "trim_whitespace": False,
+                    "handle_missing": "drop",
+                    "fix_casing": False,
+                },
+            }
+
+            response = authorized_client.post(
+                "/api/v1/transformations/auto-clean",
+                json=request,
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            # 2 rows carried a missing value → they were dropped.
+            assert data["affected_rows"] == 2
 
 
 class TestTransformationSuggestions:
