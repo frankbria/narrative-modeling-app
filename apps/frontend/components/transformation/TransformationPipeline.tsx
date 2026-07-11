@@ -20,9 +20,11 @@ import type { TransformationStep } from '@/lib/types/recipe';
 import { getAuthToken } from '@/lib/auth-helpers';
 import TransformationSidebar from './TransformationSidebar';
 import TransformationNode, { TransformationFlowNode, TransformationNodeData } from './TransformationNode';
+import { TransformationChainView, TransformationStep as ChainStep } from './TransformationChainView';
+import { TransformationConfigDialog, TransformationConfig } from './TransformationConfigDialog';
 import PreviewPanel from './PreviewPanel';
 import RecipeManager from './RecipeManager';
-import { Save, Play, Undo, Redo, Code, CheckCircle } from 'lucide-react';
+import { Save, Play, Undo, Redo, Code, CheckCircle, Eye, List } from 'lucide-react';
 
 interface TransformationPipelineProps {
   datasetId: string;
@@ -52,10 +54,55 @@ export default function TransformationPipeline({
   const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Default to the accessible Chain view so keyboard-only users get a fully
+  // operable path (add/reorder/edit/delete) without touching the drag-only
+  // React Flow canvas (issue #275, WCAG 2.1.1). The Visual canvas stays one
+  // keyboard-operable toggle away.
+  const [viewMode, setViewMode] = useState<'chain' | 'visual'>('chain');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [transformationTypes, setTransformationTypes] = useState<Record<string, unknown>[]>([]);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
 
   // Load initial data preview
   useEffect(() => {
     loadPreview();
+  }, [datasetId]);
+
+  // Load transformation-type metadata + column names so the Chain view's Edit
+  // action can open a keyboard-accessible parameter dialog (mirrors the wiring
+  // in app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still
+  // works without it (dialog degrades to "no parameters needed").
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const token = await getAuthToken();
+        const typesResponse = await fetch(`${API_URL}/transformations/available`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (typesResponse.ok) {
+          const typesData = await typesResponse.json();
+          setTransformationTypes(typesData.transformations || []);
+        }
+
+        const columnsResponse = await fetch(`${API_URL}/data/${datasetId}/preview`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (columnsResponse.ok) {
+          const columnsData = await columnsResponse.json();
+          if (Array.isArray(columnsData.columns)) {
+            setAvailableColumns(
+              columnsData.columns.map((col: { name: string }) => col.name)
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load transformation metadata:', error);
+      }
+    };
+
+    if (datasetId) {
+      fetchMetadata();
+    }
   }, [datasetId]);
 
   // Notify parent of unsaved changes
@@ -100,6 +147,31 @@ export default function TransformationPipeline({
     [setEdges]
   );
 
+  // Append a new transformation node. `position` is optional so the same code
+  // serves both drag-drop (drop coordinates) and the keyboard/click Add path
+  // (auto-laid-out column, issue #275).
+  const addTransformation = useCallback(
+    (transformationType: string, position?: { x: number; y: number }) => {
+      if (!transformationType) return;
+
+      setNodes((nds) => {
+        const newNode: TransformationFlowNode = {
+          id: `node-${Date.now()}-${nds.length + 1}`,
+          type: 'transformation',
+          position: position ?? { x: 250, y: 80 + nds.length * 120 },
+          data: {
+            type: transformationType,
+            label: transformationType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+            parameters: {},
+          },
+        };
+        return nds.concat(newNode);
+      });
+      setHasUnsavedChanges(true);
+    },
+    [setNodes]
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -108,26 +180,70 @@ export default function TransformationPipeline({
       if (!transformationType) return;
 
       const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-      const position = {
+      addTransformation(transformationType, {
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
-      };
+      });
+    },
+    [addTransformation]
+  );
 
-      const newNode: TransformationFlowNode = {
-        id: `node-${nodes.length + 1}`,
-        type: 'transformation',
-        position,
-        data: {
-          type: transformationType,
-          label: transformationType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-          parameters: {},
-        },
-      };
+  // Chain view operates over the same React Flow `nodes` (single source of
+  // truth) mapped to the linear step shape the accessible list expects.
+  const chainSteps: ChainStep[] = nodes.map((node) => ({
+    id: node.id,
+    type: node.data.type,
+    label: node.data.label,
+    parameters: node.data.parameters as ChainStep['parameters'],
+  }));
 
-      setNodes((nds) => nds.concat(newNode));
+  const handleChainReorder = useCallback(
+    (startIndex: number, endIndex: number) => {
+      setNodes((nds) => {
+        const next = [...nds];
+        const [moved] = next.splice(startIndex, 1);
+        next.splice(endIndex, 0, moved);
+        return next;
+      });
       setHasUnsavedChanges(true);
     },
-    [nodes, setNodes]
+    [setNodes]
+  );
+
+  const handleChainDelete = useCallback(
+    (index: number) => {
+      setNodes((nds) => {
+        const removed = nds[index];
+        if (removed) {
+          setEdges((eds) =>
+            eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
+          );
+        }
+        return nds.filter((_, i) => i !== index);
+      });
+      setHasUnsavedChanges(true);
+    },
+    [setNodes, setEdges]
+  );
+
+  const handleChainEdit = useCallback((index: number) => {
+    setEditingIndex(index);
+  }, []);
+
+  const handleSaveEdit = useCallback(
+    (config: TransformationConfig) => {
+      if (editingIndex === null) return;
+      setNodes((nds) =>
+        nds.map((node, i) =>
+          i === editingIndex
+            ? { ...node, data: { ...node.data, parameters: config.parameters } }
+            : node
+        )
+      );
+      setEditingIndex(null);
+      setHasUnsavedChanges(true);
+    },
+    [editingIndex, setNodes]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -308,7 +424,7 @@ export default function TransformationPipeline({
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <TransformationSidebar />
+      <TransformationSidebar onAdd={addTransformation} />
 
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
@@ -334,6 +450,35 @@ export default function TransformationPipeline({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* View toggle — keyboard-operable; both views always reachable (#275) */}
+            <div
+              className="flex border rounded-lg p-1 bg-gray-100 mr-2"
+              role="group"
+              aria-label="Pipeline view"
+            >
+              <button
+                type="button"
+                onClick={() => setViewMode('chain')}
+                aria-pressed={viewMode === 'chain'}
+                className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  viewMode === 'chain' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                }`}
+              >
+                <List className="w-4 h-4" />
+                Chain
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('visual')}
+                aria-pressed={viewMode === 'visual'}
+                className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  viewMode === 'visual' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                Visual
+              </button>
+            </div>
             <button
               onClick={() => setShowRecipeManager(true)}
               className="p-2 hover:bg-gray-100 rounded"
@@ -365,31 +510,72 @@ export default function TransformationPipeline({
           </div>
         </div>
 
-        {/* Canvas and Preview */}
+        {/* Canvas/Chain and Preview */}
         <div className="flex-1 flex">
           <div className="flex-1 relative">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              onNodeClick={handleNodeClick}
-              nodeTypes={nodeTypes}
-              fitView
-            >
-              <Background />
-              <Controls />
-              <MiniMap />
-            </ReactFlow>
+            {viewMode === 'chain' ? (
+              <div className="h-full overflow-y-auto p-4">
+                <TransformationChainView
+                  transformations={chainSteps}
+                  onReorder={handleChainReorder}
+                  onEdit={handleChainEdit}
+                  onDelete={handleChainDelete}
+                />
+              </div>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onNodeClick={handleNodeClick}
+                nodeTypes={nodeTypes}
+                fitView
+              >
+                <Background />
+                <Controls />
+                <MiniMap />
+              </ReactFlow>
+            )}
           </div>
 
           {/* Preview Panel */}
           <PreviewPanel preview={preview} loading={loading} />
         </div>
       </div>
+
+      {/* Edit-parameters dialog (keyboard-accessible) for the Chain view */}
+      {editingIndex !== null && nodes[editingIndex] && (() => {
+        const editingType = nodes[editingIndex].data.type;
+        const typeMeta = transformationTypes.find((t) => t.type === editingType);
+        return (
+          <TransformationConfigDialog
+            open={editingIndex !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingIndex(null);
+            }}
+            transformationType={editingType}
+            transformationLabel={
+              (typeMeta?.label as string | undefined) ?? nodes[editingIndex].data.label
+            }
+            transformationDescription={(typeMeta?.description as string | undefined) ?? ''}
+            parametersSchema={
+              (typeMeta?.parameters_schema as Record<string, unknown> | undefined) ?? {}
+            }
+            existingConfig={{
+              type: editingType,
+              label: nodes[editingIndex].data.label,
+              parameters: nodes[editingIndex].data.parameters,
+            }}
+            availableColumns={availableColumns}
+            datasetId={datasetId}
+            onAdd={handleSaveEdit}
+          />
+        );
+      })()}
 
       {/* Recipe Manager Modal */}
       {showRecipeManager && (
