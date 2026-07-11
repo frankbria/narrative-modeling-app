@@ -172,23 +172,23 @@ export default function TransformationPipeline({
 
   // Append a new transformation node. `position` is optional so the same code
   // serves both drag-drop (drop coordinates) and the keyboard/click Add path
-  // (auto-laid-out column, issue #275).
+  // (auto-laid-out column, issue #275). `displayLabel` carries the sidebar's
+  // curated label; drag-drop omits it and falls back to a type-derived label.
   const addTransformation = useCallback(
-    (transformationType: string, position?: { x: number; y: number }) => {
+    (transformationType: string, displayLabel?: string, position?: { x: number; y: number }) => {
       if (!transformationType) return;
 
       nodeIdCounterRef.current += 1;
       const id = `node-${nodeIdCounterRef.current}`;
+      const label =
+        displayLabel ??
+        transformationType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
       setNodes((nds) => {
         const newNode: TransformationFlowNode = {
           id,
           type: 'transformation',
           position: position ?? { x: 250, y: 80 + nds.length * 120 },
-          data: {
-            type: transformationType,
-            label: transformationType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-            parameters: {},
-          },
+          data: { type: transformationType, label, parameters: {} },
         };
         return nds.concat(newNode);
       });
@@ -205,7 +205,7 @@ export default function TransformationPipeline({
       if (!transformationType) return;
 
       const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-      addTransformation(transformationType, {
+      addTransformation(transformationType, undefined, {
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
       });
@@ -241,27 +241,33 @@ export default function TransformationPipeline({
 
   const handleChainDelete = useCallback(
     (index: number) => {
-      const removed = nodes[index];
-      setNodes((nds) => nds.filter((_, i) => i !== index));
-      if (removed) {
-        setEdges((eds) =>
-          eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
-        );
-      }
+      // Read + mutate inside one functional update so the removed node is taken
+      // from the current slice (no stale-closure snapshot) and the callback
+      // stays stable (no `nodes` dep).
+      setNodes((nds) => {
+        const removed = nds[index];
+        if (removed) {
+          setEdges((eds) =>
+            eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
+          );
+        }
+        return nds.filter((_, i) => i !== index);
+      });
       setHasUnsavedChanges(true);
     },
-    [nodes, setNodes, setEdges]
+    [setNodes, setEdges]
   );
 
   const handleChainEdit = useCallback((index: number) => {
     setEditingIndex(index);
   }, []);
 
-  // The node being edited, plus a stable `existingConfig` so re-renders while
-  // the dialog is open don't reset its form (the dialog resets on
-  // existingConfig identity change). Keyed on the node id + params, not the
-  // per-render node object.
   const editingNode = editingIndex !== null ? nodes[editingIndex] ?? null : null;
+  // TransformationConfigDialog resets its form whenever `existingConfig`'s
+  // identity changes. Key this memo on the node id ALONE (not the params
+  // object, whose identity churns on every setNodes) so the dialog's form
+  // isn't wiped when an unrelated step is added while it's open. Params are
+  // captured at open-time, which is correct: the open dialog owns the edits.
   const editingConfig = useMemo(
     () =>
       editingNode
@@ -272,7 +278,7 @@ export default function TransformationPipeline({
           }
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingNode?.id, editingNode?.data.parameters]
+    [editingNode?.id]
   );
   const editingTypeMeta = editingNode
     ? transformationTypes.find((t) => t.type === editingNode.data.type)

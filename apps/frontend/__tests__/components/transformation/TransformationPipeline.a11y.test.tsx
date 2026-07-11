@@ -47,6 +47,18 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     expect(screen.queryByText(/no transformations added yet/i)).not.toBeInTheDocument();
   });
 
+  it('uses the sidebar’s curated label for the added chain step', async () => {
+    const user = userEvent.setup();
+    render(<TransformationPipeline datasetId="dataset-1" />);
+
+    // "Forward Fill" (curated) must not become the type-derived "Fill Forward".
+    await user.click(screen.getByRole('button', { name: /add forward fill/i }));
+
+    const step = screen.getByRole('listitem');
+    expect(within(step).getByText('Forward Fill')).toBeInTheDocument();
+    expect(within(step).queryByText('Fill Forward')).not.toBeInTheDocument();
+  });
+
   it('reorders steps with keyboard shortcuts (Alt+ArrowDown)', async () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
@@ -87,8 +99,28 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
 
     expect(screen.queryByRole('group', { name: /pipeline view/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^chain$/i })).not.toBeInTheDocument();
-    // Falls back to the visual canvas (no accessible chain list rendered).
+    // Falls back to the visual canvas (no accessible chain list rendered)...
     expect(screen.queryByRole('list', { name: /transformation pipeline steps/i })).not.toBeInTheDocument();
+    // ...and the React Flow canvas IS rendered (positive assertion).
+    expect(document.querySelector('.react-flow')).toBeInTheDocument();
+  });
+
+  it('deletes a step with the keyboard (Delete key)', async () => {
+    const user = userEvent.setup();
+    render(<TransformationPipeline datasetId="dataset-1" />);
+
+    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
+    await user.click(screen.getByRole('button', { name: /add trim whitespace/i }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+
+    const steps = screen.getAllByRole('listitem');
+    steps[0].focus();
+    expect(steps[0]).toHaveFocus();
+    await user.keyboard('{Delete}');
+
+    const remaining = screen.getAllByRole('listitem');
+    expect(remaining).toHaveLength(1);
+    expect(within(remaining[0]).getByText('Trim Whitespace')).toBeInTheDocument();
   });
 
   it('keeps both views reachable via the keyboard-operable toggle', async () => {

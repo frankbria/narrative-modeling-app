@@ -135,8 +135,10 @@ interface TransformationSidebarProps {
    * Keyboard/click affordance for adding a transformation without dragging.
    * When provided, each transformation card becomes an activatable button so
    * keyboard-only users can add steps (WCAG 2.1.1). Drag-and-drop still works.
+   * Carries the curated display label so the chain step matches the sidebar
+   * (e.g. "Forward Fill", not the type-derived "Fill Forward").
    */
-  onAdd?: (transformationType: string) => void;
+  onAdd?: (transformationType: string, label: string) => void;
 }
 
 export default function TransformationSidebar({ onAdd }: TransformationSidebarProps = {}) {
@@ -213,7 +215,7 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
                     key={transformation.type}
                     draggable
                     onDragStart={(e) => onDragStart(e, transformation.type)}
-                    onClick={() => onAdd?.(transformation.type)}
+                    onClick={() => onAdd?.(transformation.type, transformation.label)}
                     aria-label={`Add ${transformation.label}`}
                     className="w-full text-left p-3 mb-2 bg-white rounded-lg border border-gray-200 cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
