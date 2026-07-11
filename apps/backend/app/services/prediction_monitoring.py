@@ -31,6 +31,10 @@ UNHEALTHY_LATENCY_MS = 5000.0
 # upgrade path once training-time stats are persisted.
 DRIFT_MIN_TOTAL = 20
 DRIFT_THRESHOLD = 2.0
+# A feature is scorable only if it has at least this many numeric values in EACH
+# window — so sparse/partially-missing inputs (a stray None/bool) filter the bad
+# values out rather than nuking the whole feature (review #328).
+DRIFT_MIN_FEATURE_SAMPLES = 5
 
 
 class PredictionLog:
@@ -366,6 +370,7 @@ class PredictionMonitoringService:
         if len(inputs) < DRIFT_MIN_TOTAL:
             return {
                 "assessed": False,
+                "reason": "insufficient_data",
                 "sample_size": len(inputs),
                 "drift_detected": False,
                 "drift_score": 0.0,
@@ -386,11 +391,15 @@ class PredictionMonitoringService:
         if not drift_scores:
             return {
                 "assessed": False,
+                "reason": "no_numeric_features",
                 "sample_size": len(inputs),
                 "drift_detected": False,
                 "drift_score": 0.0,
                 "features_with_drift": [],
-                "recommendation": "No numeric features available to assess drift.",
+                "recommendation": (
+                    "No numeric features with enough data in both windows to "
+                    "assess drift."
+                ),
             }
 
         features_with_drift = sorted(
@@ -408,6 +417,7 @@ class PredictionMonitoringService:
 
         return {
             "assessed": True,
+            "reason": "assessed",
             "sample_size": len(inputs),
             "drift_detected": bool(features_with_drift),
             "drift_score": max_score,
@@ -420,10 +430,13 @@ class PredictionMonitoringService:
         reference: list[dict[str, Any]],
         current: list[dict[str, Any]],
     ) -> dict[str, float]:
-        """Standardized mean shift per numeric feature common to both windows.
+        """Standardized mean shift per numeric feature across both windows.
 
         Score = |mean(current) - mean(reference)| / (std(reference) + eps).
-        Only features numeric in both windows are scored.
+
+        A feature is scored when it has >= DRIFT_MIN_FEATURE_SAMPLES numeric
+        values in each window; non-numeric / None / bool values are dropped
+        individually so a sparse column isn't excluded wholesale (review #328).
         """
         def numeric_series(rows: list[dict[str, Any]], key: str) -> list[float]:
             vals = []
@@ -435,16 +448,22 @@ class PredictionMonitoringService:
                     vals.append(float(v))
             return vals
 
-        common_keys = set(reference[0]) & set(current[0]) if reference and current else set()
+        # Union of keys across all rows — a feature absent from the first record
+        # (e.g. a mid-window schema change) must still be considered.
+        keys: set[str] = set()
+        for row in reference:
+            keys |= row.keys()
+        current_keys: set[str] = set()
+        for row in current:
+            current_keys |= row.keys()
+        keys &= current_keys
+
         scores: dict[str, float] = {}
         eps = 1e-9
-        for key in common_keys:
+        for key in keys:
             ref_vals = numeric_series(reference, key)
             cur_vals = numeric_series(current, key)
-            # Require both windows to be (mostly) numeric for this feature.
-            if len(ref_vals) < len(reference) or len(cur_vals) < len(current):
-                continue
-            if not ref_vals or not cur_vals:
+            if len(ref_vals) < DRIFT_MIN_FEATURE_SAMPLES or len(cur_vals) < DRIFT_MIN_FEATURE_SAMPLES:
                 continue
             ref_mean = float(np.mean(ref_vals))
             ref_std = float(np.std(ref_vals))

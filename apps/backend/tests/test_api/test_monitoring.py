@@ -168,6 +168,7 @@ class TestMonitoringAPIIntegration:
         # #274: with no logged predictions the endpoint reports NOT assessed —
         # never a fabricated "no drift detected".
         assert body["assessed"] is False
+        assert body["reason"] == "insufficient_data"
         assert body["sample_size"] == 0
         assert "insufficient" in body["recommendation"].lower()
 

@@ -76,6 +76,8 @@ class PredictionDistributionResponse(BaseModel):
 class DriftDetectionResponse(BaseModel):
     model_id: str
     assessed: bool  # False when there is too little history to judge drift (#274)
+    # Machine-readable outcome: "assessed" | "insufficient_data" | "no_numeric_features".
+    reason: str
     sample_size: int
     drift_detected: bool
     drift_score: float

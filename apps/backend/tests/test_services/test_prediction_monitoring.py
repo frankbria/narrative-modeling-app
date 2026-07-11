@@ -243,6 +243,7 @@ class TestPredictionMonitoringService:
         result = await PredictionMonitoringService.detect_drift("drift_model")
 
         assert result["assessed"] is False
+        assert result["reason"] == "insufficient_data"
         assert result["sample_size"] == 5
         assert result["drift_detected"] is False
         assert "insufficient" in result["recommendation"].lower()
@@ -283,9 +284,36 @@ class TestPredictionMonitoringService:
         result = await PredictionMonitoringService.detect_drift("drift_model")
 
         assert result["assessed"] is True
+        assert result["reason"] == "assessed"
         assert result["drift_detected"] is False
         assert result["features_with_drift"] == []
-    
+
+    @pytest.mark.asyncio
+    async def test_detect_drift_tolerates_sparse_feature(self):
+        """A feature with occasional None/non-numeric values is still scored —
+        bad values are dropped individually, not the whole feature (review #328)."""
+        prediction_log.logs.clear()
+        # Every 4th record has a missing/non-numeric x, but each window still has
+        # well over DRIFT_MIN_FEATURE_SAMPLES numeric values, and x shifts.
+        for i in range(16):
+            x = None if i % 4 == 0 else float(i % 3)
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"old_{i}",
+                input_data={"x": x}, prediction="a",
+            )
+        for i in range(16):
+            x = None if i % 4 == 0 else 100.0 + (i % 3)
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"new_{i}",
+                input_data={"x": x}, prediction="a",
+            )
+
+        result = await PredictionMonitoringService.detect_drift("drift_model")
+
+        assert result["assessed"] is True
+        assert result["reason"] == "assessed"
+        assert "x" in result["features_with_drift"]
+
     @pytest.mark.asyncio
     async def test_get_usage_by_api_key(self):
         """Test getting usage grouped by API key"""
