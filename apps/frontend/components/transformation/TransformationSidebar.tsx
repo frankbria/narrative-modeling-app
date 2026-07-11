@@ -130,7 +130,18 @@ const categories: TransformationCategory[] = [
   },
 ];
 
-export default function TransformationSidebar() {
+interface TransformationSidebarProps {
+  /**
+   * Keyboard/click affordance for adding a transformation without dragging.
+   * When provided, each transformation card becomes an activatable button so
+   * keyboard-only users can add steps (WCAG 2.1.1). Drag-and-drop still works.
+   * Carries the curated display label so the chain step matches the sidebar
+   * (e.g. "Forward Fill", not the type-derived "Fill Forward").
+   */
+  onAdd?: (transformationType: string, label: string) => void;
+}
+
+export default function TransformationSidebar({ onAdd }: TransformationSidebarProps = {}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(categories.map((c) => c.name))
@@ -199,17 +210,20 @@ export default function TransformationSidebar() {
             {expandedCategories.has(category.name) && (
               <div className="px-2 py-2">
                 {category.transformations.map((transformation) => (
-                  <div
+                  <button
+                    type="button"
                     key={transformation.type}
                     draggable
                     onDragStart={(e) => onDragStart(e, transformation.type)}
-                    className="p-3 mb-2 bg-white rounded-lg border border-gray-200 cursor-move hover:border-blue-400 hover:shadow-sm transition-all"
+                    onClick={() => onAdd?.(transformation.type, transformation.label)}
+                    aria-label={`Add ${transformation.label}`}
+                    className="w-full text-left p-3 mb-2 bg-white rounded-lg border border-gray-200 cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <div className="font-medium text-sm">{transformation.label}</div>
                     <div className="text-xs text-gray-600 mt-1">
                       {transformation.description}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -219,7 +233,7 @@ export default function TransformationSidebar() {
 
       <div className="p-4 bg-white border-t">
         <p className="text-xs text-gray-500 text-center">
-          Drag transformations to the canvas
+          Click or drag a transformation to add it
         </p>
       </div>
     </div>

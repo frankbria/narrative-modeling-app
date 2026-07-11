@@ -439,11 +439,14 @@ export default function DatasetPreparePage() {
           <CardContent className="p-6">
             {viewMode === 'visual' ? (
               <>
-                {/* Visual Pipeline View */}
+                {/* Visual Pipeline View. This page owns its own Visual/Chain
+                    toggle, so suppress the pipeline's built-in one (#275) to
+                    avoid a duplicate toggle. */}
                 <TransformationPipeline
                   datasetId={datasetId}
                   onComplete={handleComplete}
                   onUnsavedChanges={setHasUnsavedChanges}
+                  showViewToggle={false}
                 />
               </>
             ) : (
