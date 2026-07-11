@@ -339,15 +339,17 @@ async def suggest_more_features(
 @router.post(
     "/datasets/{dataset_id}/features/apply",
     response_model=ApplyFeatureResponse,
-    summary="Apply a feature suggestion",
-    description="Apply a single feature suggestion to the dataset, creating a new column."
+    summary="Preview a feature suggestion",
+    description="Compute a preview of a single feature suggestion. The new "
+                "column is NOT saved to the dataset (preview-only, #274); use "
+                "the transformation pipeline to persist changes."
 )
 async def apply_feature(
     dataset_id: str = Path(..., description="Dataset identifier"),
     request: ApplyFeatureRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
 ) -> ApplyFeatureResponse:
-    """Apply a single feature suggestion to the dataset"""
+    """Preview a single feature suggestion (not persisted — see #274)."""
     try:
         logger.info(f"Applying feature {request.suggestion_id} to dataset {dataset_id}")
 
@@ -397,11 +399,15 @@ async def apply_feature(
 
         return ApplyFeatureResponse(
             dataset_id=dataset_id,
+            persisted=False,  # preview-only (#274)
             applied_features=applied_features,
             failed_features=failed_features,
             new_column_count=len(applied_features),
             preview_data=preview,
-            message=f"Applied {len(applied_features)} feature(s)"
+            message=(
+                f"Previewed {len(applied_features)} feature(s). "
+                "Not saved to the dataset — use the transformation pipeline to persist."
+            )
         )
 
     except HTTPException:
@@ -417,15 +423,17 @@ async def apply_feature(
 @router.post(
     "/datasets/{dataset_id}/features/apply-multiple",
     response_model=ApplyFeatureResponse,
-    summary="Apply multiple feature suggestions",
-    description="Apply multiple feature suggestions to the dataset at once."
+    summary="Preview multiple feature suggestions",
+    description="Compute a preview of multiple feature suggestions at once. The "
+                "new columns are NOT saved to the dataset (preview-only, #274); "
+                "use the transformation pipeline to persist changes."
 )
 async def apply_multiple_features(
     dataset_id: str = Path(..., description="Dataset identifier"),
     request: ApplyMultipleFeaturesRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
 ) -> ApplyFeatureResponse:
-    """Apply multiple feature suggestions to the dataset"""
+    """Preview multiple feature suggestions (not persisted — see #274)."""
     try:
         logger.info(f"Applying {len(request.suggestion_ids)} features to dataset {dataset_id}")
 
@@ -476,11 +484,15 @@ async def apply_multiple_features(
 
         return ApplyFeatureResponse(
             dataset_id=dataset_id,
+            persisted=False,  # preview-only (#274)
             applied_features=applied_features,
             failed_features=failed_features,
             new_column_count=len(applied_features),
             preview_data=preview,
-            message=f"Applied {len(applied_features)} of {len(request.suggestion_ids)} feature(s)"
+            message=(
+                f"Previewed {len(applied_features)} of {len(request.suggestion_ids)} feature(s). "
+                "Not saved to the dataset — use the transformation pipeline to persist."
+            )
         )
 
     except HTTPException:

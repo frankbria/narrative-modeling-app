@@ -45,6 +45,10 @@ _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 # (500 internal vs 503 unavailable) but never the underlying exception text —
 # no ``str(e)`` at ANY 5xx can reach the client, whatever a route raises.
 _GENERIC_5XX_BY_STATUS = {
+    # 501 is an intentional "endpoint not implemented" signal (#274), not a
+    # crash — reporting it as "Internal server error" would be misleading.
+    # "Not implemented" leaks nothing, so it's safe to surface verbatim.
+    501: "Not implemented",
     502: "Bad gateway",
     503: "Service temporarily unavailable",
     504: "Gateway timeout",

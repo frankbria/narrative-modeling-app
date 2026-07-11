@@ -3,7 +3,7 @@ API routes for AI-powered data analysis using MCP
 """
 
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
@@ -84,23 +84,17 @@ async def get_cached_insights(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Get cached AI insights for a file (if available)
+    Get cached AI insights for a file.
+
+    Not implemented (#274): there is no insight cache. Rather than return a
+    misleading 200, this signals 501 so callers fall back to the working
+    ``POST /analyze`` / ``POST /summarize`` endpoints for fresh analysis.
     """
-    user_data = await UserData.find_one(
-        UserData.id == file_id,
-        UserData.user_id == current_user_id
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Cached insights are not available. "
+               "Use POST /api/v1/ai/analyze/{file_id} for fresh analysis.",
     )
-    
-    if not user_data:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # For now, return a message about caching
-    # In production, would retrieve from cache/database
-    return {
-        "file_id": str(user_data.id),
-        "message": "Cached insights not implemented yet. Use /analyze endpoint for fresh analysis.",
-        "cached": False
-    }
 
 
 @router.post("/chat/{file_id}")
@@ -110,33 +104,17 @@ async def chat_with_data(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Interactive chat with data using AI
+    Interactive chat with data using AI.
+
+    Not implemented (#274): the MCP-backed chat does not exist yet. Rather than
+    return a fake "coming soon" 200 with canned suggestions, this signals 501.
+    Use ``POST /analyze`` / ``POST /summarize`` for real AI analysis today.
     """
-    user_data = await UserData.find_one(
-        UserData.id == file_id,
-        UserData.user_id == current_user_id
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Interactive chat is not available yet. "
+               "Use POST /api/v1/ai/summarize/{file_id} for an AI summary.",
     )
-    
-    if not user_data:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    if not user_data.is_processed:
-        raise HTTPException(status_code=400, detail="File must be processed first")
-    
-    # TODO: Implement chat functionality with MCP
-    # For now, return a placeholder response
-    
-    return {
-        "file_id": str(user_data.id),
-        "query": query,
-        "response": "Chat functionality with MCP will be implemented soon.",
-        "suggestions": [
-            "What are the main patterns in this data?",
-            "Show me outliers in the dataset",
-            "What columns have missing values?",
-            "Generate a summary of key insights"
-        ]
-    }
 
 
 @router.post("/summarize/{file_id}")

@@ -294,21 +294,32 @@ class ApplyMultipleFeaturesRequest(BaseModel):
 
 
 class ApplyFeatureResponse(BaseModel):
-    """Response model for feature application"""
+    """Response model for feature application.
+
+    Note (#274): these endpoints compute a *preview* of the engineered
+    column(s) and never persist them to the stored dataset — ``persisted`` is
+    always ``False``. To make the change stick, run the transformation pipeline
+    (``/transformations``) which versions and saves the result.
+    """
 
     dataset_id: str = Field(..., description="Dataset identifier")
+    persisted: bool = Field(
+        default=False,
+        description="Whether the new columns were saved to the dataset. "
+                    "Always False — this endpoint is preview-only (#274)."
+    )
     applied_features: list[str] = Field(
         default_factory=list,
-        description="Names of successfully applied features"
+        description="Names of features successfully computed in the preview"
     )
     failed_features: list[dict[str, str]] = Field(
         default_factory=list,
         description="Features that failed with error messages"
     )
-    new_column_count: int = Field(..., ge=0, description="Number of new columns added")
+    new_column_count: int = Field(..., ge=0, description="Number of new columns previewed")
     preview_data: list[dict[str, Any]] | None = Field(
         None,
-        description="Preview of data with new features"
+        description="Preview of data with new features (not persisted)"
     )
     message: str = Field(..., description="Status message")
 

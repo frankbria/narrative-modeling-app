@@ -1,16 +1,19 @@
 """
 Model API routes.
 
-Provides endpoints for managing ML model configurations using ModelService.
-Implements Story 12.1: API Integration for New Models (Model portion).
+Provides CRUD endpoints for legacy ModelConfig documents using ModelService.
+
+The train / deploy / performance endpoints on this surface never did real
+work (the legacy train reported status="training" but never trained), so they
+return 410 Gone (#274). Real training/serving lives on /api/v1/ml/.
 
 Endpoints:
-- POST /models/train - Create and initiate model training
-- GET /models/{model_id} - Retrieve specific model configuration
-- GET /models - List models with filtering (user_id, dataset_id, status)
-- PUT /models/{model_id} - Update model configuration
-- GET /models/{model_id}/performance - Retrieve performance metrics
-- PUT /models/{model_id}/deploy - Deploy model to endpoint
+- POST /models/train - **410 Gone** → use POST /api/v1/ml/train
+- GET /models/{model_id} - Retrieve specific ModelConfig
+- GET /models - List models with filtering (dataset_id, status)
+- PUT /models/{model_id} - Update ModelConfig
+- GET /models/{model_id}/performance - **410 Gone** → use GET /api/v1/ml/{id}/evaluation
+- PUT /models/{model_id}/deploy - **410 Gone** → use PUT /api/v1/ml/{id}/deploy
 """
 
 import logging
@@ -22,14 +25,9 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.model import ModelStatus
 from app.schemas.model import (
     ModelConfigResponse,
-    ModelDeployRequest,
-    ModelDeployResponse,
     ModelListItem,
     ModelListResponse,
-    ModelTrainRequest,
-    ModelTrainResponse,
     ModelUpdateRequest,
-    PerformanceMetricsResponse,
 )
 from app.services.exceptions import NotFoundError, PermissionDeniedError
 from app.services.model_service import ModelService
@@ -39,130 +37,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/train", response_model=ModelTrainResponse, status_code=status.HTTP_201_CREATED)
-async def train_model(
-    request: ModelTrainRequest,
-    current_user_id: str = Depends(get_current_user_id)
-):
+@router.post("/train", status_code=status.HTTP_410_GONE)
+async def train_model():
+    """Removed (#274). The legacy ModelConfig train endpoint reported
+    ``status="training"`` but never actually trained a model.
+
+    Real AutoML training lives at ``POST /api/v1/ml/train``.
     """
-    Create model configuration and initiate training.
-
-    This endpoint creates a ModelConfig with TRAINING status initially,
-    then triggers background training process that updates status to
-    TRAINED/FAILED.
-
-    Args:
-        request: Model training configuration
-        current_user_id: Authenticated user ID
-
-    Returns:
-        ModelTrainResponse with model_id and initial status
-
-    Raises:
-        HTTPException: 400 for invalid configuration, 404 if dataset not found
-    """
-    try:
-        # Verify dataset exists
-        import time
-        import uuid
-
-        from app.models.model import (
-            FeatureConfig,
-            HyperparameterConfig,
-            PerformanceMetrics,
-            TrainingConfig,
-        )
-        from app.services.dataset_service import DatasetService
-
-        dataset_service = DatasetService()
-        dataset = await dataset_service.get_dataset(request.dataset_id)
-
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {request.dataset_id} not found"
-            )
-
-        # Create model configuration
-        model_service = ModelService()
-        model_id = f"model_{uuid.uuid4().hex}"
-
-        start_time = time.time()
-
-        # Build configurations from request
-        feature_config = FeatureConfig(
-            feature_names=request.feature_columns,
-            target_column=request.target_column,
-            numeric_features=request.feature_columns  # Simplified for now
-        )
-
-        training_config = TrainingConfig(
-            train_test_split=request.train_test_split,
-            cv_folds=request.cv_folds,
-            validation_strategy=request.validation_strategy,
-            training_time=0.0,  # Will be updated during actual training
-            n_samples_train=int(dataset.num_rows * request.train_test_split),
-            n_samples_test=int(dataset.num_rows * (1 - request.train_test_split)),
-            early_stopping=request.early_stopping,
-            optimization_metric=request.optimization_metric
-        )
-
-        # Initialize with placeholder metrics (will be updated during training)
-        performance_metrics = PerformanceMetrics(
-            cv_score=0.0,
-            test_score=0.0
-        )
-
-        hyperparameters = HyperparameterConfig(
-            **request.hyperparameters if request.hyperparameters else {}
-        )
-
-        # Create model config with TRAINING status
-        _ = await model_service.create_model_config(
-            user_id=current_user_id,
-            dataset_id=request.dataset_id,
-            model_id=model_id,
-            name=request.name,
-            description=request.description,
-            problem_type=request.problem_type,  # Already validated as ProblemType by Pydantic
-            algorithm=request.algorithm,
-            feature_config=feature_config,
-            training_config=training_config,
-            performance_metrics=performance_metrics,
-            model_path=f"models/{model_id}.pkl",
-            model_size=0,  # Will be updated after training
-            hyperparameters=hyperparameters
-        )
-
-        training_time = time.time() - start_time
-
-        # Return training response
-        return ModelTrainResponse(
-            model_id=model_id,
-            status="training",
-            message="Model training initiated successfully",
-            training_time=training_time,
-            performance_metrics=PerformanceMetricsResponse(
-                cv_score=0.0,
-                test_score=0.0
-            )
-        )
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 404 for dataset not found)
-        raise
-    except ValueError as e:
-        logger.error(f"Model training failed: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(f"Model training failed: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to initiate model training: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="POST /api/v1/models/train is no longer available. "
+               "Use POST /api/v1/ml/train for real model training.",
+    )
 
 
 @router.get("/{model_id}", response_model=ModelConfigResponse)
@@ -539,160 +425,29 @@ async def update_model(
         )
 
 
-@router.get("/{model_id}/performance", response_model=PerformanceMetricsResponse)
-async def get_model_performance(
-    model_id: str,
-    current_user_id: str = Depends(get_current_user_id)
-):
+@router.get("/{model_id}/performance", status_code=status.HTTP_410_GONE)
+async def get_model_performance(model_id: str):
+    """Removed (#274). Legacy ModelConfig performance metrics were only ever
+    zero-valued placeholders because the legacy train endpoint never trained.
+
+    Real model metrics live at ``GET /api/v1/ml/{model_id}/evaluation``.
     """
-    Retrieve model performance metrics.
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="GET /api/v1/models/{model_id}/performance is no longer available. "
+               "Use GET /api/v1/ml/{model_id}/evaluation for real metrics.",
+    )
 
-    Returns comprehensive performance metrics including:
-    - Cross-validation score
-    - Test set score
-    - Classification metrics (accuracy, precision, recall, f1, roc_auc)
-    - Regression metrics (rmse, mae, r2_score)
-    - Confusion matrix (for classification)
 
-    Args:
-        model_id: Model identifier
-        current_user_id: Authenticated user ID
+@router.put("/{model_id}/deploy", status_code=status.HTTP_410_GONE)
+async def deploy_model(model_id: str):
+    """Removed (#274). This deployed a legacy ModelConfig that the real
+    training flow never creates, so it 404'd for every real model.
 
-    Returns:
-        PerformanceMetricsResponse with all available metrics
-
-    Raises:
-        HTTPException: 404 if model not found or metrics not available
+    Real deployment lives at ``PUT /api/v1/ml/{model_id}/deploy`` (#84).
     """
-    try:
-        model_service = ModelService()
-        # Ownership check is now enforced in the service layer
-        model = await model_service.get_model_config(model_id, user_id=current_user_id)
-
-        if not model:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
-
-        # Return performance metrics
-        return PerformanceMetricsResponse(
-            cv_score=model.performance_metrics.cv_score,
-            test_score=model.performance_metrics.test_score,
-            accuracy=model.performance_metrics.accuracy,
-            precision=model.performance_metrics.precision,
-            recall=model.performance_metrics.recall,
-            f1_score=model.performance_metrics.f1_score,
-            roc_auc=model.performance_metrics.roc_auc,
-            rmse=model.performance_metrics.rmse,
-            mae=model.performance_metrics.mae,
-            r2_score=model.performance_metrics.r2_score,
-            additional_metrics=model.performance_metrics.additional_metrics,
-            confusion_matrix=model.performance_metrics.confusion_matrix
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to retrieve performance metrics: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve performance metrics: {str(e)}"
-        )
-
-
-@router.put("/{model_id}/deploy", response_model=ModelDeployResponse)
-async def deploy_model(
-    model_id: str,
-    request: ModelDeployRequest,
-    current_user_id: str = Depends(get_current_user_id)
-):
-    """
-    Deploy model to production endpoint.
-
-    State machine transitions:
-    - TRAINED → DEPLOYED: Success
-    - PENDING/TRAINING → DEPLOYED: 400 Bad Request (must be trained first)
-    - DEPLOYED → DEPLOYED: 409 Conflict (already deployed)
-
-    Updates:
-    - status: DEPLOYED
-    - deployment_config.is_deployed: True
-    - deployment_config.deployed_at: Current timestamp
-    - deployment_config.deployment_endpoint: Provided endpoint URL
-
-    Args:
-        model_id: Model identifier
-        request: Deployment configuration (optional endpoint)
-        current_user_id: Authenticated user ID
-
-    Returns:
-        Deployment confirmation with endpoint details
-
-    Raises:
-        HTTPException:
-            - 404 if model not found
-            - 400 if model not trained yet
-            - 409 if already deployed
-    """
-    try:
-        model_service = ModelService()
-        # Ownership check is now enforced in the service layer
-        model = await model_service.get_model_config(model_id, user_id=current_user_id)
-
-        if not model:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
-
-        # Validate state machine: must be TRAINED to deploy
-        if model.status != ModelStatus.TRAINED:
-            if model.status == ModelStatus.DEPLOYED:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Model {model_id} is already deployed"
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Model must be trained before deployment. Current status: {model.status.value}"
-                )
-
-        # Deploy model with ownership check
-        deployed_model = await model_service.mark_model_deployed(
-            model_id=model_id,
-            endpoint=request.endpoint,
-            user_id=current_user_id
-        )
-
-        if not deployed_model:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Model {model_id} not found"
-            )
-
-        if deployed_model.deployment_config is None:
-            # The model was found and mark_deployed() returned it, so a missing
-            # deployment_config here is an internal inconsistency, not a 404.
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Deployment succeeded but configuration is unavailable"
-            )
-
-        return ModelDeployResponse(
-            model_id=model_id,
-            status=deployed_model.status.value,
-            deployed_at=deployed_model.deployment_config.deployed_at,
-            deployment_endpoint=deployed_model.deployment_config.deployment_endpoint,
-            message=f"Model {model_id} deployed successfully"
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to deploy model: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to deploy model: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="PUT /api/v1/models/{model_id}/deploy is no longer available. "
+               "Use PUT /api/v1/ml/{model_id}/deploy to deploy a trained model.",
+    )

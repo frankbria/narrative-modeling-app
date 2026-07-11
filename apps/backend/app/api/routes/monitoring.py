@@ -75,6 +75,10 @@ class PredictionDistributionResponse(BaseModel):
 
 class DriftDetectionResponse(BaseModel):
     model_id: str
+    assessed: bool  # False when there is too little history to judge drift (#274)
+    # Machine-readable outcome: "assessed" | "insufficient_data" | "no_numeric_features".
+    reason: str
+    sample_size: int
     drift_detected: bool
     drift_score: float
     features_with_drift: list[str]
@@ -215,9 +219,9 @@ async def check_drift(
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
     
-    # Check drift (simplified version)
-    drift_result = await monitoring_service.detect_drift(model_id, {})
-    
+    # Assess input drift from the model's logged predictions (#274)
+    drift_result = await monitoring_service.detect_drift(model_id)
+
     return DriftDetectionResponse(
         model_id=model_id,
         **drift_result,

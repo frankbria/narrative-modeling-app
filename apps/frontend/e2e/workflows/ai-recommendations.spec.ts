@@ -521,22 +521,23 @@ test.describe('AI Recommendations - Validation and Application', () => {
     const topAlgorithm = analysis.recommendations?.algorithms?.[0];
 
     if (topAlgorithm) {
-      // Train model with recommended algorithm
-      const trainResponse = await request.post('/api/v1/models/train', {
+      // #274: legacy /models/train is removed. Real training is POST /ml/train,
+      // which runs AutoML as a background job and returns a model_id on submit
+      // (metrics come later from /ml/{id}/evaluation), so we assert the training
+      // request is accepted rather than a synchronous accuracy score.
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+      const trainResponse = await request.post(`${apiBase}/ml/train`, {
+        headers: { Authorization: 'Bearer e2e-test-token' },
         data: {
           dataset_id: datasetId,
           target_column: 'purchased',
-          algorithm: topAlgorithm.name.toLowerCase().replace(/\s+/g, '_'),
         },
         timeout: 60000,
       });
 
       expect(trainResponse.ok()).toBeTruthy();
       const trainResult = await trainResponse.json();
-
-      // Verify model performance meets baseline
-      expect(trainResult.metrics).toBeDefined();
-      expect(trainResult.metrics.accuracy || trainResult.metrics.r2_score).toBeGreaterThan(0.5);
+      expect(trainResult.model_id || trainResult.id).toBeTruthy();
     }
   });
 });

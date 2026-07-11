@@ -40,6 +40,10 @@ def build_app() -> FastAPI:
     async def service_unavailable():
         raise HTTPException(status_code=503, detail="Cache service unavailable")
 
+    @app.get("/not-implemented")
+    async def not_implemented():
+        raise HTTPException(status_code=501, detail="Use /some/other/endpoint instead")
+
     @app.get("/bad-request")
     async def bad_request():
         raise HTTPException(status_code=400, detail="Column 'age' must be numeric")
@@ -101,6 +105,19 @@ async def test_5xx_detail_never_echoed_status_appropriate_generic():
     assert body["detail"] == "Service temporarily unavailable"
     assert body["request_id"]
     assert r.headers["X-Request-ID"] == body["request_id"]
+
+
+@pytest.mark.asyncio
+async def test_501_reports_not_implemented_not_internal_error():
+    """501 must read as an intentional "Not implemented", not the misleading
+    "Internal server error" fallback — while still not echoing exc.detail (#274)."""
+    async with await _client(build_app()) as c:
+        r = await c.get("/not-implemented")
+    assert r.status_code == 501
+    body = r.json()
+    assert body["detail"] == "Not implemented"
+    assert "other/endpoint" not in body["detail"]  # exc.detail still not echoed
+    assert body["request_id"]
 
 
 @pytest.mark.asyncio
