@@ -30,6 +30,14 @@ interface TransformationPipelineProps {
   datasetId: string;
   onComplete?: (transformedDatasetId: string) => void;
   onUnsavedChanges?: (hasChanges: boolean) => void;
+  /**
+   * Whether to render the built-in Visual/Chain view toggle (issue #275).
+   * Default `true` — the standalone `/prepare` route relies on it for its
+   * keyboard path. Set `false` when an embedding page already provides its own
+   * view switching (e.g. `/datasets/[id]/prepare`) to avoid a duplicate toggle;
+   * in that mode the pipeline shows the visual canvas and the host controls views.
+   */
+  showViewToggle?: boolean;
 }
 
 // React Flow's NodeTypes registry expects components keyed by a generic
@@ -42,7 +50,8 @@ const nodeTypes = {
 export default function TransformationPipeline({
   datasetId,
   onComplete,
-  onUnsavedChanges
+  onUnsavedChanges,
+  showViewToggle = true
 }: TransformationPipelineProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -57,8 +66,11 @@ export default function TransformationPipeline({
   // Default to the accessible Chain view so keyboard-only users get a fully
   // operable path (add/reorder/edit/delete) without touching the drag-only
   // React Flow canvas (issue #275, WCAG 2.1.1). The Visual canvas stays one
-  // keyboard-operable toggle away.
-  const [viewMode, setViewMode] = useState<'chain' | 'visual'>('chain');
+  // keyboard-operable toggle away. When the toggle is suppressed (embedded in a
+  // host that owns view switching), fall back to the visual canvas.
+  const [viewMode, setViewMode] = useState<'chain' | 'visual'>(
+    showViewToggle ? 'chain' : 'visual'
+  );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [transformationTypes, setTransformationTypes] = useState<Record<string, unknown>[]>([]);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
@@ -451,34 +463,36 @@ export default function TransformationPipeline({
 
           <div className="flex items-center gap-2">
             {/* View toggle — keyboard-operable; both views always reachable (#275) */}
-            <div
-              className="flex border rounded-lg p-1 bg-gray-100 mr-2"
-              role="group"
-              aria-label="Pipeline view"
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode('chain')}
-                aria-pressed={viewMode === 'chain'}
-                className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  viewMode === 'chain' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
-                }`}
+            {showViewToggle && (
+              <div
+                className="flex border rounded-lg p-1 bg-gray-100 mr-2"
+                role="group"
+                aria-label="Pipeline view"
               >
-                <List className="w-4 h-4" />
-                Chain
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('visual')}
-                aria-pressed={viewMode === 'visual'}
-                className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  viewMode === 'visual' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
-                }`}
-              >
-                <Eye className="w-4 h-4" />
-                Visual
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('chain')}
+                  aria-pressed={viewMode === 'chain'}
+                  className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    viewMode === 'chain' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                  }`}
+                >
+                  <List className="w-4 h-4" />
+                  Chain
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('visual')}
+                  aria-pressed={viewMode === 'visual'}
+                  className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    viewMode === 'visual' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                  }`}
+                >
+                  <Eye className="w-4 h-4" />
+                  Visual
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setShowRecipeManager(true)}
               className="p-2 hover:bg-gray-100 rounded"

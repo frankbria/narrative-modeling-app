@@ -66,6 +66,17 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     expect(within(steps[1]).getByText('Remove Duplicates')).toBeInTheDocument();
   });
 
+  it('suppresses the built-in toggle when a host provides its own (showViewToggle=false)', () => {
+    // /datasets/[id]/prepare owns its own Visual/Chain toggle; embedding the
+    // pipeline must not render a second one (would duplicate "Visual"/"Chain").
+    render(<TransformationPipeline datasetId="dataset-1" showViewToggle={false} />);
+
+    expect(screen.queryByRole('group', { name: /pipeline view/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^chain$/i })).not.toBeInTheDocument();
+    // Falls back to the visual canvas (no accessible chain list rendered).
+    expect(screen.queryByRole('list', { name: /transformation pipeline steps/i })).not.toBeInTheDocument();
+  });
+
   it('keeps both views reachable via the keyboard-operable toggle', async () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
