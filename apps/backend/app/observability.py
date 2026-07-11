@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sys
+from typing import Any
 
 from app.middleware.error_handlers import request_id_ctx
 
@@ -40,7 +41,11 @@ class JsonFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "-"),
         }
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            # Mirror stdlib Formatter's exc_text caching so a hot error path
+            # doesn't re-format the same traceback on every emit.
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            payload["exception"] = record.exc_text
         if record.stack_info:
             payload["stack_info"] = self.formatStack(record.stack_info)
         return json.dumps(payload, default=str)
@@ -61,6 +66,12 @@ def configure_logging(level: str | None = None, log_format: str | None = None) -
 
     Idempotent: replaces the root handler so re-calling (or a prior ``basicConfig``)
     can't stack duplicate handlers.
+
+    Deploy note: the server runs gunicorn + ``uvicorn.workers.UvicornWorker`` (see
+    Dockerfile), which does not re-run uvicorn's CLI logging setup, so this handler
+    stays authoritative. If a future switch to the bare ``uvicorn`` CLI causes
+    duplicate stdout lines, pass ``--log-config`` / ``log_config=None`` so uvicorn
+    leaves root logging alone.
     """
     resolved_level = _resolve_level(
         level if level is not None else os.getenv("LOG_LEVEL")
@@ -84,11 +95,31 @@ def configure_logging(level: str | None = None, log_format: str | None = None) -
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def _scrub_sentry_event(event: Any, hint: Any) -> Any:
+    """Strip the request query string before an event leaves the process.
+
+    Typed ``Any`` (not sentry's ``Event``) so this module never imports sentry at
+    module load — keeping slim ``--no-group observability`` images importable.
+
+    ``send_default_pii=False`` already drops bodies/cookies/user identity, but URL
+    query strings can carry dataset ids / user-controlled filenames — and this app
+    handles PII (#259) — so remove them defensively.
+    """
+    request = event.get("request")
+    if isinstance(request, dict):
+        request.pop("query_string", None)
+        url = request.get("url")
+        if isinstance(url, str) and "?" in url:
+            request["url"] = url.split("?", 1)[0]
+    return event
+
+
 def init_sentry() -> bool:
     """Initialize Sentry error tracking + APM when ``SENTRY_DSN`` is set.
 
     No-op (returns ``False``) when the DSN is unset — so dev/CI/test run clean —
-    or when sentry-sdk isn't installed (slim images). Safe to call once at startup.
+    or when sentry-sdk isn't installed (slim ``--no-group observability`` images).
+    Safe to call once at startup.
     """
     dsn = os.getenv("SENTRY_DSN", "").strip()
     if not dsn:
@@ -113,6 +144,8 @@ def init_sentry() -> bool:
         traces_sample_rate=max(0.0, min(1.0, traces)),
         # This app handles user PII (#259); don't let Sentry attach request bodies.
         send_default_pii=False,
+        # ...and scrub query strings (dataset ids, filenames) from what remains.
+        before_send=_scrub_sentry_event,
     )
     logging.getLogger(__name__).info(
         "Sentry initialized (environment=%s)", os.getenv("ENVIRONMENT", "development")

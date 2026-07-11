@@ -10,6 +10,7 @@ from app.observability import (
     JsonFormatter,
     RequestIdFilter,
     _resolve_level,
+    _scrub_sentry_event,
     configure_logging,
     init_sentry,
 )
@@ -173,3 +174,28 @@ class TestInitSentry:
         monkeypatch.setenv("SENTRY_TRACES_SAMPLE_RATE", "not-a-float")
         assert init_sentry() is True
         assert captured["traces_sample_rate"] == 0.0
+
+    def test_registers_before_send_scrubber(self, monkeypatch):
+        import sentry_sdk
+
+        captured = {}
+        monkeypatch.setattr(sentry_sdk, "init", lambda **kw: captured.update(kw))
+        monkeypatch.setenv("SENTRY_DSN", "https://key@example.ingest.sentry.io/1")
+        assert init_sentry() is True
+        assert captured["before_send"] is _scrub_sentry_event
+
+
+class TestScrubSentryEvent:
+    def test_strips_query_string_and_url_query(self):
+        event = {
+            "request": {
+                "url": "https://app/api/v1/data/secret.csv?token=abc&user=42",
+                "query_string": "token=abc&user=42",
+            }
+        }
+        out = _scrub_sentry_event(event, {})
+        assert "query_string" not in out["request"]
+        assert out["request"]["url"] == "https://app/api/v1/data/secret.csv"
+
+    def test_tolerates_missing_request(self):
+        assert _scrub_sentry_event({}, {}) == {}

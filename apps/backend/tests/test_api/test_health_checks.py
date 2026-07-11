@@ -42,7 +42,10 @@ class TestMetricsUnshadowed:
         assert not body.lstrip().startswith("{")
 
     def test_dead_security_endpoint_removed(self):
-        """The old ApplicationMonitor JSON /security endpoint is gone."""
+        """The old ApplicationMonitor JSON /security endpoint is gone.
+
+        The health router is mounted at root (no prefix, see main.py
+        include_router(health.router)), so /security is the exact former path."""
         assert client.get("/security").status_code == 404
 
 

@@ -62,3 +62,15 @@ def test_backend_healthcheck_uses_readiness_not_liveness():
     assert "/health/ready" in test_cmd, (
         f"backend healthcheck should target /health/ready, got: {test_cmd}"
     )
+
+
+def test_dockerfile_healthcheck_uses_readiness():
+    """Issue #273: the image-level HEALTHCHECK must also target /health/ready."""
+    dockerfile = (REPO_ROOT / "apps" / "backend" / "Dockerfile").read_text()
+    healthcheck_lines = [
+        ln for ln in dockerfile.splitlines() if "localhost:8000/health" in ln
+    ]
+    assert healthcheck_lines, "expected a HEALTHCHECK curl to localhost:8000"
+    assert all("/health/ready" in ln for ln in healthcheck_lines), (
+        f"Dockerfile HEALTHCHECK should target /health/ready, got: {healthcheck_lines}"
+    )
