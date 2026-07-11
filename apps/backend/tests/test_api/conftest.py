@@ -80,20 +80,6 @@ def mock_schema_inference():
 
 
 @pytest.fixture
-def mock_monitoring():
-    """Mock monitoring service"""
-    with patch('app.services.monitoring.monitor') as mock:
-        mock.get_health_metrics.return_value = {
-            "status": "healthy",
-            "api": {"total_requests": 0}
-        }
-        mock.get_security_summary.return_value = {
-            "total_events": 0
-        }
-        yield mock
-
-
-@pytest.fixture
 def mock_ai_summary():
     """Mock AI summary generation"""
     with patch('app.api.routes.secure_upload.generate_ai_summary_safe') as mock:

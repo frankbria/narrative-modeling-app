@@ -20,6 +20,7 @@ every unhandled exception across the app is sanitized here, instead of patching
 import logging
 import re
 import uuid
+from contextvars import ContextVar
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -29,6 +30,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = logging.getLogger(__name__)
 
 REQUEST_ID_HEADER = "X-Request-ID"
+
+# The current request's id, so any log record emitted while handling it can be
+# correlated (see app.observability.RequestIdFilter). Empty outside a request.
+request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 GENERIC_5XX_DETAIL = "Internal server error"
 
 # An inbound X-Request-ID is untrusted: reflecting it into a response header +
@@ -59,7 +64,11 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         inbound = request.headers.get(REQUEST_ID_HEADER, "").strip()
         rid = inbound if _SAFE_REQUEST_ID.match(inbound) else uuid.uuid4().hex
         request.state.request_id = rid
-        response = await call_next(request)
+        token = request_id_ctx.set(rid)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_ctx.reset(token)
         response.headers[REQUEST_ID_HEADER] = rid
         return response
 

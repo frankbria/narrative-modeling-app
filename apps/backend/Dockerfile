@@ -99,8 +99,11 @@ USER appuser
 
 EXPOSE 8000
 
+# Readiness, not liveness (issue #273): /health/ready 503s when Mongo is down, so
+# a container with a dead dependency is marked unhealthy instead of "healthy while
+# serving 500s". Matches the staging compose healthcheck.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:8000/health || exit 1
+    CMD curl -fsS http://localhost:8000/health/ready || exit 1
 
 # gunicorn manages uvicorn workers; bind to all interfaces on 8000 (the staging
 # compose maps host 8010 -> container 8000).

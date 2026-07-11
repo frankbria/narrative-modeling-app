@@ -10,7 +10,6 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.models.user_data import UserData  # To access beanie database
-from app.services.monitoring import monitor
 from app.services.s3_service import s3_service
 
 router = APIRouter()
@@ -188,12 +187,7 @@ async def readiness_check():
         }
     )
 
-@router.get("/metrics")
-async def get_metrics():
-    """Get application metrics for monitoring"""
-    return monitor.get_health_metrics()
-
-@router.get("/security")
-async def get_security_metrics():
-    """Get security-related metrics"""
-    return monitor.get_security_summary()
+# NOTE (issue #273): the old JSON `/metrics` and `/security` endpoints were
+# removed. They served a never-fed in-memory ApplicationMonitor and, being
+# registered before main.py's Prometheus `/metrics`, shadowed it so scrapers got
+# unparseable JSON. Real metrics are Prometheus at GET /metrics (app.main).
