@@ -75,6 +75,15 @@ class TestJsonFormatter:
         assert payload["request_id"] == "req-42"
         assert "timestamp" in payload
 
+    def test_includes_stack_info_when_present(self):
+        record = logging.LogRecord(
+            "svc", logging.INFO, __file__, 1, "trace me", None, None,
+            sinfo="Stack (most recent call last):\n  <fake frame>",
+        )
+        payload = json.loads(JsonFormatter().format(record))
+        assert "stack_info" in payload
+        assert "Stack (most recent call last)" in payload["stack_info"]
+
     def test_includes_exception_when_present(self):
         try:
             raise ValueError("boom")
@@ -144,6 +153,16 @@ class TestInitSentry:
         assert captured["environment"] == "staging"
         assert captured["traces_sample_rate"] == 0.25
         assert captured["send_default_pii"] is False
+
+    def test_noop_when_sentry_sdk_absent(self, monkeypatch):
+        """Slim images built with --no-group observability have no sentry-sdk;
+        init_sentry must degrade to False instead of raising (ImportError guard)."""
+        import sys
+
+        monkeypatch.setenv("SENTRY_DSN", "https://key@example.ingest.sentry.io/1")
+        # Make `import sentry_sdk` raise ImportError inside init_sentry.
+        monkeypatch.setitem(sys.modules, "sentry_sdk", None)
+        assert init_sentry() is False
 
     def test_clamps_invalid_traces_sample_rate(self, monkeypatch):
         import sentry_sdk

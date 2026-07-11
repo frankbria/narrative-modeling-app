@@ -41,6 +41,8 @@ class JsonFormatter(logging.Formatter):
         }
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            payload["stack_info"] = self.formatStack(record.stack_info)
         return json.dumps(payload, default=str)
 
 
@@ -112,5 +114,7 @@ def init_sentry() -> bool:
         # This app handles user PII (#259); don't let Sentry attach request bodies.
         send_default_pii=False,
     )
-    logging.getLogger(__name__).info("Sentry initialized (environment=%s)", os.getenv("ENVIRONMENT", "development"))
+    logging.getLogger(__name__).info(
+        "Sentry initialized (environment=%s)", os.getenv("ENVIRONMENT", "development")
+    )
     return True

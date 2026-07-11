@@ -57,9 +57,6 @@ dependencies = [
     "redis>=6.2.0",
     "gunicorn>=23.0.0",
     "prometheus-client>=0.19.0",
-    # Error tracking + APM (issue #273). Small SDK; init is gated on SENTRY_DSN so
-    # it's a no-op in dev/CI/test. The [fastapi] extra auto-instruments the app.
-    "sentry-sdk[fastapi]>=2.0.0",
     "pyyaml>=6.0.3",
     "pytest-benchmark>=5.1.0",
     "ruff>=0.14.10",
@@ -91,11 +88,21 @@ interpretability = [
 tuning = [
     "optuna>=4.1.0",
 ]
+# Error tracking + APM (issue #273), isolated on the same removable-lever pattern
+# as interpretability/tuning. sentry-sdk is small, but grouping it keeps the
+# convention consistent and makes init_sentry's ImportError guard meaningful: it
+# stays in default-groups so dev/CI/`uv sync --no-dev` all ship it (init is a
+# no-op unless SENTRY_DSN is set), while a slim image built with
+# `uv sync --no-dev --no-group observability` drops it and the app still runs
+# (init_sentry returns False on the ImportError).
+observability = [
+    "sentry-sdk[fastapi]>=2.0.0",
+]
 
 [tool.uv]
 # Keep shap + optuna installed by default (beta ships both). --no-dev still
 # installs interpretability and tuning; only an explicit --no-group drops them.
-default-groups = ["dev", "interpretability", "tuning"]
+default-groups = ["dev", "interpretability", "tuning", "observability"]
 
 [tool.ruff.lint]
 # On top of the default rule set (E, F): import-sorting (isort, "I", issue #176)
