@@ -17,6 +17,7 @@ from prometheus_client import CONTENT_TYPE_LATEST
 
 from app.middleware.metrics import (
     MetricsMiddleware,
+    active_requests,
     get_metrics,
 )
 
@@ -295,6 +296,16 @@ class TestMetricsLabels:
                 assert "endpoint=" in line
                 assert "status_code=" in line
                 break
+
+    def test_active_gauge_not_leaked_on_exception(self, client):
+        """The active-requests gauge must be decremented even when call_next
+        raises (the .dec() lives in the `finally`) — otherwise it drifts positive
+        forever and reads as permanent load."""
+        before = active_requests.labels(method="GET")._value.get()
+        with pytest.raises(ValueError):
+            client.get("/error")
+        after = active_requests.labels(method="GET")._value.get()
+        assert after == before  # incremented at start, decremented in finally → net 0
 
     def test_active_requests_labeled_by_method_only(self, client):
         """active_requests is labeled by method only (issue #273): the route
