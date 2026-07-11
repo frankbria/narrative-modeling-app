@@ -20,18 +20,16 @@ print(f"Loading .env file from: {env_path}")
 load_dotenv(dotenv_path=env_path)
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure logging + error tracking (issue #273). configure_logging honors
+# LOG_LEVEL/LOG_FORMAT (the old basicConfig ignored LOG_LEVEL) and quiets noisy
+# AWS/HTTP libraries; init_sentry is a no-op unless SENTRY_DSN is set. Both run at
+# import so startup logs/errors are captured.
+from app.observability import configure_logging, init_sentry
+
+configure_logging()
+init_sentry()
 
 logger = logging.getLogger(__name__)
-
-# Suppress AWS logging
-logging.getLogger("boto3").setLevel(logging.WARNING)
-logging.getLogger("botocore").setLevel(logging.WARNING)
-logging.getLogger("s3transfer").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient

@@ -55,13 +55,29 @@ request_count = Counter(
     registry=metrics_registry,
 )
 
-# Active requests gauge
+# Active requests gauge. Labeled by method only: the matched route template is
+# not known until *after* routing (inside call_next), but the gauge must inc at
+# request start — so labeling it by endpoint would either be wrong or reintroduce
+# the raw-path cardinality bomb. Method-only is bounded and still useful.
 active_requests = Gauge(
     name="http_requests_active",
     documentation="Number of active HTTP requests",
-    labelnames=["method", "endpoint"],
+    labelnames=["method"],
     registry=metrics_registry,
 )
+
+# Label for requests that matched no route (404s, scans). Using the raw path here
+# would let an attacker mint unbounded time series, so collapse them to one.
+UNMATCHED_ENDPOINT = "__unmatched__"
+
+
+def _endpoint_label(request: Request) -> str:
+    """The matched route *template* (e.g. ``/ml/{model_id}/status``), not the raw
+    URL path — so ``/ml/1/status`` and ``/ml/2/status`` share one time series
+    instead of one per id (cardinality bomb, issue #273). Populated by the router
+    during ``call_next``; ``None`` when no route matched."""
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or UNMATCHED_ENDPOINT
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
@@ -80,12 +96,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/metrics":
             return await call_next(request)
 
-        # Extract endpoint path (use route path if available, otherwise URL path)
-        endpoint = request.url.path
         method = request.method
 
-        # Track active requests
-        active_requests.labels(method=method, endpoint=endpoint).inc()
+        # Track active requests (method-only label; see gauge comment above)
+        active_requests.labels(method=method).inc()
 
         # Start timing
         start_time = time.time()
@@ -102,6 +116,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             # Calculate latency
             latency = time.time() - start_time
 
+            # Resolve the endpoint label AFTER routing so it's the route template,
+            # not the high-cardinality raw path.
+            endpoint = _endpoint_label(request)
+
             # Record metrics
             request_latency.labels(
                 method=method, endpoint=endpoint, status_code=status_code
@@ -112,7 +130,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             ).inc()
 
             # Decrement active requests
-            active_requests.labels(method=method, endpoint=endpoint).dec()
+            active_requests.labels(method=method).dec()
 
         return response
 

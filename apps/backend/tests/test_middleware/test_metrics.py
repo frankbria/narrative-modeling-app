@@ -35,6 +35,10 @@ def app():
     async def error_endpoint():
         raise ValueError("Test error")
 
+    @test_app.get("/items/{item_id}")
+    async def item_endpoint(item_id: str):
+        return {"id": item_id}
+
     @test_app.get("/metrics")
     async def metrics_endpoint():
         from fastapi.responses import Response
@@ -248,6 +252,37 @@ class TestMetricsLabels:
                 assert "status_code=" in line
                 break
 
+    def test_endpoint_label_uses_route_template_not_raw_path(self, client):
+        """Path params must collapse to the route template (issue #273): three
+        different ids share ONE endpoint="/items/{item_id}" series, not three —
+        otherwise every unique id is a permanent new time series (cardinality bomb)."""
+        for item_id in ("1", "2", "3"):
+            client.get(f"/items/{item_id}")
+
+        metrics = get_metrics().decode("utf-8")
+
+        assert 'endpoint="/items/{item_id}"' in metrics
+        # The raw, per-id paths must NOT appear as labels.
+        assert 'endpoint="/items/1"' not in metrics
+        assert 'endpoint="/items/2"' not in metrics
+        # The template counter should have summed all three requests.
+        count_line = next(
+            line
+            for line in metrics.split("\n")
+            if line.startswith("http_requests_total{")
+            and 'endpoint="/items/{item_id}"' in line
+        )
+        assert count_line.strip().endswith("3.0")
+
+    def test_unmatched_path_collapses_to_single_label(self, client):
+        """404s / scans must share one __unmatched__ series, not one per URL."""
+        client.get("/no/such/route/aaa")
+        client.get("/no/such/route/bbb")
+
+        metrics = get_metrics().decode("utf-8")
+        assert 'endpoint="__unmatched__"' in metrics
+        assert 'endpoint="/no/such/route/aaa"' not in metrics
+
     def test_request_count_has_correct_labels(self, client):
         """Test that request_count has method, endpoint, status_code labels."""
         client.get("/test")
@@ -261,16 +296,21 @@ class TestMetricsLabels:
                 assert "status_code=" in line
                 break
 
-    def test_active_requests_has_correct_labels(self, client):
-        """Test that active_requests has method, endpoint labels."""
+    def test_active_requests_labeled_by_method_only(self, client):
+        """active_requests is labeled by method only (issue #273): the route
+        template isn't known at request start, so labeling by endpoint would
+        reintroduce the raw-path cardinality bomb."""
         client.get("/test")
         metrics = get_metrics().decode("utf-8")
 
-        # Find a line with active_requests metric
-        for line in metrics.split("\n"):
-            if "http_requests_active" in line and "/test" in line:
-                assert "method=" in line
-                assert "endpoint=" in line
-                # Should NOT have status_code label
-                assert "status_code=" not in line
-                break
+        active_lines = [
+            line
+            for line in metrics.split("\n")
+            if line.startswith("http_requests_active{")
+        ]
+        assert active_lines, "expected an http_requests_active sample"
+        for line in active_lines:
+            assert 'method="GET"' in line
+            # endpoint/status_code must NOT be labels on the gauge anymore
+            assert "endpoint=" not in line
+            assert "status_code=" not in line

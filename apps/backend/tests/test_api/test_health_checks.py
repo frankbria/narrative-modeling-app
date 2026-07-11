@@ -27,6 +27,25 @@ class TestHealthEndpoints:
         assert "version" in data
 
 
+class TestMetricsUnshadowed:
+    """Regression guard (issue #273): /metrics must serve Prometheus text, not the
+    old JSON health-router endpoint that shadowed it and broke scraping."""
+
+    def test_metrics_returns_prometheus_not_json(self):
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/plain")
+        body = response.text
+        # Prometheus exposition markers, not a JSON object.
+        assert "# HELP" in body and "# TYPE" in body
+        assert "http_requests_total" in body
+        assert not body.lstrip().startswith("{")
+
+    def test_dead_security_endpoint_removed(self):
+        """The old ApplicationMonitor JSON /security endpoint is gone."""
+        assert client.get("/security").status_code == 404
+
+
 @pytest.mark.asyncio
 class TestReadinessChecks:
     """Test readiness check with dependency validation"""

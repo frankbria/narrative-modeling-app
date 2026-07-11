@@ -57,6 +57,9 @@ dependencies = [
     "redis>=6.2.0",
     "gunicorn>=23.0.0",
     "prometheus-client>=0.19.0",
+    # Error tracking + APM (issue #273). Small SDK; init is gated on SENTRY_DSN so
+    # it's a no-op in dev/CI/test. The [fastapi] extra auto-instruments the app.
+    "sentry-sdk[fastapi]>=2.0.0",
     "pyyaml>=6.0.3",
     "pytest-benchmark>=5.1.0",
     "ruff>=0.14.10",

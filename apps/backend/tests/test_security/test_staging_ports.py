@@ -51,3 +51,14 @@ def test_expected_services_published():
     mappings = {m for _, m in _published_ports()}
     for expected in ("127.0.0.1:8010:8000", "127.0.0.1:3011:3000", "127.0.0.1:6381:6379"):
         assert expected in mappings, f"expected published port {expected}, got {mappings}"
+
+
+def test_backend_healthcheck_uses_readiness_not_liveness():
+    """Issue #273: the backend healthcheck must hit /health/ready (503 when Mongo
+    is down) so a broken container isn't reported healthy while serving 500s."""
+    compose = yaml.safe_load(COMPOSE_FILE.read_text())
+    backend = compose["services"]["backend"]
+    test_cmd = " ".join(backend["healthcheck"]["test"])
+    assert "/health/ready" in test_cmd, (
+        f"backend healthcheck should target /health/ready, got: {test_cmd}"
+    )

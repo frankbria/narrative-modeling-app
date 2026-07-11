@@ -42,7 +42,13 @@ services:
       # Application
       ENVIRONMENT: staging
       DEBUG: "false"
+      # Observability (#273): structured JSON logs so req_id/level are queryable;
+      # Sentry is optional — an unset SENTRY_DSN leaves error tracking off.
       LOG_LEVEL: info
+      LOG_FORMAT: json
+      APP_VERSION: ${APP_VERSION:-staging}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
 
       # Database (MongoDB Atlas — values come from .env.staging)
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
@@ -89,7 +95,10 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Readiness, not liveness (issue #273): /health/ready returns 503 when Mongo
+      # is unreachable, so a container with dead Atlas is marked unhealthy instead
+      # of staying "healthy" while serving 500s. /health is a bare liveness probe.
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3

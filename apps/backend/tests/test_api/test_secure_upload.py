@@ -202,29 +202,10 @@ class TestSecureUploadAPI:
         # Should reject file that's too large
         assert response.status_code == 413
     
-    async def test_upload_metrics_tracking(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_monitoring):
-        """Test that uploads are tracked in metrics"""
-        csv_data = "id,value\n1,test"
-        csv_file = io.BytesIO(csv_data.encode('utf-8'))
-        
-        files = {"file": ("metrics_test.csv", csv_file, "text/csv")}
-        
-        response = await mock_async_client.post(
-            "/api/v1/upload/secure",
-            files=files
-        )
-        
-        assert response.status_code == 200
-        
-        # Check metrics endpoint to verify tracking
-        metrics_response = await mock_async_client.get("/api/v1/health/metrics")
-        assert metrics_response.status_code == 200
-        
-        metrics = metrics_response.json()
-        # Should have recorded the upload in the metrics
-        # Check for actual fields from the metrics response
-        assert "active_counters" in metrics or "memory_usage" in metrics or "total_requests" in metrics
-    
+    # Removed test_upload_metrics_tracking (issue #273): it exercised the deleted
+    # in-memory ApplicationMonitor JSON-metrics tracking. Metrics are now Prometheus
+    # at GET /metrics (covered by tests/test_middleware/test_metrics.py).
+
     async def test_concurrent_uploads(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
         """Test handling concurrent uploads"""
         # Initialize multiple uploads simultaneously
