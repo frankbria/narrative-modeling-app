@@ -315,6 +315,24 @@ class TestPredictionMonitoringService:
         assert "x" in result["features_with_drift"]
 
     @pytest.mark.asyncio
+    async def test_detect_drift_no_numeric_features_is_honest(self):
+        """Enough history but only non-numeric inputs → honest 'not assessed',
+        reason=no_numeric_features (never a fabricated 'no drift') (#274)."""
+        prediction_log.logs.clear()
+        for i in range(30):
+            await prediction_log.log_prediction(
+                model_id="drift_model", prediction_id=f"pred_{i}",
+                input_data={"category": "a" if i % 2 else "b"}, prediction="a",
+            )
+
+        result = await PredictionMonitoringService.detect_drift("drift_model")
+
+        assert result["assessed"] is False
+        assert result["reason"] == "no_numeric_features"
+        assert result["drift_detected"] is False
+        assert result["sample_size"] == 30
+
+    @pytest.mark.asyncio
     async def test_get_usage_by_api_key(self):
         """Test getting usage grouped by API key"""
         prediction_log.logs.clear()

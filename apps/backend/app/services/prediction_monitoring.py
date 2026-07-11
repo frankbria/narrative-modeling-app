@@ -360,6 +360,11 @@ class PredictionMonitoringService:
         (temporal drift within the serving window). Numeric features only.
         Returns an honest ``assessed=False`` result when there is too little
         history — never a fabricated "no drift".
+
+        No model lookup is done here: the ``/drift`` route already verifies
+        ownership/existence and 404s first. Called directly with an unknown
+        ``model_id`` this returns ``assessed=False / insufficient_data`` (no log
+        for that id), indistinguishable from "no history yet".
         """
         recent = await prediction_log.get_recent_predictions(model_id, limit=10000)
         inputs = [
