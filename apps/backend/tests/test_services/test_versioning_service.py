@@ -264,6 +264,38 @@ class TestVersionCreation:
             assert versioning_service._get_next_version_number.await_count == 2
             versioning_service.s3_client.put_object.assert_called_once()  # no re-upload on retry
 
+    @pytest.mark.asyncio
+    async def test_transformation_version_raises_after_retries_exhausted(
+        self, versioning_service, mock_dataset_metadata
+    ):
+        """Persistent collision exhausts retries and raises OperationError (#276)."""
+        from pymongo.errors import DuplicateKeyError
+
+        from app.services.exceptions import OperationError
+        from app.services.versioning_service import _MAX_VERSION_INSERT_RETRIES
+
+        parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
+                           num_rows=100, num_columns=5)
+        with patch('app.services.versioning_service.DatasetVersion') as MockDV:
+            MockDV.find_one = AsyncMock(side_effect=[parent, None])
+            MockDV.compute_content_hash = Mock(return_value="hash")
+            MockDV.compute_schema_hash = Mock(return_value="shash")
+            new_version = MagicMock(version_id="new")
+            new_version.insert = AsyncMock(side_effect=DuplicateKeyError("dup"))  # always collides
+            MockDV.return_value = new_version
+            versioning_service._get_next_version_number = AsyncMock(return_value=2)
+            versioning_service._create_lineage = AsyncMock()
+
+            with pytest.raises(OperationError):
+                await versioning_service.create_transformation_version(
+                    parent_version_id="v1", transformed_content=b"data",
+                    transformation_steps=[], dataset_metadata=mock_dataset_metadata,
+                    user_id="user1",
+                )
+
+            assert new_version.insert.await_count == _MAX_VERSION_INSERT_RETRIES
+            versioning_service._create_lineage.assert_not_called()  # never reached on failure
+
 
 @pytest.mark.unit
 class TestVersionRetrieval:

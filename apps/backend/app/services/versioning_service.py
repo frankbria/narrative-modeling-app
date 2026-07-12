@@ -239,7 +239,7 @@ class VersioningService(BaseService[DatasetVersion]):
         # index (issue #276): recompute the next number each attempt so a concurrent
         # writer that grabbed the same number loses one race, not the data. The S3
         # object is already keyed by version_id, so a retry never re-uploads.
-        next_version_number = 0
+        new_version: DatasetVersion | None = None
         for attempt in range(_MAX_VERSION_INSERT_RETRIES):
             next_version_number = await self._get_next_version_number(parent_version.dataset_id)
             new_version = DatasetVersion(
@@ -262,6 +262,7 @@ class VersioningService(BaseService[DatasetVersion]):
             )
             try:
                 await new_version.insert()
+                logger.info(f"Created transformation version {version_id} (v{next_version_number})")
                 break
             except DuplicateKeyError:
                 if attempt == _MAX_VERSION_INSERT_RETRIES - 1:
@@ -277,7 +278,7 @@ class VersioningService(BaseService[DatasetVersion]):
                     f"Version number {next_version_number} collided for dataset "
                     f"{parent_version.dataset_id}; retrying (attempt {attempt + 1})"
                 )
-        logger.info(f"Created transformation version {version_id} (v{next_version_number})")
+        assert new_version is not None  # loop either inserts-then-breaks or raises
 
         # Create lineage tracking
         lineage = await self._create_lineage(

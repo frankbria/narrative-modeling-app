@@ -57,6 +57,7 @@ from app.services.model_training.feature_selection_service import (
     FeatureSelectionConfig,
     FeatureSelectionService,
 )
+from app.services.versioning_service import versioning_service
 from app.utils.s3 import upload_file_to_s3
 from app.utils.upload_limits import read_upload_capped
 
@@ -224,7 +225,6 @@ async def upload_dataset(
         # version 1, so no lineage root existed and the first transform found no parent.
         # Best-effort — versioning is auxiliary and must never fail the upload.
         try:
-            from app.services.versioning_service import versioning_service
             await versioning_service.create_base_version(
                 dataset_metadata=dataset,
                 file_content=file_content,
