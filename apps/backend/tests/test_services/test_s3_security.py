@@ -88,6 +88,36 @@ class TestS3SecurityValidation:
                 "Circuit breaker activated" in error_message,  # Circuit breaker opened (valid for security)
             ]), f"Attack type '{attack_type}' should raise appropriate error. Got: {error_message}"
 
+    @pytest.mark.parametrize("url,attack_type", [
+        # Transformed namespace must NOT bypass structure/traversal guards.
+        ("https://test-bucket.s3.amazonaws.com/transformed/file.csv", "invalid-structure-no-user"),
+        ("https://test-bucket.s3.amazonaws.com/transformed/../../etc/passwd", "path-traversal"),
+        ("https://test-bucket.s3.amazonaws.com/transformed/user/sub/deep/f.csv", "too-many-segments"),
+    ])
+    def test_transformed_namespace_still_guarded(self, url, attack_type):
+        """The transformed/ allowance (#276) keeps traversal + structure guards."""
+        with patch.dict('os.environ', {'AWS_S3_BUCKET': 'test-bucket'}):
+            with pytest.raises((ValueError, RetryError, CircuitBreakerOpen)):
+                download_file_from_s3(url)
+
+    def test_transformed_namespace_passes_structure_validation(self):
+        """A well-formed transformed/{user}/{file} key clears path validation (#276).
+
+        Stub head_object/download so we assert the structure guard admits the key
+        (the download itself is not under test here).
+        """
+        with patch.dict('os.environ', {'AWS_S3_BUCKET': 'test-bucket'}), \
+             patch('app.services.s3_service.create_s3_client') as mock_client_factory:
+            mock_client = mock_client_factory.return_value
+            mock_client.head_object.return_value = {'ContentLength': 10}
+            mock_client.download_file.return_value = None
+            # transformation_service writes exactly this shape (dataset_id_timestamp.parquet)
+            path = download_file_from_s3(
+                "https://test-bucket.s3.amazonaws.com/transformed/user1/dataset_ab12_1720000000.5.parquet"
+            )
+            assert isinstance(path, str)
+            mock_client.download_file.assert_called_once()
+
     def test_bucket_whitelist_enforcement(self):
         """
         Test that only whitelisted bucket is allowed.

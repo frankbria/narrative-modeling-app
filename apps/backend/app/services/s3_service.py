@@ -81,12 +81,19 @@ def download_file_from_s3(s3_url: str) -> str:
             logger.error(f"Path traversal detected in S3 key: {object_key}")
             raise ValueError("Invalid S3 path: path traversal detected")
 
-        # SECURITY: Validate path structure (datasets/{user_id}/{filename})
-        # Allow flexible structure but prevent malicious patterns
-        path_pattern = r'^datasets/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$'
+        # SECURITY: Validate path structure. Two app-internal namespaces are
+        # trusted, each exactly {prefix}/{user_id}/{filename} (two segments, bounded
+        # charset, no traversal): 'datasets/' (uploads) and 'transformed/' (transform
+        # outputs, written by transformation/bulk/data-issue flows). Transformed
+        # artifacts must be downloadable too — after issue #276 the dataset's s3_url
+        # points at them, so preview/viz/chained-transform read this namespace.
+        path_pattern = r'^(?:datasets|transformed)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$'
         if not re.match(path_pattern, object_key):
             logger.error(f"Invalid S3 path structure: {object_key}")
-            raise ValueError("Invalid S3 path structure: must match 'datasets/{user_id}/{filename}'")
+            raise ValueError(
+                "Invalid S3 path structure: must match "
+                "'{datasets|transformed}/{user_id}/{filename}'"
+            )
 
         # Initialize S3 client
         s3_client = create_s3_client()
