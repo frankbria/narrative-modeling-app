@@ -534,8 +534,12 @@ class TransformationService(BaseService[TransformationConfig]):
                 file_path=new_file_path
             )
 
-            # Update dataset file path
+            # Point BOTH file_path and s3_url at the transformed artifact (issue #276).
+            # upload_dataframe_to_s3 returns a full, downloadable URL; leaving s3_url
+            # stale made viz/preview endpoints (which read s3_url) serve pre-transform
+            # data while metadata described the transformed data.
             dataset.file_path = new_file_path
+            dataset.s3_url = new_file_path
             dataset.update_timestamp()
             await dataset.save()
 

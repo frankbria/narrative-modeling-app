@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
+from pymongo import ASCENDING, IndexModel
 
 
 def get_current_time() -> datetime:
@@ -114,7 +115,18 @@ class DatasetVersion(Document):
             "created_at",
             [("dataset_id", 1), ("version_number", -1)],
             [("user_id", 1), ("created_at", -1)],
-            [("dataset_id", 1), ("is_base_version", 1)]
+            [("dataset_id", 1), ("is_base_version", 1)],
+            # Unique (dataset_id, version_number): the correctness backstop for the
+            # read-then-increment race in VersioningService._get_next_version_number
+            # (issue #276). Ascending key-spec is distinct from the descending sort
+            # index above, so this is a separate index (no IndexOptionsConflict on
+            # existing deployments). Concurrent transforms that computed the same
+            # number now hit a DuplicateKeyError and retry with a fresh number.
+            IndexModel(
+                [("dataset_id", ASCENDING), ("version_number", ASCENDING)],
+                unique=True,
+                name="uniq_dataset_version_number",
+            ),
         ]
 
     model_config = {
