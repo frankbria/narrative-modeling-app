@@ -180,6 +180,10 @@ async def create_batch_job(
     except HTTPException:
         # Preserve client errors (e.g. 413 too large) instead of masking as 500.
         raise
+    except ValueError as e:
+        # Client-side problems (batch over the size cap #278, model not found,
+        # unsupported input) are 400s, not server faults.
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to create batch job: {str(e)}"

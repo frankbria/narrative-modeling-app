@@ -238,6 +238,16 @@ class S3Service:
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
 
+        # Rewind before every (re)attempt: this method's body re-runs on each
+        # circuit-breaker retry, and boto3's upload_fileobj consumes the stream —
+        # without a seek, a retry would resume from EOF and upload a truncated
+        # object while the caller thinks it succeeded (issue #278 review).
+        if hasattr(file_obj, "seek"):
+            try:
+                file_obj.seek(0)
+            except (OSError, ValueError):
+                pass  # non-seekable stream — nothing we can do, let boto3 try
+
         try:
             await asyncio.to_thread(
                 self.s3_client.upload_fileobj, file_obj, self.bucket_name, file_key
