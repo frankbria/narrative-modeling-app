@@ -74,3 +74,31 @@ def test_dockerfile_healthcheck_uses_readiness():
     assert all("/health/ready" in ln for ln in healthcheck_lines), (
         f"Dockerfile HEALTHCHECK should target /health/ready, got: {healthcheck_lines}"
     )
+
+
+def test_redis_healthcheck_authenticated():
+    """Issue #277 (P1.14): redis runs with --requirepass, so an unauthenticated
+    healthcheck (`redis-cli --raw incr ping`) either blocks depends_on forever or
+    false-passes. The probe must authenticate with the same password."""
+    compose = yaml.safe_load(COMPOSE_FILE.read_text())
+    redis = compose["services"]["redis"]
+    assert "--requirepass" in " ".join(
+        redis["command"] if isinstance(redis["command"], list) else [redis["command"]]
+    ), "expected redis to require a password"
+    test_cmd = " ".join(redis["healthcheck"]["test"])
+    assert "-a" in redis["healthcheck"]["test"] and "REDIS_PASSWORD" in test_cmd, (
+        f"redis healthcheck must authenticate with -a $REDIS_PASSWORD, got: {test_cmd}"
+    )
+
+
+def test_frontend_dockerfile_node_major_matches_ci():
+    """Issue #277 (P1.14): the frontend production image must run the same Node
+    major CI builds/tests on (Node 20), not an untested major. Guards the FROM
+    tag *and* the pin comment against drifting back to node:26."""
+    dockerfile = (REPO_ROOT / "apps" / "frontend" / "Dockerfile").read_text()
+    from_lines = [ln for ln in dockerfile.splitlines() if ln.startswith("FROM node:")]
+    assert from_lines, "expected FROM node: lines in the frontend Dockerfile"
+    assert all("node:20-alpine" in ln for ln in from_lines), (
+        f"frontend image must use node:20-alpine (CI runs Node 20), got: {from_lines}"
+    )
+    assert "node:26" not in dockerfile, "stale node:26 reference in frontend Dockerfile"

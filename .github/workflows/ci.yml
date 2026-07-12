@@ -294,6 +294,24 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  frontend-docker-build:
+    name: Frontend Docker Build
+    # Guards the deployed artifact (issue #277): CI otherwise never builds the
+    # production image, so a broken Dockerfile or an untested Node major would
+    # only surface at deploy time. Build-only — the image is not pushed. The
+    # in-Dockerfile `npm run build` uses the same dummy env as the build stage,
+    # so only NEXT_PUBLIC_API_URL (inlined at build time) needs supplying.
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Build frontend production image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 \
+            -t narrative-frontend:ci \
+            apps/frontend
+
   # ── MCP ────────────────────────────────────────────────────────────────────
   mcp-tests:
     name: MCP Tests
@@ -526,6 +544,7 @@ jobs:
       - frontend-lint
       - frontend-typecheck-build
       - frontend-unit
+      - frontend-docker-build
       - mcp-tests
       - e2e-smoke
     runs-on: ubuntu-latest

@@ -166,7 +166,10 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      # redis runs with --requirepass, so the probe must authenticate (#277).
+      # An unauthenticated `incr ping` gets NOAUTH-rejected → depends_on never
+      # goes healthy (or false-passes). --no-auth-warning keeps stderr clean.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
