@@ -150,6 +150,59 @@ class TestApplyTransformationVersioning:
             assert call_args is not None
 
     @pytest.mark.asyncio
+    async def test_apply_transformation_updates_s3_url_with_file_path(
+        self,
+        transformation_service,
+        mock_dataset,
+        sample_dataframe,
+        mock_parent_version
+    ):
+        """s3_url is repointed to the transformed artifact alongside file_path (#276).
+
+        Previously only file_path moved, so viz/preview (which read s3_url) served
+        pre-transform data.
+        """
+        new_url = "s3://bucket/transformed/user1/ds1_12345.parquet"
+        mock_result = MagicMock(success=True, affected_rows=1, affected_columns=["age"],
+                                warnings=[], transformed_data=sample_dataframe.to_dict('records'))
+        mock_config = MagicMock(config_id="config_ds1_12345", transformation_steps=[],
+                                current_position=-1, save=AsyncMock())
+
+        with patch('app.models.dataset.DatasetMetadata.find_one',
+                   new=AsyncMock(return_value=mock_dataset)), \
+             patch('app.services.transformation_engine.data_utils.get_dataframe_from_s3',
+                   new=AsyncMock(return_value=sample_dataframe)), \
+             patch('app.services.transformation_engine.data_utils.upload_dataframe_to_s3',
+                   new=AsyncMock(return_value=new_url)), \
+             patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
+             patch.object(transformation_service, 'create_transformation_config',
+                          new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'add_transformation_step',
+                          new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'mark_transformations_applied',
+                          new=AsyncMock(return_value=mock_config)), \
+             patch('app.models.version.DatasetVersion.find') as mock_find, \
+             patch('app.services.redis_cache.cache_service') as mock_cache, \
+             patch('app.services.versioning_service.versioning_service') as mock_versioning:
+
+            mock_cursor = MagicMock()
+            mock_cursor.sort = MagicMock(return_value=mock_cursor)
+            mock_cursor.first_or_none = AsyncMock(return_value=mock_parent_version)
+            mock_find.return_value = mock_cursor
+            mock_cache.delete_pattern = AsyncMock()
+            mock_versioning.create_transformation_version = AsyncMock(
+                return_value=(MagicMock(version_id="v"), MagicMock())
+            )
+
+            await transformation_service.apply_transformation(
+                user_id="user1", dataset_id="ds1",
+                transformation_type="drop_missing", parameters={"column": "age"},
+            )
+
+            assert mock_dataset.file_path == new_url
+            assert mock_dataset.s3_url == new_url  # the fix: both moved together
+
+    @pytest.mark.asyncio
     async def test_apply_transformation_updates_current_position(
         self,
         transformation_service,

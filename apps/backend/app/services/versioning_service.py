@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from botocore.exceptions import ClientError
+from pymongo.errors import DuplicateKeyError
 
 from app.config import settings
 from app.models.dataset import DatasetMetadata
@@ -35,6 +36,11 @@ from app.services.exceptions import (
 from app.utils.s3 import create_s3_client
 
 logger = logging.getLogger(__name__)
+
+# Max optimistic-retry attempts when a concurrent writer grabs the same
+# version_number (issue #276). Contention is bounded by concurrent transforms
+# on one dataset, so a small ceiling is plenty.
+_MAX_VERSION_INSERT_RETRIES = 5
 
 
 class VersioningService(BaseService[DatasetVersion]):
@@ -197,10 +203,12 @@ class VersioningService(BaseService[DatasetVersion]):
             )
             return existing_version, lineage
 
-        # Upload transformed file to S3 with versioned path
-        next_version_number = await self._get_next_version_number(parent_version.dataset_id)
+        # Upload transformed file to S3 under a collision-proof key (issue #276).
+        # The key embeds version_id (a UUID), NOT the racy version number, so two
+        # concurrent transforms can never put_object to the same key and silently
+        # overwrite each other's content.
         version_id = str(uuid.uuid4())
-        versioned_file_path = f"datasets/{user_id}/{parent_version.dataset_id}/v{next_version_number}/{dataset_metadata.filename}"
+        versioned_file_path = f"datasets/{user_id}/{parent_version.dataset_id}/versions/{version_id}/{dataset_metadata.filename}"
 
         try:
             self.s3_client.put_object(
@@ -227,27 +235,48 @@ class VersioningService(BaseService[DatasetVersion]):
             dtypes
         )
 
-        # Create new version
-        new_version = DatasetVersion(
-            version_id=version_id,
-            dataset_id=parent_version.dataset_id,
-            version_number=next_version_number,
-            user_id=user_id,
-            content_hash=content_hash,
-            file_size=len(transformed_content),
-            file_path=versioned_file_path,
-            s3_url=s3_url,
-            description=description or f"Transformation from v{parent_version.version_number}",
-            num_rows=dataset_metadata.num_rows,
-            num_columns=dataset_metadata.num_columns,
-            columns=dataset_metadata.columns,
-            schema_hash=schema_hash,
-            parent_version_id=parent_version_id,
-            is_base_version=False,
-            created_by=user_id
-        )
-
-        await new_version.insert()
+        # Insert with optimistic retry on the unique (dataset_id, version_number)
+        # index (issue #276): recompute the next number each attempt so a concurrent
+        # writer that grabbed the same number loses one race, not the data. The S3
+        # object is already keyed by version_id, so a retry never re-uploads.
+        next_version_number = 0
+        for attempt in range(_MAX_VERSION_INSERT_RETRIES):
+            next_version_number = await self._get_next_version_number(parent_version.dataset_id)
+            new_version = DatasetVersion(
+                version_id=version_id,
+                dataset_id=parent_version.dataset_id,
+                version_number=next_version_number,
+                user_id=user_id,
+                content_hash=content_hash,
+                file_size=len(transformed_content),
+                file_path=versioned_file_path,
+                s3_url=s3_url,
+                description=description or f"Transformation from v{parent_version.version_number}",
+                num_rows=dataset_metadata.num_rows,
+                num_columns=dataset_metadata.num_columns,
+                columns=dataset_metadata.columns,
+                schema_hash=schema_hash,
+                parent_version_id=parent_version_id,
+                is_base_version=False,
+                created_by=user_id
+            )
+            try:
+                await new_version.insert()
+                break
+            except DuplicateKeyError:
+                if attempt == _MAX_VERSION_INSERT_RETRIES - 1:
+                    logger.error(
+                        f"Version number contention for dataset {parent_version.dataset_id} "
+                        f"exhausted {_MAX_VERSION_INSERT_RETRIES} retries"
+                    )
+                    raise OperationError(
+                        message="Failed to assign a unique version number after retries",
+                        operation="version_insert",
+                    )
+                logger.warning(
+                    f"Version number {next_version_number} collided for dataset "
+                    f"{parent_version.dataset_id}; retrying (attempt {attempt + 1})"
+                )
         logger.info(f"Created transformation version {version_id} (v{next_version_number})")
 
         # Create lineage tracking

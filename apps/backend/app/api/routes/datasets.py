@@ -220,6 +220,19 @@ async def upload_dataset(
             quality_report=processed_data.quality_report.model_dump()
         )
 
+        # Create the base version (issue #276): /datasets uploads previously had no
+        # version 1, so no lineage root existed and the first transform found no parent.
+        # Best-effort — versioning is auxiliary and must never fail the upload.
+        try:
+            from app.services.versioning_service import versioning_service
+            await versioning_service.create_base_version(
+                dataset_metadata=dataset,
+                file_content=file_content,
+                user_id=current_user_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create base version for dataset {dataset_id}: {e}")
+
         logger.info(f"Dataset {dataset_id} uploaded successfully")
 
         # Build response with backward compatibility
