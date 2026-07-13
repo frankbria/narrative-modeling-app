@@ -495,6 +495,61 @@ async def test_process_batch_job_streams_results_across_chunks(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_process_batch_job_streams_valid_json_across_chunks(monkeypatch):
+    """JSON output is a single valid array across chunks (hand-rolled brackets) (#278)."""
+    svc = _service()
+
+    uploaded: dict[str, Any] = {}
+
+    async def _capture_upload(fh, key):
+        uploaded["content"] = fh.read()
+        return f"s3://bucket/{key}"
+
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=_capture_upload)
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(return_value=_model()),
+    )
+
+    async def _chunks(path, size):
+        yield pd.DataFrame([{"age": 30}, {"age": 40}])
+        yield pd.DataFrame([{"age": 50}])
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+
+    job = MagicMock()
+    job.user_id = "u1"
+    job.input_path = "in.csv"
+    job.config = BatchPredictionConfig(
+        model_id="model_123", output_format="json"
+    ).dict()
+    job.save = AsyncMock()
+
+    await svc._process_batch_job(job)
+
+    parsed = json.loads(uploaded["content"].decode())
+    assert isinstance(parsed, list)
+    assert len(parsed) == 3
+    assert [row["prediction"] for row in parsed] == [1, 1, 1]
+
+
+def test_csv_header_reserves_output_names_over_input_collision():
+    """An input column named like an output column doesn't displace `error` (#278)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="m")
+    # Input CSV literally has "prediction" and "error" columns.
+    header = svc._csv_header(["error", "age", "prediction"], True, True, _model(), config)
+
+    assert header[-1] == "error"
+    assert header.count("error") == 1
+    assert header.count("prediction") == 1
+    assert "age" in header
+
+
+@pytest.mark.asyncio
 async def test_process_batch_job_isolates_a_failed_chunk(monkeypatch):
     """A chunk whose inference blows up becomes per-row error rows, job completes (#278)."""
     svc = _service()

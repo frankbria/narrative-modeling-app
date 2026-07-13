@@ -37,6 +37,21 @@ logger = logging.getLogger(__name__)
 # not a memory bound. Generous vs the 1000-record sync path; env-tunable.
 MAX_BATCH_PREDICT_RECORDS = int(os.getenv("MAX_BATCH_PREDICT_RECORDS", "1000000"))
 
+# Every column `_results_to_dataframe` can emit that is NOT an input column, so
+# the deterministic streamed-CSV header (issue #278) can drop an input column
+# that collides with one of these and keep its own canonical position.
+_RESERVED_OUTPUT_COLUMNS = frozenset(
+    {
+        "prediction",
+        "confidence",
+        "low_confidence",
+        "prediction_interval",
+        "probabilities",
+        "explanation",
+        "error",
+    }
+)
+
 
 class _BatchSummaryAccumulator:
     """Streaming aggregator for batch summary statistics (issue #278).
@@ -874,10 +889,12 @@ class BatchPredictionService:
         A superset of every column ``_results_to_dataframe`` can emit for this
         config + model, in the same order, so each chunk reindexes to a stable
         header and appends without a per-chunk header row. Data-dependent columns
-        (notably ``error``) are always reserved so a later chunk's error rows can
-        never misalign the file.
+        (notably ``error``) are always reserved last so a later chunk's error rows
+        can never misalign the file. An input column that collides with an output
+        name is dropped (``_results_to_dataframe`` already overwrites it with the
+        output value), so the reserved columns keep their canonical positions.
         """
-        cols = list(input_columns)
+        cols = [c for c in input_columns if c not in _RESERVED_OUTPUT_COLUMNS]
         cols.append("prediction")
         if want_proba:
             cols += ["confidence", "low_confidence"]
@@ -888,8 +905,7 @@ class BatchPredictionService:
         if config.include_explanations:
             cols.append("explanation")
         cols.append("error")
-        # De-dup (an input column could collide with an output name) preserving order.
-        return list(dict.fromkeys(cols))
+        return cols
 
     def _results_to_dataframe(self, predictions: list[dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
