@@ -8,8 +8,12 @@ The full job lifecycle with real Mongo + S3 is covered by the integration
 round-trip test.
 """
 
+import io
 import json
+import os
+import tempfile
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -374,25 +378,222 @@ def test_results_to_dataframe_includes_low_confidence_column():
 
 
 @pytest.mark.asyncio
-async def test_save_results_uploads_csv_and_returns_key():
-    """_save_results uploads via the real S3 API and returns the object key (#82)."""
+async def test_upload_results_file_streams_from_disk_and_returns_key():
+    """_upload_results_file streams an on-disk file to S3 and returns the key (#278)."""
     svc = _service()
     config = BatchPredictionConfig(model_id="model_123", output_format="csv")
     job = MagicMock()
     job.user_id = "test_user_123"
 
-    predictions = [
-        {"input_data": {"age": 30}, "prediction": "yes", "confidence": 0.8},
-    ]
+    fd, out_path = tempfile.mkstemp(suffix=".csv")
+    with os.fdopen(fd, "w") as fh:
+        fh.write("age,prediction\n30,yes\n")
 
-    key = await svc._save_results(job, predictions, config)
+    try:
+        key = await svc._upload_results_file(out_path, job, config)
+    finally:
+        os.unlink(out_path)
 
     assert key.startswith("batch-jobs/test_user_123/model_123/")
     assert key.endswith("results.csv")
     svc.s3_service.upload_file_obj.assert_awaited_once()
-    # Uploaded a binary buffer to the same key.
+    # Uploaded a file handle (not an in-memory buffer of the whole result) to the key.
     args, _ = svc.s3_service.upload_file_obj.call_args
     assert args[1] == key
+    assert hasattr(args[0], "read")
+
+
+def test_csv_header_is_deterministic_superset():
+    """_csv_header reserves every possible output column, error last (#278)."""
+    svc = _service()
+    config = BatchPredictionConfig(
+        model_id="m", include_probabilities=True, include_explanations=True
+    )
+    header = svc._csv_header(["age", "city"], True, True, _model(), config)
+
+    assert header[:2] == ["age", "city"]
+    for col in ("prediction", "confidence", "low_confidence", "probabilities",
+                "explanation", "error"):
+        assert col in header
+    # "error" is always reserved last so a later all-error chunk cannot misalign.
+    assert header[-1] == "error"
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_data_rejects_oversize_batch(monkeypatch):
+    """A batch over MAX_BATCH_PREDICT_RECORDS is rejected before any upload (#278)."""
+    svc = _service()
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MAX_BATCH_PREDICT_RECORDS", 2
+    )
+    df = pd.DataFrame([{"age": i} for i in range(3)])
+
+    with pytest.raises(ValueError, match="exceeds the maximum"):
+        await svc._prepare_input_data(df, "u1", "m1")
+
+    svc.s3_service.upload_file_obj.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_batch_job_streams_results_across_chunks(monkeypatch):
+    """Results stream to one file across chunks; summary folds incrementally (#278).
+
+    Drives the full chunk loop with a passthrough feature engineer + fake
+    classifier over two chunks and asserts the uploaded CSV contains every row in
+    order with a single header, and the summary counts all successes — proving
+    results are not accumulated per-chunk in memory.
+    """
+    svc = _service()
+
+    uploaded: dict[str, Any] = {}
+
+    async def _capture_upload(fh, key):
+        uploaded["key"] = key
+        uploaded["content"] = fh.read()
+        return f"s3://bucket/{key}"
+
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=_capture_upload)
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+
+    model = _model()
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(return_value=model),
+    )
+
+    chunk1 = pd.DataFrame([{"age": 30}, {"age": 40}])
+    chunk2 = pd.DataFrame([{"age": 50}])
+
+    async def _chunks(path, size):
+        yield chunk1
+        yield chunk2
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+
+    job = MagicMock()
+    job.user_id = "u1"
+    job.input_path = "batch-jobs/u1/model_123/input.csv"
+    job.config = BatchPredictionConfig(
+        model_id="model_123", include_probabilities=True, output_format="csv"
+    ).dict()
+    job.save = AsyncMock()
+
+    await svc._process_batch_job(job)
+
+    job.mark_completed.assert_called_once()
+    summary = job.mark_completed.call_args[0][0]
+    assert summary["total_predictions"] == 3
+    assert summary["success_count"] == 3
+
+    out = pd.read_csv(io.BytesIO(uploaded["content"]))
+    assert len(out) == 3
+    assert list(out["age"]) == [30, 40, 50]
+    assert "prediction" in out.columns
+    assert "confidence" in out.columns
+
+
+@pytest.mark.asyncio
+async def test_process_batch_job_streams_valid_json_across_chunks(monkeypatch):
+    """JSON output is a single valid array across chunks (hand-rolled brackets) (#278)."""
+    svc = _service()
+
+    uploaded: dict[str, Any] = {}
+
+    async def _capture_upload(fh, key):
+        uploaded["content"] = fh.read()
+        return f"s3://bucket/{key}"
+
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=_capture_upload)
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(return_value=_model()),
+    )
+
+    async def _chunks(path, size):
+        yield pd.DataFrame([{"age": 30}, {"age": 40}])
+        yield pd.DataFrame([{"age": 50}])
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+
+    job = MagicMock()
+    job.user_id = "u1"
+    job.input_path = "in.csv"
+    job.config = BatchPredictionConfig(
+        model_id="model_123", output_format="json"
+    ).dict()
+    job.save = AsyncMock()
+
+    await svc._process_batch_job(job)
+
+    parsed = json.loads(uploaded["content"].decode())
+    assert isinstance(parsed, list)
+    assert len(parsed) == 3
+    assert [row["prediction"] for row in parsed] == [1, 1, 1]
+
+
+def test_csv_header_reserves_output_names_over_input_collision():
+    """An input column named like an output column doesn't displace `error` (#278)."""
+    svc = _service()
+    config = BatchPredictionConfig(model_id="m")
+    # Input CSV literally has "prediction" and "error" columns.
+    header = svc._csv_header(["error", "age", "prediction"], True, True, _model(), config)
+
+    assert header[-1] == "error"
+    assert header.count("error") == 1
+    assert header.count("prediction") == 1
+    assert "age" in header
+
+
+@pytest.mark.asyncio
+async def test_process_batch_job_isolates_a_failed_chunk(monkeypatch):
+    """A chunk whose inference blows up becomes per-row error rows, job completes (#278)."""
+    svc = _service()
+
+    uploaded: dict[str, Any] = {}
+
+    async def _capture_upload(fh, key):
+        uploaded["content"] = fh.read()
+        return f"s3://bucket/{key}"
+
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=_capture_upload)
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(return_value=_model()),
+    )
+
+    async def _chunks(path, size):
+        yield pd.DataFrame([{"age": 30}])
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    # Force the whole chunk to fail so the outer per-chunk isolation kicks in.
+    monkeypatch.setattr(
+        svc, "_predict_chunk", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+
+    job = MagicMock()
+    job.user_id = "u1"
+    job.input_path = "in.csv"
+    job.config = BatchPredictionConfig(
+        model_id="model_123", output_format="csv"
+    ).dict()
+    job.save = AsyncMock()
+
+    await svc._process_batch_job(job)
+
+    job.mark_completed.assert_called_once()
+    summary = job.mark_completed.call_args[0][0]
+    assert summary["total_predictions"] == 1
+    assert summary["error_count"] == 1
+    out = pd.read_csv(io.BytesIO(uploaded["content"]))
+    assert "error" in out.columns
 
 
 @pytest.mark.asyncio

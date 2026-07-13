@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import socket
-import statistics
 import tempfile
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -32,6 +31,120 @@ from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on a single batch (issue #278). The result stream and summary are
+# now O(chunk_size), so this is a resource/DoS guard (disk temp file + wall time),
+# not a memory bound. Generous vs the 1000-record sync path; env-tunable.
+MAX_BATCH_PREDICT_RECORDS = int(os.getenv("MAX_BATCH_PREDICT_RECORDS", "1000000"))
+
+# Every column `_results_to_dataframe` can emit that is NOT an input column, so
+# the deterministic streamed-CSV header (issue #278) can drop an input column
+# that collides with one of these and keep its own canonical position.
+_RESERVED_OUTPUT_COLUMNS = frozenset(
+    {
+        "prediction",
+        "confidence",
+        "low_confidence",
+        "prediction_interval",
+        "probabilities",
+        "explanation",
+        "error",
+    }
+)
+
+
+class _BatchSummaryAccumulator:
+    """Streaming aggregator for batch summary statistics (issue #278).
+
+    Folds one prediction record at a time so the batch pipeline never holds every
+    result in memory. Produces the same summary the pre-#278 in-memory pass did,
+    minus median: median needs every value retained, which defeats the bounded-
+    memory goal, and no consumer reads it (the UI uses ``confidence_stats.mean``
+    and ``low_confidence_count`` only).
+    """
+
+    def __init__(self, is_classification: bool) -> None:
+        self.is_classification = is_classification
+        self.total = 0
+        self.success = 0
+        self.error_count = 0
+        self.low_confidence_count = 0
+        self.distribution: dict[str, int] = {}
+        # Running scalar stats — O(1) state each (no value retention).
+        self._val_n = 0
+        self._val_sum = 0.0
+        self._val_min: float | None = None
+        self._val_max: float | None = None
+        self._val_invalid = False  # any non-numeric prediction voids value stats
+        self._conf_n = 0
+        self._conf_sum = 0.0
+        self._conf_min: float | None = None
+        self._conf_max: float | None = None
+
+    def add(self, p: dict[str, Any]) -> None:
+        self.total += 1
+        if p.get("error") is not None:
+            self.error_count += 1
+            return
+        if "prediction" not in p:
+            # error-free but prediction-less — matches the pre-#278 `successful`
+            # filter (error is None AND prediction present); shouldn't occur.
+            return
+        self.success += 1
+        prediction = p["prediction"]
+        if self.is_classification:
+            key = str(prediction)
+            self.distribution[key] = self.distribution.get(key, 0) + 1
+        elif not self._val_invalid:
+            try:
+                value = float(prediction)
+            except (TypeError, ValueError):
+                self._val_invalid = True  # all-or-nothing, mirroring the old code
+            else:
+                self._val_n += 1
+                self._val_sum += value
+                self._val_min = value if self._val_min is None else min(self._val_min, value)
+                self._val_max = value if self._val_max is None else max(self._val_max, value)
+
+        conf = p.get("confidence")
+        if conf is not None:
+            self._conf_n += 1
+            self._conf_sum += conf
+            self._conf_min = conf if self._conf_min is None else min(self._conf_min, conf)
+            self._conf_max = conf if self._conf_max is None else max(self._conf_max, conf)
+        if p.get("low_confidence") is True:
+            self.low_confidence_count += 1
+
+    def result(self) -> dict[str, Any]:
+        confidence_stats: dict[str, float] = {}
+        if self._conf_n and self._conf_min is not None and self._conf_max is not None:
+            confidence_stats = {
+                "min": self._conf_min,
+                "max": self._conf_max,
+                "mean": self._conf_sum / self._conf_n,
+            }
+        summary: dict[str, Any] = {
+            "total_predictions": self.total,
+            "success_count": self.success,
+            "error_count": self.error_count,
+            "success_rate": (self.success / self.total * 100) if self.total else 0.0,
+            "prediction_distribution": self.distribution,
+            "confidence_stats": confidence_stats,
+            "low_confidence_count": self.low_confidence_count,
+        }
+        if (
+            not self.is_classification
+            and not self._val_invalid
+            and self._val_n
+            and self._val_min is not None
+            and self._val_max is not None
+        ):
+            summary["prediction_value_stats"] = {
+                "min": self._val_min,
+                "max": self._val_max,
+                "mean": self._val_sum / self._val_n,
+            }
+        return summary
 
 
 class BatchPredictionService:
@@ -137,50 +250,48 @@ class BatchPredictionService:
     async def _prepare_input_data(
         self, input_data: Any, user_id: str, model_id: str
     ) -> tuple[str, int]:
-        """Prepare and upload input data to S3"""
+        """Prepare and upload input data to S3.
+
+        Resolves the record count first and rejects an over-cap batch (issue #278)
+        *before* the S3 upload, so an oversized job never spends an upload round
+        trip. Input file size is already bounded upstream by the upload cap (#270).
+        """
 
         # Generate unique S3 path
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         s3_key = f"batch-jobs/{user_id}/{model_id}/{timestamp}/input.csv"
 
         if isinstance(input_data, str):
-            # Assume it's a file path
             if not os.path.exists(input_data):
                 raise ValueError("Input file not found")
-
-            # Count records
-            df = pd.read_csv(input_data)
-            total_records = len(df)
-
-            # Upload to S3
-            with open(input_data, "rb") as fh:
-                await self.s3_service.upload_file_obj(fh, s3_key)
-
+            # Count rows in bounded memory — never materialise the whole CSV just
+            # to reject an over-cap batch (issue #278 review).
+            total_records = sum(
+                len(chunk) for chunk in pd.read_csv(input_data, chunksize=100_000)
+            )
         elif isinstance(input_data, pd.DataFrame):
-            # Convert DataFrame to CSV and upload
-            csv_buffer = StringIO()
-            input_data.to_csv(csv_buffer, index=False)
-            csv_content = csv_buffer.getvalue().encode("utf-8")
-
             total_records = len(input_data)
-
-            # Upload to S3
-            await self.s3_service.upload_file_obj(BytesIO(csv_content), s3_key)
-
         elif isinstance(input_data, list):
-            # Convert list to DataFrame then CSV
-            df = pd.DataFrame(input_data)
-            csv_buffer = StringIO()
-            df.to_csv(csv_buffer, index=False)
-            csv_content = csv_buffer.getvalue().encode("utf-8")
-
+            input_data = pd.DataFrame(input_data)
             total_records = len(input_data)
-
-            # Upload to S3
-            await self.s3_service.upload_file_obj(BytesIO(csv_content), s3_key)
-
         else:
             raise ValueError("Unsupported input data type")
+
+        if total_records > MAX_BATCH_PREDICT_RECORDS:
+            raise ValueError(
+                f"Batch too large: {total_records} records exceeds the maximum of "
+                f"{MAX_BATCH_PREDICT_RECORDS}."
+            )
+
+        if isinstance(input_data, str):
+            with open(input_data, "rb") as fh:
+                await self.s3_service.upload_file_obj(fh, s3_key)
+        else:  # DataFrame (a list input was converted above)
+            csv_buffer = StringIO()
+            input_data.to_csv(csv_buffer, index=False)
+            await self.s3_service.upload_file_obj(
+                BytesIO(csv_buffer.getvalue().encode("utf-8")), s3_key
+            )
 
         return s3_key, total_records
 
@@ -207,62 +318,92 @@ class BatchPredictionService:
             if not job.input_path:
                 raise ValueError("Batch job has no input path")
 
+            output_format = config.output_format.lower()
+            if output_format not in ("csv", "json"):
+                raise ValueError(f"Unsupported output format: {config.output_format}")
+
             # Load model artifacts. load_model returns a (model, feature_engineer)
             # tuple keyed by (model_id, user_id) — issue #82 bugfix.
             trained_model, feature_engineer = await self.model_storage.load_model(
                 config.model_id, job.user_id
             )
 
-            # Process data in chunks
-            predictions: list[dict[str, Any]] = []
+            is_classification = str(model.problem_type).endswith("classification")
+            want_proba = is_classification and hasattr(trained_model, "predict_proba")
+
+            # Stream results to a temp file chunk-by-chunk and fold summary stats
+            # incrementally, so peak memory stays O(chunk_size) instead of
+            # O(total_records) — issue #278. The finished file is streamed to S3.
+            summary_acc = _BatchSummaryAccumulator(is_classification)
+            out_fd, out_path = tempfile.mkstemp(suffix=f".{output_format}")
             chunk_num = 0
-            total_success = 0
-            total_error = 0
+            csv_header: list[str] | None = None
+            json_first = True
+            try:
+                with os.fdopen(out_fd, "w", encoding="utf-8", newline="") as out:
+                    if output_format == "json":
+                        out.write("[")
 
-            async for chunk_df in self._read_data_chunks(
-                job.input_path, config.chunk_size
-            ):
-                chunk_num += 1
+                    async for chunk_df in self._read_data_chunks(
+                        job.input_path, config.chunk_size
+                    ):
+                        chunk_num += 1
 
-                try:
-                    # Make predictions for chunk
-                    chunk_predictions = await self._predict_chunk(
-                        chunk_df, trained_model, feature_engineer, model, config
-                    )
+                        try:
+                            chunk_predictions = await self._predict_chunk(
+                                chunk_df, trained_model, feature_engineer, model, config
+                            )
+                        except Exception as e:  # noqa: BLE001 - isolate a failed chunk
+                            chunk_predictions = [
+                                {"error": str(e), "row_index": i}
+                                for i in range(len(chunk_df))
+                            ]
 
-                    predictions.extend(chunk_predictions)
-                    total_success += len(
-                        [p for p in chunk_predictions if p.get("error") is None]
-                    )
-                    total_error += len(
-                        [p for p in chunk_predictions if p.get("error") is not None]
-                    )
+                        if output_format == "csv":
+                            if csv_header is None:
+                                csv_header = self._csv_header(
+                                    list(chunk_df.columns),
+                                    is_classification,
+                                    want_proba,
+                                    model,
+                                    config,
+                                )
+                            chunk_frame = self._results_to_dataframe(
+                                chunk_predictions
+                            ).reindex(columns=csv_header)
+                            chunk_frame.to_csv(out, index=False, header=(chunk_num == 1))
+                        else:
+                            for prediction in chunk_predictions:
+                                if not json_first:
+                                    out.write(", ")
+                                out.write(json.dumps(prediction, default=str))
+                                json_first = False
 
-                except Exception as e:
-                    # Handle chunk processing error
-                    error_predictions = [
-                        {"error": str(e), "row_index": i} for i in range(len(chunk_df))
-                    ]
-                    predictions.extend(error_predictions)
-                    total_error += len(error_predictions)
+                        for prediction in chunk_predictions:
+                            summary_acc.add(prediction)
 
-                # Update cumulative progress after each chunk
-                job.update_progress(
-                    processed_records=len(predictions),
-                    success_count=total_success,
-                    error_count=total_error,
-                    current_chunk=chunk_num,
-                )
-                await job.save()
+                        # Update cumulative progress after each chunk
+                        job.update_progress(
+                            processed_records=summary_acc.total,
+                            success_count=summary_acc.success,
+                            error_count=summary_acc.error_count,
+                            current_chunk=chunk_num,
+                        )
+                        await job.save()
 
-            # Save results to S3
-            output_path = await self._save_results(job, predictions, config)
-            job.output_path = output_path
+                    if output_format == "json":
+                        out.write("]")
 
-            # Mark job as completed with summary statistics
-            summary = self._calculate_summary_statistics(predictions, model)
-            summary["output_path"] = output_path
-            job.mark_completed(summary)
+                # Stream the finished results file to S3 (bounded memory).
+                output_path = await self._upload_results_file(out_path, job, config)
+                job.output_path = output_path
+
+                # Mark job as completed with summary statistics
+                summary = summary_acc.result()
+                summary["output_path"] = output_path
+                job.mark_completed(summary)
+            finally:
+                os.unlink(out_path)
 
         except Exception as e:
             job.mark_failed(str(e))
@@ -724,68 +865,47 @@ class BatchPredictionService:
         predictions: list[dict[str, Any]],
         model: MLModel,
     ) -> dict[str, Any]:
-        """Aggregate batch results into summary statistics (issue #82).
+        """Aggregate an in-memory prediction list into summary statistics (#82).
 
-        Produces a prediction distribution (per class for classification, value
-        stats for regression) and confidence statistics for the downloadable
-        results' summary.
+        Thin wrapper over the streaming :class:`_BatchSummaryAccumulator` so there
+        is one implementation shared with the chunk-by-chunk batch pipeline (#278).
         """
-        successful = [
-            p for p in predictions if p.get("error") is None and "prediction" in p
-        ]
-        errors = [p for p in predictions if p.get("error") is not None]
         is_classification = str(model.problem_type).endswith("classification")
+        acc = _BatchSummaryAccumulator(is_classification)
+        for prediction in predictions:
+            acc.add(prediction)
+        return acc.result()
 
-        prediction_distribution: dict[str, int] = {}
-        prediction_value_stats: dict[str, float] = {}
-        if is_classification:
-            for p in successful:
-                key = str(p["prediction"])
-                prediction_distribution[key] = prediction_distribution.get(key, 0) + 1
-        else:
-            try:
-                values = [float(p["prediction"]) for p in successful]
-                if values:
-                    prediction_value_stats = {
-                        "min": min(values),
-                        "max": max(values),
-                        "mean": statistics.fmean(values),
-                        "median": statistics.median(values),
-                    }
-            except (TypeError, ValueError):
-                prediction_value_stats = {}
+    def _csv_header(
+        self,
+        input_columns: list[str],
+        is_classification: bool,
+        want_proba: bool,
+        model: MLModel,
+        config: BatchPredictionConfig,
+    ) -> list[str]:
+        """Deterministic CSV column order for streamed results (issue #278).
 
-        confidences = [
-            p["confidence"] for p in successful if p.get("confidence") is not None
-        ]
-        confidence_stats: dict[str, float] = {}
-        if confidences:
-            confidence_stats = {
-                "min": min(confidences),
-                "max": max(confidences),
-                "mean": statistics.fmean(confidences),
-                "median": statistics.median(confidences),
-            }
-
-        # Number of successful predictions flagged low-confidence (issue #83).
-        low_confidence_count = sum(
-            1 for p in successful if p.get("low_confidence") is True
-        )
-
-        success_count = len(successful)
-        total = len(predictions)
-        summary: dict[str, Any] = {
-            "total_predictions": total,
-            "success_count": success_count,
-            "error_count": len(errors),
-            "success_rate": (success_count / total * 100) if total else 0.0,
-            "prediction_distribution": prediction_distribution,
-            "confidence_stats": confidence_stats,
-            "low_confidence_count": low_confidence_count,
-        }
-        if prediction_value_stats:
-            summary["prediction_value_stats"] = prediction_value_stats
-        return summary
+        A superset of every column ``_results_to_dataframe`` can emit for this
+        config + model, in the same order, so each chunk reindexes to a stable
+        header and appends without a per-chunk header row. Data-dependent columns
+        (notably ``error``) are always reserved last so a later chunk's error rows
+        can never misalign the file. An input column that collides with an output
+        name is dropped (``_results_to_dataframe`` already overwrites it with the
+        output value), so the reserved columns keep their canonical positions.
+        """
+        cols = [c for c in input_columns if c not in _RESERVED_OUTPUT_COLUMNS]
+        cols.append("prediction")
+        if want_proba:
+            cols += ["confidence", "low_confidence"]
+        if not is_classification and getattr(model, "residual_std", None) is not None:
+            cols.append("prediction_interval")
+        if want_proba and config.include_probabilities:
+            cols.append("probabilities")
+        if config.include_explanations:
+            cols.append("explanation")
+        cols.append("error")
+        return cols
 
     def _results_to_dataframe(self, predictions: list[dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
@@ -810,34 +930,22 @@ class BatchPredictionService:
             rows.append(row)
         return pd.DataFrame(rows)
 
-    async def _save_results(
+    async def _upload_results_file(
         self,
+        out_path: str,
         job: BatchJob,
-        predictions: list[dict[str, Any]],
         config: BatchPredictionConfig,
     ) -> str:
-        """Save prediction results to S3"""
+        """Upload a finished, on-disk results file to S3 (issue #278).
 
-        # Generate output path
+        Streams the file straight from disk via ``upload_fileobj`` (multipart
+        under the hood), so a large results file is never loaded into memory.
+        """
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         output_key = f"batch-jobs/{job.user_id}/{config.model_id}/{timestamp}/results.{config.output_format}"
 
-        if config.output_format.lower() == "csv":
-            # Convert to a clean tabular CSV
-            df = self._results_to_dataframe(predictions)
-            csv_buffer = StringIO()
-            df.to_csv(csv_buffer, index=False)
-            content = csv_buffer.getvalue().encode("utf-8")
-
-        elif config.output_format.lower() == "json":
-            # Convert to JSON
-            content = json.dumps(predictions, indent=2, default=str).encode("utf-8")
-
-        else:
-            raise ValueError(f"Unsupported output format: {config.output_format}")
-
-        # Upload to S3
-        await self.s3_service.upload_file_obj(BytesIO(content), output_key)
+        with open(out_path, "rb") as fh:
+            await self.s3_service.upload_file_obj(fh, output_key)
 
         return output_key
 

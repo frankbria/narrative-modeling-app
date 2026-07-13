@@ -340,3 +340,31 @@ class TestS3SecurityValidation:
                 # Should not raise exception
                 result = download_file_from_s3(valid_url)
                 assert result == '/tmp/test_file'
+
+
+@pytest.mark.asyncio
+async def test_upload_file_obj_rewinds_before_upload():
+    """upload_file_obj seeks to 0 first, so a circuit-breaker retry re-sends the
+    whole object instead of resuming from EOF and truncating it (issue #278)."""
+    from io import BytesIO
+
+    from app.services.s3_service import S3Service
+
+    svc = S3Service()
+    svc.is_mock_mode = False
+
+    captured = {}
+
+    def _upload_fileobj(fileobj, bucket, key):
+        captured["content"] = fileobj.read()
+
+    svc.s3_client = Mock()
+    svc.s3_client.upload_fileobj = _upload_fileobj
+
+    # A stream positioned at EOF, mimicking one already consumed by a prior attempt.
+    buf = BytesIO(b"hello-world")
+    buf.seek(len(b"hello-world"))
+
+    await svc.upload_file_obj(buf, "datasets/u/f.csv")
+
+    assert captured["content"] == b"hello-world"
