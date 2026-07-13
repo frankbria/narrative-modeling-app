@@ -1,7 +1,7 @@
 # MongoDB Atlas Migration Status
 
 **Date**: 2025-10-27
-**Target**: Staging Environment (47.88.89.175 / dev.briaanalytics.com)
+**Target**: Staging Environment (dev.briaanalytics.com)
 **Current Status**: ⚠️ **PLANNED - NOT IMPLEMENTED**
 
 ---
@@ -10,7 +10,7 @@
 
 **This migration is PLANNED but NOT YET IMPLEMENTED on the staging server.**
 
-The staging server (47.88.89.175) currently uses:
+The staging server (dev.briaanalytics.com) currently uses:
 - **Self-hosted MongoDB 7.0** running in Docker (container: `narrative-staging-mongodb`)
 - Port: 27018
 - Status: Healthy, running for 5+ days
@@ -119,7 +119,7 @@ git reset --hard origin/main
 **Status**: Cannot access via SSH from current location
 
 **Required Actions** (Manual - requires server access):
-1. SSH to staging server: `ssh narrative-deploy@47.88.89.175`
+1. SSH to staging server: `ssh narrative-deploy@dev.briaanalytics.com`
 2. Update `/opt/narrative-modeling-app/staging/.env.staging` with new MongoDB Atlas credentials
 3. Remove old MongoDB variables (`MONGODB_ROOT_PASSWORD`, `MONGODB_PASSWORD`)
 4. Stop self-hosted MongoDB container
@@ -156,7 +156,7 @@ After server configuration, verify:
 
 ## 🔍 Current Server Status
 
-**Server**: 47.88.89.175 (dev.briaanalytics.com)
+**Server**: dev.briaanalytics.com
 
 **What We Know**:
 - User indicated staging is "only partially working"
@@ -214,7 +214,7 @@ After server configuration, verify:
 ### MongoDB Atlas (⏳ PENDING)
 - [ ] Verify Atlas cluster exists and is accessible
 - [ ] Rotate credentials (delete or change password)
-- [ ] Whitelist staging server IP: 47.88.89.175
+- [ ] Whitelist the staging server's public IP (resolve: `dig +short dev.briaanalytics.com`)
 - [ ] Verify database `narrative_staging` exists
 - [ ] Test connection from local machine
 

@@ -20,7 +20,7 @@ This project follows a 4-stage deployment process to ensure code quality and sta
 - **Status**: Available for dev team use
 
 ### Stage 3: Staging Server ✅ **FULLY DEPLOYED**
-- **Environment**: 47.88.89.175 (dev.briaanalytics.com)
+- **Environment**: dev.briaanalytics.com
 - **Access**: SSH as narrative-deploy
 - **Purpose**: Integration testing and sprint demonstrations
 - **Usage**:
@@ -52,7 +52,7 @@ This project follows a 4-stage deployment process to ensure code quality and sta
 ## Next Steps
 
 ### Completed ✅
-1. ✅ **DONE**: Staging server fully deployed (47.88.89.175 / dev.briaanalytics.com)
+1. ✅ **DONE**: Staging server fully deployed (dev.briaanalytics.com)
 2. ✅ **DONE**: Fix integration tests in GitHub Actions (CI/CD health checks)
 3. ✅ **DONE**: E2E test infrastructure optimized (13.8 min vs 20+ min timeouts)
 

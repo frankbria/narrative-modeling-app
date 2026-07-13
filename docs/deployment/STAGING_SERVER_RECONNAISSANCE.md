@@ -1,6 +1,6 @@
 # Staging Server Reconnaissance Results
 
-**Server**: 47.88.89.175 (root access)
+**Server**: dev.briaanalytics.com (root access)
 **Date**: 2025-10-22
 **Status**: ✅ Reconnaissance Complete
 
@@ -114,7 +114,7 @@ Frontend:3010      Backend:8010
 
 - [ ] **Install Docker Compose Plugin**
   ```bash
-  ssh root@47.88.89.175
+  ssh root@dev.briaanalytics.com
   apt-get update
   apt-get install docker-compose-plugin -y
   docker compose version  # Verify installation
