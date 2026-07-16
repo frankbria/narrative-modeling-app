@@ -37,7 +37,7 @@ from app.services.model_training.feature_engineer import (
     FeatureEngineeringConfig,
 )
 from app.services.redis_cache import cache_service
-from app.services.s3_service import download_file_from_s3
+from app.services.s3_service import load_dataframe_from_s3
 
 logger = logging.getLogger(__name__)
 
@@ -356,16 +356,11 @@ class FeatureSelectionService:
         """Load dataset from S3"""
         dataset = await self.dataset_service.get_by_id(dataset_id, user_id)
 
-        # Download file from S3 (wrap sync call in thread to avoid blocking event loop)
-        local_path = await asyncio.to_thread(download_file_from_s3, dataset.s3_url)
-
-        # Load into DataFrame (wrap sync pandas operations in thread)
-        if dataset.file_type == "csv":
-            df = await asyncio.to_thread(pd.read_csv, local_path)
-        elif dataset.file_type in ["xlsx", "xls"]:
-            df = await asyncio.to_thread(pd.read_excel, local_path)
-        else:
-            raise ValueError(f"Unsupported file type: {dataset.file_type}")
+        # Centralized download+parse+cleanup off the event loop; the helper always
+        # unlinks the temp file and raises ValueError on unsupported types (#280).
+        df = await asyncio.to_thread(
+            load_dataframe_from_s3, dataset.s3_url, dataset.file_type
+        )
 
         return df, dataset
 

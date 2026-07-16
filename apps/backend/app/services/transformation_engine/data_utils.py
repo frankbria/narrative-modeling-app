@@ -8,7 +8,7 @@ import tempfile
 
 import pandas as pd
 
-from app.services.s3_service import download_file_from_s3
+from app.services.s3_service import load_dataframe_from_s3
 from app.utils.s3 import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
@@ -17,44 +17,18 @@ logger = logging.getLogger(__name__)
 async def get_dataframe_from_s3(s3_url: str, nrows: int | None = None) -> pd.DataFrame:
     """
     Download a file from S3 and load it as a pandas DataFrame
-    
+
     Args:
         s3_url: S3 URL of the file
         nrows: Number of rows to read (for preview)
-    
+
     Returns:
         Pandas DataFrame
     """
     try:
-        # Download file from S3 (blocking boto3 — keep it off the event loop, #265)
-        temp_file_path = await asyncio.to_thread(download_file_from_s3, s3_url)
-        
-        # Determine file type and read accordingly
-        if temp_file_path.endswith('.parquet'):
-            if nrows:
-                # For parquet preview, read all then take head
-                df = pd.read_parquet(temp_file_path)
-                df = df.head(nrows)
-            else:
-                df = pd.read_parquet(temp_file_path)
-        elif temp_file_path.endswith('.csv'):
-            df = pd.read_csv(temp_file_path, nrows=nrows)
-        elif temp_file_path.endswith('.xlsx') or temp_file_path.endswith('.xls'):
-            df = pd.read_excel(temp_file_path, nrows=nrows)
-        else:
-            # Try to infer format
-            try:
-                df = pd.read_csv(temp_file_path, nrows=nrows)
-            except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError):
-                df = pd.read_parquet(temp_file_path)
-                if nrows:
-                    df = df.head(nrows)
-        
-        # Clean up temp file
-        os.unlink(temp_file_path)
-        
-        return df
-        
+        # Centralized download+parse+cleanup (blocking → off the event loop, #265/#280).
+        # file_type=None infers csv→parquet; the helper always unlinks the temp file.
+        return await asyncio.to_thread(load_dataframe_from_s3, s3_url, None, nrows)
     except Exception as e:
         logger.error(f"Error loading dataframe from S3: {str(e)}")
         raise

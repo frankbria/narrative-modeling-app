@@ -490,12 +490,12 @@ class TestFeatureSelectionService:
     # ========== Test End-to-End Selection ==========
 
     @pytest.mark.asyncio
-    @patch('app.services.model_training.feature_selection_service.download_file_from_s3')
+    @patch('app.services.model_training.feature_selection_service.load_dataframe_from_s3')
     @patch('app.services.model_training.feature_selection_service.cache_service')
     async def test_select_features_e2e(
         self,
         mock_cache,
-        mock_download,
+        mock_load,
         service,
         classification_data,
         config,
@@ -507,10 +507,8 @@ class TestFeatureSelectionService:
         mock_cache.get = AsyncMock(return_value=None)  # Cache miss
         mock_cache.set = AsyncMock(return_value=True)
 
-        # Create temporary CSV file
-        csv_file = tmp_path / "test_data.csv"
-        classification_data.to_csv(csv_file, index=False)
-        mock_download.return_value = str(csv_file)
+        # The service now loads via the centralized download+parse+cleanup helper (#280).
+        mock_load.return_value = classification_data
 
         # Mock dataset service
         service.dataset_service.get_by_id = AsyncMock(return_value=mock_dataset)
@@ -540,12 +538,12 @@ class TestFeatureSelectionService:
         mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('app.services.model_training.feature_selection_service.download_file_from_s3')
+    @patch('app.services.model_training.feature_selection_service.load_dataframe_from_s3')
     @patch('app.services.model_training.feature_selection_service.cache_service')
     async def test_select_features_cache_hit(
         self,
         mock_cache,
-        mock_download,
+        mock_load,
         service,
         config
     ):
@@ -578,5 +576,5 @@ class TestFeatureSelectionService:
         # Verify result is from cache
         assert result == cached_result
 
-        # Verify download was not called (cache hit)
-        mock_download.assert_not_called()
+        # Verify the dataset was not loaded (cache hit)
+        mock_load.assert_not_called()
