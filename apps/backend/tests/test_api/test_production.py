@@ -663,3 +663,84 @@ class TestProductionPredictErrorHandling:
 
         # Exactly at the cap is accepted.
         ProductionPredictRequest(data=[{"feature1": 1.0}] * MAX_PREDICT_RECORDS)
+
+
+@pytest.mark.integration
+class TestApiKeyUsageTracking:
+    """verify_api_key records usage atomically and off the request path (#279).
+
+    Pre-#279 it did read-modify-write `total_requests += 1; save()` in the hot
+    path — a lost-update race, and a full-document save could revert a concurrent
+    revoke. Now it fires an atomic `$inc`/`$set` off the request path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_usage_recorded_atomically(self, setup_database):
+        from datetime import UTC, datetime
+
+        from app.api.routes.production import flush_usage_tracking, verify_api_key
+
+        # Naive UTC reference: motor/pymongo returns naive UTC datetimes on
+        # read-back (tz_aware=False), so we compare freshness against a naive
+        # baseline. (verify_api_key writes a tz-aware datetime.now(UTC), not the
+        # deprecated naive datetime.utcnow() — the source change, not asserted
+        # here because the driver strips tzinfo on the round-trip.)
+        before = datetime.now(UTC).replace(tzinfo=None)
+
+        raw = "sk_live_usage_tracking_key_000000"
+        await _make_api_key(raw).insert()
+
+        for _ in range(3):
+            await verify_api_key(api_key=raw)
+        await flush_usage_tracking()
+
+        stored = await APIKey.find_one({"key_hash": hash_api_key(raw)})
+        assert stored is not None
+        assert stored.total_requests == 3  # every request counted, no lost update
+        assert stored.last_used_at is not None
+        # last_used_at was actually written by this run (fresh), not left default.
+        recorded = stored.last_used_at
+        if recorded.tzinfo is not None:
+            recorded = recorded.astimezone(UTC).replace(tzinfo=None)
+        assert recorded >= before
+
+    @pytest.mark.asyncio
+    async def test_usage_write_does_not_clobber_concurrent_revoke(self, setup_database):
+        """A revoke that lands between verify and the usage write survives — the
+        partial-field update never reverts is_active (the pre-#279 save() bug)."""
+        from beanie.odm.operators.update.general import Set
+
+        from app.api.routes.production import flush_usage_tracking, verify_api_key
+
+        raw = "sk_live_revoke_race_key_000000000"
+        await _make_api_key(raw).insert()
+
+        # verify schedules the usage write (fire-and-forget, not yet flushed)...
+        await verify_api_key(api_key=raw)
+        # ...then the key is revoked atomically before the write lands.
+        await APIKey.find_one({"key_hash": hash_api_key(raw)}).update(
+            Set({APIKey.is_active: False})
+        )
+        await flush_usage_tracking()
+
+        stored = await APIKey.find_one({"key_hash": hash_api_key(raw)})
+        assert stored is not None
+        assert stored.is_active is False  # revoke NOT clobbered by the usage write
+        assert stored.total_requests == 1  # usage still counted
+
+    @pytest.mark.asyncio
+    async def test_usage_write_is_scheduled_off_the_request_path(self, setup_database):
+        """verify_api_key returns without awaiting the DB write — it schedules a
+        fire-and-forget task instead."""
+        from app.api.routes import production
+
+        raw = "sk_live_offpath_key_00000000000000"
+        await _make_api_key(raw).insert()
+
+        await production.flush_usage_tracking()  # start from a clean slate
+        await production.verify_api_key(api_key=raw)
+
+        # A task was scheduled rather than the write being awaited inline.
+        assert len(production._usage_tracking_tasks) >= 1
+        await production.flush_usage_tracking()
+        assert len(production._usage_tracking_tasks) == 0

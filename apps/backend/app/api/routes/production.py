@@ -2,12 +2,14 @@
 Production model serving API routes
 """
 
+import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 from beanie import PydanticObjectId
+from beanie.odm.operators.update.general import Inc, Set
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
@@ -163,12 +165,49 @@ def hash_api_key(api_key: str) -> str:
     return APIKey.hash_key(api_key)
 
 
+# Fire-and-forget usage-tracking tasks are kept referenced here so they aren't
+# garbage-collected mid-flight (asyncio holds only weak refs to tasks); the
+# done-callback discards each on completion. flush_usage_tracking() awaits any
+# in-flight writes for test/shutdown determinism.
+_usage_tracking_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _record_api_key_usage(api_key_doc: APIKey) -> None:
+    """Atomically bump usage counters for a verified key. Never raises.
+
+    Uses ``$inc`` on ``total_requests`` (no read-modify-write, so concurrent
+    requests can't lose an update) and ``$set`` on ``last_used_at``. Because it
+    is a *partial-field* update rather than a full-document ``save()``, a
+    concurrent revoke (``is_active=False``) is never clobbered (#279).
+    """
+    try:
+        await api_key_doc.update(
+            Inc({APIKey.total_requests: 1}),
+            Set({APIKey.last_used_at: datetime.now(UTC)}),
+        )
+    except Exception:  # best-effort metering — never break auth on a write failure
+        logger.warning("Failed to record API key usage", exc_info=True)
+
+
+def _schedule_usage_tracking(api_key_doc: APIKey) -> None:
+    """Schedule the usage write off the request path (fire-and-forget)."""
+    task = asyncio.create_task(_record_api_key_usage(api_key_doc))
+    _usage_tracking_tasks.add(task)
+    task.add_done_callback(_usage_tracking_tasks.discard)
+
+
+async def flush_usage_tracking() -> None:
+    """Await any in-flight usage-tracking writes (deterministic in tests/shutdown)."""
+    while _usage_tracking_tasks:
+        await asyncio.gather(*list(_usage_tracking_tasks), return_exceptions=True)
+
+
 async def verify_api_key(api_key: str = Header(..., alias="X-API-Key")) -> APIKey:
     """Verify and return the API key document"""
     if not api_key or not api_key.startswith("sk_live_"):
         raise HTTPException(status_code=401, detail="Invalid API key format")
 
-    # Hash the key and look it up
+    # Hash the key and look it up (indexed on key_hash — #279)
     key_hash = hash_api_key(api_key)
     api_key_doc = await APIKey.find_one({"key_hash": key_hash})
 
@@ -178,10 +217,10 @@ async def verify_api_key(api_key: str = Header(..., alias="X-API-Key")) -> APIKe
     if not api_key_doc.is_valid():
         raise HTTPException(status_code=401, detail="API key expired or inactive")
 
-    # Update last used timestamp
-    api_key_doc.last_used_at = datetime.utcnow()
-    api_key_doc.total_requests += 1
-    await api_key_doc.save()
+    # Record usage off the request path so the hot auth path never blocks on a
+    # DB write; the update itself is atomic ($inc + $set) — see
+    # _record_api_key_usage (#279).
+    _schedule_usage_tracking(api_key_doc)
 
     return api_key_doc
 

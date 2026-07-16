@@ -508,9 +508,10 @@ class ModelStorageService:
 
         # Update last used timestamp. ponytail: only stamped on a cache miss —
         # the production serving path also updates it per-prediction via the
-        # monitoring service, so the hot path stays free of a DB write.
-        ml_model.last_used_at = datetime.now(UTC)
-        await ml_model.save()
+        # monitoring service, so the hot path stays free of a DB write. Atomic
+        # single-field $set (not a full-document save()) so a concurrent update
+        # — e.g. a deploy flag flip — isn't clobbered (#279).
+        await ml_model.set({MLModel.last_used_at: datetime.now(UTC)})
 
         result = (model, feature_engineer)
         _model_cache.put(cache_key, result)

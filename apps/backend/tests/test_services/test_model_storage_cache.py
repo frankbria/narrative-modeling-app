@@ -110,7 +110,9 @@ def _mock_ml_model():
     ml.feature_transformer_path = None
     ml.model_signature = None  # pre-#266: loads with a warning, no verification
     ml.feature_transformer_signature = None
-    ml.save = AsyncMock()
+    # load_model stamps last_used_at via an atomic single-field .set() (#279),
+    # not a full-document .save().
+    ml.set = AsyncMock()
     return ml
 
 
