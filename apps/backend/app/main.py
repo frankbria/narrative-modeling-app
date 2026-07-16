@@ -116,6 +116,11 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup
+    # Drain any in-flight fire-and-forget API-key usage writes before the Mongo
+    # client closes, so a graceful shutdown doesn't drop pending $inc/$set (#279).
+    from app.api.routes.production import flush_usage_tracking
+
+    await flush_usage_tracking()
     client.close()
     await cleanup_cache()
     store = getattr(app.state, "rate_limit_store", None)
