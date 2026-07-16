@@ -122,8 +122,17 @@ def download_file_from_s3(s3_url: str) -> str:
         temp_file_path = temp_file.name
         temp_file.close()  # Close the file handle immediately
 
-        # Download the file
-        s3_client.download_file(bucket_name, object_key, temp_file_path)
+        # Download the file. On failure, remove the temp file we just created so a
+        # failed download (or a circuit-breaker retry, which re-runs this whole
+        # body) doesn't leak a partial copy in /tmp (#280).
+        try:
+            s3_client.download_file(bucket_name, object_key, temp_file_path)
+        except Exception:
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                pass
+            raise
 
         logger.info(f"File downloaded successfully to {temp_file_path}")
         return temp_file_path
@@ -131,6 +140,55 @@ def download_file_from_s3(s3_url: str) -> str:
     except Exception as e:
         logger.error(f"Error downloading file from S3: {str(e)}")
         raise
+
+
+def _read_dataframe(local_path: str, file_type: str | None, nrows: int | None):
+    """Parse a local file into a DataFrame by file_type, inferring when None.
+
+    download_file_from_s3 temp files have no suffix, so extension sniffing is
+    useless — callers pass the dataset's file_type; None falls back to csv-then-
+    parquet inference (the historical get_dataframe_from_s3 behavior).
+    """
+    import pandas as pd
+
+    ft = (file_type or "").lower()
+    if ft == "csv":
+        return pd.read_csv(local_path, nrows=nrows)
+    if ft in ("xlsx", "xls"):
+        return pd.read_excel(local_path, nrows=nrows)
+    if ft == "json":
+        return pd.read_json(local_path)
+    if ft == "parquet":
+        df = pd.read_parquet(local_path)
+        return df.head(nrows) if nrows else df
+    if ft:
+        raise ValueError(f"Unsupported file type: {file_type}")
+    # Infer: csv first, then parquet.
+    try:
+        return pd.read_csv(local_path, nrows=nrows)
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError):
+        df = pd.read_parquet(local_path)
+        return df.head(nrows) if nrows else df
+
+
+def load_dataframe_from_s3(
+    s3_url: str, file_type: str | None = None, nrows: int | None = None
+):
+    """Download an S3 object, parse it into a DataFrame, and ALWAYS remove the
+    temp file (try/finally). Centralizes the download+parse+cleanup that every
+    caller previously duplicated — and most leaked (issue #280).
+
+    Blocking (boto3 + pandas); call sites keep wrapping it in asyncio.to_thread.
+    Reuses download_file_from_s3, so all its security validation still applies.
+    """
+    local_path = download_file_from_s3(s3_url)
+    try:
+        return _read_dataframe(local_path, file_type, nrows)
+    finally:
+        try:
+            os.unlink(local_path)
+        except OSError:
+            pass
 
 
 class S3Service:

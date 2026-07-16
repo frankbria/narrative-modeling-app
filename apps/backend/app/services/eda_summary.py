@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from app.models.user_data import UserData
-from app.services.s3_service import download_file_from_s3
+from app.services.s3_service import load_dataframe_from_s3
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +110,10 @@ def generate_grouped_insights(df: pd.DataFrame) -> dict[str, Any]:
 
 
 async def generate_eda_summary(user_data: UserData) -> dict[str, Any]:
-    # download_file_from_s3 is blocking (boto3 + up-to-60s tenacity backoff) —
-    # run it off the event loop so one slow download can't stall the loop (#265).
-    local_file_path = await asyncio.to_thread(download_file_from_s3, user_data.s3_url)
-    df = pd.read_csv(local_file_path)
+    # Centralized download+parse+cleanup — blocking (boto3 + up-to-60s tenacity
+    # backoff + pandas), run off the event loop; the helper always unlinks the
+    # temp file so /tmp doesn't accumulate dataset copies (#265/#280).
+    df = await asyncio.to_thread(load_dataframe_from_s3, user_data.s3_url, "csv")
 
     eda_summary = {
         "overview": {

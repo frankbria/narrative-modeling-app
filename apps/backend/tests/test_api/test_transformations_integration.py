@@ -94,7 +94,7 @@ def mock_s3_operations(sample_dataframe):
             f"https://test-bucket.s3.amazonaws.com/transformed/test_user_123/{datetime.now().timestamp()}.parquet",
         )
 
-    with patch('app.services.transformation_engine.data_utils.download_file_from_s3', side_effect=mock_download), \
+    with patch('app.services.s3_service.download_file_from_s3', side_effect=mock_download), \
          patch('app.utils.s3.upload_file_to_s3', side_effect=mock_upload_fixed) as mock_upload, \
          patch('app.services.transformation_engine.data_utils.upload_file_to_s3', side_effect=mock_upload_fixed):
 
@@ -746,7 +746,7 @@ class TestErrorHandling:
         with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset):
             # Mock the S3 download seam used by the transformation service to fail
             with patch(
-                'app.services.transformation_engine.data_utils.download_file_from_s3',
+                'app.services.s3_service.download_file_from_s3',
                 side_effect=Exception("S3 connection failed"),
             ):
                 request = {

@@ -29,7 +29,7 @@ from app.schemas.feature_engineering import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.feature_engineering_service import feature_engineering_service
-from app.services.s3_service import download_file_from_s3
+from app.services.s3_service import load_dataframe_from_s3
 
 logger = logging.getLogger(__name__)
 
@@ -56,34 +56,20 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
             detail="Access denied to this dataset"
         )
 
-    # Download and parse file (blocking boto3 → off the event loop, #265)
+    # Explicit whitelist validation for security (before any download)
+    file_type = dataset.file_type.lower()
+    if file_type not in ALLOWED_FILE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {file_type}. Allowed types: {', '.join(sorted(ALLOWED_FILE_TYPES))}"
+        )
+
+    # Centralized download+parse+cleanup off the event loop (#265/#280):
+    # the helper always unlinks the temp file so /tmp doesn't accumulate copies.
     try:
-        file_path = await asyncio.to_thread(download_file_from_s3, dataset.s3_url)
-        file_type = dataset.file_type.lower()
-
-        # Explicit whitelist validation for security
-        if file_type not in ALLOWED_FILE_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type: {file_type}. Allowed types: {', '.join(sorted(ALLOWED_FILE_TYPES))}"
-            )
-
-        if file_type == 'csv':
-            df = pd.read_csv(file_path)
-        elif file_type in ['xlsx', 'xls']:
-            df = pd.read_excel(file_path)
-        elif file_type == 'json':
-            df = pd.read_json(file_path)
-        elif file_type == 'parquet':
-            df = pd.read_parquet(file_path)
-        else:
-            # This should never be reached due to whitelist check above
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type: {file_type}"
-            )
-
-        return df
+        return await asyncio.to_thread(
+            load_dataframe_from_s3, dataset.s3_url, file_type
+        )
     except HTTPException:
         raise
     except Exception as e:
