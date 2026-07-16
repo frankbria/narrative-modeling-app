@@ -4,7 +4,31 @@ Tests for API Key model
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
+from pymongo import IndexModel
+
 from app.models.api_key import APIKey
+
+
+class TestAPIKeyIndexes:
+    """The key_hash lookup is on the hottest auth path (#279)."""
+
+    def test_key_hash_has_unique_index(self):
+        """key_hash must be a declared UNIQUE index so verify_api_key /
+        RateLimitMiddleware find_one({key_hash}) is an index seek, not a scan."""
+        index_models = [
+            idx
+            for idx in APIKey.Settings.indexes
+            if isinstance(idx, IndexModel)
+        ]
+        key_hash_indexes = [
+            idx
+            for idx in index_models
+            if "key_hash" in dict(idx.document["key"])
+        ]
+        assert key_hash_indexes, "key_hash must have a declared index (#279)"
+        assert any(
+            idx.document.get("unique") is True for idx in key_hash_indexes
+        ), "key_hash index must be unique (#279)"
 
 
 class TestAPIKeyModel:

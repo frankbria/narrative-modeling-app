@@ -10,6 +10,7 @@ from typing import Annotated
 
 from beanie import Document, Indexed
 from pydantic import Field
+from pymongo import ASCENDING, IndexModel
 
 
 class APIKey(Document):
@@ -37,7 +38,20 @@ class APIKey(Document):
 
     class Settings:
         name = "api_keys"
-        indexes = ["key_id", "user_id", "is_active"]
+        indexes = [
+            "key_id",
+            "user_id",
+            "is_active",
+            # verify_api_key (production.py) and RateLimitMiddleware
+            # (middleware/rate_limit.py) both find_one({key_hash}) on every
+            # production request — the hottest auth path. Without this index each
+            # was a full collection scan (#279). Unique also enforces no duplicate
+            # keys, which is already guaranteed by construction (key_hash is
+            # SHA-256 of a random key → collision-free); on a pre-existing
+            # deployment with duplicate hashes the index build would fail at
+            # startup (beta data has none — mirrors #276).
+            IndexModel([("key_hash", ASCENDING)], unique=True, name="uniq_key_hash"),
+        ]
 
     @staticmethod
     def generate_key() -> str:
