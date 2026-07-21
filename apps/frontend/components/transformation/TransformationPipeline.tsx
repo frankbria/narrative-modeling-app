@@ -525,27 +525,39 @@ export default function TransformationPipeline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structuralSignature]);
 
+  // Restore a snapshot's structure while keeping the live canvas positions of
+  // any node that still exists. Position-only drags are intentionally not
+  // undoable, so undo/redo must not yank an unrelated node back to where it
+  // sat when the snapshot was recorded (codex review).
+  const restoreSnapshot = useCallback(
+    (target: { nodes: TransformationFlowNode[]; edges: Edge[] }) => {
+      isRestoringHistoryRef.current = true;
+      const currentPositions = new Map(nodes.map((n) => [n.id, n.position]));
+      setNodes(
+        target.nodes.map((n) => {
+          const pos = currentPositions.get(n.id);
+          return pos ? { ...n, position: pos } : n;
+        })
+      );
+      setEdges(target.edges);
+      setHasUnsavedChanges(true);
+    },
+    [nodes, setNodes, setEdges]
+  );
+
   const handleUndo = useCallback(() => {
     if (historyIndexRef.current <= 0) return;
-    const target = history[historyIndexRef.current - 1];
-    isRestoringHistoryRef.current = true;
-    setNodes(target.nodes);
-    setEdges(target.edges);
+    restoreSnapshot(history[historyIndexRef.current - 1]);
     historyIndexRef.current -= 1;
     setHistoryIndex(historyIndexRef.current);
-    setHasUnsavedChanges(true);
-  }, [history, setNodes, setEdges]);
+  }, [history, restoreSnapshot]);
 
   const handleRedo = useCallback(() => {
     if (historyIndexRef.current >= history.length - 1) return;
-    const target = history[historyIndexRef.current + 1];
-    isRestoringHistoryRef.current = true;
-    setNodes(target.nodes);
-    setEdges(target.edges);
+    restoreSnapshot(history[historyIndexRef.current + 1]);
     historyIndexRef.current += 1;
     setHistoryIndex(historyIndexRef.current);
-    setHasUnsavedChanges(true);
-  }, [history, setNodes, setEdges]);
+  }, [history, restoreSnapshot]);
 
   return (
     <div className="flex h-full">
