@@ -77,6 +77,9 @@ export default function TransformationPipeline({
   // Guards the recording effect from re-capturing a snapshot that undo/redo
   // just restored (which would otherwise create a feedback loop).
   const isRestoringHistoryRef = useRef(false);
+  // Last signature actually recorded; dedupes no-op re-runs (e.g. StrictMode's
+  // dev double-mount) so an identical snapshot is never appended twice.
+  const lastRecordedSignatureRef = useRef<string | null>(null);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -506,14 +509,17 @@ export default function TransformationPipeline({
   useEffect(() => {
     if (isRestoringHistoryRef.current) {
       isRestoringHistoryRef.current = false;
+      lastRecordedSignatureRef.current = structuralSignature;
       return;
     }
+    if (structuralSignature === lastRecordedSignatureRef.current) return;
     setHistory((prev) => {
       const truncated = prev.slice(0, historyIndexRef.current + 1);
       return [...truncated, { nodes, edges }];
     });
     historyIndexRef.current += 1;
     setHistoryIndex(historyIndexRef.current);
+    lastRecordedSignatureRef.current = structuralSignature;
     // Intentionally keyed on the structural signature only; nodes/edges are
     // read fresh from the closure of the render that changed the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
