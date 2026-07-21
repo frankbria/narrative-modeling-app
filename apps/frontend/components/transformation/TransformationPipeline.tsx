@@ -66,8 +66,17 @@ export default function TransformationPipeline({
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
+  // Undo/redo history over structural snapshots of the pipeline (#281).
+  const [history, setHistory] = useState<
+    Array<{ nodes: TransformationFlowNode[]; edges: Edge[] }>
+  >([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  // Ref mirror of the index so the recording effect reads a fresh value
+  // without depending on (and re-running for) historyIndex.
+  const historyIndexRef = useRef(-1);
+  // Guards the recording effect from re-capturing a snapshot that undo/redo
+  // just restored (which would otherwise create a feedback loop).
+  const isRestoringHistoryRef = useRef(false);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -475,6 +484,63 @@ export default function TransformationPipeline({
     }
   };
 
+  // Structural signature of the pipeline — node type/label/params + edge
+  // endpoints, but NOT node positions, so dragging a node around the canvas
+  // never records an undo entry (#281).
+  const structuralSignature = useMemo(
+    () =>
+      JSON.stringify({
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.data.type,
+          label: n.data.label,
+          parameters: n.data.parameters,
+        })),
+        edges: edges.map((e) => ({ source: e.source, target: e.target })),
+      }),
+    [nodes, edges]
+  );
+
+  // Record a snapshot whenever the structure changes, truncating any redo tail.
+  // Skips the capture that undo/redo itself triggers via isRestoringHistoryRef.
+  useEffect(() => {
+    if (isRestoringHistoryRef.current) {
+      isRestoringHistoryRef.current = false;
+      return;
+    }
+    setHistory((prev) => {
+      const truncated = prev.slice(0, historyIndexRef.current + 1);
+      return [...truncated, { nodes, edges }];
+    });
+    historyIndexRef.current += 1;
+    setHistoryIndex(historyIndexRef.current);
+    // Intentionally keyed on the structural signature only; nodes/edges are
+    // read fresh from the closure of the render that changed the signature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structuralSignature]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return;
+    const target = history[historyIndexRef.current - 1];
+    isRestoringHistoryRef.current = true;
+    setNodes(target.nodes);
+    setEdges(target.edges);
+    historyIndexRef.current -= 1;
+    setHistoryIndex(historyIndexRef.current);
+    setHasUnsavedChanges(true);
+  }, [history, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current >= history.length - 1) return;
+    const target = history[historyIndexRef.current + 1];
+    isRestoringHistoryRef.current = true;
+    setNodes(target.nodes);
+    setEdges(target.edges);
+    historyIndexRef.current += 1;
+    setHistoryIndex(historyIndexRef.current);
+    setHasUnsavedChanges(true);
+  }, [history, setNodes, setEdges]);
+
   return (
     <div className="flex h-full">
       {/* Sidebar */}
@@ -543,6 +609,7 @@ export default function TransformationPipeline({
               <Save className="w-5 h-5" />
             </button>
             <button
+              onClick={handleUndo}
               disabled={historyIndex <= 0}
               className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
               title="Undo"
@@ -550,6 +617,7 @@ export default function TransformationPipeline({
               <Undo className="w-5 h-5" />
             </button>
             <button
+              onClick={handleRedo}
               disabled={historyIndex >= history.length - 1}
               className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
               title="Redo"

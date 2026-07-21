@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,11 +11,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   CheckCircle,
-  Play,
   SkipForward,
   Clock,
   BookOpen,
-  Video,
   ArrowRight,
   HelpCircle,
   Target,
@@ -46,11 +46,9 @@ interface OnboardingStepProps {
 }
 
 export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: OnboardingStepProps) {
-  const [showDetails, setShowDetails] = useState(false);
+  const router = useRouter();
+  const [showSamples, setShowSamples] = useState(false);
   const [completionData] = useState<Record<string, unknown>>({});
-
-  // Prevent unused variable warning - showDetails will be used for sample data modal
-  void showDetails;
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
@@ -87,19 +85,8 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       case 'welcome':
         return (
           <div className="space-y-4">
-            {step.video_url && (
-              <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <Video className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-600">Welcome Video</p>
-                  <Button variant="outline" className="mt-2">
-                    <Play className="mr-2 h-4 w-4" />
-                    Watch Introduction
-                  </Button>
-                </div>
-              </div>
-            )}
-            
+            {/* Welcome-video placeholder removed (#281): no player or video
+                content existed, so the "Watch Introduction" button was inert. */}
             <div className="prose max-w-none">
               <h3>Welcome to the Platform! 🚀</h3>
               <p>
@@ -157,16 +144,27 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button variant="outline" className="w-full" onClick={() => {
-                    // Show sample data selector
-                    setShowDetails(true);
-                  }}>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    aria-expanded={showSamples}
+                    onClick={() => setShowSamples((v) => !v)}
+                  >
                     <Target className="mr-2 h-4 w-4" />
                     Browse Samples
                   </Button>
                 </CardContent>
               </Card>
             </div>
+
+            {showSamples && (
+              <SampleDatasetSelector
+                onDatasetSelected={(datasetId) => {
+                  // Load complete — advance to the newly created dataset.
+                  router.push(`/explore/${datasetId}`);
+                }}
+              />
+            )}
 
             {step.code_examples && (
               <div>
@@ -447,16 +445,14 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* "Watch Tutorial" button removed (#281): no tutorial video
+                existed. Documentation link points to the real /quickstart. */}
+            <div className="grid grid-cols-1 gap-4">
               <Button asChild variant="outline" className="w-full">
                 <Link href="/quickstart">
                   <BookOpen className="mr-2 h-4 w-4" />
                   View Documentation
                 </Link>
-              </Button>
-              <Button variant="outline" className="w-full">
-                <Video className="mr-2 h-4 w-4" />
-                Watch Tutorial
               </Button>
             </div>
           </TabsContent>

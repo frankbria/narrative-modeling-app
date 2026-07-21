@@ -71,11 +71,12 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       });
       
       const result = await response.json();
-      
+
       if (result.success) {
-        onDatasetSelected(datasetId);
-        // You might want to show a success message or redirect
-        console.log('Dataset loaded successfully:', result);
+        // Hand back the id of the UserData record the backend just created
+        // (result.dataset_id), NOT the sample slug — the caller navigates to
+        // /explore/{id}, which only resolves against the real dataset id.
+        onDatasetSelected(result.dataset_id ?? datasetId);
       }
     } catch (error) {
       console.error('Failed to load dataset:', error);
