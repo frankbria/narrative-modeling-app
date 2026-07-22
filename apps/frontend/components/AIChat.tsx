@@ -200,7 +200,10 @@ How can I help you analyze this data? You can ask me questions about:
   }
 
   return (
-    <div className="fixed top-0 right-0 h-screen w-80 bg-white border-l border-gray-200 flex flex-col z-10">
+    // Hidden below lg: the content's right gutter is only reserved at lg+
+    // (layout.tsx), so a fixed 320px panel would overlay content on mobile
+    // (issue #282). Mobile chat is a deferred follow-up.
+    <div className="fixed top-0 right-0 h-screen w-80 bg-white border-l border-gray-200 hidden lg:flex flex-col z-10">
       <div className="p-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-800">AI Assistant</h2>
       </div>

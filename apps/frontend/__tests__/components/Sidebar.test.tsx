@@ -36,9 +36,11 @@ describe('Sidebar navigation', () => {
     const toggle = screen.getByRole('button', { name: /open navigation menu/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', 'app-sidebar');
-    // Closed: drawer is translated off-canvas.
+    // Closed: drawer is translated off-canvas AND `invisible` so its links
+    // leave the tab order below lg (lg:visible keeps it on desktop).
     const drawer = document.getElementById('app-sidebar')!;
     expect(drawer.classList.contains('-translate-x-full')).toBe(true);
+    expect(drawer.classList.contains('invisible')).toBe(true);
 
     fireEvent.click(toggle);
 
@@ -48,6 +50,8 @@ describe('Sidebar navigation', () => {
     // `translate-x-0`, not the `lg:translate-x-0` responsive variant).
     expect(drawer.classList.contains('translate-x-0')).toBe(true);
     expect(drawer.classList.contains('-translate-x-full')).toBe(false);
+    expect(drawer.classList.contains('visible')).toBe(true);
+    expect(drawer.classList.contains('invisible')).toBe(false);
   });
 
   it('closes the drawer when a nav link is followed', () => {

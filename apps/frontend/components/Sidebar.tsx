@@ -62,8 +62,11 @@ export default function Sidebar() {
       <aside
         id="app-sidebar"
         aria-label="Sidebar"
-        className={`fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col justify-between p-4 z-30 transform transition-transform lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
+        // `invisible` (visibility:hidden) — not just an off-canvas transform —
+        // so the closed drawer's links leave the tab order and AT below lg;
+        // `lg:visible`/`lg:translate-x-0` keep it always-open on desktop.
+        className={`fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col justify-between p-4 z-30 transform transition-transform lg:visible lg:translate-x-0 ${
+          open ? 'visible translate-x-0' : 'invisible -translate-x-full'
         }`}
       >
         <div>
