@@ -13,7 +13,7 @@ import {
   ReferenceLine
 } from 'recharts'
 import type { PRCurveData } from '@/lib/types/evaluation'
-import { CURVE_COLORS, CurvePointTooltip } from '@/components/ROCCurveChart'
+import { CURVE_COLORS, CURVE_DASH, CurvePointTooltip } from '@/components/ROCCurveChart'
 
 export interface PRCurveChartProps {
   data: PRCurveData
@@ -39,7 +39,13 @@ export function PRCurveChart({ data, height = 400 }: PRCurveChartProps) {
   const singleClassBaseline =
     classLabels.length === 1 ? data.baseline_per_class[classLabels[0]] : undefined
 
+  const ariaLabel =
+    `Precision-recall curves for ${classLabels.length} class${classLabels.length === 1 ? '' : 'es'}: ` +
+    classLabels.join(', ') +
+    '. Each class is drawn with a distinct colour and line-dash pattern.'
+
   return (
+    <div role="img" aria-label={ariaLabel}>
     <ResponsiveContainer width="100%" height={height}>
       <LineChart margin={{ top: 10, right: 30, left: 10, bottom: 25 }}>
         <CartesianGrid strokeDasharray="3 3" />
@@ -73,10 +79,12 @@ export function PRCurveChart({ data, height = 400 }: PRCurveChartProps) {
             type="monotone"
             dot={false}
             stroke={CURVE_COLORS[index % CURVE_COLORS.length]}
+            strokeDasharray={CURVE_DASH[index % CURVE_DASH.length]}
             strokeWidth={2}
           />
         ))}
       </LineChart>
     </ResponsiveContainer>
+    </div>
   )
 }

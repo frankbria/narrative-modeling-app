@@ -64,11 +64,32 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
     );
   }
 
+  // Diverging blue↔white↔red scale (issue #282): red/green is the worst pairing
+  // for red-green colour-vision deficiency, whereas blue-vs-red stays
+  // distinguishable across the common CVD types. White == no correlation.
   const getColor = (value: number) => {
-    const absValue = Math.abs(value);
-    const hue = value > 0 ? 120 : 0; // Green for positive, Red for negative
-    return `hsl(${hue}, 70%, ${50 + absValue * 25}%)`;
+    const absValue = Math.min(Math.abs(value), 1);
+    const hue = value >= 0 ? 0 : 220; // red for positive, blue for negative
+    const lightness = 100 - absValue * 55; // 100% (white, at 0) → 45% (strong)
+    return `hsl(${hue}, 65%, ${lightness}%)`;
   };
+
+  // A screen-reader summary naming the strongest off-diagonal correlation.
+  const cols = correlationMatrix.columns;
+  let strongest = { a: '', b: '', v: 0 };
+  correlationMatrix.matrix.forEach((row, i) =>
+    row.forEach((v, j) => {
+      if (i < j && Math.abs(v) > Math.abs(strongest.v)) {
+        strongest = { a: cols[i], b: cols[j], v };
+      }
+    })
+  );
+  const ariaSummary =
+    `Correlation heatmap of ${cols.length} numeric columns. Cells range from ` +
+    `strong negative (blue) through none (white) to strong positive (red).` +
+    (strongest.a
+      ? ` Strongest correlation: ${strongest.a} and ${strongest.b} at ${strongest.v.toFixed(2)}.`
+      : '');
 
   // Calculate dimensions based on container size and number of columns
   const numColumns = correlationMatrix.columns.length;
@@ -103,7 +124,14 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
 
   return (
     <div ref={containerRef} className="w-full h-[400px]">
-      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+      <svg
+        width="100%"
+        height="calc(100% - 2rem)"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={ariaSummary}
+      >
+        <title>{ariaSummary}</title>
         <g transform={`translate(${labelWidth + padding}, ${labelHeight + padding})`}>
           {/* Column headers */}
           {correlationMatrix.columns.map((col, i) => (
@@ -155,9 +183,10 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
                   textAnchor="middle"
                   dominantBaseline="middle"
                   className="text-xs"
-                  style={{ 
+                  style={{
                     fontSize: Math.max(8, cellSize * 0.1) + 'px',
-                    fill: Math.abs(value) > 0.5 ? 'white' : 'black',
+                    // White text only on the dark end of the ramp (lightness < ~58%).
+                    fill: Math.abs(value) > 0.78 ? 'white' : 'black',
                     fontWeight: Math.abs(value) > 0.7 ? 'bold' : 'normal'
                   }}
                 >
@@ -168,6 +197,19 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
           )}
         </g>
       </svg>
+
+      {/* Colour legend so the diverging scale is decodable without reading cells */}
+      <div className="mt-1 flex items-center gap-2 text-xs text-gray-600" aria-hidden="true">
+        <span>-1</span>
+        <div
+          className="h-2 flex-1 rounded"
+          style={{
+            background: `linear-gradient(to right, ${getColor(-1)}, ${getColor(0)}, ${getColor(1)})`,
+          }}
+        />
+        <span>+1</span>
+        <span className="ml-1 whitespace-nowrap">(blue = negative, red = positive)</span>
+      </div>
     </div>
   );
 } 

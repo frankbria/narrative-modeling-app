@@ -235,3 +235,36 @@ describe('PredictPage — enrichment panels (#83)', () => {
     expect(panel).toHaveTextContent('-0.130'); // negative contribution
   });
 });
+
+describe('PredictPage — touched-based validation (issue #282)', () => {
+  it('shows no field errors on a pristine form', async () => {
+    render(<PredictPage />);
+    await screen.findByLabelText('age');
+    expect(screen.queryByTestId('field-error-age')).not.toBeInTheDocument();
+    const age = screen.getByLabelText('age');
+    expect(age).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('surfaces the error only after the field is blurred, wired via aria-describedby', async () => {
+    render(<PredictPage />);
+    const age = await screen.findByLabelText('age');
+
+    fireEvent.blur(age);
+
+    const err = await screen.findByTestId('field-error-age');
+    expect(err).toHaveTextContent('Required');
+    expect(err).toHaveAttribute('role', 'alert');
+    expect(err).toHaveAttribute('id', 'field-error-age');
+    expect(age).toHaveAttribute('aria-invalid', 'true');
+    expect(age).toHaveAttribute('aria-describedby', 'field-error-age');
+  });
+
+  it('keeps the submit button disabled until every required field is valid', async () => {
+    render(<PredictPage />);
+    const age = await screen.findByLabelText('age');
+    expect(screen.getByTestId('make-prediction')).toBeDisabled();
+
+    fireEvent.change(age, { target: { value: '42' } });
+    expect(screen.getByTestId('make-prediction')).toBeEnabled();
+  });
+});

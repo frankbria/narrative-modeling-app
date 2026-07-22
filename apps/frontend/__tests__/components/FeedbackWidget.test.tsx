@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FeedbackWidget } from '@/components/FeedbackWidget';
 
@@ -90,5 +90,54 @@ describe('FeedbackWidget', () => {
       expect(screen.getByTestId('feedback-error')).toBeInTheDocument()
     );
     expect(screen.queryByTestId('feedback-success')).not.toBeInTheDocument();
+  });
+
+  // ---- Accessibility (issue #282) ----
+
+  it('marks the panel as a modal dialog and moves focus into it', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackWidget />);
+
+    await user.click(screen.getByTestId('feedback-widget-button'));
+    const panel = screen.getByTestId('feedback-widget-panel');
+    expect(panel).toHaveAttribute('aria-modal', 'true');
+    // First focusable element (the close button) receives focus on open.
+    await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true));
+  });
+
+  it('closes on Escape and returns to the collapsed button', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackWidget />);
+
+    await user.click(screen.getByTestId('feedback-widget-button'));
+    expect(screen.getByTestId('feedback-widget-panel')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('feedback-widget-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('feedback-widget-button')).toBeInTheDocument();
+  });
+
+  it('traps Tab focus within the dialog', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackWidget />);
+
+    await user.click(screen.getByTestId('feedback-widget-button'));
+    const panel = screen.getByTestId('feedback-widget-panel');
+    const focusables = panel.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input, select, textarea, [href]'
+    );
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    // Shift+Tab from the first focusable wraps to the last, staying inside.
+    first.focus();
+    fireEvent.keyDown(panel, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    // Tab from the last wraps back to the first.
+    last.focus();
+    fireEvent.keyDown(panel, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
   });
 });

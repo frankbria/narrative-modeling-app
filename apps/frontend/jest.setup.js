@@ -1,4 +1,8 @@
 import '@testing-library/jest-dom'
+import { toHaveNoViolations } from 'jest-axe'
+
+// jest-axe custom matcher for accessibility smoke tests (issue #282).
+expect.extend(toHaveNoViolations)
 
 // DOM polyfills only apply under the jsdom environment. Node-environment tests
 // (e.g. API route handlers via `@jest-environment node`) have no `Element`/`window`.

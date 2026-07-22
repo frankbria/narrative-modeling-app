@@ -30,6 +30,20 @@ export const CURVE_COLORS = [
   '#6366F1' // indigo
 ]
 
+// Per-series dash patterns (issue #282): a colour-independent channel so ROC/PR
+// classes stay distinguishable for colour-vision-deficient viewers. Index 0 is
+// solid; recharts reads '0' as no dashing.
+export const CURVE_DASH = [
+  '0', // solid
+  '6 3',
+  '2 3',
+  '8 3 2 3',
+  '10 4',
+  '4 4',
+  '1 3',
+  '12 3 2 3 2 3'
+]
+
 interface CurveTooltipProps {
   active?: boolean
   payload?: Array<{ name?: string; color?: string; payload: CurvePoint }>
@@ -81,7 +95,13 @@ export function ROCCurveChart({ data, height = 400 }: ROCCurveChartProps) {
     return auc !== undefined ? `${label} (AUC ${auc.toFixed(2)})` : label
   }
 
+  const ariaLabel =
+    `ROC curves for ${classLabels.length} class${classLabels.length === 1 ? '' : 'es'}: ` +
+    classLabels.map((l) => seriesName(l)).join(', ') +
+    '. Each class is drawn with a distinct colour and line-dash pattern.'
+
   return (
+    <div role="img" aria-label={ariaLabel}>
     <ResponsiveContainer width="100%" height={height}>
       <LineChart margin={{ top: 10, right: 30, left: 10, bottom: 25 }}>
         <CartesianGrid strokeDasharray="3 3" />
@@ -120,10 +140,12 @@ export function ROCCurveChart({ data, height = 400 }: ROCCurveChartProps) {
             type="monotone"
             dot={false}
             stroke={CURVE_COLORS[index % CURVE_COLORS.length]}
+            strokeDasharray={CURVE_DASH[index % CURVE_DASH.length]}
             strokeWidth={2}
           />
         ))}
       </LineChart>
     </ResponsiveContainer>
+    </div>
   )
 }

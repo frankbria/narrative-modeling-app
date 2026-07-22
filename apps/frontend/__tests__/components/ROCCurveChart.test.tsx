@@ -99,4 +99,25 @@ describe('ROCCurveChart', () => {
 
     expect(screen.getByText('yes')).toBeInTheDocument()
   })
+
+  it('exposes a role=img wrapper naming the classes and the dash channel (issue #282)', () => {
+    render(
+      <ROCCurveChart
+        data={{
+          curves: {
+            yes: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+            no: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+          },
+          auc_per_class: { yes: 0.9, no: 0.8 },
+          macro_auc: null,
+        }}
+      />
+    )
+
+    const img = screen.getByRole('img')
+    const label = img.getAttribute('aria-label') || ''
+    expect(label).toContain('yes')
+    expect(label).toContain('no')
+    expect(label).toMatch(/dash pattern/i)
+  })
 })

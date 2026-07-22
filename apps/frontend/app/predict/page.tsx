@@ -31,6 +31,11 @@ export default function PredictPage() {
   const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
   const [features, setFeatures] = useState<ModelFeatureDescriptor[]>([]);
   const [predictionInput, setPredictionInput] = useState<PredictionInput>({});
+  // Track which fields the user has interacted with so validation errors only
+  // surface once "touched" — no red "Required" on a pristine form (issue #282).
+  // (The submit button stays disabled until the form is valid, so blur is the
+  // trigger that reveals what still needs filling.)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -282,7 +287,13 @@ export default function PredictPage() {
 
             <div className="grid grid-cols-2 gap-4">
               {features.map((feature) => {
+                // Real validity vs. whether to display it: only show once the
+                // field is touched or a submit was attempted (no pristine error).
                 const err = fieldError(feature);
+                const showErr = touched[feature.name] ? err : null;
+                const errorId = `field-error-${feature.name}`;
+                const markTouched = () =>
+                  setTouched((prev) => ({ ...prev, [feature.name]: true }));
                 return (
                   <div key={feature.name}>
                     <label className="block text-sm font-medium mb-1" htmlFor={`field-${feature.name}`}>
@@ -300,7 +311,12 @@ export default function PredictPage() {
                             [feature.name]: e.target.value,
                           }))
                         }
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        onBlur={markTouched}
+                        aria-invalid={showErr ? true : undefined}
+                        aria-describedby={showErr ? errorId : undefined}
+                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                          showErr ? 'border-red-400' : 'border-gray-300'
+                        }`}
                       >
                         {feature.options.map((opt) => (
                           <option key={opt} value={opt}>
@@ -321,14 +337,22 @@ export default function PredictPage() {
                             [feature.name]: e.target.value,
                           }))
                         }
+                        onBlur={markTouched}
+                        aria-invalid={showErr ? true : undefined}
+                        aria-describedby={showErr ? errorId : undefined}
                         className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          err ? 'border-red-400' : 'border-gray-300'
+                          showErr ? 'border-red-400' : 'border-gray-300'
                         }`}
                       />
                     )}
-                    {err && (
-                      <p className="mt-1 text-xs text-red-600" data-testid={`field-error-${feature.name}`}>
-                        {err}
+                    {showErr && (
+                      <p
+                        id={errorId}
+                        role="alert"
+                        className="mt-1 text-xs text-red-600"
+                        data-testid={`field-error-${feature.name}`}
+                      >
+                        {showErr}
                       </p>
                     )}
                   </div>

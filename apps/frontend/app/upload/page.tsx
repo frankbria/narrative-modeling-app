@@ -349,7 +349,7 @@ export default function UploadPage() {
 
         {/* Success Message */}
         {showSuccessMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md" data-testid="upload-status">
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md" data-testid="upload-status" role="status" aria-live="polite">
             <div className="flex items-center">
               <CheckCircle className="text-green-500 mr-2" size={20} />
               <div>
@@ -378,7 +378,7 @@ export default function UploadPage() {
 
         {/* PII Warning */}
         {showPIIWarning && piiData && (
-          <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-lg" role="status" aria-live="polite">
             <div className="flex items-center mb-4">
               <Shield className="text-amber-500 mr-3" size={24} />
               <div>
@@ -584,7 +584,7 @@ export default function UploadPage() {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md" data-testid="upload-error">
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md" data-testid="upload-error" role="alert" aria-live="assertive">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
               <div className="text-sm text-red-800">
