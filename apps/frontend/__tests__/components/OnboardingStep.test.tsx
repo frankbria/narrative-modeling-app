@@ -135,6 +135,40 @@ describe('OnboardingStep', () => {
     });
   });
 
+  it('surfaces an error (no silent dead-end) when a sample fails to load (#281)', async () => {
+    const sampleDataset = {
+      dataset_id: 'customer_churn',
+      name: 'Customer Churn',
+      description: 'Predict churn',
+      size_mb: 1,
+      rows: 1000,
+      columns: 8,
+      problem_type: 'binary_classification',
+      difficulty_level: 'beginner',
+      tags: ['classification'],
+      preview_data: [{ customer_id: 'C001', churn: 0 }],
+      target_column: 'churn',
+      feature_columns: ['customer_id'],
+      learning_objectives: ['Learn classification'],
+      download_url: '/download/customer_churn',
+    };
+
+    global.fetch = jest.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/load')) {
+        // Backend rejected (e.g. sample file missing) — must not silently pass.
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [sampleDataset] });
+    }) as jest.Mock;
+
+    render(<OnboardingStep {...mockProps} />);
+    fireEvent.click(screen.getByText('Browse Samples'));
+    fireEvent.click(await screen.findByText('Use This'));
+
+    expect(await screen.findByText(/couldn't load/i)).toBeInTheDocument();
+    expect((global as any).__NEXT_ROUTER_MOCKS__.push).not.toHaveBeenCalled();
+  });
+
   it('does not show skip button for non-skippable step', () => {
     render(<OnboardingStep {...mockProps} />);
     

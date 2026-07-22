@@ -343,9 +343,15 @@ class OnboardingService:
         except ImportError as e:
             raise ValueError(f"Required dependencies not available: {e}")
         
-        # Read the sample CSV file
-        sample_file_path = f"/home/frankbria/projects/narrative-modeling-app/apps/backend/sample_datasets/{dataset_id}.csv"
-        
+        # Read the sample CSV file. Resolve relative to this module
+        # (apps/backend/app/services/ -> apps/backend/sample_datasets/) so the
+        # loader works on any host/container, not just the author's machine.
+        from pathlib import Path
+
+        sample_file_path = str(
+            Path(__file__).resolve().parents[2] / "sample_datasets" / f"{dataset_id}.csv"
+        )
+
         if not os.path.exists(sample_file_path):
             raise ValueError(f"Sample dataset file not found: {dataset_id}")
         

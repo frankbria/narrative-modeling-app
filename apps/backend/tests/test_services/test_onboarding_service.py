@@ -289,12 +289,35 @@ class TestOnboardingService:
     @pytest.mark.asyncio
     async def test_load_sample_dataset_file_not_found(self, onboarding_service):
         """Test loading sample dataset when file doesn't exist"""
-        
+
         with patch('os.path.exists') as mock_exists:
             mock_exists.return_value = False
-            
+
             with pytest.raises(ValueError, match="Sample dataset file not found"):
                 await onboarding_service.load_sample_dataset("test_user_123", "customer_churn")
+
+    @pytest.mark.asyncio
+    async def test_load_sample_dataset_resolves_shipped_file_relative_to_module(
+        self, onboarding_service
+    ):
+        """The sample CSV path must resolve relative to the module (issue #281),
+        not a hardcoded absolute path — otherwise the loader gets past the
+        'not found' check only on the original author's machine. Assert the
+        real shipped sample gets past that check (fails later on a mocked S3
+        insert, which proves the file WAS found)."""
+        from pathlib import Path
+
+        from app.services import onboarding_service as svc_mod
+
+        # The shipped sample file resolves relative to apps/backend/.
+        sample_dir = Path(svc_mod.__file__).resolve().parents[2] / "sample_datasets"
+        assert (sample_dir / "customer_churn.csv").exists()
+
+        # Loading a real sample must NOT raise "file not found" (it will fail
+        # later when it tries to persist, since Mongo/S3 aren't wired here).
+        with pytest.raises(Exception) as exc_info:
+            await onboarding_service.load_sample_dataset("test_user_123", "customer_churn")
+        assert "Sample dataset file not found" not in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_reset_onboarding_progress(self, onboarding_service):

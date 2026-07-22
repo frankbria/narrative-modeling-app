@@ -140,6 +140,22 @@ export default function TransformationPipeline({
     }
   }, [datasetId]);
 
+  // Reset the pipeline + undo history when the dataset changes, so switching
+  // datasets on a reused component instance (the /prepare routes key only on
+  // the route, not datasetId) can't leak one dataset's steps/history into
+  // another via Undo (#281 — undo/redo is now live, so this leak is reachable).
+  useEffect(() => {
+    setNodes([]);
+    setEdges([]);
+    setHistory([]);
+    historyIndexRef.current = -1;
+    setHistoryIndex(-1);
+    lastRecordedSignatureRef.current = null;
+    isRestoringHistoryRef.current = false;
+    // setNodes/setEdges are stable; keyed on datasetId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId]);
+
   // Notify parent of unsaved changes
   useEffect(() => {
     if (onUnsavedChanges) {
