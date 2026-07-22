@@ -152,6 +152,7 @@ export default function TransformationPipeline({
     setHistoryIndex(-1);
     lastRecordedSignatureRef.current = null;
     isRestoringHistoryRef.current = false;
+    nodeIdCounterRef.current = 0;
     // setNodes/setEdges are stable; keyed on datasetId only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId]);

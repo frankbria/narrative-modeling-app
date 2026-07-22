@@ -74,11 +74,13 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
       const result = response.ok ? await response.json() : null;
 
-      if (result?.success) {
+      if (result?.success && result.dataset_id) {
         // Hand back the id of the UserData record the backend just created
         // (result.dataset_id), NOT the sample slug — the caller navigates to
-        // /explore/{id}, which only resolves against the real dataset id.
-        onDatasetSelected(result.dataset_id ?? datasetId);
+        // /explore/{id}, which only resolves against the real dataset id. A
+        // missing dataset_id is treated as a failure rather than silently
+        // falling back to the slug (which would reintroduce the fixed bug).
+        onDatasetSelected(result.dataset_id);
       } else {
         // Surface the failure instead of silently re-enabling the button.
         setLoadError("Couldn't load that sample dataset. Please try again.");
