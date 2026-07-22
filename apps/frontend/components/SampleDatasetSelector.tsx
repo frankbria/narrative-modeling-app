@@ -45,6 +45,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [loading, setLoading] = useState(true);
   const [selectedDataset, setSelectedDataset] = useState<SampleDataset | null>(null);
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSampleDatasets();
@@ -65,20 +66,28 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const loadDataset = async (datasetId: string) => {
     try {
       setLoadingDataset(datasetId);
-      
+      setLoadError(null);
+
       const response = await fetch(`/api/v1/onboarding/sample-datasets/${datasetId}/load`, {
         method: 'POST'
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        onDatasetSelected(datasetId);
-        // You might want to show a success message or redirect
-        console.log('Dataset loaded successfully:', result);
+
+      const result = response.ok ? await response.json() : null;
+
+      if (result?.success && result.dataset_id) {
+        // Hand back the id of the UserData record the backend just created
+        // (result.dataset_id), NOT the sample slug — the caller navigates to
+        // /explore/{id}, which only resolves against the real dataset id. A
+        // missing dataset_id is treated as a failure rather than silently
+        // falling back to the slug (which would reintroduce the fixed bug).
+        onDatasetSelected(result.dataset_id);
+      } else {
+        // Surface the failure instead of silently re-enabling the button.
+        setLoadError("Couldn't load that sample dataset. Please try again.");
       }
     } catch (error) {
       console.error('Failed to load dataset:', error);
+      setLoadError("Couldn't load that sample dataset. Please try again.");
     } finally {
       setLoadingDataset(null);
     }
@@ -137,6 +146,15 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
           Perfect for learning! These curated datasets help you understand different ML concepts.
         </p>
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {loadError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {datasets.map((dataset) => (

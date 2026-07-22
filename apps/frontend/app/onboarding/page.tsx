@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,8 +15,7 @@ import {
   SkipForward, 
   Trophy, 
   Clock, 
-  BookOpen, 
-  Video,
+  BookOpen,
   ArrowRight,
   Star,
   Target,
@@ -389,57 +389,43 @@ export default function OnboardingPage() {
                   
                   <TabsContent value="sample-data">
                     <SampleDatasetSelector onDatasetSelected={(datasetId) => {
-                      // Handle sample dataset selection
-                      console.log('Selected dataset:', datasetId);
+                      // Load complete — advance the user to their new dataset.
+                      router.push(`/explore/${datasetId}`);
                     }} />
                   </TabsContent>
                   
                   <TabsContent value="help" className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2">
-                            <Video className="h-5 w-5" />
-                            Video Tutorials
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            <Button variant="ghost" className="w-full justify-start">
-                              Platform Overview (3 min)
+                    {/* Video Tutorials card removed (#281): no video content
+                        exists, so the buttons were inert dead-ends. */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <BookOpen className="h-5 w-5" />
+                          Documentation
+                        </CardTitle>
+                        <CardDescription>
+                          Step-by-step guides for every stage of the workflow.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {[
+                            'Understanding Data Quality',
+                            'Choosing the Right Model',
+                            'Interpreting Results',
+                          ].map((label) => (
+                            <Button
+                              key={label}
+                              asChild
+                              variant="ghost"
+                              className="w-full justify-start"
+                            >
+                              <Link href="/quickstart">{label}</Link>
                             </Button>
-                            <Button variant="ghost" className="w-full justify-start">
-                              Your First Model (8 min)
-                            </Button>
-                            <Button variant="ghost" className="w-full justify-start">
-                              Advanced Features (12 min)
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2">
-                            <BookOpen className="h-5 w-5" />
-                            Documentation
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            <Button variant="ghost" className="w-full justify-start">
-                              Understanding Data Quality
-                            </Button>
-                            <Button variant="ghost" className="w-full justify-start">
-                              Choosing the Right Model
-                            </Button>
-                            <Button variant="ghost" className="w-full justify-start">
-                              Interpreting Results
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
                   </TabsContent>
                 </Tabs>
               </CardContent>

@@ -84,6 +84,91 @@ describe('OnboardingStep', () => {
   });
 
 
+  it('Browse Samples reveals the sample selector, then loading a sample navigates to it (#281)', async () => {
+    const sampleDataset = {
+      dataset_id: 'customer_churn',
+      name: 'Customer Churn',
+      description: 'Predict which customers will churn',
+      size_mb: 1,
+      rows: 1000,
+      columns: 8,
+      problem_type: 'binary_classification',
+      difficulty_level: 'beginner',
+      tags: ['classification'],
+      preview_data: [{ customer_id: 'C001', churn: 0 }],
+      target_column: 'churn',
+      feature_columns: ['customer_id'],
+      learning_objectives: ['Learn classification'],
+      download_url: '/download/customer_churn',
+    };
+
+    global.fetch = jest.fn((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/load')) {
+        // Backend returns the id of the newly created UserData record, which is
+        // what the caller must navigate to (NOT the sample slug).
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, dataset_id: 'real-userdata-123' }),
+        });
+      }
+      // sample-datasets listing
+      return Promise.resolve({ ok: true, json: async () => [sampleDataset] });
+    }) as jest.Mock;
+
+    render(<OnboardingStep {...mockProps} />);
+
+    // Selector is hidden until Browse Samples is clicked (state change).
+    expect(screen.queryByText('Choose a Sample Dataset')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Browse Samples'));
+
+    // Selector appears and loads the available datasets.
+    expect(await screen.findByText('Choose a Sample Dataset')).toBeInTheDocument();
+    expect(await screen.findByText('Customer Churn')).toBeInTheDocument();
+
+    // Load the sample → advance to the created dataset.
+    fireEvent.click(screen.getByText('Use This'));
+
+    await waitFor(() => {
+      expect((global as any).__NEXT_ROUTER_MOCKS__.push).toHaveBeenCalledWith(
+        '/explore/real-userdata-123'
+      );
+    });
+  });
+
+  it('surfaces an error (no silent dead-end) when a sample fails to load (#281)', async () => {
+    const sampleDataset = {
+      dataset_id: 'customer_churn',
+      name: 'Customer Churn',
+      description: 'Predict churn',
+      size_mb: 1,
+      rows: 1000,
+      columns: 8,
+      problem_type: 'binary_classification',
+      difficulty_level: 'beginner',
+      tags: ['classification'],
+      preview_data: [{ customer_id: 'C001', churn: 0 }],
+      target_column: 'churn',
+      feature_columns: ['customer_id'],
+      learning_objectives: ['Learn classification'],
+      download_url: '/download/customer_churn',
+    };
+
+    global.fetch = jest.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('/load')) {
+        // Backend rejected (e.g. sample file missing) — must not silently pass.
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [sampleDataset] });
+    }) as jest.Mock;
+
+    render(<OnboardingStep {...mockProps} />);
+    fireEvent.click(screen.getByText('Browse Samples'));
+    fireEvent.click(await screen.findByText('Use This'));
+
+    expect(await screen.findByText(/couldn't load/i)).toBeInTheDocument();
+    expect((global as any).__NEXT_ROUTER_MOCKS__.push).not.toHaveBeenCalled();
+  });
+
   it('does not show skip button for non-skippable step', () => {
     render(<OnboardingStep {...mockProps} />);
     
@@ -109,18 +194,19 @@ describe('OnboardingStep', () => {
     expect(screen.getByRole('button', { name: /completing/i })).toBeDisabled();
   });
 
-  it('renders welcome step content correctly', () => {
+  it('renders welcome step content without the inert video button (#281)', () => {
     const welcomeStep = {
       ...mockStep,
       step_type: 'welcome',
       title: 'Welcome to Narrative Modeling',
       video_url: '/videos/welcome'
     };
-    
+
     render(<OnboardingStep {...mockProps} step={welcomeStep} />);
-    
+
     expect(screen.getByText('Welcome to the Platform! 🚀')).toBeInTheDocument();
-    expect(screen.getByText('Watch Introduction')).toBeInTheDocument();
+    // The "Watch Introduction" button was a dead-end (no player) and is removed.
+    expect(screen.queryByText('Watch Introduction')).not.toBeInTheDocument();
   });
 
   it('renders explore data step content correctly', () => {

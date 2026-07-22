@@ -66,8 +66,20 @@ export default function TransformationPipeline({
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
+  // Undo/redo history over structural snapshots of the pipeline (#281).
+  const [history, setHistory] = useState<
+    Array<{ nodes: TransformationFlowNode[]; edges: Edge[] }>
+  >([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  // Ref mirror of the index so the recording effect reads a fresh value
+  // without depending on (and re-running for) historyIndex.
+  const historyIndexRef = useRef(-1);
+  // Guards the recording effect from re-capturing a snapshot that undo/redo
+  // just restored (which would otherwise create a feedback loop).
+  const isRestoringHistoryRef = useRef(false);
+  // Last signature actually recorded; dedupes no-op re-runs (e.g. StrictMode's
+  // dev double-mount) so an identical snapshot is never appended twice.
+  const lastRecordedSignatureRef = useRef<string | null>(null);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -126,6 +138,23 @@ export default function TransformationPipeline({
     if (datasetId) {
       fetchMetadata();
     }
+  }, [datasetId]);
+
+  // Reset the pipeline + undo history when the dataset changes, so switching
+  // datasets on a reused component instance (the /prepare routes key only on
+  // the route, not datasetId) can't leak one dataset's steps/history into
+  // another via Undo (#281 — undo/redo is now live, so this leak is reachable).
+  useEffect(() => {
+    setNodes([]);
+    setEdges([]);
+    setHistory([]);
+    historyIndexRef.current = -1;
+    setHistoryIndex(-1);
+    lastRecordedSignatureRef.current = null;
+    isRestoringHistoryRef.current = false;
+    nodeIdCounterRef.current = 0;
+    // setNodes/setEdges are stable; keyed on datasetId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId]);
 
   // Notify parent of unsaved changes
@@ -475,6 +504,78 @@ export default function TransformationPipeline({
     }
   };
 
+  // Structural signature of the pipeline — node type/label/params + edge
+  // endpoints, but NOT node positions, so dragging a node around the canvas
+  // never records an undo entry (#281).
+  const structuralSignature = useMemo(
+    () =>
+      JSON.stringify({
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.data.type,
+          label: n.data.label,
+          parameters: n.data.parameters,
+        })),
+        edges: edges.map((e) => ({ source: e.source, target: e.target })),
+      }),
+    [nodes, edges]
+  );
+
+  // Record a snapshot whenever the structure changes, truncating any redo tail.
+  // Skips the capture that undo/redo itself triggers via isRestoringHistoryRef.
+  useEffect(() => {
+    if (isRestoringHistoryRef.current) {
+      isRestoringHistoryRef.current = false;
+      lastRecordedSignatureRef.current = structuralSignature;
+      return;
+    }
+    if (structuralSignature === lastRecordedSignatureRef.current) return;
+    setHistory((prev) => {
+      const truncated = prev.slice(0, historyIndexRef.current + 1);
+      return [...truncated, { nodes, edges }];
+    });
+    historyIndexRef.current += 1;
+    setHistoryIndex(historyIndexRef.current);
+    lastRecordedSignatureRef.current = structuralSignature;
+    // Intentionally keyed on the structural signature only; nodes/edges are
+    // read fresh from the closure of the render that changed the signature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structuralSignature]);
+
+  // Restore a snapshot's structure while keeping the live canvas positions of
+  // any node that still exists. Position-only drags are intentionally not
+  // undoable, so undo/redo must not yank an unrelated node back to where it
+  // sat when the snapshot was recorded (codex review).
+  const restoreSnapshot = useCallback(
+    (target: { nodes: TransformationFlowNode[]; edges: Edge[] }) => {
+      isRestoringHistoryRef.current = true;
+      const currentPositions = new Map(nodes.map((n) => [n.id, n.position]));
+      setNodes(
+        target.nodes.map((n) => {
+          const pos = currentPositions.get(n.id);
+          return pos ? { ...n, position: pos } : n;
+        })
+      );
+      setEdges(target.edges);
+      setHasUnsavedChanges(true);
+    },
+    [nodes, setNodes, setEdges]
+  );
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return;
+    restoreSnapshot(history[historyIndexRef.current - 1]);
+    historyIndexRef.current -= 1;
+    setHistoryIndex(historyIndexRef.current);
+  }, [history, restoreSnapshot]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current >= history.length - 1) return;
+    restoreSnapshot(history[historyIndexRef.current + 1]);
+    historyIndexRef.current += 1;
+    setHistoryIndex(historyIndexRef.current);
+  }, [history, restoreSnapshot]);
+
   return (
     <div className="flex h-full">
       {/* Sidebar */}
@@ -543,6 +644,7 @@ export default function TransformationPipeline({
               <Save className="w-5 h-5" />
             </button>
             <button
+              onClick={handleUndo}
               disabled={historyIndex <= 0}
               className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
               title="Undo"
@@ -550,6 +652,7 @@ export default function TransformationPipeline({
               <Undo className="w-5 h-5" />
             </button>
             <button
+              onClick={handleRedo}
               disabled={historyIndex >= history.length - 1}
               className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
               title="Redo"
