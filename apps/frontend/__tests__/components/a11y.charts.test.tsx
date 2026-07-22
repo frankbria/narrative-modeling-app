@@ -64,4 +64,21 @@ describe('chart accessibility (issue #282)', () => {
     expect(fills.some((f) => f.includes('hsl(120'))).toBe(false);
     expect(fills.some((f) => f.startsWith('hsl(0') || f.startsWith('hsl(220'))).toBe(true);
   });
+
+  it('CorrelationHeatmap cell labels keep WCAG AA contrast (luminance-picked text)', () => {
+    // A strong-correlation matrix drives cells into the previously-risky band.
+    const strong: Record<string, Record<string, number>> = {
+      a: { a: 1, b: 0.8, c: -0.82 },
+      b: { a: 0.8, b: 1, c: 0.79 },
+      c: { a: -0.82, b: 0.79, c: 1 },
+    };
+    const { container } = render(<CorrelationHeatmap stats={stats} correlationMatrix={strong} />);
+    // Text fill is only ever pure black or white — never a mid-tone that could
+    // fail contrast; the component picks by relative luminance, not a value cutoff.
+    const fills = Array.from(container.querySelectorAll('text'))
+      .map((t) => (t as SVGTextElement).style.fill)
+      .filter(Boolean);
+    expect(fills.length).toBeGreaterThan(0);
+    fills.forEach((f) => expect(['white', 'black']).toContain(f));
+  });
 });

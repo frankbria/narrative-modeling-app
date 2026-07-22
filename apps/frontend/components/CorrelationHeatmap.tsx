@@ -67,11 +67,36 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
   // Diverging blue↔white↔red scale (issue #282): red/green is the worst pairing
   // for red-green colour-vision deficiency, whereas blue-vs-red stays
   // distinguishable across the common CVD types. White == no correlation.
-  const getColor = (value: number) => {
+  const cellHsl = (value: number) => {
     const absValue = Math.min(Math.abs(value), 1);
     const hue = value >= 0 ? 0 : 220; // red for positive, blue for negative
     const lightness = 100 - absValue * 55; // 100% (white, at 0) → 45% (strong)
-    return `hsl(${hue}, 65%, ${lightness}%)`;
+    return { hue, saturation: 65, lightness };
+  };
+  const getColor = (value: number) => {
+    const { hue, saturation, lightness } = cellHsl(value);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  };
+
+  // WCAG 1.4.3: pick black/white cell-label text by actual relative luminance,
+  // not a fixed correlation cutoff — otherwise white-on-colour dips below the
+  // 4.5:1 AA minimum in a narrow magnitude band (~0.78–0.83). Blue is darker
+  // than red at equal magnitude, so a value-only threshold can't serve both.
+  const relativeLuminance = (h: number, s: number, l: number) => {
+    s /= 100;
+    l /= 100;
+    const k = (n: number) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const ch = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+    const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    return 0.2126 * lin(ch(0)) + 0.7152 * lin(ch(8)) + 0.0722 * lin(ch(4));
+  };
+  const textColor = (value: number) => {
+    const { hue, saturation, lightness } = cellHsl(value);
+    const L = relativeLuminance(hue, saturation, lightness);
+    const contrastWhite = 1.05 / (L + 0.05);
+    const contrastBlack = (L + 0.05) / 0.05;
+    return contrastWhite >= contrastBlack ? 'white' : 'black';
   };
 
   // A screen-reader summary naming the strongest off-diagonal correlation.
@@ -185,8 +210,7 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
                   className="text-xs"
                   style={{
                     fontSize: Math.max(8, cellSize * 0.1) + 'px',
-                    // White text only on the dark end of the ramp (lightness < ~58%).
-                    fill: Math.abs(value) > 0.78 ? 'white' : 'black',
+                    fill: textColor(value),
                     fontWeight: Math.abs(value) > 0.7 ? 'bold' : 'normal'
                   }}
                 >

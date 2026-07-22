@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
@@ -23,6 +23,19 @@ export default function Sidebar() {
   // Below `lg` the sidebar is an off-canvas drawer toggled by a hamburger; at
   // `lg`+ it's always pinned (issue #282).
   const [open, setOpen] = useState(false)
+  const hamburgerRef = useRef<HTMLButtonElement>(null)
+  const navRef = useRef<HTMLElement>(null)
+
+  // On open, move focus into the drawer; Escape closes and returns focus to the
+  // hamburger — mirroring the FeedbackWidget dialog's keyboard pattern.
+  useEffect(() => {
+    if (open) navRef.current?.querySelector<HTMLElement>('a')?.focus()
+  }, [open])
+
+  const closeDrawer = () => {
+    setOpen(false)
+    hamburgerRef.current?.focus()
+  }
 
   const menuItems = [
     { name: 'Load Data', icon: <Upload size={20} />, href: '/upload' },
@@ -40,6 +53,7 @@ export default function Sidebar() {
       {/* Hamburger toggle — outside the translated drawer so it stays reachable
           when the drawer is off-canvas. Hidden at lg+ where the drawer is pinned. */}
       <button
+        ref={hamburgerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
@@ -60,8 +74,12 @@ export default function Sidebar() {
       )}
 
       <aside
+        ref={navRef}
         id="app-sidebar"
         aria-label="Sidebar"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && open) closeDrawer()
+        }}
         // `invisible` (visibility:hidden) — not just an off-canvas transform —
         // so the closed drawer's links leave the tab order and AT below lg;
         // `lg:visible`/`lg:translate-x-0` keep it always-open on desktop.

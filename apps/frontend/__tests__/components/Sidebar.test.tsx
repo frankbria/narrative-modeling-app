@@ -62,4 +62,16 @@ describe('Sidebar navigation', () => {
     const toggle = screen.getByRole('button', { name: /open navigation menu/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
+
+  it('closes the drawer on Escape and returns focus to the hamburger', () => {
+    render(<Sidebar />);
+    const toggle = screen.getByRole('button', { name: /open navigation menu/i });
+    fireEvent.click(toggle);
+
+    fireEvent.keyDown(document.getElementById('app-sidebar')!, { key: 'Escape' });
+
+    const reopened = screen.getByRole('button', { name: /open navigation menu/i });
+    expect(reopened).toHaveAttribute('aria-expanded', 'false');
+    expect(reopened).toHaveFocus();
+  });
 });
