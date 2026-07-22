@@ -131,4 +131,23 @@ describe('TransformationNode Component', () => {
       expect.objectContaining({ parameters: expect.objectContaining({ column: 'age' }) })
     );
   });
+
+  it('gives the icon-only settings/delete buttons accessible names (issue #282)', () => {
+    render(
+      <ReactFlowWrapper>
+        <TransformationNode {...createNodeProps({ label: 'Fill Missing Values' })} />
+      </ReactFlowWrapper>
+    );
+
+    const settings = screen.getByRole('button', { name: /show settings for fill missing values/i });
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(settings);
+    expect(
+      screen.getByRole('button', { name: /hide settings for fill missing values/i })
+    ).toHaveAttribute('aria-expanded', 'true');
+
+    expect(
+      screen.getByRole('button', { name: /delete fill missing values step/i })
+    ).toBeInTheDocument();
+  });
 });

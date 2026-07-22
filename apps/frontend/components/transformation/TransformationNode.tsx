@@ -113,15 +113,18 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="p-1 hover:bg-gray-100 rounded"
+              aria-label={`${showSettings ? 'Hide' : 'Show'} settings for ${data.label}`}
+              aria-expanded={showSettings}
             >
-              <Settings className="w-4 h-4 text-gray-600" />
+              <Settings className="w-4 h-4 text-gray-600" aria-hidden="true" />
             </button>
             {data.onDelete && (
               <button
                 onClick={() => data.onDelete?.(id)}
                 className="p-1 hover:bg-gray-100 rounded"
+                aria-label={`Delete ${data.label} step`}
               >
-                <X className="w-4 h-4 text-gray-600" />
+                <X className="w-4 h-4 text-gray-600" aria-hidden="true" />
               </button>
             )}
           </div>

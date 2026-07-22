@@ -8,7 +8,7 @@
  * rather than a global toast system (none exists in the app yet).
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,47 @@ export function FeedbackWidget() {
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Set when the dialog closes so focus returns to the opener on the next render
+  // rather than being dropped to <body> (WCAG 2.4.3 / issue #282).
+  const restoreFocusRef = useRef(false);
+
+  const focusableSelector =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  // On open, move focus into the dialog; on close, return it to the trigger.
+  useEffect(() => {
+    if (isOpen) {
+      panelRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
+    } else if (restoreFocusRef.current) {
+      triggerRef.current?.focus();
+      restoreFocusRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Escape closes; Tab is trapped within the dialog so focus can't leak out.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      close();
+      return;
+    }
+    if (e.key !== 'Tab' || !panelRef.current) return;
+    const nodes = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>(focusableSelector)
+    );
+    if (nodes.length === 0) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const resetForm = () => {
     setRating(0);
@@ -39,6 +80,7 @@ export function FeedbackWidget() {
   };
 
   const close = () => {
+    restoreFocusRef.current = true;
     setIsOpen(false);
     resetForm();
   };
@@ -103,6 +145,7 @@ export function FeedbackWidget() {
   if (!isOpen) {
     return (
       <Button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(true)}
         data-testid="feedback-widget-button"
@@ -117,9 +160,12 @@ export function FeedbackWidget() {
 
   return (
     <div
+      ref={panelRef}
       role="dialog"
+      aria-modal="true"
       aria-label="Feedback form"
       data-testid="feedback-widget-panel"
+      onKeyDown={handleKeyDown}
       className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-white shadow-xl"
     >
       <div className="flex items-center justify-between border-b px-4 py-3">

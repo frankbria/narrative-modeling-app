@@ -77,4 +77,14 @@ describe('PRCurveChart', () => {
     ).toBeInTheDocument()
     expect(screen.queryAllByTestId('curve-line')).toHaveLength(0)
   })
+
+  it('exposes a role=img wrapper naming the classes and the dash channel (issue #282)', () => {
+    render(<PRCurveChart data={multiClassData} />)
+
+    const img = screen.getByRole('img')
+    const label = img.getAttribute('aria-label') || ''
+    expect(label).toContain('a')
+    expect(label).toContain('b')
+    expect(label).toMatch(/dash pattern/i)
+  })
 })

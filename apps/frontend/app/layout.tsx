@@ -37,6 +37,14 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`flex antialiased`}>
+        {/* Skip-to-content link — first focusable element, visible only on focus
+            so keyboard users can bypass the nav (WCAG 2.4.1 / issue #282). */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-white focus:shadow-lg"
+        >
+          Skip to main content
+        </a>
         <SessionProvider session={session}>
           <WorkflowProvider>
             {session ? (
@@ -49,14 +57,27 @@ export default async function RootLayout({
                   <WorkflowBar />
                   <StageGuardBanner />
                   <div className="flex flex-1">
-                    <div className="flex-1 p-4 bg-gray-100 ml-64 mr-80">{children}</div>
+                    {/* Sidebar/chat are `fixed`; reserve their gutters only at lg+
+                        where they're pinned. Below lg the sidebar is a drawer and
+                        content is full-width (issue #282). */}
+                    <div
+                      id="main-content"
+                      tabIndex={-1}
+                      className="flex-1 p-4 bg-gray-100 lg:ml-64 lg:mr-80 focus:outline-none"
+                    >
+                      {children}
+                    </div>
                     <ConditionalAIChat />
                   </div>
                 </main>
                 <FeedbackWidget />
               </>
             ) : (
-              <main className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6">
+              <main
+                id="main-content"
+                tabIndex={-1}
+                className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6 focus:outline-none"
+              >
                 {children}
               </main>
             )}
