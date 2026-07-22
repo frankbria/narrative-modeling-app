@@ -1,6 +1,0 @@
-{
-  "license": "AGPL-3.0-or-later",
-  "dependencies": {
-    "next-auth": "^5.0.0-beta.29"
-  }
-}

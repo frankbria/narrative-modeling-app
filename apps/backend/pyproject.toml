@@ -7,14 +7,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "asgi-lifespan>=2.1.0",
-    "axios>=0.4.0",
     "beanie>=1.30.0",
     "boto3>=1.38.34",
     # >=0.116 is required for a starlette that clears the CVEs below; uv resolves
     # the current line that supports starlette 1.x. Issue #270.
     "fastapi>=0.116.1",
     "httpx>=0.28.1",
-    "jwt>=1.3.1",
     "motor>=3.7.1",
     "numpy>=2.3.0",
     "openai>=1.86.0",
@@ -22,8 +20,6 @@ dependencies = [
     "psutil>=6.1.0",
     "pydantic>=2.11.5",
     "pydantic-settings>=2.9.1",
-    "pytest>=9.0.3",
-    "pytest-asyncio>=0.23.0",
     "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
     # The multipart form parser central to uploads — 0.0.31 clears a run of
@@ -58,14 +54,19 @@ dependencies = [
     "gunicorn>=23.0.0",
     "prometheus-client>=0.19.0",
     "pyyaml>=6.0.3",
-    "pytest-benchmark>=5.1.0",
-    "ruff>=0.14.10",
 ]
 
 [dependency-groups]
+# Test + lint tooling. In `default-groups` (below) so plain `uv sync` (local, CI)
+# installs it; the Docker build's `uv sync --no-dev` drops it from the image so
+# pytest/ruff/benchmark never ship to production (issue #283).
 dev = [
     "mongomock-motor>=0.0.36",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.23.0",
+    "pytest-benchmark>=5.1.0",
     "pytest-cov>=6.1.1",
+    "ruff>=0.14.10",
     "mypy>=1.13.0",
 ]
 # SHAP interpretability stack, isolated so production can build a slim image
