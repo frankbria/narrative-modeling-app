@@ -105,7 +105,7 @@ describe('FeedbackWidget', () => {
     await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true));
   });
 
-  it('closes on Escape and returns to the collapsed button', async () => {
+  it('closes on Escape, returns to the collapsed button, and restores focus to it', async () => {
     const user = userEvent.setup();
     render(<FeedbackWidget />);
 
@@ -115,7 +115,10 @@ describe('FeedbackWidget', () => {
     await user.keyboard('{Escape}');
 
     expect(screen.queryByTestId('feedback-widget-panel')).not.toBeInTheDocument();
-    expect(screen.getByTestId('feedback-widget-button')).toBeInTheDocument();
+    const trigger = screen.getByTestId('feedback-widget-button');
+    expect(trigger).toBeInTheDocument();
+    // Focus is returned to the opener rather than dropped to <body>.
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('traps Tab focus within the dialog', async () => {

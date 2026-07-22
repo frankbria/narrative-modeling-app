@@ -259,6 +259,23 @@ describe('PredictPage — touched-based validation (issue #282)', () => {
     expect(age).toHaveAttribute('aria-describedby', 'field-error-age');
   });
 
+  it('produces ID-safe aria-describedby for feature names with spaces', async () => {
+    svc.getModelFeatures.mockResolvedValue({
+      ...FEATURES,
+      features: [{ name: 'Annual Income', type: 'number' }],
+    } as any);
+    render(<PredictPage />);
+    const input = await screen.findByLabelText('Annual Income');
+
+    fireEvent.blur(input);
+
+    // Space-free slug so aria-describedby is a single valid IDREF (not two tokens).
+    const descId = input.getAttribute('aria-describedby');
+    expect(descId).toBe('field-error-Annual-Income');
+    expect(descId).not.toContain(' ');
+    expect(document.getElementById(descId!)).toHaveTextContent('Required');
+  });
+
   it('keeps the submit button disabled until every required field is valid', async () => {
     render(<PredictPage />);
     const age = await screen.findByLabelText('age');

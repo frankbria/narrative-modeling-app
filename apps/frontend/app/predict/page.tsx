@@ -291,17 +291,22 @@ export default function PredictPage() {
                 // field is touched or a submit was attempted (no pristine error).
                 const err = fieldError(feature);
                 const showErr = touched[feature.name] ? err : null;
-                const errorId = `field-error-${feature.name}`;
+                // Sanitize the name into an ID-safe slug: aria-describedby is a
+                // space-separated IDREF list, so a column like "Annual Income"
+                // would otherwise break the input↔error association (#282).
+                const slug = feature.name.replace(/[^a-zA-Z0-9_-]/g, '-');
+                const fieldId = `field-${slug}`;
+                const errorId = `field-error-${slug}`;
                 const markTouched = () =>
                   setTouched((prev) => ({ ...prev, [feature.name]: true }));
                 return (
                   <div key={feature.name}>
-                    <label className="block text-sm font-medium mb-1" htmlFor={`field-${feature.name}`}>
+                    <label className="block text-sm font-medium mb-1" htmlFor={fieldId}>
                       {feature.name}
                     </label>
                     {feature.type === 'categorical' && feature.options?.length ? (
                       <select
-                        id={`field-${feature.name}`}
+                        id={fieldId}
                         name={feature.name}
                         data-feature={feature.name}
                         value={predictionInput[feature.name] ?? ''}
@@ -326,7 +331,7 @@ export default function PredictPage() {
                       </select>
                     ) : (
                       <input
-                        id={`field-${feature.name}`}
+                        id={fieldId}
                         name={feature.name}
                         data-feature={feature.name}
                         type={feature.type === 'number' ? 'number' : 'text'}

@@ -30,14 +30,21 @@ export function FeedbackWidget() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Set when the dialog closes so focus returns to the opener on the next render
+  // rather than being dropped to <body> (WCAG 2.4.3 / issue #282).
+  const restoreFocusRef = useRef(false);
 
   const focusableSelector =
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-  // On open, move focus into the dialog (WCAG 2.4.3 / issue #282).
+  // On open, move focus into the dialog; on close, return it to the trigger.
   useEffect(() => {
     if (isOpen) {
       panelRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
+    } else if (restoreFocusRef.current) {
+      triggerRef.current?.focus();
+      restoreFocusRef.current = false;
     }
   }, [isOpen]);
 
@@ -73,6 +80,7 @@ export function FeedbackWidget() {
   };
 
   const close = () => {
+    restoreFocusRef.current = true;
     setIsOpen(false);
     resetForm();
   };
@@ -137,6 +145,7 @@ export function FeedbackWidget() {
   if (!isOpen) {
     return (
       <Button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(true)}
         data-testid="feedback-widget-button"
