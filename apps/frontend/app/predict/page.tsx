@@ -286,17 +286,17 @@ export default function PredictPage() {
             <h3 className="font-semibold text-lg">Enter Feature Values</h3>
 
             <div className="grid grid-cols-2 gap-4">
-              {features.map((feature) => {
+              {features.map((feature, index) => {
                 // Real validity vs. whether to display it: only show once the
-                // field is touched or a submit was attempted (no pristine error).
+                // field is touched (no pristine error).
                 const err = fieldError(feature);
                 const showErr = touched[feature.name] ? err : null;
-                // Sanitize the name into an ID-safe slug: aria-describedby is a
-                // space-separated IDREF list, so a column like "Annual Income"
-                // would otherwise break the input↔error association (#282).
-                const slug = feature.name.replace(/[^a-zA-Z0-9_-]/g, '-');
-                const fieldId = `field-${slug}`;
-                const errorId = `field-error-${slug}`;
+                // Index-based ids are inherently ID-safe and unique: a raw name
+                // with spaces would break aria-describedby (a space-separated
+                // IDREF list), and two names that sanitize alike would collide
+                // (#282). data-feature carries the raw name for e2e selectors.
+                const fieldId = `field-${index}`;
+                const errorId = `field-error-${index}`;
                 const markTouched = () =>
                   setTouched((prev) => ({ ...prev, [feature.name]: true }));
                 return (

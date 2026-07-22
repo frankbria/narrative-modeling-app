@@ -254,26 +254,36 @@ describe('PredictPage — touched-based validation (issue #282)', () => {
     const err = await screen.findByTestId('field-error-age');
     expect(err).toHaveTextContent('Required');
     expect(err).toHaveAttribute('role', 'alert');
-    expect(err).toHaveAttribute('id', 'field-error-age');
+    // `age` is feature index 0 → index-based, ID-safe, collision-free id.
+    expect(err).toHaveAttribute('id', 'field-error-0');
     expect(age).toHaveAttribute('aria-invalid', 'true');
-    expect(age).toHaveAttribute('aria-describedby', 'field-error-age');
+    expect(age).toHaveAttribute('aria-describedby', 'field-error-0');
   });
 
-  it('produces ID-safe aria-describedby for feature names with spaces', async () => {
+  it('produces ID-safe, collision-free aria-describedby for awkward feature names', async () => {
+    // Two names that would sanitize to the same slug — index ids stay unique.
     svc.getModelFeatures.mockResolvedValue({
       ...FEATURES,
-      features: [{ name: 'Annual Income', type: 'number' }],
+      features: [
+        { name: 'Annual Income', type: 'number' },
+        { name: 'Annual-Income', type: 'number' },
+      ],
     } as any);
     render(<PredictPage />);
-    const input = await screen.findByLabelText('Annual Income');
+    const first = await screen.findByLabelText('Annual Income');
+    const second = screen.getByLabelText('Annual-Income');
 
-    fireEvent.blur(input);
+    fireEvent.blur(first);
+    fireEvent.blur(second);
 
-    // Space-free slug so aria-describedby is a single valid IDREF (not two tokens).
-    const descId = input.getAttribute('aria-describedby');
-    expect(descId).toBe('field-error-Annual-Income');
-    expect(descId).not.toContain(' ');
-    expect(document.getElementById(descId!)).toHaveTextContent('Required');
+    const id1 = first.getAttribute('aria-describedby');
+    const id2 = second.getAttribute('aria-describedby');
+    expect(id1).toBe('field-error-0');
+    expect(id2).toBe('field-error-1');
+    expect(id1).not.toContain(' ');
+    expect(id1).not.toBe(id2); // no collision
+    expect(document.getElementById(id1!)).toHaveTextContent('Required');
+    expect(document.getElementById(id2!)).toHaveTextContent('Required');
   });
 
   it('keeps the submit button disabled until every required field is valid', async () => {
