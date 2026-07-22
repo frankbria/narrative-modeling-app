@@ -113,7 +113,7 @@ export default function Sidebar() {
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings">
+                  <Link href="/settings" onClick={() => setOpen(false)}>
                     <Settings className="mr-2 h-4 w-4" />
                     Settings
                   </Link>
