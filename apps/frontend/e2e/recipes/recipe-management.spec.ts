@@ -74,9 +74,10 @@ test.describe('Recipe Management', () => {
       // Verify sort dropdown
       await expect(authenticatedPage.locator('button[role="combobox"]').first()).toBeVisible();
 
-      // Verify view mode toggle buttons
-      const viewModeButtons = authenticatedPage.locator('button').filter({ has: authenticatedPage.locator('svg') });
-      await expect(viewModeButtons.first()).toBeVisible();
+      // Verify view mode toggle buttons by their accessible names (a page-global
+      // `button:has(svg)` locator would collide with the sidebar hamburger #282).
+      await expect(authenticatedPage.getByRole('button', { name: 'Grid view' })).toBeVisible();
+      await expect(authenticatedPage.getByRole('button', { name: 'List view' })).toBeVisible();
     });
 
     test('should filter recipes by search query', async ({ authenticatedPage }) => {
@@ -96,9 +97,10 @@ test.describe('Recipe Management', () => {
     test('should toggle view mode between grid and list', async ({ authenticatedPage }) => {
       await authenticatedPage.waitForTimeout(1000);
 
-      // Find view mode toggle buttons
-      const gridViewButton = authenticatedPage.locator('button').filter({ has: authenticatedPage.locator('svg') }).first();
-      const listViewButton = authenticatedPage.locator('button').filter({ has: authenticatedPage.locator('svg') }).nth(1);
+      // Find view mode toggle buttons by accessible name (a page-global
+      // `button:has(svg)` index would collide with the sidebar hamburger #282).
+      const gridViewButton = authenticatedPage.getByRole('button', { name: 'Grid view' });
+      const listViewButton = authenticatedPage.getByRole('button', { name: 'List view' });
 
       // Switch to list view
       await listViewButton.click();

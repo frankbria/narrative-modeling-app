@@ -196,16 +196,20 @@ export function RecipeLibrary({
               size="sm"
               onClick={() => setViewMode('grid')}
               className="h-8 w-8 p-0"
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
             >
-              <Grid className="w-4 h-4" />
+              <Grid className="w-4 h-4" aria-hidden="true" />
             </Button>
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('list')}
               className="h-8 w-8 p-0"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
             >
-              <List className="w-4 h-4" />
+              <List className="w-4 h-4" aria-hidden="true" />
             </Button>
           </div>
         </div>

@@ -125,6 +125,15 @@ describe('RecipeLibrary', () => {
       expect(screen.getByText('Anomaly Detection Prep')).toBeInTheDocument();
     });
 
+    it('gives the icon-only view-mode toggles accessible names (issue #282)', () => {
+      render(<RecipeLibrary onApplyRecipe={mockHandlers.onApplyRecipe} />);
+      const grid = screen.getByRole('button', { name: 'Grid view' });
+      const list = screen.getByRole('button', { name: 'List view' });
+      // Default view is grid.
+      expect(grid).toHaveAttribute('aria-pressed', 'true');
+      expect(list).toHaveAttribute('aria-pressed', 'false');
+    });
+
     it('should display create button when showCreateButton is true', () => {
       render(
         <RecipeLibrary
