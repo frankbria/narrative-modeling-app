@@ -68,6 +68,24 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 
+# Wait for MongoDB to accept connections too (mirrors the LocalStack poll), so
+# the printed "run the apps" instructions don't hit connection-refused on a
+# cold start where mongod is still initializing.
+echo "Waiting for MongoDB to be ready..."
+mongo_ready=false
+for _ in $(seq 1 30); do
+    if docker exec narrative-mongodb mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null 2>&1; then
+        mongo_ready=true
+        break
+    fi
+    sleep 2
+done
+
+if [ "$mongo_ready" != true ]; then
+    echo "ERROR: MongoDB did not become ready in time; check 'docker logs narrative-mongodb'." >&2
+    exit 1
+fi
+
 # Create the local S3 bucket. S3 is confirmed up, so only "already owned" is a
 # benign non-zero exit — surface anything else instead of masking it.
 if mb_err=$(docker exec narrative-localstack awslocal s3 mb "s3://$BUCKET" 2>&1); then
