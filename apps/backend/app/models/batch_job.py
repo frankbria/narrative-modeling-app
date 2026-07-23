@@ -153,7 +153,11 @@ class BatchJob(Document):
             return None
 
         elapsed = utcnow() - as_utc(self.started_at)
-        rate = self.progress.processed_records / elapsed.total_seconds()
+        elapsed_seconds = elapsed.total_seconds()
+        if elapsed_seconds <= 0:
+            # Sub-ms first record (issue #285): no meaningful rate yet.
+            return None
+        rate = self.progress.processed_records / elapsed_seconds
         remaining = self.progress.total_records - self.progress.processed_records
 
         if rate > 0:

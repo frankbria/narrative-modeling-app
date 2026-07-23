@@ -32,6 +32,16 @@ from app.services.s3_service import S3Service
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_unlink(path: str) -> None:
+    """Best-effort temp-file removal (issue #285). Called from ``finally``
+    blocks, so a cleanup failure must never mask the original exception."""
+    try:
+        os.unlink(path)
+    except OSError as exc:
+        logger.debug("Failed to remove temp file %s: %s", path, exc)
+
+
 # Hard ceiling on a single batch (issue #278). The result stream and summary are
 # now O(chunk_size), so this is a resource/DoS guard (disk temp file + wall time),
 # not a memory bound. Generous vs the 1000-record sync path; env-tunable.
@@ -403,7 +413,7 @@ class BatchPredictionService:
                 summary["output_path"] = output_path
                 job.mark_completed(summary)
             finally:
-                os.unlink(out_path)
+                _safe_unlink(out_path)
 
         except Exception as e:
             job.mark_failed(str(e))
@@ -537,7 +547,7 @@ class BatchPredictionService:
                 yield chunk
         finally:
             # Clean up temporary file
-            os.unlink(temp_file_path)
+            _safe_unlink(temp_file_path)
 
     async def _predict_chunk(
         self,

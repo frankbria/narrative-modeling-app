@@ -602,3 +602,29 @@ class TestFeatureCollection:
 
         # Should not change anything
         assert collection.feature_count == initial_count
+
+    def test_feature_count_stays_derived_from_ids_when_starting_desynced(self):
+        """Issue #285: feature_count must track len(feature_ids), not a drifting
+        counter — a desynced count self-heals on mutate and never goes negative
+        (which would violate the ge=0 constraint)."""
+        collection = FeatureCollection.model_construct(
+            collection_id="coll_drift",
+            user_id="user_123",
+            name="Drift Test",
+            description="Desynced counter",
+            domain="retail",
+            feature_ids=["feat_1", "feat_2"],
+            feature_count=0,  # drifted: count says 0 but two ids present
+            is_public=False,
+            shared_with=[],
+            tags=[],
+            created_by="user_123",
+        )
+
+        # A naive counter-- would drop to -1 here; deriving from len keeps it valid.
+        collection.remove_feature("feat_1")
+        assert collection.feature_count == len(collection.feature_ids) == 1
+
+        collection.add_feature("feat_3")
+        assert collection.feature_count == len(collection.feature_ids) == 2
+        assert collection.feature_count >= 0
