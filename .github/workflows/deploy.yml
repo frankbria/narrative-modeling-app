@@ -1,10 +1,7 @@
 name: Deploy (Staging)
 
-# Automated staging deployment (issue #150) — implements "Option B: Automated
-# Deployment (via GitHub Actions)" from docs/deployment/STAGING_DEPLOYMENT_GUIDE.md.
-#
-# Target: the staging VPS (dev.briaanalytics.com / 47.88.89.175). The job SSHes
-# in as the deploy user, pulls main, and rebuilds the stack with
+# Automated staging deployment (issue #150). The job SSHes into the staging VPS
+# as the deploy user, pulls main, and rebuilds the stack with
 # docker-compose.staging.yml (which builds apps/backend/Dockerfile and
 # apps/frontend/Dockerfile). Application secrets live in .env.staging ON THE
 # SERVER and are never passed through CI; compose is invoked with
@@ -12,13 +9,16 @@ name: Deploy (Staging)
 # managed Atlas cluster (MONGODB_URI in .env.staging) — no Mongo container is
 # deployed.
 #
-# Required repository secrets (Settings → Secrets and variables → Actions):
-#   STAGING_SSH_PRIVATE_KEY  - private key authorized for the deploy user
-#   STAGING_HOST             - dev.briaanalytics.com (or 47.88.89.175)
-#   STAGING_USER             - deploy user (e.g. narrative-deploy)
-#   STAGING_DEPLOY_PATH      - optional; defaults to /opt/narrative-modeling-app/staging
+# Secrets live on the `Development` GitHub Environment
+# (Settings → Environments → Development → Environment secrets), NOT as repo
+# secrets with a STAGING_ prefix. This is the single source of truth — do not
+# reintroduce repo-level STAGING_* secrets.
+#   SSH_KEY      - private key authorized for the deploy user on HOST (required)
+#   HOST         - staging host, IP or DNS (required)
+#   DEPLOY_USER  - optional; defaults to `root`
+#   DEPLOY_PATH  - optional; defaults to /opt/narrative-modeling-app/staging
 #
-# Until those secrets are configured the job is a no-op that succeeds with a
+# Until SSH_KEY + HOST are configured the job is a no-op that succeeds with a
 # warning, so main stays green. Idempotent: re-running on the same commit
 # reconciles the server to that commit and rebuilds; `docker compose up -d`
 # only recreates changed containers.
@@ -39,6 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     # Don't attempt deploys from forks (no access to secrets).
     if: github.repository == 'frankbria/narrative-modeling-app'
+    # Scopes the job to the Development environment's secrets and surfaces the
+    # deployment (with any protection rules) under Settings → Environments.
+    environment: Development
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -47,13 +50,12 @@ jobs:
       - name: Check deploy secrets are configured
         id: preflight
         env:
-          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-          HOST: ${{ secrets.STAGING_HOST }}
-          DEPLOY_USER: ${{ secrets.STAGING_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          HOST: ${{ secrets.HOST }}
         run: |
-          if [ -z "$SSH_KEY" ] || [ -z "$HOST" ] || [ -z "$DEPLOY_USER" ]; then
+          if [ -z "$SSH_KEY" ] || [ -z "$HOST" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Staging deploy secrets not set (STAGING_SSH_PRIVATE_KEY/STAGING_HOST/STAGING_USER) — skipping deploy. See .github/workflows/deploy.yml header."
+            echo "::warning::Development environment deploy secrets not set (SSH_KEY/HOST) — skipping deploy. See .github/workflows/deploy.yml header."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
@@ -61,8 +63,8 @@ jobs:
       - name: Configure SSH
         if: steps.preflight.outputs.configured == 'true'
         env:
-          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-          HOST: ${{ secrets.STAGING_HOST }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          HOST: ${{ secrets.HOST }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
@@ -73,9 +75,9 @@ jobs:
       - name: Deploy over SSH
         if: steps.preflight.outputs.configured == 'true'
         env:
-          HOST: ${{ secrets.STAGING_HOST }}
-          DEPLOY_USER: ${{ secrets.STAGING_USER }}
-          DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "set -euo pipefail
@@ -90,8 +92,8 @@ jobs:
       - name: Health check
         if: steps.preflight.outputs.configured == 'true'
         env:
-          HOST: ${{ secrets.STAGING_HOST }}
-          DEPLOY_USER: ${{ secrets.STAGING_USER }}
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
         run: |
           # Backend health endpoint is exposed on host port 8010 (see compose).
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
