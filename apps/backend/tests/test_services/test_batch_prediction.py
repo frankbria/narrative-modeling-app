@@ -122,6 +122,22 @@ def test_calculate_summary_statistics_classification():
     )
 
 
+def test_safe_unlink_swallows_errors():
+    """Issue #285: temp-file cleanup in a ``finally`` must never mask the
+    original exception — a missing/undeletable path is swallowed."""
+    from app.services.batch_prediction import _safe_unlink
+
+    # Removes an existing file.
+    with tempfile.NamedTemporaryFile(delete=False) as tf:
+        path = tf.name
+    _safe_unlink(path)
+    assert not os.path.exists(path)
+
+    # Missing path does not raise (the mask-the-error scenario).
+    _safe_unlink(path)
+    _safe_unlink("/nonexistent/dir/does-not-exist.tmp")
+
+
 def test_calculate_summary_statistics_regression():
     """Regression summary reports value stats, not a class distribution (#82)."""
     svc = _service()

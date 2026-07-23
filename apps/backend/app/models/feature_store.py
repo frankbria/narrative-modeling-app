@@ -365,7 +365,8 @@ class FeatureCollection(Document):
         # Only add if not already in collection
         if feature_id not in self.feature_ids:
             self.feature_ids.append(feature_id)
-            self.feature_count += 1
+            # Derive from len (issue #285) so the count can't drift or go negative.
+            self.feature_count = len(self.feature_ids)
             self.updated_at = get_current_time()
 
     def remove_feature(self, feature_id: str) -> None:
@@ -377,7 +378,8 @@ class FeatureCollection(Document):
         """
         if feature_id in self.feature_ids:
             self.feature_ids.remove(feature_id)
-            self.feature_count -= 1
+            # Derive from len (issue #285) so the count can't drift or go negative.
+            self.feature_count = len(self.feature_ids)
             self.updated_at = get_current_time()
 
     async def get_features(self) -> list[StoredFeature]:

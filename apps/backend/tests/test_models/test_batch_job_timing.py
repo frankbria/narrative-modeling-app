@@ -46,3 +46,17 @@ def test_estimated_completion_with_naive_start_does_not_raise():
     eta = job.estimated_completion
     assert eta is not None
     assert eta.tzinfo is not None  # returned value is aware
+
+
+def test_estimated_completion_zero_elapsed_returns_none(monkeypatch):
+    """Issue #285: a sub-ms first record makes elapsed == 0; guard the
+    division instead of raising ZeroDivisionError."""
+    import app.models.batch_job as batch_job_module
+
+    frozen = datetime.now(UTC)
+    # Freeze now() to exactly started_at so elapsed.total_seconds() == 0.0.
+    monkeypatch.setattr(batch_job_module, "utcnow", lambda: frozen)
+    job = _job(status=JobStatus.RUNNING, started_at=frozen)
+    job.progress.total_records = 100
+    job.progress.processed_records = 1
+    assert job.estimated_completion is None
