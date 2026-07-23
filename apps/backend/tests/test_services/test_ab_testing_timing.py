@@ -7,7 +7,7 @@ arithmetic works.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -62,7 +62,7 @@ def test_check_completion_duration_limit_with_naive_start():
 
 
 def test_check_completion_within_duration_naive_start():
-    started = datetime.now().replace(tzinfo=None) - timedelta(minutes=1)
+    started = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)  # naive UTC (Mongo shape)
     exp = _experiment(
         status=ExperimentStatus.RUNNING, started_at=started, test_duration_hours=24
     )

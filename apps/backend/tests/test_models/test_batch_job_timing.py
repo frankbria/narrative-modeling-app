@@ -6,7 +6,7 @@ coercion that raises ``TypeError``. These construct jobs with naive timestamps
 (the read-back shape) and assert the arithmetic works.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -30,14 +30,16 @@ def test_duration_seconds_with_naive_timestamps_does_not_raise():
 
 
 def test_duration_seconds_running_uses_now_against_naive_start():
-    started = datetime.now().replace(tzinfo=None) - timedelta(seconds=5)
+    # Naive UTC — the exact shape Mongo returns (tzinfo dropped off a UTC value),
+    # timezone-independent so it can't skew on a non-UTC CI box.
+    started = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
     job = _job(status=JobStatus.RUNNING, started_at=started)  # no completed_at
     # aware now - naive start; must not raise and must be positive.
     assert job.duration_seconds >= 5.0
 
 
 def test_estimated_completion_with_naive_start_does_not_raise():
-    started = datetime.now().replace(tzinfo=None) - timedelta(seconds=10)
+    started = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=10)
     job = _job(status=JobStatus.RUNNING, started_at=started)
     job.progress.total_records = 100
     job.progress.processed_records = 50
