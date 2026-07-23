@@ -11,7 +11,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -126,7 +126,7 @@ class FeatureEngineeringService:
         Returns:
             FeatureSuggestionResponse with suggestions
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         # Check cache first
         cache_key = self._get_cache_key(dataset_id, target_column, problem_type)
@@ -177,7 +177,7 @@ class FeatureEngineeringService:
         all_suggestions = all_suggestions[:max_suggestions]
 
         # Build response
-        processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        processing_time = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
         response = FeatureSuggestionResponse(
             dataset_id=dataset_id,
@@ -194,7 +194,7 @@ class FeatureEngineeringService:
                 "categorical_columns": len(analysis.categorical_columns),
                 "datetime_columns": len(analysis.datetime_columns)
             },
-            generated_at=datetime.utcnow()
+            generated_at=datetime.now(UTC)
         )
 
         # Cache response

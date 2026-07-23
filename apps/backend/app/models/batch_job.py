@@ -9,6 +9,8 @@ from typing import Annotated, Any
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 
+from app.utils.datetime import as_utc, utcnow
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -114,7 +116,7 @@ class BatchJob(Document):
     max_retries: int = Field(default=3)
 
     # Timing
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
@@ -137,8 +139,8 @@ class BatchJob(Document):
         if not self.started_at:
             return None
 
-        end_time = self.completed_at or datetime.utcnow()
-        return (end_time - self.started_at).total_seconds()
+        end_time = as_utc(self.completed_at) if self.completed_at else utcnow()
+        return (end_time - as_utc(self.started_at)).total_seconds()
 
     @property
     def estimated_completion(self) -> datetime | None:
@@ -150,13 +152,13 @@ class BatchJob(Document):
         ):
             return None
 
-        elapsed = datetime.utcnow() - self.started_at
+        elapsed = utcnow() - as_utc(self.started_at)
         rate = self.progress.processed_records / elapsed.total_seconds()
         remaining = self.progress.total_records - self.progress.processed_records
 
         if rate > 0:
             estimated_remaining = remaining / rate
-            return datetime.utcnow() + timedelta(seconds=estimated_remaining)
+            return utcnow() + timedelta(seconds=estimated_remaining)
 
         return None
 
@@ -167,19 +169,19 @@ class BatchJob(Document):
     def mark_started(self) -> None:
         """Mark job as started"""
         self.status = JobStatus.RUNNING
-        self.started_at = datetime.utcnow()
+        self.started_at = utcnow()
 
     def mark_completed(self, results: dict[str, Any] | None = None) -> None:
         """Mark job as completed"""
         self.status = JobStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
         if results:
             self.results.update(results)
 
     def mark_failed(self, error_message: str) -> None:
         """Mark job as failed"""
         self.status = JobStatus.FAILED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
         self.error_message = error_message
         self.retry_count += 1
 

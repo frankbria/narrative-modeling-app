@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -133,7 +133,7 @@ async def health_check():
     """
     return {
         "status": "alive",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "environment": os.getenv("ENVIRONMENT", "development"),
         "version": os.getenv("APP_VERSION", "1.0.0")
     }
@@ -182,7 +182,7 @@ async def readiness_check():
         status_code=status_code,
         content={
             "status": overall_status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "checks": checks
         }
     )

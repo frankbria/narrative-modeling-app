@@ -1,7 +1,7 @@
 """
 A/B Testing API routes
 """
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -188,7 +188,7 @@ async def start_experiment(
         raise HTTPException(status_code=400, detail="Invalid experiment configuration")
     
     experiment.status = ExperimentStatus.RUNNING
-    experiment.started_at = datetime.utcnow()
+    experiment.started_at = datetime.now(UTC)
     await experiment.save()
     
     return {"message": "Experiment started successfully"}

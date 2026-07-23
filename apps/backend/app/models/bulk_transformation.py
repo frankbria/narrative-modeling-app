@@ -13,6 +13,8 @@ from typing import Annotated, Any
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
 
+from app.utils.datetime import as_utc
+
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
@@ -303,8 +305,8 @@ class BulkTransformationJob(Document):
         """Calculate job duration in seconds."""
         if not self.started_at:
             return None
-        end_time = self.completed_at or get_current_time()
-        return (end_time - self.started_at).total_seconds()
+        end_time = as_utc(self.completed_at) if self.completed_at else get_current_time()
+        return (end_time - as_utc(self.started_at)).total_seconds()
 
     @property
     def estimated_remaining_seconds(self) -> float | None:
@@ -314,7 +316,7 @@ class BulkTransformationJob(Document):
             self.progress.processed_columns == 0):
             return None
 
-        elapsed = (get_current_time() - self.started_at).total_seconds()
+        elapsed = (get_current_time() - as_utc(self.started_at)).total_seconds()
         rate = self.progress.processed_columns / elapsed
         remaining = self.progress.total_columns - self.progress.processed_columns
 

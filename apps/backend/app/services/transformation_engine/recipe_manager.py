@@ -2,11 +2,13 @@
 Recipe manager for saving and loading transformation pipelines
 """
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field
+
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +29,8 @@ class TransformationRecipe(Document):
     user_id: str
     dataset_id: str | None = None
     steps: list[TransformationStep]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     is_public: bool = False
     tags: list[str] = Field(default_factory=list)
     usage_count: int = 0
@@ -59,7 +61,7 @@ class RecipeExecutionHistory(Document):
     recipe_id: PydanticObjectId
     user_id: str
     dataset_id: str
-    executed_at: datetime = Field(default_factory=datetime.utcnow)
+    executed_at: datetime = Field(default_factory=utcnow)
     success: bool
     rows_affected: int
     execution_time_ms: int
@@ -82,7 +84,7 @@ class SharedRecipe(Document):
     original_recipe_id: PydanticObjectId  # Reference to original recipe
     original_owner_id: str  # Original creator
     steps: list[TransformationStep]
-    shared_at: datetime = Field(default_factory=datetime.utcnow)
+    shared_at: datetime = Field(default_factory=utcnow)
     tags: list[str] = Field(default_factory=list)
     schema_snapshot: dict[str, str] | None = None
     version: int = 1
@@ -303,7 +305,7 @@ class RecipeManager:
                 if field in updates:
                     setattr(recipe, field, updates[field])
             
-            recipe.updated_at = datetime.utcnow()
+            recipe.updated_at = datetime.now(UTC)
             await recipe.save()
             
             return recipe
@@ -671,7 +673,7 @@ class RecipeManager:
             shared.tags = original.tags
             shared.schema_snapshot = original.schema_snapshot
             shared.version = original.version
-            shared.metadata['last_synced'] = datetime.utcnow().isoformat()
+            shared.metadata['last_synced'] = datetime.now(UTC).isoformat()
 
             await shared.save()
             logger.info(f"Updated shared recipe {shared_recipe_id} from original {original_recipe_id}")
@@ -713,7 +715,7 @@ class RecipeManager:
                 ],
                 "metadata": {
                     **recipe.metadata,
-                    "exported_at": datetime.utcnow().isoformat(),
+                    "exported_at": datetime.now(UTC).isoformat(),
                     "exported_from_version": recipe.version
                 }
             }
@@ -766,7 +768,7 @@ class RecipeManager:
                 version=1,  # Start at version 1 for imports
                 metadata={
                     **recipe_data.get("metadata", {}),
-                    "imported_at": datetime.utcnow().isoformat(),
+                    "imported_at": datetime.now(UTC).isoformat(),
                     "imported_by": user_id
                 }
             )

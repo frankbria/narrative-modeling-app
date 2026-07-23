@@ -1,7 +1,7 @@
 """
 Onboarding service for managing user tutorial and guidance experience
 """
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.user_data import UserData
@@ -131,12 +131,12 @@ class OnboardingService:
         
         # Store completion data
         progress.step_completion_data[step_id] = {
-            "completed_at": datetime.utcnow().isoformat(),
+            "completed_at": datetime.now(UTC).isoformat(),
             "completion_data": completion_data or {}
         }
         
         # Update activity
-        progress.last_activity_at = datetime.utcnow()
+        progress.last_activity_at = datetime.now(UTC)
         
         # Find next step
         next_step = self._get_next_step(progress)
@@ -154,7 +154,7 @@ class OnboardingService:
         completed_required = [s for s in required_steps if s["step_id"] in progress.completed_steps]
         
         if len(completed_required) >= len(required_steps):
-            progress.completed_at = datetime.utcnow()
+            progress.completed_at = datetime.now(UTC)
         
         # Save progress
         await self._save_user_progress(user_id, progress)
@@ -190,7 +190,7 @@ class OnboardingService:
             progress.completed_steps.remove(step_id)
         
         # Update activity
-        progress.last_activity_at = datetime.utcnow()
+        progress.last_activity_at = datetime.now(UTC)
         
         # Find next step
         next_step = self._get_next_step(progress)
@@ -359,7 +359,7 @@ class OnboardingService:
         df = pd.read_csv(sample_file_path)
         
         # Create a unique filename for this user
-        filename = f"sample_{dataset_id}_{user_id}_{int(datetime.utcnow().timestamp())}.csv"
+        filename = f"sample_{dataset_id}_{user_id}_{int(datetime.now(UTC).timestamp())}.csv"
         
         # Save DataFrame to temporary file and upload to S3
         import tempfile
@@ -410,7 +410,7 @@ class OnboardingService:
             file_type="csv",
             contains_pii=False,
             is_processed=True,
-            processed_at=datetime.utcnow(),
+            processed_at=datetime.now(UTC),
             row_count=len(df),
             columns=df.columns.tolist(),
             data_preview=df.head(5).to_dict('records')
@@ -424,7 +424,7 @@ class OnboardingService:
             progress.sample_datasets_loaded.append(dataset_id)
         
         progress.features_discovered.append(f"sample_dataset_{dataset_id}")
-        progress.last_activity_at = datetime.utcnow()
+        progress.last_activity_at = datetime.now(UTC)
         
         await self._save_user_progress(user_id, progress)
         
@@ -444,8 +444,8 @@ class OnboardingService:
         # Create fresh progress
         progress = OnboardingUserProgress(
             user_id=user_id,
-            started_at=datetime.utcnow(),
-            last_activity_at=datetime.utcnow()
+            started_at=datetime.now(UTC),
+            last_activity_at=datetime.now(UTC)
         )
         
         await self._save_user_progress(user_id, progress)
@@ -751,7 +751,7 @@ class OnboardingService:
                 "description": "Uploaded your first dataset",
                 "type": "badge",
                 "points": 10,
-                "earned_at": datetime.utcnow().isoformat()
+                "earned_at": datetime.now(UTC).isoformat()
             })
         
         # First model achievement  
@@ -763,7 +763,7 @@ class OnboardingService:
                 "description": "Trained your first ML model",
                 "type": "badge", 
                 "points": 25,
-                "earned_at": datetime.utcnow().isoformat()
+                "earned_at": datetime.now(UTC).isoformat()
             })
         
         # Completion achievement
@@ -778,7 +778,7 @@ class OnboardingService:
                 "description": "Completed the full onboarding experience",
                 "type": "milestone",
                 "points": 50,
-                "earned_at": datetime.utcnow().isoformat()
+                "earned_at": datetime.now(UTC).isoformat()
             })
         
         # Add new achievements to progress
@@ -817,8 +817,8 @@ class OnboardingService:
             # Create new progress
             progress = OnboardingUserProgress(
                 user_id=user_id,
-                started_at=datetime.utcnow(),
-                last_activity_at=datetime.utcnow()
+                started_at=datetime.now(UTC),
+                last_activity_at=datetime.now(UTC)
             )
         
         # Cache the progress

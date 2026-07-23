@@ -1442,7 +1442,7 @@ class TestExtendedStatusFields:
     async def test_status_includes_monitoring_fields(self, async_authorized_client):
         from datetime import timedelta
 
-        from app.models.training_job import _utcnow
+        from app.utils.datetime import utcnow as _utcnow
 
         job = await _insert_job("model_status_ext", status="running")
         job.update_progress(completed_algorithms=2, current_algorithm="XGBoost")

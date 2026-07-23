@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -101,7 +101,7 @@ async def cache_visualization(
 
     if cache:
         cache.data = data
-        cache.updated_at = datetime.utcnow()
+        cache.updated_at = datetime.now(UTC)
         await cache.save()
     else:
         # Create a new cache entry (Beanie converts the document into a Link)

@@ -8,7 +8,7 @@ and feature application.
 import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
@@ -239,7 +239,7 @@ async def record_suggestion_feedback(
             accepted=request.accepted,
             modified_parameters=request.modified_parameters,
             reason=request.reason,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(UTC)
         )
 
         # Record feedback
@@ -249,7 +249,7 @@ async def record_suggestion_feedback(
             return FeatureFeedbackResponse(
                 suggestion_id=suggestion_id,
                 accepted=request.accepted,
-                recorded_at=datetime.utcnow(),
+                recorded_at=datetime.now(UTC),
                 message="Feedback recorded successfully"
             )
         else:

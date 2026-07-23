@@ -5,6 +5,7 @@ from beanie import Document, Indexed, Link
 from pydantic import BaseModel, Field
 
 from app.models.user_data import UserData
+from app.utils.datetime import utcnow
 
 
 class HistogramData(BaseModel):
@@ -42,8 +43,8 @@ class VisualizationCache(Document):
     data: dict[
         str, Any
     ]  # Will contain HistogramData, BoxplotData, or CorrelationMatrixData
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     class Settings:
         name = "visualization_cache"

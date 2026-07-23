@@ -8,6 +8,8 @@ from typing import Annotated
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 
+from app.utils.datetime import utcnow
+
 
 class VariantStatus(str, Enum):
     ACTIVE = "active"
@@ -41,7 +43,7 @@ class Variant(BaseModel):
     
     # Status
     status: VariantStatus = Field(default=VariantStatus.ACTIVE)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class ABTest(Document):
@@ -77,8 +79,8 @@ class ABTest(Document):
     lift_percentage: float | None = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     tags: list[str] = Field(default_factory=list)
     
     class Settings:

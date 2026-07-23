@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.utils.datetime import utcnow
+
 
 class DataType(str, Enum):
     """Supported data types for schema inference"""
@@ -75,7 +77,7 @@ class SchemaDefinition(BaseModel):
     row_count: int
     column_count: int
     file_type: str
-    inferred_at: datetime = Field(default_factory=datetime.utcnow)
+    inferred_at: datetime = Field(default_factory=utcnow)
     inference_confidence: float = 0.0
 
 

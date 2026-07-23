@@ -1,7 +1,7 @@
 """
 Model monitoring and analytics API routes
 """
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -225,7 +225,7 @@ async def check_drift(
     return DriftDetectionResponse(
         model_id=model_id,
         **drift_result,
-        checked_at=datetime.utcnow()
+        checked_at=datetime.now(UTC)
     )
 
 
