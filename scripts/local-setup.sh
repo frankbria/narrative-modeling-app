@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Bring up local infrastructure (MongoDB + LocalStack S3) for development.
 #
-# ponytail: plain `docker run`, not compose — the repo has no root
-# docker-compose.yml (staging uses Atlas; the test compose has no mongo).
-# Two containers + a bucket is all local dev needs.
+# Uses plain `docker run` rather than compose: the repo has no root
+# docker-compose.yml (staging uses Atlas; the test compose has no mongo),
+# and two containers plus a bucket is all local dev needs.
 
 MONGO_IMAGE="mongo:7"
 LOCALSTACK_IMAGE="localstack/localstack:3"
@@ -19,13 +19,6 @@ echo ""
 if ! command -v docker &> /dev/null; then
     echo "ERROR: Docker is not installed"
     exit 1
-fi
-
-# Create .env from example if missing (non-fatal if no example exists)
-if [ ! -f .env ] && [ -f .env.example ]; then
-    echo "Creating .env from .env.example — edit it with your API keys."
-    cp .env.example .env
-    echo ""
 fi
 
 # Start MongoDB (idempotent: reuse an existing container, else create one)
@@ -53,13 +46,31 @@ else
     echo "LocalStack: started (S3 on :4566)"
 fi
 
-echo "Waiting for services to be ready..."
-sleep 5
+# Wait for LocalStack's S3 to accept requests before creating the bucket.
+# A fixed sleep is unreliable on a cold run (image pulls, slow start), so poll
+# until `s3 ls` succeeds — that way a real failure surfaces instead of being
+# masked by a swallowed `mb` error.
+echo "Waiting for LocalStack S3 to be ready..."
+ready=false
+for _ in $(seq 1 30); do
+    if docker exec narrative-localstack awslocal s3 ls >/dev/null 2>&1; then
+        ready=true
+        break
+    fi
+    sleep 2
+done
 
-# Create the local S3 bucket (ignore "already exists")
-docker exec narrative-localstack awslocal s3 mb "s3://$BUCKET" 2>/dev/null \
-    && echo "Created bucket s3://$BUCKET" \
-    || echo "Bucket s3://$BUCKET already exists"
+if [ "$ready" != true ]; then
+    echo "ERROR: LocalStack S3 did not become ready in time; check 'docker logs narrative-localstack'." >&2
+    exit 1
+fi
+
+# Create the local S3 bucket (already-exists is fine now that S3 is confirmed up)
+if docker exec narrative-localstack awslocal s3 mb "s3://$BUCKET" 2>/dev/null; then
+    echo "Created bucket s3://$BUCKET"
+else
+    echo "Bucket s3://$BUCKET already exists"
+fi
 
 echo ""
 echo "Local infrastructure ready:"
@@ -69,3 +80,6 @@ echo ""
 echo "Next: run the apps locally (see docs/development/LOCAL_DEVELOPMENT.md):"
 echo "  cd apps/backend  && source .venv/bin/activate && uvicorn app.main:app --reload"
 echo "  cd apps/frontend && npm run dev"
+echo ""
+echo "To recreate from scratch (e.g. after changing credentials or image tags):"
+echo "  docker rm -f narrative-mongodb narrative-localstack && ./scripts/local-setup.sh"

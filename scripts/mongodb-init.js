@@ -1,9 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
-// MongoDB Initialization Script for Staging
+// MongoDB Initialization Script (self-hosted Mongo)
 // ═══════════════════════════════════════════════════════════════
 //
-// This script runs automatically when MongoDB container starts
-// Creates application database and user with appropriate permissions
+// Template for provisioning a self-hosted MongoDB: mount into a container's
+// /docker-entrypoint-initdb.d/ to create the application database and user.
+//
+// NOTE: currently dormant — staging/production use MongoDB Atlas, so nothing
+// in this repo invokes it. Kept as the hardened reference for any self-hosted
+// deployment. Requires MONGODB_PASSWORD (fails closed if unset; see below).
 //
 // ═══════════════════════════════════════════════════════════════
 
