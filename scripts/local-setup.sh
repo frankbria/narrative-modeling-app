@@ -25,13 +25,16 @@ fi
 if [ -n "$(docker ps -aq -f name=^narrative-mongodb$)" ]; then
     docker start narrative-mongodb >/dev/null
     echo "MongoDB: reusing existing container 'narrative-mongodb'"
+    echo "  (keeps its ORIGINAL credentials/image — 'docker rm -f narrative-mongodb' to recreate)"
 else
+    # Bind to loopback only — these are unauthenticated/well-known-credential
+    # dev services and must not be reachable on a routable host interface.
     docker run -d --name narrative-mongodb \
-        -p 27017:27017 \
+        -p 127.0.0.1:27017:27017 \
         -e MONGO_INITDB_ROOT_USERNAME="$MONGO_USER" \
         -e MONGO_INITDB_ROOT_PASSWORD="$MONGO_PASS" \
         "$MONGO_IMAGE" >/dev/null
-    echo "MongoDB: started (admin/$MONGO_PASS on :27017)"
+    echo "MongoDB: started (admin/$MONGO_PASS on 127.0.0.1:27017)"
 fi
 
 # Start LocalStack S3 (idempotent)
@@ -40,10 +43,10 @@ if [ -n "$(docker ps -aq -f name=^narrative-localstack$)" ]; then
     echo "LocalStack: reusing existing container 'narrative-localstack'"
 else
     docker run -d --name narrative-localstack \
-        -p 4566:4566 \
+        -p 127.0.0.1:4566:4566 \
         -e SERVICES=s3 \
         "$LOCALSTACK_IMAGE" >/dev/null
-    echo "LocalStack: started (S3 on :4566)"
+    echo "LocalStack: started (S3 on 127.0.0.1:4566)"
 fi
 
 # Wait for LocalStack's S3 to accept requests before creating the bucket.
@@ -65,11 +68,16 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 
-# Create the local S3 bucket (already-exists is fine now that S3 is confirmed up)
-if docker exec narrative-localstack awslocal s3 mb "s3://$BUCKET" 2>/dev/null; then
+# Create the local S3 bucket. S3 is confirmed up, so only "already owned" is a
+# benign non-zero exit — surface anything else instead of masking it.
+if mb_err=$(docker exec narrative-localstack awslocal s3 mb "s3://$BUCKET" 2>&1); then
     echo "Created bucket s3://$BUCKET"
-else
+elif echo "$mb_err" | grep -qE "BucketAlreadyOwnedByYou|BucketAlreadyExists"; then
     echo "Bucket s3://$BUCKET already exists"
+else
+    echo "ERROR: failed to create bucket s3://$BUCKET:" >&2
+    echo "$mb_err" >&2
+    exit 1
 fi
 
 echo ""
