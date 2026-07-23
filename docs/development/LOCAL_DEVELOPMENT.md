@@ -47,12 +47,9 @@ This starts:
 
 ### 4. Run the application
 
-#### Option A: Using Docker (Recommended for first time)
-```bash
-docker compose up
-```
+`local-setup.sh` starts only the infrastructure containers (MongoDB +
+LocalStack); run the backend and frontend directly:
 
-#### Option B: Run locally (Faster for development)
 ```bash
 # Terminal 1 - Backend
 cd apps/backend
@@ -91,10 +88,10 @@ db.user_data.find()
 ### Local S3 Access
 ```bash
 # List buckets
-docker compose exec localstack awslocal s3 ls
+docker exec narrative-localstack awslocal s3 ls
 
 # List files in bucket
-docker compose exec localstack awslocal s3 ls s3://narrative-modeling-local/
+docker exec narrative-localstack awslocal s3 ls s3://narrative-modeling-local/
 ```
 
 ## Troubleshooting
@@ -111,23 +108,19 @@ netstat -ano | findstr :3000  # Windows
 ### MongoDB Connection Failed
 ```bash
 # Check if MongoDB is running
-docker compose ps
+docker ps
 
 # Restart MongoDB
-docker compose restart mongodb
+docker restart narrative-mongodb
 ```
 
 ### Clean Restart
 ```bash
-# Stop everything
-docker compose down
-
-# Remove volumes (deletes data)
-docker compose down -v
+# Stop and remove the infrastructure containers (deletes their data)
+docker rm -f narrative-mongodb narrative-localstack
 
 # Start fresh
 ./scripts/local-setup.sh
-docker compose up
 ```
 
 ## Environment Variables

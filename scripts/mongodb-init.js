@@ -7,11 +7,17 @@
 //
 // ═══════════════════════════════════════════════════════════════
 
+// Require the application-user password from the environment — no default.
+// Failing closed here prevents a weak-credential footgun if MONGODB_PASSWORD
+// is ever forgotten (the container init would otherwise create a user with a
+// well-known password). Checked before any db calls so init aborts immediately.
+const appPassword = process.env.MONGODB_PASSWORD;
+if (!appPassword) {
+  throw new Error('MONGODB_PASSWORD is required for MongoDB initialization; no default is provided.');
+}
+
 // Connect to admin database (required for user creation)
 db = db.getSiblingDB('admin');
-
-// Get password from environment variable
-const appPassword = process.env.MONGODB_PASSWORD || 'changeme';
 
 print('Creating narrative_staging database and application user...');
 
@@ -25,10 +31,6 @@ db.createUser({
   roles: [
     {
       role: 'readWrite',
-      db: 'narrative_staging'
-    },
-    {
-      role: 'dbAdmin',
       db: 'narrative_staging'
     }
   ]

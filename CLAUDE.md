@@ -76,6 +76,5 @@ See `apps/mcp/README.md` for tools, env, and the security model. Recommended ext
 Keep docs synchronized with code: update OpenAPI specs when endpoints change; Python docstrings + TS JSDoc on public/complex surfaces; remove outdated comments immediately; update the relevant section of **this file** when a convention changes (don't add per-issue narrative — that's git/PR history).
 
 ## Automated Workflow Configuration
-- **Traycer:** save prompt to `prompts/<issue-id>.txt` → `./scripts/traycer-workflow.sh <issue-id>` → monitor `npx claude-flow@alpha status --watch`; intervene only on blocker queue.
 - **Quality gates before PR:** all tests pass, coverage >85%, ruff/eslint clean, mypy/tsc clean, no TODO/FIXME/NotImplemented markers, security scan (OWASP).
 - **CodeRabbit:** max 3 iterations; auto-fix style/types/simple-bugs/docs. Escalate on iteration-3 failures, architecture changes, or security decisions.
