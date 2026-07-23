@@ -15,8 +15,8 @@ from app.models.training_job import (
     TrainingJob,
     TrainingLogEntry,
     TrainingProgress,
-    _utcnow,
 )
+from app.utils.datetime import utcnow as _utcnow
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("beanie_models_initialized")]
 

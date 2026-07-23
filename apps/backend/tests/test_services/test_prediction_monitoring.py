@@ -1,7 +1,7 @@
 """
 Tests for prediction monitoring service
 """
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -181,8 +181,10 @@ class TestPredictionMonitoringService:
         """Test metrics respect time window"""
         prediction_log.logs.clear()
         
-        # Add old prediction (25 hours ago)
-        old_time = datetime.utcnow() - timedelta(hours=25)
+        # Add old prediction (25 hours ago). Aware, matching log_prediction's
+        # own timezone-aware stamping (#284) — the in-memory log never holds
+        # naive timestamps in production.
+        old_time = datetime.now(UTC) - timedelta(hours=25)
         prediction_log.logs["model_123"] = [{
             "prediction_id": "old_pred",
             "timestamp": old_time,

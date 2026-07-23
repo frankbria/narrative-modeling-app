@@ -12,6 +12,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.redis_cache import cache_service
+from app.utils.datetime import utcnow
 
 
 class ColumnStatistics(BaseModel):
@@ -93,7 +94,7 @@ class DatasetStatistics(BaseModel):
     column_statistics: list[ColumnStatistics]
     correlation_matrix: dict[str, dict[str, float]] | None = None
     missing_value_summary: dict[str, Any] = Field(default_factory=dict)
-    calculated_at: datetime = Field(default_factory=datetime.utcnow)
+    calculated_at: datetime = Field(default_factory=utcnow)
 
 
 class StatisticsEngine:

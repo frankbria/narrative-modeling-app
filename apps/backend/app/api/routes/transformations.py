@@ -4,7 +4,7 @@ API routes for data transformation pipeline
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
@@ -278,12 +278,12 @@ async def apply_transformation_pipeline(
         # Save transformed data
         new_file_path = await upload_dataframe_to_s3(
             df,
-            f"transformed/{current_user_id}/{request.dataset_id}_{datetime.utcnow().timestamp()}.parquet"
+            f"transformed/{current_user_id}/{request.dataset_id}_{datetime.now(UTC).timestamp()}.parquet"
         )
         
         # Update user data
         user_data.file_path = new_file_path
-        user_data.updated_at = datetime.utcnow()
+        user_data.updated_at = datetime.now(UTC)
         await user_data.save()
         
         # Save as recipe if requested
@@ -306,7 +306,7 @@ async def apply_transformation_pipeline(
         return TransformationApplyResponse(
             success=True,
             dataset_id=request.dataset_id,
-            transformation_id=f"pipeline_{datetime.utcnow().timestamp()}",
+            transformation_id=f"pipeline_{datetime.now(UTC).timestamp()}",
             affected_rows=total_affected_rows,
             affected_columns=list(all_affected_columns),
             execution_time_ms=execution_time_ms

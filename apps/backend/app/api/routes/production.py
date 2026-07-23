@@ -239,7 +239,7 @@ async def create_api_key(
     # Calculate expiration
     expires_at = None
     if request.expires_in_days:
-        expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
+        expires_at = datetime.now(UTC) + timedelta(days=request.expires_in_days)
 
     # Create the document
     api_key_doc = APIKey(
@@ -332,7 +332,7 @@ async def production_predict(
     # Load the model
     storage_service = ModelStorageService()
 
-    request_start = datetime.utcnow()
+    request_start = datetime.now(UTC)
 
     # load_model returns a (model, feature_engineer) tuple keyed by
     # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
@@ -443,7 +443,7 @@ async def production_predict(
             }
 
         # Record per-request monitoring metrics (issue #85) — best-effort.
-        latency_ms = (datetime.utcnow() - request_start).total_seconds() * 1000
+        latency_ms = (datetime.now(UTC) - request_start).total_seconds() * 1000
         await _record_serving_metrics(
             model_id=model_id,
             request_data=request.data,
@@ -458,7 +458,7 @@ async def production_predict(
             probabilities=proba_list if request.include_probabilities else None,
             model_version=model.version,
             prediction_id=prediction_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             metadata=metadata,
             confidence=confidence,
             low_confidence=low_confidence,
@@ -477,7 +477,7 @@ async def production_predict(
         # A true server fault. Record it so the dashboard's error rate / alerts
         # reflect it, but return a generic 500 — never echo str(e) to the caller.
         logger.exception("Production prediction failed for model %s", model_id)
-        latency_ms = (datetime.utcnow() - request_start).total_seconds() * 1000
+        latency_ms = (datetime.now(UTC) - request_start).total_seconds() * 1000
         await _record_serving_metrics(
             model_id=model_id,
             request_data=request.data,

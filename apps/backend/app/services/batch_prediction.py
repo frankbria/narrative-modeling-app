@@ -12,7 +12,7 @@ import os
 import socket
 import tempfile
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO, StringIO
 from typing import Any
 from urllib.parse import urlparse
@@ -258,7 +258,7 @@ class BatchPredictionService:
         """
 
         # Generate unique S3 path
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         s3_key = f"batch-jobs/{user_id}/{model_id}/{timestamp}/input.csv"
 
         if isinstance(input_data, str):
@@ -669,7 +669,7 @@ class BatchPredictionService:
                 result["metadata"] = {
                     "model_id": model.model_id,
                     "model_version": model.version,
-                    "prediction_time": datetime.utcnow().isoformat(),
+                    "prediction_time": datetime.now(UTC).isoformat(),
                 }
 
             predictions.append(result)
@@ -782,7 +782,7 @@ class BatchPredictionService:
                     result["metadata"] = {
                         "model_id": model.model_id,
                         "model_version": model.version,
-                        "prediction_time": datetime.utcnow().isoformat(),
+                        "prediction_time": datetime.now(UTC).isoformat(),
                     }
 
                 predictions.append(result)
@@ -941,7 +941,7 @@ class BatchPredictionService:
         Streams the file straight from disk via ``upload_fileobj`` (multipart
         under the hood), so a large results file is never loaded into memory.
         """
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output_key = f"batch-jobs/{job.user_id}/{config.model_id}/{timestamp}/results.{config.output_format}"
 
         with open(out_path, "rb") as fh:
@@ -986,7 +986,7 @@ class BatchPredictionService:
             return False
 
         job.status = JobStatus.CANCELLED
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(UTC)
         await job.save()
 
         return True

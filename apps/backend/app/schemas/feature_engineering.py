@@ -11,6 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.utils.datetime import utcnow
+
 
 class FeatureType(str, Enum):
     """Types of features that can be suggested"""
@@ -151,7 +153,7 @@ class FeatureSuggestionResponse(BaseModel):
         description="Additional metadata about the suggestions"
     )
     generated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="Timestamp of suggestion generation"
     )
 
@@ -204,7 +206,7 @@ class FeatureFeedbackResponse(BaseModel):
     suggestion_id: str = Field(..., description="Suggestion identifier")
     accepted: bool = Field(..., description="Whether accepted")
     recorded_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="Feedback timestamp"
     )
     message: str = Field(..., description="Status message")
@@ -359,7 +361,7 @@ class FeatureFeedbackRecord(BaseModel):
     accepted: bool = Field(..., description="Whether accepted")
     modified_parameters: dict[str, Any] | None = None
     reason: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     model_config = {
         "json_schema_extra": {

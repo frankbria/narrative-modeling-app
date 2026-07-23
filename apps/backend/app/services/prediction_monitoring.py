@@ -4,7 +4,7 @@ Prediction monitoring and analytics service
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -63,7 +63,7 @@ class PredictionLog:
         async with self.lock:
             self.logs[model_id].append({
                 "prediction_id": prediction_id,
-                "timestamp": datetime.utcnow(),
+                "timestamp": datetime.now(UTC),
                 "input_data": input_data,
                 "prediction": prediction,
                 "probability": probability,
@@ -122,7 +122,7 @@ class PredictionMonitoringService:
         try:
             model = await MLModel.find_one({"model_id": model_id})
             if model:
-                model.last_used_at = datetime.utcnow()
+                model.last_used_at = datetime.now(UTC)
                 await model.save()
         except Exception as e:
             logger.error(f"Failed to update model last_used_at: {e}")
@@ -133,7 +133,7 @@ class PredictionMonitoringService:
     async def _window(model_id: str, hours: int) -> list[dict[str, Any]]:
         """Return all logged events for a model within the last ``hours``."""
         recent = await prediction_log.get_recent_predictions(model_id, limit=10000)
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         return [p for p in recent if p["timestamp"] > cutoff]
 
     @staticmethod
@@ -172,7 +172,7 @@ class PredictionMonitoringService:
         )
 
         time_span_hours = (
-            datetime.utcnow() - successes[0]["timestamp"]
+            datetime.now(UTC) - successes[0]["timestamp"]
         ).total_seconds() / 3600
         predictions_per_hour = len(successes) / max(time_span_hours, 1)
 
@@ -221,7 +221,7 @@ class PredictionMonitoringService:
             bucket_minutes = 15 if hours <= 6 else 60 if hours <= 48 else 360
         bucket_minutes = max(1, bucket_minutes)
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         window_start = now - timedelta(hours=hours)
         bucket = timedelta(minutes=bucket_minutes)
         # Buckets span [window_start, now); the index guard below catches an event
@@ -332,7 +332,7 @@ class PredictionMonitoringService:
             return {"distribution": {}, "total": 0, "unique_values": 0}
 
         # Filter by time window
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
         filtered_preds = [
             p for p in recent_preds
             if p["timestamp"] > cutoff_time
@@ -488,7 +488,7 @@ class PredictionMonitoringService:
             return {}
         
         # Filter by time window
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
         filtered_preds = [
             p for p in recent_preds 
             if p["timestamp"] > cutoff_time

@@ -11,6 +11,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.transformation import TransformationType
+from app.utils.datetime import utcnow
 
 
 class QualityDimension(str, Enum):
@@ -114,7 +115,7 @@ class QualityReport(BaseModel):
     actionable_recommendations: list[ActionableRecommendation] = Field(default_factory=list)
     row_count: int
     column_count: int
-    assessed_at: datetime = Field(default_factory=datetime.utcnow)
+    assessed_at: datetime = Field(default_factory=utcnow)
 
 
 class QualityAssessmentService:

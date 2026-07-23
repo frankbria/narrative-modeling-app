@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
@@ -198,7 +198,7 @@ Version: {model.version}
 Algorithm: {model.algorithm}
 Problem Type: {model.problem_type}
 
-Generated on: {datetime.utcnow().isoformat()}
+Generated on: {datetime.now(UTC).isoformat()}
 """
 
 {chr(10).join(imports)}

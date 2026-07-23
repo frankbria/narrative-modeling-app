@@ -6,7 +6,7 @@ Handles network interruptions, large files, and security checks
 import hashlib
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,8 +68,8 @@ class ChunkedUploadHandler:
             "total_chunks": total_chunks,
             "uploaded_chunks": [],
             "temp_path": str(temp_path),
-            "created_at": datetime.utcnow().isoformat(),
-            "expires_at": (datetime.utcnow() + timedelta(hours=self.session_timeout)).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "expires_at": (datetime.now(UTC) + timedelta(hours=self.session_timeout)).isoformat(),
             "status": "initialized"
         }
         
@@ -128,7 +128,7 @@ class ChunkedUploadHandler:
         # Update session
         session["uploaded_chunks"].append(chunk_number)
         session["uploaded_chunks"].sort()
-        session["last_activity"] = datetime.utcnow().isoformat()
+        session["last_activity"] = datetime.now(UTC).isoformat()
         
         # Check if upload is complete
         if len(session["uploaded_chunks"]) == session["total_chunks"]:
@@ -166,7 +166,7 @@ class ChunkedUploadHandler:
             raise HTTPException(status_code=404, detail="Upload session not found")
         
         # Check expiration
-        if datetime.fromisoformat(session["expires_at"]) < datetime.utcnow():
+        if datetime.fromisoformat(session["expires_at"]) < datetime.now(UTC):
             raise HTTPException(status_code=410, detail="Upload session expired")
         
         # Find missing chunks
@@ -202,7 +202,7 @@ class ChunkedUploadHandler:
     
     def cleanup_expired_sessions(self):
         """Clean up expired upload sessions"""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         expired_sessions = []
         
         for session_id, session in self.sessions.items():
@@ -225,7 +225,7 @@ class ChunkedUploadHandler:
     
     def _generate_session_id(self, filename: str, file_size: int) -> str:
         """Generate unique session ID"""
-        data = f"{filename}:{file_size}:{datetime.utcnow().isoformat()}"
+        data = f"{filename}:{file_size}:{datetime.now(UTC).isoformat()}"
         return hashlib.sha256(data.encode()).hexdigest()[:16]
     
     def _get_session(self, session_id: str) -> dict[str, Any] | None:
@@ -279,7 +279,7 @@ class RateLimiter:
     
     def check_rate_limit(self, user_id: str) -> bool:
         """Check if user is within rate limits"""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         minute_ago = now - timedelta(minutes=1)
         
         # Clean old entries
@@ -302,7 +302,7 @@ class RateLimiter:
         """Record a new request"""
         if user_id not in self.request_times:
             self.request_times[user_id] = []
-        self.request_times[user_id].append(datetime.utcnow())
+        self.request_times[user_id].append(datetime.now(UTC))
     
     def start_upload(self, user_id: str):
         """Record upload start"""

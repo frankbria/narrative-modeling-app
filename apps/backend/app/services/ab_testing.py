@@ -3,7 +3,7 @@ A/B Testing service for experiment management and variant assignment
 """
 import hashlib
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import numpy as np
@@ -12,6 +12,7 @@ from scipy import stats
 
 from app.models.ab_test import ABTest, ExperimentStatus, Variant
 from app.models.ml_model import MLModel
+from app.utils.datetime import as_utc, utcnow
 
 
 class ABTestingService:
@@ -130,7 +131,7 @@ class ABTestingService:
                     variant.custom_metrics[metric] = 0
                 variant.custom_metrics[metric] += value
         
-        experiment.updated_at = datetime.utcnow()
+        experiment.updated_at = utcnow()
         await experiment.save()
     
     @staticmethod
@@ -198,7 +199,7 @@ class ABTestingService:
         
         # Check duration limit
         if experiment.test_duration_hours and experiment.started_at:
-            elapsed = datetime.utcnow() - experiment.started_at
+            elapsed = utcnow() - as_utc(experiment.started_at)
             if elapsed > timedelta(hours=experiment.test_duration_hours):
                 return True, "duration_limit"
         
@@ -252,7 +253,7 @@ class ABTestingService:
             experiment.winner_variant_id = best_variant.variant_id
         
         experiment.status = ExperimentStatus.COMPLETED
-        experiment.ended_at = datetime.utcnow()
+        experiment.ended_at = utcnow()
         await experiment.save()
         
         return experiment
@@ -272,9 +273,9 @@ class ABTestingService:
         
         if experiment.started_at:
             if experiment.ended_at:
-                duration = experiment.ended_at - experiment.started_at
+                duration = as_utc(experiment.ended_at) - as_utc(experiment.started_at)
             else:
-                duration = datetime.utcnow() - experiment.started_at
+                duration = utcnow() - as_utc(experiment.started_at)
             metrics["duration"] = duration.total_seconds()
         
         for variant in experiment.variants:

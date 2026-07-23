@@ -7,30 +7,22 @@ updated as the background training task runs. It is the source of truth for the
 the model comparison table, the selected best model, and any error.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 
 from app.models.batch_job import JobStatus
+from app.utils.datetime import as_utc, utcnow
 
 LogLevel = Literal["info", "warning", "error"]
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def _as_utc(value: datetime) -> datetime:
-    """Treat a naive datetime as UTC (MongoDB round-trips drop the tzinfo)."""
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class TrainingLogEntry(BaseModel):
     """One timestamped log line emitted during a training run."""
 
-    timestamp: datetime = Field(default_factory=_utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     level: LogLevel
     message: str
     stage: str | None = None
@@ -95,8 +87,8 @@ class TrainingJob(Document):
     error: str | None = None
 
     # Timestamps
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
@@ -117,7 +109,7 @@ class TrainingJob(Document):
     def mark_started(self, total_algorithms: int = 0) -> None:
         """Transition the job to RUNNING and record the algorithm count."""
         self.status = JobStatus.RUNNING
-        self.started_at = _utcnow()
+        self.started_at = utcnow()
         self.updated_at = self.started_at
         self.progress.total_algorithms = total_algorithms
         self.progress.completed_algorithms = 0
@@ -139,7 +131,7 @@ class TrainingJob(Document):
             self.progress.completed_algorithms = max(0, completed_algorithms)
         if current_algorithm is not None:
             self.progress.current_algorithm = current_algorithm
-        self.updated_at = _utcnow()
+        self.updated_at = utcnow()
 
     def mark_completed(
         self,
@@ -153,7 +145,7 @@ class TrainingJob(Document):
     ) -> None:
         """Transition the job to COMPLETED and attach results."""
         self.status = JobStatus.COMPLETED
-        self.completed_at = _utcnow()
+        self.completed_at = utcnow()
         self.updated_at = self.completed_at
         self.progress.current_algorithm = None
         self.progress.completed_algorithms = self.progress.total_algorithms
@@ -173,14 +165,14 @@ class TrainingJob(Document):
     def mark_failed(self, error: str) -> None:
         """Transition the job to FAILED and record the error message."""
         self.status = JobStatus.FAILED
-        self.completed_at = _utcnow()
+        self.completed_at = utcnow()
         self.updated_at = self.completed_at
         self.error = error
 
     def mark_cancelled(self) -> None:
         """Transition the job to CANCELLED and freeze its progress."""
         self.status = JobStatus.CANCELLED
-        self.completed_at = _utcnow()
+        self.completed_at = utcnow()
         self.updated_at = self.completed_at
         self.progress.current_algorithm = None
         # A terminal job is not in any pipeline stage; leaving "training" here
@@ -197,7 +189,7 @@ class TrainingJob(Document):
         """
         entry = TrainingLogEntry(level=level, message=message, stage=stage)
         self.logs.append(entry)
-        self.updated_at = _utcnow()
+        self.updated_at = utcnow()
         return entry
 
     # -- timing ------------------------------------------------------------
@@ -207,8 +199,8 @@ class TrainingJob(Document):
         """Seconds since the job started (frozen at completion; None if unstarted)."""
         if self.started_at is None:
             return None
-        end = _as_utc(self.completed_at) if self.completed_at else _utcnow()
-        return (end - _as_utc(self.started_at)).total_seconds()
+        end = as_utc(self.completed_at) if self.completed_at else utcnow()
+        return (end - as_utc(self.started_at)).total_seconds()
 
     @property
     def estimated_remaining_seconds(self) -> float | None:

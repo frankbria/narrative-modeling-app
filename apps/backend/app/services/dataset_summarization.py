@@ -16,6 +16,7 @@ from app.services.data_processing.quality_assessment import QualityReport
 from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class EnhancedAISummary(AISummary):
     """Enhanced AI summary with additional metadata"""
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     analysis_depth: str = Field(default="standard", pattern="^(basic|standard|comprehensive)$")
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=utcnow)
     model_used: str = Field(default="gpt-4")
     processing_time: float = Field(default=0.0)
 
