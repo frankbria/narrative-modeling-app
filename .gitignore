@@ -65,6 +65,14 @@ infrastructure/secrets/
 # Large binary files
 scripts/awscliv2.zip
 
+# Agent / audit / benchmark scratch output (issue #288 — keep these out of git)
+.apm/
+.benchmarks/
+coverage_summary.txt
+test.csv
+*.log
+!**/npm-debug.log*
+
 # Serena MCP server data
 .serena/
 

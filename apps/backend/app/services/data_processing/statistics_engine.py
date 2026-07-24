@@ -4,6 +4,7 @@ Statistics calculation engine for comprehensive data profiling
 
 import hashlib
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.redis_cache import cache_service
 from app.utils.datetime import utcnow
+
+logger = logging.getLogger(__name__)
 
 
 class ColumnStatistics(BaseModel):
@@ -291,9 +294,9 @@ class StatisticsEngine:
             stats.outlier_count = int(outliers.sum())
             stats.outlier_percentage = float(outliers.sum() / len(numeric_series) * 100)
             
-        except Exception as e:
+        except Exception:
             # Log error but don't fail
-            print(f"Error calculating numeric statistics for {stats.column_name}: {e}")
+            logger.warning("Error calculating numeric statistics for %s", stats.column_name, exc_info=True)
 
     async def _add_datetime_statistics(self, series: pd.Series, stats: ColumnStatistics):
         """Add datetime-specific statistics"""
@@ -317,8 +320,8 @@ class StatisticsEngine:
             stats.mean = float(pd.to_datetime(timestamp_series.mean(), unit='s').isoformat())
             stats.median = float(pd.to_datetime(timestamp_series.median(), unit='s').isoformat())
             
-        except Exception as e:
-            print(f"Error calculating datetime statistics for {stats.column_name}: {e}")
+        except Exception:
+            logger.warning("Error calculating datetime statistics for %s", stats.column_name, exc_info=True)
 
     async def _add_string_statistics(self, series: pd.Series, stats: ColumnStatistics):
         """Add string-specific statistics"""
@@ -330,8 +333,8 @@ class StatisticsEngine:
             stats.min_length = int(lengths.min())
             stats.max_length = int(lengths.max())
             
-        except Exception as e:
-            print(f"Error calculating string statistics for {stats.column_name}: {e}")
+        except Exception:
+            logger.warning("Error calculating string statistics for %s", stats.column_name, exc_info=True)
 
     def _calculate_correlation_matrix(self, df: pd.DataFrame) -> dict[str, dict[str, float]]:
         """Calculate correlation matrix for numeric columns"""

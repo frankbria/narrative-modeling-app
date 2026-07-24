@@ -3,6 +3,7 @@ Main data processor that orchestrates schema inference, statistics, and quality 
 """
 
 import io
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ import pandas as pd
 from .quality_assessment import QualityAssessmentService, QualityReport
 from .schema_inference import SchemaDefinition, SchemaInferenceService
 from .statistics_engine import DatasetStatistics, StatisticsEngine
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessedData:
@@ -211,7 +214,7 @@ class DataProcessor:
         df = self._clean_column_names(df)
         
         # Infer schema
-        print("Inferring schema...")
+        logger.debug("Inferring schema")
         schema = await self.schema_service.infer_schema(
             df, 
             file_type=file_metadata.get("file_type", "unknown")
@@ -221,11 +224,11 @@ class DataProcessor:
         column_types = {col.name: col.data_type.value for col in schema.columns}
         
         # Calculate statistics
-        print("Calculating statistics...")
+        logger.debug("Calculating statistics")
         statistics = await self.stats_engine.calculate_statistics(df, column_types)
-        
+
         # Assess quality
-        print("Assessing data quality...")
+        logger.debug("Assessing data quality")
         quality_report = await self.quality_service.assess_quality(
             df, 
             column_types,

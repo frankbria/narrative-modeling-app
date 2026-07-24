@@ -16,7 +16,6 @@ if APP_DIR not in sys.path:
 # precedence over .env (no override): a stray .env on a server must never
 # clobber deployment-set variables like ENVIRONMENT/SKIP_AUTH (issue #149).
 env_path = Path(__file__).resolve().parent.parent / ".env"
-print(f"Loading .env file from: {env_path}")
 load_dotenv(dotenv_path=env_path)
 
 

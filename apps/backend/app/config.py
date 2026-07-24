@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 # Get the path to the .env file
 env_path = Path(__file__).resolve().parent.parent / ".env"
-print(f"Loading .env file from config.py: {env_path}")
 load_dotenv(dotenv_path=env_path)
 
 # Environments where disabling authentication (SKIP_AUTH=true) is permitted

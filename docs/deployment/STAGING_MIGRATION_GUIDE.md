@@ -27,7 +27,7 @@ This guide documents the PLANNED migration to MongoDB Atlas M0 Free Tier when re
    - Fixed GitHub Secrets naming convention (no `STAGING_` prefix)
 
 2. **Purged Exposed Credentials from Git History**
-   - Removed password `ZbKe5a9NGMJ5g91z` from entire git history
+   - Removed password `[REDACTED]` from entire git history
    - Processed 275 commits
    - Force pushed cleaned history to GitHub (commit 154c91e)
    - **CRITICAL**: MongoDB Atlas password needs to be rotated immediately
@@ -237,9 +237,9 @@ After completing migration, verify:
 ### Exposed Credentials
 
 The following password was **EXPOSED in git history** and must be rotated:
-- **Password**: `ZbKe5a9NGMJ5g91z`
+- **Password**: `[REDACTED]`
 - **Username**: `frankbria`
-- **Cluster**: `briastrategygroup.oxzhocn.mongodb.net`
+- **Cluster**: `<cluster>.mongodb.net`
 
 **Action Required**:
 1. Log in to MongoDB Atlas

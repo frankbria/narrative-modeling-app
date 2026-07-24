@@ -51,7 +51,6 @@ export function useDatasetChatContext(datasetId: string | null) {
       const cachedData = summaryCache[datasetId];
       
       if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
-        console.log('Using cached AI summary');
         setContextString(cachedData.data.rawMarkdown);
         setRawMarkdown(cachedData.data.rawMarkdown);
         setIsAvailable(true);
@@ -158,7 +157,6 @@ export function useDatasetChatContext(datasetId: string | null) {
 
         if (response.status === 404) {
           // AI summary not found - this is not an error, just not available yet
-          console.log('AI summary not available yet');
           setIsAvailable(false);
           setContextString(null);
           setRawMarkdown(null);
@@ -211,7 +209,6 @@ export async function getDatasetSystemPrompt(datasetId: string): Promise<string>
     const cachedData = summaryCache[datasetId];
     
     if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
-      console.log('Using cached AI summary for system prompt');
       return cachedData.data.rawMarkdown;
     }
     
