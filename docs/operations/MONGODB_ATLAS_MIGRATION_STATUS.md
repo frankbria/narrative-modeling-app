@@ -62,7 +62,7 @@ MONGODB_DB=narrative_staging
 **Security Issue**: MongoDB Atlas credentials were exposed in git history
 
 **Exposed Credentials**:
-- Password: `ZbKe5a9NGMJ5g91z` (now redacted)
+- Password: `[REDACTED]` (now redacted)
 - Username: `frankbria`
 - Cluster: `<cluster>.mongodb.net`
 - Found in commits: b6935e4 and b779b25
@@ -103,7 +103,7 @@ git reset --hard origin/main
 
 ### 1. MongoDB Atlas Credential Rotation (CRITICAL)
 
-**Why**: The exposed password `ZbKe5a9NGMJ5g91z` was in git history for an unknown period and must be considered compromised.
+**Why**: The exposed password `[REDACTED]` was in git history for an unknown period and must be considered compromised.
 
 **Action Required**:
 1. Log in to MongoDB Atlas: https://cloud.mongodb.com

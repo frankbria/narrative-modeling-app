@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {  Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -40,28 +40,6 @@ export function FeatureSelection({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'configure' | 'results' | 'comparison'>('configure')
-
-  // Load previously selected features on mount
-  useEffect(() => {
-    const loadPreviousSelection = async () => {
-      if (!session?.accessToken) return
-
-      try {
-        const previous = await FeatureSelectionService.getSelectedFeatures(
-          datasetId,
-          session.accessToken
-        )
-
-        if (previous.has_selection && previous.selected_features.length > 0) {
-          // Show a notification that previous selection exists
-        }
-      } catch {
-        // Silently fail - no previous selection
-      }
-    }
-
-    loadPreviousSelection()
-  }, [datasetId, session])
 
   const handleRunSelection = async () => {
     if (!session?.accessToken) {
