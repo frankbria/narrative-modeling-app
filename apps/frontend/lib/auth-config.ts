@@ -10,10 +10,15 @@
 // creds (the credentials provider + dummy fallbacks), so the guard is disabled
 // there. Trigger is *missing/blank*, not "equals dummy", so CI's `next build`
 // (which sets non-empty dummy values) is unaffected.
+//
+// NEXTAUTH_URL is also required (#317): a blank value makes NextAuth infer the
+// base URL from request headers, producing wrong OAuth redirect URIs behind the
+// nginx reverse proxy the app deploys under.
 
 /** Env vars required for OAuth sign-in + JWT signing to work in production. */
 export const REQUIRED_PROD_AUTH_ENV = [
   'NEXTAUTH_SECRET',
+  'NEXTAUTH_URL',
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'GITHUB_ID',
