@@ -126,6 +126,11 @@ extend-select = ["I", "UP", "T20"]
 #   - the perf benchmark defers an import to its point of use.
 "app/main.py" = ["E402", "I001"]
 "tests/benchmarks/test_transformation_perf.py" = ["E402"]
+# T20 (flake8-print, #288) bans print() in application code only. CLI/dev
+# scripts, one-off task runners, and test debug output legitimately use print().
+"scripts/**" = ["T20"]
+"tasks/**" = ["T20"]
+"tests/**" = ["T20"]
 
 [tool.mypy]
 # Blocking gate (issue #219). CI runs a plain `mypy app/` and fails on any error.
