@@ -175,6 +175,7 @@ narrative-modeling-app/
 │   ├── DOCUMENTATION_INDEX.md     # This file
 │   ├── DOCUMENTATION_SUMMARY.md   # Overview of all docs
 │   ├── architecture/              # Architecture documentation
+│   │   ├── ADR-001-billing-deferred-free-invite-beta.md
 │   │   ├── ARCHITECTURE_INDEX.md
 │   │   ├── ARCHITECTURE_PHASE3.md
 │   │   ├── ARCHITECTURE_SUMMARY.md
