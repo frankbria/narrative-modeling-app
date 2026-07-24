@@ -111,7 +111,11 @@ default-groups = ["dev", "interpretability", "tuning", "observability"]
 # Python: PEP 585 builtins, PEP 604 unions, datetime.UTC, etc.). UP was
 # sequenced after the mypy gate (#219) so the annotation rewrites land on top of
 # the typing work rather than colliding with it.
-extend-select = ["I", "UP"]
+# flake8-print ("T20", issue #288) bans stray print()/pprint() in the app —
+# debug prints leaked into request paths and shipped tracebacks to stdout. Use
+# logging instead. print() inside generated-code string templates is not a real
+# call node, so it is unaffected.
+extend-select = ["I", "UP", "T20"]
 
 [tool.ruff.lint.per-file-ignores]
 # Imports deliberately follow runtime setup, not a style slip:

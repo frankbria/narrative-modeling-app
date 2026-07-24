@@ -67,19 +67,19 @@ Quick reference guide to all project documentation with clear purposes and targe
 ## 🏗️ Component Documentation
 
 ### Backend (FastAPI)
-8. **[apps/backend/README.md](apps/backend/README.md)** - Backend API documentation
+8. **[apps/backend/README.md](../apps/backend/README.md)** - Backend API documentation
    - **Purpose**: FastAPI backend setup, API endpoints, testing
    - **Audience**: Backend developers, API consumers
    - **When**: Working with backend code or API
 
 ### Frontend (Next.js)
-9. **[apps/frontend/README.md](apps/frontend/README.md)** - Frontend application guide
+9. **[apps/frontend/README.md](../apps/frontend/README.md)** - Frontend application guide
    - **Purpose**: Next.js frontend setup, components, styling
    - **Audience**: Frontend developers, UI/UX designers
    - **When**: Working with frontend code
 
 ### MCP Server
-10. **[apps/mcp/README.md](apps/mcp/README.md)** - MCP server tools and integration
+10. **[apps/mcp/README.md](../apps/mcp/README.md)** - MCP server tools and integration
     - **Purpose**: Advanced data processing and ML tools via MCP protocol
     - **Audience**: ML engineers, developers using Claude Desktop
     - **When**: Using MCP tools or setting up Claude Desktop integration

@@ -110,30 +110,30 @@ async def process_uploaded_file(
         # Store processing results in database
         try:
             user_data.schema = convert_numpy_types(processed_data.schema.model_dump())
-        except Exception as e:
-            print(f"Error dumping schema: {e}")
+        except Exception:
+            logger.error("Error dumping schema", exc_info=True)
             raise
-            
+
         try:
             user_data.statistics = convert_numpy_types(processed_data.statistics.model_dump())
-        except Exception as e:
-            print(f"Error dumping statistics: {e}")
+        except Exception:
+            logger.error("Error dumping statistics", exc_info=True)
             raise
-            
+
         try:
             user_data.quality_report = convert_numpy_types(processed_data.quality_report.model_dump())
-        except Exception as e:
-            print(f"Error dumping quality_report: {e}")
+        except Exception:
+            logger.error("Error dumping quality_report", exc_info=True)
             raise
         user_data.processed_at = processed_data.processed_at
         user_data.is_processed = True
-        
-        print("About to save user_data...")
+
+        logger.debug("About to save user_data")
         try:
             await user_data.save()
-            print("user_data saved successfully")
-        except Exception as e:
-            print(f"Error saving user_data: {e}")
+            logger.debug("user_data saved successfully")
+        except Exception:
+            logger.error("Error saving user_data", exc_info=True)
             raise
         
         # Return processing results
@@ -158,9 +158,7 @@ async def process_uploaded_file(
         # Re-raise HTTP exceptions without wrapping
         raise
     except Exception as e:
-        import traceback
-        print(f"ERROR in process_data: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
+        logger.exception("Error processing dataset")
         raise HTTPException(status_code=500, detail=f"Error processing dataset: {str(e)}")
 
 
@@ -345,9 +343,9 @@ async def get_data_preview(
             "rows": len(paginated_df)
         }
         
-    except Exception as e:
+    except Exception:
         # If S3 read fails, fall back to cached preview
-        print(f"Error reading from S3: {e}")
+        logger.warning("Error reading from S3; falling back to cached preview", exc_info=True)
         preview_data = user_data.data_preview or []
         paginated_data = preview_data[offset:offset + rows]
         

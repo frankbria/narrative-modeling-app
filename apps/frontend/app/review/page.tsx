@@ -362,23 +362,7 @@ export default function ReviewPage() {
                 <CardContent>
                   <div className="w-full overflow-x-auto">
                     <div className="min-w-[600px]">
-                      {(() => {
-                        console.log('Rendering CorrelationHeatmap with schema:', data.schema);
-                        console.log('schema length:', data.schema.length);
-                        console.log('schema structure:', JSON.stringify(data.schema, null, 2));
-                        
-                        // Check if there are any numeric fields
-                        const numericFields = data.schema.filter(
-                          field => field.field_type === 'numeric'
-                        );
-                        console.log('Numeric fields count:', numericFields.length);
-                        
-                        return (
-                          <CorrelationHeatmap 
-                            stats={data.schema}
-                          />
-                        );
-                      })()}
+                      <CorrelationHeatmap stats={data.schema} />
                     </div>
                   </div>
                 </CardContent>
@@ -393,10 +377,6 @@ export default function ReviewPage() {
                 <CardContent>
                   <div className="overflow-x-auto">
                     {(() => {
-                      console.log('Data Preview - data:', data);
-                      console.log('Data Preview - previewData:', data.previewData);
-                      console.log('Data Preview - headers:', data.headers);
-                      
                       // Check if previewData exists and has items
                       if (!data.previewData || data.previewData.length === 0) {
                         return (

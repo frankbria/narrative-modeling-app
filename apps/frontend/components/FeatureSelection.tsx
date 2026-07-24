@@ -54,11 +54,9 @@ export function FeatureSelection({
 
         if (previous.has_selection && previous.selected_features.length > 0) {
           // Show a notification that previous selection exists
-          console.log('Previous feature selection found:', previous.selected_features)
         }
       } catch {
         // Silently fail - no previous selection
-        console.log('No previous selection found')
       }
     }
 

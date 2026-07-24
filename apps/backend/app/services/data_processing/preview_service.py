@@ -5,6 +5,7 @@ Provides functionality to preview transformations and calculate their impact
 on data by comparing original vs transformed DataFrames.
 """
 
+import logging
 from typing import Any
 
 import pandas as pd
@@ -12,6 +13,8 @@ import pandas as pd
 from app.schemas.preview import ImpactStatistics
 
 from .quality_assessment import QualityAssessmentService
+
+logger = logging.getLogger(__name__)
 
 
 class PreviewService:
@@ -294,8 +297,8 @@ class PreviewService:
             quality_score_after = max(0.0, min(1.0, float(quality_score_after)))
 
             return quality_score_before, quality_score_after
-        except Exception as e:
+        except Exception:
             # If quality assessment fails, return neutral scores
             # This allows the preview to continue working
-            print(f"Warning: Could not calculate quality scores: {e}")
+            logger.warning("Could not calculate quality scores", exc_info=True)
             return 0.5, 0.5

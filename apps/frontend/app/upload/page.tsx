@@ -88,12 +88,7 @@ export default function UploadPage() {
     cancelUpload: cancelChunkUpload,
     resetUpload: resetChunkUpload
   } = useChunkedUpload({
-    onProgress: (progress) => {
-      console.log('Chunk upload progress:', progress);
-    },
     onComplete: (fileId, response) => {
-      console.log('Chunk upload completed:', { fileId, response });
-      
       // Handle successful chunked upload
       const previewDataWithPII: PreviewData = {
         headers: Object.keys(response.preview?.[0] || {}),
@@ -129,7 +124,6 @@ export default function UploadPage() {
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    console.log('Files dropped:', acceptedFiles);
     if (acceptedFiles.length === 0) {
       setUploadStatus('error');
       setFile(null);
@@ -142,7 +136,6 @@ export default function UploadPage() {
     
     // Reset workflow state when starting a new upload
     if (state.datasetId) {
-      console.log('Resetting workflow for new upload');
       resetWorkflow();
     }
     
@@ -187,14 +180,11 @@ export default function UploadPage() {
     setIsUploading(true);
     setErrorMessage(null);
     setShowPIIWarning(false);
-    console.log('Uploading file:', file.name, file.type);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      console.log('Sending request to upload API');
-      
       const response = await fetch(`${API_URL}/upload/secure`, {
         method: 'POST',
         body: formData,
@@ -203,8 +193,6 @@ export default function UploadPage() {
         }
       });
 
-      console.log('Response status:', response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Error response:', errorText);
@@ -212,8 +200,7 @@ export default function UploadPage() {
       }
 
       const responseData = await response.json();
-      console.log('Upload response:', responseData);
-      
+
       // Handle different response types
       if (responseData.status === 'pii_detected' && responseData.requires_confirmation) {
         // High-risk PII detected, show warning
@@ -263,8 +250,6 @@ export default function UploadPage() {
     
     setIsConfirming(true);
     try {
-      console.log('Confirming PII upload with masking:', maskPII);
-      
       const formData = new FormData();
       formData.append('file', file);
       formData.append('mask_pii', maskPII.toString());
@@ -283,8 +268,7 @@ export default function UploadPage() {
       }
 
       const result = await response.json();
-      console.log('PII upload result:', result);
-      
+
       // Show success and preview
       const previewDataWithPII: PreviewData = {
         headers: Object.keys(result.preview?.[0] || {}),

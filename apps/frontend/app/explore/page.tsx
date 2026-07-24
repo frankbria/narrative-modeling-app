@@ -41,7 +41,6 @@ export default function ExploreDataPage() {
             Authorization: `Bearer ${token}`
           }
         })
-        console.log('Datasets Data:', response.data)
         setDatasets(response.data)
       } catch (err) {
         console.error(err)

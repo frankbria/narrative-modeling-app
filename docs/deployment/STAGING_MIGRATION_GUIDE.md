@@ -239,7 +239,7 @@ After completing migration, verify:
 The following password was **EXPOSED in git history** and must be rotated:
 - **Password**: `ZbKe5a9NGMJ5g91z`
 - **Username**: `frankbria`
-- **Cluster**: `briastrategygroup.oxzhocn.mongodb.net`
+- **Cluster**: `<cluster>.mongodb.net`
 
 **Action Required**:
 1. Log in to MongoDB Atlas

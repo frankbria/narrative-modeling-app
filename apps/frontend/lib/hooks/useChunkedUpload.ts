@@ -98,7 +98,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       return result.complete || false
     } catch (error) {
       if (retryCount < maxRetries) {
-        console.log(`Retrying chunk ${chunkNumber}, attempt ${retryCount + 1}`)
+        console.warn(`Retrying chunk ${chunkNumber}, attempt ${retryCount + 1}`)
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Exponential backoff
         return uploadChunk(sessionId, chunkNumber, chunkData, retryCount + 1)
       }

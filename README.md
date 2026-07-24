@@ -34,9 +34,6 @@ narrative-modeling-app/
 │   ├── frontend/         # Next.js + Tailwind UI
 │   ├── backend/          # FastAPI backend for ML orchestration
 │   └── mcp/              # MCP server for advanced data processing
-├── ml/                   # Python modeling scripts & training logic
-├── shared/               # Shared types, constants, and utilities
-├── infrastructure/       # Infrastructure as code (deployment configs)
 ├── scripts/              # Utility scripts for development
 ├── docs/                 # Project documentation
 ├── .github/              # GitHub Actions / CI workflows
@@ -54,7 +51,7 @@ narrative-modeling-app/
 - **Database:** MongoDB Atlas (cloud-hosted) with Redis caching
 - **Storage:** AWS S3
 - **Auth:** NextAuth with Google/GitHub providers
-- **Dev Tools:** GitHub, Linear (issue tracking), uv (Python), Docker
+- **Dev Tools:** GitHub (issues + Actions CI/CD), uv (Python), Docker
 
 ---
 
@@ -89,21 +86,17 @@ npm run dev
 
 ## 📌 Status
 
-✅ **Sprint 11 Complete:** Data Model Refactoring & Performance Benchmarking
-- ✅ **Model Architecture Refactoring** - UserData split into DatasetMetadata, TransformationConfig, ModelConfig
-- ✅ **Data Versioning Foundation** - Content-based hashing, lineage tracking, S3 integration
-- ✅ **Migration Testing Infrastructure** - Volume testing, rollback procedures, data integrity verification
-- ✅ **Performance Benchmarking** - pytest-benchmark framework with throughput targets
-- ✅ **100% Test Pass Rate** - 214/214 tests passing with 85%+ coverage
+Actively developed. Core platform is functional end-to-end: data ingestion,
+automated EDA, feature engineering, model training/explainability, and a
+production inference surface.
 
-🟢 **Sprint 12: 87% Complete** - API Integration & Production Readiness (33/38 story points)
-- ✅ **API Integration** - Version API routes with 23/23 tests passing
-- ✅ **Data Versioning API** - Version tracking, lineage, recipe management
-- ✅ **Production Deployment** - Model deployment API with 45/45 tests passing
-- ✅ **MongoDB Atlas Migration** - Integration tests now use cloud-hosted Atlas
-- ✅ **Critical Bug Fixes** (2025-11-11) - Fixed 11 runtime bugs + 1 critical security vulnerability (PR #48)
-- 🚧 **AutoML Integration** - In progress
-- 🚧 **CI/CD Pipeline** - Integration tests migrated to Atlas
+- ✅ **Test suite** — 1,400+ backend tests passing at 85%+ coverage
+- ✅ **CI/CD** — GitHub Actions is the merge gate (backend lint/typecheck/tests,
+  frontend lint/build/jest, MCP, integration, and an e2e smoke run)
+- ✅ **Model training & explainability** — real trained-model surface under
+  `/api/v1/ml/`, with SHAP-based interpretability
+- ✅ **Production deployment** — model deploy + inference API
+- ✅ **MongoDB Atlas** — cloud-hosted, with Redis caching and AWS S3 storage
 
 ---
 

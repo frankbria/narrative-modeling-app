@@ -2,7 +2,17 @@
 const nextConfig = {
   // Enable standalone output for Docker production builds
   output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
-  
+
+  // Strip console.* from production bundles so debug logging (and any data it
+  // stringifies) never ships to the browser. console.error/warn are kept for
+  // real diagnostics. (issue #288)
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === 'production'
+        ? { exclude: ['error', 'warn'] }
+        : false,
+  },
+
   // Security headers
   async headers() {
     return [

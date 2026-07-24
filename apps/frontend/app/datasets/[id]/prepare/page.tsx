@@ -70,7 +70,6 @@ export default function DatasetPreparePage() {
         if (savedTransformations) {
           const parsed = JSON.parse(savedTransformations);
           setTransformations(parsed);
-          console.log('Loaded transformations from localStorage:', parsed.length);
         }
       } catch (err) {
         console.error('Failed to load transformations:', err);

@@ -64,7 +64,7 @@ MONGODB_DB=narrative_staging
 **Exposed Credentials**:
 - Password: `ZbKe5a9NGMJ5g91z` (now redacted)
 - Username: `frankbria`
-- Cluster: `briastrategygroup.oxzhocn.mongodb.net`
+- Cluster: `<cluster>.mongodb.net`
 - Found in commits: b6935e4 and b779b25
 - File: `apps/backend/.env`
 
@@ -107,7 +107,7 @@ git reset --hard origin/main
 
 **Action Required**:
 1. Log in to MongoDB Atlas: https://cloud.mongodb.com
-2. Navigate to Database Access for cluster `briastrategygroup.oxzhocn.mongodb.net`
+2. Navigate to Database Access for cluster `<cluster>.mongodb.net`
 3. Either:
    - Delete user `frankbria` and create new user with different username
    - OR change password for `frankbria` to a new secure password
@@ -139,7 +139,7 @@ git reset --hard origin/main
 
 **Format**:
 ```
-mongodb+srv://NEW_USERNAME:NEW_PASSWORD@briastrategygroup.oxzhocn.mongodb.net/narrative_staging?retryWrites=true&w=majority
+mongodb+srv://NEW_USERNAME:NEW_PASSWORD@<cluster>.mongodb.net/narrative_staging?retryWrites=true&w=majority
 ```
 
 ### 4. Verify Staging Deployment
