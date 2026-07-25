@@ -1,4 +1,4 @@
-# Frontend (Next.js 15) production image — built by docker-compose.staging.yml
+# Frontend (Next.js 16) production image — built by docker-compose.staging.yml
 # and deployed by .github/workflows/deploy.yml (issue #150).
 #
 # Multi-stage build using Next.js standalone output (next.config.mjs enables it
