@@ -35,20 +35,6 @@ const nextConfig = {
       },
     ];
   },
-  
-  webpack: (config) => {
-    // Ignore the tw-animate-css module
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      'tw-animate-css': false,
-    };
-    return config;
-  },
-  
-  // Experimental features for better performance
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
 };
 
 export default nextConfig; 
