@@ -9,9 +9,8 @@ import nextTs from "eslint-config-next/typescript";
 //   1. `next lint` only ever walked app/, components/, and lib/. `eslint .`
 //      walks everything, so e2e/, __tests__/, and the generated report dirs are
 //      now in scope — handled explicitly below.
-//   2. `next lint` supplied the ignore list implicitly; globalIgnores replaces
-//      eslint-config-next's defaults rather than adding to them, so those
-//      defaults are restated at the bottom.
+//   2. `next lint` supplied the ignore list implicitly; the generated dirs it
+//      never walked are now ignored explicitly at the bottom.
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -79,13 +78,16 @@ const eslintConfig = defineConfig([
     },
   },
   globalIgnores([
-    // Defaults inherited from eslint-config-next, restated because
-    // globalIgnores replaces them rather than adding to them.
+    // eslint-config-next already ignores these four; flat-config ignore blocks
+    // are cumulative, so listing them again is belt-and-braces, not a
+    // requirement (verified: removing them still lints 0 files under .next/).
+    // Kept so build output stays ignored even if upstream drops its defaults.
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Generated artifacts that `next lint` never walked.
+    // Generated artifacts that `next lint` never walked, and that
+    // eslint-config-next does NOT ignore — these are load-bearing.
     "coverage/**",
     "playwright-report/**",
     "test-results/**",
