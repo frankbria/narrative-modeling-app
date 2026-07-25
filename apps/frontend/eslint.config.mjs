@@ -32,6 +32,10 @@ const eslintConfig = defineConfig([
     // relation to the framework bump, so they are demoted to warnings here to
     // keep them visible rather than switched off and forgotten. Promote back to
     // "error" as they are burned down. See follow-up issue #373.
+    //
+    // Demoting to "warn" would normally weaken the gate, so the lint script
+    // pins --max-warnings to the current total: these cannot silently grow, and
+    // the ceiling ratchets down as #373 lands.
     name: "react-compiler-rules-pending-burndown",
     rules: {
       "react-hooks/immutability": "warn",
