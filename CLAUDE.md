@@ -39,11 +39,12 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 ## Testing Commands
 - Backend (full): `cd apps/backend && uv run pytest` — needs MongoDB on :27017; optional Redis (:6380) + LocalStack (:4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when absent)
 - Backend (service-free): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
-- Frontend: `cd apps/frontend && npm test` | type check: `npm run type-check`
+- Frontend: `cd apps/frontend && npm test` | type check: `npm run type-check` | lint: `npm run lint`
 - MCP: `cd apps/mcp && uv run pytest tests/`
 
 ### Test footguns
 - **Route tests (#267):** `tests/test_api/conftest.py::mock_async_client` mounts only `health` + `secure_upload`, so requests to any other router 404 and `assert x in [200, 404, 422]`-style checks pass vacuously. Use **`async_authorized_client`** (full app, auth overridden) + real Mongo docs and assert **exact** statuses. For the X-API-Key production surface, insert a real `APIKey` and pass the raw `sk_live_…` header. The in-memory `prediction_log` is process-global and never cleared by `setup_database` — reset it when asserting per-model counts.
+- **Frontend lint is warning-capped (#333):** Next 16 removed `next lint`, so `npm run lint` is `eslint . --max-warnings 297`. The ceiling is deliberate — five `react-hooks` React Compiler rules (arriving via `eslint-plugin-react-hooks` v7) are demoted to `warn` pending the #373 burndown, and the cap stops them growing silently. **Adding one new warning anywhere (a stray `any` is the usual culprit) fails CI even though nothing errored.** Fix the warning, or lower/raise the number deliberately — never widen `globalIgnores` to dodge it. Lint scope is now the whole project, not `next lint`'s `app`/`components`/`lib`, so `e2e/` and `__tests__/` are linted too (with `no-console`/`no-require-imports` relaxed there).
 - **Frontend jest.setup (#268):** the global `beforeEach` sets `global.fetch` to **reject** by default — any test that fetches must stub `global.fetch` explicitly. `useRouter()` returns a stable per-test spy at `global.__NEXT_ROUTER_MOCKS__` (`push`/`replace`/…) for asserting redirects. Contract locked by `__tests__/setup/jestSetupContract.test.tsx`. Radix tabs need `mouseDown`+`mouseUp`+`click`, not a bare `click`.
 
 ## CI & Test Suite Status
