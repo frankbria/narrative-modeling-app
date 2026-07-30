@@ -103,18 +103,24 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
+          # umask BEFORE writing: `printf > file` then `chmod 600` leaves the file
+          # world-readable under the runner's default umask (022) for the moment in
+          # between. That matters most for staging_key, which is a PRIVATE KEY.
+          umask 077
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
-          chmod 600 ~/.ssh/staging_key
           # Pinned host key from a secret rather than a live `ssh-keyscan` of HOST.
           # Two reasons: ssh-keyscan was trust-on-first-use (it accepted whatever
           # answered, so a MITM on the path was never detected), and it was the step
-          # that failed opaquely once 22 was firewalled. Populate the secret from a
-          # trusted session, having verified the fingerprint out of band:
+          # that failed opaquely once 22 was firewalled.
+          #
+          # ROTATION: if the VPS host key ever changes, deploys fail closed with
+          # "Host key verification failed" — that is the intended behaviour, not a
+          # bug. Re-pin from a trusted session, verifying the fingerprint out of
+          # band first, using the tailnet HOST value (labels must match HOST):
           #   ssh-keyscan -H <tailnet-host> | gh secret set SSH_KNOWN_HOSTS --env Development
           printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy over SSH
         if: steps.preflight.outputs.configured == 'true'
