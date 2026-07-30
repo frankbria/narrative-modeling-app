@@ -115,10 +115,11 @@ updates:
   # accurate). Grouped so all action bumps land in one PR per week.
   - package-ecosystem: "github-actions"
     cooldown:
+      # Only `default-days` here: Dependabot rejects `semver-{major,minor,patch}-days`
+      # for the github-actions ecosystem, and one invalid key invalidates the WHOLE
+      # file — every ecosystem silently stops updating, security bumps included.
+      # The per-semver keys are supported for npm (see the frontend block above).
       default-days: 14
-      semver-major-days: 14
-      semver-minor-days: 7
-      semver-patch-days: 7
     directory: "/"
     schedule:
       interval: "weekly"
