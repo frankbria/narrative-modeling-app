@@ -1,7 +1,9 @@
 name: Deploy (Staging)
 
-# Automated staging deployment (issue #150). The job SSHes into the staging VPS
-# as the deploy user, pulls main, and rebuilds the stack with
+# Automated staging deployment (issue #150). Target: the staging VPS at
+# dev.briaanalytics.com — refer to it by hostname, not a raw IP; the address has
+# changed before and stale IPs in docs/config caused a failed deploy. The job
+# SSHes into the staging VPS as the deploy user, pulls main, and rebuilds with
 # docker-compose.staging.yml (which builds apps/backend/Dockerfile and
 # apps/frontend/Dockerfile). Application secrets live in .env.staging ON THE
 # SERVER and are never passed through CI; compose is invoked with
@@ -14,7 +16,7 @@ name: Deploy (Staging)
 # secrets with a STAGING_ prefix. This is the single source of truth — do not
 # reintroduce repo-level STAGING_* secrets.
 #   SSH_KEY      - private key authorized for the deploy user on HOST (required)
-#   HOST         - staging host, IP or DNS (required)
+#   HOST         - staging host; prefer the DNS name dev.briaanalytics.com (required)
 #   DEPLOY_USER  - optional; defaults to `root`
 #   DEPLOY_PATH  - optional; defaults to /opt/narrative-modeling-app/staging
 #
@@ -70,7 +72,15 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
           chmod 600 ~/.ssh/staging_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Don't send ssh-keyscan's stderr to /dev/null: it exits 1 when HOST is
+          # unresolvable/unreachable, and under `bash -e` that failed the whole job
+          # with a bare "exit code 1" and no clue why (seen on runs for b451309,
+          # b962bc5, d35971b — HOST pointing at a stale address). Keep the
+          # diagnostic and say which host we actually tried.
+          if ! ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts; then
+            echo "::error::ssh-keyscan could not reach '$HOST:22'. Check the HOST secret on the Development environment resolves to the current staging address (\`getent hosts dev.briaanalytics.com\`) and that port 22 is reachable from GitHub runners."
+            exit 1
+          fi
 
       - name: Deploy over SSH
         if: steps.preflight.outputs.configured == 'true'
@@ -86,6 +96,9 @@ jobs:
              git checkout main
              git reset --hard origin/main
              test -f .env.staging || { echo '.env.staging missing on server'; exit 1; }
+             # Fail fast with the FULL list of any missing required vars, instead of
+             # letting compose abort on the first \${VAR:?} it interpolates.
+             bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
              docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
              docker compose -f docker-compose.staging.yml --env-file .env.staging ps"
 

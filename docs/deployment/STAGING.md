@@ -1,6 +1,6 @@
 # Staging Deployment Guide
 
-**Server**: 47.88.89.175
+**Server**: dev.briaanalytics.com
 **Domain**: dev.briaanalytics.com
 **Environment**: Staging (Pre-Production)
 **Status**: ✅ **FULLY DEPLOYED** (as of 2025-10-23)
@@ -78,7 +78,7 @@ Nginx (80/443) - dev.briaanalytics.com
 
 ### Key Design Decisions
 
-1. **Shared Server**: 47.88.89.175 hosts multiple applications, requiring custom ports
+1. **Shared Server**: dev.briaanalytics.com hosts multiple applications, requiring custom ports
 2. **Backend as Service**: systemd ensures reliability and proper environment variable loading
 3. **Self-Hosted Database**: MongoDB 7.0 runs in Docker for development/staging use
 4. **SSL Termination**: Nginx handles SSL, internal services use HTTP
@@ -162,7 +162,7 @@ docker logs narrative-staging-mongodb --tail 100
 
 ### Port Allocation
 
-The staging server (47.88.89.175) hosts multiple services. Custom ports avoid conflicts:
+The staging server (dev.briaanalytics.com) hosts multiple services. Custom ports avoid conflicts:
 
 | Service | Default Port | Staging Port | Reason |
 |---------|--------------|--------------|--------|
@@ -201,7 +201,7 @@ WantedBy=multi-user.target
 
 ### Prerequisites
 
-- SSH access to `47.88.89.175` as `narrative-deploy` user
+- SSH access to `dev.briaanalytics.com` as `narrative-deploy` user
 - Docker and Docker Compose installed
 - Environment variables configured in `.env.staging`
 - GitHub repository access
@@ -223,7 +223,7 @@ The staging environment has been deployed. For reference, the initial deployment
 
 ```bash
 # SSH as narrative-deploy user
-ssh narrative-deploy@47.88.89.175
+ssh narrative-deploy@dev.briaanalytics.com
 
 # Navigate to deployment directory
 cd /opt/narrative-modeling-app/staging
@@ -532,7 +532,7 @@ sudo systemctl restart narrative-backend
 
 ### Contact Information
 
-- **Server**: 47.88.89.175
+- **Server**: dev.briaanalytics.com
 - **Domain**: https://dev.briaanalytics.com
 - **SSH User**: narrative-deploy
 - **Deployment Path**: `/opt/narrative-modeling-app/staging`

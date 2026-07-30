@@ -1,6 +1,6 @@
 # Staging Deployment Guide - Step by Step
 
-**Server**: 47.88.89.175 (root access)
+**Server**: dev.briaanalytics.com (root access)
 **Date Created**: 2025-10-22
 **Status**: Ready for deployment
 
@@ -10,8 +10,8 @@
 
 Before starting deployment, ensure you have:
 
-- [ ] SSH access to 47.88.89.175 as root
-- [ ] Domain name or subdomain configured (DNS pointing to 47.88.89.175)
+- [ ] SSH access to dev.briaanalytics.com as root
+- [ ] Domain name or subdomain configured (DNS pointing to dev.briaanalytics.com)
 - [ ] AWS S3 bucket created for staging uploads
 - [ ] AWS IAM credentials with S3 access
 - [ ] OpenAI API key
@@ -23,7 +23,7 @@ Before starting deployment, ensure you have:
 ## Step 1: Install Docker Compose Plugin
 
 ```bash
-ssh root@47.88.89.175
+ssh root@dev.briaanalytics.com
 
 # Update package list
 apt-get update
@@ -91,7 +91,7 @@ openssl rand -hex 32  # For NEXTAUTH_SECRET (64 chars)
 
 ```bash
 # SSH into staging server
-ssh narrative-deploy@47.88.89.175
+ssh narrative-deploy@dev.briaanalytics.com
 
 # Navigate to deployment directory
 cd /opt/narrative-modeling-app/staging
@@ -133,7 +133,7 @@ chmod 600 .env.staging
 
 ```bash
 # SSH as narrative-deploy user
-ssh narrative-deploy@47.88.89.175
+ssh narrative-deploy@dev.briaanalytics.com
 cd /opt/narrative-modeling-app/staging
 
 # Clone repository
@@ -167,7 +167,7 @@ polls the backend `/health` endpoint (host port 8010).
 | Secret | Value |
 | --- | --- |
 | `STAGING_SSH_PRIVATE_KEY` | Private key authorized for the deploy user (see Step 2) |
-| `STAGING_HOST` | `dev.briaanalytics.com` (or `47.88.89.175`) |
+| `STAGING_HOST` | `dev.briaanalytics.com` |
 | `STAGING_USER` | `narrative-deploy` |
 | `STAGING_DEPLOY_PATH` | Optional; defaults to `/opt/narrative-modeling-app/staging` |
 
@@ -182,7 +182,7 @@ at `STAGING_DEPLOY_PATH` with `origin` pointing at this repo (Step 5, Option A).
 
 ```bash
 # SSH as root
-ssh root@47.88.89.175
+ssh root@dev.briaanalytics.com
 
 # Copy nginx configuration
 nano /etc/nginx/sites-available/narrative-staging.conf
@@ -319,7 +319,7 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging restart bac
 
 ```bash
 # SSH as narrative-deploy
-ssh narrative-deploy@47.88.89.175
+ssh narrative-deploy@dev.briaanalytics.com
 cd /opt/narrative-modeling-app/staging
 
 # Pull latest code

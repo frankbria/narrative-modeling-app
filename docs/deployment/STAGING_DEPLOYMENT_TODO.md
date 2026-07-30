@@ -1,6 +1,6 @@
 # Staging Deployment Setup - TODO
 
-**Target Server**: 47.88.89.175 (root access)
+**Target Server**: dev.briaanalytics.com (root access)
 **Current Status**: ✅ Configuration Complete, Ready for Deployment
 **Priority**: High (needed for Sprint 12+)
 **Last Updated**: 2025-10-22
@@ -11,8 +11,8 @@ This document outlines the steps needed to set up the staging deployment server 
 
 ## Server Information
 
-- **IP Address**: 47.88.89.175
-- **Access**: SSH as root (`ssh root@47.88.89.175`)
+- **Host**: dev.briaanalytics.com (resolve the current IP with `dig +short dev.briaanalytics.com`)
+- **Access**: SSH as root (`ssh root@dev.briaanalytics.com`)
 - **Purpose**: Staging environment for integration testing and sprint demos
 - **Constraint**: Server hosts multiple services - **default ports will conflict**
 
@@ -48,7 +48,7 @@ Need to identify free ports for:
 
 ```bash
 # SSH into server
-ssh root@47.88.89.175
+ssh root@dev.briaanalytics.com
 
 # Check which ports are in use
 netstat -tulpn | grep LISTEN
@@ -67,7 +67,7 @@ docker ps -a
 ```
 Internet
     ↓
-47.88.89.175:[PROXY_PORT]
+dev.briaanalytics.com:[PROXY_PORT]
     ↓
 [Nginx/Reverse Proxy]
     ↓
@@ -83,7 +83,7 @@ Internet
 
 ### 1. Server Reconnaissance ✅ COMPLETED
 
-- [x] SSH into 47.88.89.175 as root
+- [x] SSH into dev.briaanalytics.com as root
 - [x] Document existing services and port usage
 - [x] Check available disk space (`df -h`) - 197GB available
 - [x] Check available memory (`free -h`) - 11GB available
@@ -167,7 +167,7 @@ jobs:
     needs: integration-tests
     if: success()
     steps:
-      - Deploy to 47.88.89.175
+      - Deploy to dev.briaanalytics.com
       - Run smoke tests
       - Notify on success/failure
 ```
@@ -211,7 +211,7 @@ Staging deployment is complete when:
 
 ## Next Steps
 
-1. ✅ **DONE**: SSH into 47.88.89.175 and perform server reconnaissance
+1. ✅ **DONE**: SSH into dev.briaanalytics.com and perform server reconnaissance
 2. ✅ **DONE**: Document port assignments and create configuration files
 3. **NOW**: Follow STAGING_DEPLOYMENT_GUIDE.md to deploy
    - Install Docker Compose plugin

@@ -1,7 +1,7 @@
 # Staging Server MongoDB Atlas Migration Guide
 
 **Date**: 2025-10-27
-**Server**: 47.88.89.175 (dev.briaanalytics.com)
+**Server**: dev.briaanalytics.com
 **Status**: ⚠️ **PLANNED - NOT YET IMPLEMENTED**
 
 ---
@@ -48,7 +48,7 @@ This guide documents the PLANNED migration to MongoDB Atlas M0 Free Tier when re
 1. Log in to https://cloud.mongodb.com
 2. Create or use existing M0 Free Tier cluster
 3. Create database user with credentials
-4. Whitelist staging server IP: `47.88.89.175`
+4. Whitelist the staging server's public IP (resolve: `dig +short dev.briaanalytics.com`)
    - Or use `0.0.0.0/0` for staging environment
 5. Get connection string (SRV format)
 
@@ -57,7 +57,7 @@ This guide documents the PLANNED migration to MongoDB Atlas M0 Free Tier when re
 SSH into staging server and update environment file:
 
 ```bash
-ssh narrative-deploy@47.88.89.175
+ssh narrative-deploy@dev.briaanalytics.com
 cd /opt/narrative-modeling-app/staging
 ```
 
@@ -185,7 +185,7 @@ sudo journalctl -u narrative-backend | grep -i mongodb
 
 1. **IP Not Whitelisted**:
    - Go to Atlas → Network Access
-   - Add staging server IP: `47.88.89.175`
+   - Add the staging server's public IP (resolve: `dig +short dev.briaanalytics.com`)
 
 2. **Invalid Credentials**:
    - Verify username and password in Atlas
