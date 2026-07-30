@@ -51,7 +51,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 - Backend full suite green locally (~1,460 passed); pytest uses the **test** database, never `MONGODB_URI`.
 - **`ci.yml` is the PR gate.** Runs: backend (ruff **blocking** with `E`/`F`/`I`/`UP`; mypy **blocking** — plain `uv run mypy app/`; service-free pytest), frontend (eslint, `tsc --noEmit`, `next build`, jest), MCP pytest, backend integration (Mongo/Redis/LocalStack, `CI_REQUIRE_SERVICES=true` so services can't silently skip), and the `e2e-smoke` job (Playwright `@smoke` on the full stack).
 - The single aggregate **`CI Success`** status is the only required check for `main` — it transitively enforces all of the above (incl. e2e smoke). Advisory-only: `backend-typecheck`, the `@perf` job (`perf-tests.yml`), `security-audit`, and the Claude/GLM review bots.
-- `deploy.yml` ships `main` → staging over SSH (secret-gated). `integration-tests.yml`/`e2e-tests.yml` are manual (`workflow_dispatch`).
+- `deploy.yml` ships `main` → staging over SSH (secret-gated). **The VPS firewalls port 22 off the public internet** (`ufw` allows it only from the home subnet and `on tailscale0`), so the runner joins the tailnet first — `HOST` must be the box's **tailnet** name/`100.x` address, never `dev.briaanalytics.com`, and `SSH_KNOWN_HOSTS` must be labelled with that same value (#384). Humans on the home subnet still SSH to the public name directly. `integration-tests.yml`/`e2e-tests.yml` are manual (`workflow_dispatch`).
 - Guides: `apps/backend/docs/TEST_INFRASTRUCTURE.md`, `apps/backend/docs/TDD_GUIDE.md`.
 
 ## Environment Variables

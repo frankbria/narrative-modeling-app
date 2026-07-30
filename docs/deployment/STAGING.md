@@ -201,7 +201,9 @@ WantedBy=multi-user.target
 
 ### Prerequisites
 
-- SSH access to `dev.briaanalytics.com` as `narrative-deploy` user
+- SSH access to `dev.briaanalytics.com` as `narrative-deploy` user — port 22 is
+  firewalled to the home subnet and the tailnet, so connect from one of those
+  (CI uses the tailnet path; see the `deploy.yml` header and #384)
 - Docker and Docker Compose installed
 - Environment variables configured in `.env.staging`
 - GitHub repository access
