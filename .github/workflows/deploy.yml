@@ -1,9 +1,7 @@
 name: Deploy (Staging)
 
-# Automated staging deployment (issue #150). Target: the staging VPS at
-# dev.briaanalytics.com — refer to it by hostname, not a raw IP; the address has
-# changed before and stale IPs in docs/config caused a failed deploy. The job
-# SSHes into the staging VPS as the deploy user, pulls main, and rebuilds with
+# Automated staging deployment (issue #150). The job reaches the staging VPS over
+# Tailscale, SSHes in as the deploy user, pulls main, and rebuilds with
 # docker-compose.staging.yml (which builds apps/backend/Dockerfile and
 # apps/frontend/Dockerfile). Application secrets live in .env.staging ON THE
 # SERVER and are never passed through CI; compose is invoked with
@@ -11,19 +9,33 @@ name: Deploy (Staging)
 # managed Atlas cluster (MONGODB_URI in .env.staging) — no Mongo container is
 # deployed.
 #
+# NETWORK PATH (issue #384) — the VPS firewalls port 22 off the public internet:
+# `ufw` allows 22 only from the home subnet and `on tailscale0`. A GitHub-hosted
+# runner therefore CANNOT ssh to dev.briaanalytics.com; it joins the tailnet and
+# connects to the box's tailnet address instead. Consequences:
+#   * HOST must be the tailnet MagicDNS name (…​.ts.net) or 100.x address —
+#     setting it to dev.briaanalytics.com will hang and then fail.
+#   * SSH_KNOWN_HOSTS must be labelled with that same HOST value.
+#   * The tailnet ACL must let `tag:ci` reach the staging box on port 22.
+# Humans on the home subnet can still ssh to dev.briaanalytics.com directly; only
+# CI needs the tailnet. Mirrors the working setup in frankbria/codeframe.
+#
 # Secrets live on the `Development` GitHub Environment
 # (Settings → Environments → Development → Environment secrets), NOT as repo
 # secrets with a STAGING_ prefix. This is the single source of truth — do not
 # reintroduce repo-level STAGING_* secrets.
-#   SSH_KEY      - private key authorized for the deploy user on HOST (required)
-#   HOST         - staging host; prefer the DNS name dev.briaanalytics.com (required)
-#   DEPLOY_USER  - optional; defaults to `root`
-#   DEPLOY_PATH  - optional; defaults to /opt/narrative-modeling-app/staging
+#   SSH_KEY            - private key authorized for the deploy user on HOST (required)
+#   HOST               - staging box's TAILNET name/address, not its public DNS (required)
+#   SSH_KNOWN_HOSTS    - pinned host key(s) for HOST; replaces live ssh-keyscan TOFU (required)
+#   TS_OAUTH_CLIENT_ID - Tailscale OAuth client id, tag:ci scope (required)
+#   TS_OAUTH_SECRET    - Tailscale OAuth client secret (required)
+#   DEPLOY_USER        - optional; defaults to `root`
+#   DEPLOY_PATH        - optional; defaults to /opt/narrative-modeling-app/staging
 #
-# Until SSH_KEY + HOST are configured the job is a no-op that succeeds with a
-# warning, so main stays green. Idempotent: re-running on the same commit
-# reconciles the server to that commit and rebuilds; `docker compose up -d`
-# only recreates changed containers.
+# Until all five required secrets are configured the job is a no-op that succeeds
+# with a warning naming the missing ones, so main stays green. Idempotent:
+# re-running on the same commit reconciles the server to that commit and
+# rebuilds; `docker compose up -d` only recreates changed containers.
 
 on:
   push:
@@ -54,33 +66,61 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           HOST: ${{ secrets.HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
         run: |
-          if [ -z "$SSH_KEY" ] || [ -z "$HOST" ]; then
+          missing=()
+          [ -n "$SSH_KEY" ]            || missing+=("SSH_KEY")
+          [ -n "$HOST" ]               || missing+=("HOST")
+          [ -n "$SSH_KNOWN_HOSTS" ]    || missing+=("SSH_KNOWN_HOSTS")
+          [ -n "$TS_OAUTH_CLIENT_ID" ] || missing+=("TS_OAUTH_CLIENT_ID")
+          [ -n "$TS_OAUTH_SECRET" ]    || missing+=("TS_OAUTH_SECRET")
+          if [ "${#missing[@]}" -gt 0 ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Development environment deploy secrets not set (SSH_KEY/HOST) — skipping deploy. See .github/workflows/deploy.yml header."
+            echo "::warning::Deploy secrets not set (${missing[*]}) — skipping deploy so main stays green. See .github/workflows/deploy.yml header."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # The VPS firewalls port 22 off the public internet (ufw allows 22 only from
+      # the home subnet and `on tailscale0`), so a GitHub-hosted runner cannot SSH
+      # in directly — that is what broke every deploy after 2026-07-30 01:11
+      # (issue #384). The runner joins the tailnet instead. HOST must therefore be
+      # the box's tailnet MagicDNS name or 100.x address, NOT dev.briaanalytics.com.
+      # Mirrors the working setup in frankbria/codeframe.
+      - name: Connect to Tailscale
+        if: steps.preflight.outputs.configured == 'true'
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Configure SSH
         if: steps.preflight.outputs.configured == 'true'
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          HOST: ${{ secrets.HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
+          # umask BEFORE writing: `printf > file` then `chmod 600` leaves the file
+          # world-readable under the runner's default umask (022) for the moment in
+          # between. That matters most for staging_key, which is a PRIVATE KEY.
+          umask 077
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
-          chmod 600 ~/.ssh/staging_key
-          # Don't send ssh-keyscan's stderr to /dev/null: it exits 1 when HOST is
-          # unresolvable/unreachable, and under `bash -e` that failed the whole job
-          # with a bare "exit code 1" and no clue why (seen on runs for b451309,
-          # b962bc5, d35971b — HOST pointing at a stale address). Keep the
-          # diagnostic and say which host we actually tried.
-          if ! ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts; then
-            echo "::error::ssh-keyscan could not reach '$HOST:22'. Check the HOST secret on the Development environment resolves to the current staging address (\`getent hosts dev.briaanalytics.com\`) and that port 22 is reachable from GitHub runners."
-            exit 1
-          fi
+          # Pinned host key from a secret rather than a live `ssh-keyscan` of HOST.
+          # Two reasons: ssh-keyscan was trust-on-first-use (it accepted whatever
+          # answered, so a MITM on the path was never detected), and it was the step
+          # that failed opaquely once 22 was firewalled.
+          #
+          # ROTATION: if the VPS host key ever changes, deploys fail closed with
+          # "Host key verification failed" — that is the intended behaviour, not a
+          # bug. Re-pin from a trusted session, verifying the fingerprint out of
+          # band first, using the tailnet HOST value (labels must match HOST):
+          #   ssh-keyscan -H <tailnet-host> | gh secret set SSH_KNOWN_HOSTS --env Development
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH
         if: steps.preflight.outputs.configured == 'true'
