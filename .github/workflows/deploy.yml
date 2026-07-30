@@ -72,7 +72,15 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
           chmod 600 ~/.ssh/staging_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Don't send ssh-keyscan's stderr to /dev/null: it exits 1 when HOST is
+          # unresolvable/unreachable, and under `bash -e` that failed the whole job
+          # with a bare "exit code 1" and no clue why (seen on runs for b451309,
+          # b962bc5, d35971b — HOST pointing at a stale address). Keep the
+          # diagnostic and say which host we actually tried.
+          if ! ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts; then
+            echo "::error::ssh-keyscan could not reach '$HOST:22'. Check the HOST secret on the Development environment resolves to the current staging address (\`getent hosts dev.briaanalytics.com\`) and that port 22 is reachable from GitHub runners."
+            exit 1
+          fi
 
       - name: Deploy over SSH
         if: steps.preflight.outputs.configured == 'true'
