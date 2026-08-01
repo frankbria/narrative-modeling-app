@@ -9,6 +9,12 @@
    each across dialogs, sheets and toasts). v4 loads v3 plugins via @plugin. */
 @plugin "tailwindcss-animate";
 
+/* Declared in package.json but never loaded: v3's config had `plugins: [animate]`
+   only, so the `prose` classes in OnboardingStep/AIInsightsPanel/onboarding have
+   always rendered unstyled. Pre-existing, not migration fallout — wired up here
+   because the dependency is already installed and this is the file that loads it. */
+@plugin "@tailwindcss/typography";
+
 /* v4 removed `theme.container`; it is a utility now. Mirrors the old config:
    center: true, padding: "2rem", screens: { "2xl": "1400px" }. */
 @utility container {
