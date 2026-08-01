@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import {
   Table,
   TableBody,
@@ -27,75 +28,34 @@ interface PreviewData {
 }
 
 export function DataPreviewTable({ datasetId, onExport }: DataPreviewTableProps) {
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const rowsPerPage = 50
 
-  useEffect(() => {
-    if (!datasetId || datasetId === 'undefined') {
-      setError('Invalid dataset ID')
-      setLoading(false)
-      return
+  const validId = !!datasetId && datasetId !== 'undefined'
+
+  const {
+    data: previewData,
+    loading,
+    error: fetchError,
+  } = useAsyncData<PreviewData>(async () => {
+    const response = await fetch(
+      `/api/data/${datasetId}/preview?rows=${rowsPerPage}&offset=${currentPage * rowsPerPage}`,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      },
+    )
+    if (!response.ok) {
+      throw new Error('Failed to fetch preview data')
     }
+    return response.json()
+  }, [datasetId, currentPage], { enabled: validId })
 
-    // AbortController to cancel fetch on cleanup
-    const abortController = new AbortController()
-    let isMounted = true
+  // The old effect set this synchronously before returning early; it is a plain
+  // property of the props now. AbortController is gone because the hook already
+  // discards a superseded request's result.
+  const error = validId ? fetchError : 'Invalid dataset ID'
 
-    const fetchPreviewData = async () => {
-      if (!isMounted) return
-
-      try {
-        if (isMounted) {
-          setLoading(true)
-        }
-
-        const response = await fetch(
-          `/api/data/${datasetId}/preview?rows=${rowsPerPage}&offset=${currentPage * rowsPerPage}`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            signal: abortController.signal,
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch preview data')
-        }
-
-        const data = await response.json()
-
-        if (isMounted) {
-          setPreviewData(data)
-        }
-      } catch (err) {
-        // Ignore abort errors
-        if (err instanceof Error && err.name === 'AbortError') {
-          return
-        }
-
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : 'An error occurred')
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    fetchPreviewData()
-
-    // Cleanup function
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
-  }, [datasetId, currentPage])
 
   const totalPages = previewData ? Math.ceil(previewData.total_rows / rowsPerPage) : 0
 
