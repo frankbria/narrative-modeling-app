@@ -54,6 +54,52 @@ describe('ColumnSelector', () => {
     });
   });
 
+  describe('ARIA structure (#390)', () => {
+    // react-window v2 renders its own container with a hard-coded role="list"
+    // (v1 rendered none). Left alone that yields listbox > list > option, which
+    // is invalid both ways: `list` is not a permitted child of `listbox`, and
+    // `option` is not a permitted child of `list`. The fix marks v2's container
+    // role="presentation" so it drops out of the a11y tree, and keeps
+    // role="listbox" on the wrapper so it survives the non-loaded states too.
+    const renderSelector = (props = {}) =>
+      render(
+        <ColumnSelector
+          datasetId="dataset-1"
+          selectedColumns={new Set()}
+          onSelectionChange={jest.fn()}
+          {...props}
+        />
+      );
+
+    it('owns options directly under the listbox, with no role="list" between', async () => {
+      renderSelector();
+
+      // Await the options, not the listbox: the wrapper carries the role, so
+      // findByRole('listbox') resolves before the columns have loaded.
+      const options = await screen.findAllByRole('option');
+      const listbox = screen.getByRole('listbox');
+
+      expect(listbox).toHaveAttribute('aria-multiselectable', 'true');
+      expect(listbox.querySelector('[role="list"]')).toBeNull();
+      expect(options.every((o) => listbox.contains(o))).toBe(true);
+      expect(options.length).toBeGreaterThan(0);
+      for (const option of options) {
+        expect(option.closest('[role="list"]')).toBeNull();
+      }
+    });
+
+    it('exposes exactly one listbox, including before the columns load', async () => {
+      const { container } = renderSelector();
+
+      // Present immediately — the wrapper carries the role, so the control does
+      // not vanish from the a11y tree while loading.
+      expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
+
+      await screen.findAllByRole('option');
+      expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
+    });
+  });
+
   describe('Rendering and Loading States', () => {
     it('should display loading state initially', () => {
       render(
@@ -957,8 +1003,12 @@ describe('ColumnSelector', () => {
         />
       );
 
-      const listbox = container.querySelector('[role="listbox"]');
+      // Awaited now: role="listbox" moved from the always-present wrapper onto
+      // the list itself (#390), which only renders once columns have loaded.
+      // The wrapper previously advertised an empty listbox during loading.
+      const listbox = await screen.findByRole('listbox');
       expect(listbox).toHaveAttribute('aria-multiselectable', 'true');
+      expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
     });
 
     it('should mark selected items with aria-selected', async () => {
