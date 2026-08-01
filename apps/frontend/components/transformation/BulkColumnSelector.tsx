@@ -316,7 +316,6 @@ export function BulkColumnSelector({
     }
   }, [filteredColumns, focusedIndex, handleToggleColumn]);
 
-
   return (
     <div className={`flex flex-col h-full bg-white rounded-lg border border-gray-200 ${className}`}>
       {/* Header */}
@@ -395,7 +394,11 @@ export function BulkColumnSelector({
           </div>
         ) : (
           <List
-            style={{ height: 400 }}
+            // v1 took height/width props; v2 styles the container instead. Note v2
+            // also defaults to maxHeight:100% + flexGrow:1, so inside this
+            // `flex-1 min-h-0` parent the list fills the available space and 400px
+            // acts as a cap rather than a fixed height as it did under v1.
+            style={{ height: 400, width: '100%' }}
             rowCount={filteredColumns.length}
             rowHeight={ITEM_HEIGHT}
             rowComponent={ColumnListItem}
