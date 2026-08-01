@@ -26,9 +26,9 @@ export const List = React.forwardRef<
     className?: string;
     style?: React.CSSProperties;
     role?: string;
-  }
+  } & React.HTMLAttributes<HTMLDivElement>
 >(function MockList(
-  { rowComponent: RowComponent, rowCount, rowHeight, rowProps, className, style, role },
+  { rowComponent: RowComponent, rowCount, rowHeight, rowProps, className, style, role, ...rest },
   ref
 ) {
   // Fail loudly rather than render nothing if a caller is still on the v1 API.
@@ -47,10 +47,19 @@ export const List = React.forwardRef<
   return (
     <div
       ref={ref}
+      // Real v2 spreads every remaining caller prop onto its container, so the
+      // mock must too — otherwise attributes like aria-multiselectable silently
+      // vanish in tests while working in production (or vice versa).
+      {...rest}
       data-testid="virtual-list"
       className={className}
       style={{ overflow: 'auto', ...style }}
-      role={role || 'presentation'}
+      // The real v2 List hard-codes role="list" on its container and spreads
+      // caller props after it. Defaulting to "presentation" here would hide ARIA
+      // nesting bugs that ship in production — which is exactly what happened:
+      // the listbox > list > option regression this mock now exposes was
+      // invisible while it rendered role="presentation".
+      role={role || 'list'}
     >
       {Array.from({ length: Math.min(rowCount, 100) }).map((_, index) => (
         <RowComponent

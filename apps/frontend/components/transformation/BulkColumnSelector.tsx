@@ -375,7 +375,7 @@ export function BulkColumnSelector({
       </div>
 
       {/* Column list container */}
-      <div className="flex-1 min-h-0" role="listbox" aria-multiselectable="true">
+      <div className="flex-1 min-h-0">
         {isLoading ? (
           <div className="p-4 text-center text-gray-500">
             <div className="inline-block animate-spin rounded-full h-6 w-6 border border-gray-300 border-t-blue-500 mb-2" />
@@ -394,6 +394,14 @@ export function BulkColumnSelector({
           </div>
         ) : (
           <List
+            // role/aria-multiselectable belong on the List itself, not on a
+            // wrapper around it. v2 renders its own container with a hard-coded
+            // role="list" and spreads caller props after it, so a wrapping
+            // role="listbox" would leave an invalid listbox > list > option
+            // nesting. v1 set no container role, so this only regressed on the
+            // v2 bump. Passing role here overrides v2's default.
+            role="listbox"
+            aria-multiselectable="true"
             // v1 took height/width props; v2 styles the container instead. Note v2
             // also defaults to maxHeight:100% + flexGrow:1, so inside this
             // `flex-1 min-h-0` parent the list fills the available space and 400px
