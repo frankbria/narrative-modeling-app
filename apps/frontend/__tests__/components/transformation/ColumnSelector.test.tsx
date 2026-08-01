@@ -55,44 +55,47 @@ describe('ColumnSelector', () => {
   });
 
   describe('ARIA structure (#390)', () => {
-    // react-window v2 renders its own container with a hard-coded role="list".
-    // Putting role="listbox" on a wrapper around <List> therefore produces
-    // listbox > list > option, which is invalid both ways: `list` is not a
-    // permitted child of `listbox`, and `option` is not a permitted child of
-    // `list`. v1 set no container role, so this only became possible on the v2
-    // bump. These pin the fix.
-    it('puts role="listbox" on the list container itself, with options as direct children', async () => {
+    // react-window v2 renders its own container with a hard-coded role="list"
+    // (v1 rendered none). Left alone that yields listbox > list > option, which
+    // is invalid both ways: `list` is not a permitted child of `listbox`, and
+    // `option` is not a permitted child of `list`. The fix marks v2's container
+    // role="presentation" so it drops out of the a11y tree, and keeps
+    // role="listbox" on the wrapper so it survives the non-loaded states too.
+    const renderSelector = (props = {}) =>
       render(
         <ColumnSelector
           datasetId="dataset-1"
           selectedColumns={new Set()}
           onSelectionChange={jest.fn()}
+          {...props}
         />
       );
 
-      const listbox = await screen.findByRole('listbox');
+    it('owns options directly under the listbox, with no role="list" between', async () => {
+      renderSelector();
+
+      // Await the options, not the listbox: the wrapper carries the role, so
+      // findByRole('listbox') resolves before the columns have loaded.
+      const options = await screen.findAllByRole('option');
+      const listbox = screen.getByRole('listbox');
+
       expect(listbox).toHaveAttribute('aria-multiselectable', 'true');
-
-      // No role="list" anywhere between the listbox and its options.
       expect(listbox.querySelector('[role="list"]')).toBeNull();
-
-      const options = within(listbox).getAllByRole('option');
+      expect(options.every((o) => listbox.contains(o))).toBe(true);
       expect(options.length).toBeGreaterThan(0);
       for (const option of options) {
         expect(option.closest('[role="list"]')).toBeNull();
       }
     });
 
-    it('does not nest a listbox inside another ARIA container', async () => {
-      const { container } = render(
-        <ColumnSelector
-          datasetId="dataset-1"
-          selectedColumns={new Set()}
-          onSelectionChange={jest.fn()}
-        />
-      );
+    it('exposes exactly one listbox, including before the columns load', async () => {
+      const { container } = renderSelector();
 
-      await screen.findByRole('listbox');
+      // Present immediately — the wrapper carries the role, so the control does
+      // not vanish from the a11y tree while loading.
+      expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
+
+      await screen.findAllByRole('option');
       expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
     });
   });

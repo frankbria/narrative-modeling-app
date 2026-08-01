@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { BulkColumnSelector } from '@/components/transformation/BulkColumnSelector';
@@ -65,6 +65,45 @@ describe('BulkColumnSelector', () => {
 
   beforeEach(() => {
     mockOnSelectionChange.mockClear();
+  });
+
+  // Mirrors the ARIA-structure tests in ColumnSelector.test.tsx — this component
+  // received the identical role relocation, so it needs the identical guard.
+  describe('ARIA structure (#390)', () => {
+    it('owns options directly under the listbox, with no role="list" between', () => {
+      render(
+        <BulkColumnSelector
+          columns={mockColumns}
+          selectedColumns={new Set()}
+          onSelectionChange={mockOnSelectionChange}
+        />
+      );
+
+      const listbox = screen.getByRole('listbox');
+      expect(listbox).toHaveAttribute('aria-multiselectable', 'true');
+      // react-window v2's own container is marked role="presentation" so it does
+      // not sit in the a11y tree as an invalid listbox > list > option middle.
+      expect(listbox.querySelector('[role="list"]')).toBeNull();
+
+      const options = within(listbox).getAllByRole('option');
+      expect(options.length).toBeGreaterThan(0);
+      for (const option of options) {
+        expect(option.closest('[role="list"]')).toBeNull();
+      }
+    });
+
+    it('exposes exactly one listbox, including when no columns match', () => {
+      const { container } = render(
+        <BulkColumnSelector
+          columns={[]}
+          selectedColumns={new Set()}
+          onSelectionChange={mockOnSelectionChange}
+        />
+      );
+
+      // Empty state renders no <List> at all; the listbox must survive anyway.
+      expect(container.querySelectorAll('[role="listbox"]')).toHaveLength(1);
+    });
   });
 
   it('renders the component with columns', () => {
