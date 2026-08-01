@@ -45,11 +45,26 @@ beforeAll(async () => {
   css = result.css
 }, 60_000)
 
-/** Collect custom-property declarations from every block matching `selector`. */
-function tokensIn(selector: RegExp): Record<string, string> {
+/**
+ * Collect custom-property declarations from every rule whose selector list
+ * contains `wanted` as a whole selector.
+ *
+ * Matching the selector exactly matters. A looser `/\.dark[^{]*\{/` also matches
+ * compiled variant utilities like `.dark\:bg-blue-950:is(.dark *) {`, which are
+ * not the theme block. Nothing breaks today, since those rules declare no bare
+ * `--token`, but it would silently read the wrong block the moment one did — and
+ * reading the wrong block is how this whole class of bug stays invisible.
+ *
+ * Declarations are matched only at the top level of the block (`[^{}]*`), so a
+ * rule containing a nested at-rule is skipped rather than half-parsed.
+ */
+function tokensIn(wanted: string): Record<string, string> {
   const found: Record<string, string> = {}
-  for (const block of css.matchAll(new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`, 'g'))) {
-    for (const decl of block[1].matchAll(/--([a-z-]+):\s*([^;]+)/g)) {
+  for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = block[1].split(',').map((s) => s.trim())
+    if (!selectors.includes(wanted)) continue
+
+    for (const decl of block[2].matchAll(/--([a-z-]+):\s*([^;]+)/g)) {
       found[decl[1]] = decl[2].trim()
     }
   }
@@ -69,8 +84,8 @@ describe('globals.css compiles to a working theme', () => {
   })
 
   it.each(THEME_TOKENS)('defines --%s in both light and dark', (token) => {
-    const light = tokensIn(/:root[^{]*/)
-    const dark = tokensIn(/\.dark[^{]*/)
+    const light = tokensIn(':root')
+    const dark = tokensIn('.dark')
 
     expect(light[token]).toBeDefined()
     expect(dark[token]).toBeDefined()
@@ -80,8 +95,8 @@ describe('globals.css compiles to a working theme', () => {
     // Dark mode was entirely non-functional before #345 — the light and dark
     // screenshots came out byte-identical. Identical values would mean that
     // regressed, even though every token above is still "defined".
-    const light = tokensIn(/:root[^{]*/)
-    const dark = tokensIn(/\.dark[^{]*/)
+    const light = tokensIn(':root')
+    const dark = tokensIn('.dark')
 
     const identical = THEME_TOKENS.filter((t) => light[t] === dark[t])
     expect(identical).toEqual([])
