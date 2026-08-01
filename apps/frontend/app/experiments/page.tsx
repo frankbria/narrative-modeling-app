@@ -28,11 +28,6 @@ export default function ExperimentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
 
-  useEffect(() => {
-    loadExperiments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
   const loadExperiments = async () => {
     try {
       setLoading(true);
@@ -47,6 +42,11 @@ export default function ExperimentsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadExperiments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {

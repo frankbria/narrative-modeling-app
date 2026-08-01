@@ -21,6 +21,35 @@ export interface FeatureImportanceChartProps {
   highlightThreshold?: number
 }
 
+// Module scope, not inside the chart component: a component created during
+// render gets a fresh identity each render and remounts the tooltip subtree
+// (react-hooks/static-components). It closes over nothing, so lifting it needs
+// no extra props.
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: FeatureScore }> }) {
+  if (active && payload && payload.length) {
+    const feature: FeatureScore = payload[0].payload
+    return (
+      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-semibold text-gray-900">{feature.feature_name}</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Score: <span className="font-medium">{feature.score.toFixed(4)}</span>
+        </p>
+        <p className="text-sm text-gray-600">
+          Rank: <span className="font-medium">#{feature.rank}</span>
+        </p>
+        <p className="text-sm mt-1">
+          {feature.selected ? (
+            <span className="text-green-600 font-medium">✓ Selected</span>
+          ) : (
+            <span className="text-gray-500">Not selected</span>
+          )}
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
 export function FeatureImportanceChart({
   features,
   height = 500,
@@ -45,31 +74,6 @@ export function FeatureImportanceChart({
     if (score >= 0.8) return '#10B981' // Green for high importance
     if (score >= highlightThreshold) return '#3B82F6' // Blue for medium importance
     return '#F59E0B' // Orange for low importance
-  }
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: FeatureScore }> }) => {
-    if (active && payload && payload.length) {
-      const feature: FeatureScore = payload[0].payload
-      return (
-        <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900">{feature.feature_name}</p>
-          <p className="text-sm text-gray-600 mt-1">
-            Score: <span className="font-medium">{feature.score.toFixed(4)}</span>
-          </p>
-          <p className="text-sm text-gray-600">
-            Rank: <span className="font-medium">#{feature.rank}</span>
-          </p>
-          <p className="text-sm mt-1">
-            {feature.selected ? (
-              <span className="text-green-600 font-medium">✓ Selected</span>
-            ) : (
-              <span className="text-gray-500">Not selected</span>
-            )}
-          </p>
-        </div>
-      )
-    }
-    return null
   }
 
   if (chartData.length === 0) {

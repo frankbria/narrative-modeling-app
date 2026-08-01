@@ -32,16 +32,6 @@ export default function FeaturesPage() {
   // Guard: redirect (with a message) if this stage is not accessible yet.
   const { ready } = useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
 
-  useEffect(() => {
-    // Wait until the stage is accessible AND the dataset id has hydrated — on a
-    // direct /features load the provider sets datasetId after this page mounts,
-    // so loading too early would fetch /datasets/undefined/features once and
-    // never retry.
-    if (!ready || !state.datasetId) return;
-    loadFeatures();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, state.datasetId]);
-
   const loadFeatures = async () => {
     try {
       const token = await getAuthToken();
@@ -77,6 +67,16 @@ export default function FeaturesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Wait until the stage is accessible AND the dataset id has hydrated — on a
+    // direct /features load the provider sets datasetId after this page mounts,
+    // so loading too early would fetch /datasets/undefined/features once and
+    // never retry.
+    if (!ready || !state.datasetId) return;
+    loadFeatures();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, state.datasetId]);
 
   const handleFeatureToggle = (featureName: string) => {
     setSelectedFeatures(prev => 

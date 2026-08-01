@@ -88,13 +88,18 @@ export function TrainingProgress({
   const [retryNonce, setRetryNonce] = useState(0);
 
   // Keep callbacks in refs so parent re-renders with new function identities
-  // don't restart the polling loop.
+  // don't restart the polling loop. The assignment happens in an effect, not
+  // during render — writing a ref while rendering is not safe under concurrent
+  // rendering (react-hooks/refs). Every read is inside the async poll loop,
+  // which only runs after commit, so it always sees the latest values.
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
   const onCancelledRef = useRef(onCancelled);
-  onCompleteRef.current = onComplete;
-  onErrorRef.current = onError;
-  onCancelledRef.current = onCancelled;
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onErrorRef.current = onError;
+    onCancelledRef.current = onCancelled;
+  });
 
   useEffect(() => {
     let isMounted = true;

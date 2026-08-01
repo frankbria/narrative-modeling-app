@@ -34,13 +34,6 @@ export function RecipeExportDialog({
   const [jsonData, setJsonData] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (open && !jsonData) {
-      loadRecipeJSON();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, recipeId]);
-
   const loadRecipeJSON = async () => {
     setLoading(true);
     setError(null);
@@ -55,6 +48,13 @@ export function RecipeExportDialog({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (open && !jsonData) {
+      loadRecipeJSON();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, recipeId]);
 
   const handleDownload = () => {
     if (!jsonData) return;

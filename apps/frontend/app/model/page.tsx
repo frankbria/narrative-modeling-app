@@ -64,29 +64,6 @@ export default function ModelPage() {
   // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
 
-  useEffect(() => {
-    if (!state.datasetId) return;
-    loadDatasetColumns();
-    loadModeRecommendation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.datasetId]);
-
-  const loadModeRecommendation = async () => {
-    if (!state.datasetId) return;
-    try {
-      const rec = await modelService.getModeRecommendation(state.datasetId);
-      setRecommendedMode(rec.recommended_mode);
-      setRecommendationReason(rec.reason);
-      // Preselect the recommendation only if the user hasn't already picked.
-      if (!modeTouchedRef.current) {
-        setTrainingMode(rec.recommended_mode);
-      }
-    } catch (error) {
-      // Recommendation is advisory — a failure just leaves the Quick default.
-      console.error('Failed to load mode recommendation:', error);
-    }
-  };
-
   const loadDatasetColumns = async () => {
     try {
       const token = await getAuthToken();
@@ -111,6 +88,29 @@ export default function ModelPage() {
       console.error('Failed to load columns:', error);
     }
   };
+
+  const loadModeRecommendation = async () => {
+    if (!state.datasetId) return;
+    try {
+      const rec = await modelService.getModeRecommendation(state.datasetId);
+      setRecommendedMode(rec.recommended_mode);
+      setRecommendationReason(rec.reason);
+      // Preselect the recommendation only if the user hasn't already picked.
+      if (!modeTouchedRef.current) {
+        setTrainingMode(rec.recommended_mode);
+      }
+    } catch (error) {
+      // Recommendation is advisory — a failure just leaves the Quick default.
+      console.error('Failed to load mode recommendation:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!state.datasetId) return;
+    loadDatasetColumns();
+    loadModeRecommendation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.datasetId]);
 
   const handleTrainModel = async () => {
     if (!state.datasetId) return;

@@ -98,6 +98,39 @@ describe('TrainingProgress', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  it('fires the latest onComplete after the parent re-renders with a new callback identity', async () => {
+    // The latest-callback refs are written in an effect rather than during
+    // render (#373, react-hooks/refs). This is the invariant that move has to
+    // preserve: a parent re-render with a fresh function identity must not
+    // restart the poll loop, and the terminal event must call the NEW callback,
+    // never the one captured at mount.
+    const running = runningStatus();
+    mockGetTrainingStatus.mockResolvedValue(running);
+
+    const firstOnComplete = jest.fn();
+    const { rerender } = render(
+      <TrainingProgress modelId="m1" pollInterval={50} onComplete={firstOnComplete} />
+    );
+
+    await waitFor(() => expect(mockGetTrainingStatus).toHaveBeenCalled());
+    const pollsBeforeRerender = mockGetTrainingStatus.mock.calls.length;
+
+    const secondOnComplete = jest.fn();
+    rerender(<TrainingProgress modelId="m1" pollInterval={50} onComplete={secondOnComplete} />);
+
+    // Checked synchronously, before any timer can fire: a torn-down and
+    // restarted effect polls immediately on re-subscribe, so an unchanged call
+    // count is real evidence the loop survived the new callback identity.
+    // (A >= assertion would pass either way, since the count grows with time.)
+    expect(mockGetTrainingStatus).toHaveBeenCalledTimes(pollsBeforeRerender);
+
+    const completed = runningStatus({ status: 'completed', progress: 1, current_algorithm: null });
+    mockGetTrainingStatus.mockResolvedValue(completed);
+
+    await waitFor(() => expect(secondOnComplete).toHaveBeenCalledWith(completed));
+    expect(firstOnComplete).not.toHaveBeenCalled();
+  });
+
   it('on failure shows the error message and fires onError', async () => {
     const failed = runningStatus({
       status: 'failed',

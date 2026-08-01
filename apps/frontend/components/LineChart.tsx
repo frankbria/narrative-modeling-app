@@ -26,11 +26,42 @@ interface LineChartProps {
   onPointClick?: (data: Record<string, unknown>) => void
 }
 
-export function LineChart({ 
-  data, 
-  width = 600, 
-  height = 400, 
-  onPointClick 
+// Defined at module scope, not inside LineChart: a component created during
+// render gets a new identity every render, which remounts the tooltip subtree
+// (react-hooks/static-components). recharts clones the `content` element and
+// injects active/payload/label, so `xLabel` is passed in explicitly instead of
+// being closed over.
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  xLabel,
+}: {
+  active?: boolean
+  payload?: Array<{ name: string; value: number | string; color: string }>
+  label?: string | number
+  xLabel?: string
+}) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-3 border rounded shadow-lg">
+        <p className="font-medium">{`${xLabel}: ${label}`}</p>
+        {payload.map((entry, index: number) => (
+          <p key={index} style={{ color: entry.color }} className="text-sm">
+            {`${entry.name}: ${typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}`}
+          </p>
+        ))}
+      </div>
+    )
+  }
+  return null
+}
+
+export function LineChart({
+  data,
+  width = 600,
+  height = 400,
+  onPointClick
 }: LineChartProps) {
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#d084d0']
 
@@ -39,22 +70,6 @@ export function LineChart({
   const handleChartClick = onPointClick
     ? (state: unknown) => onPointClick((state ?? {}) as Record<string, unknown>)
     : undefined
-
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number | string; color: string }>; label?: string | number }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-3 border rounded shadow-lg">
-          <p className="font-medium">{`${data.xLabel}: ${label}`}</p>
-          {payload.map((entry, index: number) => (
-            <p key={index} style={{ color: entry.color }} className="text-sm">
-              {`${entry.name}: ${typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}`}
-            </p>
-          ))}
-        </div>
-      )
-    }
-    return null
-  }
 
   return (
     <div className="w-full">
@@ -77,7 +92,7 @@ export function LineChart({
           <YAxis 
             label={{ value: data.yLabel, angle: -90, position: 'insideLeft' }}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip xLabel={data.xLabel} />} />
           {data.lines.length > 1 && <Legend />}
           
           {data.lines.map((line, index) => (

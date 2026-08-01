@@ -48,18 +48,6 @@ export function RecipeLibrary({
 
   const perPage = 12;
 
-  useEffect(() => {
-    if (session) {
-      loadRecipes();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, page, selectedTags]);
-
-  useEffect(() => {
-    applyFiltersAndSort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipes, searchQuery, sortBy]);
-
   const loadRecipes = async () => {
     if (!session) return;
 
@@ -84,6 +72,13 @@ export function RecipeLibrary({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (session) {
+      loadRecipes();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, page, selectedTags]);
 
   const applyFiltersAndSort = useCallback(() => {
     let filtered = [...recipes];
@@ -113,6 +108,11 @@ export function RecipeLibrary({
     });
 
     setFilteredRecipes(filtered);
+  }, [recipes, searchQuery, sortBy]);
+
+  useEffect(() => {
+    applyFiltersAndSort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipes, searchQuery, sortBy]);
 
   const handleDuplicate = async (recipe: Recipe) => {

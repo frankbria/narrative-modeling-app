@@ -79,6 +79,19 @@ export function TransformationConfigDialog({
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   const lastInteractiveRef = useRef<HTMLButtonElement | null>(null);
 
+  /**
+   * Format schema key to human-readable field name
+   */
+  const formatFieldName = (key: string): string => {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([A-Z])/g, ' $1')
+      .trim()
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   // Reset form when dialog opens/closes or transformation changes
   useEffect(() => {
     if (open) {
@@ -181,19 +194,6 @@ export function TransformationConfigDialog({
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [parameters, parametersSchema]);
-
-  /**
-   * Format schema key to human-readable field name
-   */
-  const formatFieldName = (key: string): string => {
-    return key
-      .replace(/_/g, ' ')
-      .replace(/([A-Z])/g, ' $1')
-      .trim()
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
 
   /**
    * Handle preview transformation

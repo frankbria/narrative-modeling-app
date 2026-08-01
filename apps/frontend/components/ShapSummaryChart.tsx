@@ -29,6 +29,32 @@ export interface ShapSummaryChartProps {
  * absolute SHAP value — how much, on average, the feature moves the model's
  * output. Uses Recharts, matching the evaluate page's other charts (P2.3).
  */
+// Module scope, not inside the chart component: a component created during
+// render gets a fresh identity each render and remounts the tooltip subtree
+// (react-hooks/static-components). It closes over nothing, so lifting it needs
+// no extra props.
+function CustomTooltip({
+  active,
+  payload
+}: {
+  active?: boolean
+  payload?: Array<{ payload: RankedFeature }>
+}) {
+  if (active && payload && payload.length) {
+    const feature = payload[0].payload
+    return (
+      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-semibold text-gray-900">{feature.feature_name}</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Mean |SHAP|:{' '}
+          <span className="font-medium">{feature.importance.toFixed(4)}</span>
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
 export function ShapSummaryChart({
   features,
   plainLanguage,
@@ -40,28 +66,6 @@ export function ShapSummaryChart({
     const sorted = [...features].sort((a, b) => b.importance - a.importance)
     return maxFeatures && maxFeatures > 0 ? sorted.slice(0, maxFeatures) : sorted
   }, [features, maxFeatures])
-
-  const CustomTooltip = ({
-    active,
-    payload
-  }: {
-    active?: boolean
-    payload?: Array<{ payload: RankedFeature }>
-  }) => {
-    if (active && payload && payload.length) {
-      const feature = payload[0].payload
-      return (
-        <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900">{feature.feature_name}</p>
-          <p className="text-sm text-gray-600 mt-1">
-            Mean |SHAP|:{' '}
-            <span className="font-medium">{feature.importance.toFixed(4)}</span>
-          </p>
-        </div>
-      )
-    }
-    return null
-  }
 
   if (chartData.length === 0) {
     return (

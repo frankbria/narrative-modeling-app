@@ -68,13 +68,6 @@ export default function ModelMonitoringPage() {
   const [error, setError] = useState<string | null>(null)
   const [timeWindow, setTimeWindow] = useState('24')
 
-  useEffect(() => {
-    if (modelId) {
-      fetchModelData()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, timeWindow])
-
   const fetchModelData = async () => {
     try {
       setIsLoading(true)
@@ -103,6 +96,13 @@ export default function ModelMonitoringPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (modelId) {
+      fetchModelData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, timeWindow])
 
   const formatLatency = (ms: number) => {
     if (ms < 1) return '<1ms'

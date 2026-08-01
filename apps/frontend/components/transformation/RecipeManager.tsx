@@ -31,12 +31,6 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'mine' | 'popular'>('all');
 
-  useEffect(() => {
-    if (activeTab === 'browse') {
-      loadRecipes();
-    }
-  }, [activeTab, filter]);
-
   const loadRecipes = async () => {
     setLoading(true);
     try {
@@ -60,6 +54,12 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'browse') {
+      loadRecipes();
+    }
+  }, [activeTab, filter]);
 
   const handleSave = () => {
     if (recipeName && recipeDescription) {

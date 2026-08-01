@@ -98,6 +98,27 @@ export default function TransformationPipeline({
   // Date.now()+length can collide on rapid adds within the same millisecond.
   const nodeIdCounterRef = useRef(0);
 
+  const loadPreview = async () => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(
+        `${API_URL}/datasets/${datasetId}/preview?rows=100`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPreview(data);
+      }
+    } catch (error) {
+      console.error('Failed to load preview:', error);
+    }
+  };
+
   // Load initial data preview
   useEffect(() => {
     loadPreview();
@@ -163,27 +184,6 @@ export default function TransformationPipeline({
       onUnsavedChanges(hasUnsavedChanges);
     }
   }, [hasUnsavedChanges, onUnsavedChanges]);
-
-  const loadPreview = async () => {
-    try {
-      const token = await getAuthToken();
-      const response = await fetch(
-        `${API_URL}/datasets/${datasetId}/preview?rows=100`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPreview(data);
-      }
-    } catch (error) {
-      console.error('Failed to load preview:', error);
-    }
-  };
 
   const onConnect = useCallback(
     (params: Connection) => {

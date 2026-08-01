@@ -40,10 +40,6 @@ export default function NewExperimentPage() {
   const [enableDuration, setEnableDuration] = useState(false);
   const [testDurationHours, setTestDurationHours] = useState(168); // 7 days
 
-  useEffect(() => {
-    loadModels();
-  }, []);
-
   const loadModels = async () => {
     try {
       const data = await modelService.listModels();
@@ -54,6 +50,10 @@ export default function NewExperimentPage() {
       setError("Failed to load models");
     }
   };
+
+  useEffect(() => {
+    loadModels();
+  }, []);
 
   const addVariant = () => {
     const newVariant: VariantConfig = {

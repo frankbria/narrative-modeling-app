@@ -47,10 +47,6 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSampleDatasets();
-  }, []);
-
   const loadSampleDatasets = async () => {
     try {
       const response = await fetch('/api/v1/onboarding/sample-datasets');
@@ -62,6 +58,10 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadSampleDatasets();
+  }, []);
 
   const loadDataset = async (datasetId: string) => {
     try {

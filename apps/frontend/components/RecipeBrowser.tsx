@@ -33,13 +33,17 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [activeTab, setActiveTab] = useState('my-recipes');
 
-  useEffect(() => {
-    if (session) {
-      fetchRecipes();
-      fetchPopularRecipes();
+  const fetchPopularRecipes = async () => {
+    if (!session) return;
+    
+    try {
+      const token = await getAuthToken();
+      const response = await TransformationService.getPopularRecipes(token, 10);
+      setPopularRecipes(response.recipes);
+    } catch (error) {
+      console.error('Failed to fetch popular recipes:', error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  };
 
   const fetchRecipes = async () => {
     if (!session) return;
@@ -55,17 +59,13 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
     }
   };
 
-  const fetchPopularRecipes = async () => {
-    if (!session) return;
-    
-    try {
-      const token = await getAuthToken();
-      const response = await TransformationService.getPopularRecipes(token, 10);
-      setPopularRecipes(response.recipes);
-    } catch (error) {
-      console.error('Failed to fetch popular recipes:', error);
+  useEffect(() => {
+    if (session) {
+      fetchRecipes();
+      fetchPopularRecipes();
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const handleApplyRecipe = async (recipe: Recipe) => {
     if (!session) return;
