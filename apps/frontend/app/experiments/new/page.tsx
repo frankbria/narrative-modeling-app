@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +25,6 @@ interface VariantConfig {
 export default function NewExperimentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [models, setModels] = useState<ModelInfo[]>([]);
   const [error, setError] = useState("");
 
   // Form state
@@ -40,20 +40,15 @@ export default function NewExperimentPage() {
   const [enableDuration, setEnableDuration] = useState(false);
   const [testDurationHours, setTestDurationHours] = useState(168); // 7 days
 
-  const loadModels = async () => {
-    try {
+  const { data: modelData, error: loadError } = useAsyncData(
+    async () => {
       const data = await modelService.listModels();
-      // Filter only active models
-      setModels(data.filter((model) => model.is_active));
-    } catch (error) {
-      console.error("Failed to load models:", error);
-      setError("Failed to load models");
-    }
-  };
-
-  useEffect(() => {
-    loadModels();
-  }, []);
+      return data.filter((model) => model.is_active);
+    },
+    [],
+    { errorMessage: "Failed to load models" },
+  );
+  const models = modelData ?? [];
 
   const addVariant = () => {
     const newVariant: VariantConfig = {

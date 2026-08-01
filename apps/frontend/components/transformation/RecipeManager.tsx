@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { X, Save, BookOpen, Users, Star, Clock } from 'lucide-react';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -27,39 +28,26 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
   const [activeTab, setActiveTab] = useState<'save' | 'browse'>('browse');
   const [recipeName, setRecipeName] = useState('');
   const [recipeDescription, setRecipeDescription] = useState('');
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'mine' | 'popular'>('all');
 
-  const loadRecipes = async () => {
-    setLoading(true);
-    try {
+  const { data: recipeData, loading } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
       const response = await fetch(
         `${API_URL}/recipes?filter=${filter}&dataset_id=${datasetId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setRecipes(data.recipes);
-      }
-    } catch (error) {
-      console.error('Failed to load recipes:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'browse') {
-      loadRecipes();
-    }
-  }, [activeTab, filter]);
+      // Non-OK was silently ignored before, leaving the previous list in place.
+      // Throwing plus keepPreviousData reproduces that: the old list stays and
+      // nothing is surfaced, since this component never rendered an error.
+      if (!response.ok) throw new Error('Failed to load recipes');
+      const data = await response.json();
+      return data.recipes as Recipe[];
+    },
+    [activeTab, filter, datasetId],
+    { enabled: activeTab === 'browse', keepPreviousData: true },
+  );
+  const recipes = recipeData ?? [];
 
   const handleSave = () => {
     if (recipeName && recipeDescription) {
