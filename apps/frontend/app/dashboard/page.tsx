@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, WorkflowStage } from '@/lib/types/workflow';
@@ -126,96 +127,44 @@ export default function DashboardPage() {
     }
   }, [onboardingComplete, onboardingLoading, onboardingError, user?.id, router]);
 
-  const [recentDatasets, setRecentDatasets] = useState<DatasetItem[]>([]);
-  const [recentModels, setRecentModels] = useState<ModelItem[]>([]);
-  const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
-  const [isLoadingModels, setIsLoadingModels] = useState(true);
-  const [datasetsError, setDatasetsError] = useState<string | null>(null);
-  const [modelsError, setModelsError] = useState<string | null>(null);
 
   // Calculate workflow progress
   const progressPercentage = useMemo(() => {
     return (state.completedStages.size / WORKFLOW_STAGES.length) * 100;
   }, [state.completedStages]);
 
-  const fetchRecentDatasets = async () => {
-    try {
-      setIsLoadingDatasets(true);
-      setDatasetsError(null);
-      const token = await getAuthToken();
-
-      const response = await fetch(`${API_URL}/datasets?page=1&limit=5`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch datasets');
-      }
-
-      const data = await response.json();
-
-      // Validate API response structure
-      if (!data || typeof data !== 'object') {
-        throw new Error('Invalid API response format');
-      }
-
-      const datasets = data.datasets;
-      if (datasets !== undefined && !Array.isArray(datasets)) {
-        throw new Error('Invalid datasets format: expected array');
-      }
-
-      setRecentDatasets(datasets || []);
-    } catch (error) {
-      console.error('Error fetching datasets:', error);
-      setDatasetsError('Unable to load datasets');
-    } finally {
-      setIsLoadingDatasets(false);
+  const fetchList = async <T,>(path: string, key: string, label: string): Promise<T[]> => {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_URL}/${path}?page=1&limit=5`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${label}`);
     }
+    const data = await response.json();
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid API response format');
+    }
+    const items = data[key];
+    if (items !== undefined && !Array.isArray(items)) {
+      throw new Error(`Invalid ${label} format: expected array`);
+    }
+    return (items || []) as T[];
   };
 
-  const fetchRecentModels = async () => {
-    try {
-      setIsLoadingModels(true);
-      setModelsError(null);
-      const token = await getAuthToken();
+  const { data: datasetList, loading: isLoadingDatasets, error: datasetsError, reload: fetchRecentDatasets } = useAsyncData(
+    () => fetchList<DatasetItem>('datasets', 'datasets', 'datasets'),
+    [],
+    { errorMessage: 'Unable to load datasets' },
+  );
+  const recentDatasets = datasetList ?? [];
 
-      const response = await fetch(`${API_URL}/models?page=1&limit=5`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch models');
-      }
-
-      const data = await response.json();
-
-      // Validate API response structure
-      if (!data || typeof data !== 'object') {
-        throw new Error('Invalid API response format');
-      }
-
-      const models = data.models;
-      if (models !== undefined && !Array.isArray(models)) {
-        throw new Error('Invalid models format: expected array');
-      }
-
-      setRecentModels(models || []);
-    } catch (error) {
-      console.error('Error fetching models:', error);
-      setModelsError('Unable to load models');
-    } finally {
-      setIsLoadingModels(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchRecentDatasets();
-    fetchRecentModels();
-  }, []);
+  const { data: modelList, loading: isLoadingModels, error: modelsError, reload: fetchRecentModels } = useAsyncData(
+    () => fetchList<ModelItem>('models', 'models', 'models'),
+    [],
+    { errorMessage: 'Unable to load models' },
+  );
+  const recentModels = modelList ?? [];
 
   const handleNavigateToStage = (route: string, stageId: WorkflowStage) => {
     if (canAccessStage(stageId)) {
