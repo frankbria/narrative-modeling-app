@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +32,7 @@ import {
   Pie,
   Cell
 } from "recharts";
-import { abTestingService, ABTest, ExperimentMetrics } from "@/lib/services/abTesting";
+import { abTestingService } from "@/lib/services/abTesting";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ExperimentDetailsPage() {
@@ -39,41 +40,31 @@ export default function ExperimentDetailsPage() {
   const router = useRouter();
   const experimentId = params.id as string;
 
-  const [experiment, setExperiment] = useState<ABTest | null>(null);
-  const [metrics, setMetrics] = useState<ExperimentMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
 
-  const loadExperiment = async () => {
-    try {
-      const data = await abTestingService.getExperiment(experimentId);
-      setExperiment(data);
-    } catch (error) {
-      console.error("Failed to load experiment:", error);
-      setError("Failed to load experiment");
-    }
-  };
+  const {
+    data: experiment,
+    error: experimentError,
+    reload: loadExperiment,
+  } = useAsyncData(
+    () => abTestingService.getExperiment(experimentId),
+    [experimentId],
+    { enabled: !!experimentId, errorMessage: "Failed to load experiment" },
+  );
 
-  const loadMetrics = async () => {
-    try {
-      setLoading(true);
-      const data = await abTestingService.getExperimentMetrics(experimentId);
-      setMetrics(data);
-    } catch (error) {
-      console.error("Failed to load metrics:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: metrics,
+    loading,
+    reload: loadMetrics,
+  } = useAsyncData(
+    () => abTestingService.getExperimentMetrics(experimentId),
+    [experimentId],
+    // Metrics failures were only logged, never surfaced — keep that.
+    { enabled: !!experimentId },
+  );
 
-  useEffect(() => {
-    if (experimentId) {
-      loadExperiment();
-      loadMetrics();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [experimentId]);
+  const error = actionError || experimentError || "";
 
   const handleStart = async () => {
     try {
@@ -82,7 +73,7 @@ export default function ExperimentDetailsPage() {
       await loadExperiment();
     } catch (error) {
       console.error("Failed to start experiment:", error);
-      setError("Failed to start experiment");
+      setActionError("Failed to start experiment");
     } finally {
       setActionLoading(false);
     }
@@ -95,7 +86,7 @@ export default function ExperimentDetailsPage() {
       await loadExperiment();
     } catch (error) {
       console.error("Failed to pause experiment:", error);
-      setError("Failed to pause experiment");
+      setActionError("Failed to pause experiment");
     } finally {
       setActionLoading(false);
     }
@@ -106,10 +97,10 @@ export default function ExperimentDetailsPage() {
       setActionLoading(true);
       await abTestingService.completeExperiment(experimentId);
       await loadExperiment();
-      setError(""); // Show success message instead
+      setActionError(""); // Show success message instead
     } catch (error) {
       console.error("Failed to complete experiment:", error);
-      setError("Failed to complete experiment");
+      setActionError("Failed to complete experiment");
     } finally {
       setActionLoading(false);
     }
