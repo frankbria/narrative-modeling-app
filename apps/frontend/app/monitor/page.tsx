@@ -39,12 +39,6 @@ export default function MonitoringPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
 
-  useEffect(() => {
-    if (session) {
-      fetchMonitoringData()
-    }
-  }, [session])
-
   const fetchMonitoringData = async () => {
     try {
       setIsLoading(true)
@@ -63,6 +57,12 @@ export default function MonitoringPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (session) {
+      fetchMonitoringData()
+    }
+  }, [session])
 
   const formatLatency = (ms: number) => {
     if (ms < 1) return '<1ms'

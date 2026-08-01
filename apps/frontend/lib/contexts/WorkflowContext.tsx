@@ -77,6 +77,64 @@ export function WorkflowProvider({
   const router = useRouter();
   const pathname = usePathname();
 
+  const loadWorkflow = useCallback(async (datasetId: string) => {
+    setState(prev => ({ ...prev, datasetId }));
+
+    // Offline fallback: restore the localStorage cache if it belongs to this dataset
+    const restoreFromLocal = (): boolean => {
+      const localState = readLocalState();
+      if (localState && localState.datasetId === datasetId) {
+        setState({
+          ...localState,
+          completedStages: new Set(localState.completedStages),
+          datasetId
+        });
+        return true;
+      }
+      return false;
+    };
+
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/workflows/${datasetId}`, {
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` })
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        workflowExistsRef.current = true;
+        const restored: WorkflowState = {
+          currentStage: data.current_stage as WorkflowStage,
+          completedStages: new Set<WorkflowStage>(data.completed_stages),
+          stageData: data.stage_data ?? {},
+          datasetId,
+          modelId: data.model_id ?? undefined,
+          deploymentId: data.deployment_id ?? undefined
+        };
+        // Backend is the source of truth; remember it so the auto-save
+        // effect doesn't immediately write an identical version back
+        lastSavedRef.current = JSON.stringify(buildSavePayload(restored));
+        setState(prev => ({ ...prev, ...restored }));
+      } else if (response.status === 404) {
+        // New dataset with no backend workflow yet; if the local cache is for
+        // a different dataset, start this one from a clean slate. Reset the
+        // saved-signature so the first save for this dataset is never skipped.
+        workflowExistsRef.current = false;
+        lastSavedRef.current = null;
+        if (!restoreFromLocal()) {
+          setState({ ...initialState, datasetId });
+        }
+      } else {
+        console.error(`Failed to load workflow (HTTP ${response.status})`);
+        restoreFromLocal();
+      }
+    } catch (error) {
+      console.error('Failed to load workflow, using localStorage fallback:', error);
+      restoreFromLocal();
+    }
+  }, []);
+
   // Load workflow state from backend (with localStorage fallback) or localStorage.
   // The backend load must finish BEFORE isHydrated flips: gated pages redirect
   // on canAccessStage() as soon as isHydrated is true, so recovery state has to
@@ -237,64 +295,6 @@ export function WorkflowProvider({
     localStorage.removeItem('workflowState');
     router.push('/upload');
   }, [router]);
-
-  const loadWorkflow = useCallback(async (datasetId: string) => {
-    setState(prev => ({ ...prev, datasetId }));
-
-    // Offline fallback: restore the localStorage cache if it belongs to this dataset
-    const restoreFromLocal = (): boolean => {
-      const localState = readLocalState();
-      if (localState && localState.datasetId === datasetId) {
-        setState({
-          ...localState,
-          completedStages: new Set(localState.completedStages),
-          datasetId
-        });
-        return true;
-      }
-      return false;
-    };
-
-    try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/workflows/${datasetId}`, {
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` })
-        }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        workflowExistsRef.current = true;
-        const restored: WorkflowState = {
-          currentStage: data.current_stage as WorkflowStage,
-          completedStages: new Set<WorkflowStage>(data.completed_stages),
-          stageData: data.stage_data ?? {},
-          datasetId,
-          modelId: data.model_id ?? undefined,
-          deploymentId: data.deployment_id ?? undefined
-        };
-        // Backend is the source of truth; remember it so the auto-save
-        // effect doesn't immediately write an identical version back
-        lastSavedRef.current = JSON.stringify(buildSavePayload(restored));
-        setState(prev => ({ ...prev, ...restored }));
-      } else if (response.status === 404) {
-        // New dataset with no backend workflow yet; if the local cache is for
-        // a different dataset, start this one from a clean slate. Reset the
-        // saved-signature so the first save for this dataset is never skipped.
-        workflowExistsRef.current = false;
-        lastSavedRef.current = null;
-        if (!restoreFromLocal()) {
-          setState({ ...initialState, datasetId });
-        }
-      } else {
-        console.error(`Failed to load workflow (HTTP ${response.status})`);
-        restoreFromLocal();
-      }
-    } catch (error) {
-      console.error('Failed to load workflow, using localStorage fallback:', error);
-      restoreFromLocal();
-    }
-  }, []);
 
   const setDatasetId = useCallback((datasetId: string) => {
     setState(prev => ({ ...prev, datasetId }));

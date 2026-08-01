@@ -54,27 +54,15 @@ export function InteractiveTutorial({
   const currentStep = steps[currentStepIndex];
   const progress = (currentStepIndex / steps.length) * 100;
 
-  useEffect(() => {
-    if (isActive && currentStep?.target) {
-      highlightElement(currentStep.target);
-    } else {
-      removeHighlight();
-    }
-
-    return () => removeHighlight();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, isActive, currentStep]);
-
-  useEffect(() => {
-    if (currentStep?.autoAdvance && currentStep.duration) {
-      const timer = setTimeout(() => {
-        nextStep();
-      }, currentStep.duration);
-
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, currentStep]);
+  const removeHighlight = () => {
+    const overlay = document.getElementById('tutorial-overlay');
+    const highlight = document.getElementById('tutorial-highlight');
+    
+    if (overlay) overlay.remove();
+    if (highlight) highlight.remove();
+    
+    setIsHighlighting(false);
+  };
 
   const highlightElement = (selector: string) => {
     removeHighlight();
@@ -136,15 +124,16 @@ export function InteractiveTutorial({
     }
   };
 
-  const removeHighlight = () => {
-    const overlay = document.getElementById('tutorial-overlay');
-    const highlight = document.getElementById('tutorial-highlight');
-    
-    if (overlay) overlay.remove();
-    if (highlight) highlight.remove();
-    
-    setIsHighlighting(false);
-  };
+  useEffect(() => {
+    if (isActive && currentStep?.target) {
+      highlightElement(currentStep.target);
+    } else {
+      removeHighlight();
+    }
+
+    return () => removeHighlight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepIndex, isActive, currentStep]);
 
   const nextStep = () => {
     if (currentStep) {
@@ -164,6 +153,17 @@ export function InteractiveTutorial({
       onComplete();
     }
   };
+
+  useEffect(() => {
+    if (currentStep?.autoAdvance && currentStep.duration) {
+      const timer = setTimeout(() => {
+        nextStep();
+      }, currentStep.duration);
+
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepIndex, currentStep]);
 
   const prevStep = () => {
     if (currentStepIndex > 0) {

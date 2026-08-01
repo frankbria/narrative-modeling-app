@@ -76,6 +76,35 @@ export default function DatasetAnalysisPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
+  const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
+    try {
+      const response = await fetch(`${apiUrl}/data/process`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ file_id: datasetId }),
+        signal,
+      })
+
+      if (response.ok) {
+        const processedData = await response.json()
+        // Preserve the already-normalized id; the processing response (like the
+        // initial fetch) carries the id as `_id` with `id` null.
+        setDataset(prev => prev
+          ? { ...prev, ...processedData, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
+          : null)
+      }
+    } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
+      console.error('Error processing dataset:', err)
+    }
+  }
+
   useEffect(() => {
     // Wait until the stage is hydrated and accessible (useStageGuard handles the
     // redirect-with-message when it isn't).
@@ -165,35 +194,6 @@ export default function DatasetAnalysisPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params?.id, apiUrl, ready])
-
-  const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
-    try {
-      const response = await fetch(`${apiUrl}/data/process`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ file_id: datasetId }),
-        signal,
-      })
-
-      if (response.ok) {
-        const processedData = await response.json()
-        // Preserve the already-normalized id; the processing response (like the
-        // initial fetch) carries the id as `_id` with `id` null.
-        setDataset(prev => prev
-          ? { ...prev, ...processedData, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
-          : null)
-      }
-    } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return
-      }
-      console.error('Error processing dataset:', err)
-    }
-  }
 
   const handleExport = async () => {
     try {

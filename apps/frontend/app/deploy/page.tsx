@@ -45,21 +45,6 @@ export default function DeployPage() {
   // includes the `/api/v1` prefix, so strip it to reach the docs page.
   const docsUrl = `${API_URL.replace(/\/api\/v1\/?$/, '')}/docs`;
 
-  useEffect(() => {
-    // Stage access (with a helpful redirect) is handled by useStageGuard.
-    if (!ready) return;
-    if (!state.modelId) {
-      requestStageRedirect(
-        WorkflowStage.MODEL_TRAINING,
-        'Train a model before deploying it.'
-      );
-      return;
-    }
-    // Check if already deployed
-    checkDeploymentStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, state.modelId]);
-
   const checkDeploymentStatus = async () => {
     try {
       const token = await getAuthToken();
@@ -89,6 +74,21 @@ export default function DeployPage() {
       console.error('Failed to check deployment status:', error);
     }
   };
+
+  useEffect(() => {
+    // Stage access (with a helpful redirect) is handled by useStageGuard.
+    if (!ready) return;
+    if (!state.modelId) {
+      requestStageRedirect(
+        WorkflowStage.MODEL_TRAINING,
+        'Train a model before deploying it.'
+      );
+      return;
+    }
+    // Check if already deployed
+    checkDeploymentStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, state.modelId]);
 
   const handleDeploy = async () => {
     setLoading(true);

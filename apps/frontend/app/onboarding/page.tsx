@@ -77,10 +77,6 @@ export default function OnboardingPage() {
   const [completingStep, setCompletingStep] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  useEffect(() => {
-    loadOnboardingData();
-  }, []);
-
   const loadOnboardingData = async () => {
     try {
       setLoading(true);
@@ -112,6 +108,10 @@ export default function OnboardingPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadOnboardingData();
+  }, []);
 
   const completeStep = async (stepId: string, completionData?: Record<string, unknown>) => {
     try {

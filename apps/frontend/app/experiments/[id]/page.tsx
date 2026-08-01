@@ -45,14 +45,6 @@ export default function ExperimentDetailsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (experimentId) {
-      loadExperiment();
-      loadMetrics();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [experimentId]);
-
   const loadExperiment = async () => {
     try {
       const data = await abTestingService.getExperiment(experimentId);
@@ -74,6 +66,14 @@ export default function ExperimentDetailsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (experimentId) {
+      loadExperiment();
+      loadMetrics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [experimentId]);
 
   const handleStart = async () => {
     try {

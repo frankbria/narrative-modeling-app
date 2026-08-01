@@ -62,10 +62,6 @@ export default function APIKeysPage() {
   const [hasExpiry, setHasExpiry] = useState(false)
   const [expiryDays, setExpiryDays] = useState([30])
 
-  useEffect(() => {
-    fetchAPIKeys()
-  }, [])
-
   const fetchAPIKeys = async () => {
     try {
       setIsLoading(true)
@@ -78,6 +74,10 @@ export default function APIKeysPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchAPIKeys()
+  }, [])
 
   const handleCreateKey = async () => {
     if (!keyName.trim()) {

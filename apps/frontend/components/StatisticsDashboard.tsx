@@ -59,13 +59,6 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!statistics) {
-      fetchStatistics()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId])
-
   const fetchStatistics = async () => {
     try {
       setLoading(true)
@@ -85,6 +78,13 @@ export function StatisticsDashboard({ datasetId, statistics: initialStats }: Sta
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!statistics) {
+      fetchStatistics()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId])
 
   if (loading && !statistics) {
     return (

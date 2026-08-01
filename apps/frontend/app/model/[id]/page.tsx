@@ -41,13 +41,6 @@ export default function ModelDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (session && modelId) {
-      fetchModel()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, modelId])
-
   const fetchModel = async () => {
     try {
       setIsLoading(true)
@@ -60,6 +53,13 @@ export default function ModelDetailPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (session && modelId) {
+      fetchModel()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, modelId])
 
   if (!session) {
     return (
