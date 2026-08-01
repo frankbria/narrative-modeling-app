@@ -10,6 +10,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 ### Frontend (`apps/frontend/`, Next.js)
 - App Router, TypeScript strict, Tailwind CSS
 - NextAuth v5 (Google, GitHub); frontend mints an HS256 JWT (`sub=userId`) in the session callback for the backend to verify
+- **Tailwind v4, CSS-first (#345):** there is **no `tailwind.config.*`** — the whole theme lives in `app/globals.css` via `@theme` / `@theme inline`, `@utility`, `@custom-variant dark`, and `@plugin` (which is the *only* way plugins load; a plugin in `package.json` is not wired until it has an `@plugin` line). Never wrap a theme token in a colour function: the tokens are `oklch`, so `hsl(var(--token))` composes to invalid CSS that browsers **drop silently** — that shipped ~35 dead utilities and a wholly non-functional dark mode, green the whole time. Every semantic token needs a `-foreground` pair defined in **both** `:root` and `.dark`. `__tests__/styles/themeTokens.test.ts` compiles `globals.css` through real PostCSS and guards all of this; component tests can't, since they never run Tailwind.
 
 ### Backend (`apps/backend/`, FastAPI)
 - Async FastAPI, MongoDB via Beanie ODM, AWS S3 for files, `BackgroundTasks` for AI/ML work
