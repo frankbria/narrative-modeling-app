@@ -1,8 +1,24 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: one import replaces the three v3 directives, and the theme lives
+   in CSS (@theme) rather than tailwind.config.mjs, which is gone. */
+@import "tailwindcss";
 
+/* v3 had `darkMode: ["class"]` in the JS config; v4 expresses it as a variant. */
 @custom-variant dark (&:is(.dark *));
+
+/* tailwindcss-animate supplies animate-in / fade-in / slide-in-from-* (used ~9x
+   each across dialogs, sheets and toasts). v4 loads v3 plugins via @plugin. */
+@plugin "tailwindcss-animate";
+
+/* v4 removed `theme.container`; it is a utility now. Mirrors the old config:
+   center: true, padding: "2rem", screens: { "2xl": "1400px" }. */
+@utility container {
+  /* width:100% matters beyond block-level defaults: as a flex/grid item, `auto`
+     shrink-to-fits instead of stretching. v3's container always set it. */
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 2rem;
+  max-width: 1400px;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -26,6 +42,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -42,6 +59,27 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Ported from tailwind.config.mjs theme.extend.animation/keyframes; still used by
+   accordion.tsx via data-[state=open]:animate-accordion-down / -up.
+   A plain @theme rather than the `inline` block above: `inline` exists for tokens
+   whose values are themselves custom properties (var(--background) etc.) so they
+   resolve at use-site. These are literal animation shorthands, so they belong in
+   a normal @theme. Both placements were tested and generate the utility. */
+@theme {
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
 }
 
 @layer base {
@@ -61,6 +99,10 @@
     --accent: oklch(0.968 0.007 247.896);
     --accent-foreground: oklch(0.208 0.042 265.755);
     --destructive: oklch(0.577 0.245 27.325);
+    /* The only token shipping without a -foreground pair; `text-destructive-foreground`
+       (button.tsx, badge.tsx, settings/api) therefore generated no rule and the label
+       inherited --card-foreground — near-black on red. Light text for the darker red. */
+    --destructive-foreground: oklch(0.984 0.003 247.858);
     --border: oklch(0.929 0.013 255.508);
     --input: oklch(0.929 0.013 255.508);
     --ring: oklch(0.704 0.04 256.788);
@@ -83,6 +125,9 @@
     --accent: oklch(0.279 0.041 260.031);
     --accent-foreground: oklch(0.984 0.003 247.858);
     --destructive: oklch(0.704 0.191 22.216);
+    /* Dark mode lightens --destructive to L=0.704, so this pair inverts the way
+       primary/primary-foreground already does rather than staying light-on-light. */
+    --destructive-foreground: oklch(0.208 0.042 265.755);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.551 0.027 264.364);
