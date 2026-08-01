@@ -3,7 +3,8 @@
 // apps/frontend/app/review/page.tsx
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { StatsCard } from '@/components/StatsCard'
 import { calculateDescriptiveStats, StatItem } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,61 +55,42 @@ interface AISummary {
 export default function ReviewPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [data, setData] = useState<UserData | null>(null)
-  const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
-  const [stats, setStats] = useState<StatItem[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const { isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
   const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
 
-  const fetchDatasets = useCallback(async () => {
-    if (!session?.user?.id) return
-
-    try {
+  const { data: datasetList, error: datasetsError } = useAsyncData<Dataset[]>(
+    async () => {
       const response = await fetch(`${API_URL}/user_data`, {
-        headers: {
-          'Authorization': `Bearer ${await getAuthToken()}`
-        }
+        headers: { Authorization: `Bearer ${await getAuthToken()}` },
       })
-
       if (!response.ok) {
         throw new Error('Failed to fetch datasets')
       }
+      return response.json()
+    },
+    [session],
+    { enabled: !!session?.user?.id },
+  )
+  const datasets = datasetList ?? []
 
-      const result = await response.json()
-      setDatasets(result)
-    } catch (err) {
-      console.error('Error fetching datasets:', err)
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    }
-  }, [session])
-
-  const fetchPreviewData = useCallback(async () => {
-    if (!session?.user?.id || !selectedDatasetId) return
-
-    try {
-      setIsLoading(true)
-      setError(null)
-      
+  const {
+    data: preview,
+    loading: isLoading,
+    error: previewError,
+  } = useAsyncData(
+    async () => {
       const response = await fetch(`${API_URL}/user_data/preview/${selectedDatasetId}`, {
-        headers: {
-          'Authorization': `Bearer ${await getAuthToken()}`
-        }
+        headers: { Authorization: `Bearer ${await getAuthToken()}` },
       })
-
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`Failed to fetch preview data: ${errorText}`)
       }
-
       const result = await response.json()
-      
-      // Transform the data to match our UserData interface
+
       const transformedData: UserData = {
         id: result.id,
-        user_id: session.user.id,
+        user_id: session!.user!.id,
         file_name: result.fileName,
         file_path: result.s3_url,
         file_size: 0, // Not provided by API
@@ -121,35 +103,29 @@ export default function ReviewPage() {
         previewData: result.previewData,
         headers: result.headers,
         ai_summary: '',
-        error: result.error
+        error: result.error,
       }
-      
-      setData(transformedData)
-      
-      // Calculate descriptive statistics
-      if (result.headers && result.previewData) {
-        const calculatedStats = calculateDescriptiveStats(result.previewData, result.headers)
-        setStats(calculatedStats)
+
+      // Stats are a pure function of the response, so they ride along with it
+      // instead of being a second piece of state.
+      return {
+        data: transformedData,
+        stats:
+          result.headers && result.previewData
+            ? calculateDescriptiveStats(result.previewData, result.headers)
+            : ([] as StatItem[]),
       }
-    } catch (err) {
-      console.error('Error fetching preview data:', err)
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [session, selectedDatasetId])
+    },
+    [session, selectedDatasetId],
+    { enabled: !!session?.user?.id && !!selectedDatasetId },
+  )
 
-  useEffect(() => {
-    if (session) {
-      fetchDatasets()
-    }
-  }, [session, fetchDatasets])
+  const data = preview?.data ?? null
+  const stats = preview?.stats ?? []
+  const error = datasetsError ?? previewError
 
-  useEffect(() => {
-    if (selectedDatasetId) {
-      fetchPreviewData()
-    }
-  }, [selectedDatasetId, fetchPreviewData])
+  const { isLoading: isLoadingAISummary, error: aiSummaryError, isAvailable: isAISummaryAvailable } = useDatasetChatContext(data?.id || null);
+
 
   useEffect(() => {
     const fetchAISummary = async () => {
