@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Activity, AlertCircle, CheckCircle2, Clock, Database, Server } from 'lucide-react'
 
@@ -42,45 +43,37 @@ export function HealthMonitor({
   backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
   refreshInterval = 30000 // 30 seconds
 }: HealthMonitorProps) {
-  const [status, setStatus] = useState<HealthStatus | null>(null)
-  const [metrics, setMetrics] = useState<HealthMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
 
-  const fetchHealthData = async () => {
-    try {
-      setError(null)
-      
-      // Fetch health status
+  const {
+    data: health,
+    loading,
+    error,
+    reload,
+  } = useAsyncData(
+    async () => {
       const statusResponse = await fetch(`${backendUrl}/health/status`)
       if (!statusResponse.ok) throw new Error('Failed to fetch health status')
-      const statusData = await statusResponse.json()
-      setStatus(statusData)
+      const statusData: HealthStatus = await statusResponse.json()
 
-      // Fetch health metrics
       const metricsResponse = await fetch(`${backendUrl}/health/metrics`)
       if (!metricsResponse.ok) throw new Error('Failed to fetch health metrics')
-      const metricsData = await metricsResponse.json()
-      setMetrics(metricsData)
+      const metricsData: HealthMetrics = await metricsResponse.json()
 
-      setLastUpdate(new Date())
-    } catch (err) {
-      console.error('Health check error:', err)
-      setError(err instanceof Error ? err.message : 'Unknown error')
-      setStatus(null)
-      setMetrics(null)
-    } finally {
-      setLoading(false)
-    }
-  }
+      return { status: statusData, metrics: metricsData, lastUpdate: new Date() }
+    },
+    [backendUrl],
+  )
 
+  const status = health?.status ?? null
+  const metrics = health?.metrics ?? null
+  const lastUpdate = health?.lastUpdate ?? null
+
+  // Polling stays an effect, but reload() runs from the interval callback rather
+  // than synchronously in the effect body, which is the pattern the rule allows.
   useEffect(() => {
-    fetchHealthData()
-    const interval = setInterval(fetchHealthData, refreshInterval)
+    const interval = setInterval(reload, refreshInterval)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl, refreshInterval])
+  }, [reload, refreshInterval])
 
   const getStatusIcon = () => {
     if (loading) return <Activity className="h-5 w-5 animate-pulse" />
@@ -130,7 +123,7 @@ export function HealthMonitor({
                 <p className="text-sm text-muted-foreground">Last Update</p>
                 <p className="text-sm font-medium flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  {lastUpdate.toLocaleTimeString()}
+                  {lastUpdate ? lastUpdate.toLocaleTimeString() : "—"}
                 </p>
               </div>
             </div>

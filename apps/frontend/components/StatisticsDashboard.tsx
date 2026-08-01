@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -55,36 +56,30 @@ interface StatisticsDashboardProps {
 }
 
 export function StatisticsDashboard({ datasetId, statistics: initialStats }: StatisticsDashboardProps) {
-  const [statistics, setStatistics] = useState<StatisticsData | null>(initialStats || null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const fetchStatistics = async () => {
-    try {
-      setLoading(true)
+  const {
+    data: fetched,
+    loading,
+    error,
+  } = useAsyncData<StatisticsData>(
+    async () => {
       const response = await fetch(`/api/data/${datasetId}/statistics`, {
         credentials: 'include',
       })
-
       if (!response.ok) {
         throw new Error('Failed to fetch statistics')
       }
-
       const data = await response.json()
-      setStatistics(data.statistics)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!statistics) {
-      fetchStatistics()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId])
+      return data.statistics
+    },
+    [datasetId],
+    // Caller-supplied stats mean "don't fetch", matching the old `if (!statistics)`.
+    // Keying on datasetId also fixes the same latent bug as AIInsightsPanel: the old
+    // guard blocked refetching on dataset change because `statistics` was still set
+    // from the previous one. See #393.
+    { enabled: !initialStats },
+  )
+  const statistics = fetched ?? initialStats ?? null
 
   if (loading && !statistics) {
     return (
