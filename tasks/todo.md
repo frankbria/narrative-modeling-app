@@ -15,13 +15,20 @@ against a package.json declaring 16) — `npm ci` was required before any count 
 | `react-hooks/preserve-manual-memoization` | 1 | `WorkflowContext.tsx:241` — rework so the compiler can preserve the memo. |
 
 ## Order (smallest / lowest-risk first, one commit per group)
-- [ ] 1. `refs` (3) — `components/training/TrainingProgress.tsx`
-- [ ] 2. `static-components` (5) — Bar/Line/Scatter/FeatureImportance/ShapSummary charts
-- [ ] 3. `preserve-manual-memoization` (1) — `lib/contexts/WorkflowContext.tsx`
-- [ ] 4. `immutability` (28) — hoist function declarations above their effects
-- [ ] 5. `set-state-in-effect` (26) — the behavioral group
-- [ ] 6. Promote all five rules to `"error"`, delete the `react-compiler-rules-pending-burndown` block
-- [ ] 7. Drop `--max-warnings` 297 → 234 (63 removed); keep the flag (234 non-compiler warnings remain, #333 debt)
+- [x] 1. `refs` (3) — `components/training/TrainingProgress.tsx`
+- [x] 2. `static-components` (5) — Bar/Line/Scatter/FeatureImportance/ShapSummary charts
+- [x] 3. `preserve-manual-memoization` (1) — same root cause as #4, cleared with it
+- [x] 4. `immutability` (28) — hoist function declarations above their effects
+- [ ] 5. `set-state-in-effect` — **split out to #393**. Not 26 but **46**: clearing
+      `immutability` stopped the compiler bailing out of those components early,
+      which surfaced 20 more. Every site is a loader doing `setLoading(true)`
+      synchronously before its first `await`; fixing them means moving each
+      spinner reset to the interaction that drives the refetch — a data-loading
+      refactor across ~41 files with a per-site judgement call, not a lint edit.
+- [x] 6. Promoted the four cleared rules to `"error"`; block stays for the one
+      pending rule (#393 deletes it)
+- [x] 7. `--max-warnings` 297 → **280** (17 removed). Verified exact: 280 exits 0,
+      279 exits 1.
 
 ## Invariants
 - Frontend jest suite green before and after each group; `npx tsc --noEmit` clean.

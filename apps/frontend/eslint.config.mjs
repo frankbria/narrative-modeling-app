@@ -26,22 +26,25 @@ const eslintConfig = defineConfig([
   {
     // React Compiler rules, new in eslint-plugin-react-hooks v7 — which arrives
     // transitively with eslint-config-next 16, not from any change in this app.
-    // They flag 63 pre-existing patterns across app/, components/, and lib/;
-    // clearing them is a state/effect refactor with real behavioral risk and no
-    // relation to the framework bump, so they are demoted to warnings here to
-    // keep them visible rather than switched off and forgotten. Promote back to
-    // "error" as they are burned down. See follow-up issue #373.
+    // #333 demoted all five to warnings; #373 burns them down. Four are now at
+    // zero and enforced as errors, so a regression fails the build outright.
     //
-    // Demoting to "warn" would normally weaken the gate, so the lint script
-    // pins --max-warnings to the current total: these cannot silently grow, and
-    // the ceiling ratchets down as #373 lands.
+    // set-state-in-effect is the one still pending. Clearing the other four let
+    // the compiler analyse components it had been bailing out of early, which
+    // raised this rule's count from 26 to 46 — those 20 were always present,
+    // just unreachable behind the earlier errors. Every remaining site is the
+    // same shape: an effect calls a loader that runs setLoading(true)/
+    // setError(null) synchronously before its first await. Fixing it means
+    // moving each spinner reset to the interaction that triggers the refetch
+    // (or seeding it as initial state), i.e. a data-fetching refactor across
+    // every page, not a lint edit. Tracked separately — see #393.
     name: "react-compiler-rules-pending-burndown",
     rules: {
-      "react-hooks/immutability": "warn",
+      "react-hooks/immutability": "error",
+      "react-hooks/static-components": "error",
+      "react-hooks/refs": "error",
+      "react-hooks/preserve-manual-memoization": "error",
       "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/static-components": "warn",
-      "react-hooks/refs": "warn",
-      "react-hooks/preserve-manual-memoization": "warn",
     },
   },
   {
