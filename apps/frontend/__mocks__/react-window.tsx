@@ -41,6 +41,9 @@ export const List = React.forwardRef<
   if (typeof rowCount !== 'number') {
     throw new Error('react-window mock: `rowCount` is required (v1 called it itemCount).');
   }
+  if (typeof rowHeight !== 'number' && typeof rowHeight !== 'string') {
+    throw new Error('react-window mock: `rowHeight` is required (v1 called it itemSize).');
+  }
 
   const height = typeof rowHeight === 'number' ? rowHeight : 0;
 
