@@ -67,7 +67,6 @@ export function ShapSummaryChart({
     return maxFeatures && maxFeatures > 0 ? sorted.slice(0, maxFeatures) : sorted
   }, [features, maxFeatures])
 
-
   if (chartData.length === 0) {
     return (
       <div

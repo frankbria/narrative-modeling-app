@@ -76,7 +76,6 @@ export function FeatureImportanceChart({
     return '#F59E0B' // Orange for low importance
   }
 
-
   if (chartData.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">

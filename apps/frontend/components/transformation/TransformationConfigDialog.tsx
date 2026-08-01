@@ -79,6 +79,9 @@ export function TransformationConfigDialog({
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   const lastInteractiveRef = useRef<HTMLButtonElement | null>(null);
 
+  /**
+   * Format schema key to human-readable field name
+   */
   const formatFieldName = (key: string): string => {
     return key
       .replace(/_/g, ' ')
@@ -192,9 +195,6 @@ export function TransformationConfigDialog({
     return Object.keys(newErrors).length === 0;
   }, [parameters, parametersSchema]);
 
-  /**
-   * Format schema key to human-readable field name
-   */
   /**
    * Handle preview transformation
    */

@@ -18,7 +18,18 @@ jest.mock('recharts', () => {
     XAxis: passthrough,
     YAxis: passthrough,
     CartesianGrid: passthrough,
-    Tooltip: passthrough,
+    // recharts clones the `content` element and injects active/payload/label.
+    // Reproduce that so the tooltip's props are exercised — CustomTooltip lives
+    // at module scope now (#373) and takes xLabel as a prop instead of closing
+    // over `data`.
+    Tooltip: ({ content }: { content?: React.ReactElement }) =>
+      content
+        ? React.cloneElement(content, {
+            active: true,
+            payload: [{ name: 'Sales', value: 150, color: '#000' }],
+            label: '2024',
+          } as never)
+        : null,
     ResponsiveContainer: passthrough,
     Legend: passthrough,
     Brush: passthrough,
@@ -55,5 +66,14 @@ describe('LineChart', () => {
   it('does not pass an onClick handler when onPointClick is omitted', () => {
     render(<LineChart data={data} />)
     expect(() => fireEvent.click(screen.getByTestId('recharts-linechart'))).not.toThrow()
+  })
+
+  it('renders the tooltip with xLabel threaded through as a prop', () => {
+    // xLabel used to be closed over; after the module-scope lift (#373) it is a
+    // prop on the element recharts clones. Nothing else asserts it arrives.
+    render(<LineChart data={data} />)
+
+    expect(screen.getByText('Year: 2024')).toBeInTheDocument()
+    expect(screen.getByText('Sales: 150.00')).toBeInTheDocument()
   })
 })
