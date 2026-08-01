@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,43 +38,51 @@ interface AIInsightsPanelProps {
 }
 
 export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelProps) {
-  const [summary, setSummary] = useState<AISummary | null>(initialSummary || null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
 
-  const generateSummary = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
+  // The panel has a "regenerate" button, so a caller-supplied summary must
+  // suppress only the *automatic* first fetch, not manual ones. Flipping this
+  // enables the hook, and reload() covers every press after.
+  const [regenerateRequested, setRegenerateRequested] = useState(false)
+
+  const {
+    data: fetchedSummary,
+    loading,
+    error,
+    reload,
+  } = useAsyncData<AISummary>(
+    async () => {
       const response = await fetch(`/api/ai/summarize/${datasetId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       })
-
       if (!response.ok) {
         throw new Error('Failed to generate AI summary')
       }
+      return response.json()
+    },
+    [datasetId],
+    // A caller-supplied summary means "don't generate", matching the old
+    // `if (!summary && !loading)` guard.
+    {
+      // Regenerating must not blank the panel the button lives in — the old code
+      // kept the previous summary rendered while the new one loaded.
+      enabled: !initialSummary || regenerateRequested,
+      keepPreviousData: true,
+    },
+  )
 
-      const data = await response.json()
-      setSummary(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
-    }
+  // BEHAVIOUR CHANGE, deliberate: the old guard also blocked regeneration when
+  // datasetId changed, because `summary` was still set from the previous dataset —
+  // so switching datasets showed the wrong dataset's insights. Keying on datasetId
+  // fixes that. See #393.
+  const summary = fetchedSummary ?? initialSummary ?? null
+
+  const generateSummary = () => {
+    setRegenerateRequested(true)
+    reload()
   }
-
-  useEffect(() => {
-    if (!summary && !loading) {
-      generateSummary()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId])
 
   if (loading && !summary) {
     return (

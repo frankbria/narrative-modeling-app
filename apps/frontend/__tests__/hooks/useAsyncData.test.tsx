@@ -208,3 +208,62 @@ describe('useAsyncData', () => {
     expect(result.current.data).toBe('x')
   })
 })
+
+describe('useAsyncData keepPreviousData', () => {
+  function deferred2<T>() {
+    let resolve!: (v: T) => void
+    const promise = new Promise<T>((res) => {
+      resolve = res
+    })
+    return { promise, resolve }
+  }
+
+  it('drops previous data on a key change by default', async () => {
+    const first = deferred2<string>()
+    const second = deferred2<string>()
+    let current = first
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useAsyncData(() => current.promise, [id]),
+      { initialProps: { id: 'a' } },
+    )
+    await act(async () => {
+      first.resolve('a-data')
+      await first.promise
+    })
+
+    current = second
+    rerender({ id: 'b' })
+
+    expect(result.current.loading).toBe(true)
+    expect(result.current.data).toBeUndefined()
+  })
+
+  it('keeps previous data under the spinner when opted in', async () => {
+    const first = deferred2<string>()
+    const second = deferred2<string>()
+    let current = first
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) =>
+        useAsyncData(() => current.promise, [id], { keepPreviousData: true }),
+      { initialProps: { id: 'a' } },
+    )
+    await act(async () => {
+      first.resolve('a-data')
+      await first.promise
+    })
+
+    current = second
+    rerender({ id: 'b' })
+
+    // Still loading, but the old value stays on screen rather than blanking.
+    expect(result.current.loading).toBe(true)
+    expect(result.current.data).toBe('a-data')
+
+    await act(async () => {
+      second.resolve('b-data')
+      await second.promise
+    })
+    expect(result.current.loading).toBe(false)
+    expect(result.current.data).toBe('b-data')
+  })
+})

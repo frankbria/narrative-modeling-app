@@ -44,6 +44,17 @@ export interface UseAsyncDataOptions {
   enabled?: boolean
   /** Shown instead of the thrown error's message. Call sites usually want fixed copy. */
   errorMessage?: string
+  /**
+   * Keep the last successful result visible while a new key loads, instead of
+   * dropping to `undefined`.
+   *
+   * Off by default because it is not universally safe: showing the previous
+   * dataset's numbers under a new dataset's heading is worse than showing nothing,
+   * which is why some call sites explicitly cleared their state before loading.
+   * Opt in where the old code kept rendering data under a spinner (a "Regenerate"
+   * button that should not blank the panel it sits in).
+   */
+  keepPreviousData?: boolean
 }
 
 export interface UseAsyncDataResult<T> {
@@ -73,7 +84,7 @@ export function useAsyncData<T>(
   deps: DependencyList,
   options: UseAsyncDataOptions = {},
 ): UseAsyncDataResult<T> {
-  const { enabled = true, errorMessage } = options
+  const { enabled = true, errorMessage, keepPreviousData = false } = options
 
   const [reloadToken, setReloadToken] = useState(0)
   const [resolved, setResolved] = useState<Resolved<T> | null>(null)
@@ -116,7 +127,9 @@ export function useAsyncData<T>(
     resolved && resolved.token === reloadToken && sameDeps(resolved.deps, deps) ? resolved : null
 
   return {
-    data: settled?.data,
+    // With keepPreviousData, fall back to the previous key's result while the new
+    // one is in flight. `loading` is unaffected, so callers can still show a spinner.
+    data: settled ? settled.data : keepPreviousData ? resolved?.data : undefined,
     loading: enabled && !settled,
     error: settled?.error ?? null,
     reload,
