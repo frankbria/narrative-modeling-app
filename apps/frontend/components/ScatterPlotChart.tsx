@@ -22,11 +22,33 @@ interface ScatterPlotChartProps {
   onPointClick?: (point: Record<string, unknown>) => void
 }
 
-export function ScatterPlotChart({ 
-  data, 
-  width = 600, 
-  height = 400, 
-  onPointClick 
+// Module scope, not inside ScatterPlotChart: a component created during render
+// gets a fresh identity each render and remounts the tooltip subtree
+// (react-hooks/static-components). It closes over nothing, so lifting it needs
+// no extra props.
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { x: number; y: number; label?: string; category?: string } }> }) {
+  if (active && payload && payload.length) {
+    const point = payload[0].payload
+    return (
+      <div className="bg-white p-3 border rounded shadow-lg">
+        <p className="font-medium">{point.label || 'Data Point'}</p>
+        <p className="text-sm text-gray-600">
+          {point.x.toFixed(2)}, {point.y.toFixed(2)}
+        </p>
+        {point.category && (
+          <p className="text-sm text-gray-500">Category: {point.category}</p>
+        )}
+      </div>
+    )
+  }
+  return null
+}
+
+export function ScatterPlotChart({
+  data,
+  width = 600,
+  height = 400,
+  onPointClick
 }: ScatterPlotChartProps) {
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1']
   
@@ -39,24 +61,6 @@ export function ScatterPlotChart({
     acc[category].push(point)
     return acc
   }, {} as Record<string, typeof data.data>)
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { x: number; y: number; label?: string; category?: string } }> }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload
-      return (
-        <div className="bg-white p-3 border rounded shadow-lg">
-          <p className="font-medium">{data.label || 'Data Point'}</p>
-          <p className="text-sm text-gray-600">
-            {data.x.toFixed(2)}, {data.y.toFixed(2)}
-          </p>
-          {data.category && (
-            <p className="text-sm text-gray-500">Category: {data.category}</p>
-          )}
-        </div>
-      )
-    }
-    return null
-  }
 
   return (
     <div className="w-full">

@@ -25,12 +25,53 @@ interface BarChartProps {
   onBarClick?: (data: Record<string, unknown>) => void
 }
 
-export function BarChart({ 
-  data, 
-  width = 600, 
+// Module scope, not inside BarChart: a component created during render gets a
+// fresh identity each render and remounts the tooltip subtree
+// (react-hooks/static-components). recharts clones the `content` element and
+// injects active/payload/label, so the values it used to close over — the
+// running total and the two label/format flags — are passed in as props.
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  total,
+  yLabel,
+  showPercentages,
+}: {
+  active?: boolean
+  payload?: Array<{ value: number; color: string }>
+  label?: string
+  total?: number
+  yLabel?: string
+  showPercentages?: boolean
+}) {
+  if (active && payload && payload.length) {
+    const value = payload[0].value
+    const percentage = total ? ((value / total) * 100).toFixed(1) : '0.0'
+
+    return (
+      <div className="bg-white p-3 border rounded shadow-lg">
+        <p className="font-medium">{label}</p>
+        <p style={{ color: payload[0].color }} className="text-sm">
+          {`${yLabel}: ${value.toLocaleString()}`}
+        </p>
+        {showPercentages && (
+          <p className="text-sm text-gray-500">
+            {`${percentage}% of total`}
+          </p>
+        )}
+      </div>
+    )
+  }
+  return null
+}
+
+export function BarChart({
+  data,
+  width = 600,
   height = 400,
   orientation = 'vertical',
-  onBarClick 
+  onBarClick
 }: BarChartProps) {
   // Sort data if specified
   const sortedData = React.useMemo(() => {
@@ -50,28 +91,6 @@ export function BarChart({
   const total = React.useMemo(() => {
     return sortedData.reduce((sum, item) => sum + item.value, 0)
   }, [sortedData])
-
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; color: string }>; label?: string }) => {
-    if (active && payload && payload.length) {
-      const value = payload[0].value
-      const percentage = ((value / total) * 100).toFixed(1)
-      
-      return (
-        <div className="bg-white p-3 border rounded shadow-lg">
-          <p className="font-medium">{label}</p>
-          <p style={{ color: payload[0].color }} className="text-sm">
-            {`${data.yLabel}: ${value.toLocaleString()}`}
-          </p>
-          {data.showPercentages && (
-            <p className="text-sm text-gray-500">
-              {`${percentage}% of total`}
-            </p>
-          )}
-        </div>
-      )
-    }
-    return null
-  }
 
   // recharts' onClick passes a CategoricalChartState; adapt it to the simpler
   // Record<string, unknown> shape exposed by this component's onBarClick prop.
@@ -125,7 +144,15 @@ export function BarChart({
             </>
           )}
           
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip
+            content={
+              <CustomTooltip
+                total={total}
+                yLabel={data.yLabel}
+                showPercentages={data.showPercentages}
+              />
+            }
+          />
           
           <Bar 
             dataKey="value" 
