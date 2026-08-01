@@ -18,8 +18,10 @@
  * diverged from the real library and turned a broken component green. So the
  * assumption is pinned here against the real thing.
  *
- * jsdom has no layout, so `List` measures a zero-height container and renders
- * no rows. That is fine: this asserts the *container*, which renders regardless.
+ * jsdom has no layout, so `List` normally measures a zero-height container and
+ * renders no rows — but passing `defaultHeight` (the SSR escape hatch) makes it
+ * render them anyway, which lets the row-level `ariaAttributes` contract be
+ * pinned against the real library too, not just the container.
  */
 jest.unmock('react-window');
 
@@ -31,6 +33,15 @@ import { List, type RowComponentProps } from 'react-window';
 // List infers its RowProps parameter from the row component's props.
 function Row({ style }: RowComponentProps) {
   return <div style={style}>row</div>;
+}
+
+/** Renders whatever the real library passes as `ariaAttributes` onto the row. */
+function AriaProbeRow({ style, ariaAttributes }: RowComponentProps) {
+  return (
+    <div data-testid="probe-row" style={style} {...ariaAttributes}>
+      row
+    </div>
+  );
 }
 
 describe('react-window v2 contract (#390)', () => {
@@ -79,5 +90,45 @@ describe('react-window v2 contract (#390)', () => {
       />
     );
     expect(container.firstElementChild).toHaveAttribute('aria-label', 'columns');
+  });
+
+  describe('row ariaAttributes', () => {
+    // Both ColumnListItem components spread {...ariaAttributes} onto each row.
+    // The mock fabricates that object, so without this the shape is only ever
+    // asserted against the mock's own invention — the exact circularity this
+    // PR exists to remove.
+    function renderRows() {
+      return render(
+        <List
+          rowComponent={AriaProbeRow}
+          rowCount={5}
+          rowHeight={10}
+          rowProps={{}}
+          defaultHeight={100}
+        />
+      );
+    }
+
+    it('supplies aria-posinset, aria-setsize and a listitem role per row', () => {
+      const { container } = renderRows();
+
+      const rows = container.querySelectorAll('[data-testid="probe-row"]');
+      expect(rows.length).toBeGreaterThan(0);
+
+      // 1-based position, total = rowCount, and the default role the components
+      // deliberately override with role="option".
+      expect(rows[0]).toHaveAttribute('aria-posinset', '1');
+      expect(rows[0]).toHaveAttribute('aria-setsize', '5');
+      expect(rows[0]).toHaveAttribute('role', 'listitem');
+    });
+
+    it('keeps aria-posinset in step with the row index', () => {
+      const { container } = renderRows();
+
+      const rows = [...container.querySelectorAll('[data-testid="probe-row"]')];
+      rows.forEach((row, i) => {
+        expect(row).toHaveAttribute('aria-posinset', String(i + 1));
+      });
+    });
   });
 });

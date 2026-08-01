@@ -64,6 +64,10 @@ export const List = React.forwardRef<
       // invisible while it rendered role="presentation".
       role={role || 'list'}
     >
+      {/* Caps rendered rows at 100 — carried over from the v1 mock. Real
+          virtualization renders only what fits the viewport, so this keeps
+          jsdom cheap, but a suite with >100 rows silently gets partial
+          coverage. Raise it deliberately if a fixture ever grows past 100. */}
       {Array.from({ length: Math.min(rowCount, 100) }).map((_, index) => (
         <RowComponent
           key={`row-${index}`}
