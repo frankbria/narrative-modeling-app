@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -20,8 +21,40 @@ export default function DeployPage() {
   const router = useRouter();
   const { ready } = useStageGuard(WorkflowStage.DEPLOYMENT);
   const [loading, setLoading] = useState(false);
-  const [deployment, setDeployment] = useState<DeployResponse | null>(null);
-  const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'deployed'>('idle');
+  const [localDeployment, setLocalDeployment] = useState<DeployResponse | null>(null);
+  const [localStatus, setLocalStatus] = useState<'idle' | 'deploying' | 'deployed' | null>(null);
+
+  // Reads existing deployment state for this model. Returns null when the call
+  // fails, matching the old behaviour of logging and leaving the page at 'idle'.
+  const { data: existingDeployment } = useAsyncData<ModelDeploymentView | null>(
+    async () => {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/ml/${state.modelId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      return (await response.json()) as ModelDeploymentView;
+    },
+    [state.modelId],
+    { enabled: ready && !!state.modelId },
+  );
+
+  // The load seeds these; deploying overrides them. Keeping the action's value
+  // separate means the fetch result no longer has to be written into state.
+  const deployment = localDeployment ?? (
+    existingDeployment?.is_deployed
+      ? {
+          model_id: state.modelId ?? '',
+          status: 'deployed',
+          deployed_at: existingDeployment.deployed_at ?? '',
+          deployment_endpoint: existingDeployment.deployment_endpoint ?? null,
+          message: 'Model is deployed',
+        } as DeployResponse
+      : null
+  );
+  const deploymentStatus: 'idle' | 'deploying' | 'deployed' =
+    localStatus ?? (existingDeployment?.is_deployed ? 'deployed' : 'idle');
+
   // Real features for the example request (AC3). Empty until loaded.
   const [exampleFeatures, setExampleFeatures] = useState<ModelFeatureDescriptor[]>([]);
 
@@ -45,36 +78,6 @@ export default function DeployPage() {
   // includes the `/api/v1` prefix, so strip it to reach the docs page.
   const docsUrl = `${API_URL.replace(/\/api\/v1\/?$/, '')}/docs`;
 
-  const checkDeploymentStatus = async () => {
-    try {
-      const token = await getAuthToken();
-      // Real trained models are MLModel documents served at /ml/{id} (issue #84;
-      // the old /models/{id} ModelConfig surface is dead and 404s). Deployment
-      // state lives on the model record's top-level fields.
-      const response = await fetch(`${API_URL}/ml/${state.modelId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = (await response.json()) as ModelDeploymentView;
-        if (data.is_deployed) {
-          setDeployment({
-            model_id: state.modelId ?? '',
-            status: 'deployed',
-            deployed_at: data.deployed_at ?? '',
-            deployment_endpoint: data.deployment_endpoint ?? null,
-            message: 'Model is deployed'
-          });
-          setDeploymentStatus('deployed');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check deployment status:', error);
-    }
-  };
-
   useEffect(() => {
     // Stage access (with a helpful redirect) is handled by useStageGuard.
     if (!ready) return;
@@ -83,16 +86,13 @@ export default function DeployPage() {
         WorkflowStage.MODEL_TRAINING,
         'Train a model before deploying it.'
       );
-      return;
     }
-    // Check if already deployed
-    checkDeploymentStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, state.modelId]);
 
   const handleDeploy = async () => {
     setLoading(true);
-    setDeploymentStatus('deploying');
+    setLocalStatus('deploying');
 
     try {
       const token = await getAuthToken();
@@ -112,8 +112,8 @@ export default function DeployPage() {
 
       if (response.ok) {
         const data = (await response.json()) as DeployResponse;
-        setDeployment(data);
-        setDeploymentStatus('deployed');
+        setLocalDeployment(data);
+        setLocalStatus('deployed');
 
         completeStage(WorkflowStage.DEPLOYMENT, {
           deploymentId: data.model_id,
@@ -123,11 +123,11 @@ export default function DeployPage() {
       } else {
         // A 4xx/5xx does not throw; without this the spinner would hang forever.
         console.error(`Failed to deploy model: ${response.status} ${response.statusText}`);
-        setDeploymentStatus('idle');
+        setLocalStatus('idle');
       }
     } catch (error) {
       console.error('Failed to deploy model:', error);
-      setDeploymentStatus('idle');
+      setLocalStatus('idle');
     } finally {
       setLoading(false);
     }
