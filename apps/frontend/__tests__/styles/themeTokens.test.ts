@@ -105,7 +105,7 @@ describe('globals.css compiles to a working theme', () => {
     // Inverted on purpose. `prose` is used in OnboardingStep, AIInsightsPanel and
     // app/onboarding, and @tailwindcss/typography is a devDependency — but v4 only
     // applies a plugin via @plugin, so those blocks render unstyled. That is a
-    // pre-existing bug held back from this PR deliberately: enabling it restyles
+    // pre-existing bug held back from this PR deliberately (tracked as #398): enabling it restyles
     // real content, which is a visual change needing its own sign-off rather than
     // riding along inside a version migration. This assertion pins the scope, so
     // turning it on is a deliberate edit here and not an accident.
@@ -114,5 +114,59 @@ describe('globals.css compiles to a working theme', () => {
 
   it('applies the global border colour that @apply border-border provides', () => {
     expect(css).toMatch(/\*[^{]*\{[^}]*border-color:\s*var\(--border\)/)
+  })
+})
+
+describe('ported v3 config survives', () => {
+  // v3's `theme.container.screens = { "2xl": "1400px" }` REPLACED the container's
+  // breakpoint list rather than extending it, so v3 emitted exactly one max-width
+  // rule — `@media (min-width: 1400px)`. Verified by compiling the old config with
+  // tailwindcss@3. The v4 port is therefore a single unconditional `max-width: 1400px`,
+  // which is equivalent: below 1400px neither caps, above it both cap at 1400px.
+  /** Our flat override: a .container block with no nested at-rule inside it. */
+  const OVERRIDE = /\.container\s*\{[^{}]*max-width:\s*1400px[^{}]*\}/
+  /** v4's built-in: a .container block whose max-widths are nested in @media. */
+  const BUILTIN = /\.container\s*\{[^{}]*@media/
+
+  it('declares the container box model v3 produced', () => {
+    expect(css).toMatch(OVERRIDE)
+
+    const rule = css.match(OVERRIDE)![0]
+    expect(rule).toMatch(/width:\s*100%/)      // as a flex/grid item, auto shrink-to-fits
+    expect(rule).toMatch(/margin-inline:\s*auto/)
+    expect(rule).toMatch(/padding-inline:\s*2rem/)
+  })
+
+  it('emits the container override AFTER v4 built-in breakpoint rules', () => {
+    // The load-bearing assertion, and the one most likely to break silently.
+    // v4 ships its OWN breakpoint-scoped .container max-widths (40/48/64/80/96rem).
+    // Ours carries no media query and has identical specificity, so it wins only by
+    // arriving later in source order. If a future version reorders the utilities
+    // layer, the built-in stepped max-widths take over and the container starts
+    // capping at 640/768/1024px — a layout regression at every intermediate width,
+    // with nothing failing anywhere. Assert the ordering, not just the presence.
+    const builtin = css.search(BUILTIN)
+    const override = css.search(OVERRIDE)
+
+    expect(override).toBeGreaterThan(-1)
+    expect(builtin).toBeGreaterThan(-1)
+    expect(override).toBeGreaterThan(builtin)
+  })
+
+  it('generates the accordion animations from the nested @keyframes', () => {
+    // Radix drives these via data-state, so the bare `animate-accordion-*` class
+    // never appears in source and is correctly absent from the output. Assert the
+    // prefixed variants that are actually used, plus the keyframes they reference.
+    // Attribute values may or may not be quoted depending on the emitter.
+    expect(css).toMatch(
+      /animate-accordion-down\[data-state=["']?open["']?\]\s*\{\s*animation:\s*var\(--animate-accordion-down\)/,
+    )
+    expect(css).toMatch(
+      /animate-accordion-up\[data-state=["']?closed["']?\]\s*\{\s*animation:\s*var\(--animate-accordion-up\)/,
+    )
+
+    expect(css).toMatch(/@keyframes\s+accordion-down\s*\{/)
+    expect(css).toMatch(/@keyframes\s+accordion-up\s*\{/)
+    expect(css).toMatch(/--radix-accordion-content-height/)
   })
 })
