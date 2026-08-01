@@ -92,23 +92,28 @@ export function TransformationConfigDialog({
       .join(' ');
   };
 
-  // Reset form when dialog opens/closes or transformation changes
-  useEffect(() => {
+  // Resetting form state when the dialog opens (or its subject changes) is a
+  // prop-driven reset, so it happens during render rather than in an effect.
+  const [formSubject, setFormSubject] = useState({ open, transformationType, existingConfig });
+  if (
+    formSubject.open !== open ||
+    formSubject.transformationType !== transformationType ||
+    formSubject.existingConfig !== existingConfig
+  ) {
+    setFormSubject({ open, transformationType, existingConfig });
     if (open) {
-      if (existingConfig?.parameters) {
-        setParameters({ ...existingConfig.parameters });
-      } else {
-        setParameters({});
-      }
+      setParameters(existingConfig?.parameters ? { ...existingConfig.parameters } : {});
       setErrors({});
-      // Focus first input after dialog is rendered
-      const timeoutId = setTimeout(() => {
-        firstInputRef.current?.focus();
-      }, 0);
-
-      // Cleanup timeout on unmount to prevent React warnings
-      return () => clearTimeout(timeoutId);
     }
+  }
+
+  // The focus call is a real DOM side effect and stays an effect.
+  useEffect(() => {
+    if (!open) return;
+    const timeoutId = setTimeout(() => {
+      firstInputRef.current?.focus();
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [open, transformationType, existingConfig]);
 
   /**
