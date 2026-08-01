@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -45,7 +46,7 @@ export function InteractiveVisualizationDashboard({
 }: InteractiveVisualizationDashboardProps) {
   const [activeTab, setActiveTab] = useState('configure')
   const [activeChart, setActiveChart] = useState('histogram')
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const [rawSelectedColumns, setSelectedColumns] = useState<string[]>([])
   const [filters, setFilters] = useState<ChartFilter[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,21 +65,34 @@ export function InteractiveVisualizationDashboard({
   const [showAnimations, setShowAnimations] = useState(true)
   const [binCount, setBinCount] = useState(50)
 
-  const numericColumns = columns.filter(col => col.type === 'numeric')
+  // Memoised because selectedColumns derives from it and that feeds an effect's
+  // dependency list; a fresh array per render would refetch forever.
+  const numericColumns = useMemo(
+    () => columns.filter(col => col.type === 'numeric'),
+    [columns],
+  )
   const categoricalColumns = columns.filter(col => col.type === 'categorical')
   const datetimeColumns = columns.filter(col => col.type === 'datetime')
+
+  // Auto-select the first numeric column when nothing is chosen. Derived during
+  // render rather than written back by an effect: the default is a function of
+  // the columns, so storing it only creates a second source of truth.
+  // Memoised, not just derived: this feeds the chart-fetch effect's dependency
+  // list, so returning a fresh array each render would refetch forever.
+  const selectedColumns = useMemo(
+    () =>
+      rawSelectedColumns.length === 0 && numericColumns.length > 0
+        ? [numericColumns[0].name]
+        : rawSelectedColumns,
+    [rawSelectedColumns, numericColumns],
+  )
 
   // The numeric columns the user has currently selected, in selection order.
   const selectedNumeric = selectedColumns.filter(name =>
     numericColumns.some(col => col.name === name)
   )
 
-  // Auto-select first numeric column if none selected
-  useEffect(() => {
-    if (selectedColumns.length === 0 && numericColumns.length > 0) {
-      setSelectedColumns([numericColumns[0].name])
-    }
-  }, [columns, selectedColumns.length, numericColumns])
+
 
   // Fetch real data for the active chart from the backend. Histogram and
   // correlation are handled elsewhere (HistogramChart fetch mode / statistics
@@ -163,7 +177,10 @@ export function InteractiveVisualizationDashboard({
   }, [activeChart, datasetId, selectedColumns, filters, columns, refreshKey])
 
   const handleColumnToggle = (columnName: string) => {
-    setSelectedColumns(prev => {
+    // Base the toggle on the derived selection so un-picking the auto-selected
+    // column behaves the way it did when that default was stored.
+    setSelectedColumns(() => {
+      const prev = selectedColumns
       if (prev.includes(columnName)) {
         return prev.filter(name => name !== columnName)
       } else {
