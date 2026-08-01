@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
-import { FixedSizeList as List } from 'react-window';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -82,6 +82,121 @@ function getMissingPercentage(nullCount: number, totalRows: number): number {
   return Math.round((nullCount / totalRows) * 100);
 }
 
+/** Row height in px, shared by the list and its row component. */
+const ITEM_HEIGHT = 80;
+
+/**
+ * Per-row data handed to ColumnListItem through react-window's `rowProps`.
+ */
+interface ColumnRowProps {
+  columns: Column[];
+  selectedColumns: Set<string>;
+  focusedIndex: number;
+  onToggleColumn: (columnName: string) => void;
+  onListKeyDown: (e: React.KeyboardEvent) => void;
+}
+
+/**
+ * Render a single column item in the virtualized list.
+ *
+ * Defined at module scope rather than inside ColumnSelector: react-window v2
+ * takes the row renderer as a `rowComponent` prop, and a component created
+ * during render gets a new identity every render, remounting every visible row
+ * (react-hooks/static-components, an error since #373). Everything it used to
+ * close over now arrives via `rowProps`.
+ *
+ * Not wrapped in memo(): v2 does `useMemo(() => memo(rowComponent, cmp), [rowComponent])`
+ * internally, so the library already memoizes rows — and a MemoExoticComponent is
+ * not structurally assignable to the plain function type `rowComponent` requires.
+ */
+function ColumnListItem({
+  index,
+  style,
+  ariaAttributes,
+  columns,
+  selectedColumns,
+  focusedIndex,
+  onToggleColumn,
+  onListKeyDown,
+}: RowComponentProps<ColumnRowProps>) {
+  const column = columns[index];
+  if (!column) return null;
+
+  const isSelected = selectedColumns.has(column.name);
+  const isFocused = index === focusedIndex;
+  const typeIndicator = getColumnTypeIndicator(column.type);
+  const TypeIcon = typeIndicator.icon;
+  const missingPercent = getMissingPercentage(column.null_count, column.total_rows);
+
+  return (
+    <div
+      style={style}
+      className="px-2"
+      {...ariaAttributes}
+      role="option"
+      aria-selected={isSelected}
+      tabIndex={isFocused ? 0 : -1}
+      onKeyDown={onListKeyDown}
+    >
+      <div
+        className={`
+          p-3 flex items-start gap-3 rounded-lg border transition-all
+          ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-gray-200 hover:border-gray-300'}
+          ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-gray-50'}
+          cursor-pointer
+        `}
+        onClick={() => onToggleColumn(column.name)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleColumn(column.name);
+          }
+        }}
+      >
+        {/* Checkbox */}
+        <div className="pt-0.5 flex-shrink-0">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggleColumn(column.name)}
+            aria-label={`Select ${column.name}`}
+            tabIndex={-1}
+          />
+        </div>
+
+        {/* Column info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <TypeIcon
+              className={`w-4 h-4 flex-shrink-0 ${typeIndicator.color}`}
+              aria-hidden="true"
+            />
+            <span className="font-medium text-sm truncate">{column.name}</span>
+          </div>
+
+          {/* Column statistics */}
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-600">
+            <span
+              className={`px-2 py-1 rounded-full ${typeIndicator.bgColor} ${typeIndicator.color}`}
+            >
+              {typeIndicator.label}
+            </span>
+            <span className="px-2 py-1 bg-gray-100 rounded-full">
+              {column.unique_count.toLocaleString()} unique
+            </span>
+            {missingPercent > 0 && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full">
+                {missingPercent}% missing
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * ColumnSelector Component
  *
@@ -116,7 +231,6 @@ export function ColumnSelector({
 
   // Refs for keyboard navigation
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<List<any>>(null);
 
   /**
    * Fetch columns from the dataset preview endpoint with retry logic
@@ -283,92 +397,6 @@ export function ColumnSelector({
     }
   }, [filteredColumns, focusedIndex, handleToggleColumn]);
 
-  /**
-   * Render a single column item in the virtualized list
-   * Memoized to prevent unnecessary re-renders
-   */
-  const ColumnListItem = memo(({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const column = filteredColumns[index];
-    if (!column) return null;
-
-    const isSelected = selectedColumns.has(column.name);
-    const isFocused = index === focusedIndex;
-    const typeIndicator = getColumnTypeIndicator(column.type);
-    const TypeIcon = typeIndicator.icon;
-    const missingPercent = getMissingPercentage(column.null_count, column.total_rows);
-
-    return (
-      <div
-        style={style}
-        className="px-2"
-        role="option"
-        aria-selected={isSelected}
-        tabIndex={isFocused ? 0 : -1}
-        onKeyDown={handleListKeyDown}
-      >
-        <div
-          className={`
-            p-3 flex items-start gap-3 rounded-lg border transition-all
-            ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-gray-200 hover:border-gray-300'}
-            ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-gray-50'}
-            cursor-pointer
-          `}
-          onClick={() => handleToggleColumn(column.name)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleToggleColumn(column.name);
-            }
-          }}
-        >
-          {/* Checkbox */}
-          <div className="pt-0.5 flex-shrink-0">
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => handleToggleColumn(column.name)}
-              aria-label={`Select ${column.name}`}
-              tabIndex={-1}
-            />
-          </div>
-
-          {/* Column info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <TypeIcon
-                className={`w-4 h-4 flex-shrink-0 ${typeIndicator.color}`}
-                aria-hidden="true"
-              />
-              <span className="font-medium text-sm truncate">{column.name}</span>
-            </div>
-
-            {/* Column statistics */}
-            <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-600">
-              <span
-                className={`px-2 py-1 rounded-full ${typeIndicator.bgColor} ${typeIndicator.color}`}
-              >
-                {typeIndicator.label}
-              </span>
-              <span className="px-2 py-1 bg-gray-100 rounded-full">
-                {column.unique_count.toLocaleString()} unique
-              </span>
-              {missingPercent > 0 && (
-                <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full">
-                  {missingPercent}% missing
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  });
-
-  ColumnListItem.displayName = 'ColumnListItem';
-
-  // Calculate item height based on content
-  const ITEM_HEIGHT = 80;
 
   return (
     <div className={`flex flex-col h-full bg-white rounded-lg border border-gray-200 ${className}`}>
@@ -453,14 +481,18 @@ export function ColumnSelector({
           </div>
         ) : (
           <List
-            ref={listRef}
-            height={400}
-            itemCount={filteredColumns.length}
-            itemSize={ITEM_HEIGHT}
-            width="100%"
-          >
-            {ColumnListItem}
-          </List>
+            style={{ height: 400 }}
+            rowCount={filteredColumns.length}
+            rowHeight={ITEM_HEIGHT}
+            rowComponent={ColumnListItem}
+            rowProps={{
+              columns: filteredColumns,
+              selectedColumns,
+              focusedIndex,
+              onToggleColumn: handleToggleColumn,
+              onListKeyDown: handleListKeyDown,
+            }}
+          />
         )}
       </div>
 

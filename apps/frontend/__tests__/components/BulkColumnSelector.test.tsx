@@ -1,37 +1,17 @@
 /**
  * @jest-environment jsdom
  */
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { BulkColumnSelector } from '@/components/transformation/BulkColumnSelector';
 import type { ColumnMetadata } from '@/lib/services/transformation';
 
-// Mock react-window to avoid virtualization issues in tests
-jest.mock('react-window', () => ({
-  FixedSizeList: React.forwardRef(function MockFixedSizeList(
-    props: {
-      children: React.ComponentType<{ index: number; style: React.CSSProperties }>;
-      itemCount: number;
-      itemSize: number;
-      height: number;
-      width: number | string;
-      role?: string;
-    },
-    ref: React.Ref<unknown>
-  ) {
-    const { children: ItemComponent, itemCount } = props;
-    return (
-      <div data-testid="virtualized-list" ref={ref as React.Ref<HTMLDivElement>}>
-        {Array.from({ length: itemCount }, (_, index) => (
-          <ItemComponent key={index} index={index} style={{}} />
-        ))}
-      </div>
-    );
-  }),
-}));
-
+// react-window is mocked project-wide by __mocks__/react-window.tsx, which jest
+// applies automatically. The local override here duplicated it against the v1
+// API (children/itemCount/itemSize) and so kept these tests green after the
+// component moved to v2 — removed so this suite exercises the same v2-shaped
+// mock as everything else (#390).
 // Mock useDebounce hook
 jest.mock('@/lib/hooks/useDebounce', () => ({
   useDebounce: (value: string) => value,
