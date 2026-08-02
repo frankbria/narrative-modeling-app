@@ -76,7 +76,7 @@ export default function OperationPalette() {
     <div className="space-y-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 w-full text-left font-medium text-gray-700 hover:text-gray-900"
+        className="flex items-center gap-2 w-full text-left font-medium text-foreground hover:text-foreground"
       >
         {isExpanded ? (
           <ChevronDown className="w-4 h-4" />
@@ -92,7 +92,7 @@ export default function OperationPalette() {
             <div key={category}>
               <button
                 onClick={() => toggleCategory(category)}
-                className="flex items-center gap-1 text-xs uppercase text-gray-500 font-medium hover:text-gray-700 mb-1"
+                className="flex items-center gap-1 text-xs uppercase text-muted-foreground font-medium hover:text-foreground mb-1"
               >
                 {expandedCategories[category] ? (
                   <ChevronDown className="w-3 h-3" />
@@ -107,12 +107,12 @@ export default function OperationPalette() {
                   {ops.map((op) => (
                     <div
                       key={op.type}
-                      className="p-2 bg-green-100 rounded cursor-move border border-green-200 hover:bg-green-200 transition-colors text-center"
+                      className="p-2 bg-green-100 dark:bg-green-900/40 rounded cursor-move border border-green-200 dark:border-green-900 hover:bg-green-200 transition-colors text-center"
                       draggable
                       onDragStart={(e) => handleDragStart(e, op)}
                       title={op.description}
                     >
-                      <span className="font-bold text-green-800">{op.symbol}</span>
+                      <span className="font-bold text-green-800 dark:text-green-200">{op.symbol}</span>
                     </div>
                   ))}
                 </div>

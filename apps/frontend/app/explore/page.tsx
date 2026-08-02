@@ -66,7 +66,7 @@ export default function ExploreDataPage() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Please sign in to explore datasets</p>
+        <p className="text-muted-foreground">Please sign in to explore datasets</p>
       </div>
     )
   }
@@ -105,10 +105,10 @@ export default function ExploreDataPage() {
             <div key={`dataset-${dataset._id || index}`} className="border rounded-lg shadow-sm hover:shadow-md transition-shadow">
               <div className="p-6">
                 <h3 className="text-lg font-semibold">{dataset.filename}</h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {dataset.num_rows} rows × {dataset.num_columns} columns
                 </p>
-                <p className="text-sm text-gray-500 mt-2 mb-4">
+                <p className="text-sm text-muted-foreground mt-2 mb-4">
                   Created: {new Date(dataset.created_at).toLocaleDateString()}
                 </p>
                 <Link href={`/explore/${dataset._id}`}>

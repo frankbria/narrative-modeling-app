@@ -62,12 +62,12 @@ export function PreviewControls({
   };
 
   return (
-    <div className="flex items-center justify-between bg-white border rounded-lg p-4 shadow-sm gap-4">
+    <div className="flex items-center justify-between bg-card border rounded-lg p-4 shadow-sm gap-4">
       {/* Sample Size Selector */}
       <div className="flex items-center gap-2">
         <label
           htmlFor="sample-size"
-          className="text-sm font-medium text-gray-700 whitespace-nowrap"
+          className="text-sm font-medium text-foreground whitespace-nowrap"
         >
           Sample Size:
         </label>
@@ -93,7 +93,7 @@ export function PreviewControls({
       <div className="flex items-center gap-3 ml-auto">
         {/* Last Updated */}
         {lastUpdated && (
-          <span className="text-xs text-gray-500 whitespace-nowrap">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
             Updated {formatTimestamp(lastUpdated)}
           </span>
         )}

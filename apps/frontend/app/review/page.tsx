@@ -190,7 +190,7 @@ export default function ReviewPage() {
       ) : error ? (
         <div className="text-red-500 p-6">{error}</div>
       ) : !data ? (
-        <div className="text-gray-500 p-6">Select a dataset to view its analysis</div>
+        <div className="text-muted-foreground p-6">Select a dataset to view its analysis</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="md:col-span-1">
@@ -202,7 +202,7 @@ export default function ReviewPage() {
                 <div className="space-y-4">
                   {datasets.length === 0 ? (
                     <div className="text-center">
-                      <p className="text-gray-500 mb-4">No datasets available</p>
+                      <p className="text-muted-foreground mb-4">No datasets available</p>
                       <Link href="/upload">
                         <Button className="w-full">Upload Dataset</Button>
                       </Link>
@@ -214,16 +214,16 @@ export default function ReviewPage() {
                           key={dataset._id}
                           className={`p-3 rounded-lg cursor-pointer transition-colors ${
                             selectedDatasetId === dataset._id
-                              ? 'bg-blue-100 border-2 border-blue-500 shadow-md'
-                              : 'hover:bg-gray-50 border border-gray-200'
+                              ? 'bg-blue-100 dark:bg-blue-900/40 border-2 border-blue-500 shadow-md'
+                              : 'hover:bg-muted border border-border'
                           }`}
                           onClick={() => handleDatasetSelect(dataset._id)}
                         >
                           <h3 className="font-medium">{dataset.filename}</h3>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             {dataset.num_rows} rows × {dataset.num_columns} columns
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             Created: {new Date(dataset.created_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -253,7 +253,7 @@ export default function ReviewPage() {
                   <div className="space-y-4">
                     <div className="mt-6">
                       {isLoadingAISummary ? (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           <p>Loading AI analysis...</p>
                         </div>
                       ) : aiSummaryError ? (
@@ -261,21 +261,21 @@ export default function ReviewPage() {
                           <p>Error loading AI analysis: {aiSummaryError}</p>
                         </div>
                       ) : !isAISummaryAvailable ? (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           <p>AI analysis is not yet available. It will be generated automatically after the dataset is processed.</p>
                         </div>
                       ) : (
                         <div className="space-y-6">
-                          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                            <h4 className="text-blue-800 font-bold mb-2">Overview</h4>
-                            <div className="text-blue-700">
+                          <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-lg border border-blue-200 dark:border-blue-900">
+                            <h4 className="text-blue-800 dark:text-blue-200 font-bold mb-2">Overview</h4>
+                            <div className="text-blue-700 dark:text-blue-300">
                               <ReactMarkdown>{aiSummary?.overview || 'No overview available.'}</ReactMarkdown>
                             </div>
                           </div>
                           
-                          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                            <h4 className="text-yellow-800 font-bold mb-2">Potential Issues</h4>
-                            <div className="text-yellow-700">
+                          <div className="bg-yellow-50 dark:bg-yellow-950/40 p-4 rounded-lg border border-yellow-200 dark:border-yellow-900">
+                            <h4 className="text-yellow-800 dark:text-yellow-200 font-bold mb-2">Potential Issues</h4>
+                            <div className="text-yellow-700 dark:text-yellow-300">
                               <ReactMarkdown>
                                 {aiSummary?.issues && aiSummary.issues.length > 0
                                   ? aiSummary.issues.map((issue: string) => `- ${issue}`).join('\n')
@@ -284,9 +284,9 @@ export default function ReviewPage() {
                             </div>
                           </div>
                           
-                          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                            <h4 className="text-green-800 font-bold mb-2">Potential Relationships</h4>
-                            <div className="text-green-700">
+                          <div className="bg-green-50 dark:bg-green-950/40 p-4 rounded-lg border border-green-200 dark:border-green-900">
+                            <h4 className="text-green-800 dark:text-green-200 font-bold mb-2">Potential Relationships</h4>
+                            <div className="text-green-700 dark:text-green-300">
                               <ReactMarkdown>
                                 {aiSummary?.relationships && aiSummary.relationships.length > 0
                                   ? aiSummary.relationships.map((relationship: string) => `- ${relationship}`).join('\n')
@@ -295,9 +295,9 @@ export default function ReviewPage() {
                             </div>
                           </div>
                           
-                          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                            <h4 className="text-purple-800 font-bold mb-2">Recommendations</h4>
-                            <div className="text-purple-700">
+                          <div className="bg-purple-50 dark:bg-purple-950/40 p-4 rounded-lg border border-purple-200 dark:border-purple-900">
+                            <h4 className="text-purple-800 dark:text-purple-200 font-bold mb-2">Recommendations</h4>
+                            <div className="text-purple-700 dark:text-purple-300">
                               <ReactMarkdown>
                                 {aiSummary?.suggestions && aiSummary.suggestions.length > 0
                                   ? aiSummary.suggestions.map((suggestion: string) => `- ${suggestion}`).join('\n')
@@ -306,10 +306,10 @@ export default function ReviewPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-muted-foreground">
                             <div>
                               <p>Upload Date</p>
-                              <p className="font-medium text-gray-700">
+                              <p className="font-medium text-foreground">
                                 {data.upload_date ? new Date(data.upload_date).toLocaleString() : 'Unknown'}
                               </p>
                             </div>
@@ -362,7 +362,7 @@ export default function ReviewPage() {
                       // Check if previewData exists and has items
                       if (!data.previewData || data.previewData.length === 0) {
                         return (
-                          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
+                          <div className="p-4 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-md text-yellow-700 dark:text-yellow-300">
                             <p className="font-medium">No preview data available</p>
                             <p className="text-sm mt-1">
                               The preview data could not be loaded. This might be due to an issue with the data format.
@@ -389,10 +389,10 @@ export default function ReviewPage() {
                             {data.previewData.map((row, rowIndex) => (
                               <TableRow
                                 key={rowIndex}
-                                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted'}
                               >
                                 {row.map((cell, cellIndex) => (
-                                  <TableCell key={cellIndex} className="text-gray-900">
+                                  <TableCell key={cellIndex} className="text-foreground">
                                     {cell !== null && cell !== undefined ? String(cell) : ''}
                                   </TableCell>
                                 ))}
@@ -411,7 +411,7 @@ export default function ReviewPage() {
                   <CardTitle>Data Preview</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
+                  <div className="p-4 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-md text-yellow-700 dark:text-yellow-300">
                     <p className="font-medium">No preview data available</p>
                     <p className="text-sm mt-1">
                       {data.error ? data.error : "The preview data could not be loaded. This might be due to an issue with the S3 storage or file format."}

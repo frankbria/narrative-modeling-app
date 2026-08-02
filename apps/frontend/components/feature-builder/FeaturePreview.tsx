@@ -59,10 +59,10 @@ export default function FeaturePreview({
 
   if (loading) {
     return (
-      <div className="w-80 bg-gray-50 border-l p-4 flex items-center justify-center">
+      <div className="w-80 bg-muted border-l p-4 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
-          <p className="text-gray-600">Computing preview...</p>
+          <p className="text-muted-foreground">Computing preview...</p>
         </div>
       </div>
     );
@@ -70,8 +70,8 @@ export default function FeaturePreview({
 
   if (!preview && !validationResult) {
     return (
-      <div className="w-80 bg-gray-50 border-l p-4">
-        <div className="text-center text-gray-500 mt-8">
+      <div className="w-80 bg-muted border-l p-4">
+        <div className="text-center text-muted-foreground mt-8">
           <BarChart2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p className="font-medium">No Preview Yet</p>
           <p className="text-sm mt-1">Click Preview to see the computed feature values</p>
@@ -90,17 +90,17 @@ export default function FeaturePreview({
     if (!validationResult) return null;
 
     return (
-      <div className="mb-4 p-3 rounded-lg border bg-white">
+      <div className="mb-4 p-3 rounded-lg border bg-card">
         <div className="flex items-center gap-2 mb-2">
           {validationResult.is_valid ? (
             <>
               <CheckCircle className="w-5 h-5 text-green-600" />
-              <span className="font-medium text-green-800">Valid Expression</span>
+              <span className="font-medium text-green-800 dark:text-green-200">Valid Expression</span>
             </>
           ) : (
             <>
               <AlertCircle className="w-5 h-5 text-red-600" />
-              <span className="font-medium text-red-800">Invalid Expression</span>
+              <span className="font-medium text-red-800 dark:text-red-200">Invalid Expression</span>
             </>
           )}
         </div>
@@ -137,39 +137,39 @@ export default function FeaturePreview({
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Mean</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Mean</div>
             <div className="font-mono">{formatNumber(stats.mean)}</div>
           </div>
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Median</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Median</div>
             <div className="font-mono">{formatNumber(stats.median)}</div>
           </div>
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Std Dev</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Std Dev</div>
             <div className="font-mono">{formatNumber(stats.std)}</div>
           </div>
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Min / Max</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Min / Max</div>
             <div className="font-mono text-xs">
               {formatNumber(stats.min)} / {formatNumber(stats.max)}
             </div>
           </div>
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Null Count</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Null Count</div>
             <div className="font-mono">{stats.null_count}</div>
           </div>
-          <div className="p-2 bg-white rounded border">
-            <div className="text-gray-500 text-xs">Unique</div>
+          <div className="p-2 bg-card rounded border">
+            <div className="text-muted-foreground text-xs">Unique</div>
             <div className="font-mono">{stats.unique_count}</div>
           </div>
         </div>
 
-        <div className="p-2 bg-white rounded border text-sm">
-          <div className="text-gray-500 text-xs mb-1">Sample Values</div>
+        <div className="p-2 bg-card rounded border text-sm">
+          <div className="text-muted-foreground text-xs mb-1">Sample Values</div>
           <div className="font-mono text-xs max-h-32 overflow-y-auto">
             {preview.values.slice(0, 10).map((val, i) => (
-              <span key={i} className="inline-block bg-gray-100 px-1.5 py-0.5 rounded mr-1 mb-1">
+              <span key={i} className="inline-block bg-muted px-1.5 py-0.5 rounded mr-1 mb-1">
                 {val === null ? 'null' : String(val)}
               </span>
             ))}
@@ -185,7 +185,7 @@ export default function FeaturePreview({
   const renderDistribution = () => {
     if (!preview?.distribution || preview.distribution.length === 0) {
       return (
-        <div className="text-center text-gray-500 py-8">
+        <div className="text-center text-muted-foreground py-8">
           No distribution data available
         </div>
       );
@@ -199,7 +199,7 @@ export default function FeaturePreview({
       <div className="space-y-2">
         {preview.distribution.map((bin, i) => (
           <div key={i} className="flex items-center gap-2 text-sm">
-            <div className="w-20 text-xs text-gray-500 truncate" title={bin.label}>
+            <div className="w-20 text-xs text-muted-foreground truncate" title={bin.label}>
               {bin.label}
             </div>
             <div className="flex-1 h-4 bg-gray-200 rounded overflow-hidden">
@@ -208,7 +208,7 @@ export default function FeaturePreview({
                 style={{ width: `${(bin.count / safeMax) * 100}%` }}
               />
             </div>
-            <div className="w-12 text-xs text-right text-gray-600">
+            <div className="w-12 text-xs text-right text-muted-foreground">
               {bin.count}
             </div>
           </div>
@@ -220,7 +220,7 @@ export default function FeaturePreview({
   const renderTable = () => {
     if (!preview?.sample_data || preview.sample_data.length === 0) {
       return (
-        <div className="text-center text-gray-500 py-8">
+        <div className="text-center text-muted-foreground py-8">
           No sample data available
         </div>
       );
@@ -232,12 +232,12 @@ export default function FeaturePreview({
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-gray-100">
+            <tr className="bg-muted">
               {columns.map((col) => (
                 <th
                   key={col}
                   className={`px-2 py-1 text-left font-medium truncate ${
-                    col === '_computed_feature' ? 'bg-blue-100 text-blue-800' : ''
+                    col === '_computed_feature' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200' : ''
                   }`}
                 >
                   {col === '_computed_feature' ? 'Result' : col}
@@ -252,7 +252,7 @@ export default function FeaturePreview({
                   <td
                     key={col}
                     className={`px-2 py-1 truncate max-w-[100px] ${
-                      col === '_computed_feature' ? 'bg-blue-50 font-medium' : ''
+                      col === '_computed_feature' ? 'bg-blue-50 dark:bg-blue-950/40 font-medium' : ''
                     }`}
                   >
                     {row[col] === null ? (
@@ -271,17 +271,17 @@ export default function FeaturePreview({
   };
 
   return (
-    <div className="w-80 bg-gray-50 border-l overflow-y-auto">
+    <div className="w-80 bg-muted border-l overflow-y-auto">
       <div className="p-4">
-        <h3 className="font-semibold text-gray-800 mb-3">Preview</h3>
+        <h3 className="font-semibold text-foreground mb-3">Preview</h3>
 
         {/* Error display */}
         {preview?.error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-red-800">Preview Failed</p>
+                <p className="font-medium text-red-800 dark:text-red-200">Preview Failed</p>
                 <p className="text-sm text-red-600 mt-1">{preview.error}</p>
               </div>
             </div>
@@ -290,11 +290,11 @@ export default function FeaturePreview({
 
         {/* Warnings */}
         {preview?.warnings && preview.warnings.length > 0 && (
-          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-amber-800">Warnings</p>
+                <p className="font-medium text-amber-800 dark:text-amber-200">Warnings</p>
                 <ul className="text-sm text-amber-600 mt-1 list-disc list-inside">
                   {preview.warnings.map((w, i) => (
                     <li key={i}>{w}</li>
@@ -310,9 +310,9 @@ export default function FeaturePreview({
 
         {/* Formula */}
         {preview?.formula && (
-          <div className="mb-4 p-3 rounded-lg bg-white border">
-            <div className="text-xs text-gray-500 mb-1">Formula</div>
-            <code className="text-sm font-mono text-gray-800 break-all">
+          <div className="mb-4 p-3 rounded-lg bg-card border">
+            <div className="text-xs text-muted-foreground mb-1">Formula</div>
+            <code className="text-sm font-mono text-foreground break-all">
               {preview.formula}
             </code>
           </div>
@@ -327,7 +327,7 @@ export default function FeaturePreview({
                 className={`flex-1 px-3 py-2 text-sm ${
                   viewMode === 'stats'
                     ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Statistics
@@ -337,7 +337,7 @@ export default function FeaturePreview({
                 className={`flex-1 px-3 py-2 text-sm ${
                   viewMode === 'distribution'
                     ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Distribution
@@ -347,7 +347,7 @@ export default function FeaturePreview({
                 className={`flex-1 px-3 py-2 text-sm ${
                   viewMode === 'table'
                     ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Table

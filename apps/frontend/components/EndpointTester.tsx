@@ -81,9 +81,9 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6" data-testid="endpoint-tester">
+    <div className="bg-card border border-border rounded-lg p-6" data-testid="endpoint-tester">
       <h3 className="font-semibold mb-1">Test Your Endpoint</h3>
-      <p className="text-sm text-gray-600 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         Send a live request to your deployed model using an API key from your account settings.
       </p>
 
@@ -97,7 +97,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk_live_..."
-          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -114,7 +114,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
                   data-feature={feature.name}
                   value={values[feature.name] ?? ''}
                   onChange={(e) => setValues((p) => ({ ...p, [feature.name]: e.target.value }))}
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">—</option>
                   {feature.options.map((opt) => (
@@ -130,7 +130,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
                   type={feature.type === 'number' ? 'number' : 'text'}
                   value={values[feature.name] ?? ''}
                   onChange={(e) => setValues((p) => ({ ...p, [feature.name]: e.target.value }))}
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               )}
             </div>
@@ -152,7 +152,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {error && (
         <div
           data-testid="endpoint-tester-error"
-          className="mt-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"
+          className="mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-700 dark:text-red-300"
         >
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
@@ -162,15 +162,15 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {result && (
         <div
           data-testid="endpoint-tester-result"
-          className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg"
+          className="mt-4 p-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-lg"
         >
-          <div className="flex items-center gap-2 font-semibold text-green-700">
+          <div className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-300">
             <CheckCircle className="w-4 h-4" />
             Prediction
           </div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">{String(result.prediction)}</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{String(result.prediction)}</div>
           {result.confidence != null && (
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               Confidence: {(result.confidence * 100).toFixed(1)}%
             </p>
           )}

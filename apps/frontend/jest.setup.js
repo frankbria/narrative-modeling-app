@@ -28,6 +28,23 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// jsdom has no matchMedia, and next-themes calls it to resolve the "system"
+// theme. ThemeProvider sits in the root layout as of #407, so any suite that
+// renders through it needs this — it is not specific to the theme tests.
+// Defaults to light so `system` resolves deterministically.
+global.matchMedia = global.matchMedia || function matchMedia(query) {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener() {},      // deprecated, still called by some libraries
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return false },
+  };
+};
+
 // Mock ResizeObserver for Radix UI components
 global.ResizeObserver = class ResizeObserver {
   constructor(callback) {

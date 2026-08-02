@@ -31,7 +31,7 @@ export function StageGuardBanner() {
       data-testid="stage-guard-banner"
       className="mx-auto max-w-5xl mt-3 px-4"
     >
-      <div className="flex items-start gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+      <div className="flex items-start gap-3 rounded-lg border border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/40 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
         <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-600" />
         <p className="flex-1">{guardMessage}</p>
         <button

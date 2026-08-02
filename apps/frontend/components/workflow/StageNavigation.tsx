@@ -101,7 +101,7 @@ export function StageNavigation({
             onClick={goToPreviousStage}
             disabled={isBusy}
             data-testid="back-button"
-            className="inline-flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -120,7 +120,7 @@ export function StageNavigation({
             className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
               canContinue
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
             }`}
           >
             {isBusy ? (
@@ -144,7 +144,7 @@ export function StageNavigation({
           )
         )}
         {next && !canContinue && hint && (
-          <p className="text-xs text-gray-500" data-testid="continue-hint">
+          <p className="text-xs text-muted-foreground" data-testid="continue-hint">
             {hint}
           </p>
         )}

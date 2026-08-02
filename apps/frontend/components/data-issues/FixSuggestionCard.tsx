@@ -80,12 +80,12 @@ export function FixSuggestionCard({
           </CardTitle>
           <div className="flex items-center gap-1">
             {fix.is_safe ? (
-              <Badge variant="outline" className="text-green-700 border-green-300">
+              <Badge variant="outline" className="text-green-700 dark:text-green-300 border-green-300 dark:border-green-800">
                 <Shield className="h-3 w-3 mr-1" />
                 Safe
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-yellow-700 border-yellow-300">
+              <Badge variant="outline" className="text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-800">
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 Review
               </Badge>

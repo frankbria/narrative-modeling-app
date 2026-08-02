@@ -84,10 +84,10 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
   const getDifficultyColor = (level: string) => {
     switch (level) {
-      case 'beginner': return 'bg-green-100 text-green-800';
-      case 'intermediate': return 'bg-yellow-100 text-yellow-800';
-      case 'advanced': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'beginner': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
+      case 'intermediate': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
+      case 'advanced': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -105,7 +105,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       case 'customer_churn': return <Users className="h-8 w-8 text-blue-500" />;
       case 'house_prices': return <Home className="h-8 w-8 text-green-500" />;
       case 'marketing_response': return <TrendingUp className="h-8 w-8 text-purple-500" />;
-      default: return <Database className="h-8 w-8 text-gray-500" />;
+      default: return <Database className="h-8 w-8 text-muted-foreground" />;
     }
   };
 
@@ -131,7 +131,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
     <div className="space-y-6">
       <div className="text-center space-y-2">
         <h3 className="text-lg font-semibold">Choose a Sample Dataset</h3>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Perfect for learning! These curated datasets help you understand different ML concepts.
         </p>
       </div>
@@ -139,7 +139,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       {loadError && (
         <div
           role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-200"
         >
           {loadError}
         </div>
@@ -166,7 +166,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                       <Badge variant="secondary" className={getDifficultyColor(dataset.difficulty_level)}>
                         {dataset.difficulty_level}
                       </Badge>
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         {getProblemTypeIcon(dataset.problem_type)}
                         <span className="capitalize">
                           {dataset.problem_type.replace('_', ' ')}
@@ -186,15 +186,15 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div>
                   <div className="font-medium text-blue-600">{dataset.rows.toLocaleString()}</div>
-                  <div className="text-gray-500">Rows</div>
+                  <div className="text-muted-foreground">Rows</div>
                 </div>
                 <div>
                   <div className="font-medium text-green-600">{dataset.columns}</div>
-                  <div className="text-gray-500">Columns</div>
+                  <div className="text-muted-foreground">Columns</div>
                 </div>
                 <div>
                   <div className="font-medium text-purple-600">{dataset.size_mb}MB</div>
-                  <div className="text-gray-500">Size</div>
+                  <div className="text-muted-foreground">Size</div>
                 </div>
               </div>
 
@@ -215,7 +215,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
               {/* Expected Accuracy */}
               {dataset.expected_accuracy && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Expected Accuracy:</span>
+                  <span className="text-muted-foreground">Expected Accuracy:</span>
                   <span className="font-medium text-green-600">
                     {(dataset.expected_accuracy * 100).toFixed(0)}%
                   </span>
@@ -265,7 +265,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
       {/* Dataset Detail Modal/Panel */}
       {selectedDataset && (
-        <Card className="border-2 border-blue-200 bg-blue-50">
+        <Card className="border-2 border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40">
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
@@ -303,11 +303,11 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
             <div>
               <h4 className="font-medium mb-2">Data Preview:</h4>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse border border-gray-300">
+                <table className="w-full text-xs border-collapse border border-border">
                   <thead>
-                    <tr className="bg-gray-100">
+                    <tr className="bg-muted">
                       {Object.keys(selectedDataset.preview_data[0] || {}).map((column) => (
-                        <th key={column} className="border border-gray-300 px-2 py-1 text-left">
+                        <th key={column} className="border border-border px-2 py-1 text-left">
                           {column}
                           {column === selectedDataset.target_column && (
                             <Badge className="ml-1 text-xs" variant="secondary">Target</Badge>
@@ -320,7 +320,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                     {selectedDataset.preview_data.slice(0, 3).map((row, index) => (
                       <tr key={index}>
                         {Object.values(row).map((value, colIndex) => (
-                          <td key={colIndex} className="border border-gray-300 px-2 py-1">
+                          <td key={colIndex} className="border border-border px-2 py-1">
                             {String(value)}
                           </td>
                         ))}

@@ -143,7 +143,7 @@ export function RecipeLibrary({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Recipe Library</h2>
-          <p className="text-gray-600 mt-1">
+          <p className="text-muted-foreground mt-1">
             Browse and apply transformation recipes
           </p>
         </div>
@@ -267,8 +267,8 @@ export function RecipeLibrary({
           <div className="text-gray-400 mb-4">
             <Search className="w-12 h-12 mx-auto" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No recipes found</h3>
-          <p className="text-gray-600">
+          <h3 className="text-lg font-semibold text-foreground mb-2">No recipes found</h3>
+          <p className="text-muted-foreground">
             {searchQuery || selectedTags.length > 0
               ? 'Try adjusting your search filters'
               : 'Create your first recipe to get started'}
@@ -287,7 +287,7 @@ export function RecipeLibrary({
             Previous
           </Button>
           <div className="flex items-center gap-2 px-4">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-muted-foreground">
               Page {page} of {totalPages}
             </span>
           </div>

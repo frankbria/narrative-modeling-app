@@ -399,7 +399,7 @@ export function InteractiveVisualizationDashboard({
                       {/* Numeric Columns */}
                       {numericColumns.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2 text-green-700">
+                          <h4 className="text-sm font-medium mb-2 text-green-700 dark:text-green-300">
                             Numeric ({numericColumns.length})
                           </h4>
                           <div className="grid grid-cols-2 gap-2">
@@ -426,7 +426,7 @@ export function InteractiveVisualizationDashboard({
                       {/* Categorical Columns */}
                       {categoricalColumns.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2 text-blue-700">
+                          <h4 className="text-sm font-medium mb-2 text-blue-700 dark:text-blue-300">
                             Categorical ({categoricalColumns.length})
                           </h4>
                           <div className="grid grid-cols-2 gap-2">
@@ -448,7 +448,7 @@ export function InteractiveVisualizationDashboard({
                       {/* DateTime Columns */}
                       {datetimeColumns.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2 text-purple-700">
+                          <h4 className="text-sm font-medium mb-2 text-purple-700 dark:text-purple-300">
                             DateTime ({datetimeColumns.length})
                           </h4>
                           <div className="grid grid-cols-2 gap-2">

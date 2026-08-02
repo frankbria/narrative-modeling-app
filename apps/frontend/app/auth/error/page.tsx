@@ -36,10 +36,10 @@ export default function AuthErrorPage() {
   const errorMessage = error ? (errorMessages[error] ?? errorMessages.Default) : errorMessages.Default;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-muted">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
             <AlertCircle className="w-6 h-6 text-red-600" />
           </div>
           <CardTitle className="text-2xl font-bold">

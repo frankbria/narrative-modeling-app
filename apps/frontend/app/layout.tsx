@@ -5,6 +5,7 @@ import './animations.css'
 import { type Metadata } from 'next'
 import { auth } from '../auth'
 import SessionProvider from '@/components/SessionProvider'
+import { ThemeProvider } from '@/components/ThemeProvider'
 import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
@@ -35,7 +36,10 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="en">
+    // suppressHydrationWarning: next-themes writes the resolved class onto <html>
+    // in a pre-hydration script, so the server markup and the first client render
+    // legitimately differ on this one attribute (#407).
+    <html lang="en" suppressHydrationWarning>
       <body className={`flex antialiased`}>
         {/* Skip-to-content link — first focusable element, visible only on focus
             so keyboard users can bypass the nav (WCAG 2.4.1 / issue #282). */}
@@ -45,6 +49,7 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
+        <ThemeProvider>
         <SessionProvider session={session}>
           <WorkflowProvider>
             {session ? (
@@ -63,7 +68,7 @@ export default async function RootLayout({
                     <div
                       id="main-content"
                       tabIndex={-1}
-                      className="flex-1 p-4 bg-gray-100 lg:ml-64 lg:mr-80 focus:outline-none"
+                      className="flex-1 p-4 bg-muted lg:ml-64 lg:mr-80 focus:outline-none"
                     >
                       {children}
                     </div>
@@ -76,7 +81,7 @@ export default async function RootLayout({
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="flex-1 p-4 bg-gray-100 min-h-screen flex flex-col items-center justify-center space-y-6 focus:outline-none"
+                className="flex-1 p-4 bg-muted min-h-screen flex flex-col items-center justify-center space-y-6 focus:outline-none"
               >
                 {children}
               </main>
@@ -86,6 +91,7 @@ export default async function RootLayout({
             <SourceOffer />
           </WorkflowProvider>
         </SessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

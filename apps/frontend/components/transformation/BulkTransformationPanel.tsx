@@ -138,17 +138,17 @@ export function BulkTransformationPanel({
   }, [datasetId, selectedColumns, transformationType, globalParameters, stopOnError, onApply]);
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 ${className}`}>
+    <div className={`bg-card rounded-lg border border-border ${className}`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50">
+      <div className="p-4 border-b border-border bg-muted">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Bulk Transformation</h2>
+          <h2 className="text-lg font-semibold text-foreground">Bulk Transformation</h2>
           {selectedColumns.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onClearAll}
-              className="text-gray-500 hover:text-red-600"
+              className="text-muted-foreground hover:text-red-600"
             >
               <Trash2 className="w-4 h-4 mr-1" />
               Clear All
@@ -158,18 +158,18 @@ export function BulkTransformationPanel({
       </div>
 
       {/* Selected columns */}
-      <div className="p-4 border-b border-gray-200">
-        <Label className="text-sm text-gray-700 mb-2 block">
+      <div className="p-4 border-b border-border">
+        <Label className="text-sm text-foreground mb-2 block">
           Selected Columns ({selectedColumns.length})
         </Label>
         {selectedColumns.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">No columns selected</p>
+          <p className="text-sm text-muted-foreground italic">No columns selected</p>
         ) : (
           <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
             {selectedColumns.map(column => (
               <span
                 key={column}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-xs"
               >
                 {column}
                 <button
@@ -186,8 +186,8 @@ export function BulkTransformationPanel({
       </div>
 
       {/* Transformation selection */}
-      <div className="p-4 border-b border-gray-200">
-        <Label htmlFor="transformation-type" className="text-sm text-gray-700 mb-2 block">
+      <div className="p-4 border-b border-border">
+        <Label htmlFor="transformation-type" className="text-sm text-foreground mb-2 block">
           Transformation Type
         </Label>
         <Select value={transformationType} onValueChange={setTransformationType}>
@@ -199,7 +199,7 @@ export function BulkTransformationPanel({
               <SelectItem key={t.value} value={t.value}>
                 <div>
                   <div className="font-medium">{t.label}</div>
-                  <div className="text-xs text-gray-500">{t.description}</div>
+                  <div className="text-xs text-muted-foreground">{t.description}</div>
                 </div>
               </SelectItem>
             ))}
@@ -207,7 +207,7 @@ export function BulkTransformationPanel({
         </Select>
 
         {selectedTransformation && (
-          <p className="mt-2 text-xs text-gray-600">
+          <p className="mt-2 text-xs text-muted-foreground">
             <Settings2 className="w-3 h-3 inline mr-1" />
             {selectedTransformation.description}
           </p>
@@ -215,13 +215,13 @@ export function BulkTransformationPanel({
       </div>
 
       {/* Options */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <Label htmlFor="stop-on-error" className="text-sm text-gray-700">
+            <Label htmlFor="stop-on-error" className="text-sm text-foreground">
               Stop on Error
             </Label>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Stop processing if any column fails
             </p>
           </div>
@@ -235,8 +235,8 @@ export function BulkTransformationPanel({
 
       {/* Summary */}
       {selectedColumns.length > 0 && transformationType && (
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
-          <p className="text-sm text-gray-700">
+        <div className="p-4 border-b border-border bg-muted">
+          <p className="text-sm text-foreground">
             Will apply <strong>{selectedTransformation?.label}</strong> to{' '}
             <strong>{selectedColumns.length}</strong> column
             {selectedColumns.length !== 1 ? 's' : ''}
@@ -246,8 +246,8 @@ export function BulkTransformationPanel({
 
       {/* Error message */}
       {error && (
-        <div className="p-4 border-b border-gray-200">
-          <div className="p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+        <div className="p-4 border-b border-border">
+          <div className="p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-300 text-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             {error}
           </div>
@@ -263,7 +263,7 @@ export function BulkTransformationPanel({
           className="flex-1"
         >
           {isPreviewLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border border-gray-300 border-t-blue-500 mr-2" />
+            <div className="animate-spin rounded-full h-4 w-4 border border-border border-t-blue-500 mr-2" />
           ) : (
             <Eye className="w-4 h-4 mr-2" />
           )}
@@ -275,7 +275,7 @@ export function BulkTransformationPanel({
           className="flex-1"
         >
           {isApplyLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border border-gray-300 border-t-white mr-2" />
+            <div className="animate-spin rounded-full h-4 w-4 border border-border border-t-white mr-2" />
           ) : (
             <Play className="w-4 h-4 mr-2" />
           )}

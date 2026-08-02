@@ -46,13 +46,13 @@ export default function FeatureMetadata({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-card rounded-lg shadow-xl w-full max-w-md">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">Feature Details</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="p-1 hover:bg-muted rounded"
           >
             <X className="w-5 h-5" />
           </button>
@@ -62,7 +62,7 @@ export default function FeatureMetadata({
         <div className="p-4 space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Feature Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -72,14 +72,14 @@ export default function FeatureMetadata({
               placeholder="e.g., price_per_sqft"
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Use descriptive names without spaces (use underscores)
             </p>
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Description
             </label>
             <textarea
@@ -93,14 +93,14 @@ export default function FeatureMetadata({
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Tags
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-sm"
                 >
                   <Tag className="w-3 h-3" />
                   {tag}
@@ -125,22 +125,22 @@ export default function FeatureMetadata({
               <button
                 onClick={handleAddTag}
                 disabled={!newTag.trim()}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 bg-muted hover:bg-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Press Enter or click + to add a tag
             </p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex justify-end gap-3 p-4 border-t bg-muted rounded-b-lg">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg"
+            className="px-4 py-2 text-foreground hover:bg-gray-200 rounded-lg"
           >
             Cancel
           </button>

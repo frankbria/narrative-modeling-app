@@ -52,14 +52,14 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
-      case 'welcome': return 'bg-blue-100 text-blue-800';
-      case 'upload_data': return 'bg-green-100 text-green-800';
-      case 'explore_data': return 'bg-purple-100 text-purple-800';
-      case 'train_model': return 'bg-orange-100 text-orange-800';
-      case 'make_predictions': return 'bg-red-100 text-red-800';
-      case 'export_model': return 'bg-indigo-100 text-indigo-800';
-      case 'completion': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'welcome': return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
+      case 'upload_data': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
+      case 'explore_data': return 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200';
+      case 'train_model': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200';
+      case 'make_predictions': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
+      case 'export_model': return 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200';
+      case 'completion': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -87,7 +87,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
           <div className="space-y-4">
             {/* Welcome-video placeholder removed (#281): no player or video
                 content existed, so the "Watch Introduction" button was inert. */}
-            <div className="prose max-w-none">
+            <div className="prose dark:prose-invert max-w-none">
               <h3>Welcome to the Platform! 🚀</h3>
               <p>
                 You&apos;re about to discover how easy it is to build machine learning models 
@@ -169,7 +169,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             {step.code_examples && (
               <div>
                 <h4 className="font-medium mb-2">Expected CSV Format:</h4>
-                <div className="bg-gray-50 p-3 rounded-md font-mono text-sm">
+                <div className="bg-muted p-3 rounded-md font-mono text-sm">
                   <pre>{step.code_examples[0]?.code}</pre>
                 </div>
               </div>
@@ -180,7 +180,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       case 'explore_data':
         return (
           <div className="space-y-4">
-            <div className="prose max-w-none">
+            <div className="prose dark:prose-invert max-w-none">
               <h3>Understand Your Data 📊</h3>
               <p>
                 Data exploration is crucial for building great models. Our platform 
@@ -194,7 +194,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   <div className="text-center">
                     <div className="text-2xl mb-2">📈</div>
                     <h4 className="font-medium">Statistics</h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       View summary statistics for all columns
                     </p>
                   </div>
@@ -206,7 +206,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   <div className="text-center">
                     <div className="text-2xl mb-2">🔍</div>
                     <h4 className="font-medium">Quality Check</h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       Identify missing values and outliers
                     </p>
                   </div>
@@ -218,7 +218,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   <div className="text-center">
                     <div className="text-2xl mb-2">📊</div>
                     <h4 className="font-medium">Visualizations</h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       Create charts to understand patterns
                     </p>
                   </div>
@@ -239,7 +239,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       case 'train_model':
         return (
           <div className="space-y-4">
-            <div className="prose max-w-none">
+            <div className="prose dark:prose-invert max-w-none">
               <h3>Train Your Model 🤖</h3>
               <p>
                 This is where the magic happens! Our AutoML technology will:
@@ -273,7 +273,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       case 'make_predictions':
         return (
           <div className="space-y-4">
-            <div className="prose max-w-none">
+            <div className="prose dark:prose-invert max-w-none">
               <h3>Make Predictions 🎯</h3>
               <p>
                 Now that your model is trained, it&apos;s time to put it to work! 
@@ -281,9 +281,9 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               </p>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">What you&apos;ll see:</h4>
-              <ul className="text-blue-800 text-sm space-y-1">
+            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">What you&apos;ll see:</h4>
+              <ul className="text-blue-800 dark:text-blue-200 text-sm space-y-1">
                 <li>• Prediction values for your inputs</li>
                 <li>• Confidence scores showing model certainty</li>
                 <li>• Feature importance rankings</li>
@@ -304,7 +304,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       case 'export_model':
         return (
           <div className="space-y-4">
-            <div className="prose max-w-none">
+            <div className="prose dark:prose-invert max-w-none">
               <h3>Export & Deploy 📦</h3>
               <p>
                 Ready to use your model in production? Export it in multiple 
@@ -316,7 +316,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <Card>
                 <CardContent className="pt-6">
                   <h4 className="font-medium mb-2">🐍 Python Code</h4>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <p className="text-sm text-muted-foreground mb-3">
                     Standalone Python class for integration
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
@@ -328,7 +328,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <Card>
                 <CardContent className="pt-6">
                   <h4 className="font-medium mb-2">🐳 Docker Container</h4>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <p className="text-sm text-muted-foreground mb-3">
                     Ready-to-deploy API container
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
@@ -342,7 +342,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
       default:
         return (
-          <div className="prose max-w-none">
+          <div className="prose dark:prose-invert max-w-none">
             <p>{step.description}</p>
           </div>
         );
@@ -368,16 +368,16 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </div>
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="h-4 w-4" />
             {step.estimated_duration}
           </div>
         </div>
 
         {step.status === 'completed' && (
-          <Alert className="border-green-200 bg-green-50">
+          <Alert className="border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40">
             <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
+            <AlertDescription className="text-green-800 dark:text-green-200">
               ✅ Step completed successfully!
             </AlertDescription>
           </Alert>
@@ -402,7 +402,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <ol className="space-y-2">
               {step.instructions.map((instruction, index) => (
                 <li key={index} className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+                  <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full flex items-center justify-center text-sm font-medium">
                     {index + 1}
                   </span>
                   <span>{instruction}</span>
@@ -437,7 +437,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                 {step.code_examples.map((example, index) => (
                   <div key={index} className="mb-4">
                     <h5 className="text-sm font-medium mb-1">{example.title}</h5>
-                    <div className="bg-gray-50 p-3 rounded-md">
+                    <div className="bg-muted p-3 rounded-md">
                       <pre className="text-sm font-mono">{example.code}</pre>
                     </div>
                   </div>

@@ -50,46 +50,46 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Impact Statistics</h3>
+      <h3 className="text-lg font-semibold text-foreground">Impact Statistics</h3>
 
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Rows Affected */}
-        <Card className="bg-white">
+        <Card className="bg-card">
           <CardContent className="pt-6">
-            <div className="text-sm font-medium text-gray-600">
+            <div className="text-sm font-medium text-muted-foreground">
               Rows Affected
             </div>
-            <div className="mt-2 text-3xl font-bold text-gray-900">
+            <div className="mt-2 text-3xl font-bold text-foreground">
               {impactStats.rows_affected.toLocaleString()}
             </div>
-            <div className="mt-1 text-xs text-gray-500">rows with changes</div>
+            <div className="mt-1 text-xs text-muted-foreground">rows with changes</div>
           </CardContent>
         </Card>
 
         {/* Values Changed */}
-        <Card className="bg-white">
+        <Card className="bg-card">
           <CardContent className="pt-6">
-            <div className="text-sm font-medium text-gray-600">
+            <div className="text-sm font-medium text-muted-foreground">
               Values Changed
             </div>
-            <div className="mt-2 text-3xl font-bold text-gray-900">
+            <div className="mt-2 text-3xl font-bold text-foreground">
               {impactStats.values_changed.toLocaleString()}
             </div>
-            <div className="mt-1 text-xs text-gray-500">cells modified</div>
+            <div className="mt-1 text-xs text-muted-foreground">cells modified</div>
           </CardContent>
         </Card>
 
         {/* Columns Affected */}
-        <Card className="bg-white">
+        <Card className="bg-card">
           <CardContent className="pt-6">
-            <div className="text-sm font-medium text-gray-600">
+            <div className="text-sm font-medium text-muted-foreground">
               Columns Affected
             </div>
-            <div className="mt-2 text-3xl font-bold text-gray-900">
+            <div className="mt-2 text-3xl font-bold text-foreground">
               {impactStats.columns_affected.length}
             </div>
-            <div className="mt-1 text-xs text-gray-500 truncate">
+            <div className="mt-1 text-xs text-muted-foreground truncate">
               {impactStats.columns_affected.length > 0
                 ? impactStats.columns_affected.join(", ")
                 : "none"}
@@ -99,7 +99,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
       </div>
 
       {/* Quality Score Comparison */}
-      <Card className="bg-white">
+      <Card className="bg-card">
         <CardHeader>
           <CardTitle className="text-base">Quality Score Comparison</CardTitle>
         </CardHeader>
@@ -107,8 +107,8 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
           <div className="space-y-4">
             {/* Score Labels */}
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Before</span>
-              <span className="text-sm font-medium text-gray-700">After</span>
+              <span className="text-sm font-medium text-foreground">Before</span>
+              <span className="text-sm font-medium text-foreground">After</span>
             </div>
 
             {/* Score Bars */}
@@ -123,7 +123,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
                     }}
                   />
                 </div>
-                <div className="text-xs font-semibold text-gray-700">
+                <div className="text-xs font-semibold text-foreground">
                   {beforePercent}%
                 </div>
               </div>
@@ -157,7 +157,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
                     }}
                   />
                 </div>
-                <div className="text-xs font-semibold text-gray-700">
+                <div className="text-xs font-semibold text-foreground">
                   {afterPercent}%
                 </div>
               </div>
@@ -170,8 +170,8 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
                   variant={qualityImproved ? "default" : "secondary"}
                   className={
                     qualityImproved
-                      ? "bg-green-100 text-green-800 hover:bg-green-100"
-                      : "bg-red-100 text-red-800 hover:bg-red-100"
+                      ? "bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-100"
+                      : "bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 hover:bg-red-100"
                   }
                 >
                   {qualityImproved ? (
@@ -187,7 +187,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
             {/* No Change Message */}
             {qualityChange === 0 && (
               <div className="flex justify-center">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted-foreground">
                   Quality score unchanged
                 </span>
               </div>
@@ -199,16 +199,16 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
       {/* Value Distributions (Optional, Expandable) */}
       {impactStats.value_distributions &&
         Object.keys(impactStats.value_distributions).length > 0 && (
-          <Card className="bg-white">
+          <Card className="bg-card">
             <button
               onClick={() => setExpandedDistributions(!expandedDistributions)}
-              className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-6 text-left hover:bg-muted transition-colors"
             >
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold text-foreground">
                 Value Distribution Changes
               </span>
               <ChevronDown
-                className={`w-5 h-5 text-gray-500 transition-transform ${
+                className={`w-5 h-5 text-muted-foreground transition-transform ${
                   expandedDistributions ? "rotate-180" : ""
                 }`}
               />
@@ -231,24 +231,24 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
 
                       return (
                         <div key={column} className="space-y-3">
-                          <h4 className="text-sm font-semibold text-gray-900">
+                          <h4 className="text-sm font-semibold text-foreground">
                             {column}
                           </h4>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Before Distribution */}
                             <div className="space-y-2">
-                              <div className="text-xs font-medium text-gray-600">
+                              <div className="text-xs font-medium text-muted-foreground">
                                 Before
                               </div>
                               <div className="space-y-2">
                                 {beforeEntries.slice(0, 5).map(([value, count]) => (
                                   <div key={`before-${value}`} className="space-y-1">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-xs text-gray-700 truncate pr-2">
+                                      <span className="text-xs text-foreground truncate pr-2">
                                         {value}
                                       </span>
-                                      <span className="text-xs font-medium text-gray-600 flex-shrink-0">
+                                      <span className="text-xs font-medium text-muted-foreground flex-shrink-0">
                                         {count}
                                       </span>
                                     </div>
@@ -265,7 +265,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
                               </div>
 
                               {beforeEntries.length > 5 && (
-                                <div className="text-xs text-gray-500 pt-1">
+                                <div className="text-xs text-muted-foreground pt-1">
                                   +{beforeEntries.length - 5} more values
                                 </div>
                               )}
@@ -273,17 +273,17 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
 
                             {/* After Distribution */}
                             <div className="space-y-2">
-                              <div className="text-xs font-medium text-gray-600">
+                              <div className="text-xs font-medium text-muted-foreground">
                                 After
                               </div>
                               <div className="space-y-2">
                                 {afterEntries.slice(0, 5).map(([value, count]) => (
                                   <div key={`after-${value}`} className="space-y-1">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-xs text-gray-700 truncate pr-2">
+                                      <span className="text-xs text-foreground truncate pr-2">
                                         {value}
                                       </span>
-                                      <span className="text-xs font-medium text-gray-600 flex-shrink-0">
+                                      <span className="text-xs font-medium text-muted-foreground flex-shrink-0">
                                         {count}
                                       </span>
                                     </div>
@@ -300,7 +300,7 @@ export function ImpactStats({ impactStats }: ImpactStatsProps) {
                               </div>
 
                               {afterEntries.length > 5 && (
-                                <div className="text-xs text-gray-500 pt-1">
+                                <div className="text-xs text-muted-foreground pt-1">
                                   +{afterEntries.length - 5} more values
                                 </div>
                               )}

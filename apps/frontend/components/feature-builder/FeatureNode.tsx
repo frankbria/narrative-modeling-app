@@ -20,11 +20,11 @@ export type FeatureNode = Node<
 >;
 
 const nodeColors: Record<string, { bg: string; border: string; text: string }> = {
-  column: { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-800' },
-  operation: { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-800' },
-  function: { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-800' },
-  constant: { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-800' },
-  conditional: { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-800' },
+  column: { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-300 dark:border-blue-800', text: 'text-blue-800 dark:text-blue-200' },
+  operation: { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-300 dark:border-green-800', text: 'text-green-800 dark:text-green-200' },
+  function: { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-300 dark:border-orange-800', text: 'text-orange-800 dark:text-orange-200' },
+  constant: { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-300 dark:border-purple-800', text: 'text-purple-800 dark:text-purple-200' },
+  conditional: { bg: 'bg-yellow-50 dark:bg-yellow-950/40', border: 'border-yellow-300 dark:border-yellow-800', text: 'text-yellow-800 dark:text-yellow-200' },
 };
 
 const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
@@ -254,7 +254,7 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
 
       <div className="p-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-500 uppercase">{data.nodeType}</span>
+          <span className="text-xs text-muted-foreground uppercase">{data.nodeType}</span>
           <div className="flex items-center gap-1">
             {(data.nodeType === 'constant' || data.nodeType === 'function') && (
               <button
@@ -262,9 +262,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
                   e.stopPropagation();
                   setShowSettings(!showSettings);
                 }}
-                className="p-1 hover:bg-white/50 rounded"
+                className="p-1 hover:bg-card/50 rounded"
               >
-                <Settings className="w-3 h-3 text-gray-600" />
+                <Settings className="w-3 h-3 text-muted-foreground" />
               </button>
             )}
             {data.onDelete && (
@@ -273,9 +273,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
                   e.stopPropagation();
                   data.onDelete!(id);
                 }}
-                className="p-1 hover:bg-white/50 rounded"
+                className="p-1 hover:bg-card/50 rounded"
               >
-                <X className="w-3 h-3 text-gray-600" />
+                <X className="w-3 h-3 text-muted-foreground" />
               </button>
             )}
           </div>
@@ -293,9 +293,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
         )}
 
         {showSettings && (
-          <div className="mt-2 pt-2 border-t border-gray-200">
+          <div className="mt-2 pt-2 border-t border-border">
             {getParameterInputs() || (
-              <p className="text-xs text-gray-500">No settings</p>
+              <p className="text-xs text-muted-foreground">No settings</p>
             )}
           </div>
         )}

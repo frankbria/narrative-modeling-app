@@ -136,7 +136,7 @@ export default function FeaturesPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <h2 className="text-2xl font-semibold mb-2">No Dataset Selected</h2>
-          <p className="text-gray-600 mb-4">Please complete the previous steps first.</p>
+          <p className="text-muted-foreground mb-4">Please complete the previous steps first.</p>
           <button
             onClick={() => router.push('/upload')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -158,7 +158,7 @@ export default function FeaturesPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Sparkles className="w-6 h-6 text-yellow-500" />
           Feature Engineering
@@ -166,17 +166,17 @@ export default function FeaturesPage() {
 
         {/* AI Suggestions */}
         {aiSuggestions && (
-          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900">
             <h3 className="font-semibold mb-2 flex items-center gap-2">
               <Brain className="w-5 h-5 text-blue-600" />
               AI Recommendations
             </h3>
-            <p className="text-sm text-gray-700 mb-3">{aiSuggestions.summary}</p>
+            <p className="text-sm text-foreground mb-3">{aiSuggestions.summary}</p>
             <div className="flex flex-wrap gap-2">
               {aiSuggestions.recommendations?.map((rec: string, idx: number) => (
                 <span
                   key={idx}
-                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-sm"
                 >
                   {rec}
                 </span>
@@ -192,7 +192,7 @@ export default function FeaturesPage() {
             {features.map((feature) => (
               <label
                 key={feature.name}
-                className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted cursor-pointer"
               >
                 <input
                   type="checkbox"
@@ -202,7 +202,7 @@ export default function FeaturesPage() {
                 />
                 <div className="flex-1">
                   <span className="font-medium">{feature.name}</span>
-                  <span className="text-xs text-gray-500 block">{feature.type}</span>
+                  <span className="text-xs text-muted-foreground block">{feature.type}</span>
                 </div>
                 {feature.importance && (
                   <div className="flex items-center gap-1">
@@ -218,7 +218,7 @@ export default function FeaturesPage() {
         </div>
 
         {/* Feature Generation Options */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <div className="mt-6 p-4 bg-muted rounded-lg">
           <h3 className="font-semibold mb-3">Feature Generation Options</h3>
           <div className="space-y-2">
             <label className="flex items-center space-x-2">
@@ -238,9 +238,9 @@ export default function FeaturesPage() {
 
         {/* Warning */}
         {selectedFeatures.length < 2 && (
-          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200 flex items-start gap-2">
+          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-900 flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div className="text-sm text-yellow-800">
+            <div className="text-sm text-yellow-800 dark:text-yellow-200">
               <p className="font-semibold">Too few features selected</p>
               <p>Select at least 2 features for effective modeling.</p>
             </div>
@@ -257,7 +257,7 @@ export default function FeaturesPage() {
             className={`px-6 py-2 rounded-lg font-medium transition-colors ${
               selectedFeatures.length >= 2 && !loading
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
             }`}
           >
             {loading ? 'Generating...' : 'Generate Features'}

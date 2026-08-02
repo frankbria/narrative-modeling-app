@@ -31,13 +31,13 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   if (active && payload && payload.length) {
     const point = payload[0].payload
     return (
-      <div className="bg-white p-3 border rounded shadow-lg">
+      <div className="bg-card p-3 border rounded shadow-lg">
         <p className="font-medium">{point.label || 'Data Point'}</p>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           {point.x.toFixed(2)}, {point.y.toFixed(2)}
         </p>
         {point.category && (
-          <p className="text-sm text-gray-500">Category: {point.category}</p>
+          <p className="text-sm text-muted-foreground">Category: {point.category}</p>
         )}
       </div>
     )

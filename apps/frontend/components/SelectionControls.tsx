@@ -91,7 +91,7 @@ export function SelectionControls({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             The column you want to predict
           </p>
         </div>
@@ -115,7 +115,7 @@ export function SelectionControls({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-muted-foreground">
             {getMethodDescription(config.method)}
           </p>
           <p className="text-xs text-blue-600">
@@ -144,7 +144,7 @@ export function SelectionControls({
               <SelectItem value="regression">Regression</SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Auto-detect will analyze target column to determine problem type
           </p>
         </div>
@@ -165,7 +165,7 @@ export function SelectionControls({
             }
             disabled={disabled}
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Leave empty to use threshold-based selection
           </p>
         </div>
@@ -186,7 +186,7 @@ export function SelectionControls({
               disabled={disabled}
               className="py-4"
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Features with importance above this threshold will be selected
             </p>
           </div>
@@ -207,7 +207,7 @@ export function SelectionControls({
             disabled={disabled}
             className="py-4"
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Features with correlation above this threshold are considered redundant
           </p>
         </div>
@@ -228,7 +228,7 @@ export function SelectionControls({
             }
             disabled={disabled}
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             For very large datasets, sample a subset for faster processing
           </p>
         </div>

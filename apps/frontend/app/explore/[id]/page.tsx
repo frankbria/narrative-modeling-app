@@ -317,7 +317,7 @@ export default function DatasetAnalysisPage() {
             onClick={handleExport} 
             disabled={!dataset.is_processed}
             variant="outline"
-            className="bg-white hover:bg-gray-50 border-gray-300"
+            className="bg-card hover:bg-muted border-border"
           >
             Export Data
           </Button>
@@ -364,7 +364,7 @@ export default function DatasetAnalysisPage() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-white shadow-sm border">
+          <TabsList className="grid w-full grid-cols-6 bg-card shadow-sm border">
             <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Database className="h-4 w-4" />
               Overview

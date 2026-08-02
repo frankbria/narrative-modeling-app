@@ -43,9 +43,9 @@ function CustomTooltip({
   if (active && payload && payload.length) {
     const feature = payload[0].payload
     return (
-      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-        <p className="font-semibold text-gray-900">{feature.feature_name}</p>
-        <p className="text-sm text-gray-600 mt-1">
+      <div className="bg-card p-4 border border-border rounded-lg shadow-lg">
+        <p className="font-semibold text-foreground">{feature.feature_name}</p>
+        <p className="text-sm text-muted-foreground mt-1">
           Mean |SHAP|:{' '}
           <span className="font-medium">{feature.importance.toFixed(4)}</span>
         </p>
@@ -71,9 +71,9 @@ export function ShapSummaryChart({
     return (
       <div
         data-testid="shap-empty"
-        className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200"
+        className="flex items-center justify-center h-64 bg-muted rounded-lg border border-border"
       >
-        <p className="text-gray-500">No SHAP data available</p>
+        <p className="text-muted-foreground">No SHAP data available</p>
       </div>
     )
   }
@@ -82,15 +82,15 @@ export function ShapSummaryChart({
     <div className="w-full" data-testid="shap-summary-chart">
       <div className="mb-2 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-foreground">
             SHAP Feature Impact
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Average impact of each feature on the model&apos;s output
           </p>
         </div>
         {explainerType && (
-          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-medium">
+          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">
             {explainerType} explainer
           </span>
         )}
@@ -99,7 +99,7 @@ export function ShapSummaryChart({
       {plainLanguage && (
         <p
           data-testid="shap-plain-language"
-          className="mb-3 text-sm text-gray-700 bg-purple-50 border border-purple-100 rounded-md px-3 py-2"
+          className="mb-3 text-sm text-foreground bg-purple-50 dark:bg-purple-950/40 border border-purple-100 rounded-md px-3 py-2"
         >
           {plainLanguage}
         </p>

@@ -15,11 +15,11 @@ interface ColumnPaletteProps {
 }
 
 const typeColors: Record<string, string> = {
-  numeric: 'bg-blue-100 text-blue-800 border-blue-200',
-  text: 'bg-green-100 text-green-800 border-green-200',
-  boolean: 'bg-purple-100 text-purple-800 border-purple-200',
-  datetime: 'bg-orange-100 text-orange-800 border-orange-200',
-  categorical: 'bg-pink-100 text-pink-800 border-pink-200',
+  numeric: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-900',
+  text: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-900',
+  boolean: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-900',
+  datetime: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-900',
+  categorical: 'bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-900',
 };
 
 export default function ColumnPalette({ columns }: ColumnPaletteProps) {
@@ -54,7 +54,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
     <div
       key={column.name}
       className={`p-2 rounded cursor-move border hover:opacity-80 transition-opacity ${
-        typeColors[column.type] || 'bg-gray-100 text-gray-800 border-gray-200'
+        typeColors[column.type] || 'bg-muted text-foreground border-border'
       }`}
       draggable
       onDragStart={(e) => handleDragStart(e, column)}
@@ -73,7 +73,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
     <div className="space-y-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 w-full text-left font-medium text-gray-700 hover:text-gray-900"
+        className="flex items-center gap-2 w-full text-left font-medium text-foreground hover:text-foreground"
       >
         {isExpanded ? (
           <ChevronDown className="w-4 h-4" />
@@ -103,7 +103,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
               {filteredColumns.length > 0 ? (
                 filteredColumns.map(renderColumn)
               ) : (
-                <p className="text-sm text-gray-500 text-center py-2">
+                <p className="text-sm text-muted-foreground text-center py-2">
                   No columns match your search
                 </p>
               )}
@@ -112,7 +112,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
             <div className="space-y-3 max-h-64 overflow-y-auto">
               {Object.entries(groupedColumns).map(([type, cols]) => (
                 <div key={type}>
-                  <h4 className="text-xs uppercase text-gray-500 font-medium mb-1.5">
+                  <h4 className="text-xs uppercase text-muted-foreground font-medium mb-1.5">
                     {type} ({cols.length})
                   </h4>
                   <div className="space-y-1.5">

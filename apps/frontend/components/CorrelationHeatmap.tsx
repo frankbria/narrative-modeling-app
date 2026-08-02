@@ -57,7 +57,7 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
 
   if (!correlationMatrix) {
     return (
-      <div className="text-center p-4 text-gray-500">
+      <div className="text-center p-4 text-muted-foreground">
         Not enough numeric columns to generate correlation matrix.
         Found {stats.filter(s => s.field_type === 'numeric').length} numeric columns.
       </div>
@@ -223,7 +223,7 @@ export function CorrelationHeatmap({ stats, correlationMatrix: matrixProp }: Cor
       </svg>
 
       {/* Colour legend so the diverging scale is decodable without reading cells */}
-      <div className="mt-1 flex items-center gap-2 text-xs text-gray-600" aria-hidden="true">
+      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground" aria-hidden="true">
         <span>-1</span>
         <div
           className="h-2 flex-1 rounded"

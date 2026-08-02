@@ -325,20 +325,20 @@ export default function UploadPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-8">
+      <div className="bg-card rounded-lg shadow-md p-8">
         <h1 className="text-3xl font-bold mb-2 text-center">Upload Your Data</h1>
-        <p className="text-gray-600 text-center mb-8">
+        <p className="text-muted-foreground text-center mb-8">
           Start by uploading a CSV, Excel, or JSON file containing your data
         </p>
 
         {/* Success Message */}
         {showSuccessMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md" data-testid="upload-status" role="status" aria-live="polite">
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-md" data-testid="upload-status" role="status" aria-live="polite">
             <div className="flex items-center">
               <CheckCircle className="text-green-500 mr-2" size={20} />
               <div>
-                <p className="font-medium text-green-800">File uploaded successfully!</p>
-                <p className="text-sm text-green-700">
+                <p className="font-medium text-green-800 dark:text-green-200">File uploaded successfully!</p>
+                <p className="text-sm text-green-700 dark:text-green-300">
                   Your data has been processed and stored. You can now use it for analysis.
                 </p>
                 {uploadedFileId && (
@@ -362,52 +362,52 @@ export default function UploadPage() {
 
         {/* PII Warning */}
         {showPIIWarning && piiData && (
-          <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-lg" role="status" aria-live="polite">
+          <div className="mb-6 p-6 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-lg" role="status" aria-live="polite">
             <div className="flex items-center mb-4">
               <Shield className="text-amber-500 mr-3" size={24} />
               <div>
-                <h3 className="font-bold text-amber-800 text-lg">Sensitive Data Detected</h3>
-                <p className="text-amber-700">
+                <h3 className="font-bold text-amber-800 dark:text-amber-200 text-lg">Sensitive Data Detected</h3>
+                <p className="text-amber-700 dark:text-amber-300">
                   We&apos;ve detected potentially sensitive information in your file that may require special handling.
                 </p>
               </div>
             </div>
 
-            <div className="bg-white rounded-md p-4 mb-4">
+            <div className="bg-card rounded-md p-4 mb-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-amber-600">{piiData.total_detections}</div>
-                  <div className="text-sm text-gray-600">Total Detections</div>
+                  <div className="text-sm text-muted-foreground">Total Detections</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-red-600">{piiData.risk_level.toUpperCase()}</div>
-                  <div className="text-sm text-gray-600">Risk Level</div>
+                  <div className="text-sm text-muted-foreground">Risk Level</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{piiData.affected_columns.length}</div>
-                  <div className="text-sm text-gray-600">Affected Columns</div>
+                  <div className="text-sm text-muted-foreground">Affected Columns</div>
                 </div>
               </div>
 
               {piiData.detections.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-800 mb-2">Detected Sensitive Information:</h4>
+                  <h4 className="font-medium text-foreground mb-2">Detected Sensitive Information:</h4>
                   <div className="space-y-2">
                     {piiData.detections.slice(0, 5).map((detection, index) => (
-                      <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <span className="text-sm font-medium text-gray-700">{detection.column}</span>
+                      <div key={index} className="flex items-center justify-between bg-muted p-2 rounded">
+                        <span className="text-sm font-medium text-foreground">{detection.column}</span>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                          <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 px-2 py-1 rounded">
                             {detection.type}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">
                             {Math.round(detection.confidence * 100)}% confidence
                           </span>
                         </div>
                       </div>
                     ))}
                     {piiData.detections.length > 5 && (
-                      <div className="text-sm text-gray-500 italic">
+                      <div className="text-sm text-muted-foreground italic">
                         ... and {piiData.detections.length - 5} more
                       </div>
                     )}
@@ -436,7 +436,7 @@ export default function UploadPage() {
                 className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${
                   isConfirming
                     ? 'bg-orange-400 cursor-wait text-white'
-                    : 'bg-orange-100 hover:bg-orange-200 text-orange-800'
+                    : 'bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 text-orange-800 dark:text-orange-200'
                 }`}
               >
                 <Eye size={16} />
@@ -448,13 +448,13 @@ export default function UploadPage() {
                   setPiiData(null);
                   setFile(null);
                 }}
-                className="px-4 py-3 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-4 py-3 rounded-md border border-border text-foreground hover:bg-muted transition-colors"
               >
                 Cancel Upload
               </button>
             </div>
 
-            <div className="mt-4 text-xs text-gray-600">
+            <div className="mt-4 text-xs text-muted-foreground">
               <p>
                 <strong>Data Masking:</strong> Sensitive information will be replaced with placeholder values (e.g., ***@***.com for emails).
                 <br />
@@ -483,8 +483,8 @@ export default function UploadPage() {
           data-testid="upload-dropzone"
           className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
             isDragActive
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+              : 'border-border hover:border-blue-400 hover:bg-muted'
           }`}
         >
           <input {...getInputProps()} data-testid="file-input" />
@@ -495,11 +495,11 @@ export default function UploadPage() {
                 {isLargeFile && <HardDrive className="text-orange-500" size={20} />}
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-800">{file.name}</p>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-sm font-medium text-foreground">{file.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   {formatFileSize(file.size)}
                   {isLargeFile && (
-                    <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded-md text-xs font-medium">
+                    <span className="ml-2 px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 rounded-md text-xs font-medium">
                       Large File - Chunked Upload
                     </span>
                   )}
@@ -509,10 +509,10 @@ export default function UploadPage() {
           ) : (
             <div className="flex flex-col items-center space-y-2">
               <Upload className="w-12 h-12 text-gray-400" />
-              <p className="text-lg text-gray-700">
+              <p className="text-lg text-foreground">
                 {isDragActive ? 'Drop it here...' : 'Drag a .csv, .txt, .xlsx, or .json file or click to browse'}
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Supports CSV, Excel (XLS, XLSX), TXT, and JSON files up to 100MB
               </p>
             </div>
@@ -548,12 +548,12 @@ export default function UploadPage() {
 
         {/* Large File Info */}
         {file && isLargeFile && !useChunkedUploadMode && (
-          <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-md">
+          <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900 rounded-md">
             <div className="flex items-center space-x-2 mb-2">
               <HardDrive className="text-orange-500" size={16} />
-              <span className="text-sm font-medium text-orange-800">Large File Detected</span>
+              <span className="text-sm font-medium text-orange-800 dark:text-orange-200">Large File Detected</span>
             </div>
-            <p className="text-sm text-orange-700">
+            <p className="text-sm text-orange-700 dark:text-orange-300">
               Your file is {formatFileSize(file.size)}, which exceeds our {formatFileSize(CHUNKED_UPLOAD_THRESHOLD)} threshold. 
               We&apos;ll use chunked upload for optimal performance and reliability.
             </p>
@@ -568,10 +568,10 @@ export default function UploadPage() {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md" data-testid="upload-error" role="alert" aria-live="assertive">
+          <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md" data-testid="upload-error" role="alert" aria-live="assertive">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-              <div className="text-sm text-red-800">
+              <div className="text-sm text-red-800 dark:text-red-200">
                 <p className="font-semibold">Upload Error</p>
                 <p data-testid="upload-error-message">{errorMessage}</p>
               </div>
@@ -580,24 +580,24 @@ export default function UploadPage() {
         )}
 
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <FileText className="w-8 h-8 text-blue-600 mb-2" />
             <h3 className="font-semibold mb-1">CSV Files</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Standard comma-separated values with headers
             </p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <FileText className="w-8 h-8 text-green-600 mb-2" />
             <h3 className="font-semibold mb-1">Excel Files</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               .xls and .xlsx formats supported
             </p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <Database className="w-8 h-8 text-purple-600 mb-2" />
             <h3 className="font-semibold mb-1">Connect Database</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Coming soon: Direct database connections
             </p>
           </div>
@@ -613,14 +613,14 @@ export default function UploadPage() {
                   {previewData.pii_report.has_pii ? (
                     <>
                       <Shield className="text-amber-500" size={16} />
-                      <span className="text-sm text-amber-700 font-medium">
+                      <span className="text-sm text-amber-700 dark:text-amber-300 font-medium">
                         PII {previewData.pii_report.risk_level.toUpperCase()} RISK
                       </span>
                     </>
                   ) : (
                     <>
                       <CheckCircle className="text-green-500" size={16} />
-                      <span className="text-sm text-green-700 font-medium">NO PII DETECTED</span>
+                      <span className="text-sm text-green-700 dark:text-green-300 font-medium">NO PII DETECTED</span>
                     </>
                   )}
                 </div>
@@ -639,10 +639,10 @@ export default function UploadPage() {
                   {previewData.previewData.map((row, rowIndex) => (
                     <TableRow 
                       key={rowIndex} 
-                      className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                      className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted'}
                     >
                       {row.map((cell, cellIndex) => (
-                        <TableCell key={cellIndex} className="text-gray-900">
+                        <TableCell key={cellIndex} className="text-foreground">
                           {cell !== null && cell !== undefined ? String(cell) : ''}
                         </TableCell>
                       ))}
@@ -654,12 +654,12 @@ export default function UploadPage() {
           </div>
         )}
 
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900">
           <h3 className="font-semibold mb-2 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-blue-600" />
             What happens next?
           </h3>
-          <ol className="text-sm text-gray-700 space-y-1 list-decimal list-inside">
+          <ol className="text-sm text-foreground space-y-1 list-decimal list-inside">
             <li>Your data will be securely uploaded and processed</li>
             <li>We&apos;ll automatically analyze and profile your data</li>
             <li>You&apos;ll be guided through the 8-stage modeling workflow</li>

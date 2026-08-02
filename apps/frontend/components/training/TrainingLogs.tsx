@@ -22,9 +22,9 @@ interface TrainingLogsProps {
 }
 
 const LEVEL_STYLES: Record<TrainingLogEntry['level'], string> = {
-  info: 'text-gray-600',
-  warning: 'text-amber-700',
-  error: 'text-red-700',
+  info: 'text-muted-foreground',
+  warning: 'text-amber-700 dark:text-amber-300',
+  error: 'text-red-700 dark:text-red-300',
 };
 
 function matchesFilter(entry: TrainingLogEntry, filter: LevelFilter): boolean {
@@ -116,11 +116,11 @@ export function TrainingLogs({
 
       <div
         ref={containerRef}
-        className="overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3 font-mono text-xs"
+        className="overflow-y-auto rounded-md border border-border bg-muted p-3 font-mono text-xs"
         style={{ maxHeight }}
       >
         {visibleLogs.length === 0 ? (
-          <p className="text-gray-500 font-sans">No log entries yet.</p>
+          <p className="text-muted-foreground font-sans">No log entries yet.</p>
         ) : (
           <ul className="space-y-1">
             {visibleLogs.map((entry, index) => (

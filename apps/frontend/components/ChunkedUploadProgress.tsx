@@ -65,7 +65,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
       case 'paused':
         return 'text-yellow-600'
       default:
-        return 'text-gray-600'
+        return 'text-muted-foreground'
     }
   }
 
@@ -104,7 +104,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+    <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <div className={getStatusColor()}>
@@ -151,7 +151,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
 
         {/* Progress Bar */}
         <div className="space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
+          <div className="flex justify-between text-sm text-muted-foreground">
             <span>Overall Progress</span>
             <span>{Math.round(progress.progress)}%</span>
           </div>
@@ -173,7 +173,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
 
         {/* Chunks Progress */}
         <div className="space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
+          <div className="flex justify-between text-sm text-muted-foreground">
             <span>Chunks Uploaded</span>
             <span>{progress.uploadedChunks} / {progress.totalChunks}</span>
           </div>
@@ -189,9 +189,9 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <HardDrive className="text-gray-500" size={16} />
+              <HardDrive className="text-muted-foreground" size={16} />
             </div>
-            <div className="text-sm text-gray-600">Data Uploaded</div>
+            <div className="text-sm text-muted-foreground">Data Uploaded</div>
             <div className="font-semibold text-sm">
               {formatBytes(progress.bytesUploaded)} / {formatBytes(progress.totalBytes)}
             </div>
@@ -199,9 +199,9 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Zap className="text-gray-500" size={16} />
+              <Zap className="text-muted-foreground" size={16} />
             </div>
-            <div className="text-sm text-gray-600">Upload Speed</div>
+            <div className="text-sm text-muted-foreground">Upload Speed</div>
             <div className="font-semibold text-sm">
               {formatBytes(progress.speed)}/s
             </div>
@@ -209,9 +209,9 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Clock className="text-gray-500" size={16} />
+              <Clock className="text-muted-foreground" size={16} />
             </div>
-            <div className="text-sm text-gray-600">Time Remaining</div>
+            <div className="text-sm text-muted-foreground">Time Remaining</div>
             <div className="font-semibold text-sm">
               {formatTime(progress.remainingTime)}
             </div>
@@ -219,9 +219,9 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Upload className="text-gray-500" size={16} />
+              <Upload className="text-muted-foreground" size={16} />
             </div>
-            <div className="text-sm text-gray-600">Session ID</div>
+            <div className="text-sm text-muted-foreground">Session ID</div>
             <div className="font-semibold text-xs font-mono truncate">
               {progress.sessionId.slice(-8)}
             </div>
@@ -230,8 +230,8 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
 
         {/* Error Message */}
         {progress.status === 'error' && progress.error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-700 font-medium">Error Details:</p>
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md">
+            <p className="text-sm text-red-700 dark:text-red-300 font-medium">Error Details:</p>
             <p className="text-sm text-red-600 mt-1">{progress.error}</p>
           </div>
         )}

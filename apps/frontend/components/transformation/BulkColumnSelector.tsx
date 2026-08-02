@@ -30,7 +30,7 @@ function getColumnTypeIndicator(fieldType: string) {
       return {
         icon: Hash,
         color: 'text-blue-500',
-        bgColor: 'bg-blue-50',
+        bgColor: 'bg-blue-50 dark:bg-blue-950/40',
         label: 'Numeric'
       };
     case 'categorical':
@@ -38,28 +38,28 @@ function getColumnTypeIndicator(fieldType: string) {
       return {
         icon: Type,
         color: 'text-green-500',
-        bgColor: 'bg-green-50',
+        bgColor: 'bg-green-50 dark:bg-green-950/40',
         label: fieldType.charAt(0).toUpperCase() + fieldType.slice(1)
       };
     case 'datetime':
       return {
         icon: Calendar,
         color: 'text-purple-500',
-        bgColor: 'bg-purple-50',
+        bgColor: 'bg-purple-50 dark:bg-purple-950/40',
         label: 'DateTime'
       };
     case 'boolean':
       return {
         icon: CheckSquare,
         color: 'text-orange-500',
-        bgColor: 'bg-orange-50',
+        bgColor: 'bg-orange-50 dark:bg-orange-950/40',
         label: 'Boolean'
       };
     default:
       return {
         icon: Database,
-        color: 'text-gray-500',
-        bgColor: 'bg-gray-50',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted',
         label: 'Unknown'
       };
   }
@@ -123,8 +123,8 @@ function ColumnListItem({
       <div
         className={`
           p-3 flex items-start gap-3 rounded-lg border transition-all
-          ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-gray-200 hover:border-gray-300'}
-          ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-gray-50'}
+          ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-border hover:border-border'}
+          ${isSelected ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800' : 'bg-card hover:bg-muted'}
           cursor-pointer
         `}
         onClick={(e) => onToggleColumn(column.column_name, index, e)}
@@ -158,28 +158,28 @@ function ColumnListItem({
           </div>
 
           {/* Column statistics */}
-          <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-600">
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span
               className={`px-2 py-1 rounded-full ${typeIndicator.bgColor} ${typeIndicator.color}`}
             >
               {typeIndicator.label}
             </span>
-            <span className="px-2 py-1 bg-gray-100 rounded-full">
+            <span className="px-2 py-1 bg-muted rounded-full">
               {column.unique_values.toLocaleString()} unique
             </span>
             {column.missing_values > 0 && (
-              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full flex items-center gap-1">
+              <span className="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-full flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {column.missing_values.toLocaleString()} missing
               </span>
             )}
             {column.is_constant && (
-              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">
+              <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 rounded-full">
                 Constant
               </span>
             )}
             {column.is_high_cardinality && (
-              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full">
+              <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 rounded-full">
                 High Cardinality
               </span>
             )}
@@ -316,10 +316,10 @@ export function BulkColumnSelector({
   }, [filteredColumns, focusedIndex, handleToggleColumn]);
 
   return (
-    <div className={`flex flex-col h-full bg-white rounded-lg border border-gray-200 ${className}`}>
+    <div className={`flex flex-col h-full bg-card rounded-lg border border-border ${className}`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Select Columns for Bulk Operation</h2>
+      <div className="p-4 border-b border-border bg-muted">
+        <h2 className="text-lg font-semibold text-foreground mb-3">Select Columns for Bulk Operation</h2>
 
         {/* Search input */}
         <div className="relative">
@@ -340,7 +340,7 @@ export function BulkColumnSelector({
       </div>
 
       {/* Column count info */}
-      <div className="px-4 pt-3 pb-2 bg-gray-50 border-b border-gray-200 text-sm text-gray-600 flex justify-between items-center">
+      <div className="px-4 pt-3 pb-2 bg-muted border-b border-border text-sm text-muted-foreground flex justify-between items-center">
         <span>
           {selectedColumns.size} of {columns.length} selected
           {debouncedSearchTerm && ` (${filteredColumns.length} visible)`}
@@ -348,7 +348,7 @@ export function BulkColumnSelector({
       </div>
 
       {/* Select All / Deselect All buttons */}
-      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex gap-2">
+      <div className="px-4 py-2 bg-muted border-b border-border flex gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -376,8 +376,8 @@ export function BulkColumnSelector({
       {/* Column list container */}
       <div className="flex-1 min-h-0" role="listbox" aria-multiselectable="true">
         {isLoading ? (
-          <div className="p-4 text-center text-gray-500">
-            <div className="inline-block animate-spin rounded-full h-6 w-6 border border-gray-300 border-t-blue-500 mb-2" />
+          <div className="p-4 text-center text-muted-foreground">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border border-border border-t-blue-500 mb-2" />
             <p className="text-sm">Loading columns...</p>
           </div>
         ) : error ? (
@@ -386,7 +386,7 @@ export function BulkColumnSelector({
             <p className="text-xs mt-1">{error}</p>
           </div>
         ) : filteredColumns.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">
+          <div className="p-4 text-center text-muted-foreground">
             <p className="text-sm">
               {debouncedSearchTerm ? 'No columns match your search' : 'No columns available'}
             </p>
@@ -422,7 +422,7 @@ export function BulkColumnSelector({
       </div>
 
       {/* Footer info */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
+      <div className="px-4 py-3 border-t border-border bg-muted text-xs text-muted-foreground">
         <p>
           Use Shift+click for range selection, Ctrl+click to toggle individual columns
         </p>

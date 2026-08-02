@@ -160,8 +160,8 @@ export function SelectionPatternBuilder({
   ];
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 p-4 ${className}`}>
-      <h3 className="text-sm font-semibold text-gray-900 mb-4">Select Columns by Pattern</h3>
+    <div className={`bg-card rounded-lg border border-border p-4 ${className}`}>
+      <h3 className="text-sm font-semibold text-foreground mb-4">Select Columns by Pattern</h3>
 
       <Tabs value={activeTab} onValueChange={(v) => {
         setActiveTab(v as PatternType);
@@ -176,7 +176,7 @@ export function SelectionPatternBuilder({
 
         {/* By Data Type */}
         <TabsContent value="data_type" className="space-y-3">
-          <p className="text-xs text-gray-600">Select column types to include:</p>
+          <p className="text-xs text-muted-foreground">Select column types to include:</p>
           <div className="grid grid-cols-2 gap-2">
             {dataTypes.map(({ type, icon: Icon, label, color }) => (
               <div
@@ -184,8 +184,8 @@ export function SelectionPatternBuilder({
                 className={`
                   flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all
                   ${selectedTypes.has(type)
-                    ? 'bg-blue-50 border-blue-300'
-                    : 'bg-white border-gray-200 hover:border-gray-300'}
+                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800'
+                    : 'bg-card border-border hover:border-border'}
                 `}
                 onClick={() => handleTypeToggle(type)}
                 role="checkbox"
@@ -213,7 +213,7 @@ export function SelectionPatternBuilder({
         {/* By Name Pattern */}
         <TabsContent value="name_pattern" className="space-y-3">
           <div>
-            <Label htmlFor="name-pattern" className="text-xs text-gray-600">
+            <Label htmlFor="name-pattern" className="text-xs text-muted-foreground">
               Regular expression or wildcard pattern:
             </Label>
             <div className="relative mt-1">
@@ -232,18 +232,18 @@ export function SelectionPatternBuilder({
               />
             </div>
           </div>
-          <div className="text-xs text-gray-500 space-y-1">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p><strong>Examples:</strong></p>
-            <p><code className="bg-gray-100 px-1 rounded">^price_</code> - columns starting with &quot;price_&quot;</p>
-            <p><code className="bg-gray-100 px-1 rounded">_id$</code> - columns ending with &quot;_id&quot;</p>
-            <p><code className="bg-gray-100 px-1 rounded">date</code> - columns containing &quot;date&quot;</p>
+            <p><code className="bg-muted px-1 rounded">^price_</code> - columns starting with &quot;price_&quot;</p>
+            <p><code className="bg-muted px-1 rounded">_id$</code> - columns ending with &quot;_id&quot;</p>
+            <p><code className="bg-muted px-1 rounded">date</code> - columns containing &quot;date&quot;</p>
           </div>
         </TabsContent>
 
         {/* By Quality Metric */}
         <TabsContent value="quality_metric" className="space-y-3">
           <div>
-            <Label htmlFor="metric-select" className="text-xs text-gray-600">
+            <Label htmlFor="metric-select" className="text-xs text-muted-foreground">
               Quality metric:
             </Label>
             <Select value={selectedMetric} onValueChange={setSelectedMetric}>
@@ -262,7 +262,7 @@ export function SelectionPatternBuilder({
           {(selectedMetric === 'missing_values' || selectedMetric === 'unique_values') && (
             <>
               <div>
-                <Label htmlFor="operator-select" className="text-xs text-gray-600">
+                <Label htmlFor="operator-select" className="text-xs text-muted-foreground">
                   Condition:
                 </Label>
                 <Select value={metricOperator} onValueChange={setMetricOperator}>
@@ -280,7 +280,7 @@ export function SelectionPatternBuilder({
               </div>
 
               <div>
-                <Label htmlFor="threshold-slider" className="text-xs text-gray-600">
+                <Label htmlFor="threshold-slider" className="text-xs text-muted-foreground">
                   Threshold: {metricThreshold}
                 </Label>
                 <Slider
@@ -301,13 +301,13 @@ export function SelectionPatternBuilder({
           )}
 
           {selectedMetric === 'is_constant' && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Select columns where all values are the same (constant).
             </p>
           )}
 
           {selectedMetric === 'is_high_cardinality' && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Select columns with many unique values relative to row count.
             </p>
           )}
@@ -316,7 +316,7 @@ export function SelectionPatternBuilder({
 
       {/* Error message */}
       {error && (
-        <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-xs">
+        <div className="mt-3 p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-300 text-xs">
           <AlertTriangle className="w-4 h-4" />
           {error}
         </div>
@@ -324,18 +324,18 @@ export function SelectionPatternBuilder({
 
       {/* Preview results */}
       {previewColumns && previewColumns.length > 0 && (
-        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-xs text-blue-700 font-medium mb-1">
+        <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg">
+          <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">
             {previewColumns.length} column{previewColumns.length !== 1 ? 's' : ''} matched:
           </p>
           <div className="flex flex-wrap gap-1">
             {previewColumns.slice(0, 10).map(col => (
-              <span key={col.column_name} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+              <span key={col.column_name} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded text-xs">
                 {col.column_name}
               </span>
             ))}
             {previewColumns.length > 10 && (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded text-xs">
                 +{previewColumns.length - 10} more
               </span>
             )}
@@ -353,7 +353,7 @@ export function SelectionPatternBuilder({
           className="flex-1"
         >
           {isLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border border-gray-300 border-t-blue-500 mr-2" />
+            <div className="animate-spin rounded-full h-4 w-4 border border-border border-t-blue-500 mr-2" />
           ) : null}
           Preview
         </Button>

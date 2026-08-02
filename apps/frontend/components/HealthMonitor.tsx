@@ -111,7 +111,7 @@ export function HealthMonitor({
         <CardContent>
           <div className="space-y-4">
             {/* Status Overview */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
               <div className="flex items-center gap-3">
                 {getStatusIcon()}
                 <div>
@@ -130,8 +130,8 @@ export function HealthMonitor({
 
             {/* Error Display */}
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800">{error}</p>
+              <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg">
+                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
               </div>
             )}
 

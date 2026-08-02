@@ -588,7 +588,7 @@ export default function TransformationPipeline({
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
         {/* Toolbar */}
-        <div className="bg-white border-b p-4 flex items-center justify-between">
+        <div className="bg-card border-b p-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={handlePreviewTransformation}
@@ -612,7 +612,7 @@ export default function TransformationPipeline({
             {/* View toggle — keyboard-operable; both views always reachable (#275) */}
             {showViewToggle && (
               <div
-                className="flex border rounded-lg p-1 bg-gray-100 mr-2"
+                className="flex border rounded-lg p-1 bg-muted mr-2"
                 role="group"
                 aria-label="Pipeline view"
               >
@@ -621,7 +621,7 @@ export default function TransformationPipeline({
                   onClick={() => setViewMode('chain')}
                   aria-pressed={viewMode === 'chain'}
                   className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    viewMode === 'chain' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                    viewMode === 'chain' ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
                   }`}
                 >
                   <List className="w-4 h-4" />
@@ -632,7 +632,7 @@ export default function TransformationPipeline({
                   onClick={() => setViewMode('visual')}
                   aria-pressed={viewMode === 'visual'}
                   className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    viewMode === 'visual' ? 'bg-white shadow-sm font-medium' : 'text-gray-600'
+                    viewMode === 'visual' ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
                   }`}
                 >
                   <Eye className="w-4 h-4" />
@@ -642,7 +642,7 @@ export default function TransformationPipeline({
             )}
             <button
               onClick={() => setShowRecipeManager(true)}
-              className="p-2 hover:bg-gray-100 rounded"
+              className="p-2 hover:bg-muted rounded"
               title="Manage Recipes"
             >
               <Save className="w-5 h-5" />
@@ -650,7 +650,7 @@ export default function TransformationPipeline({
             <button
               onClick={handleUndo}
               disabled={historyIndex <= 0}
-              className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
+              className="p-2 hover:bg-muted rounded disabled:opacity-50"
               title="Undo"
             >
               <Undo className="w-5 h-5" />
@@ -658,14 +658,14 @@ export default function TransformationPipeline({
             <button
               onClick={handleRedo}
               disabled={historyIndex >= history.length - 1}
-              className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
+              className="p-2 hover:bg-muted rounded disabled:opacity-50"
               title="Redo"
             >
               <Redo className="w-5 h-5" />
             </button>
             <button
               onClick={handleExportCode}
-              className="p-2 hover:bg-gray-100 rounded"
+              className="p-2 hover:bg-muted rounded"
               title="Export as Code"
             >
               <Code className="w-5 h-5" />

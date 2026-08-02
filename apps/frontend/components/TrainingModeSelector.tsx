@@ -67,15 +67,15 @@ export function TrainingModeSelector({
 
       {recommendedMode && reason && (
         <div
-          className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-start gap-2"
+          className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900 flex items-start gap-2"
           data-testid="mode-recommendation"
         >
           <Sparkles className="w-5 h-5 text-emerald-600 mt-0.5" />
-          <div className="text-sm text-emerald-900">
+          <div className="text-sm text-emerald-900 dark:text-emerald-200">
             <p className="font-semibold">
               Recommended: {recommendedMode === 'quick' ? 'Quick' : 'Comprehensive'}
             </p>
-            <p className="mt-0.5 text-emerald-800">{reason}</p>
+            <p className="mt-0.5 text-emerald-800 dark:text-emerald-200">{reason}</p>
           </div>
         </div>
       )}
@@ -98,36 +98,36 @@ export function TrainingModeSelector({
               data-testid={`mode-option-${option.mode}`}
               className={`text-left p-4 rounded-lg border transition-all ${
                 selected
-                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50 dark:bg-blue-950/40'
+                  : 'border-border hover:border-border'
               } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div className="flex items-center gap-2 font-semibold">
                 {option.icon}
                 {option.title}
                 {recommendedMode === option.mode && (
-                  <span className="ml-auto text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full">
                     Recommended
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-600 mt-1">{option.blurb}</p>
-              <dl className="mt-2 text-xs text-gray-500 space-y-0.5">
+              <p className="text-sm text-muted-foreground mt-1">{option.blurb}</p>
+              <dl className="mt-2 text-xs text-muted-foreground space-y-0.5">
                 <div className="flex justify-between">
                   <dt>Algorithms</dt>
-                  <dd className="font-medium text-gray-700">{option.algorithms}</dd>
+                  <dd className="font-medium text-foreground">{option.algorithms}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Time</dt>
-                  <dd className="font-medium text-gray-700">{option.time}</dd>
+                  <dd className="font-medium text-foreground">{option.time}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Tuning</dt>
-                  <dd className="font-medium text-gray-700">{option.tuning}</dd>
+                  <dd className="font-medium text-foreground">{option.tuning}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Best for</dt>
-                  <dd className="font-medium text-gray-700">{option.bestFor}</dd>
+                  <dd className="font-medium text-foreground">{option.bestFor}</dd>
                 </div>
               </dl>
             </button>

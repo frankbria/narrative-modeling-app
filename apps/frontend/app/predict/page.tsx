@@ -242,14 +242,14 @@ export default function PredictPage() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-600">Please log in to access this page.</p>
+        <p className="text-muted-foreground">Please log in to access this page.</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Target className="w-6 h-6 text-red-500" />
           Make Predictions
@@ -258,7 +258,7 @@ export default function PredictPage() {
         {error && (
           <div
             data-testid="prediction-error"
-            className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700 flex items-center gap-2"
+            className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-sm text-red-700 dark:text-red-300 flex items-center gap-2"
           >
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
@@ -274,13 +274,13 @@ export default function PredictPage() {
               onClick={() => setPredictionMode('single')}
               className={`p-4 border-2 rounded-lg transition-colors ${
                 predictionMode === 'single'
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-300 hover:border-gray-400'
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                  : 'border-border hover:border-gray-400'
               }`}
             >
               <Target className="w-8 h-8 text-blue-600 mx-auto mb-2" />
               <h3 className="font-semibold">Single Prediction</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Enter values manually for one prediction
               </p>
             </button>
@@ -290,13 +290,13 @@ export default function PredictPage() {
               onClick={() => setPredictionMode('batch')}
               className={`p-4 border-2 rounded-lg transition-colors ${
                 predictionMode === 'batch'
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-300 hover:border-gray-400'
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                  : 'border-border hover:border-gray-400'
               }`}
             >
               <FileText className="w-8 h-8 text-green-600 mx-auto mb-2" />
               <h3 className="font-semibold">Batch Prediction</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Upload a CSV file for multiple predictions
               </p>
             </button>
@@ -342,7 +342,7 @@ export default function PredictPage() {
                         aria-invalid={showErr ? true : undefined}
                         aria-describedby={showErr ? errorId : undefined}
                         className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          showErr ? 'border-red-400' : 'border-gray-300'
+                          showErr ? 'border-red-400' : 'border-border'
                         }`}
                       >
                         {feature.options.map((opt) => (
@@ -368,7 +368,7 @@ export default function PredictPage() {
                         aria-invalid={showErr ? true : undefined}
                         aria-describedby={showErr ? errorId : undefined}
                         className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          showErr ? 'border-red-400' : 'border-gray-300'
+                          showErr ? 'border-red-400' : 'border-border'
                         }`}
                       />
                     )}
@@ -390,7 +390,7 @@ export default function PredictPage() {
             {prediction && (
               <div
                 data-testid="prediction-result"
-                className="prediction-output mt-6 p-4 bg-green-50 rounded-lg border border-green-200"
+                className="prediction-output mt-6 p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900"
               >
                 <h4 className="font-semibold mb-2 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-600" />
@@ -398,25 +398,25 @@ export default function PredictPage() {
                 </h4>
                 <div
                   data-testid="prediction-value"
-                  className="prediction-value text-2xl font-bold text-gray-900"
+                  className="prediction-value text-2xl font-bold text-foreground"
                 >
                   {String(prediction.predictions?.[0])}
                 </div>
                 {prediction.confidence?.[0] != null && (
                   <div className="mt-2">
-                    <span className="text-sm text-gray-600">Confidence: </span>
+                    <span className="text-sm text-muted-foreground">Confidence: </span>
                     <span data-testid="confidence-score" className="confidence font-medium">
                       {(prediction.confidence[0] * 100).toFixed(1)}%
                     </span>
                     {prediction.is_calibrated && (
-                      <span className="ml-2 text-xs text-gray-500">(calibrated)</span>
+                      <span className="ml-2 text-xs text-muted-foreground">(calibrated)</span>
                     )}
                   </div>
                 )}
                 {prediction.low_confidence?.[0] && (
                   <div
                     data-testid="low-confidence-warning"
-                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800"
+                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-2 text-sm text-amber-800 dark:text-amber-200"
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>
@@ -430,8 +430,8 @@ export default function PredictPage() {
                 )}
                 {/* Regression prediction interval (#83). */}
                 {prediction.prediction_intervals?.[0] && (
-                  <div className="mt-2 text-sm text-gray-700">
-                    <span className="text-gray-600">Estimated range: </span>
+                  <div className="mt-2 text-sm text-foreground">
+                    <span className="text-muted-foreground">Estimated range: </span>
                     <span data-testid="prediction-interval" className="font-medium">
                       {prediction.prediction_intervals[0][0].toFixed(2)} –{' '}
                       {prediction.prediction_intervals[0][1].toFixed(2)}
@@ -440,7 +440,7 @@ export default function PredictPage() {
                 )}
                 {prediction.probabilities?.[0] && (
                   <div className="mt-3 space-y-1">
-                    <p className="text-sm text-gray-600">Class Probabilities:</p>
+                    <p className="text-sm text-muted-foreground">Class Probabilities:</p>
                     {prediction.probabilities[0].map((prob, idx) => (
                       <div key={idx} className="flex justify-between text-sm">
                         <span>{prediction.class_labels?.[idx] ?? `Class ${idx}`}:</span>
@@ -453,12 +453,12 @@ export default function PredictPage() {
                 {prediction.explanations?.[0] && (
                   <div
                     data-testid="prediction-explanation"
-                    className="mt-4 border-t border-green-200 pt-3"
+                    className="mt-4 border-t border-green-200 dark:border-green-900 pt-3"
                   >
-                    <p className="text-sm font-medium text-gray-700 mb-1">
+                    <p className="text-sm font-medium text-foreground mb-1">
                       What drove this prediction
                     </p>
-                    <p className="text-sm text-gray-600 mb-2">
+                    <p className="text-sm text-muted-foreground mb-2">
                       {prediction.explanations[0]!.explanation_text}
                     </p>
                     <div className="space-y-1">
@@ -467,7 +467,7 @@ export default function PredictPage() {
                           <span>{f.feature_name}</span>
                           <span
                             className={`font-medium ${
-                              f.contribution >= 0 ? 'text-green-700' : 'text-red-700'
+                              f.contribution >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
                             }`}
                           >
                             {f.contribution >= 0 ? '+' : ''}
@@ -489,7 +489,7 @@ export default function PredictPage() {
               className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
                 !loading && formValid
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
               }`}
             >
               <Send className="w-5 h-5" />
@@ -500,7 +500,7 @@ export default function PredictPage() {
           <div className="space-y-4">
             <h3 className="font-semibold text-lg">Upload Batch File</h3>
 
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <input
                 type="file"
@@ -517,25 +517,25 @@ export default function PredictPage() {
                 Click to upload CSV file
               </label>
               {batchFile && (
-                <p className="mt-2 text-sm text-gray-600">Selected: {batchFile.name}</p>
+                <p className="mt-2 text-sm text-muted-foreground">Selected: {batchFile.name}</p>
               )}
             </div>
 
-            <div className="p-4 bg-blue-50 rounded-lg">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
               <h4 className="font-semibold mb-2">Expected Format</h4>
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-foreground">
                 Your CSV should have columns matching the feature names:
               </p>
-              <p className="text-xs font-mono mt-2 text-gray-600">
+              <p className="text-xs font-mono mt-2 text-muted-foreground">
                 {features.map((f) => f.name).join(', ')}
               </p>
             </div>
 
             {/* Progress */}
             {batchProgress && !batchComplete && !batchFailed && (
-              <div data-testid="batch-progress" className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div data-testid="batch-progress" className="p-4 bg-muted rounded-lg border border-border">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">
+                  <span className="text-muted-foreground">
                     Processing… {batchProgress.processed_records}/{batchProgress.total_records}
                   </span>
                   <span className="font-medium">
@@ -552,7 +552,7 @@ export default function PredictPage() {
             )}
 
             {batchFailed && (
-              <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-sm text-red-700">
+              <div className="p-4 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
                 Batch prediction failed: {batchJob?.error_message ?? 'unknown error'}
               </div>
             )}
@@ -561,7 +561,7 @@ export default function PredictPage() {
             {batchComplete && (
               <div
                 data-testid="batch-summary"
-                className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-3"
+                className="p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900 space-y-3"
               >
                 <h4 className="font-semibold flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-600" />
@@ -569,15 +569,15 @@ export default function PredictPage() {
                 </h4>
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <div>
-                    <div className="text-gray-500">Total</div>
+                    <div className="text-muted-foreground">Total</div>
                     <div className="font-semibold">{summary.total_predictions ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Succeeded</div>
+                    <div className="text-muted-foreground">Succeeded</div>
                     <div className="font-semibold">{summary.success_count ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Errors</div>
+                    <div className="text-muted-foreground">Errors</div>
                     <div className="font-semibold">{summary.error_count ?? 0}</div>
                   </div>
                 </div>
@@ -585,7 +585,7 @@ export default function PredictPage() {
                 {summary.prediction_distribution &&
                   Object.keys(summary.prediction_distribution).length > 0 && (
                     <div>
-                      <p className="text-sm text-gray-600 mb-1">Prediction distribution:</p>
+                      <p className="text-sm text-muted-foreground mb-1">Prediction distribution:</p>
                       <div className="space-y-1">
                         {Object.entries(
                           summary.prediction_distribution as Record<string, number>
@@ -601,7 +601,7 @@ export default function PredictPage() {
 
                 {summary.confidence_stats &&
                   Object.keys(summary.confidence_stats).length > 0 && (
-                    <p className="text-xs text-gray-600">
+                    <p className="text-xs text-muted-foreground">
                       Mean confidence:{' '}
                       {(
                         (summary.confidence_stats as Record<string, number>).mean * 100
@@ -615,7 +615,7 @@ export default function PredictPage() {
                   summary.low_confidence_count > 0 && (
                     <p
                       data-testid="batch-low-confidence"
-                      className="flex items-center gap-2 text-xs text-amber-800"
+                      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
                     >
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       {summary.low_confidence_count} low-confidence prediction
@@ -644,7 +644,7 @@ export default function PredictPage() {
               className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
                 batchFile && !loading
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
               }`}
             >
               <Send className="w-5 h-5" />

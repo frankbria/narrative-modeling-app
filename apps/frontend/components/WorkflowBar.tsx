@@ -11,7 +11,7 @@ export function WorkflowBar() {
   const { state, canAccessStage, setCurrentStage } = useWorkflow();
 
   return (
-    <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
+    <div className="bg-card border-b border-border shadow-sm sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <nav className="flex items-center justify-between py-4">
           <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide flex-1 min-w-0">
@@ -34,9 +34,9 @@ export function WorkflowBar() {
                       "focus:outline-none focus:ring-2 focus:ring-offset-2",
                       {
                         'bg-blue-600 text-white shadow-lg focus:ring-blue-500': isCurrent,
-                        'bg-green-100 text-green-800 hover:bg-green-200 focus:ring-green-500': isCompleted && !isCurrent,
-                        'bg-gray-100 text-gray-400 cursor-not-allowed': !isAccessible && !isCompleted,
-                        'bg-gray-50 text-gray-700 hover:bg-gray-100 focus:ring-gray-500': isAccessible && !isCompleted && !isCurrent,
+                        'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-200 focus:ring-green-500': isCompleted && !isCurrent,
+                        'bg-muted text-gray-400 cursor-not-allowed': !isAccessible && !isCompleted,
+                        'bg-muted text-foreground hover:bg-muted focus:ring-gray-500': isAccessible && !isCompleted && !isCurrent,
                       }
                     )}
                     whileHover={isAccessible ? { scale: 1.05 } : {}}
@@ -88,10 +88,10 @@ export function WorkflowBar() {
           </div>
 
           {/* Progress indicator — pinned outside the scrollable stage strip */}
-          <div className="ml-4 flex items-center space-x-2 text-sm text-gray-600 shrink-0">
+          <div className="ml-4 flex items-center space-x-2 text-sm text-muted-foreground shrink-0">
             <span className="hidden lg:inline">Progress:</span>
             <div className="flex items-center space-x-1">
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold text-foreground">
                 {state.completedStages.size}
               </span>
               <span>/</span>
@@ -102,7 +102,7 @@ export function WorkflowBar() {
 
         {/* Stage description */}
         <div className="pb-3 -mt-1">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             {WORKFLOW_STAGES.find(s => s.id === state.currentStage)?.description}
           </p>
         </div>
@@ -111,10 +111,10 @@ export function WorkflowBar() {
       {/* Mobile stage indicator */}
       <div className="sm:hidden px-4 pb-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-600">
+          <span className="text-muted-foreground">
             Stage {WORKFLOW_STAGES.findIndex(s => s.id === state.currentStage) + 1} of {WORKFLOW_STAGES.length}
           </span>
-          <span className="font-medium text-gray-900">
+          <span className="font-medium text-foreground">
             {WORKFLOW_STAGES.find(s => s.id === state.currentStage)?.name}
           </span>
         </div>

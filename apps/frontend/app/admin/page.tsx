@@ -27,20 +27,20 @@ export default function AdminPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm font-medium text-green-800">PII Detection</p>
-              <p className="text-2xl font-bold text-green-900">Active</p>
-              <p className="text-xs text-green-700 mt-1">3 pattern types monitored</p>
+            <div className="p-4 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-lg">
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">PII Detection</p>
+              <p className="text-2xl font-bold text-green-900 dark:text-green-200">Active</p>
+              <p className="text-xs text-green-700 dark:text-green-300 mt-1">3 pattern types monitored</p>
             </div>
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-medium text-blue-800">Upload Security</p>
-              <p className="text-2xl font-bold text-blue-900">Enabled</p>
-              <p className="text-xs text-blue-700 mt-1">Rate limiting active</p>
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Upload Security</p>
+              <p className="text-2xl font-bold text-blue-900 dark:text-blue-200">Enabled</p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">Rate limiting active</p>
             </div>
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <p className="text-sm font-medium text-purple-800">Data Encryption</p>
-              <p className="text-2xl font-bold text-purple-900">SHA-256</p>
-              <p className="text-xs text-purple-700 mt-1">File integrity verified</p>
+            <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 rounded-lg">
+              <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Data Encryption</p>
+              <p className="text-2xl font-bold text-purple-900 dark:text-purple-200">SHA-256</p>
+              <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">File integrity verified</p>
             </div>
           </div>
         </CardContent>

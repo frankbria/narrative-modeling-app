@@ -174,8 +174,8 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
   };
 
   return (
-    <div className="w-80 bg-gray-50 border-r flex flex-col">
-      <div className="p-4 border-b bg-white">
+    <div className="w-80 bg-muted border-r flex flex-col">
+      <div className="p-4 border-b bg-card">
         <h2 className="text-lg font-semibold mb-3">Transformations</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -184,7 +184,7 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
             placeholder="Search transformations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -194,16 +194,16 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
           <div key={category.name} className="border-b">
             <button
               onClick={() => toggleCategory(category.name)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-100 transition-colors"
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xl">{category.icon}</span>
                 <span className="font-medium">{category.name}</span>
               </div>
               {expandedCategories.has(category.name) ? (
-                <ChevronDown className="w-4 h-4 text-gray-600" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-gray-600" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
 
@@ -217,10 +217,10 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
                     onDragStart={(e) => onDragStart(e, transformation.type)}
                     onClick={() => onAdd?.(transformation.type, transformation.label)}
                     aria-label={`Add ${transformation.label}`}
-                    className="w-full text-left p-3 mb-2 bg-white rounded-lg border border-gray-200 cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-left p-3 mb-2 bg-card rounded-lg border border-border cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <div className="font-medium text-sm">{transformation.label}</div>
-                    <div className="text-xs text-gray-600 mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">
                       {transformation.description}
                     </div>
                   </button>
@@ -231,8 +231,8 @@ export default function TransformationSidebar({ onAdd }: TransformationSidebarPr
         ))}
       </div>
 
-      <div className="p-4 bg-white border-t">
-        <p className="text-xs text-gray-500 text-center">
+      <div className="p-4 bg-card border-t">
+        <p className="text-xs text-muted-foreground text-center">
           Click or drag a transformation to add it
         </p>
       </div>

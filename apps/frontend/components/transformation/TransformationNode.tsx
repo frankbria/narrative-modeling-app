@@ -96,8 +96,8 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border-2 min-w-[200px] ${
-        selected ? 'border-blue-500' : 'border-gray-200'
+      className={`bg-card rounded-lg shadow-md border-2 min-w-[200px] ${
+        selected ? 'border-blue-500' : 'border-border'
       }`}
     >
       <Handle
@@ -112,32 +112,32 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
           <div className="flex items-center gap-1">
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="p-1 hover:bg-gray-100 rounded"
+              className="p-1 hover:bg-muted rounded"
               aria-label={`${showSettings ? 'Hide' : 'Show'} settings for ${data.label}`}
               aria-expanded={showSettings}
             >
-              <Settings className="w-4 h-4 text-gray-600" aria-hidden="true" />
+              <Settings className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             </button>
             {data.onDelete && (
               <button
                 onClick={() => data.onDelete?.(id)}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-1 hover:bg-muted rounded"
                 aria-label={`Delete ${data.label} step`}
               >
-                <X className="w-4 h-4 text-gray-600" aria-hidden="true" />
+                <X className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
               </button>
             )}
           </div>
         </div>
         
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-muted-foreground">
           Type: {data.type}
         </div>
 
         {showSettings && (
           <div className="mt-3 pt-3 border-t">
             {getParameterInputs() || (
-              <p className="text-xs text-gray-500">No parameters available</p>
+              <p className="text-xs text-muted-foreground">No parameters available</p>
             )}
           </div>
         )}

@@ -486,22 +486,22 @@ export function TransformationConfigDialog({
               renderFormField(key, schema)
             )
           ) : (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               No parameters needed for this transformation.
             </p>
           )}
 
           {errors._preview && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{errors._preview}</p>
+              <p className="text-sm text-red-700 dark:text-red-300">{errors._preview}</p>
             </div>
           )}
 
           {errors._submit && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{errors._submit}</p>
+              <p className="text-sm text-red-700 dark:text-red-300">{errors._submit}</p>
             </div>
           )}
         </div>

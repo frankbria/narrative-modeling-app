@@ -30,19 +30,19 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   if (active && payload && payload.length) {
     const feature: FeatureScore = payload[0].payload
     return (
-      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-        <p className="font-semibold text-gray-900">{feature.feature_name}</p>
-        <p className="text-sm text-gray-600 mt-1">
+      <div className="bg-card p-4 border border-border rounded-lg shadow-lg">
+        <p className="font-semibold text-foreground">{feature.feature_name}</p>
+        <p className="text-sm text-muted-foreground mt-1">
           Score: <span className="font-medium">{feature.score.toFixed(4)}</span>
         </p>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Rank: <span className="font-medium">#{feature.rank}</span>
         </p>
         <p className="text-sm mt-1">
           {feature.selected ? (
             <span className="text-green-600 font-medium">✓ Selected</span>
           ) : (
-            <span className="text-gray-500">Not selected</span>
+            <span className="text-muted-foreground">Not selected</span>
           )}
         </p>
       </div>
@@ -79,8 +79,8 @@ export function FeatureImportanceChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-gray-500">No feature importance data available</p>
+      <div className="flex items-center justify-center h-64 bg-muted rounded-lg border border-border">
+        <p className="text-muted-foreground">No feature importance data available</p>
       </div>
     )
   }
@@ -89,28 +89,28 @@ export function FeatureImportanceChart({
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Feature Importance</h3>
-          <p className="text-sm text-gray-600">
+          <h3 className="text-lg font-semibold text-foreground">Feature Importance</h3>
+          <p className="text-sm text-muted-foreground">
             Showing {chartData.length} feature{chartData.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-sm bg-green-500"></div>
-            <span className="text-gray-600">High (≥0.8)</span>
+            <span className="text-muted-foreground">High (≥0.8)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
-            <span className="text-gray-600">Medium (≥{highlightThreshold})</span>
+            <span className="text-muted-foreground">Medium (≥{highlightThreshold})</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
-            <span className="text-gray-600">Low (&lt;{highlightThreshold})</span>
+            <span className="text-muted-foreground">Low (&lt;{highlightThreshold})</span>
           </div>
           {!showOnlySelected && (
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-sm bg-gray-400"></div>
-              <span className="text-gray-600">Unselected</span>
+              <span className="text-muted-foreground">Unselected</span>
             </div>
           )}
         </div>
