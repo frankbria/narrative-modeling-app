@@ -195,12 +195,19 @@ export function useAsyncData<T>(
 
     const record = (next: Resolved<T>) => {
       if (!stillWanted()) return
-      // Keep the newest entry per key, capped — only in-flight requests can still
-      // consult this, and there are never many.
+      // Newest entry per key, then trim — slicing AFTER the append is what makes
+      // RECORDED_HISTORY the true cap; trimming first left room for one more.
+      //
+      // Eviction tradeoff, stated here and not only at the top of the file: if more
+      // than RECORDED_HISTORY distinct keys have requests in flight at once, the
+      // oldest watermark is dropped and that key reverts to the round-4 behaviour —
+      // a stale answer for it could be recorded again. Accepted because a single
+      // hook instance having 9+ keys simultaneously outstanding is not a shape any
+      // current call site can produce. If one ever does, this is the line to change.
       recorded.current = [
-        ...recorded.current.filter((e) => !sameDeps(e.deps, deps)).slice(-RECORDED_HISTORY),
+        ...recorded.current.filter((e) => !sameDeps(e.deps, deps)),
         { id: requestId, deps },
-      ]
+      ].slice(-RECORDED_HISTORY)
       setResolved(next)
     }
 
