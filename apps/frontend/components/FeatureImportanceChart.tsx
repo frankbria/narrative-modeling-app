@@ -132,7 +132,14 @@ export function FeatureImportanceChart({
           <Tooltip content={<CustomTooltip />} />
           <Bar
             dataKey="score"
-            onClick={(data) => onFeatureClick && onFeatureClick(data)}
+            // recharts 3 types the Bar onClick payload as BarRectangleItem, which
+            // carries the datum's fields but is not typed as FeatureScore. The
+            // original entry is on `payload`, so read it from there instead of
+            // asserting the whole event object is a FeatureScore.
+            onClick={(bar) => {
+              const entry = (bar as unknown as { payload?: FeatureScore }).payload
+              if (onFeatureClick && entry) onFeatureClick(entry)
+            }}
             cursor={onFeatureClick ? 'pointer' : 'default'}
           >
             {chartData.map((entry, index) => (

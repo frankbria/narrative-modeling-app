@@ -95,7 +95,18 @@ export function ScatterPlotChart({
               name={category === 'default' ? data.title || 'Data' : category}
               data={points}
               fill={colors[index % colors.length]}
-              onClick={onPointClick}
+              // recharts 3 narrows the Scatter onClick payload to ScatterPointItem,
+              // which has no string index signature. The caller wants the datum, so
+              // hand it the payload rather than the event object.
+              onClick={
+                onPointClick
+                  ? (point) =>
+                      onPointClick(
+                        (point as unknown as { payload?: Record<string, unknown> })
+                          .payload ?? {},
+                      )
+                  : undefined
+              }
               cursor="pointer"
             />
           ))}
