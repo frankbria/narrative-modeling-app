@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -24,59 +25,67 @@ interface AiSuggestions {
 export default function FeaturesPage() {
   const { state, completeStage } = useWorkflow();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [features, setFeatures] = useState<Feature[]>([]);
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
 
   // Guard: redirect (with a message) if this stage is not accessible yet.
   const { ready } = useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
 
-  const loadFeatures = async () => {
-    try {
+  const { data: featureData, loading: isLoadingFeatures } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
       const response = await fetch(`${API_URL}/datasets/${state.datasetId}/features`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (!response.ok) throw new Error('Failed to load features');
+      const data = await response.json();
 
-      if (response.ok) {
-        const data = await response.json();
-        setFeatures(data.features);
-        setSelectedFeatures(data.features.map((f: Feature) => f.name));
-        
-        // Get AI suggestions
+      // Suggestions are best-effort: a failure here left the page usable before.
+      let suggestions: AiSuggestions | null = null;
+      try {
         const suggestionsResponse = await fetch(
           `${API_URL}/datasets/${state.datasetId}/features/suggestions`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
-        
-        if (suggestionsResponse.ok) {
-          const suggestions = await suggestionsResponse.json();
-          setAiSuggestions(suggestions);
-        }
+        if (suggestionsResponse.ok) suggestions = await suggestionsResponse.json();
+      } catch {
+        /* leave suggestions null */
       }
-    } catch (error) {
-      console.error('Failed to load features:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    // Wait until the stage is accessible AND the dataset id has hydrated — on a
-    // direct /features load the provider sets datasetId after this page mounts,
-    // so loading too early would fetch /datasets/undefined/features once and
-    // never retry.
-    if (!ready || !state.datasetId) return;
-    loadFeatures();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, state.datasetId]);
+      return { features: data.features as Feature[], suggestions };
+    },
+    [state.datasetId],
+    // Wait for the stage AND a hydrated dataset id — on a direct /features load
+    // the provider sets datasetId after this page mounts, so firing early would
+    // fetch /datasets/undefined/features once and never retry.
+    { enabled: ready && !!state.datasetId },
+  );
+
+  // Generating features is a user action with its own spinner; the view shows one
+  // busy state, but the two no longer share a setter.
+  const [generating, setGenerating] = useState(false);
+  const loading = isLoadingFeatures || generating;
+
+  const features = featureData?.features ?? [];
+  const aiSuggestions = featureData?.suggestions ?? null;
+
+  // Everything is selected by default once features load, but the user then
+  // edits that set — so the selection is an override on top of the derived
+  // default, tagged with the dataset it belongs to so it resets on change.
+  const [selectionOverride, setSelectionOverride] = useState<{
+    datasetId: string;
+    names: string[];
+  } | null>(null);
+  const defaultSelection = features.map((f) => f.name);
+  const selectedFeatures =
+    selectionOverride && selectionOverride.datasetId === state.datasetId
+      ? selectionOverride.names
+      : defaultSelection;
+  const setSelectedFeatures = (
+    update: string[] | ((prev: string[]) => string[]),
+  ) =>
+    setSelectionOverride({
+      datasetId: state.datasetId ?? '',
+      names: typeof update === 'function' ? update(selectedFeatures) : update,
+    });
 
   const handleFeatureToggle = (featureName: string) => {
     setSelectedFeatures(prev => 
@@ -87,7 +96,7 @@ export default function FeaturesPage() {
   };
 
   const handleGenerateFeatures = async () => {
-    setLoading(true);
+    setGenerating(true);
     try {
       const token = await getAuthToken();
       const response = await fetch(
@@ -118,7 +127,7 @@ export default function FeaturesPage() {
     } catch (error) {
       console.error('Failed to generate features:', error);
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
