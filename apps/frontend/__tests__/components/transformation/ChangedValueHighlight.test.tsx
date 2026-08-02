@@ -16,7 +16,7 @@ describe('ChangedValueHighlight Component', () => {
 
       const valueElement = screen.getByText('test value');
       expect(valueElement).toBeInTheDocument();
-      expect(valueElement).toHaveClass('text-gray-900');
+      expect(valueElement).toHaveClass('text-foreground');
       expect(valueElement).not.toHaveClass('bg-yellow-100');
     });
 
@@ -41,7 +41,7 @@ describe('ChangedValueHighlight Component', () => {
       );
 
       const span = container.querySelector('span');
-      expect(span).toHaveClass('text-gray-900');
+      expect(span).toHaveClass('text-foreground');
       expect(span).not.toHaveClass('cursor-help');
     });
   });

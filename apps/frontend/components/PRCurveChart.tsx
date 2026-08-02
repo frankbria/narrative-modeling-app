@@ -30,8 +30,8 @@ export function PRCurveChart({ data, height = 400 }: PRCurveChartProps) {
 
   if (classLabels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-gray-500">No precision-recall curve data available</p>
+      <div className="flex items-center justify-center h-64 bg-muted rounded-lg border border-border">
+        <p className="text-muted-foreground">No precision-recall curve data available</p>
       </div>
     )
   }

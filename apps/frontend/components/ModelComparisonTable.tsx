@@ -55,8 +55,8 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
 
   if (models.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-gray-500">No models to compare</p>
+      <div className="flex items-center justify-center h-32 bg-muted rounded-lg border border-border">
+        <p className="text-muted-foreground">No models to compare</p>
       </div>
     )
   }
@@ -77,8 +77,8 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
           <TableHead>Metric</TableHead>
           {models.map((model) => (
             <TableHead key={model.model_id}>
-              <div className="font-semibold text-gray-900">{model.name}</div>
-              <div className="text-xs font-normal text-gray-500">{model.algorithm}</div>
+              <div className="font-semibold text-foreground">{model.name}</div>
+              <div className="text-xs font-normal text-muted-foreground">{model.algorithm}</div>
             </TableHead>
           ))}
         </TableRow>

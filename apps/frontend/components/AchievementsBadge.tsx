@@ -170,7 +170,7 @@ export function AchievementsGrid({
         ))}
         
         {remainingCount > 0 && (
-          <Badge variant="outline" className="cursor-pointer hover:bg-gray-50">
+          <Badge variant="outline" className="cursor-pointer hover:bg-muted">
             +{remainingCount} more
           </Badge>
         )}
@@ -178,7 +178,7 @@ export function AchievementsGrid({
 
       {/* Achievement Stats */}
       {achievements.length > 0 && (
-        <div className="flex items-center gap-4 text-sm text-gray-600">
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Award className="h-4 w-4" />
             <span>{achievements.filter(a => a.type === 'badge').length} badges</span>
@@ -201,13 +201,13 @@ export function AchievementsGrid({
 export function AchievementCelebration({ achievement }: { achievement: Achievement }) {
   return (
     <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
-      <div className="bg-white rounded-xl shadow-2xl border-4 border-yellow-300 p-6 max-w-sm mx-4 animate-bounce">
+      <div className="bg-card rounded-xl shadow-2xl border-4 border-yellow-300 p-6 max-w-sm mx-4 animate-bounce">
         <div className="text-center space-y-3">
           <div className="text-4xl">🎉</div>
           <div className="space-y-1">
-            <div className="text-lg font-bold text-gray-900">Achievement Unlocked!</div>
+            <div className="text-lg font-bold text-foreground">Achievement Unlocked!</div>
             <div className="text-yellow-600 font-medium">{achievement.title}</div>
-            <div className="text-sm text-gray-600">{achievement.description}</div>
+            <div className="text-sm text-muted-foreground">{achievement.description}</div>
             <div className="text-lg font-bold text-green-600">+{achievement.points} points!</div>
           </div>
         </div>

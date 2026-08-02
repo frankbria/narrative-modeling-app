@@ -140,9 +140,9 @@ export function BeforeAfterView({
   // Show empty state if no data
   if (originalData.length === 0) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+      <div className="bg-card rounded-lg border border-border p-8 text-center">
         <AlertCircle className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-        <p className="text-gray-600">No data to display</p>
+        <p className="text-muted-foreground">No data to display</p>
       </div>
     );
   }
@@ -152,8 +152,8 @@ export function BeforeAfterView({
       {/* Header with Statistics */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Data Comparison</h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <h3 className="text-lg font-semibold text-foreground">Data Comparison</h3>
+          <p className="text-sm text-muted-foreground mt-1">
             Showing {originalData.length} rows × {columns.length} columns
           </p>
         </div>
@@ -165,7 +165,7 @@ export function BeforeAfterView({
             className={`px-3 py-2 text-sm rounded-md font-medium transition-colors ${
               layout === "side-by-side"
                 ? "bg-blue-600 text-white shadow-md"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : "bg-muted text-foreground hover:bg-gray-200"
             }`}
           >
             Side-by-Side
@@ -175,7 +175,7 @@ export function BeforeAfterView({
             className={`px-3 py-2 text-sm rounded-md font-medium transition-colors ${
               layout === "stacked"
                 ? "bg-blue-600 text-white shadow-md"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : "bg-muted text-foreground hover:bg-gray-200"
             }`}
           >
             Stacked
@@ -236,10 +236,10 @@ export function BeforeAfterView({
         }
       >
         {/* Before (Original) Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col">
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-900">Original Data</h4>
-            <p className="text-xs text-gray-600 mt-1">
+        <div className="bg-card rounded-lg border border-border overflow-hidden flex flex-col">
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b border-border">
+            <h4 className="text-sm font-semibold text-foreground">Original Data</h4>
+            <p className="text-xs text-muted-foreground mt-1">
               {originalData.length} rows before transformation
             </p>
           </div>
@@ -251,16 +251,16 @@ export function BeforeAfterView({
           >
             <div ref={beforeTableRef} className="min-w-full">
               <table className="w-full border-collapse text-sm">
-                <thead className="bg-gray-100 sticky top-0 z-10">
-                  <tr className="border-b border-gray-200">
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700 bg-gray-100 w-12 border-r border-gray-200">
+                <thead className="bg-muted sticky top-0 z-10">
+                  <tr className="border-b border-border">
+                    <th className="px-3 py-2 text-left font-semibold text-foreground bg-muted w-12 border-r border-border">
                       #
                     </th>
                     {columns.map((column) => (
                       <th
                         key={column}
-                        className={`px-3 py-2 text-left font-semibold text-gray-700 min-w-[150px] border-r border-gray-200 ${
-                          isColumnAffected(column) ? "bg-yellow-50" : "bg-gray-100"
+                        className={`px-3 py-2 text-left font-semibold text-foreground min-w-[150px] border-r border-border ${
+                          isColumnAffected(column) ? "bg-yellow-50" : "bg-muted"
                         }`}
                         title={
                           isColumnAffected(column)
@@ -286,15 +286,15 @@ export function BeforeAfterView({
                   {originalData.map((row, rowIdx) => (
                     <tr
                       key={rowIdx}
-                      className="hover:bg-gray-50 transition-colors"
+                      className="hover:bg-muted transition-colors"
                     >
-                      <td className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-r border-gray-200 w-12">
+                      <td className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted border-r border-border w-12">
                         {rowIdx + 1}
                       </td>
                       {columns.map((column) => (
                         <td
                           key={column}
-                          className="px-3 py-2 text-gray-900 border-r border-gray-200 truncate"
+                          className="px-3 py-2 text-foreground border-r border-border truncate"
                           title={formatCellValue(row[column])}
                         >
                           {formatCellValue(row[column])}
@@ -309,7 +309,7 @@ export function BeforeAfterView({
         </div>
 
         {/* After (Transformed) Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col">
+        <div className="bg-card rounded-lg border border-border overflow-hidden flex flex-col">
           <div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 border-b border-green-200">
             <h4 className="text-sm font-semibold text-green-900">Transformed Data</h4>
             <p className="text-xs text-green-700 mt-1">
@@ -361,7 +361,7 @@ export function BeforeAfterView({
                       key={rowIdx}
                       className="hover:bg-green-50 transition-colors"
                     >
-                      <td className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-r border-gray-200 w-12">
+                      <td className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted border-r border-border w-12">
                         {rowIdx + 1}
                       </td>
                       {columns.map((column) => {
@@ -372,7 +372,7 @@ export function BeforeAfterView({
                         return (
                           <td
                             key={column}
-                            className={`px-3 py-2 border-r border-gray-200 truncate ${
+                            className={`px-3 py-2 border-r border-border truncate ${
                               isChanged ? "bg-yellow-50" : ""
                             }`}
                             title={formatCellValue(newValue)}

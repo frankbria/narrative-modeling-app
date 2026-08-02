@@ -167,11 +167,11 @@ describe('BeforeAfterView Component', () => {
       const stackedButton = screen.getByText('Stacked');
 
       expect(sideBySideButton).toHaveClass('bg-blue-600');
-      expect(stackedButton).toHaveClass('bg-gray-100');
+      expect(stackedButton).toHaveClass('bg-muted');
 
       fireEvent.click(stackedButton);
 
-      expect(sideBySideButton).toHaveClass('bg-gray-100');
+      expect(sideBySideButton).toHaveClass('bg-muted');
       expect(stackedButton).toHaveClass('bg-blue-600');
     });
   });

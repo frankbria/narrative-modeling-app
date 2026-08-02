@@ -254,7 +254,7 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
 
       <div className="p-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-500 uppercase">{data.nodeType}</span>
+          <span className="text-xs text-muted-foreground uppercase">{data.nodeType}</span>
           <div className="flex items-center gap-1">
             {(data.nodeType === 'constant' || data.nodeType === 'function') && (
               <button
@@ -262,9 +262,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
                   e.stopPropagation();
                   setShowSettings(!showSettings);
                 }}
-                className="p-1 hover:bg-white/50 rounded"
+                className="p-1 hover:bg-card/50 rounded"
               >
-                <Settings className="w-3 h-3 text-gray-600" />
+                <Settings className="w-3 h-3 text-muted-foreground" />
               </button>
             )}
             {data.onDelete && (
@@ -273,9 +273,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
                   e.stopPropagation();
                   data.onDelete!(id);
                 }}
-                className="p-1 hover:bg-white/50 rounded"
+                className="p-1 hover:bg-card/50 rounded"
               >
-                <X className="w-3 h-3 text-gray-600" />
+                <X className="w-3 h-3 text-muted-foreground" />
               </button>
             )}
           </div>
@@ -293,9 +293,9 @@ const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {
         )}
 
         {showSettings && (
-          <div className="mt-2 pt-2 border-t border-gray-200">
+          <div className="mt-2 pt-2 border-t border-border">
             {getParameterInputs() || (
-              <p className="text-xs text-gray-500">No settings</p>
+              <p className="text-xs text-muted-foreground">No settings</p>
             )}
           </div>
         )}

@@ -140,9 +140,9 @@ export function AIChat() {
     // Hidden below lg: the content's right gutter is only reserved at lg+
     // (layout.tsx), so a fixed 320px panel would overlay content on mobile
     // (issue #282). Mobile chat is a deferred follow-up.
-    <div className="fixed top-0 right-0 h-screen w-80 bg-white border-l border-gray-200 hidden lg:flex flex-col z-10">
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">AI Assistant</h2>
+    <div className="fixed top-0 right-0 h-screen w-80 bg-card border-l border-border hidden lg:flex flex-col z-10">
+      <div className="p-4 border-b border-border">
+        <h2 className="text-lg font-semibold text-foreground">AI Assistant</h2>
       </div>
       
       <div 
@@ -152,12 +152,12 @@ export function AIChat() {
         {isPageLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-            <p className="text-gray-600 text-center">Loading dataset analysis...</p>
+            <p className="text-muted-foreground text-center">Loading dataset analysis...</p>
           </div>
         ) : isContextLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-            <p className="text-gray-600 text-center">Analyzing your dataset...</p>
+            <p className="text-muted-foreground text-center">Analyzing your dataset...</p>
           </div>
         ) : (
           <>
@@ -170,7 +170,7 @@ export function AIChat() {
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.role === 'user'
                       ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-800'
+                      : 'bg-muted text-foreground'
                   }`}
                 >
                   <ReactMarkdown>{message.content}</ReactMarkdown>
@@ -180,14 +180,14 @@ export function AIChat() {
             
             {isSubmitting && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-lg p-3 bg-gray-100 text-gray-800">
+                <div className="max-w-[80%] rounded-lg p-3 bg-muted text-foreground">
                   <div className="flex items-center space-x-2">
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
-                    <span className="text-sm text-gray-500">Thinking...</span>
+                    <span className="text-sm text-muted-foreground">Thinking...</span>
                   </div>
                 </div>
               </div>
@@ -197,14 +197,14 @@ export function AIChat() {
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-border">
         <div className="flex space-x-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
-            className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-900 placeholder-gray-500"
+            className="flex-1 p-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-muted text-foreground placeholder-gray-500"
             disabled={isContextLoading || isSubmitting || isPageLoading}
           />
           <button

@@ -528,7 +528,7 @@ describe('PreviewControls Component', () => {
       );
 
       const wrapper = container.firstChild as HTMLElement;
-      expect(wrapper).toHaveClass('bg-white');
+      expect(wrapper).toHaveClass('bg-card');
       expect(wrapper).toHaveClass('border');
       expect(wrapper).toHaveClass('rounded-lg');
     });

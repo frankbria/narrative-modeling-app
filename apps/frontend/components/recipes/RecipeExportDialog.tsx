@@ -116,7 +116,7 @@ export function RecipeExportDialog({
 
               <TabsContent value="preview" className="mt-4">
                 <div className="relative">
-                  <pre className="bg-gray-50 p-4 rounded-lg overflow-auto max-h-96 text-xs font-mono">
+                  <pre className="bg-muted p-4 rounded-lg overflow-auto max-h-96 text-xs font-mono">
                     {jsonData}
                   </pre>
                 </div>
@@ -131,11 +131,11 @@ export function RecipeExportDialog({
                       metadata, and version information. You can import this file into any compatible system.
                     </p>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-xs text-gray-600">
+                  <div className="bg-muted p-4 rounded-lg">
+                    <p className="text-xs text-muted-foreground">
                       <strong>File name:</strong> {recipeName.replace(/\s+/g, '_')}_recipe.json
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       <strong>Size:</strong> {new Blob([jsonData]).size} bytes
                     </p>
                   </div>

@@ -116,7 +116,7 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
 
         {/* Consensus Features */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
+          <h4 className="text-sm font-semibold text-foreground mb-2">
             Consensus Features ({consensus_features.length})
           </h4>
           {consensus_features.length > 0 ? (
@@ -128,7 +128,7 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               No features were selected by all methods.
             </p>
           )}
@@ -136,7 +136,7 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
 
         {/* Side-by-side method results */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-900 mb-3">Methods</h4>
+          <h4 className="text-sm font-semibold text-foreground mb-3">Methods</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {results.map((methodResult) => (
               <div
@@ -146,11 +146,11 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{getMethodName(methodResult.method)}</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     {formatExecutionTime(methodResult.execution_time_ms)}
                   </span>
                 </div>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted-foreground">
                   {methodResult.selected_features.length} features selected
                 </p>
                 <div className="border rounded-md overflow-hidden">
@@ -187,10 +187,10 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
         {/* Overlap Matrix */}
         {methodNames.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-3">
+            <h4 className="text-sm font-semibold text-foreground mb-3">
               Feature Overlap Matrix
             </h4>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-muted-foreground mb-2">
               Number of selected features shared between each pair of methods.
             </p>
             <div className="border rounded-lg overflow-x-auto">

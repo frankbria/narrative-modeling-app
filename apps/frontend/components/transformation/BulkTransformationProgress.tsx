@@ -48,7 +48,7 @@ function formatTime(seconds: number | undefined): string {
 function getStatusInfo(status: string): { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; color: string } {
   switch (status) {
     case 'pending':
-      return { variant: 'secondary', label: 'Pending', color: 'text-gray-600' };
+      return { variant: 'secondary', label: 'Pending', color: 'text-muted-foreground' };
     case 'running':
       return { variant: 'default', label: 'Running', color: 'text-blue-600' };
     case 'completed':
@@ -58,9 +58,9 @@ function getStatusInfo(status: string): { variant: 'default' | 'secondary' | 'de
     case 'failed':
       return { variant: 'destructive', label: 'Failed', color: 'text-red-600' };
     case 'cancelled':
-      return { variant: 'secondary', label: 'Cancelled', color: 'text-gray-600' };
+      return { variant: 'secondary', label: 'Cancelled', color: 'text-muted-foreground' };
     default:
-      return { variant: 'secondary', label: status, color: 'text-gray-600' };
+      return { variant: 'secondary', label: status, color: 'text-muted-foreground' };
   }
 }
 
@@ -169,9 +169,9 @@ export function BulkTransformationProgress({
   const canRetry = progress && progress.status === 'failed';
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 shadow-lg ${className}`}>
+    <div className={`bg-card rounded-lg border border-border shadow-lg ${className}`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+      <div className="p-4 border-b border-border bg-muted flex items-center justify-between">
         <div className="flex items-center gap-3">
           {!isTerminal && (
             <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
@@ -185,7 +185,7 @@ export function BulkTransformationProgress({
           {progress?.status === 'partially_completed' && (
             <AlertTriangle className="w-5 h-5 text-yellow-500" />
           )}
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-foreground">
             Bulk Transformation Progress
           </h2>
         </div>
@@ -193,9 +193,9 @@ export function BulkTransformationProgress({
       </div>
 
       {/* Progress bar */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-muted-foreground">
             {progress?.processed_columns ?? 0} of {progress?.total_columns ?? 0} columns
           </span>
           <span className="text-sm font-medium">
@@ -206,28 +206,28 @@ export function BulkTransformationProgress({
       </div>
 
       {/* Statistics */}
-      <div className="p-4 border-b border-gray-200 grid grid-cols-2 gap-4">
+      <div className="p-4 border-b border-border grid grid-cols-2 gap-4">
         <div className="flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-green-500" />
-          <span className="text-sm text-gray-600">Successful:</span>
+          <span className="text-sm text-muted-foreground">Successful:</span>
           <span className="font-medium">{progress?.successful_columns ?? 0}</span>
         </div>
         <div className="flex items-center gap-2">
           <XCircle className="w-4 h-4 text-red-500" />
-          <span className="text-sm text-gray-600">Failed:</span>
+          <span className="text-sm text-muted-foreground">Failed:</span>
           <span className="font-medium">{progress?.failed_columns ?? 0}</span>
         </div>
         {progress?.current_column && !isTerminal && (
           <div className="col-span-2 flex items-center gap-2">
             <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-            <span className="text-sm text-gray-600">Processing:</span>
+            <span className="text-sm text-muted-foreground">Processing:</span>
             <span className="font-medium text-blue-600 truncate">{progress.current_column}</span>
           </div>
         )}
         {progress?.estimated_remaining_seconds !== undefined && progress.estimated_remaining_seconds !== null && !isTerminal && (
           <div className="col-span-2 flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-600">Est. remaining:</span>
+            <span className="text-sm text-muted-foreground">Est. remaining:</span>
             <span className="font-medium">{formatTime(progress.estimated_remaining_seconds)}</span>
           </div>
         )}
@@ -235,7 +235,7 @@ export function BulkTransformationProgress({
 
       {/* Error message */}
       {(error || progress?.error_message) && (
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-border">
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-700">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
@@ -248,20 +248,20 @@ export function BulkTransformationProgress({
 
       {/* Results summary */}
       {progress?.result && (
-        <div className="p-4 border-b border-gray-200">
-          <h3 className="font-medium text-gray-900 mb-2">Results</h3>
+        <div className="p-4 border-b border-border">
+          <h3 className="font-medium text-foreground mb-2">Results</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Total rows affected:</span>
+              <span className="text-muted-foreground">Total rows affected:</span>
               <span className="font-medium">{progress.result.total_rows_affected.toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Total time:</span>
+              <span className="text-muted-foreground">Total time:</span>
               <span className="font-medium">{formatTime(progress.result.total_time_ms / 1000)}</span>
             </div>
             {progress.result.successful_columns.length > 0 && (
               <div>
-                <p className="text-gray-600 mb-1">Successful columns:</p>
+                <p className="text-muted-foreground mb-1">Successful columns:</p>
                 <div className="flex flex-wrap gap-1">
                   {progress.result.successful_columns.slice(0, 10).map(col => (
                     <Badge key={col} variant="secondary" className="text-xs bg-green-100 text-green-700">
@@ -278,7 +278,7 @@ export function BulkTransformationProgress({
             )}
             {progress.result.failed_columns.length > 0 && (
               <div>
-                <p className="text-gray-600 mb-1">Failed columns:</p>
+                <p className="text-muted-foreground mb-1">Failed columns:</p>
                 <div className="space-y-1">
                   {progress.result.failed_columns.slice(0, 5).map(({ column_name, error: colError }) => (
                     <div key={column_name} className="text-xs bg-red-50 p-2 rounded">
@@ -287,7 +287,7 @@ export function BulkTransformationProgress({
                     </div>
                   ))}
                   {progress.result.failed_columns.length > 5 && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       +{progress.result.failed_columns.length - 5} more failed
                     </p>
                   )}

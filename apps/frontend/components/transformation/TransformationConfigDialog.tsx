@@ -486,7 +486,7 @@ export function TransformationConfigDialog({
               renderFormField(key, schema)
             )
           ) : (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               No parameters needed for this transformation.
             </p>
           )}

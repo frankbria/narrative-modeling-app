@@ -60,12 +60,12 @@ export function StatsCard({ title, stats }: StatsCardProps) {
         <h3 className="text-sm font-medium mb-2">Categorical Statistics</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Unique Categories</p>
+            <p className="text-sm text-muted-foreground">Unique Categories</p>
             <p className="font-medium">{stats.categorical_stats.unique_categories}</p>
           </div>
         </div>
         <div className="mt-2">
-          <p className="text-sm text-gray-500">Top Values</p>
+          <p className="text-sm text-muted-foreground">Top Values</p>
           <ul className="list-disc list-inside text-sm">
             {stats.categorical_stats.top_values.map((item, index) => (
               <li key={index}>
@@ -86,11 +86,11 @@ export function StatsCard({ title, stats }: StatsCardProps) {
         <h3 className="text-sm font-medium mb-2">Date Statistics</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Min Date</p>
+            <p className="text-sm text-muted-foreground">Min Date</p>
             <p className="font-medium">{new Date(stats.date_stats.min_date).toLocaleDateString()}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Max Date</p>
+            <p className="text-sm text-muted-foreground">Max Date</p>
             <p className="font-medium">{new Date(stats.date_stats.max_date).toLocaleDateString()}</p>
           </div>
         </div>
@@ -106,12 +106,12 @@ export function StatsCard({ title, stats }: StatsCardProps) {
         <h3 className="text-sm font-medium mb-2">Text Statistics</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Average Length</p>
+            <p className="text-sm text-muted-foreground">Average Length</p>
             <p className="font-medium">{stats.text_stats.avg_length.toFixed(2)}</p>
           </div>
         </div>
         <div className="mt-2">
-          <p className="text-sm text-gray-500">Sample Values</p>
+          <p className="text-sm text-muted-foreground">Sample Values</p>
           <ul className="list-disc list-inside text-sm">
             {stats.text_stats.sample_values.map((value, index) => (
               <li key={index}>{value}</li>
@@ -123,7 +123,7 @@ export function StatsCard({ title, stats }: StatsCardProps) {
   }
 
   return (
-    <Card className="bg-white shadow-sm">
+    <Card className="bg-card shadow-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-bold">{title || stats.field_name}</CardTitle>
       </CardHeader>
@@ -131,19 +131,19 @@ export function StatsCard({ title, stats }: StatsCardProps) {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-sm text-gray-500">Type</p>
+              <p className="text-sm text-muted-foreground">Type</p>
               <p className="font-medium">{stats.field_type}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Count</p>
+              <p className="text-sm text-muted-foreground">Count</p>
               <p className="font-medium">{stats.count}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Missing Values</p>
+              <p className="text-sm text-muted-foreground">Missing Values</p>
               <p className="font-medium">{stats.missing_values}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Unique Values</p>
+              <p className="text-sm text-muted-foreground">Unique Values</p>
               <p className="font-medium">{stats.unique_values}</p>
             </div>
           </div>
@@ -153,27 +153,27 @@ export function StatsCard({ title, stats }: StatsCardProps) {
               <h3 className="text-sm font-medium mb-2">Numeric Statistics</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Min</p>
+                  <p className="text-sm text-muted-foreground">Min</p>
                   <p className="font-medium">{stats.numeric_stats.min.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Max</p>
+                  <p className="text-sm text-muted-foreground">Max</p>
                   <p className="font-medium">{stats.numeric_stats.max.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Mean</p>
+                  <p className="text-sm text-muted-foreground">Mean</p>
                   <p className="font-medium">{stats.numeric_stats.mean.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Median</p>
+                  <p className="text-sm text-muted-foreground">Median</p>
                   <p className="font-medium">{stats.numeric_stats.median.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Mode</p>
+                  <p className="text-sm text-muted-foreground">Mode</p>
                   <p className="font-medium">{stats.numeric_stats.mode.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Std Dev</p>
+                  <p className="text-sm text-muted-foreground">Std Dev</p>
                   <p className="font-medium">{stats.numeric_stats.std_dev.toFixed(2)}</p>
                 </div>
               </div>

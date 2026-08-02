@@ -129,7 +129,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
   }
 
   if (!data || data.versions.length === 0) {
-    return <p className="text-gray-500 py-6">No versions found for this model.</p>
+    return <p className="text-muted-foreground py-6">No versions found for this model.</p>
   }
 
   return (
@@ -155,7 +155,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="versions-table">
               <thead>
-                <tr className="border-b text-left text-gray-500">
+                <tr className="border-b text-left text-muted-foreground">
                   <th className="py-2 pr-2"></th>
                   <th className="py-2 pr-2">Version</th>
                   <th className="py-2 pr-2">Status</th>

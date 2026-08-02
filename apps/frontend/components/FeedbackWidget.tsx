@@ -166,15 +166,15 @@ export function FeedbackWidget() {
       aria-label="Feedback form"
       data-testid="feedback-widget-panel"
       onKeyDown={handleKeyDown}
-      className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-white shadow-xl"
+      className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-card shadow-xl"
     >
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="font-semibold text-gray-900">Share your feedback</h2>
+        <h2 className="font-semibold text-foreground">Share your feedback</h2>
         <button
           type="button"
           onClick={close}
           aria-label="Close feedback form"
-          className="text-gray-500 hover:text-gray-800"
+          className="text-muted-foreground hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
@@ -183,7 +183,7 @@ export function FeedbackWidget() {
       {status === 'success' ? (
         <div className="p-4 text-center" data-testid="feedback-success">
           <CheckCircle className="mx-auto h-10 w-10 text-green-600" />
-          <p className="mt-2 font-medium text-gray-900">Thanks for your feedback!</p>
+          <p className="mt-2 font-medium text-foreground">Thanks for your feedback!</p>
           <div className="mt-4 flex justify-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={resetForm}>
               Send another
@@ -196,7 +196,7 @@ export function FeedbackWidget() {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3 p-4">
           <div>
-            <span className="mb-1 block text-sm font-medium text-gray-700">
+            <span className="mb-1 block text-sm font-medium text-foreground">
               How would you rate your experience?
             </span>
             <div className="flex gap-1" role="group" aria-label="Star rating">
@@ -223,7 +223,7 @@ export function FeedbackWidget() {
           <div>
             <label
               htmlFor="feedback-category"
-              className="mb-1 block text-sm font-medium text-gray-700"
+              className="mb-1 block text-sm font-medium text-foreground"
             >
               Category
             </label>
@@ -232,7 +232,7 @@ export function FeedbackWidget() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               data-testid="feedback-category"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -245,7 +245,7 @@ export function FeedbackWidget() {
           <div>
             <label
               htmlFor="feedback-message"
-              className="mb-1 block text-sm font-medium text-gray-700"
+              className="mb-1 block text-sm font-medium text-foreground"
             >
               Your feedback
             </label>

@@ -325,9 +325,9 @@ export default function UploadPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-8">
+      <div className="bg-card rounded-lg shadow-md p-8">
         <h1 className="text-3xl font-bold mb-2 text-center">Upload Your Data</h1>
-        <p className="text-gray-600 text-center mb-8">
+        <p className="text-muted-foreground text-center mb-8">
           Start by uploading a CSV, Excel, or JSON file containing your data
         </p>
 
@@ -373,41 +373,41 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-md p-4 mb-4">
+            <div className="bg-card rounded-md p-4 mb-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-amber-600">{piiData.total_detections}</div>
-                  <div className="text-sm text-gray-600">Total Detections</div>
+                  <div className="text-sm text-muted-foreground">Total Detections</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-red-600">{piiData.risk_level.toUpperCase()}</div>
-                  <div className="text-sm text-gray-600">Risk Level</div>
+                  <div className="text-sm text-muted-foreground">Risk Level</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{piiData.affected_columns.length}</div>
-                  <div className="text-sm text-gray-600">Affected Columns</div>
+                  <div className="text-sm text-muted-foreground">Affected Columns</div>
                 </div>
               </div>
 
               {piiData.detections.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-800 mb-2">Detected Sensitive Information:</h4>
+                  <h4 className="font-medium text-foreground mb-2">Detected Sensitive Information:</h4>
                   <div className="space-y-2">
                     {piiData.detections.slice(0, 5).map((detection, index) => (
-                      <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <span className="text-sm font-medium text-gray-700">{detection.column}</span>
+                      <div key={index} className="flex items-center justify-between bg-muted p-2 rounded">
+                        <span className="text-sm font-medium text-foreground">{detection.column}</span>
                         <div className="flex items-center space-x-2">
                           <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
                             {detection.type}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground">
                             {Math.round(detection.confidence * 100)}% confidence
                           </span>
                         </div>
                       </div>
                     ))}
                     {piiData.detections.length > 5 && (
-                      <div className="text-sm text-gray-500 italic">
+                      <div className="text-sm text-muted-foreground italic">
                         ... and {piiData.detections.length - 5} more
                       </div>
                     )}
@@ -448,13 +448,13 @@ export default function UploadPage() {
                   setPiiData(null);
                   setFile(null);
                 }}
-                className="px-4 py-3 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-4 py-3 rounded-md border border-border text-foreground hover:bg-muted transition-colors"
               >
                 Cancel Upload
               </button>
             </div>
 
-            <div className="mt-4 text-xs text-gray-600">
+            <div className="mt-4 text-xs text-muted-foreground">
               <p>
                 <strong>Data Masking:</strong> Sensitive information will be replaced with placeholder values (e.g., ***@***.com for emails).
                 <br />
@@ -484,7 +484,7 @@ export default function UploadPage() {
           className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
             isDragActive
               ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+              : 'border-border hover:border-blue-400 hover:bg-muted'
           }`}
         >
           <input {...getInputProps()} data-testid="file-input" />
@@ -495,8 +495,8 @@ export default function UploadPage() {
                 {isLargeFile && <HardDrive className="text-orange-500" size={20} />}
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-800">{file.name}</p>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-sm font-medium text-foreground">{file.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   {formatFileSize(file.size)}
                   {isLargeFile && (
                     <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded-md text-xs font-medium">
@@ -509,10 +509,10 @@ export default function UploadPage() {
           ) : (
             <div className="flex flex-col items-center space-y-2">
               <Upload className="w-12 h-12 text-gray-400" />
-              <p className="text-lg text-gray-700">
+              <p className="text-lg text-foreground">
                 {isDragActive ? 'Drop it here...' : 'Drag a .csv, .txt, .xlsx, or .json file or click to browse'}
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Supports CSV, Excel (XLS, XLSX), TXT, and JSON files up to 100MB
               </p>
             </div>
@@ -580,24 +580,24 @@ export default function UploadPage() {
         )}
 
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <FileText className="w-8 h-8 text-blue-600 mb-2" />
             <h3 className="font-semibold mb-1">CSV Files</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Standard comma-separated values with headers
             </p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <FileText className="w-8 h-8 text-green-600 mb-2" />
             <h3 className="font-semibold mb-1">Excel Files</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               .xls and .xlsx formats supported
             </p>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-muted rounded-lg">
             <Database className="w-8 h-8 text-purple-600 mb-2" />
             <h3 className="font-semibold mb-1">Connect Database</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Coming soon: Direct database connections
             </p>
           </div>
@@ -639,10 +639,10 @@ export default function UploadPage() {
                   {previewData.previewData.map((row, rowIndex) => (
                     <TableRow 
                       key={rowIndex} 
-                      className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                      className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted'}
                     >
                       {row.map((cell, cellIndex) => (
-                        <TableCell key={cellIndex} className="text-gray-900">
+                        <TableCell key={cellIndex} className="text-foreground">
                           {cell !== null && cell !== undefined ? String(cell) : ''}
                         </TableCell>
                       ))}
@@ -659,7 +659,7 @@ export default function UploadPage() {
             <CheckCircle className="w-5 h-5 text-blue-600" />
             What happens next?
           </h3>
-          <ol className="text-sm text-gray-700 space-y-1 list-decimal list-inside">
+          <ol className="text-sm text-foreground space-y-1 list-decimal list-inside">
             <li>Your data will be securely uploaded and processed</li>
             <li>We&apos;ll automatically analyze and profile your data</li>
             <li>You&apos;ll be guided through the 8-stage modeling workflow</li>

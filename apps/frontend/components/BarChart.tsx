@@ -50,13 +50,13 @@ function CustomTooltip({
     const percentage = total ? ((value / total) * 100).toFixed(1) : '0.0'
 
     return (
-      <div className="bg-white p-3 border rounded shadow-lg">
+      <div className="bg-card p-3 border rounded shadow-lg">
         <p className="font-medium">{label}</p>
         <p style={{ color: payload[0].color }} className="text-sm">
           {`${yLabel}: ${value.toLocaleString()}`}
         </p>
         {showPercentages && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             {`${percentage}% of total`}
           </p>
         )}
@@ -168,7 +168,7 @@ export function BarChart({
       </ResponsiveContainer>
       
       {/* Summary Stats */}
-      <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-gray-600">
+      <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-muted-foreground">
         <div className="text-center">
           <div className="font-medium">{sortedData.length}</div>
           <div>Categories</div>

@@ -57,12 +57,12 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col">
+      <div className="bg-card rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="text-lg font-semibold">Recipe Manager</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="p-1 hover:bg-muted rounded"
           >
             <X className="w-5 h-5" />
           </button>
@@ -75,7 +75,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
               className={`flex-1 px-4 py-3 font-medium ${
                 activeTab === 'browse'
                   ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <BookOpen className="w-4 h-4 inline mr-2" />
@@ -86,7 +86,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
               className={`flex-1 px-4 py-3 font-medium ${
                 activeTab === 'save'
                   ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <Save className="w-4 h-4 inline mr-2" />
@@ -105,7 +105,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     className={`px-3 py-1 rounded text-sm ${
                       filter === 'all'
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-muted text-foreground hover:bg-gray-200'
                     }`}
                   >
                     All
@@ -115,7 +115,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     className={`px-3 py-1 rounded text-sm ${
                       filter === 'mine'
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-muted text-foreground hover:bg-gray-200'
                     }`}
                   >
                     My Recipes
@@ -125,7 +125,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     className={`px-3 py-1 rounded text-sm ${
                       filter === 'popular'
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-muted text-foreground hover:bg-gray-200'
                     }`}
                   >
                     <Star className="w-4 h-4 inline mr-1" />
@@ -153,10 +153,10 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                             <Users className="w-4 h-4 text-gray-400" />
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">
+                        <p className="text-sm text-muted-foreground mb-2">
                           {recipe.description}
                         </p>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             {new Date(recipe.created_at).toLocaleDateString()}
@@ -170,7 +170,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-20" />
                     <p>No recipes found</p>
                   </div>
@@ -189,7 +189,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     value={recipeName}
                     onChange={(e) => setRecipeName(e.target.value)}
                     placeholder="Enter a descriptive name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -202,7 +202,7 @@ export default function RecipeManager({ onClose, onSave, onLoad, datasetId }: Re
                     onChange={(e) => setRecipeDescription(e.target.value)}
                     placeholder="Describe what this recipe does..."
                     rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 

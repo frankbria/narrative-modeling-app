@@ -113,7 +113,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
   const languages = info?.languages ?? ['python', 'typescript', 'javascript', 'curl'];
 
   return (
-    <div className="bg-gray-50 rounded-lg p-6">
+    <div className="bg-muted rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold flex items-center gap-2">
           <Code className="w-5 h-5" /> Client SDKs
@@ -150,7 +150,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             className={`px-3 py-1.5 rounded text-sm font-medium ${
               language === lang
                 ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border'
+                : 'bg-card text-foreground hover:bg-muted border'
             }`}
           >
             {LABELS[lang] ?? lang}
@@ -193,7 +193,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         </pre>
       </div>
 
-      <p className="text-xs text-gray-500 mt-2">
+      <p className="text-xs text-muted-foreground mt-2">
         Each SDK calls the production endpoint with your{' '}
         <code className="font-mono">X-API-Key</code>. Generate a key from your
         account settings. Sample values are placeholders — categorical features
@@ -205,7 +205,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
           <summary className="text-sm font-medium cursor-pointer">
             SDK documentation (README)
           </summary>
-          <pre className="mt-2 bg-white border p-4 rounded overflow-x-auto text-xs whitespace-pre-wrap">
+          <pre className="mt-2 bg-card border p-4 rounded overflow-x-auto text-xs whitespace-pre-wrap">
             {info.readme}
           </pre>
         </details>

@@ -36,7 +36,7 @@ export default function SignInPage() {
   // Show loading while checking auth status
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-6 w-6 animate-spin" />
           <span>Checking authentication...</span>
@@ -48,7 +48,7 @@ export default function SignInPage() {
   // If authenticated, show loading while redirecting
   if (status === 'authenticated') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-6 w-6 animate-spin" />
           <span>Redirecting to application...</span>
@@ -58,7 +58,7 @@ export default function SignInPage() {
   }
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-muted">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
@@ -114,7 +114,7 @@ export default function SignInPage() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-muted-foreground">Or use OAuth</span>
+                  <span className="bg-card px-2 text-muted-foreground">Or use OAuth</span>
                 </div>
               </div>
             </>

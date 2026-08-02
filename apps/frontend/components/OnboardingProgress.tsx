@@ -64,10 +64,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">Overall Progress</span>
-          <span className="text-gray-600">{Math.round(status.progress_percentage)}%</span>
+          <span className="text-muted-foreground">{Math.round(status.progress_percentage)}%</span>
         </div>
         <Progress value={status.progress_percentage} className="h-2" />
-        <div className="flex items-center justify-between text-xs text-gray-500">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{status.completed_steps} of {status.total_steps} completed</span>
           {status.skipped_steps > 0 && (
             <span>{status.skipped_steps} skipped</span>
@@ -123,7 +123,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
           )}
 
           {/* Achievement Counts */}
-          <div className="flex justify-between text-xs text-gray-600">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>{badges.length} badges earned</span>
             <span>{milestones.length} milestones reached</span>
           </div>
@@ -189,7 +189,7 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
       </div>
 
       {/* Time Tracking */}
-      <div className="text-xs text-gray-500 text-center">
+      <div className="text-xs text-muted-foreground text-center">
         Started {new Date(status.started_at).toLocaleDateString()}
         {status.completed_at && (
           <div>

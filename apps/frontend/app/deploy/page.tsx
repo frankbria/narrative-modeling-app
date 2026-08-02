@@ -140,11 +140,11 @@ export default function DeployPage() {
   if (deploymentStatus === 'idle') {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="bg-card rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
             <Rocket className="w-16 h-16 text-blue-600 mx-auto mb-4" />
             <h1 className="text-3xl font-bold mb-2">Deploy Your Model</h1>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               Deploy your trained model to production with one click
             </p>
           </div>
@@ -153,43 +153,43 @@ export default function DeployPage() {
             <div className="text-center p-4">
               <Cloud className="w-12 h-12 text-blue-500 mx-auto mb-2" />
               <h3 className="font-semibold mb-1">Cloud Infrastructure</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Automatically provisioned and managed
               </p>
             </div>
             <div className="text-center p-4">
               <Shield className="w-12 h-12 text-green-500 mx-auto mb-2" />
               <h3 className="font-semibold mb-1">Secure API</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 API key authentication and rate limiting
               </p>
             </div>
             <div className="text-center p-4">
               <Globe className="w-12 h-12 text-purple-500 mx-auto mb-2" />
               <h3 className="font-semibold mb-1">Global Availability</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Low latency endpoints worldwide
               </p>
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-6 mb-6">
+          <div className="bg-muted rounded-lg p-6 mb-6">
             <h3 className="font-semibold mb-3">Deployment Configuration</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">Deployment Type</span>
+                <span className="text-foreground">Deployment Type</span>
                 <span className="font-medium">REST API</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">Auto-scaling</span>
+                <span className="text-foreground">Auto-scaling</span>
                 <span className="font-medium text-green-600">Enabled</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">Instance Range</span>
+                <span className="text-foreground">Instance Range</span>
                 <span className="font-medium">1-5 instances</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-700">Estimated Cost</span>
+                <span className="text-foreground">Estimated Cost</span>
                 <span className="font-medium">$0.10/1000 requests</span>
               </div>
             </div>
@@ -198,7 +198,7 @@ export default function DeployPage() {
           <div className="flex justify-between">
             <button
               onClick={() => router.push('/predict')}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-muted-foreground hover:text-foreground"
             >
               Back
             </button>
@@ -221,7 +221,7 @@ export default function DeployPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <h2 className="text-2xl font-semibold mb-2">Deploying Your Model</h2>
-          <p className="text-gray-600">This may take a few moments...</p>
+          <p className="text-muted-foreground">This may take a few moments...</p>
         </div>
       </div>
     );
@@ -229,18 +229,18 @@ export default function DeployPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-8">
+      <div className="bg-card rounded-lg shadow-md p-8">
         <div className="text-center mb-8">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-2">Model Deployed Successfully!</h1>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             Your model is now available via REST API
           </p>
         </div>
 
         {deployment && (
           <div className="space-y-6">
-            <div className="bg-gray-50 rounded-lg p-6">
+            <div className="bg-muted rounded-lg p-6">
               <h3 className="font-semibold mb-4">API Endpoint</h3>
               {deployment.deployment_endpoint ? (
                 <div className="flex items-center gap-2 mb-2">
@@ -257,7 +257,7 @@ export default function DeployPage() {
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   No endpoint URL was assigned. Your model is deployed and ready to serve predictions.
                 </p>
               )}
@@ -294,7 +294,7 @@ export default function DeployPage() {
     ]
   }'`}
               </pre>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 The production prediction API authenticates with an{' '}
                 <code className="font-mono">X-API-Key</code> header. Generate a
                 key from your account settings before calling the endpoint.
@@ -313,14 +313,14 @@ export default function DeployPage() {
             )}
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-muted rounded-lg p-4">
                 <h4 className="font-medium mb-2">Status</h4>
                 <span className="inline-flex items-center gap-1 text-green-600">
                   <CheckCircle className="w-4 h-4" />
                   Active
                 </span>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-muted rounded-lg p-4">
                 <h4 className="font-medium mb-2">Requests Today</h4>
                 <span className="text-2xl font-bold">0</span>
               </div>

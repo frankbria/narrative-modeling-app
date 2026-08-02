@@ -99,7 +99,7 @@ export function TrainingModeSelector({
               className={`text-left p-4 rounded-lg border transition-all ${
                 selected
                   ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-border hover:border-border'
               } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div className="flex items-center gap-2 font-semibold">
@@ -111,23 +111,23 @@ export function TrainingModeSelector({
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-600 mt-1">{option.blurb}</p>
-              <dl className="mt-2 text-xs text-gray-500 space-y-0.5">
+              <p className="text-sm text-muted-foreground mt-1">{option.blurb}</p>
+              <dl className="mt-2 text-xs text-muted-foreground space-y-0.5">
                 <div className="flex justify-between">
                   <dt>Algorithms</dt>
-                  <dd className="font-medium text-gray-700">{option.algorithms}</dd>
+                  <dd className="font-medium text-foreground">{option.algorithms}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Time</dt>
-                  <dd className="font-medium text-gray-700">{option.time}</dd>
+                  <dd className="font-medium text-foreground">{option.time}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Tuning</dt>
-                  <dd className="font-medium text-gray-700">{option.tuning}</dd>
+                  <dd className="font-medium text-foreground">{option.tuning}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt>Best for</dt>
-                  <dd className="font-medium text-gray-700">{option.bestFor}</dd>
+                  <dd className="font-medium text-foreground">{option.bestFor}</dd>
                 </div>
               </dl>
             </button>

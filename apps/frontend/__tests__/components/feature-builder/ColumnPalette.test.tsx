@@ -207,11 +207,11 @@ describe('ColumnPalette Component', () => {
       expect(column).toHaveClass('bg-pink-100');
     });
 
-    it('should apply default gray styling for unknown types', () => {
+    it('should apply the default muted styling for unknown types', () => {
       render(<ColumnPalette columns={[{ name: 'unknown', type: 'custom' }]} />);
 
       const column = screen.getByText('unknown').closest('div[draggable]');
-      expect(column).toHaveClass('bg-gray-100');
+      expect(column).toHaveClass('bg-muted');
     });
   });
 

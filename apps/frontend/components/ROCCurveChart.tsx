@@ -56,18 +56,18 @@ export function CurvePointTooltip({ active, payload, xLabel, yLabel }: CurveTool
   if (!active || !payload || payload.length === 0) return null
   const point = payload[0].payload
   return (
-    <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg text-sm">
+    <div className="bg-card p-3 border border-border rounded-lg shadow-lg text-sm">
       {payload[0].name && (
-        <p className="font-semibold text-gray-900 mb-1">{payload[0].name}</p>
+        <p className="font-semibold text-foreground mb-1">{payload[0].name}</p>
       )}
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         {xLabel}: <span className="font-medium">{point.x.toFixed(3)}</span>
       </p>
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         {yLabel}: <span className="font-medium">{point.y.toFixed(3)}</span>
       </p>
       {point.threshold !== undefined && point.threshold !== null && (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Threshold: <span className="font-medium">{point.threshold.toFixed(3)}</span>
         </p>
       )}
@@ -84,8 +84,8 @@ export function ROCCurveChart({ data, height = 400 }: ROCCurveChartProps) {
 
   if (classLabels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-gray-500">No ROC curve data available</p>
+      <div className="flex items-center justify-center h-64 bg-muted rounded-lg border border-border">
+        <p className="text-muted-foreground">No ROC curve data available</p>
       </div>
     )
   }

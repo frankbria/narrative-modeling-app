@@ -97,7 +97,7 @@ export function RecipeShareDialog({
               onChange={(e) => setTargetUserId(e.target.value)}
               disabled={loading}
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               The user must be registered in the system
             </p>
           </div>

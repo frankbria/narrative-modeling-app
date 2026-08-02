@@ -1,5 +1,6 @@
 'use client'
 
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { useEffect, useRef, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
@@ -152,6 +153,11 @@ export default function Sidebar() {
             <Shield size={20} />
             <span>Admin</span>
           </Link>
+          {/* The only way to reach dark mode. Before #407 the `.dark` class was
+              never set by anything, so all 27 `dark:` utilities were dead. */}
+          <div className="px-2 pt-2">
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
     </>

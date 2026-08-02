@@ -113,20 +113,20 @@ export function SelectedFeatureSet({
       <CardContent className="space-y-6">
         {/* Summary Statistics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">Method</p>
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">Method</p>
             <p className="text-lg font-semibold capitalize">{result.method.replace('_', ' ')}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">Problem Type</p>
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">Problem Type</p>
             <p className="text-lg font-semibold capitalize">{result.metadata.problem_type}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">Samples</p>
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">Samples</p>
             <p className="text-lg font-semibold">{result.metadata.n_samples.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">Execution Time</p>
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">Execution Time</p>
             <p className="text-lg font-semibold">
               {formatExecutionTime(result.execution_time_ms)}
             </p>
@@ -175,7 +175,7 @@ export function SelectedFeatureSet({
 
         {/* Selected Features Table */}
         <div>
-          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+          <h4 className="text-sm font-semibold text-foreground mb-3">
             Selected Features ({selectedFeatures.length})
           </h4>
           <div className="border rounded-lg overflow-hidden">
@@ -210,7 +210,7 @@ export function SelectedFeatureSet({
                             style={{ width: `${feature.score * 100}%` }}
                           />
                         </div>
-                        <span className="text-xs text-gray-600">{(feature.score * 100).toFixed(1)}%</span>
+                        <span className="text-xs text-muted-foreground">{(feature.score * 100).toFixed(1)}%</span>
                       </div>
                     </TableCell>
                   </TableRow>

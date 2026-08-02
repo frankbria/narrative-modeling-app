@@ -92,7 +92,7 @@ export default function FunctionPalette() {
     <div className="space-y-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 w-full text-left font-medium text-gray-700 hover:text-gray-900"
+        className="flex items-center gap-2 w-full text-left font-medium text-foreground hover:text-foreground"
       >
         {isExpanded ? (
           <ChevronDown className="w-4 h-4" />
@@ -108,7 +108,7 @@ export default function FunctionPalette() {
             <div key={category}>
               <button
                 onClick={() => toggleCategory(category)}
-                className="flex items-center gap-1 text-xs uppercase text-gray-500 font-medium hover:text-gray-700 mb-1"
+                className="flex items-center gap-1 text-xs uppercase text-muted-foreground font-medium hover:text-foreground mb-1"
               >
                 {expandedCategories[category] ? (
                   <ChevronDown className="w-3 h-3" />

@@ -117,27 +117,27 @@ export function HistogramModal({ isOpen, onClose, columnName, histogramData }: H
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl bg-white">
+      <DialogContent className="max-w-3xl bg-card">
         <DialogHeader className="border-b pb-4">
           <DialogTitle className="text-xl font-bold">Histogram for {columnName}</DialogTitle>
         </DialogHeader>
         <div className="p-4">
-          <div className="h-[400px] bg-white p-4 rounded-lg shadow-sm">
+          <div className="h-[400px] bg-card p-4 rounded-lg shadow-sm">
             <Bar data={data} options={options} />
           </div>
-          <div className="mt-4 p-3 bg-gray-50 rounded-md text-sm text-gray-700">
+          <div className="mt-4 p-3 bg-muted rounded-md text-sm text-foreground">
             <p className="font-medium">Summary Statistics:</p>
             <div className="grid grid-cols-3 gap-4 mt-2">
               <div>
-                <p className="text-gray-500">Min</p>
+                <p className="text-muted-foreground">Min</p>
                 <p className="font-semibold">{histogramData.min_value.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-gray-500">Max</p>
+                <p className="text-muted-foreground">Max</p>
                 <p className="font-semibold">{histogramData.max_value.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-gray-500">Bin Width</p>
+                <p className="text-muted-foreground">Bin Width</p>
                 <p className="font-semibold">{histogramData.bin_width.toFixed(2)}</p>
               </div>
             </div>

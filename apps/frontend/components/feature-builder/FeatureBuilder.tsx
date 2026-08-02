@@ -349,7 +349,7 @@ export default function FeatureBuilder({
   return (
     <div className="flex h-full">
       {/* Left Sidebar - Palettes */}
-      <div className="w-64 bg-gray-50 border-r overflow-y-auto">
+      <div className="w-64 bg-muted border-r overflow-y-auto">
         <div className="p-4 space-y-4">
           <h2 className="text-lg font-semibold">Feature Builder</h2>
 
@@ -359,7 +359,7 @@ export default function FeatureBuilder({
 
           {/* Constants */}
           <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Constants</h3>
+            <h3 className="text-sm font-medium text-foreground mb-2">Constants</h3>
             <div
               className="p-2 bg-purple-100 rounded cursor-move border border-purple-200 hover:bg-purple-200 transition-colors"
               draggable
@@ -378,7 +378,7 @@ export default function FeatureBuilder({
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
         {/* Toolbar */}
-        <div className="bg-white border-b p-4 flex items-center justify-between">
+        <div className="bg-card border-b p-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <input
               type="text"
@@ -409,7 +409,7 @@ export default function FeatureBuilder({
             <button
               onClick={handleClear}
               disabled={nodes.length === 0}
-              className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 flex items-center gap-2"
+              className="px-3 py-2 text-muted-foreground hover:bg-muted rounded-lg disabled:opacity-50 flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4" />
               Clear
@@ -417,7 +417,7 @@ export default function FeatureBuilder({
             {onClose && (
               <button
                 onClick={onClose}
-                className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="px-3 py-2 text-muted-foreground hover:bg-muted rounded-lg"
               >
                 Cancel
               </button>
@@ -447,7 +447,7 @@ export default function FeatureBuilder({
 
             {nodes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center text-gray-500">
+                <div className="text-center text-muted-foreground">
                   <p className="text-lg font-medium">Drag nodes here to build your feature</p>
                   <p className="text-sm mt-2">Connect nodes to create expressions</p>
                 </div>

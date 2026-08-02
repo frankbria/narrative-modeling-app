@@ -39,7 +39,7 @@ export default function PreparePage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <h2 className="text-2xl font-semibold mb-2">No Dataset Selected</h2>
-          <p className="text-gray-600 mb-4">Please complete the data loading step first.</p>
+          <p className="text-muted-foreground mb-4">Please complete the data loading step first.</p>
           <button
             onClick={() => router.push('/upload')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -53,10 +53,10 @@ export default function PreparePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-card border-b px-6 py-4">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900">Data Preparation</h1>
-          <p className="text-gray-600 mt-1">Clean and transform your data using our visual pipeline builder</p>
+          <h1 className="text-2xl font-bold text-foreground">Data Preparation</h1>
+          <p className="text-muted-foreground mt-1">Clean and transform your data using our visual pipeline builder</p>
         </div>
       </div>
       
@@ -67,7 +67,7 @@ export default function PreparePage() {
         />
       </div>
 
-      <div className="bg-white border-t px-6 py-4">
+      <div className="bg-card border-t px-6 py-4">
         <div className="max-w-7xl mx-auto">
           {/* Data preparation is optional — the user can apply transformations
               or skip straight to feature engineering. `ready` keeps Continue

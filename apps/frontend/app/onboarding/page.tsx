@@ -168,8 +168,8 @@ export default function OnboardingPage() {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
       case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'skipped': return 'bg-gray-100 text-gray-600';
-      default: return 'bg-gray-50 text-gray-500';
+      case 'skipped': return 'bg-muted text-muted-foreground';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -199,15 +199,15 @@ export default function OnboardingPage() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-blue-600">{status.completed_steps}</div>
-                <div className="text-sm text-gray-600">Steps Completed</div>
+                <div className="text-sm text-muted-foreground">Steps Completed</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-green-600">{achievements.length}</div>
-                <div className="text-sm text-gray-600">Achievements</div>
+                <div className="text-sm text-muted-foreground">Achievements</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-purple-600">{status.time_spent_minutes}</div>
-                <div className="text-sm text-gray-600">Minutes Spent</div>
+                <div className="text-sm text-muted-foreground">Minutes Spent</div>
               </div>
             </div>
 
@@ -281,7 +281,7 @@ export default function OnboardingPage() {
                     className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
                       currentStep?.step_id === step.step_id 
                         ? 'bg-blue-50 border border-blue-200' 
-                        : 'hover:bg-gray-50'
+                        : 'hover:bg-muted'
                     }`}
                     onClick={() => setCurrentStep(step)}
                   >
@@ -330,17 +330,17 @@ export default function OnboardingPage() {
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl mb-2">📊</div>
                       <div className="font-medium">Upload Data</div>
-                      <div className="text-sm text-gray-600">Start with your CSV file</div>
+                      <div className="text-sm text-muted-foreground">Start with your CSV file</div>
                     </div>
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl mb-2">🤖</div>
                       <div className="font-medium">Train Models</div>
-                      <div className="text-sm text-gray-600">AI finds the best algorithm</div>
+                      <div className="text-sm text-muted-foreground">AI finds the best algorithm</div>
                     </div>
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl mb-2">🚀</div>
                       <div className="font-medium">Make Predictions</div>
-                      <div className="text-sm text-gray-600">Get insights from your data</div>
+                      <div className="text-sm text-muted-foreground">Get insights from your data</div>
                     </div>
                   </div>
 
@@ -365,7 +365,7 @@ export default function OnboardingPage() {
                   </TabsList>
                   
                   <TabsContent value="overview" className="space-y-4">
-                    <div className="prose max-w-none">
+                    <div className="prose dark:prose-invert max-w-none">
                       <h3>What you&apos;ll learn:</h3>
                       <ul>
                         <li>How to upload and validate your data</li>
@@ -375,7 +375,7 @@ export default function OnboardingPage() {
                         <li>Exporting models for production use</li>
                       </ul>
                       
-                      <p className="flex items-center gap-2 text-sm text-gray-600">
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Clock className="h-4 w-4" />
                         Estimated time: 20-30 minutes
                       </p>

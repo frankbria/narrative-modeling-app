@@ -175,14 +175,14 @@ export default function TrainingJobsPage() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-600">Please log in to access this page.</p>
+        <p className="text-muted-foreground">Please log in to access this page.</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+      <div className="bg-card rounded-lg shadow-md p-6 space-y-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <ListChecks className="w-6 h-6 text-indigo-500" />
           Training Jobs
@@ -199,9 +199,9 @@ export default function TrainingJobsPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">In-Flight Training</h2>
           {isLoading ? (
-            <p className="text-sm text-gray-500">Loading training jobs…</p>
+            <p className="text-sm text-muted-foreground">Loading training jobs…</p>
           ) : inFlightJobs.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               No training jobs are currently running.
             </p>
           ) : (
@@ -209,12 +209,12 @@ export default function TrainingJobsPage() {
               {inFlightJobs.map((job) => (
                 <div
                   key={job.model_id}
-                  className="border border-gray-200 rounded-lg p-4 space-y-3"
+                  className="border border-border rounded-lg p-4 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium truncate">{job.target_column}</p>
-                      <p className="text-xs text-gray-500 truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         Dataset {job.dataset_id}
                       </p>
                     </div>
@@ -246,7 +246,7 @@ export default function TrainingJobsPage() {
               aria-label="Filter by status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as HistoryFilter)}
-              className="p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="p-2 text-sm border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">All</option>
               <option value="completed">Completed</option>
@@ -256,7 +256,7 @@ export default function TrainingJobsPage() {
           </div>
 
           {historyJobs.length === 0 ? (
-            <p className="text-sm text-gray-500">No finished training jobs yet.</p>
+            <p className="text-sm text-muted-foreground">No finished training jobs yet.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -279,7 +279,7 @@ export default function TrainingJobsPage() {
                     </TableCell>
                     <TableCell>
                       <span className="font-medium">{job.target_column}</span>
-                      <span className="block text-xs text-gray-500">
+                      <span className="block text-xs text-muted-foreground">
                         Dataset {job.dataset_id}
                       </span>
                     </TableCell>

@@ -54,7 +54,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
     <div
       key={column.name}
       className={`p-2 rounded cursor-move border hover:opacity-80 transition-opacity ${
-        typeColors[column.type] || 'bg-gray-100 text-gray-800 border-gray-200'
+        typeColors[column.type] || 'bg-muted text-foreground border-border'
       }`}
       draggable
       onDragStart={(e) => handleDragStart(e, column)}
@@ -73,7 +73,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
     <div className="space-y-2">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 w-full text-left font-medium text-gray-700 hover:text-gray-900"
+        className="flex items-center gap-2 w-full text-left font-medium text-foreground hover:text-foreground"
       >
         {isExpanded ? (
           <ChevronDown className="w-4 h-4" />
@@ -103,7 +103,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
               {filteredColumns.length > 0 ? (
                 filteredColumns.map(renderColumn)
               ) : (
-                <p className="text-sm text-gray-500 text-center py-2">
+                <p className="text-sm text-muted-foreground text-center py-2">
                   No columns match your search
                 </p>
               )}
@@ -112,7 +112,7 @@ export default function ColumnPalette({ columns }: ColumnPaletteProps) {
             <div className="space-y-3 max-h-64 overflow-y-auto">
               {Object.entries(groupedColumns).map(([type, cols]) => (
                 <div key={type}>
-                  <h4 className="text-xs uppercase text-gray-500 font-medium mb-1.5">
+                  <h4 className="text-xs uppercase text-muted-foreground font-medium mb-1.5">
                     {type} ({cols.length})
                   </h4>
                   <div className="space-y-1.5">

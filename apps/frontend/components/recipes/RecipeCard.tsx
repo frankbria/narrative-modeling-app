@@ -159,7 +159,7 @@ export function RecipeCard({
           )}
 
           {/* Metadata */}
-          <div className="flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1">
                 <CheckCircle className="w-4 h-4" />
@@ -191,7 +191,7 @@ export function RecipeCard({
                   </span>
                 ))}
               </div>
-              <span className="text-sm text-gray-600">{recipe.rating.toFixed(1)}</span>
+              <span className="text-sm text-muted-foreground">{recipe.rating.toFixed(1)}</span>
             </div>
           )}
 

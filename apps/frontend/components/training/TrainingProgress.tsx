@@ -160,7 +160,7 @@ export function TrainingProgress({
 
   return (
     <div
-      className={`bg-white rounded-lg border border-gray-200 ${
+      className={`bg-card rounded-lg border border-border ${
         compact ? 'p-4 space-y-3' : 'p-6 space-y-4'
       } ${className}`}
     >
@@ -195,7 +195,7 @@ export function TrainingProgress({
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-sm text-gray-600">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>
                 {status && status.total_algorithms > 0
                   ? `${status.completed_algorithms} of ${status.total_algorithms} algorithms trained`
@@ -204,7 +204,7 @@ export function TrainingProgress({
               <span className="font-medium">{progressPercent}%</span>
             </div>
             <Progress value={progressPercent} className={compact ? 'h-2' : 'h-3'} />
-            {timing && <p className="text-xs text-gray-500 text-right">{timing}</p>}
+            {timing && <p className="text-xs text-muted-foreground text-right">{timing}</p>}
           </div>
         </>
       )}
@@ -252,7 +252,7 @@ export function TrainingProgress({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 border-b">
+              <tr className="text-left text-muted-foreground border-b">
                 <th className="py-2 pr-4">Algorithm</th>
                 <th className="py-2 pr-4">CV Score</th>
                 <th className="py-2">Test Score</th>

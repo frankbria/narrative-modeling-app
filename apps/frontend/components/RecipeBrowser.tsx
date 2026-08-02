@@ -144,7 +144,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
             </Badge>
           ))}
         </div>
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Users className="w-4 h-4" />
@@ -189,7 +189,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
                 {loading ? (
                   <div className="text-center py-8">Loading recipes...</div>
                 ) : filteredRecipes.filter((r) => !r.is_public).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     No recipes found. Create your first recipe by building a transformation pipeline!
                   </div>
                 ) : (
@@ -205,7 +205,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
             <ScrollArea className="h-full">
               <div className="p-4 grid gap-4">
                 {filteredRecipes.filter((r) => r.is_public).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     No community recipes found.
                   </div>
                 ) : (
@@ -230,11 +230,11 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
       </div>
 
       {selectedRecipe && (
-        <div className="w-96 border-l bg-white p-6">
+        <div className="w-96 border-l bg-card p-6">
           <div className="mb-6">
             <h2 className="text-xl font-bold mb-2">{selectedRecipe.name}</h2>
             {selectedRecipe.description && (
-              <p className="text-gray-600">{selectedRecipe.description}</p>
+              <p className="text-muted-foreground">{selectedRecipe.description}</p>
             )}
           </div>
 
@@ -251,7 +251,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
                     <div className="flex-1">
                       <div className="font-medium text-sm">{step.type}</div>
                       {step.description && (
-                        <div className="text-xs text-gray-500">{step.description}</div>
+                        <div className="text-xs text-muted-foreground">{step.description}</div>
                       )}
                     </div>
                   </div>

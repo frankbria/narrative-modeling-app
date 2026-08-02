@@ -164,8 +164,8 @@ export default function QuickstartPage() {
   return (
     <div className="max-w-6xl mx-auto p-6" data-testid="quickstart">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Quickstart Guide</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">Quickstart Guide</h1>
+        <p className="text-muted-foreground mt-2">
           Build, evaluate, and deploy a machine-learning model in eight guided
           stages — no code required. Follow them in order or jump to any step.
         </p>
@@ -187,7 +187,7 @@ export default function QuickstartPage() {
                   <li key={stage.id}>
                     <a
                       href={`#${stage.id}`}
-                      className="text-gray-700 hover:text-primary hover:underline"
+                      className="text-foreground hover:text-primary hover:underline"
                     >
                       {stage.number}. {stage.title}
                     </a>
@@ -215,13 +215,13 @@ export default function QuickstartPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-gray-700">{stage.purpose}</p>
+                  <p className="text-foreground">{stage.purpose}</p>
 
                   <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Key actions</h3>
+                    <h3 className="font-semibold text-foreground mb-2">Key actions</h3>
                     <ul className="space-y-1">
                       {stage.actions.map((action, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <li key={i} className="flex items-start gap-2 text-sm text-foreground">
                           <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
                           <span>{action}</span>
                         </li>
@@ -229,9 +229,9 @@ export default function QuickstartPage() {
                     </ul>
                   </div>
 
-                  <div className="rounded-md bg-gray-50 p-3 text-sm">
-                    <span className="font-semibold text-gray-900">What you get: </span>
-                    <span className="text-gray-700">{stage.outcome}</span>
+                  <div className="rounded-md bg-muted p-3 text-sm">
+                    <span className="font-semibold text-foreground">What you get: </span>
+                    <span className="text-foreground">{stage.outcome}</span>
                   </div>
 
                   <Button asChild variant="outline" size="sm">
@@ -248,8 +248,8 @@ export default function QuickstartPage() {
           <Card className="bg-primary/5">
             <CardContent className="py-4 flex items-center justify-between flex-wrap gap-4">
               <div>
-                <h3 className="font-semibold text-gray-900">Ready to begin?</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="font-semibold text-foreground">Ready to begin?</h3>
+                <p className="text-sm text-muted-foreground">
                   Start at Stage 1 by uploading your first dataset.
                 </p>
               </div>

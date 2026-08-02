@@ -194,7 +194,7 @@ export default function FeatureList({
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="p-8 text-center text-muted-foreground">
         Loading features...
       </div>
     );
@@ -257,7 +257,7 @@ export default function FeatureList({
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm ${
                   selectedTags.includes(tag)
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-muted text-foreground hover:bg-gray-200'
                 }`}
               >
                 <Tag className="w-3 h-3" />
@@ -270,7 +270,7 @@ export default function FeatureList({
 
       {/* Feature List */}
       {filteredFeatures.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           {features.length === 0 ? (
             <>
               <p className="text-lg font-medium">No features yet</p>
@@ -285,7 +285,7 @@ export default function FeatureList({
           {filteredFeatures.map((feature) => (
             <div
               key={feature.feature_id}
-              className="p-4 bg-white border rounded-lg hover:shadow-sm transition-shadow"
+              className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -299,23 +299,23 @@ export default function FeatureList({
                   </div>
 
                   {feature.description && (
-                    <p className="text-sm text-gray-600 mt-1">{feature.description}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{feature.description}</p>
                   )}
 
                   {feature.formula_string && (
-                    <code className="block mt-2 text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700 max-w-full overflow-hidden text-ellipsis">
+                    <code className="block mt-2 text-xs font-mono bg-muted px-2 py-1 rounded text-foreground max-w-full overflow-hidden text-ellipsis">
                       {feature.formula_string}
                     </code>
                   )}
 
-                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                  <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                     <span>Created {formatDate(feature.created_at)}</span>
                     {feature.tags.length > 0 && (
                       <div className="flex gap-1">
                         {feature.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600"
+                            className="px-1.5 py-0.5 bg-muted rounded text-muted-foreground"
                           >
                             {tag}
                           </span>
@@ -336,14 +336,14 @@ export default function FeatureList({
                   )}
                   <button
                     onClick={() => onEdit(feature)}
-                    className="p-2 hover:bg-gray-100 rounded"
+                    className="p-2 hover:bg-muted rounded"
                     title="Edit"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDuplicate(feature)}
-                    className="p-2 hover:bg-gray-100 rounded"
+                    className="p-2 hover:bg-muted rounded"
                     title="Duplicate"
                   >
                     <Copy className="w-4 h-4" />

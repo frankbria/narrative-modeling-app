@@ -47,8 +47,8 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
   const numLabels = data.labels.length
   if (numLabels === 0 || data.matrix.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
-        <p className="text-gray-500">No confusion matrix data available</p>
+      <div className="flex items-center justify-center h-64 bg-muted rounded-lg border border-border">
+        <p className="text-muted-foreground">No confusion matrix data available</p>
       </div>
     )
   }
@@ -209,23 +209,23 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
           data-testid="confusion-cell-detail"
           className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm"
         >
-          <h4 className="font-semibold text-gray-900 mb-2">Cell detail</h4>
+          <h4 className="font-semibold text-foreground mb-2">Cell detail</h4>
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div>
-              <dt className="text-gray-600">Actual</dt>
-              <dd className="font-medium text-gray-900">{data.labels[selected.row]}</dd>
+              <dt className="text-muted-foreground">Actual</dt>
+              <dd className="font-medium text-foreground">{data.labels[selected.row]}</dd>
             </div>
             <div>
-              <dt className="text-gray-600">Predicted</dt>
-              <dd className="font-medium text-gray-900">{data.labels[selected.col]}</dd>
+              <dt className="text-muted-foreground">Predicted</dt>
+              <dd className="font-medium text-foreground">{data.labels[selected.col]}</dd>
             </div>
             <div>
-              <dt className="text-gray-600">Count</dt>
-              <dd className="font-medium text-gray-900">{selectedCount}</dd>
+              <dt className="text-muted-foreground">Count</dt>
+              <dd className="font-medium text-foreground">{selectedCount}</dd>
             </div>
             <div>
-              <dt className="text-gray-600">% of actual {data.labels[selected.row]}</dt>
-              <dd className="font-medium text-gray-900">
+              <dt className="text-muted-foreground">% of actual {data.labels[selected.row]}</dt>
+              <dd className="font-medium text-foreground">
                 {rowPercent(selected.row, selectedCount).toFixed(1)}%
               </dd>
             </div>

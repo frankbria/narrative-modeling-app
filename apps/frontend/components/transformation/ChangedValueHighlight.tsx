@@ -81,7 +81,7 @@ export function ChangedValueHighlight({
   };
 
   if (!isChanged) {
-    return <span className="text-gray-900">{formatValue(value)}</span>;
+    return <span className="text-foreground">{formatValue(value)}</span>;
   }
 
   return (
@@ -107,7 +107,7 @@ export function ChangedValueHighlight({
             <div className="flex items-center gap-2">
               <span className="text-gray-400">{formatValue(oldValue)}</span>
               <svg
-                className="w-3 h-3 text-gray-500"
+                className="w-3 h-3 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

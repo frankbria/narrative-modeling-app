@@ -224,7 +224,7 @@ export function InteractiveTutorial({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-muted-foreground">
             {completedSteps.size > 0 ? (
               <span>Progress: {completedSteps.size} of {steps.length} steps completed</span>
             ) : (
@@ -286,7 +286,7 @@ export function InteractiveTutorial({
             <h3 className="font-medium">{currentStep.title}</h3>
           </div>
 
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             {currentStep.content}
           </p>
 

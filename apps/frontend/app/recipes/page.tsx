@@ -106,7 +106,7 @@ export default function RecipesPage() {
             Create New Recipe
           </Button>
         </div>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Save, share, and reuse data transformation workflows
         </p>
       </div>
@@ -163,7 +163,7 @@ export default function RecipesPage() {
         <TabsContent value="shared" className="space-y-4">
           <div className="mb-4">
             <h2 className="text-xl font-semibold mb-2">Recipes Shared with You</h2>
-            <p className="text-gray-600 text-sm">
+            <p className="text-muted-foreground text-sm">
               These recipes have been shared by other users. You have full access to use and modify them.
             </p>
           </div>
@@ -175,10 +175,10 @@ export default function RecipesPage() {
           )}
 
           {!loadingShared && sharedRecipes.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
+            <div className="text-center py-12 bg-muted rounded-lg">
               <Share2 className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No shared recipes</h3>
-              <p className="text-gray-600">
+              <h3 className="text-lg font-semibold text-foreground mb-2">No shared recipes</h3>
+              <p className="text-muted-foreground">
                 When someone shares a recipe with you, it will appear here
               </p>
             </div>
@@ -188,15 +188,15 @@ export default function RecipesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sharedRecipes.map((sharedRecipe) => (
                 <div key={sharedRecipe.id} className="space-y-2">
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     Shared by {sharedRecipe.original_owner_id} on{' '}
                     {new Date(sharedRecipe.shared_at).toLocaleDateString()}
                   </div>
                   {/* Note: We would need to fetch the full recipe details here */}
-                  <div className="bg-white border rounded-lg p-4">
+                  <div className="bg-card border rounded-lg p-4">
                     <h3 className="font-semibold mb-1">{sharedRecipe.name}</h3>
-                    <p className="text-sm text-gray-600 mb-3">{sharedRecipe.description}</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
+                    <p className="text-sm text-muted-foreground mb-3">{sharedRecipe.description}</p>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{sharedRecipe.steps_count} steps</span>
                       <span>Version {sharedRecipe.version}</span>
                     </div>
@@ -211,7 +211,7 @@ export default function RecipesPage() {
         <TabsContent value="popular" className="space-y-4">
           <div className="mb-4">
             <h2 className="text-xl font-semibold mb-2">Most Popular Recipes</h2>
-            <p className="text-gray-600 text-sm">
+            <p className="text-muted-foreground text-sm">
               The most used and highly-rated recipes from the community
             </p>
           </div>
@@ -223,10 +223,10 @@ export default function RecipesPage() {
           )}
 
           {!loadingPopular && popularRecipes.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
+            <div className="text-center py-12 bg-muted rounded-lg">
               <TrendingUp className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No popular recipes yet</h3>
-              <p className="text-gray-600">
+              <h3 className="text-lg font-semibold text-foreground mb-2">No popular recipes yet</h3>
+              <p className="text-muted-foreground">
                 Create and share recipes to build the community library
               </p>
             </div>

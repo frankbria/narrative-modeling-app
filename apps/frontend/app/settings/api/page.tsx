@@ -425,7 +425,7 @@ export default function APIKeysPage() {
       <AlertDialog.Root open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 bg-black/40 z-50" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-lg focus:outline-none">
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card p-6 shadow-lg focus:outline-none">
             <AlertDialog.Title className="text-lg font-semibold mb-2">Revoke API Key</AlertDialog.Title>
             <AlertDialog.Description className="mb-6 text-muted-foreground">
               Are you sure you want to revoke this API key? Applications using this key will no longer be able to access your models.

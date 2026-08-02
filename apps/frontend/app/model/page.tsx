@@ -158,14 +158,14 @@ export default function ModelPage() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-600">Please log in to access this page.</p>
+        <p className="text-muted-foreground">Please log in to access this page.</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Brain className="w-6 h-6 text-indigo-500" />
           Model Training
@@ -220,14 +220,14 @@ export default function ModelPage() {
               <select
                 value={modelConfig.target_column}
                 onChange={(e) => setModelConfig(prev => ({ ...prev, target_column: e.target.value }))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Select target column...</option>
                 {columns.map(column => (
                   <option key={column} value={column}>{column}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 The column you want the model to predict.
               </p>
             </div>
@@ -260,7 +260,7 @@ export default function ModelPage() {
                 className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
                   modelConfig.target_column && !training
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
                 }`}
               >
                 <PlayCircle className="w-5 h-5" />
@@ -269,7 +269,7 @@ export default function ModelPage() {
             </div>
           </div>
         ) : !trainingModelId ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-gray-600">
+          <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span>Starting training…</span>
           </div>
@@ -281,7 +281,7 @@ export default function ModelPage() {
                   <Brain className="w-8 h-8 text-blue-600 animate-pulse" />
                 </div>
                 <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   This may take a few minutes depending on your data size
                 </p>
               </div>
@@ -302,7 +302,7 @@ export default function ModelPage() {
                   onCancelled={() => setCancellationRequested(true)}
                 />
                 {cancellationRequested && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Cancellation requested — finishing the current algorithm…
                   </p>
                 )}
@@ -329,32 +329,32 @@ export default function ModelPage() {
             {completedStatus && (
               <div className="space-y-4">
                 {completedStatus.explanation && (
-                  <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-muted-foreground bg-muted rounded-lg p-3">
                     {completedStatus.explanation}
                   </p>
                 )}
 
                 {completedStatus.algorithm_recommendations.length > 0 && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-semibold text-gray-700">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Why these algorithms?
                     </h3>
                     <div className="space-y-2">
                       {completedStatus.algorithm_recommendations.map((rec) => (
                         <div
                           key={rec.algorithm_name}
-                          className="border border-gray-200 rounded-lg p-3"
+                          className="border border-border rounded-lg p-3"
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-sm">
                               {rec.algorithm_name}
                             </span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-muted-foreground">
                               Priority {rec.priority}/10 · Interpretability{' '}
                               {rec.interpretability_score}/10
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             {rec.explanation}
                           </p>
                         </div>

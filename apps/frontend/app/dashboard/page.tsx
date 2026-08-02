@@ -84,7 +84,7 @@ function getStatusColor(status: string): string {
     case 'failed':
       return 'bg-red-100 text-red-800';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-muted text-foreground';
   }
 }
 
@@ -184,8 +184,8 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto p-6" data-testid="dashboard">
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-muted-foreground mt-2">
           Welcome to Narrative Modeling. Track your progress through the 8-stage ML workflow.
         </p>
       </div>
@@ -252,7 +252,7 @@ export default function DashboardPage() {
                       ? 'bg-green-100 text-green-800'
                       : isCurrent
                       ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-500'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {isCompleted && <CheckCircle size={12} />}
@@ -266,7 +266,7 @@ export default function DashboardPage() {
 
       {/* Navigation Cards */}
       <div className="mb-6" data-testid="navigation-cards">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Workflow Stages</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Workflow Stages</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {WORKFLOW_STAGES.map((stage) => {
             const Icon = STAGE_ICONS[stage.icon] || Database;
@@ -297,7 +297,7 @@ export default function DashboardPage() {
                         ? 'bg-green-100'
                         : isCurrent
                         ? 'bg-blue-100'
-                        : 'bg-gray-100'
+                        : 'bg-muted'
                     }`}>
                       <Icon
                         size={20}
@@ -306,7 +306,7 @@ export default function DashboardPage() {
                             ? 'text-green-600'
                             : isCurrent
                             ? 'text-blue-600'
-                            : 'text-gray-500'
+                            : 'text-muted-foreground'
                         }
                       />
                     </div>
@@ -316,8 +316,8 @@ export default function DashboardPage() {
                       <Lock size={18} className="text-gray-400" />
                     ) : null}
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm mb-1">{stage.name}</h3>
-                  <p className="text-xs text-gray-600">{stage.description}</p>
+                  <h3 className="font-semibold text-foreground text-sm mb-1">{stage.name}</h3>
+                  <p className="text-xs text-muted-foreground">{stage.description}</p>
                 </CardContent>
               </Card>
             );
@@ -366,7 +366,7 @@ export default function DashboardPage() {
                 {recentDatasets.map((dataset) => (
                   <div
                     key={dataset.dataset_id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
                     onClick={() => router.push(`/explore/${dataset.dataset_id}`)}
                     role="button"
                     tabIndex={0}
@@ -380,10 +380,10 @@ export default function DashboardPage() {
                       <Database size={16} className="text-blue-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-900 truncate">
+                      <p className="font-medium text-sm text-foreground truncate">
                         {dataset.filename}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         {dataset.num_rows.toLocaleString()} rows, {dataset.num_columns} columns
                       </p>
                     </div>
@@ -405,7 +405,7 @@ export default function DashboardPage() {
             ) : (
               <div className="text-center py-8">
                 <Database size={32} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm mb-4">No datasets yet</p>
+                <p className="text-muted-foreground text-sm mb-4">No datasets yet</p>
                 <Button
                   size="sm"
                   onClick={() => router.push('/upload')}
@@ -457,7 +457,7 @@ export default function DashboardPage() {
                 {recentModels.map((model) => (
                   <div
                     key={model.model_id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
                     onClick={() => router.push(`/model/${model.model_id}`)}
                     role="button"
                     tabIndex={0}
@@ -471,11 +471,11 @@ export default function DashboardPage() {
                       <Brain size={16} className="text-purple-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-900 truncate">
+                      <p className="font-medium text-sm text-foreground truncate">
                         {model.name}
                       </p>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">{model.algorithm}</span>
+                        <span className="text-xs text-muted-foreground">{model.algorithm}</span>
                         <span className={`text-xs px-1.5 py-0.5 rounded ${getStatusColor(model.status)}`}>
                           {model.status}
                         </span>
@@ -501,7 +501,7 @@ export default function DashboardPage() {
             ) : (
               <div className="text-center py-8">
                 <Brain size={32} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm mb-4">No models trained yet</p>
+                <p className="text-muted-foreground text-sm mb-4">No models trained yet</p>
                 <Button
                   size="sm"
                   onClick={() => router.push('/model')}
@@ -521,8 +521,8 @@ export default function DashboardPage() {
         <CardContent className="py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="font-semibold text-gray-900">Need help getting started?</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="font-semibold text-foreground">Need help getting started?</h3>
+              <p className="text-sm text-muted-foreground">
                 Follow the 8-stage workflow to build and deploy your ML models.
               </p>
             </div>

@@ -226,7 +226,7 @@ export function TransformationPreview({
       {loading && (
         <div className="flex items-center justify-center p-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-          <span className="ml-2 text-gray-600">Generating preview...</span>
+          <span className="ml-2 text-muted-foreground">Generating preview...</span>
         </div>
       )}
 
@@ -290,7 +290,7 @@ export function TransformationPreview({
 
       {/* No operations message */}
       {operations.length === 0 && !loading && (
-        <div className="text-center p-8 text-gray-500">
+        <div className="text-center p-8 text-muted-foreground">
           Add transformation operations to see a preview
         </div>
       )}

@@ -45,12 +45,12 @@ function formatMetricLabel(key: string): string {
 
 function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-gray-50 rounded-lg p-4">
+    <div className="bg-muted rounded-lg p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-600">{label}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
         <Target className="w-4 h-4 text-gray-400" />
       </div>
-      <div className="text-2xl font-bold text-gray-900">{value.toFixed(4)}</div>
+      <div className="text-2xl font-bold text-foreground">{value.toFixed(4)}</div>
     </div>
   );
 }
@@ -126,22 +126,22 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
               AI-generated
             </Badge>
           ) : (
-            <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">
+            <Badge className="bg-muted text-foreground hover:bg-muted">
               Rule-based
             </Badge>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-gray-700">{explanation.overall_assessment}</p>
+        <p className="text-sm text-foreground">{explanation.overall_assessment}</p>
         {lists
           .filter(({ items }) => items.length > 0)
           .map(({ title, items, icon }) => (
             <div key={title}>
-              <h4 className="text-sm font-semibold text-gray-900 mb-1">{title}</h4>
+              <h4 className="text-sm font-semibold text-foreground mb-1">{title}</h4>
               <ul className="space-y-1">
                 {items.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
+                  <li key={item} className="flex items-start gap-2 text-sm text-foreground">
                     {icon}
                     <span>{item}</span>
                   </li>
@@ -211,15 +211,15 @@ function CompareTab({ datasetId }: { datasetId?: string }) {
       <Card>
         <CardHeader>
           <CardTitle>Select models to compare</CardTitle>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Choose {MIN_COMPARE}–{MAX_COMPARE} models trained on this dataset.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
           {listLoading ? (
-            <p className="text-sm text-gray-500">Loading models…</p>
+            <p className="text-sm text-muted-foreground">Loading models…</p>
           ) : models.length === 0 ? (
-            <p className="text-sm text-gray-500">No trained models found for this dataset.</p>
+            <p className="text-sm text-muted-foreground">No trained models found for this dataset.</p>
           ) : (
             <ul className="space-y-2">
               {models.map((model) => {
@@ -238,10 +238,10 @@ function CompareTab({ datasetId }: { datasetId?: string }) {
                     />
                     <label
                       htmlFor={`compare-${model.model_id}`}
-                      className="text-sm text-gray-900 cursor-pointer"
+                      className="text-sm text-foreground cursor-pointer"
                     >
                       {model.name}
-                      <span className="ml-2 text-xs text-gray-500">{model.algorithm}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{model.algorithm}</span>
                     </label>
                   </li>
                 );
@@ -335,7 +335,7 @@ export default function EvaluatePage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center max-w-md">
           <h2 className="text-2xl font-semibold mb-2">Failed to Load Evaluation</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-muted-foreground mb-4">{error}</p>
           <Button onClick={() => router.push('/model')}>Go to Model Training</Button>
         </div>
       </div>
@@ -347,7 +347,7 @@ export default function EvaluatePage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <h2 className="text-2xl font-semibold mb-2">No Evaluation Data</h2>
-          <p className="text-gray-600 mb-4">Model evaluation data is not available.</p>
+          <p className="text-muted-foreground mb-4">Model evaluation data is not available.</p>
           <Button onClick={() => router.push('/model')}>Go to Model Training</Button>
         </div>
       </div>
@@ -377,7 +377,7 @@ export default function EvaluatePage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-card rounded-lg shadow-md p-6">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -385,7 +385,7 @@ export default function EvaluatePage() {
             <div>
               <h1 className="text-2xl font-bold">Model Evaluation</h1>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm text-gray-700">
+                <span className="text-sm text-foreground">
                   {evaluation.model_name ?? evaluation.model_id}
                 </span>
                 {evaluation.algorithm && (

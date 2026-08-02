@@ -111,7 +111,7 @@ export function HealthMonitor({
         <CardContent>
           <div className="space-y-4">
             {/* Status Overview */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
               <div className="flex items-center gap-3">
                 {getStatusIcon()}
                 <div>

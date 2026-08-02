@@ -190,7 +190,7 @@ export default function ReviewPage() {
       ) : error ? (
         <div className="text-red-500 p-6">{error}</div>
       ) : !data ? (
-        <div className="text-gray-500 p-6">Select a dataset to view its analysis</div>
+        <div className="text-muted-foreground p-6">Select a dataset to view its analysis</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="md:col-span-1">
@@ -202,7 +202,7 @@ export default function ReviewPage() {
                 <div className="space-y-4">
                   {datasets.length === 0 ? (
                     <div className="text-center">
-                      <p className="text-gray-500 mb-4">No datasets available</p>
+                      <p className="text-muted-foreground mb-4">No datasets available</p>
                       <Link href="/upload">
                         <Button className="w-full">Upload Dataset</Button>
                       </Link>
@@ -215,15 +215,15 @@ export default function ReviewPage() {
                           className={`p-3 rounded-lg cursor-pointer transition-colors ${
                             selectedDatasetId === dataset._id
                               ? 'bg-blue-100 border-2 border-blue-500 shadow-md'
-                              : 'hover:bg-gray-50 border border-gray-200'
+                              : 'hover:bg-muted border border-border'
                           }`}
                           onClick={() => handleDatasetSelect(dataset._id)}
                         >
                           <h3 className="font-medium">{dataset.filename}</h3>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             {dataset.num_rows} rows × {dataset.num_columns} columns
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             Created: {new Date(dataset.created_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -253,7 +253,7 @@ export default function ReviewPage() {
                   <div className="space-y-4">
                     <div className="mt-6">
                       {isLoadingAISummary ? (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           <p>Loading AI analysis...</p>
                         </div>
                       ) : aiSummaryError ? (
@@ -261,7 +261,7 @@ export default function ReviewPage() {
                           <p>Error loading AI analysis: {aiSummaryError}</p>
                         </div>
                       ) : !isAISummaryAvailable ? (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           <p>AI analysis is not yet available. It will be generated automatically after the dataset is processed.</p>
                         </div>
                       ) : (
@@ -306,10 +306,10 @@ export default function ReviewPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-gray-500">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-muted-foreground">
                             <div>
                               <p>Upload Date</p>
-                              <p className="font-medium text-gray-700">
+                              <p className="font-medium text-foreground">
                                 {data.upload_date ? new Date(data.upload_date).toLocaleString() : 'Unknown'}
                               </p>
                             </div>
@@ -389,10 +389,10 @@ export default function ReviewPage() {
                             {data.previewData.map((row, rowIndex) => (
                               <TableRow
                                 key={rowIndex}
-                                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted'}
                               >
                                 {row.map((cell, cellIndex) => (
-                                  <TableCell key={cellIndex} className="text-gray-900">
+                                  <TableCell key={cellIndex} className="text-foreground">
                                     {cell !== null && cell !== undefined ? String(cell) : ''}
                                   </TableCell>
                                 ))}
