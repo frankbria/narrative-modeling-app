@@ -30,6 +30,10 @@ const summaryCache: SummaryCache = {};
  */
 export function useDatasetChatContext(datasetId: string | null) {
   const { data: session, status } = useSession();
+  // `session` is a NEW OBJECT every render, so keying the effect below on it
+  // re-ran it on every render — 547 requests to /ai-summary in 12s on /review,
+  // behind a permanent "Analyzing" spinner (#402). The id is a string.
+  const userId = session?.user?.id;
   const isSessionLoaded = status !== 'loading';
   const [contextString, setContextString] = useState<string | null>(null);
   const [rawMarkdown, setRawMarkdown] = useState<string | null>(null);
@@ -62,7 +66,9 @@ export function useDatasetChatContext(datasetId: string | null) {
 
       try {
         // Check if session is loaded and available
-        if (!isSessionLoaded || !session) {
+        // Checks `userId` rather than `session`: the effect keys on the id, and
+        // depending on the session object re-ran this on every render (#402).
+        if (!isSessionLoaded || !userId) {
           console.warn('Session not loaded or not available');
           setError('Authentication not available. Please sign in to access this feature.');
           setIsAvailable(false);
@@ -182,7 +188,7 @@ export function useDatasetChatContext(datasetId: string | null) {
     };
 
     fetchAISummary();
-  }, [datasetId, session, isSessionLoaded]);
+  }, [datasetId, userId, isSessionLoaded]);
 
   return {
     contextString,

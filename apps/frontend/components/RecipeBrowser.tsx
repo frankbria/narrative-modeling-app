@@ -27,6 +27,12 @@ interface RecipeBrowserProps {
 
 export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) {
   const { data: session } = useSession();
+  // `useSession().data` is a NEW OBJECT on every render, and useAsyncData keys
+  // its effect on dep identity — passing `session` re-fetched on every render,
+  // forever, behind a spinner that never cleared (#402). Depend on the user id,
+  // which is a string and therefore stable, and keep `enabled` on the session
+  // itself so the request still waits for auth.
+  const userId = session?.user?.id
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [activeTab, setActiveTab] = useState('my-recipes');
@@ -37,7 +43,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
       const response = await TransformationService.listRecipes(token);
       return response.recipes;
     },
-    [session],
+    [userId],
     { enabled: !!session },
   );
   const recipes = recipeData ?? [];
@@ -48,7 +54,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
       const response = await TransformationService.getPopularRecipes(token, 10);
       return response.recipes;
     },
-    [session],
+    [userId],
     { enabled: !!session },
   );
   const popularRecipes = popularData ?? [];

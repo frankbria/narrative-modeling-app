@@ -36,6 +36,12 @@ export function RecipeLibrary({
   includePublic = true
 }: RecipeLibraryProps) {
   const { data: session } = useSession();
+  // `useSession().data` is a NEW OBJECT on every render, and useAsyncData keys
+  // its effect on dep identity — passing `session` re-fetched on every render,
+  // forever, behind a spinner that never cleared (#402). Depend on the user id,
+  // which is a string and therefore stable, and keep `enabled` on the session
+  // itself so the request still waits for auth.
+  const userId = session?.user?.id
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
@@ -60,7 +66,7 @@ export function RecipeLibrary({
         selectedTags.length > 0 ? selectedTags : undefined
       );
     },
-    [session, page, selectedTags],
+    [userId, page, selectedTags],
     { enabled: !!session },
   );
   // Duplicate/delete failures are the user's action, not a load failure, so they

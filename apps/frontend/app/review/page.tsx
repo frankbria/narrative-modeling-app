@@ -54,6 +54,12 @@ interface AISummary {
 
 export default function ReviewPage() {
   const { data: session } = useSession()
+  // `useSession().data` is a NEW OBJECT on every render, and useAsyncData keys
+  // its effect on dep identity — passing `session` re-fetched on every render,
+  // forever, behind a spinner that never cleared (#402). Depend on the user id,
+  // which is a string and therefore stable, and keep `enabled` on the session
+  // itself so the request still waits for auth.
+  const userId = session?.user?.id
   const router = useRouter()
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
   const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
@@ -68,7 +74,7 @@ export default function ReviewPage() {
       }
       return response.json()
     },
-    [session],
+    [userId],
     { enabled: !!session?.user?.id },
   )
   const datasets = datasetList ?? []
@@ -116,7 +122,7 @@ export default function ReviewPage() {
             : ([] as StatItem[]),
       }
     },
-    [session, selectedDatasetId],
+    [userId, selectedDatasetId],
     { enabled: !!session?.user?.id && !!selectedDatasetId },
   )
 
@@ -156,7 +162,7 @@ export default function ReviewPage() {
     };
 
     fetchAISummary();
-  }, [data?.id, session]);
+  }, [data?.id, userId]);
 
   const handleDatasetSelect = (datasetId: string) => {
     setSelectedDatasetId(datasetId)
