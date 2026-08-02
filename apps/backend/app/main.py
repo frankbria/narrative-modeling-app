@@ -49,6 +49,7 @@ from app.api.routes import (
     ai_orchestration,
     analytics_result,
     batch_prediction,
+    billing,
     billing_webhook,
     cache,
     column_stats,
@@ -315,6 +316,11 @@ app.include_router(
 # public API surface: it is Stripe's endpoint, already excluded from the OpenAPI
 # schema. Protection here is signature verification plus the body-size limit, not
 # an IP budget (#367).
+app.include_router(
+    billing.router,
+    prefix=f"{settings.API_V1_STR}/billing",
+    tags=["billing"],
+)
 app.include_router(
     billing_webhook.router,
     prefix="/webhooks/stripe",
