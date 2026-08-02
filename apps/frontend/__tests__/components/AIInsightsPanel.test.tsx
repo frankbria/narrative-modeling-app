@@ -1,6 +1,12 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AIInsightsPanel } from '@/components/AIInsightsPanel'
+import { API_BASE_URL } from '@/lib/config'
+
+// The panel sends a bearer token; the backend route reads one.
+jest.mock('@/lib/auth-helpers', () => ({
+  getAuthToken: jest.fn().mockResolvedValue('tok-123'),
+}))
 
 const mockAISummary = {
   overview: 'This dataset contains customer information with 1000 records and 8 columns.',
@@ -174,20 +180,49 @@ describe('AIInsightsPanel', () => {
     })
   })
 
-  it('makes correct API call for insights', async () => {
+  it('POSTs to the backend summarize route, not a relative Next path', async () => {
+    // This assertion used to pin `/api/ai/summarize/test-id` — a *relative* path,
+    // which resolves against the Next app where no `app/api/ai/**` route exists.
+    // The panel therefore never reached the backend and always rendered its error
+    // card, with this test green the whole time (#409). Asserting only that fetch
+    // was called cannot tell a real endpoint from one that never existed.
     render(<AIInsightsPanel datasetId="test-id" />)
-    
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+
+    const [url, init] = (fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe(`${API_BASE_URL}/ai/summarize/test-id`)
+    expect(url).toMatch(/^https?:\/\//)
+    // The base already carries /api/v1; re-adding it is the #406 regression.
+    expect(url).not.toContain('/api/v1/api/')
+    expect(init.method).toBe('POST')
+  })
+
+  it('sends the bearer token the backend requires', async () => {
+    render(<AIInsightsPanel datasetId="test-id" />)
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+
+    const init = (fetch as jest.Mock).mock.calls[0][1]
+    expect(init.headers.Authorization).toBe('Bearer tok-123')
+    // `credentials: "include"` did nothing: the API is a separate origin and the
+    // backend reads a bearer header, not a cookie.
+    expect(init.credentials).toBeUndefined()
+  })
+
+  it('surfaces the HTTP status when the request fails', async () => {
+    // A missing route, an expired token and a 500 all rendered identical copy,
+    // which is what made the missing route take a bisect to find.
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: jest.fn().mockResolvedValue({}),
+    })
+
+    render(<AIInsightsPanel datasetId="test-id" />)
+
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        '/api/ai/summarize/test-id',
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        })
-      )
+      expect(screen.getByText(/HTTP 404/)).toBeInTheDocument()
     })
   })
 

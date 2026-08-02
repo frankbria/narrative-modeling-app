@@ -3,6 +3,8 @@ API routes for AI-powered data analysis using MCP
 """
 
 
+from beanie import PydanticObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
@@ -15,6 +17,23 @@ from app.services.dataset_summarization import (
 from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
 
 router = APIRouter()
+
+
+def _as_object_id(file_id: str):
+    """Coerce a path string to the ObjectId `UserData.id` actually stores.
+
+    `UserData.id` is a `PydanticObjectId`, so comparing it to the raw string from
+    the path matches nothing and the caller gets a 404 for a document that exists
+    (#409). A malformed id is passed through unchanged so the query simply misses
+    and the route still answers 404 rather than raising InvalidId as a 500.
+
+    Mirrors `model_training.py`, which carries the same coercion.
+    """
+    try:
+        return PydanticObjectId(file_id)
+    except (InvalidId, ValueError, TypeError):
+        return file_id
+
 
 
 class AnalysisRequest(BaseModel):
@@ -41,7 +60,7 @@ async def analyze_with_ai(
     try:
         # Get file metadata from database
         user_data = await UserData.find_one(
-            UserData.id == file_id,
+            UserData.id == _as_object_id(file_id),
             UserData.user_id == current_user_id
         )
         
@@ -129,7 +148,7 @@ async def generate_ai_summary(
     try:
         # Get file metadata from database
         user_data = await UserData.find_one(
-            UserData.id == file_id,
+            UserData.id == _as_object_id(file_id),
             UserData.user_id == current_user_id
         )
 

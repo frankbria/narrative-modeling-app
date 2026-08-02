@@ -165,19 +165,25 @@ class DatasetSummarizationService:
             "outlier_columns": []
         }
         
-        # Extract high correlations
+        # Extract high correlations. A missing correlation is stored as null
+        # (non-numeric pairs), and `abs(None)` raises — same shape as the
+        # outlier_count bug below.
         correlation_matrix = statistics.get("correlation_matrix", {})
         for col1, correlations in correlation_matrix.items():
             for col2, corr_value in correlations.items():
-                if col1 != col2 and abs(corr_value) > 0.7:
+                if col1 != col2 and corr_value is not None and abs(corr_value) > 0.7:
                     highlights["correlations"].append({
                         "columns": [col1, col2],
                         "correlation": corr_value
                     })
         
-        # Extract columns with outliers
+        # Extract columns with outliers. Categorical columns store
+        # `outlier_count: null` — outliers are not a concept for them — and
+        # `.get(key, 0)` returns None for a key that EXISTS with a null value, so
+        # `None > 0` raised and collapsed the whole summary into the error card.
+        # Any dataset with a single categorical column hit this (#409).
         for col_stats in statistics.get("column_statistics", []):
-            if col_stats.get("outlier_count", 0) > 0:
+            if (col_stats.get("outlier_count") or 0) > 0:
                 highlights["outlier_columns"].append({
                     "column": col_stats.get("column_name"),
                     "outlier_count": col_stats.get("outlier_count"),
