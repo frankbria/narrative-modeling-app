@@ -119,9 +119,32 @@ export function useAsyncData<T>(
   // error here) forbids touching a ref while rendering. An effect with no dep
   // array runs after every render, which is early enough — promise continuations
   // are always later still.
-  const current = useRef({ deps, reloadToken })
+  // Monotonic id per issued request, plus the newest result already recorded AND
+  // the key it was for.
+  //
+  // Why any ordering at all: toggling `enabled` off and on with unchanged deps
+  // starts a SECOND request without invalidating the first — the effect re-runs but
+  // has no cleanup — so both are live and both satisfy every other condition.
+  // Whichever landed last won, and when that was the older request it overwrote
+  // fresh data with stale.
+  //
+  // Why the key is part of it: a global counter is wrong. A fast request for B
+  // would bump the counter past a slow, still-valid request for A, so A's answer is
+  // discarded when it finally arrives even though nothing newer FOR A has landed —
+  // reintroducing #411 through an unrelated key, in exactly the tab-away-and-back
+  // case this hook's history is about. Ordering therefore constrains a request only
+  // against others for the SAME key.
+  //
+  // Deliberately NOT "only the newest request may record": that is the rule that
+  // reintroduces #411 head-on, since the newest request is the one that never comes
+  // back. An older result is welcome while nothing newer for its key has landed; it
+  // is only barred from overwriting.
+  const requestSeq = useRef(0)
+  const lastRecorded = useRef<{ id: number; deps: DependencyList } | null>(null)
+
+  const current = useRef({ deps, reloadToken, enabled })
   useEffect(() => {
-    current.current = { deps, reloadToken }
+    current.current = { deps, reloadToken, enabled }
   })
 
   // `loader` is deliberately NOT a dependency. Call sites pass an inline arrow, so
@@ -133,18 +156,45 @@ export function useAsyncData<T>(
   useEffect(() => {
     if (!enabled) return
 
+    // `enabled` belongs here too. It used to be covered by accident: it was in the
+    // effect's dependency array, so flipping it re-ran the effect and the old
+    // instance's cleanup discarded the in-flight request. Removing that cleanup
+    // (#411) removed the protection with it, and `settled` does not check
+    // `enabled` either — so a request begun while enabled would still populate
+    // `data` after the caller had gated the fetch off.
+    const requestId = ++requestSeq.current
+
+    /** Newest already-recorded id for this key; 0 when the last one was another key. */
+    const recordedIdForThisKey = () => {
+      const last = lastRecorded.current
+      return last && sameDeps(last.deps, deps) ? last.id : 0
+    }
+
+    // Note on coverage: `mounted`, `enabled` and the ordering guard each have a
+    // test that fails when removed. The `sameDeps` check does NOT — the ordering
+    // guard subsumes it in every case reachable today, and `settled` filters by
+    // deps again at read time. It is kept as the cheapest way to avoid recording a
+    // result the reader would discard anyway, not because a test proves it load-
+    // bearing. Said plainly so nobody reads the mutation check as covering it.
     const stillWanted = () =>
       mounted.current &&
+      current.current.enabled &&
       current.current.reloadToken === reloadToken &&
-      sameDeps(current.current.deps, deps)
+      sameDeps(current.current.deps, deps) &&
+      requestId >= recordedIdForThisKey()
+
+    const record = (next: Resolved<T>) => {
+      if (!stillWanted()) return
+      lastRecorded.current = { id: requestId, deps }
+      setResolved(next)
+    }
 
     loader()
       .then((data) => {
-        if (stillWanted()) setResolved({ deps, token: reloadToken, data })
+        record({ deps, token: reloadToken, data })
       })
       .catch((err: unknown) => {
-        if (!stillWanted()) return
-        setResolved({
+        record({
           deps,
           token: reloadToken,
           error: errorMessage ?? (err instanceof Error ? err.message : String(err)),

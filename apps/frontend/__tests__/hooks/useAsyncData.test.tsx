@@ -345,3 +345,184 @@ describe('a result that lands after an effect cleanup (#411)', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+describe('disabling mid-flight (#417 review)', () => {
+  // Before #411 this was covered by accident: `enabled` was in the fetch effect's
+  // dependency array, so flipping it re-ran the effect and the OLD instance's
+  // cleanup set `cancelled = true`. Removing that cleanup removed the protection
+  // with it — `stillWanted()` checked mounted/token/deps but not `enabled`, and
+  // `settled` does not check it either, so a request begun while enabled would
+  // still populate `data` after the caller had gated the fetch off.
+  it('does not record a result that resolves after enabled goes false', async () => {
+    let release: (v: string) => void = () => {}
+    const loader = jest.fn(() => new Promise<string>((res) => { release = res }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+
+    expect(loader).toHaveBeenCalledTimes(1)
+
+    rerender({ enabled: false })
+
+    await act(async () => {
+      release('answer nobody asked for any more')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('still resolves normally when enabled stays true', async () => {
+    let release: (v: string) => void = () => {}
+    const loader = jest.fn(() => new Promise<string>((res) => { release = res }))
+
+    const { result } = renderHook(() => useAsyncData(loader, ['a'], { enabled: true }))
+
+    await act(async () => {
+      release('wanted')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('wanted')
+  })
+})
+
+describe('two in-flight requests for the same key (#418 review)', () => {
+  // Toggling `enabled` off and on with unchanged deps starts a SECOND request
+  // without invalidating the first: the effect re-runs (enabled is in its dep
+  // array) but there is no cleanup, so both are live. Both satisfy
+  // mounted/enabled/token/deps at resolution, so whichever lands LAST wins — and
+  // if that is the older request, it overwrites fresher data with staler data.
+  it('an older in-flight result does not overwrite a newer one that already landed', async () => {
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    expect(loader).toHaveBeenCalledTimes(2)
+
+    // The newer request answers first…
+    await act(async () => {
+      releases[1]('fresh')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('fresh')
+
+    // …and the older one, landing later, must not clobber it.
+    await act(async () => {
+      releases[0]('stale')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('fresh')
+  })
+
+  it('an older result still settles when nothing newer has landed', async () => {
+    // The #411 guarantee must survive: if the newest request never comes back,
+    // an older one whose key is still current is better than spinning forever.
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    await act(async () => {
+      releases[0]('the only answer that came back')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('the only answer that came back')
+    expect(result.current.loading).toBe(false)
+  })
+})
+
+describe('ordering must be per-key, not global (#418 review round 2)', () => {
+  // A single global counter reintroduces #411 via an unrelated key: a fast request
+  // for B bumps the counter past a slow, still-valid request for A, so when A
+  // finally answers it is discarded even though nothing newer FOR A has landed.
+  it('a slow result is still accepted after a different key resolved ahead of it', async () => {
+    const byKey: Record<string, ((v: string) => void)[]> = { A: [], B: [] }
+    const loader = jest.fn(function (this: void) {
+      return new Promise<string>((res) => {
+        // Route by whichever key the current render asked for.
+        byKey[currentKey].push(res)
+      })
+    })
+    let currentKey: 'A' | 'B' = 'A'
+
+    const { result, rerender } = renderHook(({ k }) => useAsyncData(loader, [k]), {
+      initialProps: { k: 'A' as 'A' | 'B' },
+    })
+
+    currentKey = 'B'
+    rerender({ k: 'B' })
+
+    // B answers quickly and records.
+    await act(async () => {
+      byKey.B[0]('B answer')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('B answer')
+
+    // Back to A ("tab away and back"). A third request starts and never answers.
+    currentKey = 'A'
+    rerender({ k: 'A' })
+
+    // The ORIGINAL slow A request finally lands. Nothing newer for A has landed,
+    // so it must settle rather than leave the panel spinning.
+    await act(async () => {
+      byKey.A[0]('A answer, late but still correct')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('A answer, late but still correct')
+    expect(result.current.loading).toBe(false)
+  })
+})
+
+describe('an older answer shown while a newer one is still pending (#418 review round 3)', () => {
+  // This is INTENDED, not a leak, and it is the whole point of #411: given a valid
+  // answer for the key the caller is currently asking about, show it rather than
+  // spin. The newer answer replaces it when it arrives. Asserted here so the
+  // behaviour is a decision on the record rather than a side effect of the
+  // ordering rule — the reviewer on #418 rightly noted nothing pinned it.
+  it('renders the older result, then replaces it when the newer one lands', async () => {
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+    expect(loader).toHaveBeenCalledTimes(2)
+
+    // Older answers first, while the newer is still in flight.
+    await act(async () => {
+      releases[0]('older but valid')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('older but valid')
+    expect(result.current.loading).toBe(false)
+
+    // Newer lands and supersedes it.
+    await act(async () => {
+      releases[1]('newer')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('newer')
+  })
+})
