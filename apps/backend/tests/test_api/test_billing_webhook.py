@@ -20,6 +20,7 @@ import json
 import time
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from app.billing.stripe_signature import (
     SignatureVerificationError,
@@ -318,6 +319,45 @@ class TestWebhookEndpoint:
         sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
         assert sub is not None
         assert sub.plan_tier == PlanTier.ENTERPRISE
+
+    async def test_a_first_write_race_is_retried_not_500ed(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """checkout.session.completed and customer.subscription.created arrive
+        together for a brand-new tenant, so find-then-insert can lose (#367 review).
+
+        The loser must be retried against the row the winner created, not 500 and
+        rely on Stripe's redelivery to paper over it.
+        """
+        from app.api.routes import billing_webhook
+
+        real_apply = billing_webhook._apply
+        calls = {"n": 0}
+
+        async def _lose_the_first_race(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # Let the "winner" create the row, then fail as the loser would.
+                await Subscription(user_id=TEST_USER).insert()
+                raise DuplicateKeyError("lost the insert race")
+            return await real_apply(*args, **kwargs)
+
+        monkeypatch.setattr(billing_webhook, "_apply", _lose_the_first_race)
+
+        payload = event(
+            "invoice.payment_failed", {"metadata": {"user_id": TEST_USER}}
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        assert calls["n"] == 2, "expected exactly one retry"
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.PAST_DUE
+        assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 1
 
     async def test_malformed_json_is_a_400_not_a_500(
         self, async_authorized_client, setup_database

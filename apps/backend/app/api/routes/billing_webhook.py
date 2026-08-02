@@ -22,6 +22,7 @@ from typing import Any
 
 from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import JSONResponse
+from pymongo.errors import DuplicateKeyError
 
 from app.billing.stripe_signature import (
     SignatureVerificationError,
@@ -96,7 +97,51 @@ async def _upsert(
 
     Only fields actually present on the event are written, so a later event that
     omits something cannot blank what an earlier one established.
+
+    find-then-insert is not atomic and `user_id` is uniquely indexed, so two events
+    for a brand-new tenant arriving together — which is the NORMAL flow here,
+    `checkout.session.completed` immediately followed by
+    `customer.subscription.created` — can both see nothing and both try to insert.
+    The loser is retried once against the row the winner created, rather than 500ing
+    and relying on Stripe's redelivery to paper over it.
     """
+    try:
+        await _apply(
+            user_id,
+            status_=status_,
+            tier=tier,
+            customer_id=customer_id,
+            subscription_id=subscription_id,
+            price_id=price_id,
+            period_end=period_end,
+            cancel_at_period_end=cancel_at_period_end,
+        )
+    except DuplicateKeyError:
+        # The row exists now; the second attempt takes the update path.
+        await _apply(
+            user_id,
+            status_=status_,
+            tier=tier,
+            customer_id=customer_id,
+            subscription_id=subscription_id,
+            price_id=price_id,
+            period_end=period_end,
+            cancel_at_period_end=cancel_at_period_end,
+        )
+
+
+async def _apply(
+    user_id: str,
+    *,
+    status_: SubscriptionStatus | None = None,
+    tier: PlanTier | None = None,
+    customer_id: str | None = None,
+    subscription_id: str | None = None,
+    price_id: str | None = None,
+    period_end: Any = None,
+    cancel_at_period_end: bool | None = None,
+) -> None:
+    """One find-then-write attempt. Raises DuplicateKeyError if it loses a race."""
     sub = await Subscription.find_one(Subscription.user_id == user_id)
     if sub is None:
         sub = Subscription(user_id=user_id)
