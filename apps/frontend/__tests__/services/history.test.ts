@@ -5,7 +5,15 @@ describe('HistoryService', () => {
   let service: HistoryService;
   const mockToken = 'test-token';
   const mockDatasetId = 'dataset-123';
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  // This suite covers request/response behaviour, NOT URL correctness — it cannot.
+  // With NEXT_PUBLIC_API_URL unset (as in CI) the pre-#406 service produced
+  // 'http://localhost:8000' + '/api/v1/transformations/...' and the fixed one
+  // produces 'http://localhost:8000/api/v1' + '/transformations/...' — byte-identical.
+  // The doubled prefix only appears once the env var is actually set, which is why
+  // it shipped and why asserting it here is impossible.
+  // `__tests__/lib/apiUrlConstruction.test.ts` owns that: it sets the env var
+  // explicitly and pins every path against the real FastAPI route table.
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
   beforeEach(() => {
     service = new HistoryService();
@@ -34,7 +42,7 @@ describe('HistoryService', () => {
       const result = await service.undo(mockDatasetId, mockToken);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/transformations/datasets/${mockDatasetId}/history/undo`,
+        `${API_BASE}/transformations/datasets/${mockDatasetId}/history/undo`,
         {
           method: 'POST',
           headers: {
@@ -76,7 +84,7 @@ describe('HistoryService', () => {
       const result = await service.redo(mockDatasetId, mockToken);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/transformations/datasets/${mockDatasetId}/history/redo`,
+        `${API_BASE}/transformations/datasets/${mockDatasetId}/history/redo`,
         {
           method: 'POST',
           headers: {
@@ -119,7 +127,7 @@ describe('HistoryService', () => {
       const result = await service.jumpToPosition(mockDatasetId, targetPosition, mockToken);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/transformations/datasets/${mockDatasetId}/history/jump`,
+        `${API_BASE}/transformations/datasets/${mockDatasetId}/history/jump`,
         {
           method: 'POST',
           headers: {
@@ -183,7 +191,7 @@ describe('HistoryService', () => {
       const result = await service.getHistory(mockDatasetId, mockToken);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/transformations/datasets/${mockDatasetId}/history`,
+        `${API_BASE}/transformations/datasets/${mockDatasetId}/history`,
         {
           headers: {
             'Authorization': `Bearer ${mockToken}`
@@ -272,7 +280,7 @@ describe('HistoryService', () => {
       await service.clearHistory(mockDatasetId, mockToken);
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/transformations/datasets/${mockDatasetId}/history`,
+        `${API_BASE}/transformations/datasets/${mockDatasetId}/history`,
         {
           method: 'DELETE',
           headers: {
