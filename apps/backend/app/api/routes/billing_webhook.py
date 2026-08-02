@@ -194,18 +194,44 @@ async def _apply(
 
 
 def _period_end(obj: dict[str, Any]):
-    """Stripe sends epoch seconds; the model stores a datetime."""
+    """Stripe sends epoch seconds; the model stores a datetime.
+
+    Returns None rather than raising on anything not int-coercible (a future API
+    version sending a string, a schema quirk). Everything else in this file is
+    defensive about shape for one reason — an uncaught raise is a 500, and Stripe
+    retries a non-2xx forever. Losing a period-end is recoverable; a retry loop is
+    not.
+    """
     raw = obj.get("current_period_end")
     if raw is None:
         return None
-    return datetime.fromtimestamp(int(raw), tz=UTC)
+    try:
+        return datetime.fromtimestamp(int(raw), tz=UTC)
+    except (TypeError, ValueError, OverflowError, OSError):
+        logger.warning("unparseable current_period_end; leaving it unset")
+        return None
 
 
 def _price_id(obj: dict[str, Any]) -> str | None:
+    """The price that decides the tier.
+
+    Reads the FIRST line item only. This product sells one plan per subscription —
+    there are no bundles or add-ons — so a multi-item subscription is not a shape
+    Stripe should ever send us. If that changes, tier attribution has to pick the
+    plan-defining item rather than position 0, and this is the function to change.
+    """
     items = (obj.get("items") or {}).get("data") or []
-    if not items:
+    if not items or not isinstance(items[0], dict):
         return None
     return (items[0].get("price") or {}).get("id")
+
+
+def _epoch(raw: Any):
+    """Epoch seconds -> aware datetime, or None if it will not convert."""
+    try:
+        return datetime.fromtimestamp(int(raw), tz=UTC)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
 async def _handle(
@@ -347,10 +373,11 @@ async def stripe_webhook(
         logger.info("ignoring unhandled stripe event", extra={"event_type": event_type})
         return {"received": True, "handled": False}
 
+    # `bool` is a subclass of `int`, so `True` would otherwise parse as epoch 1.
     raw_created = event.get("created")
     event_at = (
-        datetime.fromtimestamp(int(raw_created), tz=UTC)
-        if isinstance(raw_created, int | float)
+        _epoch(raw_created)
+        if isinstance(raw_created, int | float) and not isinstance(raw_created, bool)
         else None
     )
 

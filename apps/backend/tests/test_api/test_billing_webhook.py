@@ -442,6 +442,53 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.plan_tier == PlanTier.ENTERPRISE
 
+    @pytest.mark.parametrize(
+        "period_end", ["not-a-timestamp", {}, [], 10**20]
+    )
+    async def test_an_unparseable_period_end_is_not_a_500(
+        self, async_authorized_client, setup_database, period_end
+    ):
+        """An uncaught raise here is a 500, and Stripe retries a non-2xx forever.
+        Losing a period-end is recoverable; a retry loop is not (#367 review)."""
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "current_period_end": period_end,
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is None
+
+    async def test_a_boolean_created_is_not_read_as_an_epoch(
+        self, async_authorized_client, setup_database
+    ):
+        """`bool` subclasses `int`, so True would parse as epoch 1 — an event
+        stamped 1970 that then blocks every real one as out-of-order."""
+        payload = event(
+            "invoice.payment_failed", {"metadata": {"user_id": TEST_USER}}
+        )
+        body = json.loads(payload)
+        body["created"] = True
+        payload = json.dumps(body).encode()
+
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.last_event_at is None
+        assert sub.status == SubscriptionStatus.PAST_DUE
+
     async def test_replaying_an_event_is_a_no_op(
         self, async_authorized_client, setup_database
     ):
