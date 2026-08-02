@@ -11,7 +11,7 @@ revokes paid access:
 
 import pytest
 
-from app.billing.plans import PLAN_LIMITS, UNLIMITED, limits_for
+from app.billing.plans import METERED_METRICS, PLAN_LIMITS, UNLIMITED, limits_for
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 
 
@@ -127,6 +127,18 @@ class TestPlanLimits:
     def test_unknown_metric_is_a_clear_error(self):
         with pytest.raises(KeyError):
             PLAN_LIMITS[PlanTier.FREE].limit_for("bandwidth")
+
+    @pytest.mark.parametrize("name", ["allows", "limit_for", "__class__"])
+    def test_a_metric_named_after_a_method_still_raises(self, name):
+        """A raw getattr would hand back the bound method instead of raising,
+        silently defeating the clear-error guarantee (#366 review)."""
+        with pytest.raises(KeyError):
+            PLAN_LIMITS[PlanTier.FREE].limit_for(name)
+
+    def test_every_declared_metric_resolves(self):
+        """The allow-list must not drift from the dataclass's own fields."""
+        for metric in METERED_METRICS:
+            assert isinstance(PLAN_LIMITS[PlanTier.FREE].limit_for(metric), int)
 
 
 class TestEnvOverrides:

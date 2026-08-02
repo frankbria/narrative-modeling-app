@@ -18,6 +18,11 @@ from app.models.subscription import PlanTier
 #: Sentinel for "no ceiling". Comparisons use `>=`, so this is never reached.
 UNLIMITED = -1
 
+#: The metered actions. Named once so the metering store, the enforcement
+#: dependency and PlanLimits cannot drift apart — and so `limit_for` has an
+#: allow-list to validate against rather than trusting getattr.
+METERED_METRICS = ("training_runs", "predictions", "uploads")
+
 
 @dataclass(frozen=True)
 class PlanLimits:
@@ -28,13 +33,16 @@ class PlanLimits:
     uploads: int
 
     def limit_for(self, metric: str) -> int:
-        """Look a metric up by the name the metering store uses."""
-        try:
-            return getattr(self, metric)
-        except AttributeError as exc:
-            # Covered by test_unknown_metric_is_a_clear_error. An earlier
-            # `# pragma: no cover` here claimed otherwise, which was misleading.
-            raise KeyError(f"unknown metered metric: {metric}") from exc
+        """Look a metric up by the name the metering store uses.
+
+        Restricted to the declared fields rather than a raw `getattr`: a metric name
+        colliding with a method — `"allows"`, `"limit_for"` — would otherwise return
+        that bound method instead of raising, silently defeating the clear-error
+        guarantee this is here to provide.
+        """
+        if metric not in METERED_METRICS:
+            raise KeyError(f"unknown metered metric: {metric}")
+        return getattr(self, metric)
 
     def allows(self, metric: str, used: int) -> bool:
         limit = self.limit_for(metric)
@@ -78,9 +86,6 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
     ),
 }
 
-#: The metered actions. Named here so the metering store, the enforcement
-#: dependency and PlanLimits cannot drift apart.
-METERED_METRICS = ("training_runs", "predictions", "uploads")
 
 
 def limits_for(tier: PlanTier) -> PlanLimits:
