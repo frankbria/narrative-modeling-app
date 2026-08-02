@@ -145,10 +145,17 @@ async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
         return False
 
     if event_type == "checkout.session.completed":
+        # Tier is deliberately NOT set here. A checkout session does not carry the
+        # price without an `expand`, and calling tier_for_price(None) would grant
+        # PRO to every completed checkout — including an ENTERPRISE purchase, which
+        # would then sit under-entitled until something else corrected it.
+        #
+        # `customer.subscription.created/updated` follows immediately and DOES
+        # resolve the price, so that event is the source of truth for tier. This one
+        # establishes the link (customer/subscription ids) and the ACTIVE status.
         await _upsert(
             user_id,
             status_=SubscriptionStatus.ACTIVE,
-            tier=tier_for_price(None),
             customer_id=obj.get("customer"),
             subscription_id=obj.get("subscription"),
         )
@@ -216,8 +223,20 @@ async def stripe_webhook(
             content={"detail": "malformed event payload"},
         )
 
+    # Valid JSON is not necessarily an event. `"[]"`, `"42"` and `"true"` all parse,
+    # and calling .get() on them would raise AttributeError — a 500 for what is
+    # plainly a bad request, and one Stripe would then retry.
+    if not isinstance(event, dict):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "event payload must be a JSON object"},
+        )
+
     event_type = event.get("type", "")
-    obj = ((event.get("data") or {}).get("object")) or {}
+    data = event.get("data")
+    obj = (data.get("object") if isinstance(data, dict) else None) or {}
+    if not isinstance(obj, dict):
+        obj = {}
 
     if event_type not in HANDLED_EVENTS:
         # 200, deliberately. A non-2xx makes Stripe retry forever, and an event we

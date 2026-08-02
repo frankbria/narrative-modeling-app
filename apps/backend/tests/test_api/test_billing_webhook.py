@@ -261,6 +261,64 @@ class TestWebhookEndpoint:
         assert response.status_code == 200
         assert response.json()["handled"] is False
 
+    @pytest.mark.parametrize("body", [b"[]", b"42", b"true", b'"a string"', b"null"])
+    async def test_valid_json_that_is_not_an_object_is_a_400(
+        self, async_authorized_client, setup_database, body
+    ):
+        """These all parse. Calling .get() on them raises AttributeError — a 500
+        for a plainly bad request, which Stripe would then retry (#367 review)."""
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=body, headers={"Stripe-Signature": sign(body)}
+        )
+
+        assert response.status_code == 400
+
+    async def test_checkout_does_not_guess_the_tier(
+        self, async_authorized_client, setup_database
+    ):
+        """A checkout session carries no price without an `expand`, so setting a
+        tier here would grant PRO to an ENTERPRISE purchase (#367 review). The
+        subscription event that follows resolves it."""
+        payload = event(
+            "checkout.session.completed",
+            {"client_reference_id": TEST_USER, "customer": "cus_x"},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        # Untouched default, not a guess.
+        assert sub.plan_tier == PlanTier.FREE
+
+        # …and the follow-up subscription event, which DOES carry the price, sets it.
+        import os
+
+        os.environ["STRIPE_PRICE_ENTERPRISE"] = "price_ent"
+        try:
+            follow_up = event(
+                "customer.subscription.updated",
+                {
+                    "metadata": {"user_id": TEST_USER},
+                    "status": "active",
+                    "id": "sub_x",
+                    "items": {"data": [{"price": {"id": "price_ent"}}]},
+                },
+            )
+            await async_authorized_client.post(
+                WEBHOOK_PATH,
+                content=follow_up,
+                headers={"Stripe-Signature": sign(follow_up)},
+            )
+        finally:
+            os.environ.pop("STRIPE_PRICE_ENTERPRISE", None)
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+
     async def test_malformed_json_is_a_400_not_a_500(
         self, async_authorized_client, setup_database
     ):
