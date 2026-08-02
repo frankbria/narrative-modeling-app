@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import metering, stripe_client
-from app.billing.plans import UNLIMITED, limits_for
+from app.billing.plans import limits_for
 from app.config import settings
 from app.models.subscription import PlanTier, Subscription
 
@@ -214,4 +214,4 @@ async def open_portal(
         ) from exc
 
 
-__all__ = ["router", "UNLIMITED"]
+__all__ = ["router"]
