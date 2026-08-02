@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DependencyList } from 'react'
+import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
 
 /**
  * Keyed async loading with a derived `loading` flag (#393).
@@ -89,6 +89,41 @@ export function useAsyncData<T>(
   const [reloadToken, setReloadToken] = useState(0)
   const [resolved, setResolved] = useState<Resolved<T> | null>(null)
 
+  // Only an UNMOUNT stops a result being recorded — not an effect cleanup.
+  //
+  // The effect cleanup used to set a closure `cancelled` flag, which threw away a
+  // result even when its deps were still current. That is what React StrictMode's
+  // mount -> cleanup -> mount does on every dev mount, and what a dep round-trip
+  // (a -> b -> a, e.g. tab away and back) does in production. If the surviving
+  // request was slow, NOTHING ever settled: measured at 240s+ of "Generating AI
+  // insights…" against a real backend that had already answered (#411).
+  //
+  // Discarding was never needed for correctness. Staleness is handled at read
+  // time: `settled` below ignores any result whose deps or reload token no longer
+  // match, so a late answer for the wrong key cannot surface. Recording it is
+  // harmless; throwing it away is not recoverable.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  // What the caller is asking for RIGHT NOW, readable from inside a promise
+  // continuation. A result is recorded only if it still answers that question —
+  // which keeps a slow response for 'a' from overwriting a fresh one for 'b',
+  // the protection the closure flag did provide, while no longer throwing away a
+  // result whose key is still current.
+  // Synced in an effect, not during render: `react-hooks/refs` (enforced as an
+  // error here) forbids touching a ref while rendering. An effect with no dep
+  // array runs after every render, which is early enough — promise continuations
+  // are always later still.
+  const current = useRef({ deps, reloadToken })
+  useEffect(() => {
+    current.current = { deps, reloadToken }
+  })
+
   // `loader` is deliberately NOT a dependency. Call sites pass an inline arrow, so
   // it has a new identity every render and keying on it would refetch forever.
   // Omitting it is safe rather than stale: the effect is recreated whenever
@@ -98,24 +133,23 @@ export function useAsyncData<T>(
   useEffect(() => {
     if (!enabled) return
 
-    let cancelled = false
+    const stillWanted = () =>
+      mounted.current &&
+      current.current.reloadToken === reloadToken &&
+      sameDeps(current.current.deps, deps)
+
     loader()
       .then((data) => {
-        if (!cancelled) setResolved({ deps, token: reloadToken, data })
+        if (stillWanted()) setResolved({ deps, token: reloadToken, data })
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (!stillWanted()) return
         setResolved({
           deps,
           token: reloadToken,
           error: errorMessage ?? (err instanceof Error ? err.message : String(err)),
         })
       })
-
-    // Guards against a superseded request landing after a newer one.
-    return () => {
-      cancelled = true
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- caller's deps, spread by contract; loader intentionally excluded
   }, [...deps, reloadToken, enabled, errorMessage])
 
