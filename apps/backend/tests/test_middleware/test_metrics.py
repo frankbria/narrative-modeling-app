@@ -310,7 +310,17 @@ class TestMetricsLabels:
     def test_active_requests_labeled_by_method_only(self, client):
         """active_requests is labeled by method only (issue #273): the route
         template isn't known at request start, so labeling by endpoint would
-        reintroduce the raw-path cardinality bomb."""
+        reintroduce the raw-path cardinality bomb.
+
+        The registry is process-global and nothing resets it between modules, so
+        this must NOT require every sample to be GET — any earlier suite that made
+        a POST leaves a `method="POST"` sample behind and the assertion fails for
+        reasons that have nothing to do with this module. That is exactly what
+        happened: green alone, red in a full-suite run (#412).
+
+        The real invariant is label *shape*, which is method-agnostic: no
+        `endpoint`, no `status_code`, on any sample.
+        """
         client.get("/test")
         metrics = get_metrics().decode("utf-8")
 
@@ -320,8 +330,14 @@ class TestMetricsLabels:
             if line.startswith("http_requests_active{")
         ]
         assert active_lines, "expected an http_requests_active sample"
+
+        # Our own request must be represented...
+        assert any(
+            'method="GET"' in line for line in active_lines
+        ), f"no method=GET sample among: {active_lines}"
+
+        # ...and no sample, whoever produced it, may carry the high-cardinality
+        # labels this gauge deliberately dropped.
         for line in active_lines:
-            assert 'method="GET"' in line
-            # endpoint/status_code must NOT be labels on the gauge anymore
             assert "endpoint=" not in line
             assert "status_code=" not in line
