@@ -122,7 +122,7 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
         <div className="flex items-center justify-between">
           <CardTitle>Model Report Card</CardTitle>
           {explanation.generated_by === 'openai' ? (
-            <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 hover:bg-purple-100">
+            <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/40">
               AI-generated
             </Badge>
           ) : (

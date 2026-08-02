@@ -67,16 +67,67 @@ describe('ThemeToggle', () => {
     }
   })
 
-  it('marks nothing selected before mount, to avoid a hydration mismatch', () => {
-    // `theme` is unknown on the server; rendering a resolved selection would
-    // differ from the first client render.
+  it('defaults to System with nothing else selected, which is what makes hydration safe', () => {
+    // As first written this asserted `aria-checked` matched /true|false/ — true of
+    // ANY render, so it could not fail. Flagged in the #421 review, and checking
+    // properly corrected my understanding: the first render is not "nothing
+    // selected". With `defaultTheme="system"` and no stored preference, `theme` is
+    // already "system" on the very first render — and crucially the SERVER renders
+    // the same thing, so the markup agrees and there is no mismatch to avoid.
+    //
+    // The assertion that can actually fail is therefore this one: System selected,
+    // the other two not. Changing defaultTheme, or reintroducing a mount flag that
+    // blanks the selection, both turn it red.
     renderToggle()
 
-    for (const name of ['Light', 'Dark', 'System']) {
-      expect(screen.getByRole('radio', { name })).toHaveAttribute(
-        'aria-checked',
-        expect.stringMatching(/true|false/) as unknown as string
-      )
-    }
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('moves selection with the arrow keys and keeps one tab stop (APG)', () => {
+    // Three independently tabbable buttons is three tab stops for one control.
+    // Flagged in the #421 review.
+    renderToggle()
+
+    const system = screen.getByRole('radio', { name: 'System' })
+    expect(system).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('tabindex', '-1')
+
+    fireEvent.keyDown(system, { key: 'ArrowRight' })
+
+    // Wraps from the last option back to the first.
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('moves backwards with ArrowLeft', () => {
+    renderToggle()
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'System' }), { key: 'ArrowLeft' })
+
+    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('moves DOM focus with the selection, not just aria-checked', () => {
+    // The focus-moving path is the fragile part of the keyboard handling — it used
+    // to walk the DOM from parentElement — and nothing asserted it (#422 review).
+    renderToggle()
+
+    const system = screen.getByRole('radio', { name: 'System' })
+    system.focus()
+    fireEvent.keyDown(system, { key: 'ArrowRight' })
+
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Light' }))
+  })
+
+  it('supports Home and End, which the APG pattern also expects', () => {
+    renderToggle()
+
+    const system = screen.getByRole('radio', { name: 'System' })
+    fireEvent.keyDown(system, { key: 'Home' })
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Light' }), { key: 'End' })
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
   })
 })

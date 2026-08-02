@@ -361,7 +361,7 @@ export default function FeatureBuilder({
           <div>
             <h3 className="text-sm font-medium text-foreground mb-2">Constants</h3>
             <div
-              className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded cursor-move border border-purple-200 dark:border-purple-900 hover:bg-purple-200 transition-colors"
+              className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded cursor-move border border-purple-200 dark:border-purple-900 hover:bg-purple-200 dark:hover:bg-purple-900/60 transition-colors"
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.setData('nodeType', 'constant');

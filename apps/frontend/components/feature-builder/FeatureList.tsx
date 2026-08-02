@@ -351,7 +351,7 @@ export default function FeatureList({
                   <button
                     onClick={() => handleDelete(feature.feature_id)}
                     disabled={deletingId === feature.feature_id}
-                    className="p-2 hover:bg-red-100 rounded text-red-600 disabled:opacity-50"
+                    className="p-2 hover:bg-red-100 dark:hover:bg-red-900/40 rounded text-red-600 disabled:opacity-50"
                     title="Delete"
                   >
                     <Trash2 className="w-4 h-4" />

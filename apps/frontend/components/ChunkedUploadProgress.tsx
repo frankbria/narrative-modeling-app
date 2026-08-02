@@ -116,7 +116,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {progress.status === 'uploading' && onPause && (
             <button
               onClick={onPause}
-              className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-md transition-colors"
+              className="p-2 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/40 rounded-md transition-colors"
               title="Pause Upload"
             >
               <Pause size={16} />
@@ -125,7 +125,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {progress.status === 'paused' && onResume && (
             <button
               onClick={onResume}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+              className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md transition-colors"
               title="Resume Upload"
             >
               <Play size={16} />
@@ -134,7 +134,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {(progress.status === 'uploading' || progress.status === 'paused') && onCancel && (
             <button
               onClick={onCancel}
-              className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors"
               title="Cancel Upload"
             >
               <XCircle size={16} />

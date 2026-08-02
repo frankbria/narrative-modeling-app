@@ -34,7 +34,7 @@ export function WorkflowBar() {
                       "focus:outline-none focus:ring-2 focus:ring-offset-2",
                       {
                         'bg-blue-600 text-white shadow-lg focus:ring-blue-500': isCurrent,
-                        'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-200 focus:ring-green-500': isCompleted && !isCurrent,
+                        'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-900/60 focus:ring-green-500': isCompleted && !isCurrent,
                         'bg-muted text-gray-400 cursor-not-allowed': !isAccessible && !isCompleted,
                         'bg-muted text-foreground hover:bg-muted focus:ring-gray-500': isAccessible && !isCompleted && !isCurrent,
                       }

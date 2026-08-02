@@ -359,7 +359,7 @@ export function BeforeAfterView({
                   {transformedData.map((row, rowIdx) => (
                     <tr
                       key={rowIdx}
-                      className="hover:bg-green-50 transition-colors"
+                      className="hover:bg-green-50 dark:hover:bg-green-950/40 transition-colors"
                     >
                       <td className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted border-r border-border w-12">
                         {rowIdx + 1}
