@@ -87,7 +87,6 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
 }
 
 
-
 def limits_for(tier: PlanTier) -> PlanLimits:
     """Limits for a tier, falling back to FREE for anything unrecognised."""
     return PLAN_LIMITS.get(tier, PLAN_LIMITS[PlanTier.FREE])
