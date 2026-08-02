@@ -1,0 +1,272 @@
+"""Stripe webhook (#367).
+
+Signature verification is exercised for real — the signatures below are computed
+with the same HMAC scheme Stripe uses, not mocked — because a mocked
+`construct_event` would pass whatever it was told to and prove nothing about the
+one endpoint on this service that an unauthenticated caller can reach.
+
+The properties pinned here:
+
+* an unsigned, wrongly-signed, or stale request is rejected, and rejected as 400 so
+  Stripe does not retry it forever
+* a replayed event is a no-op, because Stripe delivers at least once
+* an event type we do not handle is acknowledged, not rejected
+* status transitions match the entitlement rules from #366
+"""
+
+import hashlib
+import hmac
+import json
+import time
+
+import pytest
+
+from app.billing.stripe_signature import (
+    SignatureVerificationError,
+    verify_signature,
+)
+from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
+
+WEBHOOK_PATH = "/api/v1/billing/stripe/webhook"
+SECRET = "whsec_test_secret"
+TEST_USER = "test_user_123"
+
+
+def sign(payload: bytes, secret: str = SECRET, timestamp: int | None = None) -> str:
+    """Build a Stripe-Signature header the way Stripe does."""
+    ts = timestamp if timestamp is not None else int(time.time())
+    digest = hmac.new(
+        secret.encode(), b"%d.%s" % (ts, payload), hashlib.sha256
+    ).hexdigest()
+    return f"t={ts},v1={digest}"
+
+
+def event(event_type: str, obj: dict) -> bytes:
+    return json.dumps({"type": event_type, "data": {"object": obj}}).encode()
+
+
+class TestSignatureVerification:
+    """Pure unit tests — no app, no database."""
+
+    def test_a_valid_signature_passes(self):
+        payload = b'{"hello":"world"}'
+        verify_signature(payload, sign(payload), SECRET)
+
+    def test_a_wrong_secret_fails(self):
+        payload = b'{"hello":"world"}'
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, sign(payload, "whsec_other"), SECRET)
+
+    def test_a_tampered_payload_fails(self):
+        header = sign(b'{"amount":100}')
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(b'{"amount":999999}', header, SECRET)
+
+    def test_a_stale_timestamp_fails(self):
+        """Bounds replay: a captured request stops working once it ages out."""
+        payload = b"{}"
+        old = int(time.time()) - 10_000
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, sign(payload, timestamp=old), SECRET)
+
+    def test_a_future_timestamp_beyond_tolerance_fails(self):
+        payload = b"{}"
+        ahead = int(time.time()) + 10_000
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, sign(payload, timestamp=ahead), SECRET)
+
+    def test_a_missing_header_fails(self):
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(b"{}", None, SECRET)
+
+    def test_a_malformed_header_fails(self):
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(b"{}", "not-a-signature-header", SECRET)
+
+    def test_no_configured_secret_fails_closed(self):
+        """Refusing to verify is not the same as verifying.
+
+        The assertion that matters is the SECOND one. Signing with a *different*
+        secret fails anyway, so that alone passes whether or not the guard exists —
+        my first version of this test did exactly that and my mutation check caught
+        it. The real exposure is an attacker signing with the EMPTY secret: without
+        an explicit guard the server would use `""` as the HMAC key, and a forged
+        signature would verify.
+        """
+        payload = b"{}"
+
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, sign(payload), "")
+
+        forged = sign(payload, secret="")
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, forged, "")
+
+    def test_any_of_several_v1_signatures_may_match(self):
+        """Stripe sends multiple v1 entries while a secret is being rotated."""
+        payload = b"{}"
+        ts = int(time.time())
+        digest = hmac.new(
+            SECRET.encode(), b"%d.%s" % (ts, payload), hashlib.sha256
+        ).hexdigest()
+
+        # The stale one first, so a check that only looked at the first entry
+        # would reject a request Stripe considers valid.
+        verify_signature(payload, f"t={ts},v1=deadbeef,v1={digest}", SECRET)
+
+    def test_v0_signatures_are_ignored(self):
+        """v0 is a different scheme; comparing against it would be meaningless."""
+        payload = b"{}"
+        ts = int(time.time())
+        with pytest.raises(SignatureVerificationError):
+            verify_signature(payload, f"t={ts},v0=whatever", SECRET)
+
+
+@pytest.mark.asyncio
+class TestWebhookEndpoint:
+    @pytest.fixture(autouse=True)
+    def _secret(self, monkeypatch):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", SECRET, raising=False)
+
+    async def test_rejects_an_unsigned_request(
+        self, async_authorized_client, setup_database
+    ):
+        response = await async_authorized_client.post(WEBHOOK_PATH, content=b"{}")
+
+        # 400 rather than 500: it is a bad request, and Stripe must not retry it.
+        assert response.status_code == 400
+
+    async def test_rejects_a_forged_signature(
+        self, async_authorized_client, setup_database
+    ):
+        payload = event("customer.subscription.updated", {})
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH,
+            content=payload,
+            headers={"Stripe-Signature": sign(payload, "whsec_attacker")},
+        )
+
+        assert response.status_code == 400
+        # No subscription may be created off an unverified request.
+        assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 0
+
+    async def test_acknowledges_an_unhandled_event(
+        self, async_authorized_client, setup_database
+    ):
+        """A non-2xx would make Stripe retry an event we simply do not act on."""
+        payload = event("charge.refunded", {"metadata": {"user_id": TEST_USER}})
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH,
+            content=payload,
+            headers={"Stripe-Signature": sign(payload)},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["handled"] is False
+
+    async def test_checkout_completed_creates_an_active_subscription(
+        self, async_authorized_client, setup_database
+    ):
+        payload = event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": TEST_USER,
+                "customer": "cus_1",
+                "subscription": "sub_1",
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert sub.stripe_customer_id == "cus_1"
+        assert sub.is_entitled
+
+    async def test_replaying_an_event_is_a_no_op(
+        self, async_authorized_client, setup_database
+    ):
+        """Stripe delivers at least once; a redelivery must not duplicate."""
+        payload = event(
+            "checkout.session.completed",
+            {"client_reference_id": TEST_USER, "customer": "cus_1"},
+        )
+        headers = {"Stripe-Signature": sign(payload)}
+
+        await async_authorized_client.post(WEBHOOK_PATH, content=payload, headers=headers)
+        await async_authorized_client.post(WEBHOOK_PATH, content=payload, headers=headers)
+
+        assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 1
+
+    async def test_subscription_deleted_cancels_without_erasing_the_tier(
+        self, async_authorized_client, setup_database
+    ):
+        """`plan_tier` records what was bought; `effective_tier` handles the drop."""
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        payload = event(
+            "customer.subscription.deleted", {"metadata": {"user_id": TEST_USER}}
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.CANCELED
+        assert sub.plan_tier == PlanTier.PRO
+        assert sub.effective_tier == PlanTier.FREE
+
+    async def test_payment_failed_is_past_due_and_still_entitled(
+        self, async_authorized_client, setup_database
+    ):
+        """Stripe retries for days; access continues meanwhile (#366)."""
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        payload = event(
+            "invoice.payment_failed", {"metadata": {"user_id": TEST_USER}}
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.PAST_DUE
+        assert sub.is_entitled
+        assert sub.effective_tier == PlanTier.PRO
+
+    async def test_an_event_without_a_tenant_id_is_ignored(
+        self, async_authorized_client, setup_database
+    ):
+        """An object we did not originate carries neither marker."""
+        payload = event("customer.subscription.updated", {"status": "active"})
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["handled"] is False
+
+    async def test_malformed_json_is_a_400_not_a_500(
+        self, async_authorized_client, setup_database
+    ):
+        payload = b"this is not json"
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 400
