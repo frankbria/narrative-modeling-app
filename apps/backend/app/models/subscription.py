@@ -119,6 +119,15 @@ class Subscription(Document):
         description="Stripe's 'cancel when the period ends' flag — still entitled until then",
     )
 
+    # Stripe does not guarantee ordering between DIFFERENT events, so a late
+    # `subscription.updated` can arrive after `subscription.deleted` and resurrect a
+    # cancelled subscription. This records the `created` time of the newest event
+    # already applied; anything older is ignored (#367). Optional and defaulted, so
+    # subscriptions written before it existed still validate.
+    last_event_at: datetime | None = Field(
+        None, description="`created` of the newest Stripe event applied"
+    )
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

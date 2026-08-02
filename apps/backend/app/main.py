@@ -44,34 +44,35 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
-    health,
-    user_data,
-    analytics_result,
-    plot,
-    models,
-    upload,
-    secure_upload,
-    store,
-    visualizations,
-    column_stats,
-    data_processing,
+    ab_testing,
     ai_analysis,
     ai_orchestration,
-    model_training,
-    production,
-    monitoring,
-    ab_testing,
+    analytics_result,
     batch_prediction,
-    model_export,
-    onboarding,
-    feedback,
+    billing_webhook,
     cache,
-    transformations,
-    versions,
+    column_stats,
+    data_processing,
     datasets,
     feature_engineering,
-    features,
     feature_store,
+    features,
+    feedback,
+    health,
+    model_export,
+    model_training,
+    models,
+    monitoring,
+    onboarding,
+    plot,
+    production,
+    secure_upload,
+    store,
+    transformations,
+    upload,
+    user_data,
+    versions,
+    visualizations,
     workflows,
 )
 from app.services.api_documentation import APIDocumentationService
@@ -306,6 +307,18 @@ app.include_router(
     workflows.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["workflows"],
+)
+# Deliberately OUTSIDE API_V1_STR. RateLimitMiddleware limits everything under
+# /api/v1 and buckets unauthenticated callers by IP — and Stripe delivers every
+# event for every tenant from a small set of IPs, so a burst would 429, Stripe
+# would retry, and the retries would bucket too. A webhook is also not a versioned
+# public API surface: it is Stripe's endpoint, already excluded from the OpenAPI
+# schema. Protection here is signature verification plus the body-size limit, not
+# an IP budget (#367).
+app.include_router(
+    billing_webhook.router,
+    prefix="/webhooks/stripe",
+    tags=["billing"],
 )
 
 
