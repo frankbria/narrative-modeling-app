@@ -102,6 +102,10 @@ export function BarChart({
     width,
     height,
     data: sortedData,
+    // Horizontal bars need recharts' `layout="vertical"`; without it the axes
+    // below (numeric X, category Y) contradict the chart's own layout and every
+    // bar renders with zero extent — an empty chart under correct summary stats.
+    layout: orientation === 'horizontal' ? ('vertical' as const) : ('horizontal' as const),
     margin: { top: 20, right: 30, left: 60, bottom: 80 },
     onClick: handleChartClick
   }

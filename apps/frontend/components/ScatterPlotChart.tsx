@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import type { ScatterPointItem } from 'recharts'
 
 export interface ScatterPlotData {
   data: Array<{
@@ -95,7 +96,22 @@ export function ScatterPlotChart({
               name={category === 'default' ? data.title || 'Data' : category}
               data={points}
               fill={colors[index % colors.length]}
-              onClick={onPointClick}
+              // recharts 3 narrows the Scatter onClick argument to ScatterPointItem,
+              // which has no string index signature, so the v2 code stopped
+              // compiling. The caller wants the datum, so hand it `payload` — and
+              // skip the call entirely when there is none, rather than reporting an
+              // empty click the caller cannot tell from a real one. Typed against
+              // recharts' own export instead of casting through `unknown`.
+              onClick={
+                onPointClick
+                  ? (point: ScatterPointItem) => {
+                      const entry = point.payload as
+                        | Record<string, unknown>
+                        | undefined
+                      if (entry) onPointClick(entry)
+                    }
+                  : undefined
+              }
               cursor="pointer"
             />
           ))}

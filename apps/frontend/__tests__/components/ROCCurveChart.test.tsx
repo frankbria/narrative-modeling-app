@@ -4,38 +4,32 @@ import '@testing-library/jest-dom'
 import { ROCCurveChart } from '@/components/ROCCurveChart'
 import type { ROCCurveData } from '@/lib/types/evaluation'
 
-// Recharts renders SVG that jsdom cannot lay out; mock it with passthrough
-// divs that expose the props we assert on (BarChart.test.tsx pattern).
-jest.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the chart (#346). Everything asserted below is drawn by the
+// real library, so a v3 prop/signature change fails here instead of passing
+// through a passthrough mock.
+jest.mock('recharts', () =>
+  jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()
+)
+
+/** One <Line> per class, as recharts actually drew it. */
+const curves = (c: HTMLElement) => c.querySelectorAll('.recharts-line')
+
+/**
+ * The `d` of each drawn curve. A `dataKey` that stops resolving leaves the
+ * <Line> element in place but drops its path entirely, so this is what makes
+ * the suite sensitive to the data actually reaching recharts.
+ */
+const curvePaths = (c: HTMLElement) =>
+  Array.from(c.querySelectorAll('.recharts-line-curve')).map((el) =>
+    el.getAttribute('d')
   )
-  return {
-    ResponsiveContainer: passthrough,
-    LineChart: passthrough,
-    CartesianGrid: passthrough,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    Tooltip: passthrough,
-    Legend: passthrough,
-    Line: ({ name }: { name?: string }) => (
-      <div data-testid="curve-line">{name}</div>
-    ),
-    ReferenceLine: ({
-      segment,
-      y,
-    }: {
-      segment?: Array<{ x: number; y: number }>
-      y?: number
-    }) => (
-      <div
-        data-testid="reference-line"
-        data-segment={segment ? JSON.stringify(segment) : undefined}
-        data-y={y}
-      />
-    ),
-  }
-})
+
+const referenceLine = (c: HTMLElement) =>
+  c.querySelector('.recharts-reference-line line') as SVGLineElement | null
+
+const coords = (line: SVGLineElement) =>
+  (['x1', 'y1', 'x2', 'y2'] as const).map((a) => Number(line.getAttribute(a)))
 
 const data: ROCCurveData = {
   curves: {
@@ -56,34 +50,44 @@ const data: ROCCurveData = {
 
 describe('ROCCurveChart', () => {
   it('renders one line per class with the AUC in the legend name', () => {
-    render(<ROCCurveChart data={data} />)
+    const { container } = render(<ROCCurveChart data={data} />)
 
-    const lines = screen.getAllByTestId('curve-line')
-    expect(lines).toHaveLength(2)
+    expect(curves(container)).toHaveLength(2)
     expect(screen.getByText('yes (AUC 0.93)')).toBeInTheDocument()
     expect(screen.getByText('no (AUC 0.88)')).toBeInTheDocument()
   })
 
-  it('renders a diagonal random-classifier reference line', () => {
-    render(<ROCCurveChart data={data} />)
+  it('plots each curve from the x/y data keys', () => {
+    const { container } = render(<ROCCurveChart data={data} />)
 
-    const ref = screen.getByTestId('reference-line')
-    expect(ref).toHaveAttribute(
-      'data-segment',
-      JSON.stringify([
-        { x: 0, y: 0 },
-        { x: 1, y: 1 },
-      ])
-    )
+    const paths = curvePaths(container)
+    expect(paths).toHaveLength(2)
+    for (const d of paths) {
+      expect(d).toMatch(/^M[\d.]+,[\d.]+[CL]/)
+    }
+    // The two classes have different curves, so they must not draw identically.
+    expect(paths[0]).not.toEqual(paths[1])
+  })
+
+  it('renders a diagonal random-classifier reference line', () => {
+    const { container } = render(<ROCCurveChart data={data} />)
+
+    const ref = referenceLine(container)
+    expect(ref).not.toBeNull()
+    // segment [{x:0,y:0} -> {x:1,y:1}] in chart space: left-to-right and, since
+    // SVG y grows downward, bottom-to-top.
+    const [x1, y1, x2, y2] = coords(ref!)
+    expect(x2).toBeGreaterThan(x1)
+    expect(y2).toBeLessThan(y1)
   })
 
   it('renders a friendly placeholder when there are no curves', () => {
-    render(
+    const { container } = render(
       <ROCCurveChart data={{ curves: {}, auc_per_class: {}, macro_auc: null }} />
     )
 
     expect(screen.getByText(/no roc curve data/i)).toBeInTheDocument()
-    expect(screen.queryAllByTestId('curve-line')).toHaveLength(0)
+    expect(curves(container)).toHaveLength(0)
   })
 
   it('omits the AUC suffix when no AUC is available for a class', () => {

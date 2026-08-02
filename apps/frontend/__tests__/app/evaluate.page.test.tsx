@@ -23,27 +23,12 @@ jest.mock('@/lib/auth-helpers', () => ({
   getAuthToken: jest.fn().mockResolvedValue('mock-token'),
 }))
 
-// Recharts renders SVG that jsdom cannot lay out (FeatureImportanceChart,
-// ROC/PR curves); replace with passthrough divs.
-jest.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  )
-  return {
-    ResponsiveContainer: passthrough,
-    BarChart: passthrough,
-    Bar: passthrough,
-    LineChart: passthrough,
-    Line: passthrough,
-    Cell: passthrough,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    CartesianGrid: passthrough,
-    Tooltip: passthrough,
-    Legend: passthrough,
-    ReferenceLine: passthrough,
-  }
-})
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the charts (#346). The old passthrough mock ignored props
+// entirely, so this page could render charts the library can't.
+jest.mock('recharts', () =>
+  jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()
+)
 
 // Export utils touch URL.createObjectURL / jspdf, which jsdom lacks.
 const mockExportCSV = jest.fn()

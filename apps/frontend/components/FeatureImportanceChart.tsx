@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts'
+import type { BarRectangleItem } from 'recharts'
 import type { FeatureScore } from '@/lib/services/featureSelection'
 
 export interface FeatureImportanceChartProps {
@@ -132,7 +133,16 @@ export function FeatureImportanceChart({
           <Tooltip content={<CustomTooltip />} />
           <Bar
             dataKey="score"
-            onClick={(data) => onFeatureClick && onFeatureClick(data)}
+            // recharts 3 types the Bar onClick argument as BarRectangleItem, which
+            // spreads the datum's fields but is not itself a FeatureScore, so the
+            // v2 code stopped compiling (TS2345). The entry is on `payload`; read
+            // it from there rather than asserting the event object is a
+            // FeatureScore. Typed against recharts' own export instead of casting
+            // through `unknown`, which would drop checking on the very API that broke.
+            onClick={(bar: BarRectangleItem) => {
+              const entry = bar.payload as FeatureScore | undefined
+              if (onFeatureClick && entry) onFeatureClick(entry)
+            }}
             cursor={onFeatureClick ? 'pointer' : 'default'}
           >
             {chartData.map((entry, index) => (

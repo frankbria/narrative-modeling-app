@@ -2,35 +2,26 @@ import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { BarChart, BarChartData } from '@/components/BarChart'
+import { axisTicks } from '@/__tests__/utils/sizedRecharts'
 
-// Surface the recharts chart `onClick` prop as a real DOM click handler so we
-// can exercise the onClick -> onBarClick adapter (BarChart.tsx lines 78-79).
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the chart (#346) -- so Bar/XAxis/dataKey wiring is exercised
+// for real. `Tooltip` stays stubbed: recharts resolves the active index from
+// mouse geometry, which jsdom has none of, so a real hover never opens it. The
+// stub reproduces v3's contract exactly -- clone the `content` element and
+// inject active/payload/label -- which is what CustomTooltip depends on.
 jest.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
-  const BarChart = ({ onClick, children }: { onClick?: (state: unknown) => void; children?: React.ReactNode }) => (
-    <div data-testid="recharts-barchart" onClick={() => onClick?.({ activeLabel: 'A' })}>
-      {children}
-    </div>
-  )
+  const React = jest.requireActual('react')
   return {
-    BarChart,
-    Bar: passthrough,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    CartesianGrid: passthrough,
-    // recharts clones the `content` element and injects active/payload/label.
-    // Reproduce that so the tooltip's props are actually exercised — CustomTooltip
-    // lives at module scope now (#373) and receives total/yLabel/showPercentages
-    // as props rather than closing over them, which nothing else would catch.
+    ...jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts(),
     Tooltip: ({ content }: { content?: React.ReactElement }) =>
       content
         ? React.cloneElement(content, {
             active: true,
             payload: [{ value: 30, color: '#000' }],
             label: 'B',
-          } as never)
+          })
         : null,
-    ResponsiveContainer: passthrough,
   }
 })
 
@@ -56,20 +47,55 @@ describe('BarChart', () => {
     expect(screen.getByText('20.0')).toBeInTheDocument()
   })
 
-  it('forwards a Record-shaped payload to onBarClick when the chart is clicked', () => {
+  it('draws horizontal bars when orientation is horizontal', () => {
+    // The horizontal branch puts the numeric axis on X and the category axis on
+    // Y, which recharts only honours when the chart itself is laid out
+    // vertically. Without that, every bar has zero extent and the chart renders
+    // empty while the summary stats below it still read correctly -- which is
+    // how this shipped (found rendering the monitor Distribution tab, #346).
+    const { container } = render(
+      <BarChart data={data} orientation="horizontal" />
+    )
+
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(3)
+    // Categories on the y-axis, counts on the x-axis.
+    expect(axisTicks(container, 'y')).toEqual(['B', 'C', 'A'])
+    // Counts, not a collapsed [0,0] domain — the symptom of the missing layout.
+    const countTicks = axisTicks(container, 'x')
+    expect(countTicks.length).toBeGreaterThan(1)
+    expect(Number(countTicks.at(-1))).toBeGreaterThanOrEqual(30)
+  })
+
+  it('draws one bar per row, x-labelled by the category dataKey', () => {
+    const { container } = render(<BarChart data={data} />)
+
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(3)
+    // sortBy: 'value' -> descending, so B(30), C(20), A(10).
+    expect(axisTicks(container, 'x')).toEqual(['B', 'C', 'A'])
+  })
+
+  it('forwards recharts chart state to onBarClick when the chart is clicked', () => {
     const onBarClick = jest.fn()
-    render(<BarChart data={data} onBarClick={onBarClick} />)
+    const { container } = render(
+      <BarChart data={data} onBarClick={onBarClick} />
+    )
 
-    fireEvent.click(screen.getByTestId('recharts-barchart'))
+    fireEvent.click(container.querySelector('.recharts-wrapper')!)
 
+    // Real recharts drives this, so the adapter is verified against v3's actual
+    // onClick signature. The state's *contents* are not asserted: recharts
+    // derives the active index from mouse geometry and jsdom reports none, so
+    // every field comes back null here regardless of the click position.
     expect(onBarClick).toHaveBeenCalledTimes(1)
-    expect(onBarClick).toHaveBeenCalledWith({ activeLabel: 'A' })
+    expect(onBarClick.mock.calls[0][0]).toEqual(expect.any(Object))
   })
 
   it('does not pass an onClick handler when onBarClick is omitted', () => {
     // No handler provided → adapter is undefined; clicking is a no-op (no throw).
-    render(<BarChart data={data} />)
-    expect(() => fireEvent.click(screen.getByTestId('recharts-barchart'))).not.toThrow()
+    const { container } = render(<BarChart data={data} />)
+    expect(() =>
+      fireEvent.click(container.querySelector('.recharts-wrapper')!)
+    ).not.toThrow()
   })
 
   // CustomTooltip moved to module scope in #373, so the values it used to close

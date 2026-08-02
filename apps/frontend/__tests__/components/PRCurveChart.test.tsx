@@ -4,28 +4,21 @@ import '@testing-library/jest-dom'
 import { PRCurveChart } from '@/components/PRCurveChart'
 import type { PRCurveData } from '@/lib/types/evaluation'
 
-// Recharts renders SVG that jsdom cannot lay out; mock it with passthrough
-// divs that expose the props we assert on (BarChart.test.tsx pattern).
-jest.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  )
-  return {
-    ResponsiveContainer: passthrough,
-    LineChart: passthrough,
-    CartesianGrid: passthrough,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    Tooltip: passthrough,
-    Legend: passthrough,
-    Line: ({ name }: { name?: string }) => (
-      <div data-testid="curve-line">{name}</div>
-    ),
-    ReferenceLine: ({ y }: { y?: number }) => (
-      <div data-testid="reference-line" data-y={y} />
-    ),
-  }
-})
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the chart (#346). Everything asserted below is drawn by the
+// real library, so a v3 prop/signature change fails here instead of passing
+// through a passthrough mock.
+jest.mock('recharts', () =>
+  jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()
+)
+
+/** One <Line> per class, as recharts actually drew it. */
+const curves = (c: HTMLElement) => c.querySelectorAll('.recharts-line')
+
+const referenceLines = (c: HTMLElement) =>
+  Array.from(
+    c.querySelectorAll('.recharts-reference-line line')
+  ) as SVGLineElement[]
 
 const singleClassData: PRCurveData = {
   curves: {
@@ -48,34 +41,58 @@ const multiClassData: PRCurveData = {
 
 describe('PRCurveChart', () => {
   it('renders one line per class', () => {
-    render(<PRCurveChart data={multiClassData} />)
+    const { container } = render(<PRCurveChart data={multiClassData} />)
 
-    const lines = screen.getAllByTestId('curve-line')
-    expect(lines).toHaveLength(2)
+    expect(curves(container)).toHaveLength(2)
     expect(screen.getByText('a')).toBeInTheDocument()
     expect(screen.getByText('b')).toBeInTheDocument()
   })
 
   it('renders a horizontal baseline reference line for a single-class curve', () => {
-    render(<PRCurveChart data={singleClassData} />)
+    const { container } = render(<PRCurveChart data={singleClassData} />)
 
-    const ref = screen.getByTestId('reference-line')
-    expect(ref).toHaveAttribute('data-y', '0.42')
+    const [ref] = referenceLines(container)
+    expect(ref).toBeDefined()
+    // y=0.42 on the precision axis: a flat line, not a segment.
+    expect(ref.getAttribute('y1')).toBe(ref.getAttribute('y2'))
+  })
+
+  it('places the baseline line according to its value', () => {
+    // Guards the `y` prop actually reaching recharts: a higher baseline must
+    // draw higher up the chart (smaller SVG y). A dropped/renamed prop pins
+    // both renders to the same place.
+    const at = (baseline: number) => {
+      const { container, unmount } = render(
+        <PRCurveChart
+          data={{
+            curves: { yes: [{ x: 0, y: 1 }, { x: 1, y: baseline }] },
+            baseline_per_class: { yes: baseline },
+          }}
+        />
+      )
+      const y = Number(referenceLines(container)[0].getAttribute('y1'))
+      unmount()
+      return y
+    }
+
+    expect(at(0.9)).toBeLessThan(at(0.1))
   })
 
   it('omits baseline reference lines when there are multiple classes', () => {
-    render(<PRCurveChart data={multiClassData} />)
+    const { container } = render(<PRCurveChart data={multiClassData} />)
 
-    expect(screen.queryAllByTestId('reference-line')).toHaveLength(0)
+    expect(referenceLines(container)).toHaveLength(0)
   })
 
   it('renders a friendly placeholder when there are no curves', () => {
-    render(<PRCurveChart data={{ curves: {}, baseline_per_class: {} }} />)
+    const { container } = render(
+      <PRCurveChart data={{ curves: {}, baseline_per_class: {} }} />
+    )
 
     expect(
       screen.getByText(/no precision-recall curve data/i)
     ).toBeInTheDocument()
-    expect(screen.queryAllByTestId('curve-line')).toHaveLength(0)
+    expect(curves(container)).toHaveLength(0)
   })
 
   it('exposes a role=img wrapper naming the classes and the dash channel (issue #282)', () => {
