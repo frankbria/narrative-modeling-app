@@ -25,6 +25,7 @@ from app.billing.stripe_signature import (
     SignatureVerificationError,
     verify_signature,
 )
+from app.config import settings as _settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 
 # Outside /api/v1 on purpose — see the include_router comment in app/main.py.
@@ -60,21 +61,21 @@ class TestPriceTierMapping:
     def test_a_configured_enterprise_price_maps_to_enterprise(self, monkeypatch):
         from app.api.routes.billing_webhook import tier_for_price
 
-        monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
 
         assert tier_for_price("price_ent") == PlanTier.ENTERPRISE
 
     def test_a_configured_pro_price_maps_to_pro(self, monkeypatch):
         from app.api.routes.billing_webhook import tier_for_price
 
-        monkeypatch.setenv("STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
 
         assert tier_for_price("price_pro") == PlanTier.PRO
 
     def test_an_unrecognised_price_falls_back_to_pro_not_enterprise(self, monkeypatch):
         from app.api.routes.billing_webhook import tier_for_price
 
-        monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
 
         assert tier_for_price("price_nobody_configured") == PlanTier.PRO
 
@@ -87,8 +88,8 @@ class TestPriceTierMapping:
         """With no STRIPE_PRICE_* set at all, nothing may reach ENTERPRISE."""
         from app.api.routes.billing_webhook import tier_for_price
 
-        monkeypatch.delenv("STRIPE_PRICE_ENTERPRISE", raising=False)
-        monkeypatch.delenv("STRIPE_PRICE_PRO", raising=False)
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", None)
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", None)
 
         assert tier_for_price("price_anything") == PlanTier.PRO
 
@@ -417,6 +418,30 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.status == SubscriptionStatus.CANCELED
 
+    async def test_an_update_without_a_price_keeps_the_existing_tier(
+        self, async_authorized_client, setup_database
+    ):
+        """`tier_for_price` never returns None — it falls back to PRO — so passing
+        it unconditionally would silently DOWNGRADE an ENTERPRISE tenant on any
+        update that arrived without expanded item data (#367 review)."""
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.ENTERPRISE,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        payload = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+
     async def test_replaying_an_event_is_a_no_op(
         self, async_authorized_client, setup_database
     ):
@@ -531,9 +556,7 @@ class TestWebhookEndpoint:
         assert sub.plan_tier == PlanTier.FREE
 
         # …and the follow-up subscription event, which DOES carry the price, sets it.
-        import os
-
-        os.environ["STRIPE_PRICE_ENTERPRISE"] = "price_ent"
+        _settings.STRIPE_PRICE_ENTERPRISE = "price_ent"
         try:
             follow_up = event(
                 "customer.subscription.updated",
@@ -550,7 +573,7 @@ class TestWebhookEndpoint:
                 headers={"Stripe-Signature": sign(follow_up)},
             )
         finally:
-            os.environ.pop("STRIPE_PRICE_ENTERPRISE", None)
+            _settings.STRIPE_PRICE_ENTERPRISE = None
 
         sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
         assert sub is not None

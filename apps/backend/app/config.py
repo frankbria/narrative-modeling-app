@@ -271,6 +271,10 @@ class Settings(BaseModel):
     STRIPE_WEBHOOK_SECRET: str | None = os.getenv("STRIPE_WEBHOOK_SECRET")
     STRIPE_SECRET_KEY: str | None = os.getenv("STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY: str | None = os.getenv("STRIPE_PUBLISHABLE_KEY")
+    # Stripe price -> tier. Read through Settings like the keys above rather than
+    # os.getenv at the call site, so every billing knob is visible in one place.
+    STRIPE_PRICE_PRO: str | None = os.getenv("STRIPE_PRICE_PRO")
+    STRIPE_PRICE_ENTERPRISE: str | None = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
     # CORS settings
     @property

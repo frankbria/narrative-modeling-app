@@ -16,7 +16,6 @@ Three properties shape everything here:
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,11 +40,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-#: Stripe price -> tier. Configured rather than hard-coded so the mapping can change
-#: when real prices exist; an unrecognised price falls back to PRO rather than
-#: silently granting ENTERPRISE.
-PRICE_TIER_ENV_PREFIX = "STRIPE_PRICE_"
-
 #: Events acted on. Everything else is acknowledged and ignored — see module note.
 HANDLED_EVENTS = frozenset(
     {
@@ -65,12 +59,17 @@ def tier_for_price(price_id: str | None) -> PlanTier:
 
     Falls back to PRO rather than ENTERPRISE for an unrecognised price: guessing
     high hands out the most expensive entitlements to a misconfiguration.
+
+    Never returns None, which is why callers on the UPDATE path must decide for
+    themselves whether a missing price means "PRO" or "leave it alone".
     """
     if not price_id:
         return PlanTier.PRO
 
-    for tier in (PlanTier.ENTERPRISE, PlanTier.PRO):
-        configured = os.getenv(f"{PRICE_TIER_ENV_PREFIX}{tier.value.upper()}")
+    for tier, configured in (
+        (PlanTier.ENTERPRISE, settings.STRIPE_PRICE_ENTERPRISE),
+        (PlanTier.PRO, settings.STRIPE_PRICE_PRO),
+    ):
         if configured and configured == price_id:
             return tier
     return PlanTier.PRO
@@ -261,10 +260,15 @@ async def _handle(
 
     if event_type in ("customer.subscription.created", "customer.subscription.updated"):
         price = _price_id(obj)
+        # No price on an UPDATE means leave the tier alone. `tier_for_price` never
+        # returns None — it falls back to PRO — so passing it here unconditionally
+        # would silently downgrade an ENTERPRISE tenant on any update that arrived
+        # without expanded item data. Not guessing high and not guessing wrong are
+        # the same principle; this is the second half of it.
         await _upsert(
             user_id,
             status_=SubscriptionStatus.from_stripe(obj.get("status", "")),
-            tier=tier_for_price(price),
+            tier=tier_for_price(price) if price else None,
             customer_id=obj.get("customer"),
             subscription_id=obj.get("id"),
             price_id=price,
