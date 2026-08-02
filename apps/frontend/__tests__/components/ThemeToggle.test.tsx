@@ -107,4 +107,27 @@ describe('ThemeToggle', () => {
 
     expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
   })
+
+  it('moves DOM focus with the selection, not just aria-checked', () => {
+    // The focus-moving path is the fragile part of the keyboard handling — it used
+    // to walk the DOM from parentElement — and nothing asserted it (#422 review).
+    renderToggle()
+
+    const system = screen.getByRole('radio', { name: 'System' })
+    system.focus()
+    fireEvent.keyDown(system, { key: 'ArrowRight' })
+
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Light' }))
+  })
+
+  it('supports Home and End, which the APG pattern also expects', () => {
+    renderToggle()
+
+    const system = screen.getByRole('radio', { name: 'System' })
+    fireEvent.keyDown(system, { key: 'Home' })
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Light' }), { key: 'End' })
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
+  })
 })
