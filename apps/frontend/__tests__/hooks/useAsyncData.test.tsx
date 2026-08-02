@@ -267,3 +267,81 @@ describe('useAsyncData keepPreviousData', () => {
     expect(result.current.data).toBe('b-data')
   })
 })
+
+describe('a result that lands after an effect cleanup (#411)', () => {
+  // React StrictMode double-invokes effects in dev: mount -> effect A -> cleanup A
+  // -> effect B. The old code used a closure `cancelled` flag, so A's result was
+  // thrown away even though its deps were still current. When the request is slow
+  // enough that only one of the two ever comes back, `loading` stays true forever.
+  //
+  // Observed on the AI Insights panel against a real backend: two requests, one
+  // HTTP 200 at 35s, and "Generating AI insights…" still on screen at 240s.
+  //
+  // Discarding by closure flag is also redundant — `settled` already ignores any
+  // result whose deps or reload token no longer match. What it cannot do is
+  // recover a result the effect threw away.
+
+  it('accepts an in-flight result whose deps are current again', async () => {
+    // Same shape as the StrictMode double-invoke, reachable without it: the effect
+    // for 'a' is cleaned up when deps move to 'b', then deps come back to 'a' (tab
+    // away and back) while that first request is still in flight. Its result is
+    // valid for the current deps, but the closure flag threw it away — so nothing
+    // ever settled and the spinner stayed up.
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(
+      () => new Promise<string>((res) => { releases.push(res) })
+    )
+
+    const { result, rerender } = renderHook(
+      ({ id }) => useAsyncData(loader, [id]),
+      { initialProps: { id: 'a' } }
+    )
+
+    rerender({ id: 'b' })
+    rerender({ id: 'a' })
+
+    expect(result.current.loading).toBe(true)
+
+    await act(async () => {
+      releases[0]('answer for a')   // the request the cleanup discarded
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('answer for a')
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('still ignores a result whose deps have moved on', async () => {
+    // The protection the closure flag was there for must survive: a slow request
+    // for 'a' must not populate the hook after the caller has switched to 'b'.
+    const pending: Record<string, (v: string) => void> = {}
+    const loader = jest.fn(function (this: void) {
+      return new Promise<string>((res) => {
+        pending[Object.keys(pending).length === 0 ? 'first' : 'second'] = res
+      })
+    })
+
+    const { result, rerender } = renderHook(
+      ({ id }) => useAsyncData(loader, [id]),
+      { initialProps: { id: 'a' } }
+    )
+
+    rerender({ id: 'b' })
+
+    await act(async () => {
+      pending.first('stale answer for a')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.loading).toBe(true)
+
+    await act(async () => {
+      pending.second('fresh answer for b')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('fresh answer for b')
+    expect(result.current.loading).toBe(false)
+  })
+})
