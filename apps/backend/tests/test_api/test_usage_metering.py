@@ -136,6 +136,29 @@ class TestRecording:
 
         assert await metering.usage_for(TEST_USER, "uploads") == 2
 
+    async def test_a_second_collision_is_logged_distinctly_and_still_swallowed(
+        self, setup_database, caplog
+    ):
+        """Pins what a repeated collision actually does, since the comment calls it
+        a "genuine problem" (#369 review). It is logged with its own message so it
+        can be searched for — but still swallowed, because the promise to the
+        caller does not change: a request must not fail over a counter."""
+        import logging
+
+        async def _always_collide(*_args, **_kwargs):
+            raise DuplicateKeyError("collides every time")
+
+        monkeypatch_target = UsageRecord.get_motor_collection()
+        original = monkeypatch_target.update_one
+        monkeypatch_target.update_one = _always_collide
+        try:
+            with caplog.at_level(logging.ERROR):
+                await metering.record(TEST_USER, "predictions")  # must not raise
+        finally:
+            monkeypatch_target.update_one = original
+
+        assert any("collided twice" in r.message for r in caplog.records)
+
     async def test_unknown_metric_is_rejected(self, setup_database):
         """The "never raises" promise is about STORAGE failures. A bad metric name
         is a programmer error with no request to protect, and swallowing it would

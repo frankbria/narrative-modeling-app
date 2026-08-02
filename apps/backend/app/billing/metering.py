@@ -6,6 +6,13 @@ Two properties matter more than anything else in this module:
 
 * **Increments are atomic.** A single `$inc` upsert, not read-modify-write. Two
   concurrent predictions must count as two.
+* **`remaining()` is NOT an atomic check-and-consume.** It composes two independent
+  reads, so concurrent requests can all see quota available before any of them
+  calls `record()` — a bounded overshoot past the limit under load. Fine for
+  display, and acceptable for a soft billing limit, but #368 must decide that
+  explicitly rather than inherit an assumption that this gives a hard guarantee.
+  Closing the window would need a conditional `$inc` that both checks and consumes
+  in one operation, which is a different primitive from the one here.
 * **Recording never breaks the request on a storage failure.** A tenant's
   prediction succeeding and then 500-ing because a counter could not be written is
   worse than a slightly under-counted period, so `record()` swallows storage errors
@@ -19,7 +26,7 @@ from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
-from app.billing.plans import METERED_METRICS, limits_for
+from app.billing.plans import METERED_METRICS, UNLIMITED, limits_for
 from app.models.subscription import PlanTier, Subscription
 from app.models.usage import UsageRecord
 
@@ -85,12 +92,20 @@ async def record(user_id: str, metric: str, amount: int = 1) -> None:
         # Retry the SAME operation, upsert included. Dropping upsert here would
         # rely on the document still existing — true for this race, but a silent
         # no-op if anything ever removed it in between (a period cleanup, an
-        # erasure request). Keeping upsert makes the retry idempotent regardless,
-        # and a second DuplicateKeyError would mean a genuine problem worth
-        # surfacing rather than papering over.
+        # erasure request). Keeping upsert makes the retry idempotent regardless.
         try:
             await UsageRecord.get_motor_collection().update_one(
                 selector, update, upsert=True
+            )
+        except DuplicateKeyError:
+            # A SECOND collision is not the ordinary race — an idempotent upsert
+            # should not lose twice. Logged at error with its own message so it is
+            # distinguishable in a log search, rather than folded in with routine
+            # storage failures. Still swallowed: the promise to the caller is the
+            # same, and a request must not fail over a counter.
+            logger.error(
+                "usage record collided twice; count may be short",
+                extra={"user_id": user_id, "metric": metric, "amount": amount},
             )
         except Exception:
             logger.exception(
@@ -156,9 +171,10 @@ async def remaining(user_id: str, metric: str) -> int | None:
 
     Validates via `limit_for` and `usage_for`, both of which raise on an unknown
     metric rather than reporting a full quota.
-    """
-    from app.billing.plans import UNLIMITED
 
+    NOT an atomic check-and-consume — see the TOCTOU note in the module docstring
+    before building hard enforcement on this.
+    """
     limit = limits_for(await effective_tier_for(user_id)).limit_for(metric)
     if limit == UNLIMITED:
         return None
