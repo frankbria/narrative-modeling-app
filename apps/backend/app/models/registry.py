@@ -23,6 +23,7 @@ from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
 from app.models.plot import Plot
 from app.models.revised_data import RevisedData
+from app.models.subscription import Subscription
 from app.models.trained_model import TrainedModel
 from app.models.training_job import TrainingJob
 from app.models.transformation import TransformationConfig
@@ -59,6 +60,7 @@ DOCUMENT_MODELS = [
     RevisedData,
     SharedRecipe,
     StoredFeature,
+    Subscription,
     TrainedModel,
     TrainingJob,
     TransformationConfig,

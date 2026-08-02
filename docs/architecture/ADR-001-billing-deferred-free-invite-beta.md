@@ -1,9 +1,14 @@
 # ADR-001: Launch as a free invite-only beta; defer billing
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-002](./ADR-002-billing-implemented.md) (2026-08-02)
 - **Date:** 2026-07-23
 - **Resolves:** [#289](https://github.com/frankbria/narrative-modeling-app/issues/289) (P2.12 — Billing / subscription / metering epic)
 - **Related:** #261 (invite-only beta gate, shipped)
+
+> **Superseded.** The deferral below was correct for the free invite-only beta, and
+> the reasoning is kept for the record. Billing was subsequently scheduled and built
+> under epic #370; see ADR-002 for what shipped and which parts of this decision it
+> reverses. Do not cite this ADR as a reason not to build billing.
 
 ## Context
 
