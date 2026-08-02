@@ -190,3 +190,44 @@ describe('ported v3 config survives', () => {
     expect(css).toMatch(/--radix-accordion-content-height/)
   })
 })
+
+describe('@theme inline maps nothing that is undefined (#399)', () => {
+  // Generalises the #345 lesson past the hand-maintained THEME_TOKENS list.
+  // `@theme inline { --color-x: var(--x) }` with `--x` never defined compiles
+  // fine and ships nothing: any utility built on it resolves to an undefined
+  // variable and the browser DROPS the declaration — silently, exactly like the
+  // hsl(oklch(...)) bug. The shadcn scaffold left 13 of these behind (chart-1..5
+  // and the sidebar family), removed in #399.
+  const source = readFileSync(CSS_PATH, 'utf8')
+
+  /** `--color-foo: var(--bar);` pairs inside the @theme inline block. */
+  const mappings = (() => {
+    const block = source.match(/@theme inline\s*\{([\s\S]*?)\n\}/)
+    if (!block) throw new Error('no @theme inline block found in globals.css')
+    return [...block[1].matchAll(/--([\w-]+)\s*:\s*var\(\s*--([\w-]+)\s*\)/g)].map(
+      (m) => ({ alias: m[1], token: m[2] })
+    )
+  })()
+
+  /** Custom properties defined anywhere outside the @theme inline block. */
+  const defined = (() => {
+    const withoutTheme = source.replace(/@theme inline\s*\{[\s\S]*?\n\}/, '')
+    return new Set(
+      [...withoutTheme.matchAll(/^\s*--([\w-]+)\s*:/gm)].map((m) => m[1])
+    )
+  })()
+
+  it('finds mappings to check', () => {
+    expect(mappings.length).toBeGreaterThan(10)
+  })
+
+  it('every mapped token is defined somewhere', () => {
+    // Font tokens come from next/font at runtime, not from a CSS declaration.
+    const runtimeProvided = new Set(['font-geist-sans', 'font-geist-mono'])
+    const dangling = mappings
+      .filter((m) => !defined.has(m.token) && !runtimeProvided.has(m.token))
+      .map((m) => `--${m.alias} -> var(--${m.token})`)
+
+    expect(dangling).toEqual([])
+  })
+})
