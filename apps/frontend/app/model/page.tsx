@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -41,7 +42,6 @@ export default function ModelPage() {
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     target_column: ''
   });
-  const [columns, setColumns] = useState<string[]>([]);
   const [trainingModelId, setTrainingModelId] = useState<string | null>(null);
   const [completedStatus, setCompletedStatus] = useState<TrainingStatus | null>(null);
   const [trainingError, setTrainingError] = useState<string | null>(null);
@@ -50,67 +50,55 @@ export default function ModelPage() {
   const [showLogs, setShowLogs] = useState(false);
   // Training mode (issue #101). Defaults to Quick; updated to the dataset-based
   // recommendation when it loads (before the user interacts).
-  const [trainingMode, setTrainingMode] = useState<TrainingMode>('quick');
-  const [recommendedMode, setRecommendedMode] = useState<TrainingMode | undefined>();
-  const [recommendationReason, setRecommendationReason] = useState<string | undefined>();
-  // Once the user picks a mode, a late-arriving recommendation must not override it.
-  const modeTouchedRef = useRef(false);
+  // A user pick beats the recommendation, including one that arrives later.
+  // Expressed as an override rather than a ref + conditional setState: null means
+  // "untouched", so a late recommendation simply shows through.
+  const [modeChoice, setModeChoice] = useState<TrainingMode | null>(null);
 
   const handleModeChange = (mode: TrainingMode) => {
-    modeTouchedRef.current = true;
-    setTrainingMode(mode);
+    setModeChoice(mode);
   };
 
   // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
 
-  const loadDatasetColumns = async () => {
-    try {
+  // Two independent loads, deliberately NOT combined: the recommendation is
+  // advisory and can be slow, and folding it in with the columns would make the
+  // whole form wait on it. A test pins that — it defers the recommendation and
+  // still expects the column options to render.
+  const { data: columnData } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
-      // state.datasetId is a UserData id (set by the upload flow), so read the
-      // column list from the UserData record. The /datasets/{id}/schema
-      // endpoint expects a DatasetMetadata id and 404s for uploads.
-      const response = await fetch(`${API_URL}/user_data/${state.datasetId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await fetch(`${API_URL}/datasets/${state.datasetId}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (!response.ok) return [] as string[];
+      const body = await response.json();
+      return ((body.data_schema ?? []) as { field_name: string }[]).map(
+        (field) => field.field_name
+      );
+    },
+    [state.datasetId],
+    { enabled: !!state.datasetId },
+  );
 
-      if (response.ok) {
-        const data = await response.json();
-        setColumns(
-          (data.data_schema ?? []).map(
-            (field: { field_name: string }) => field.field_name
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Failed to load columns:', error);
-    }
-  };
+  const { data: recommendation } = useAsyncData(
+    // Advisory only — a failure just leaves the Quick default in place.
+    () =>
+      modelService
+        .getModeRecommendation(state.datasetId as string)
+        .catch((error) => {
+          console.error('Failed to load mode recommendation:', error);
+          return null;
+        }),
+    [state.datasetId],
+    { enabled: !!state.datasetId },
+  );
 
-  const loadModeRecommendation = async () => {
-    if (!state.datasetId) return;
-    try {
-      const rec = await modelService.getModeRecommendation(state.datasetId);
-      setRecommendedMode(rec.recommended_mode);
-      setRecommendationReason(rec.reason);
-      // Preselect the recommendation only if the user hasn't already picked.
-      if (!modeTouchedRef.current) {
-        setTrainingMode(rec.recommended_mode);
-      }
-    } catch (error) {
-      // Recommendation is advisory — a failure just leaves the Quick default.
-      console.error('Failed to load mode recommendation:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (!state.datasetId) return;
-    loadDatasetColumns();
-    loadModeRecommendation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.datasetId]);
+  const columns = columnData ?? [];
+  const recommendedMode = recommendation?.recommended_mode;
+  const recommendationReason = recommendation?.reason;
+  const trainingMode: TrainingMode = modeChoice ?? recommendedMode ?? 'quick';
 
   const handleTrainModel = async () => {
     if (!state.datasetId) return;
