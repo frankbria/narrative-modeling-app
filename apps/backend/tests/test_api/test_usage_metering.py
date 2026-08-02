@@ -13,6 +13,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from app.billing import metering
 from app.billing.plans import METERED_METRICS, PLAN_LIMITS
@@ -71,6 +72,45 @@ class TestRecording:
         )
 
         assert await metering.usage_for(TEST_USER, "predictions") == 50
+
+    async def test_a_duplicate_key_race_is_retried_not_swallowed(
+        self, setup_database, monkeypatch
+    ):
+        """The first writes for a new key race on the unique index (#369 review).
+
+        Both find nothing, both try to insert, one loses with DuplicateKeyError. A
+        blanket `except Exception` would log it and move on — silently under-counting,
+        which is the one failure mode this module exists to avoid. The retry runs
+        without upsert, since the document is guaranteed to exist by then.
+        """
+        # Model the race faithfully: the writer that WON has already created the
+        # document, which is why the retry can drop `upsert` and still land.
+        await UsageRecord(
+            user_id=TEST_USER,
+            period_key=metering.period_key_for(),
+            metric="predictions",
+            units=1,
+        ).insert()
+
+        real = UsageRecord.get_motor_collection().update_one
+        calls = {"n": 0}
+
+        async def _fail_first_then_delegate(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise DuplicateKeyError("simulated first-write race")
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(
+            UsageRecord.get_motor_collection(), "update_one", _fail_first_then_delegate
+        )
+
+        await metering.record(TEST_USER, "predictions", amount=3)
+
+        assert calls["n"] == 2, "expected exactly one retry"
+        # 1 from the winner + 3 from the write that lost and retried. Swallowing
+        # the DuplicateKeyError would leave this at 1.
+        assert await metering.usage_for(TEST_USER, "predictions") == 4
 
     async def test_unknown_metric_is_rejected(self, setup_database):
         with pytest.raises(KeyError):

@@ -15,6 +15,8 @@ Two properties matter more than anything else in this module:
 import logging
 from datetime import UTC, datetime
 
+from pymongo.errors import DuplicateKeyError
+
 from app.billing.plans import METERED_METRICS, limits_for
 from app.models.subscription import PlanTier, Subscription
 from app.models.usage import UsageRecord
@@ -48,22 +50,38 @@ async def record(user_id: str, metric: str, amount: int = 1) -> None:
         return
 
     now = datetime.now(UTC)
+    selector = {
+        "user_id": user_id,
+        "period_key": period_key_for(now),
+        "metric": metric,
+    }
+    # Atomic: two concurrent predictions count as two, where a read-modify-write
+    # would lose one.
+    update = {
+        "$inc": {"units": amount},
+        "$set": {"updated_at": now},
+        "$setOnInsert": {"created_at": now},
+    }
+
     try:
         await UsageRecord.get_motor_collection().update_one(
-            {
-                "user_id": user_id,
-                "period_key": period_key_for(now),
-                "metric": metric,
-            },
-            {
-                # Atomic: two concurrent predictions count as two, where a
-                # read-modify-write would lose one.
-                "$inc": {"units": amount},
-                "$set": {"updated_at": now},
-                "$setOnInsert": {"created_at": now},
-            },
-            upsert=True,
+            selector, update, upsert=True
         )
+    except DuplicateKeyError:
+        # The FIRST concurrent writes for a new (user_id, period, metric) can race
+        # on the unique index: both find nothing, both try to insert, one loses.
+        # Mongo often retries this internally but does not guarantee it. Handled
+        # separately from a genuine outage because swallowing it would silently
+        # under-count — the exact failure this module exists to avoid.
+        #
+        # The document is now guaranteed to exist, so retry without upsert.
+        try:
+            await UsageRecord.get_motor_collection().update_one(selector, update)
+        except Exception:
+            logger.exception(
+                "failed to record usage after a duplicate-key retry",
+                extra={"user_id": user_id, "metric": metric},
+            )
     except Exception:
         logger.exception(
             "failed to record usage", extra={"user_id": user_id, "metric": metric}
