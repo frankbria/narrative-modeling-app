@@ -15,6 +15,10 @@ from app.billing import stripe_client
 from app.config import settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 
+# The origin guard validates against BACKEND_CORS_ORIGINS, so the redirect URLs
+# below use an origin the test environment actually allows.
+APP_ORIGIN = "http://localhost:3000"
+
 STATUS = "/api/v1/billing/status"
 CHECKOUT = "/api/v1/billing/checkout"
 PORTAL = "/api/v1/billing/portal"
@@ -59,8 +63,8 @@ class TestStatusWithoutStripe:
             CHECKOUT,
             json={
                 "tier": "pro",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
             },
         )
 
@@ -70,7 +74,7 @@ class TestStatusWithoutStripe:
         self, async_authorized_client, setup_database
     ):
         response = await async_authorized_client.post(
-            PORTAL, json={"return_url": "https://app.test/settings"}
+            PORTAL, json={"return_url": "http://localhost:3000/settings"}
         )
 
         assert response.status_code == 503
@@ -138,8 +142,8 @@ class TestCheckout:
             CHECKOUT,
             json={
                 "tier": "free",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
             },
         )
 
@@ -158,8 +162,8 @@ class TestCheckout:
             CHECKOUT,
             json={
                 "tier": "enterprise",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
             },
         )
 
@@ -191,8 +195,8 @@ class TestCheckout:
             CHECKOUT,
             json={
                 "tier": "pro",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
             },
         )
 
@@ -230,8 +234,8 @@ class TestCheckout:
             CHECKOUT,
             json={
                 "tier": "pro",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
             },
         )
 
@@ -263,14 +267,155 @@ class TestCheckout:
             CHECKOUT,
             json={
                 "tier": "pro",
-                "success_url": "https://app.test/ok",
-                "cancel_url": "https://app.test/no",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
                 "user_id": "somebody-else",
                 "client_reference_id": "somebody-else",
             },
         )
 
         assert captured["client_reference_id"] == TEST_USER
+
+
+@pytest.mark.asyncio
+class TestRedirectValidation:
+    """Redirect targets must be this app's own origins (#365 review).
+
+    Unvalidated, they are an open redirect wearing a legitimate costume: an
+    authenticated caller walks a victim through the REAL Stripe checkout — which
+    looks right, because it is — and lands them on a phishing page at the end.
+    Authentication does not help; the attacker is a valid user.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _stripe_on(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "https://phishing.example/steal",
+            "http://localhost:3000.evil.test/",
+            "javascript:alert(1)",
+            "//protocol-relative.example",
+            "/relative/only",
+            "",
+        ],
+    )
+    async def test_checkout_rejects_a_foreign_redirect(
+        self, async_authorized_client, setup_database, bad_url
+    ):
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": bad_url,
+                "cancel_url": "http://localhost:3000/ok",
+            },
+        )
+
+        assert response.status_code == 400, response.text
+
+    async def test_checkout_rejects_a_foreign_cancel_url_too(
+        self, async_authorized_client, setup_database
+    ):
+        """Both URLs are attacker-controllable; validating only one is no
+        validation at all."""
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "https://phishing.example/steal",
+            },
+        )
+
+        assert response.status_code == 400
+
+    async def test_portal_rejects_a_foreign_return_url(
+        self, async_authorized_client, setup_database
+    ):
+        await Subscription(
+            user_id=TEST_USER, stripe_customer_id="cus_x"
+        ).insert()
+
+        response = await async_authorized_client.post(
+            PORTAL, json={"return_url": "https://phishing.example/steal"}
+        )
+
+        assert response.status_code == 400
+
+    async def test_a_known_origin_is_accepted(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The guard must not reject the app's own URLs, or it breaks the feature
+        rather than protecting it."""
+        captured: dict = {}
+
+        def _fake_create(**kwargs):
+            captured.update(kwargs)
+            return {"id": "cs_ok", "url": "https://checkout.stripe.test/ok"}
+
+        monkeypatch.setattr(
+            stripe_client,
+            "_client",
+            lambda: type(
+                "S",
+                (),
+                {"checkout": type("C", (), {"Session": type("Sess", (), {"create": staticmethod(_fake_create)})})},
+            ),
+        )
+
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": "http://localhost:3000/settings/billing?checkout=success",
+                "cancel_url": "http://localhost:3000/settings/billing",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+class TestProviderErrors:
+    """A Stripe failure is 502, not 500 (#365 review)."""
+
+    @pytest.fixture(autouse=True)
+    def _stripe_on(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+    async def test_a_stripe_failure_is_a_502(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        def _boom(**_kwargs):
+            raise RuntimeError("stripe is unreachable")
+
+        monkeypatch.setattr(
+            stripe_client,
+            "_client",
+            lambda: type(
+                "S",
+                (),
+                {"checkout": type("C", (), {"Session": type("Sess", (), {"create": staticmethod(_boom)})})},
+            ),
+        )
+
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
+            },
+        )
+
+        assert response.status_code == 502
+        # The provider's message stays in the log, not the response body.
+        assert "unreachable" not in response.text
 
 
 @pytest.mark.asyncio
@@ -284,7 +429,7 @@ class TestPortal:
     ):
         """The portal manages an existing relationship; there is nothing to open."""
         response = await async_authorized_client.post(
-            PORTAL, json={"return_url": "https://app.test/settings"}
+            PORTAL, json={"return_url": "http://localhost:3000/settings"}
         )
 
         assert response.status_code == 503
@@ -313,7 +458,7 @@ class TestPortal:
         )
 
         response = await async_authorized_client.post(
-            PORTAL, json={"return_url": "https://app.test/settings"}
+            PORTAL, json={"return_url": "http://localhost:3000/settings"}
         )
 
         assert response.status_code == 200

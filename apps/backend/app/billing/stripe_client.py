@@ -20,6 +20,14 @@ from app.models.subscription import Subscription
 logger = logging.getLogger(__name__)
 
 
+class BillingProviderError(Exception):
+    """Stripe rejected the call or could not be reached.
+
+    Separate from `BillingNotConfigured` so a route can answer 502 (upstream
+    failed, worth retrying) rather than 503 (not offered here) or 500 (our bug).
+    """
+
+
 class BillingNotConfigured(Exception):
     """Stripe is not set up on this deployment.
 
@@ -88,7 +96,10 @@ async def create_checkout_session(
     if existing:
         params["customer"] = existing
 
-    session = await _to_thread(stripe.checkout.Session.create, **params)
+    try:
+        session = await _to_thread(stripe.checkout.Session.create, **params)
+    except Exception as exc:  # noqa: BLE001 - narrowed by re-raise below
+        _reraise_provider_error(exc)
     return {"id": session["id"], "url": session["url"]}
 
 
@@ -104,12 +115,27 @@ async def create_portal_session(user_id: str, return_url: str) -> dict[str, Any]
     if not customer_id:
         raise BillingNotConfigured("this tenant has no Stripe customer")
 
-    session = await _to_thread(
-        stripe.billing_portal.Session.create,
-        customer=customer_id,
-        return_url=return_url,
-    )
+    try:
+        session = await _to_thread(
+            stripe.billing_portal.Session.create,
+            customer=customer_id,
+            return_url=return_url,
+        )
+    except Exception as exc:  # noqa: BLE001 - narrowed by re-raise below
+        _reraise_provider_error(exc)
     return {"url": session["url"]}
+
+
+def _reraise_provider_error(exc: Exception):
+    """Turn any Stripe failure into BillingProviderError, preserving the cause.
+
+    Deliberately catches broadly: the SDK raises a family of types
+    (CardError, RateLimitError, APIConnectionError, …) and a new one appearing in
+    an SDK upgrade must not become an uncaught 500.
+    """
+    if isinstance(exc, BillingNotConfigured):
+        raise exc
+    raise BillingProviderError(str(exc)) from exc
 
 
 async def _to_thread(fn, /, *args, **kwargs):

@@ -12,6 +12,7 @@ against — or read the usage of — someone else's account.
 """
 
 import logging
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -25,6 +26,42 @@ from app.models.subscription import PlanTier, Subscription
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _assert_known_origin(url: str) -> str:
+    """Reject a redirect target that is not one of this app's own origins.
+
+    Stripe sends the browser to these after a hosted flow. Forwarded unvalidated,
+    they are an open redirect wearing a legitimate costume: an authenticated caller
+    can walk a user through the REAL Stripe checkout — which looks exactly right,
+    because it is — and land them on a phishing page at the end. The authentication
+    does not help; the attacker is a valid user, and the victim is themselves.
+
+    `BACKEND_CORS_ORIGINS` is already this app's list of known origins, so it is the
+    source of truth here too rather than a second list to drift.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect URL must be an absolute http(s) URL",
+        )
+
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    allowed = settings.BACKEND_CORS_ORIGINS
+    if "*" in allowed:
+        # A wildcard is a CORS convenience, never a licence to redirect anywhere.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect URL origin is not allowed",
+        )
+    if origin not in allowed:
+        logger.warning("rejected billing redirect to unknown origin: %s", origin)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect URL origin is not allowed",
+        )
+    return url
 
 
 class CheckoutRequest(BaseModel):
@@ -103,6 +140,9 @@ async def start_checkout(
             detail="the free tier does not require a subscription",
         )
 
+    _assert_known_origin(body.success_url)
+    _assert_known_origin(body.cancel_url)
+
     price_id = _price_for(body.tier)
     if not price_id:
         # A missing price is configuration, not a client error — the caller asked
@@ -124,6 +164,15 @@ async def start_checkout(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="billing is not available on this deployment",
         ) from exc
+    except stripe_client.BillingProviderError as exc:
+        # Stripe rejected or could not be reached. 502, not 500: the failure is
+        # upstream, and the generic body keeps provider detail out of the response
+        # while the log keeps it for us.
+        logger.warning("stripe checkout failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="could not start checkout, please try again",
+        ) from exc
 
 
 @router.post("/portal")
@@ -132,6 +181,8 @@ async def open_portal(
     current_user_id: str = Depends(get_current_user_id),
 ):
     """Return a link to Stripe's customer portal for this tenant."""
+    _assert_known_origin(body.return_url)
+
     try:
         return await stripe_client.create_portal_session(
             user_id=current_user_id, return_url=body.return_url
@@ -143,6 +194,12 @@ async def open_portal(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="no billing account to manage",
+        ) from exc
+    except stripe_client.BillingProviderError as exc:
+        logger.warning("stripe portal failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="could not open the billing portal, please try again",
         ) from exc
 
 
