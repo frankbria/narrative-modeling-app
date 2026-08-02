@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
+import { getAuthToken } from '@/lib/auth-helpers'
+import { API_BASE_URL } from '@/lib/config'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -52,13 +54,24 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
     reload,
   } = useAsyncData<AISummary>(
     async () => {
-      const response = await fetch(`/api/ai/summarize/${datasetId}`, {
+      // This used to be a *relative* `/api/ai/summarize/...`, which resolves
+      // against the Next app — where no such route exists — so the panel has
+      // never once reached the backend and always rendered its error card (#409).
+      // The summariser lives on the API: POST /api/v1/ai/summarize/{file_id}.
+      const token = await getAuthToken()
+      const response = await fetch(`${API_BASE_URL}/ai/summarize/${datasetId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       })
       if (!response.ok) {
-        throw new Error('Failed to generate AI summary')
+        // Carry the status: every failure collapsing into one message is what
+        // made the missing route take a bisect to find.
+        throw new Error(
+          `Failed to generate AI summary (HTTP ${response.status})`
+        )
       }
       return response.json()
     },
