@@ -91,7 +91,7 @@ export function FeatureEngineeringProvider({
   // exactly the documented pattern for browser-only storage. Clearing the lint
   // error would mean introducing a real bug to satisfy a rule that cannot see
   // the constraint, so the suppression is the honest option.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe localStorage hydration; see above
+  /* eslint-disable react-hooks/set-state-in-effect -- SSR-safe localStorage hydration; see above */
   useEffect(() => {
     try {
       const savedFeatures = localStorage.getItem(`feature_engineering_${datasetId}_selected`);
@@ -118,6 +118,7 @@ export function FeatureEngineeringProvider({
       console.error('Failed to load persisted feature engineering state:', err);
     }
   }, [datasetId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Persist selected features
   useEffect(() => {
