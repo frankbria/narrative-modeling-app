@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
@@ -73,6 +73,23 @@ export default function DatasetAnalysisPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
+
+  // Memoised because it feeds InteractiveVisualizationDashboard's chart-fetch
+  // dependency list. Built inline in the JSX, it was a fresh array on every
+  // render of this page, so the dashboard refetched, re-rendered and refetched
+  // again — the scatter/boxplot/line tabs never left "Loading visualization…".
+  const vizColumns = useMemo(
+    () =>
+      dataset?.schema?.columns?.map((col) => ({
+        name: col.name,
+        // Canonical field is the backend's `data_type` (schema_inference.py
+        // DataType enum); legacy documents may only carry pandas-style `type`.
+        type: classifyColumnType(col.data_type ?? col.type),
+        unique_count: col.unique_count ?? col.cardinality,
+        null_count: col.null_count,
+      })),
+    [dataset?.schema?.columns],
+  )
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
@@ -453,17 +470,10 @@ export default function DatasetAnalysisPage() {
           </TabsContent>
 
           <TabsContent value="visualizations">
-            {dataset.schema?.columns ? (
+            {vizColumns ? (
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={dataset.schema.columns.map((col) => ({
-                  name: col.name,
-                  // Canonical field is the backend's `data_type` (schema_inference.py
-                  // DataType enum); legacy documents may only carry pandas-style `type`.
-                  type: classifyColumnType(col.data_type ?? col.type),
-                  unique_count: col.unique_count ?? col.cardinality,
-                  null_count: col.null_count
-                }))}
+                columns={vizColumns}
                 statistics={dataset.statistics}
               />
             ) : (

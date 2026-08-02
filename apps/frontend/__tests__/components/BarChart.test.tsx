@@ -47,6 +47,22 @@ describe('BarChart', () => {
     expect(screen.getByText('20.0')).toBeInTheDocument()
   })
 
+  it('draws horizontal bars when orientation is horizontal', () => {
+    // The horizontal branch puts the numeric axis on X and the category axis on
+    // Y, which recharts only honours when the chart itself is laid out
+    // vertically. Without that, every bar has zero extent and the chart renders
+    // empty while the summary stats below it still read correctly -- which is
+    // how this shipped (found rendering the monitor Distribution tab, #346).
+    const { container } = render(
+      <BarChart data={data} orientation="horizontal" />
+    )
+
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(3)
+    // Categories on the y-axis, counts on the x-axis.
+    expect(axisTicks(container, 'y')).toEqual(['B', 'C', 'A'])
+    expect(axisTicks(container, 'x').at(-1)).not.toBe('0')
+  })
+
   it('draws one bar per row, x-labelled by the category dataKey', () => {
     const { container } = render(<BarChart data={data} />)
 

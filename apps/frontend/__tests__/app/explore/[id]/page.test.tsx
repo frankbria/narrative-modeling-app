@@ -99,17 +99,24 @@ jest.mock('@/components/AIInsightsPanel', () => {
   }
 })
 
+// Records every `columns` array the page hands the dashboard, by reference, so
+// a test can assert the identity is stable across re-renders (#346).
+const mockColumnsProps: unknown[] = []
+
 jest.mock('@/components/InteractiveVisualizationDashboard', () => {
   return {
-    InteractiveVisualizationDashboard: ({ datasetId, columns }: { datasetId?: string; columns?: unknown }) => (
-      <div
-        data-testid="visualization-dashboard"
-        data-dataset-id={datasetId ?? ''}
-        data-columns={JSON.stringify(columns ?? null)}
-      >
-        Visualizations
-      </div>
-    )
+    InteractiveVisualizationDashboard: ({ datasetId, columns }: { datasetId?: string; columns?: unknown }) => {
+      mockColumnsProps.push(columns)
+      return (
+        <div
+          data-testid="visualization-dashboard"
+          data-dataset-id={datasetId ?? ''}
+          data-columns={JSON.stringify(columns ?? null)}
+        >
+          Visualizations
+        </div>
+      )
+    }
   }
 })
 
@@ -397,6 +404,44 @@ describe('DatasetAnalysisPage', () => {
       String(url).includes('/data/process')
     )
     expect(processCalls).toHaveLength(0)
+  })
+
+  it('hands the dashboard the same columns array across re-renders', async () => {
+    // The dashboard keys its chart fetch on this prop. Built inline in the JSX it
+    // was a fresh array every render, so the fetch effect re-ran, re-rendered and
+    // re-fetched without end — the scatter/boxplot/line tabs sat on "Loading
+    // visualization…" forever. Identity, not deep equality, is what matters.
+    mockColumnsProps.length = 0
+
+    renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+    await waitFor(() => {
+      expect(screen.getByText('test-dataset.csv')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    const activate = (name: RegExp) => {
+      const tab = screen.getByRole('tab', { name })
+      fireEvent.mouseDown(tab)
+      fireEvent.mouseUp(tab)
+      fireEvent.click(tab)
+    }
+
+    activate(/visualization/i)
+    await waitFor(() => {
+      expect(screen.getByTestId('visualization-dashboard')).toBeInTheDocument()
+    })
+
+    // Re-render the page (tab away and back) and check the same array comes through.
+    activate(/schema/i)
+    activate(/visualization/i)
+    await waitFor(() => {
+      expect(screen.getByTestId('visualization-dashboard')).toBeInTheDocument()
+    })
+
+    expect(mockColumnsProps.length).toBeGreaterThan(1)
+    for (const columns of mockColumnsProps) {
+      expect(columns).toBe(mockColumnsProps[0])
+    }
   })
 
   it('maps schema column types when rendering the visualizations tab', async () => {
