@@ -137,6 +137,9 @@ class TestRecording:
         assert await metering.usage_for(TEST_USER, "uploads") == 2
 
     async def test_unknown_metric_is_rejected(self, setup_database):
+        """The "never raises" promise is about STORAGE failures. A bad metric name
+        is a programmer error with no request to protect, and swallowing it would
+        mean a typo silently meters nothing (#369 review round 4)."""
         with pytest.raises(KeyError):
             await metering.record(TEST_USER, "bandwidth")
 

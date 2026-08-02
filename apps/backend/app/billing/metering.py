@@ -6,10 +6,12 @@ Two properties matter more than anything else in this module:
 
 * **Increments are atomic.** A single `$inc` upsert, not read-modify-write. Two
   concurrent predictions must count as two.
-* **Recording never breaks the request.** A tenant's prediction succeeding and then
-  500-ing because a counter could not be written is worse than a slightly
-  under-counted period, so `record()` swallows storage failures and logs them. The
-  *enforcement* side does not get that latitude — see `usage_for`.
+* **Recording never breaks the request on a storage failure.** A tenant's
+  prediction succeeding and then 500-ing because a counter could not be written is
+  worse than a slightly under-counted period, so `record()` swallows storage errors
+  and logs them. It still raises on an unknown metric, which is a programmer error
+  rather than a runtime condition. The *enforcement* side gets no latitude at all —
+  see `usage_for`.
 """
 
 import logging
@@ -40,9 +42,15 @@ def period_key_for(moment: datetime | None = None) -> str:
 async def record(user_id: str, metric: str, amount: int = 1) -> None:
     """Add `amount` to a tenant's count for `metric` in the current period.
 
-    Never raises. A failure to meter must not fail the request that was being
-    metered — the user has already had the work done, and refusing them the result
-    because a counter did not increment helps nobody.
+    Never raises **on a storage failure** — that is the promise, and it is narrower
+    than "never raises". A failure to meter must not fail the request being metered:
+    the user has already had the work done, and refusing them the result because a
+    counter did not increment helps nobody.
+
+    An unknown `metric` DOES raise. It is a programmer error, not a runtime
+    condition — there is no request to protect from it, and swallowing it would mean
+    a typo'd metric name silently meters nothing at all. (An earlier version of this
+    docstring said "Never raises" flatly, which contradicted the line below it.)
     """
     if metric not in METERED_METRICS:
         raise KeyError(f"unknown metered metric: {metric}")
