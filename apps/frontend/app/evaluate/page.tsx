@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -276,30 +277,30 @@ export default function EvaluatePage() {
   const { state, completeStage, requestStageRedirect } = useWorkflow();
   const router = useRouter();
   const { ready } = useStageGuard(WorkflowStage.MODEL_EVALUATION);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [evaluation, setEvaluation] = useState<ModelEvaluationResponse | null>(null);
-  const [shap, setShap] = useState<ShapSummaryResponse | null>(null);
 
-  const loadEvaluation = useCallback(async (modelId: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await modelService.getEvaluation(modelId);
-      setEvaluation(data);
+  const {
+    data: evaluationData,
+    loading,
+    error,
+  } = useAsyncData(
+    async () => {
+      const data = await modelService.getEvaluation(state.modelId as string);
       // SHAP summary is best-effort enrichment (issue #80): a failure (or a
       // model with no SHAP support) must never block the evaluation view.
+      let shapData: ShapSummaryResponse | null = null;
       try {
-        setShap(await modelService.getShapSummary(modelId));
+        shapData = await modelService.getShapSummary(state.modelId as string);
       } catch {
-        setShap(null);
+        shapData = null;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { evaluation: data, shap: shapData };
+    },
+    [state.modelId],
+    { enabled: ready && !!state.modelId },
+  );
+
+  const evaluation = evaluationData?.evaluation ?? null;
+  const shap = evaluationData?.shap ?? null;
 
   // Stage access (with a helpful redirect) is handled by useStageGuard above.
   useEffect(() => {
@@ -310,10 +311,8 @@ export default function EvaluatePage() {
         WorkflowStage.MODEL_TRAINING,
         'Train a model before evaluating it.'
       );
-      return;
     }
-    loadEvaluation(state.modelId);
-  }, [ready, state.modelId, loadEvaluation, requestStageRedirect]);
+  }, [ready, state.modelId, requestStageRedirect]);
 
   const handleProceedToPrediction = () => {
     completeStage(WorkflowStage.MODEL_EVALUATION, {
