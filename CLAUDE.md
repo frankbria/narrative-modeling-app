@@ -60,6 +60,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 
 ## Environment Variables
 - Frontend: `.env.local` | Backend: `.env`
+- **`NEXT_PUBLIC_API_URL` includes the version prefix** — `http://localhost:8000/api/v1`, matching `.env.local`, the Dockerfile dummy and `ci.yml`. Append only the resource path (`${API_BASE_URL}/datasets/...`); never re-add `/api` or `/api/v1`, and never "normalize" with `.replace(/\/api$/, '')` — that strip matches nothing and hides the mistake. Getting this wrong 404s silently: it broke the AI Insights panel and chunked-upload resume for as long as they existed, and the suites missed it because they built the expected URL with the same expression as the code (#406). `__tests__/lib/apiUrlConstruction.test.ts` pins the paths against the real FastAPI route table.
 - Required: AWS credentials, MongoDB URI, OpenAI API key, NextAuth secret
 - `SKIP_AUTH=true` bypasses auth — honored **only** when `ENVIRONMENT` is `development`/`test`; startup fails hard otherwise (#149). Maps all requests to `dev-user-default`.
 
