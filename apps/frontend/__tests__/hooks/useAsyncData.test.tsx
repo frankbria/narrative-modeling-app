@@ -389,3 +389,61 @@ describe('disabling mid-flight (#417 review)', () => {
     expect(result.current.data).toBe('wanted')
   })
 })
+
+describe('two in-flight requests for the same key (#418 review)', () => {
+  // Toggling `enabled` off and on with unchanged deps starts a SECOND request
+  // without invalidating the first: the effect re-runs (enabled is in its dep
+  // array) but there is no cleanup, so both are live. Both satisfy
+  // mounted/enabled/token/deps at resolution, so whichever lands LAST wins — and
+  // if that is the older request, it overwrites fresher data with staler data.
+  it('an older in-flight result does not overwrite a newer one that already landed', async () => {
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    expect(loader).toHaveBeenCalledTimes(2)
+
+    // The newer request answers first…
+    await act(async () => {
+      releases[1]('fresh')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('fresh')
+
+    // …and the older one, landing later, must not clobber it.
+    await act(async () => {
+      releases[0]('stale')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('fresh')
+  })
+
+  it('an older result still settles when nothing newer has landed', async () => {
+    // The #411 guarantee must survive: if the newest request never comes back,
+    // an older one whose key is still current is better than spinning forever.
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+
+    await act(async () => {
+      releases[0]('the only answer that came back')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('the only answer that came back')
+    expect(result.current.loading).toBe(false)
+  })
+})

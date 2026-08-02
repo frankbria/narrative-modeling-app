@@ -119,6 +119,20 @@ export function useAsyncData<T>(
   // error here) forbids touching a ref while rendering. An effect with no dep
   // array runs after every render, which is early enough — promise continuations
   // are always later still.
+  // Monotonic id per issued request, plus the id of the newest one that has
+  // already been recorded. Toggling `enabled` off and on with unchanged deps
+  // starts a SECOND request without invalidating the first — the effect re-runs
+  // but has no cleanup — so both are live and both satisfy every other condition.
+  // Without this, whichever landed last won, and if that was the older request it
+  // overwrote fresh data with stale.
+  //
+  // Deliberately NOT "only the newest request may record": that is the rule that
+  // reintroduces #411, where the newest request is the one that never comes back
+  // and an older, still-valid answer is thrown away. An older result is welcome
+  // while nothing newer has landed; it is only barred from overwriting.
+  const requestSeq = useRef(0)
+  const lastRecorded = useRef(0)
+
   const current = useRef({ deps, reloadToken, enabled })
   useEffect(() => {
     current.current = { deps, reloadToken, enabled }
@@ -139,19 +153,33 @@ export function useAsyncData<T>(
     // (#411) removed the protection with it, and `settled` does not check
     // `enabled` either — so a request begun while enabled would still populate
     // `data` after the caller had gated the fetch off.
+    const requestId = ++requestSeq.current
+
+    // Note on coverage: `mounted`, `enabled` and the ordering guard each have a
+    // test that fails when removed. The `sameDeps` check does NOT — the ordering
+    // guard subsumes it in every case reachable today, and `settled` filters by
+    // deps again at read time. It is kept as the cheapest way to avoid recording a
+    // result the reader would discard anyway, not because a test proves it load-
+    // bearing. Said plainly so nobody reads the mutation check as covering it.
     const stillWanted = () =>
       mounted.current &&
       current.current.enabled &&
       current.current.reloadToken === reloadToken &&
-      sameDeps(current.current.deps, deps)
+      sameDeps(current.current.deps, deps) &&
+      requestId >= lastRecorded.current
+
+    const record = (next: Resolved<T>) => {
+      if (!stillWanted()) return
+      lastRecorded.current = requestId
+      setResolved(next)
+    }
 
     loader()
       .then((data) => {
-        if (stillWanted()) setResolved({ deps, token: reloadToken, data })
+        record({ deps, token: reloadToken, data })
       })
       .catch((err: unknown) => {
-        if (!stillWanted()) return
-        setResolved({
+        record({
           deps,
           token: reloadToken,
           error: errorMessage ?? (err instanceof Error ? err.message : String(err)),
