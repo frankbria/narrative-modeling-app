@@ -65,7 +65,7 @@ function UsageRow({
 }
 
 export default function BillingSettingsPage() {
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const userId = session?.user?.id
   const [redirecting, setRedirecting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -95,8 +95,18 @@ export default function BillingSettingsPage() {
     }
   }
 
-  if (loading) {
+  // While the session resolves, `enabled` is false — so `loading` is false and
+  // `status` is undefined, and the error branch below would claim billing is
+  // unavailable on every single page load until auth settles. The session state is
+  // part of "still loading", not part of "failed".
+  if (sessionStatus === 'loading' || loading) {
     return <p className="p-8 text-muted-foreground">Loading billing…</p>
+  }
+
+  if (sessionStatus === 'unauthenticated') {
+    return (
+      <p className="p-8 text-muted-foreground">Sign in to view your plan.</p>
+    )
   }
 
   if (error || !status) {

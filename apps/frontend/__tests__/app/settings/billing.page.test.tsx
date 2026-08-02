@@ -18,6 +18,19 @@ jest.mock('@/lib/auth-helpers', () => ({
   getAuthToken: jest.fn().mockResolvedValue('tok'),
 }))
 
+// jest.setup's global next-auth mock returns a plain object from a plain arrow,
+// so it cannot be varied per test. This suite needs to drive the session through
+// loading / unauthenticated / authenticated, so it replaces it with a jest.fn.
+const mockUseSession = jest.fn()
+jest.mock('next-auth/react', () => ({
+  useSession: () => mockUseSession(),
+}))
+
+const AUTHENTICATED = {
+  data: { user: { id: 'mock-user-id', email: 'test@example.com' } },
+  status: 'authenticated' as const,
+}
+
 const status = (overrides = {}) => ({
   configured: true,
   tier: 'free' as const,
@@ -38,6 +51,32 @@ const mockStatus = (body: object) => {
 }
 
 describe('Plan & usage', () => {
+  beforeEach(() => {
+    mockUseSession.mockReturnValue(AUTHENTICATED)
+  })
+
+  it('shows loading, not an error, while the session is resolving', () => {
+    // `enabled: !!userId` means `loading` is FALSE before auth settles, so the
+    // error branch would otherwise claim billing is unavailable on every load
+    // until the session arrives (#365 review).
+    mockUseSession.mockReturnValue({ data: null, status: 'loading' })
+    mockStatus(status())
+
+    render(<BillingSettingsPage />)
+
+    expect(screen.getByText(/loading billing/i)).toBeInTheDocument()
+    expect(screen.queryByText(/billing unavailable/i)).not.toBeInTheDocument()
+  })
+
+  it('asks an unauthenticated visitor to sign in', () => {
+    mockUseSession.mockReturnValue({ data: null, status: 'unauthenticated' })
+    mockStatus(status())
+
+    render(<BillingSettingsPage />)
+
+    expect(screen.getByText(/sign in to view your plan/i)).toBeInTheDocument()
+  })
+
   it('renders the tier and the metered usage', async () => {
     mockStatus(status())
 
