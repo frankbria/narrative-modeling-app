@@ -308,9 +308,16 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}",
     tags=["workflows"],
 )
+# Deliberately OUTSIDE API_V1_STR. RateLimitMiddleware limits everything under
+# /api/v1 and buckets unauthenticated callers by IP — and Stripe delivers every
+# event for every tenant from a small set of IPs, so a burst would 429, Stripe
+# would retry, and the retries would bucket too. A webhook is also not a versioned
+# public API surface: it is Stripe's endpoint, already excluded from the OpenAPI
+# schema. Protection here is signature verification plus the body-size limit, not
+# an IP budget (#367).
 app.include_router(
     billing_webhook.router,
-    prefix=f"{settings.API_V1_STR}/billing/stripe",
+    prefix="/webhooks/stripe",
     tags=["billing"],
 )
 

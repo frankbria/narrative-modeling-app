@@ -27,7 +27,8 @@ from app.billing.stripe_signature import (
 )
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 
-WEBHOOK_PATH = "/api/v1/billing/stripe/webhook"
+# Outside /api/v1 on purpose — see the include_router comment in app/main.py.
+WEBHOOK_PATH = "/webhooks/stripe/webhook"
 SECRET = "whsec_test_secret"
 TEST_USER = "test_user_123"
 
@@ -43,6 +44,43 @@ def sign(payload: bytes, secret: str = SECRET, timestamp: int | None = None) -> 
 
 def event(event_type: str, obj: dict) -> bytes:
     return json.dumps({"type": event_type, "data": {"object": obj}}).encode()
+
+
+class TestRoutePlacement:
+    """The webhook must not sit under /api/v1 (#367 review).
+
+    RateLimitMiddleware limits everything under that prefix and buckets
+    unauthenticated callers by IP. Stripe delivers every event for every tenant
+    from a small set of IPs, so a burst would 429 — and the retries Stripe then
+    sends would bucket too.
+    """
+
+    def test_is_not_under_the_rate_limited_prefix(self):
+        from app.middleware.rate_limit import RateLimitMiddleware
+
+        class _Url:
+            path = WEBHOOK_PATH
+
+        class _Request:
+            method = "POST"
+            url = _Url()
+
+        assert not RateLimitMiddleware(app=None)._should_limit(_Request())
+
+    @pytest.mark.asyncio
+    async def test_is_registered_where_the_tests_post(self, async_authorized_client):
+        """Guards the pair: moving the route without moving WEBHOOK_PATH would
+        leave every endpoint test posting at a 404 while still passing its
+        `status_code == 400` assertions, for the wrong reason.
+
+        Asserts reachability rather than walking `app.routes` — `include_router`
+        does not surface a plain `.path` on every route object, so introspection
+        here reports a false negative for a route that plainly works.
+        """
+        response = await async_authorized_client.post(WEBHOOK_PATH, content=b"{}")
+
+        # 400 (unsigned) proves the handler ran. 404 would mean it is not mounted.
+        assert response.status_code == 400, response.status_code
 
 
 class TestSignatureVerification:
