@@ -12,6 +12,11 @@ exercised.
 
 Same trap, same fix as `model_training.py:297-304`, which carries a comment about
 it — this is the third place it has appeared.
+
+Every test takes `setup_database`, which clears the collections around each case.
+Without it the inserted `UserData` documents outlive the module and make later
+suites order-dependent — the same class of leak as the `prediction_log` and
+metrics-gauge residue noted in CLAUDE.md.
 """
 
 import pytest
@@ -43,7 +48,7 @@ async def _seed_user_data(user_id: str = TEST_USER, processed: bool = True) -> U
 @pytest.mark.asyncio
 class TestAiAnalysisObjectIdLookup:
     async def test_summarize_finds_a_document_by_its_string_id(
-        self, async_authorized_client, monkeypatch
+        self, async_authorized_client, setup_database, monkeypatch
     ):
         """The panel sends the id as a path string; it must still resolve."""
         doc = await _seed_user_data()
@@ -74,7 +79,7 @@ class TestAiAnalysisObjectIdLookup:
         assert response.status_code != 404, response.json()
 
     async def test_analyze_finds_a_document_by_its_string_id(
-        self, async_authorized_client, monkeypatch
+        self, async_authorized_client, setup_database, monkeypatch
     ):
         doc = await _seed_user_data()
 
@@ -100,7 +105,7 @@ class TestAiAnalysisObjectIdLookup:
         assert response.status_code != 404, response.json()
 
     async def test_unprocessed_document_still_reports_400_not_404(
-        self, async_authorized_client
+        self, async_authorized_client, setup_database
     ):
         """The is_processed guard is only reachable once the lookup works."""
         doc = await _seed_user_data(processed=False)
@@ -113,7 +118,7 @@ class TestAiAnalysisObjectIdLookup:
         assert "must be processed" in response.json()["detail"]
 
     async def test_another_users_document_is_not_readable(
-        self, async_authorized_client
+        self, async_authorized_client, setup_database
     ):
         """Coercing the id must not weaken the ownership filter."""
         doc = await _seed_user_data(user_id="somebody-else")
@@ -125,7 +130,7 @@ class TestAiAnalysisObjectIdLookup:
         assert response.status_code == 404
 
     async def test_a_non_objectid_string_is_a_clean_404(
-        self, async_authorized_client
+        self, async_authorized_client, setup_database
     ):
         """A malformed id must 404, not raise InvalidId as a 500."""
         response = await async_authorized_client.post(
@@ -135,7 +140,7 @@ class TestAiAnalysisObjectIdLookup:
         assert response.status_code == 404, response.json()
 
     async def test_a_valid_but_absent_objectid_is_a_404(
-        self, async_authorized_client
+        self, async_authorized_client, setup_database
     ):
         response = await async_authorized_client.post(
             f"/api/v1/ai/summarize/{PydanticObjectId()}"
