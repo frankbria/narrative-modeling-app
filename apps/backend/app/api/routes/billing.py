@@ -50,10 +50,21 @@ def _assert_known_origin(url: str) -> str:
     origin = f"{parsed.scheme}://{parsed.netloc}"
     allowed = settings.BACKEND_CORS_ORIGINS
     if "*" in allowed:
-        # A wildcard is a CORS convenience, never a licence to redirect anywhere.
+        # The two settings have OPPOSITE safe defaults, which is worth stating.
+        # Unset, BACKEND_CORS_ORIGINS is `["*"]` — a deliberate dev convenience for
+        # CORS. As a redirect allowlist a wildcard means "anywhere", so it is
+        # refused rather than honoured. Correct, but it makes a fresh checkout that
+        # never set the var reject its own URLs, so the message says exactly what to
+        # do instead of repeating "not allowed".
+        logger.warning(
+            "billing redirect refused: BACKEND_CORS_ORIGINS is the wildcard default"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="redirect URL origin is not allowed",
+            detail=(
+                "BACKEND_CORS_ORIGINS is unset (defaulting to '*'), which cannot be "
+                "used as a redirect allowlist. Set it to this app's origin(s)."
+            ),
         )
     if origin not in allowed:
         logger.warning("rejected billing redirect to unknown origin: %s", origin)

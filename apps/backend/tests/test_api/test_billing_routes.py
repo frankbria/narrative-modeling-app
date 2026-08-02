@@ -346,6 +346,29 @@ class TestRedirectValidation:
 
         assert response.status_code == 400
 
+    async def test_the_wildcard_default_explains_itself(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """BACKEND_CORS_ORIGINS defaults to `["*"]` — fine for CORS in dev, useless
+        as a redirect allowlist. Refusing is correct; refusing with "origin is not
+        allowed" would send someone hunting the wrong problem (#365 review).
+        """
+        monkeypatch.setenv("BACKEND_CORS_ORIGINS", "")
+
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": f"{APP_ORIGIN}/ok",
+                "cancel_url": f"{APP_ORIGIN}/no",
+            },
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "BACKEND_CORS_ORIGINS" in detail
+        assert "unset" in detail
+
     async def test_a_known_origin_is_accepted(
         self, async_authorized_client, setup_database, monkeypatch
     ):
