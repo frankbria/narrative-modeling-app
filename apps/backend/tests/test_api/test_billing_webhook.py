@@ -59,6 +59,13 @@ class TestRoutePlacement:
     """
 
     def test_is_not_under_the_rate_limited_prefix(self):
+        """`enabled=True` is essential and not decoration.
+
+        conftest forces RATE_LIMIT_ENABLED false for the whole suite, and
+        `_should_limit` short-circuits on that BEFORE it looks at the path — so
+        without the override this assertion passes no matter where the route is
+        mounted. It was written that way first, and the #367 review caught it.
+        """
         from app.middleware.rate_limit import RateLimitMiddleware
 
         class _Url:
@@ -68,7 +75,20 @@ class TestRoutePlacement:
             method = "POST"
             url = _Url()
 
-        assert not RateLimitMiddleware(app=None)._should_limit(_Request())
+        middleware = RateLimitMiddleware(app=None, enabled=True)
+
+        assert not middleware._should_limit(_Request())
+
+        # Proves the check is live rather than short-circuited: a path that IS
+        # under the prefix must come back True from this same middleware.
+        class _ApiUrl:
+            path = "/api/v1/ml/train"
+
+        class _ApiRequest:
+            method = "POST"
+            url = _ApiUrl()
+
+        assert middleware._should_limit(_ApiRequest())
 
     @pytest.mark.asyncio
     async def test_is_registered_where_the_tests_post(self, async_authorized_client):
