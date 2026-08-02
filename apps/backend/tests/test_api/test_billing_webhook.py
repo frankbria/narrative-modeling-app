@@ -42,8 +42,11 @@ def sign(payload: bytes, secret: str = SECRET, timestamp: int | None = None) -> 
     return f"t={ts},v1={digest}"
 
 
-def event(event_type: str, obj: dict) -> bytes:
-    return json.dumps({"type": event_type, "data": {"object": obj}}).encode()
+def event(event_type: str, obj: dict, created: int | None = None) -> bytes:
+    body: dict = {"type": event_type, "data": {"object": obj}}
+    if created is not None:
+        body["created"] = created
+    return json.dumps(body).encode()
 
 
 class TestRoutePlacement:
@@ -286,6 +289,69 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.status == SubscriptionStatus.INCOMPLETE
         assert sub.effective_tier == PlanTier.FREE
+
+    async def test_a_late_older_event_does_not_resurrect_a_cancelled_sub(
+        self, async_authorized_client, setup_database
+    ):
+        """Stripe does not guarantee ordering between DIFFERENT events (#367 review).
+
+        A `subscription.updated` delayed behind the `subscription.deleted` that
+        followed it would otherwise re-activate a cancelled subscription — the
+        customer keeps paid access after cancelling.
+        """
+        now = int(time.time())
+
+        deleted = event(
+            "customer.subscription.deleted",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=deleted, headers={"Stripe-Signature": sign(deleted)}
+        )
+
+        # Emitted BEFORE the cancellation, delivered after it.
+        stale = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+            created=now - 60,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=stale, headers={"Stripe-Signature": sign(stale)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.CANCELED
+        assert not sub.is_entitled
+
+    async def test_a_newer_event_is_still_applied(
+        self, async_authorized_client, setup_database
+    ):
+        """The ordering guard must not freeze the record at the first event."""
+        now = int(time.time())
+
+        first = event(
+            "invoice.payment_failed",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now - 60,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=first, headers={"Stripe-Signature": sign(first)}
+        )
+
+        later = event(
+            "customer.subscription.deleted",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=later, headers={"Stripe-Signature": sign(later)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.CANCELED
 
     async def test_replaying_an_event_is_a_no_op(
         self, async_authorized_client, setup_database

@@ -35,6 +35,7 @@ from app.models.subscription import (
     Subscription,
     SubscriptionStatus,
 )
+from app.utils.datetime import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ async def _upsert(
     price_id: str | None = None,
     period_end: Any = None,
     cancel_at_period_end: bool | None = None,
+    event_at: datetime | None = None,
 ) -> None:
     """Create or update this tenant's subscription, idempotently.
 
@@ -118,6 +120,7 @@ async def _upsert(
             price_id=price_id,
             period_end=period_end,
             cancel_at_period_end=cancel_at_period_end,
+            event_at=event_at,
         )
     except (DuplicateKeyError, RevisionIdWasChanged):
         # BOTH, and RevisionIdWasChanged is the one that actually fires here:
@@ -138,6 +141,7 @@ async def _upsert(
             price_id=price_id,
             period_end=period_end,
             cancel_at_period_end=cancel_at_period_end,
+            event_at=event_at,
         )
 
 
@@ -151,11 +155,26 @@ async def _apply(
     price_id: str | None = None,
     period_end: Any = None,
     cancel_at_period_end: bool | None = None,
+    event_at: datetime | None = None,
 ) -> None:
     """One find-then-write attempt. Raises DuplicateKeyError if it loses a race."""
     sub = await Subscription.find_one(Subscription.user_id == user_id)
     if sub is None:
         sub = Subscription(user_id=user_id)
+
+    # Stripe does not guarantee ordering between different events. A late
+    # `subscription.updated` arriving after `subscription.deleted` would otherwise
+    # resurrect a cancelled subscription. Mongo reads datetimes back naive, so the
+    # stored value is coerced before comparing (CLAUDE.md).
+    if event_at is not None and sub.last_event_at is not None:
+        if event_at < as_utc(sub.last_event_at):
+            logger.info(
+                "ignoring out-of-order stripe event",
+                extra={"user_id": user_id},
+            )
+            return
+    if event_at is not None:
+        sub.last_event_at = event_at
 
     if status_ is not None:
         sub.status = status_
@@ -190,7 +209,9 @@ def _price_id(obj: dict[str, Any]) -> str | None:
     return (items[0].get("price") or {}).get("id")
 
 
-async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
+async def _handle(
+    event_type: str, obj: dict[str, Any], event_at: datetime | None = None
+) -> bool:
     """Apply one event. Returns whether it was acted on."""
     user_id = _user_id_from(obj)
     if not user_id:
@@ -227,6 +248,7 @@ async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
             ),
             customer_id=obj.get("customer"),
             subscription_id=obj.get("subscription"),
+            event_at=event_at,
         )
         return True
 
@@ -234,7 +256,7 @@ async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
         # The debit bounced. Without this the INCOMPLETE set above would be the only
         # thing standing between a failed payment and entitlement, and a
         # `completed`-then-`updated` sequence could quietly flip it to ACTIVE.
-        await _upsert(user_id, status_=SubscriptionStatus.INCOMPLETE)
+        await _upsert(user_id, status_=SubscriptionStatus.INCOMPLETE, event_at=event_at)
         return True
 
     if event_type in ("customer.subscription.created", "customer.subscription.updated"):
@@ -248,19 +270,20 @@ async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
             price_id=price,
             period_end=_period_end(obj),
             cancel_at_period_end=bool(obj.get("cancel_at_period_end", False)),
+            event_at=event_at,
         )
         return True
 
     if event_type == "customer.subscription.deleted":
         # Tier is deliberately left alone: it records what was bought, and
         # `effective_tier` already drops to FREE once the status is CANCELED (#366).
-        await _upsert(user_id, status_=SubscriptionStatus.CANCELED)
+        await _upsert(user_id, status_=SubscriptionStatus.CANCELED, event_at=event_at)
         return True
 
     if event_type == "invoice.payment_failed":
         # PAST_DUE still grants access — Stripe retries for days, and cutting a
         # paying customer off at the first failure is worse (#366).
-        await _upsert(user_id, status_=SubscriptionStatus.PAST_DUE)
+        await _upsert(user_id, status_=SubscriptionStatus.PAST_DUE, event_at=event_at)
         return True
 
     return False
@@ -320,5 +343,12 @@ async def stripe_webhook(
         logger.info("ignoring unhandled stripe event", extra={"event_type": event_type})
         return {"received": True, "handled": False}
 
-    handled = await _handle(event_type, obj)
+    raw_created = event.get("created")
+    event_at = (
+        datetime.fromtimestamp(int(raw_created), tz=UTC)
+        if isinstance(raw_created, int | float)
+        else None
+    )
+
+    handled = await _handle(event_type, obj, event_at)
     return {"received": True, "handled": handled}
