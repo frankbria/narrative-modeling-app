@@ -526,3 +526,55 @@ describe('an older answer shown while a newer one is still pending (#418 review 
     expect(result.current.data).toBe('newer')
   })
 })
+
+describe('an intervening key must not erase a watermark (#418 review round 4)', () => {
+  // A single-slot watermark forgets what it already knew about key A as soon as a
+  // result for key B is recorded. A stale A request that outlived both can then
+  // walk straight back in, clobbering fresher A data — the exact bug the ordering
+  // guard exists to prevent, re-opened through a different key.
+  it('a stale same-key result cannot return after another key recorded in between', async () => {
+    const byKey: Record<string, ((v: string) => void)[]> = { a: [], b: [] }
+    let key: 'a' | 'b' = 'a'
+    const loader = jest.fn(
+      () => new Promise<string>((res) => { byKey[key].push(res) })
+    )
+
+    const { result, rerender } = renderHook(
+      ({ k, enabled }) => useAsyncData(loader, [k], { enabled }),
+      { initialProps: { k: 'a' as 'a' | 'b', enabled: true } }
+    )
+
+    // r1 and r2, both for key 'a'; r1 is left pending on purpose.
+    rerender({ k: 'a', enabled: false })
+    rerender({ k: 'a', enabled: true })
+    expect(byKey.a).toHaveLength(2)
+
+    await act(async () => {
+      byKey.a[1]('a: fresher')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('a: fresher')
+
+    // Navigate to 'b' and let it record — this is what used to erase the mark.
+    key = 'b'
+    rerender({ k: 'b', enabled: true })
+    await act(async () => {
+      byKey.b[0]('b: data')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('b: data')
+
+    // Back to 'a'; a fourth request starts and stays pending.
+    key = 'a'
+    rerender({ k: 'a', enabled: true })
+
+    // The original r1 finally answers. It is older than the r2 that already won,
+    // so it must NOT be shown.
+    await act(async () => {
+      byKey.a[0]('a: stale')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).not.toBe('a: stale')
+  })
+})
