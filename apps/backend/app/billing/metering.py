@@ -74,9 +74,16 @@ async def record(user_id: str, metric: str, amount: int = 1) -> None:
         # separately from a genuine outage because swallowing it would silently
         # under-count — the exact failure this module exists to avoid.
         #
-        # The document is now guaranteed to exist, so retry without upsert.
+        # Retry the SAME operation, upsert included. Dropping upsert here would
+        # rely on the document still existing — true for this race, but a silent
+        # no-op if anything ever removed it in between (a period cleanup, an
+        # erasure request). Keeping upsert makes the retry idempotent regardless,
+        # and a second DuplicateKeyError would mean a genuine problem worth
+        # surfacing rather than papering over.
         try:
-            await UsageRecord.get_motor_collection().update_one(selector, update)
+            await UsageRecord.get_motor_collection().update_one(
+                selector, update, upsert=True
+            )
         except Exception:
             logger.exception(
                 "failed to record usage after a duplicate-key retry",

@@ -84,7 +84,8 @@ class TestRecording:
         without upsert, since the document is guaranteed to exist by then.
         """
         # Model the race faithfully: the writer that WON has already created the
-        # document, which is why the retry can drop `upsert` and still land.
+        # document. The retry keeps `upsert` anyway, so it also lands if the
+        # document has since vanished — asserted separately below.
         await UsageRecord(
             user_id=TEST_USER,
             period_key=metering.period_key_for(),
@@ -111,6 +112,29 @@ class TestRecording:
         # 1 from the winner + 3 from the write that lost and retried. Swallowing
         # the DuplicateKeyError would leave this at 1.
         assert await metering.usage_for(TEST_USER, "predictions") == 4
+
+    async def test_the_retry_still_lands_if_the_document_vanished(
+        self, setup_database, monkeypatch
+    ):
+        """The retry keeps `upsert`, so it does not depend on the winner's document
+        surviving (#369 review round 2). Dropping upsert would make this a silent
+        no-op — a lost count, which is the direction that gives usage away."""
+        real = UsageRecord.get_motor_collection().update_one
+        calls = {"n": 0}
+
+        async def _fail_first_then_delegate(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise DuplicateKeyError("simulated race, and nothing was created")
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(
+            UsageRecord.get_motor_collection(), "update_one", _fail_first_then_delegate
+        )
+
+        await metering.record(TEST_USER, "uploads", amount=2)
+
+        assert await metering.usage_for(TEST_USER, "uploads") == 2
 
     async def test_unknown_metric_is_rejected(self, setup_database):
         with pytest.raises(KeyError):
