@@ -489,6 +489,49 @@ class TestWebhookEndpoint:
         assert sub.last_event_at is None
         assert sub.status == SubscriptionStatus.PAST_DUE
 
+    async def test_the_rejection_body_does_not_say_why(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """"no webhook secret configured" would tell anyone who found the URL that
+        the endpoint is unprotected — free recon during the window between deploy
+        and ops setting the secret (#367 review). Stripe does not need the
+        distinction, so there is nothing traded away by withholding it."""
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+
+        response = await async_authorized_client.post(WEBHOOK_PATH, content=b"{}")
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail == "signature verification failed"
+        assert "secret" not in detail.lower()
+
+    async def test_a_recovered_payment_restores_active(
+        self, async_authorized_client, setup_database
+    ):
+        """PAST_DUE -> ACTIVE. Stripe sends subscription.updated once a retried
+        payment clears; a tenant stuck at PAST_DUE would keep access but never
+        look settled (#367 review)."""
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.PAST_DUE,
+        ).insert()
+
+        payload = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert sub.effective_tier == PlanTier.PRO
+
     async def test_replaying_an_event_is_a_no_op(
         self, async_authorized_client, setup_database
     ):

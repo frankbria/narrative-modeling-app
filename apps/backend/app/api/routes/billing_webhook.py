@@ -335,13 +335,18 @@ async def stripe_webhook(
             payload, stripe_signature, settings.STRIPE_WEBHOOK_SECRET or ""
         )
     except SignatureVerificationError as exc:
-        # 400, not 500: this is a bad request, and it must not be retried. The
-        # message is safe to return — it says nothing about the secret, only that
-        # verification failed.
+        # 400, not 500: a bad request, and one that must not be retried.
+        #
+        # The body is deliberately GENERIC. The specific reason goes to the log,
+        # not the caller — "no webhook secret configured" would tell anyone who
+        # found the URL that the endpoint is currently unprotected, which is free
+        # reconnaissance during the window between deploy and ops setting
+        # STRIPE_WEBHOOK_SECRET. Stripe does not need the distinction to retry
+        # correctly, so there is nothing to trade away.
         logger.warning("rejected stripe webhook: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": f"signature verification failed: {exc}"},
+            content={"detail": "signature verification failed"},
         )
 
     try:
