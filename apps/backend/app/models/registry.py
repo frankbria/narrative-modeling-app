@@ -27,6 +27,7 @@ from app.models.subscription import Subscription
 from app.models.trained_model import TrainedModel
 from app.models.training_job import TrainingJob
 from app.models.transformation import TransformationConfig
+from app.models.usage import UsageRecord
 from app.models.user_data import UserData
 from app.models.version import DatasetVersion, TransformationLineage
 from app.models.visualization_cache import VisualizationCache
@@ -66,6 +67,7 @@ DOCUMENT_MODELS = [
     TransformationConfig,
     TransformationLineage,
     TransformationRecipe,
+    UsageRecord,
     UserData,
     VisualizationCache,
     WorkflowState,
