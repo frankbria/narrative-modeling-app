@@ -49,6 +49,50 @@ def event(event_type: str, obj: dict, created: int | None = None) -> bytes:
     return json.dumps(body).encode()
 
 
+class TestPriceTierMapping:
+    """`tier_for_price` decides what a customer is entitled to (#367 review).
+
+    The fallback direction is the point: an unrecognised price must land on PRO, not
+    ENTERPRISE. Guessing high hands the most expensive entitlements to a
+    misconfiguration — a typo'd env var, a price added in Stripe but not here.
+    """
+
+    def test_a_configured_enterprise_price_maps_to_enterprise(self, monkeypatch):
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent")
+
+        assert tier_for_price("price_ent") == PlanTier.ENTERPRISE
+
+    def test_a_configured_pro_price_maps_to_pro(self, monkeypatch):
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setenv("STRIPE_PRICE_PRO", "price_pro")
+
+        assert tier_for_price("price_pro") == PlanTier.PRO
+
+    def test_an_unrecognised_price_falls_back_to_pro_not_enterprise(self, monkeypatch):
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent")
+
+        assert tier_for_price("price_nobody_configured") == PlanTier.PRO
+
+    def test_a_missing_price_falls_back_to_pro(self):
+        from app.api.routes.billing_webhook import tier_for_price
+
+        assert tier_for_price(None) == PlanTier.PRO
+
+    def test_an_unconfigured_environment_falls_back_to_pro(self, monkeypatch):
+        """With no STRIPE_PRICE_* set at all, nothing may reach ENTERPRISE."""
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.delenv("STRIPE_PRICE_ENTERPRISE", raising=False)
+        monkeypatch.delenv("STRIPE_PRICE_PRO", raising=False)
+
+        assert tier_for_price("price_anything") == PlanTier.PRO
+
+
 class TestRoutePlacement:
     """The webhook must not sit under /api/v1 (#367 review).
 
