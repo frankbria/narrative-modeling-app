@@ -20,12 +20,20 @@ interface Dataset {
 
 export default function ExploreDataPage() {
   const { data: session } = useSession()
+  // `useSession().data` is a new object every render; keying a hook on it re-runs
+  // that hook forever (#402). Depend on the id, which is a string.
+  const userId = session?.user?.id
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [datasets, setDatasets] = useState<Dataset[]>([])
   
   // Get the API URL from environment variables
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  // NEXT_PUBLIC_API_URL carries the /api/v1 prefix (CLAUDE.md, Environment
+  // Variables). This defaulted to a bare origin and then re-added /api, so the
+  // request went to /api/v1/api/user_data and 404'd — the same bug as #406,
+  // missed there because that sweep only looked at `fetch(` templates and this
+  // call uses axios.
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
   useEffect(() => {
     const fetchData = async () => {
@@ -36,7 +44,7 @@ export default function ExploreDataPage() {
         const token = await getAuthToken()
         
         // Fetch list of available datasets
-        const response = await axios.get(`${apiUrl}/api/user_data`, {
+        const response = await axios.get(`${apiUrl}/user_data`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -50,10 +58,10 @@ export default function ExploreDataPage() {
       }
     }
 
-    if (session) {
+    if (userId) {
       fetchData()
     }
-  }, [session, apiUrl])
+  }, [userId, apiUrl])
 
   if (!session) {
     return (

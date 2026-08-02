@@ -47,8 +47,17 @@ const UNSTABLE = ['session']
 /** `useAsyncData(loader, [deps], opts)` — capture the dep array text. */
 const DEPS = /useAsyncData[\s\S]{0,1600}?\n\s*\[([^\]]*)\]\s*,/g
 
-/** `useEffect(fn, [deps])` — same defect, different hook. `/review` hit this one. */
-const EFFECT_DEPS = /\n\s*\}, \[([^\]]*)\]\);/g
+/**
+ * `useEffect(fn, [deps])`, and equally `useCallback`/`useMemo` — the closing shape
+ * is identical for all three, so one pattern covers them.
+ *
+ * The trailing semicolon is OPTIONAL and that matters: an earlier draft required
+ * it and therefore silently skipped `app/explore/page.tsx` and
+ * `lib/hooks/useChunkedUpload.ts`, which close with `])` and had the exact defect
+ * this file exists to catch. A guard that quietly matches nothing is worse than
+ * no guard, which is what the `sites.length` assertion below is for.
+ */
+const EFFECT_DEPS = /\n\s*\}, \[([^\]]*)\]\)\s*;?/g
 
 function callSites() {
   const files = globSync('{app,components,lib}/**/*.{ts,tsx}', {
@@ -59,7 +68,11 @@ function callSites() {
   const sites: { file: string; deps: string[] }[] = []
   for (const file of files) {
     const src = readFileSync(join(ROOT, file), 'utf8')
-    if (!src.includes('useAsyncData(') && !src.includes('useEffect(')) continue
+    // useCallback/useMemo count too: they do not refetch by themselves, but a
+    // callback rebuilt every render is the same unstable identity, ready to feed
+    // the next effect that keys on it. useChunkedUpload was skipped by an earlier
+    // filter that only admitted files containing useEffect.
+    if (!/use(AsyncData|Effect|Callback|Memo)\(/.test(src)) continue
     for (const re of [DEPS, EFFECT_DEPS]) {
       for (const m of src.matchAll(re)) {
         const deps = m[1]

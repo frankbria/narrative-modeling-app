@@ -366,7 +366,7 @@ export function WorkflowProvider({
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${API_URL}/api/v1/transformations/datasets/${state.datasetId}/history`,
+        `${API_URL}/transformations/datasets/${state.datasetId}/history`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
