@@ -60,7 +60,10 @@ describe('BarChart', () => {
     expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(3)
     // Categories on the y-axis, counts on the x-axis.
     expect(axisTicks(container, 'y')).toEqual(['B', 'C', 'A'])
-    expect(axisTicks(container, 'x').at(-1)).not.toBe('0')
+    // Counts, not a collapsed [0,0] domain — the symptom of the missing layout.
+    const countTicks = axisTicks(container, 'x')
+    expect(countTicks.length).toBeGreaterThan(1)
+    expect(Number(countTicks.at(-1))).toBeGreaterThanOrEqual(30)
   })
 
   it('draws one bar per row, x-labelled by the category dataKey', () => {
