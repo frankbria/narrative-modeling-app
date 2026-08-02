@@ -173,12 +173,13 @@ export function useAsyncData<T>(
     // `data` after the caller had gated the fetch off.
     const requestId = ++requestSeq.current
 
-    /** Highest id already recorded for THIS key; 0 if this key has never recorded. */
+    /**
+     * Id already recorded for THIS key; 0 if this key has never recorded.
+     * `record()` de-dupes by key before appending, so there is at most one entry to
+     * find — a reduce/Math.max here would imply several candidates that cannot exist.
+     */
     const recordedIdForThisKey = () =>
-      recorded.current.reduce(
-        (max, entry) => (sameDeps(entry.deps, deps) ? Math.max(max, entry.id) : max),
-        0
-      )
+      recorded.current.find((entry) => sameDeps(entry.deps, deps))?.id ?? 0
 
     // Note on coverage: `mounted`, `enabled` and the ordering guard each have a
     // test that fails when removed. The `sameDeps` check does NOT — the ordering
