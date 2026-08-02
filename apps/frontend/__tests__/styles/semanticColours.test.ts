@@ -24,7 +24,15 @@ import { globSync } from 'glob'
 
 const ROOT = join(__dirname, '..', '..')
 
-/** Hard-coded light-mode utilities, and what to use instead. */
+/**
+ * Hard-coded light-mode utilities, and what to use instead.
+ *
+ * The negative lookbehind only rules out an IMMEDIATELY preceding `dark:`. A class
+ * written `dark:hover:bg-white` would still match, because the characters before
+ * `bg-white` are `hover:` — a false positive nobody has hit yet, but worth knowing
+ * about before someone debugs a confusing failure. Widen the lookbehind if that
+ * ordering ever appears.
+ */
 const BANNED: [RegExp, string][] = [
   [/(?<!dark:)\btext-gray-900\b/, 'text-foreground'],
   [/(?<!dark:)\btext-gray-800\b/, 'text-foreground'],
@@ -42,7 +50,14 @@ const BANNED: [RegExp, string][] = [
  * The sidebar is deliberately dark in BOTH themes, so its greys are the design,
  * not an oversight. Anything added here needs the same justification.
  */
-const EXEMPT = new Set(['components/Sidebar.tsx', 'components/SidebarWrapper.tsx'])
+const EXEMPT = new Set([
+  'components/Sidebar.tsx',
+  'components/SidebarWrapper.tsx',
+  // Renders only inside the always-dark Sidebar, so its greys are the design too.
+  // Listed explicitly rather than passing by accident because its class names
+  // happen to fall outside BANNED — extending that list should not fail this file.
+  'components/ThemeToggle.tsx',
+])
 
 describe('semantic colours, not hard-coded light ones (#407)', () => {
   const files = globSync('{app,components}/**/*.tsx', {

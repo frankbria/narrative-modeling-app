@@ -436,7 +436,7 @@ export default function UploadPage() {
                 className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${
                   isConfirming
                     ? 'bg-orange-400 cursor-wait text-white'
-                    : 'bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 text-orange-800 dark:text-orange-200'
+                    : 'bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 dark:hover:bg-orange-900/60 text-orange-800 dark:text-orange-200'
                 }`}
               >
                 <Eye size={16} />

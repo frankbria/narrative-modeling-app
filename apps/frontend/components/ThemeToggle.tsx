@@ -27,7 +27,7 @@ export function ThemeToggle() {
       aria-label="Colour theme"
       className="flex items-center gap-1 rounded-md border border-white/10 p-1"
     >
-      {OPTIONS.map(({ value, label, Icon }) => {
+      {OPTIONS.map(({ value, label, Icon }, index) => {
         const selected = theme === value
         return (
           <button
@@ -37,6 +37,24 @@ export function ThemeToggle() {
             aria-checked={selected}
             aria-label={label}
             title={label}
+            // APG radiogroup: one tab stop for the group, arrows move within it.
+            // Without this every option is independently tabbable, which is three
+            // stops for one control (#421 review).
+            tabIndex={selected || (!theme && index === 0) ? 0 : -1}
+            onKeyDown={(e) => {
+              const delta =
+                e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+                : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1
+                : 0
+              if (!delta) return
+              e.preventDefault()
+              const next = OPTIONS[(index + delta + OPTIONS.length) % OPTIONS.length]
+              setTheme(next.value)
+              // Selection follows focus in a radiogroup, so move focus with it.
+              const group = e.currentTarget.parentElement
+              const buttons = group?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+              buttons?.[(index + delta + OPTIONS.length) % OPTIONS.length]?.focus()
+            }}
             onClick={() => setTheme(value)}
             className={`flex flex-1 items-center justify-center rounded p-1.5 transition-colors ${
               selected

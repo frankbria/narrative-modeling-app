@@ -106,7 +106,7 @@ export default function FeatureMetadata({
                   {tag}
                   <button
                     onClick={() => handleRemoveTag(tag)}
-                    className="p-0.5 hover:bg-blue-200 rounded-full"
+                    className="p-0.5 hover:bg-blue-200 dark:hover:bg-blue-900/60 rounded-full"
                   >
                     <X className="w-3 h-3" />
                   </button>
