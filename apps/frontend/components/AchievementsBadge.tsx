@@ -63,8 +63,8 @@ export function AchievementsBadge({
 
   const getAchievementColor = (type: string) => {
     return type === 'milestone'
-      ? 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-800 border-yellow-300'
-      : 'bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 border-blue-300';
+      ? 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800'
+      : 'bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-800';
   };
 
   const getSizeClasses = () => {
@@ -109,8 +109,8 @@ export function AchievementsBadge({
           <span className={`
             ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold
             ${achievement.type === 'milestone' 
-              ? 'bg-yellow-200 text-yellow-800' 
-              : 'bg-blue-200 text-blue-800'
+              ? 'bg-yellow-200 text-yellow-800 dark:text-yellow-200' 
+              : 'bg-blue-200 text-blue-800 dark:text-blue-200'
             }
           `}>
             +{achievement.points}
@@ -201,7 +201,7 @@ export function AchievementsGrid({
 export function AchievementCelebration({ achievement }: { achievement: Achievement }) {
   return (
     <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
-      <div className="bg-card rounded-xl shadow-2xl border-4 border-yellow-300 p-6 max-w-sm mx-4 animate-bounce">
+      <div className="bg-card rounded-xl shadow-2xl border-4 border-yellow-300 dark:border-yellow-800 p-6 max-w-sm mx-4 animate-bounce">
         <div className="text-center space-y-3">
           <div className="text-4xl">🎉</div>
           <div className="space-y-1">

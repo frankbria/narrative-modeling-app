@@ -254,7 +254,7 @@ export function InteractiveTutorial({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200">
               Step {currentStepIndex + 1} of {steps.length}
             </Badge>
             {isHighlighting && (
@@ -291,9 +291,9 @@ export function InteractiveTutorial({
           </p>
 
           {currentStep.tip && (
-            <Alert className="border-blue-200 bg-blue-50">
+            <Alert className="border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40">
               <Lightbulb className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
+              <AlertDescription className="text-blue-800 dark:text-blue-200">
                 💡 <strong>Tip:</strong> {currentStep.tip}
               </AlertDescription>
             </Alert>

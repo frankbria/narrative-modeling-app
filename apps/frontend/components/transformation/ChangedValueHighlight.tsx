@@ -56,13 +56,13 @@ export function ChangedValueHighlight({
 
     switch (changeType) {
       case "added":
-        return "bg-green-100 text-green-900";
+        return "bg-green-100 dark:bg-green-900/40 text-green-900 dark:text-green-200";
       case "removed":
-        return "bg-red-100 text-red-900";
+        return "bg-red-100 dark:bg-red-900/40 text-red-900 dark:text-red-200";
       case "modified":
-        return "bg-yellow-100 text-yellow-900";
+        return "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-900 dark:text-yellow-200";
       default:
-        return "bg-yellow-100";
+        return "bg-yellow-100 dark:bg-yellow-900/40";
     }
   };
 

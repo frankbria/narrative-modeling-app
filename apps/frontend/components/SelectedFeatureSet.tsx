@@ -134,25 +134,25 @@ export function SelectedFeatureSet({
         </div>
 
         {/* Explanation */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="text-sm font-semibold text-blue-900 mb-2">Selection Explanation</h4>
-          <p className="text-sm text-blue-800">{result.explanation}</p>
+        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">Selection Explanation</h4>
+          <p className="text-sm text-blue-800 dark:text-blue-200">{result.explanation}</p>
         </div>
 
         {/* Redundant Features Warning */}
         {result.redundant_pairs.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-yellow-900 mb-2">
+          <div className="bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
               ⚠️ Highly Correlated Features Detected
             </h4>
-            <p className="text-sm text-yellow-800 mb-3">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
               Found {result.redundant_pairs.length} pairs of highly correlated features. Consider
               removing one from each pair to reduce multicollinearity.
             </p>
             <div className="space-y-2">
               {result.redundant_pairs.slice(0, 5).map((pair, idx) => (
                 <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="text-yellow-900">
+                  <span className="text-yellow-900 dark:text-yellow-200">
                     <Badge variant="outline" className="mr-2">
                       {pair.feature1}
                     </Badge>
@@ -161,11 +161,11 @@ export function SelectedFeatureSet({
                       {pair.feature2}
                     </Badge>
                   </span>
-                  <span className="text-yellow-700">r = {pair.correlation.toFixed(3)}</span>
+                  <span className="text-yellow-700 dark:text-yellow-300">r = {pair.correlation.toFixed(3)}</span>
                 </div>
               ))}
               {result.redundant_pairs.length > 5 && (
-                <p className="text-xs text-yellow-700 mt-2">
+                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
                   ...and {result.redundant_pairs.length - 5} more pairs
                 </p>
               )}

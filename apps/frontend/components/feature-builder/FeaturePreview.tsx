@@ -95,12 +95,12 @@ export default function FeaturePreview({
           {validationResult.is_valid ? (
             <>
               <CheckCircle className="w-5 h-5 text-green-600" />
-              <span className="font-medium text-green-800">Valid Expression</span>
+              <span className="font-medium text-green-800 dark:text-green-200">Valid Expression</span>
             </>
           ) : (
             <>
               <AlertCircle className="w-5 h-5 text-red-600" />
-              <span className="font-medium text-red-800">Invalid Expression</span>
+              <span className="font-medium text-red-800 dark:text-red-200">Invalid Expression</span>
             </>
           )}
         </div>
@@ -237,7 +237,7 @@ export default function FeaturePreview({
                 <th
                   key={col}
                   className={`px-2 py-1 text-left font-medium truncate ${
-                    col === '_computed_feature' ? 'bg-blue-100 text-blue-800' : ''
+                    col === '_computed_feature' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200' : ''
                   }`}
                 >
                   {col === '_computed_feature' ? 'Result' : col}
@@ -252,7 +252,7 @@ export default function FeaturePreview({
                   <td
                     key={col}
                     className={`px-2 py-1 truncate max-w-[100px] ${
-                      col === '_computed_feature' ? 'bg-blue-50 font-medium' : ''
+                      col === '_computed_feature' ? 'bg-blue-50 dark:bg-blue-950/40 font-medium' : ''
                     }`}
                   >
                     {row[col] === null ? (
@@ -277,11 +277,11 @@ export default function FeaturePreview({
 
         {/* Error display */}
         {preview?.error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-red-800">Preview Failed</p>
+                <p className="font-medium text-red-800 dark:text-red-200">Preview Failed</p>
                 <p className="text-sm text-red-600 mt-1">{preview.error}</p>
               </div>
             </div>
@@ -290,11 +290,11 @@ export default function FeaturePreview({
 
         {/* Warnings */}
         {preview?.warnings && preview.warnings.length > 0 && (
-          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-amber-800">Warnings</p>
+                <p className="font-medium text-amber-800 dark:text-amber-200">Warnings</p>
                 <ul className="text-sm text-amber-600 mt-1 list-disc list-inside">
                   {preview.warnings.map((w, i) => (
                     <li key={i}>{w}</li>

@@ -189,9 +189,9 @@ export default function TrainingJobsPage() {
         </h1>
 
         {error && (
-          <div className="p-3 bg-red-50 rounded-lg border border-red-200 flex items-start gap-2">
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-            <p className="text-sm text-red-800">{error}</p>
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
         )}
 

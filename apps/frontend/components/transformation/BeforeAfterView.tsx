@@ -186,22 +186,22 @@ export function BeforeAfterView({
       {/* Impact Statistics */}
       {impactStats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-            <div className="text-sm font-medium text-blue-900">Rows Affected</div>
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 dark:border-blue-900">
+            <div className="text-sm font-medium text-blue-900 dark:text-blue-200">Rows Affected</div>
             <div className="text-2xl font-bold text-blue-600 mt-1">
               {impactStats.rows_affected}
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border border-yellow-200">
-            <div className="text-sm font-medium text-yellow-900">Values Changed</div>
+          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border border-yellow-200 dark:border-yellow-900">
+            <div className="text-sm font-medium text-yellow-900 dark:text-yellow-200">Values Changed</div>
             <div className="text-2xl font-bold text-yellow-600 mt-1">
               {impactStats.values_changed}
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
-            <div className="text-sm font-medium text-purple-900">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200 dark:border-purple-900">
+            <div className="text-sm font-medium text-purple-900 dark:text-purple-200">
               Columns Affected
             </div>
             <div className="text-2xl font-bold text-purple-600 mt-1">
@@ -209,10 +209,10 @@ export function BeforeAfterView({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200">
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200 dark:border-emerald-900">
             <div className="flex items-center gap-2">
               <div>
-                <div className="text-sm font-medium text-emerald-900">
+                <div className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
                   Quality Score
                 </div>
                 <div className="text-2xl font-bold text-emerald-600 mt-1">
@@ -260,7 +260,7 @@ export function BeforeAfterView({
                       <th
                         key={column}
                         className={`px-3 py-2 text-left font-semibold text-foreground min-w-[150px] border-r border-border ${
-                          isColumnAffected(column) ? "bg-yellow-50" : "bg-muted"
+                          isColumnAffected(column) ? "bg-yellow-50 dark:bg-yellow-950/40" : "bg-muted"
                         }`}
                         title={
                           isColumnAffected(column)
@@ -310,9 +310,9 @@ export function BeforeAfterView({
 
         {/* After (Transformed) Table */}
         <div className="bg-card rounded-lg border border-border overflow-hidden flex flex-col">
-          <div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 border-b border-green-200">
-            <h4 className="text-sm font-semibold text-green-900">Transformed Data</h4>
-            <p className="text-xs text-green-700 mt-1">
+          <div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 border-b border-green-200 dark:border-green-900">
+            <h4 className="text-sm font-semibold text-green-900 dark:text-green-200">Transformed Data</h4>
+            <p className="text-xs text-green-700 dark:text-green-300 mt-1">
               {transformedData.length} rows after transformation
             </p>
           </div>
@@ -324,16 +324,16 @@ export function BeforeAfterView({
           >
             <div ref={afterTableRef} className="min-w-full">
               <table className="w-full border-collapse text-sm">
-                <thead className="bg-green-50 sticky top-0 z-10">
-                  <tr className="border-b border-green-200">
-                    <th className="px-3 py-2 text-left font-semibold text-green-900 bg-green-50 w-12 border-r border-green-200">
+                <thead className="bg-green-50 dark:bg-green-950/40 sticky top-0 z-10">
+                  <tr className="border-b border-green-200 dark:border-green-900">
+                    <th className="px-3 py-2 text-left font-semibold text-green-900 dark:text-green-200 bg-green-50 dark:bg-green-950/40 w-12 border-r border-green-200 dark:border-green-900">
                       #
                     </th>
                     {columns.map((column) => (
                       <th
                         key={column}
-                        className={`px-3 py-2 text-left font-semibold text-green-900 min-w-[150px] border-r border-green-200 ${
-                          isColumnAffected(column) ? "bg-yellow-50" : "bg-green-50"
+                        className={`px-3 py-2 text-left font-semibold text-green-900 dark:text-green-200 min-w-[150px] border-r border-green-200 dark:border-green-900 ${
+                          isColumnAffected(column) ? "bg-yellow-50 dark:bg-yellow-950/40" : "bg-green-50 dark:bg-green-950/40"
                         }`}
                         title={
                           isColumnAffected(column)
@@ -373,7 +373,7 @@ export function BeforeAfterView({
                           <td
                             key={column}
                             className={`px-3 py-2 border-r border-border truncate ${
-                              isChanged ? "bg-yellow-50" : ""
+                              isChanged ? "bg-yellow-50 dark:bg-yellow-950/40" : ""
                             }`}
                             title={formatCellValue(newValue)}
                           >
@@ -395,9 +395,9 @@ export function BeforeAfterView({
       </div>
 
       {/* Footer Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
         <p className="font-medium mb-1">How to read this view:</p>
-        <ul className="space-y-1 text-xs text-blue-700 list-disc list-inside">
+        <ul className="space-y-1 text-xs text-blue-700 dark:text-blue-300 list-disc list-inside">
           <li>Yellow highlighting indicates columns affected by the transformation</li>
           <li>Highlighted cells in the transformed table show values that changed</li>
           <li>Hover over changed cells to see the before and after values</li>

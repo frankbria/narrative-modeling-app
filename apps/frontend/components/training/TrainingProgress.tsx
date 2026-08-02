@@ -165,7 +165,7 @@ export function TrainingProgress({
       } ${className}`}
     >
       {connectionLost && (
-        <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800">
+        <Alert className="border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/40 text-yellow-800 dark:text-yellow-200">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertTitle>Connection lost — retrying</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-2">
@@ -210,7 +210,7 @@ export function TrainingProgress({
       )}
 
       {status?.status === 'completed' && (
-        <Alert className="border-green-300 bg-green-50 text-green-800">
+        <Alert className="border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-200">
           <CheckCircle className="h-4 w-4 text-green-600" />
           <AlertTitle>Training complete</AlertTitle>
           <AlertDescription>
@@ -264,7 +264,7 @@ export function TrainingProgress({
                   key={row.algorithm}
                   className={
                     row.algorithm === status.best_algorithm
-                      ? 'bg-yellow-50 font-medium'
+                      ? 'bg-yellow-50 dark:bg-yellow-950/40 font-medium'
                       : ''
                   }
                 >

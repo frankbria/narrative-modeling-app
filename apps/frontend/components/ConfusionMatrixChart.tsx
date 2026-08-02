@@ -207,7 +207,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
       {selected !== null && (
         <div
           data-testid="confusion-cell-detail"
-          className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm"
+          className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-sm"
         >
           <h4 className="font-semibold text-foreground mb-2">Cell detail</h4>
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2">

@@ -23,8 +23,8 @@ interface TrainingLogsProps {
 
 const LEVEL_STYLES: Record<TrainingLogEntry['level'], string> = {
   info: 'text-muted-foreground',
-  warning: 'text-amber-700',
-  error: 'text-red-700',
+  warning: 'text-amber-700 dark:text-amber-300',
+  error: 'text-red-700 dark:text-red-300',
 };
 
 function matchesFilter(entry: TrainingLogEntry, filter: LevelFilter): boolean {

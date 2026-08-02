@@ -77,19 +77,19 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-2 text-center">
-        <div className="p-2 bg-blue-50 rounded-md">
+        <div className="p-2 bg-blue-50 dark:bg-blue-950/40 rounded-md">
           <div className="flex items-center justify-center mb-1">
             <CheckCircle className="h-4 w-4 text-blue-600" />
           </div>
-          <div className="text-lg font-bold text-blue-700">{status.completed_steps}</div>
+          <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{status.completed_steps}</div>
           <div className="text-xs text-blue-600">Completed</div>
         </div>
         
-        <div className="p-2 bg-green-50 rounded-md">
+        <div className="p-2 bg-green-50 dark:bg-green-950/40 rounded-md">
           <div className="flex items-center justify-center mb-1">
             <Clock className="h-4 w-4 text-green-600" />
           </div>
-          <div className="text-lg font-bold text-green-700">{status.time_spent_minutes}</div>
+          <div className="text-lg font-bold text-green-700 dark:text-green-300">{status.time_spent_minutes}</div>
           <div className="text-xs text-green-600">Minutes</div>
         </div>
       </div>
@@ -107,11 +107,11 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
           
           {/* Recent Achievement */}
           {achievements.length > 0 && (
-            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="p-2 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-md">
               <div className="flex items-center gap-2">
                 <Star className="h-4 w-4 text-yellow-600" />
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-yellow-800">
+                  <div className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                     {achievements[achievements.length - 1].title}
                   </div>
                   <div className="text-xs text-yellow-600">
@@ -133,10 +133,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
       {/* Motivation Message */}
       <div className="space-y-2">
         {status.progress_percentage < 25 && (
-          <div className="p-2 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="p-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-blue-600" />
-              <div className="text-sm text-blue-800">
+              <div className="text-sm text-blue-800 dark:text-blue-200">
                 Great start! Keep going to unlock more features.
               </div>
             </div>
@@ -144,10 +144,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
         )}
 
         {status.progress_percentage >= 25 && status.progress_percentage < 50 && (
-          <div className="p-2 bg-purple-50 border border-purple-200 rounded-md">
+          <div className="p-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 rounded-md">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-purple-600" />
-              <div className="text-sm text-purple-800">
+              <div className="text-sm text-purple-800 dark:text-purple-200">
                 You&apos;re making excellent progress! 
               </div>
             </div>
@@ -155,10 +155,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
         )}
 
         {status.progress_percentage >= 50 && status.progress_percentage < 75 && (
-          <div className="p-2 bg-green-50 border border-green-200 rounded-md">
+          <div className="p-2 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-md">
             <div className="flex items-center gap-2">
               <Star className="h-4 w-4 text-green-600" />
-              <div className="text-sm text-green-800">
+              <div className="text-sm text-green-800 dark:text-green-200">
                 Halfway there! You&apos;re doing amazing!
               </div>
             </div>
@@ -166,10 +166,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
         )}
 
         {status.progress_percentage >= 75 && !status.is_onboarding_complete && (
-          <div className="p-2 bg-orange-50 border border-orange-200 rounded-md">
+          <div className="p-2 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900 rounded-md">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-orange-600" />
-              <div className="text-sm text-orange-800">
+              <div className="text-sm text-orange-800 dark:text-orange-200">
                 Almost finished! You&apos;re so close to completion!
               </div>
             </div>
@@ -177,10 +177,10 @@ export function OnboardingProgress({ status, achievements }: OnboardingProgressP
         )}
 
         {status.is_onboarding_complete && (
-          <div className="p-2 bg-green-50 border border-green-200 rounded-md">
+          <div className="p-2 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-md">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-green-600" />
-              <div className="text-sm text-green-800 font-medium">
+              <div className="text-sm text-green-800 dark:text-green-200 font-medium">
                 🎉 Tutorial Complete! You&apos;re ready to build amazing models!
               </div>
             </div>

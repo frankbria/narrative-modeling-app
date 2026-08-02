@@ -123,12 +123,12 @@ export default function FunctionPalette() {
                   {funcs.map((func) => (
                     <div
                       key={func.type}
-                      className="p-2 bg-orange-100 rounded cursor-move border border-orange-200 hover:bg-orange-200 transition-colors"
+                      className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded cursor-move border border-orange-200 dark:border-orange-900 hover:bg-orange-200 transition-colors"
                       draggable
                       onDragStart={(e) => handleDragStart(e, func)}
                       title={func.description}
                     >
-                      <span className="text-sm font-mono text-orange-800">{func.label}</span>
+                      <span className="text-sm font-mono text-orange-800 dark:text-orange-200">{func.label}</span>
                     </div>
                   ))}
                 </div>

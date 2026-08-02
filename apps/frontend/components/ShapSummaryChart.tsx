@@ -90,7 +90,7 @@ export function ShapSummaryChart({
           </p>
         </div>
         {explainerType && (
-          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-medium">
+          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">
             {explainerType} explainer
           </span>
         )}
@@ -99,7 +99,7 @@ export function ShapSummaryChart({
       {plainLanguage && (
         <p
           data-testid="shap-plain-language"
-          className="mb-3 text-sm text-foreground bg-purple-50 border border-purple-100 rounded-md px-3 py-2"
+          className="mb-3 text-sm text-foreground bg-purple-50 dark:bg-purple-950/40 border border-purple-100 rounded-md px-3 py-2"
         >
           {plainLanguage}
         </p>

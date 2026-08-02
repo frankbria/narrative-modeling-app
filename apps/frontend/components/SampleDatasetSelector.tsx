@@ -84,9 +84,9 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
   const getDifficultyColor = (level: string) => {
     switch (level) {
-      case 'beginner': return 'bg-green-100 text-green-800';
-      case 'intermediate': return 'bg-yellow-100 text-yellow-800';
-      case 'advanced': return 'bg-red-100 text-red-800';
+      case 'beginner': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
+      case 'intermediate': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
+      case 'advanced': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
       default: return 'bg-muted text-foreground';
     }
   };
@@ -139,7 +139,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       {loadError && (
         <div
           role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-200"
         >
           {loadError}
         </div>
@@ -265,7 +265,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
       {/* Dataset Detail Modal/Panel */}
       {selectedDataset && (
-        <Card className="border-2 border-blue-200 bg-blue-50">
+        <Card className="border-2 border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40">
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>

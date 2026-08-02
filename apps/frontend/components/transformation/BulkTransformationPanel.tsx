@@ -169,7 +169,7 @@ export function BulkTransformationPanel({
             {selectedColumns.map(column => (
               <span
                 key={column}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-xs"
               >
                 {column}
                 <button
@@ -247,7 +247,7 @@ export function BulkTransformationPanel({
       {/* Error message */}
       {error && (
         <div className="p-4 border-b border-border">
-          <div className="p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+          <div className="p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-300 text-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             {error}
           </div>

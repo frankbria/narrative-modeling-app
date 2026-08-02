@@ -166,7 +166,7 @@ export default function FeaturesPage() {
 
         {/* AI Suggestions */}
         {aiSuggestions && (
-          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900">
             <h3 className="font-semibold mb-2 flex items-center gap-2">
               <Brain className="w-5 h-5 text-blue-600" />
               AI Recommendations
@@ -176,7 +176,7 @@ export default function FeaturesPage() {
               {aiSuggestions.recommendations?.map((rec: string, idx: number) => (
                 <span
                   key={idx}
-                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-sm"
                 >
                   {rec}
                 </span>
@@ -238,9 +238,9 @@ export default function FeaturesPage() {
 
         {/* Warning */}
         {selectedFeatures.length < 2 && (
-          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200 flex items-start gap-2">
+          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-900 flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div className="text-sm text-yellow-800">
+            <div className="text-sm text-yellow-800 dark:text-yellow-200">
               <p className="font-semibold">Too few features selected</p>
               <p>Select at least 2 features for effective modeling.</p>
             </div>

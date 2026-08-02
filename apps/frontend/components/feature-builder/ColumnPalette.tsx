@@ -15,11 +15,11 @@ interface ColumnPaletteProps {
 }
 
 const typeColors: Record<string, string> = {
-  numeric: 'bg-blue-100 text-blue-800 border-blue-200',
-  text: 'bg-green-100 text-green-800 border-green-200',
-  boolean: 'bg-purple-100 text-purple-800 border-purple-200',
-  datetime: 'bg-orange-100 text-orange-800 border-orange-200',
-  categorical: 'bg-pink-100 text-pink-800 border-pink-200',
+  numeric: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-900',
+  text: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-900',
+  boolean: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-900',
+  datetime: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-900',
+  categorical: 'bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-900',
 };
 
 export default function ColumnPalette({ columns }: ColumnPaletteProps) {

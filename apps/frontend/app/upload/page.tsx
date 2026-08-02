@@ -333,12 +333,12 @@ export default function UploadPage() {
 
         {/* Success Message */}
         {showSuccessMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md" data-testid="upload-status" role="status" aria-live="polite">
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-md" data-testid="upload-status" role="status" aria-live="polite">
             <div className="flex items-center">
               <CheckCircle className="text-green-500 mr-2" size={20} />
               <div>
-                <p className="font-medium text-green-800">File uploaded successfully!</p>
-                <p className="text-sm text-green-700">
+                <p className="font-medium text-green-800 dark:text-green-200">File uploaded successfully!</p>
+                <p className="text-sm text-green-700 dark:text-green-300">
                   Your data has been processed and stored. You can now use it for analysis.
                 </p>
                 {uploadedFileId && (
@@ -362,12 +362,12 @@ export default function UploadPage() {
 
         {/* PII Warning */}
         {showPIIWarning && piiData && (
-          <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-lg" role="status" aria-live="polite">
+          <div className="mb-6 p-6 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-lg" role="status" aria-live="polite">
             <div className="flex items-center mb-4">
               <Shield className="text-amber-500 mr-3" size={24} />
               <div>
-                <h3 className="font-bold text-amber-800 text-lg">Sensitive Data Detected</h3>
-                <p className="text-amber-700">
+                <h3 className="font-bold text-amber-800 dark:text-amber-200 text-lg">Sensitive Data Detected</h3>
+                <p className="text-amber-700 dark:text-amber-300">
                   We&apos;ve detected potentially sensitive information in your file that may require special handling.
                 </p>
               </div>
@@ -397,7 +397,7 @@ export default function UploadPage() {
                       <div key={index} className="flex items-center justify-between bg-muted p-2 rounded">
                         <span className="text-sm font-medium text-foreground">{detection.column}</span>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                          <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 px-2 py-1 rounded">
                             {detection.type}
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -436,7 +436,7 @@ export default function UploadPage() {
                 className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${
                   isConfirming
                     ? 'bg-orange-400 cursor-wait text-white'
-                    : 'bg-orange-100 hover:bg-orange-200 text-orange-800'
+                    : 'bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 text-orange-800 dark:text-orange-200'
                 }`}
               >
                 <Eye size={16} />
@@ -483,7 +483,7 @@ export default function UploadPage() {
           data-testid="upload-dropzone"
           className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
             isDragActive
-              ? 'border-blue-500 bg-blue-50'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
               : 'border-border hover:border-blue-400 hover:bg-muted'
           }`}
         >
@@ -499,7 +499,7 @@ export default function UploadPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   {formatFileSize(file.size)}
                   {isLargeFile && (
-                    <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded-md text-xs font-medium">
+                    <span className="ml-2 px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 rounded-md text-xs font-medium">
                       Large File - Chunked Upload
                     </span>
                   )}
@@ -548,12 +548,12 @@ export default function UploadPage() {
 
         {/* Large File Info */}
         {file && isLargeFile && !useChunkedUploadMode && (
-          <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-md">
+          <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900 rounded-md">
             <div className="flex items-center space-x-2 mb-2">
               <HardDrive className="text-orange-500" size={16} />
-              <span className="text-sm font-medium text-orange-800">Large File Detected</span>
+              <span className="text-sm font-medium text-orange-800 dark:text-orange-200">Large File Detected</span>
             </div>
-            <p className="text-sm text-orange-700">
+            <p className="text-sm text-orange-700 dark:text-orange-300">
               Your file is {formatFileSize(file.size)}, which exceeds our {formatFileSize(CHUNKED_UPLOAD_THRESHOLD)} threshold. 
               We&apos;ll use chunked upload for optimal performance and reliability.
             </p>
@@ -568,10 +568,10 @@ export default function UploadPage() {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md" data-testid="upload-error" role="alert" aria-live="assertive">
+          <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md" data-testid="upload-error" role="alert" aria-live="assertive">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-              <div className="text-sm text-red-800">
+              <div className="text-sm text-red-800 dark:text-red-200">
                 <p className="font-semibold">Upload Error</p>
                 <p data-testid="upload-error-message">{errorMessage}</p>
               </div>
@@ -613,14 +613,14 @@ export default function UploadPage() {
                   {previewData.pii_report.has_pii ? (
                     <>
                       <Shield className="text-amber-500" size={16} />
-                      <span className="text-sm text-amber-700 font-medium">
+                      <span className="text-sm text-amber-700 dark:text-amber-300 font-medium">
                         PII {previewData.pii_report.risk_level.toUpperCase()} RISK
                       </span>
                     </>
                   ) : (
                     <>
                       <CheckCircle className="text-green-500" size={16} />
-                      <span className="text-sm text-green-700 font-medium">NO PII DETECTED</span>
+                      <span className="text-sm text-green-700 dark:text-green-300 font-medium">NO PII DETECTED</span>
                     </>
                   )}
                 </div>
@@ -654,7 +654,7 @@ export default function UploadPage() {
           </div>
         )}
 
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900">
           <h3 className="font-semibold mb-2 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-blue-600" />
             What happens next?

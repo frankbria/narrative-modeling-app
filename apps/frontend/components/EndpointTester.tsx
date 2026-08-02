@@ -152,7 +152,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {error && (
         <div
           data-testid="endpoint-tester-error"
-          className="mt-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"
+          className="mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-700 dark:text-red-300"
         >
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
@@ -162,9 +162,9 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {result && (
         <div
           data-testid="endpoint-tester-result"
-          className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg"
+          className="mt-4 p-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-lg"
         >
-          <div className="flex items-center gap-2 font-semibold text-green-700">
+          <div className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-300">
             <CheckCircle className="w-4 h-4" />
             Prediction
           </div>

@@ -258,7 +258,7 @@ export default function PredictPage() {
         {error && (
           <div
             data-testid="prediction-error"
-            className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700 flex items-center gap-2"
+            className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-sm text-red-700 dark:text-red-300 flex items-center gap-2"
           >
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
@@ -274,7 +274,7 @@ export default function PredictPage() {
               onClick={() => setPredictionMode('single')}
               className={`p-4 border-2 rounded-lg transition-colors ${
                 predictionMode === 'single'
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
                   : 'border-border hover:border-gray-400'
               }`}
             >
@@ -290,7 +290,7 @@ export default function PredictPage() {
               onClick={() => setPredictionMode('batch')}
               className={`p-4 border-2 rounded-lg transition-colors ${
                 predictionMode === 'batch'
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
                   : 'border-border hover:border-gray-400'
               }`}
             >
@@ -390,7 +390,7 @@ export default function PredictPage() {
             {prediction && (
               <div
                 data-testid="prediction-result"
-                className="prediction-output mt-6 p-4 bg-green-50 rounded-lg border border-green-200"
+                className="prediction-output mt-6 p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900"
               >
                 <h4 className="font-semibold mb-2 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-600" />
@@ -416,7 +416,7 @@ export default function PredictPage() {
                 {prediction.low_confidence?.[0] && (
                   <div
                     data-testid="low-confidence-warning"
-                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800"
+                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-2 text-sm text-amber-800 dark:text-amber-200"
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>
@@ -453,7 +453,7 @@ export default function PredictPage() {
                 {prediction.explanations?.[0] && (
                   <div
                     data-testid="prediction-explanation"
-                    className="mt-4 border-t border-green-200 pt-3"
+                    className="mt-4 border-t border-green-200 dark:border-green-900 pt-3"
                   >
                     <p className="text-sm font-medium text-foreground mb-1">
                       What drove this prediction
@@ -467,7 +467,7 @@ export default function PredictPage() {
                           <span>{f.feature_name}</span>
                           <span
                             className={`font-medium ${
-                              f.contribution >= 0 ? 'text-green-700' : 'text-red-700'
+                              f.contribution >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
                             }`}
                           >
                             {f.contribution >= 0 ? '+' : ''}
@@ -521,7 +521,7 @@ export default function PredictPage() {
               )}
             </div>
 
-            <div className="p-4 bg-blue-50 rounded-lg">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
               <h4 className="font-semibold mb-2">Expected Format</h4>
               <p className="text-sm text-foreground">
                 Your CSV should have columns matching the feature names:
@@ -552,7 +552,7 @@ export default function PredictPage() {
             )}
 
             {batchFailed && (
-              <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-sm text-red-700">
+              <div className="p-4 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
                 Batch prediction failed: {batchJob?.error_message ?? 'unknown error'}
               </div>
             )}
@@ -561,7 +561,7 @@ export default function PredictPage() {
             {batchComplete && (
               <div
                 data-testid="batch-summary"
-                className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-3"
+                className="p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900 space-y-3"
               >
                 <h4 className="font-semibold flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-600" />
@@ -615,7 +615,7 @@ export default function PredictPage() {
                   summary.low_confidence_count > 0 && (
                     <p
                       data-testid="batch-low-confidence"
-                      className="flex items-center gap-2 text-xs text-amber-800"
+                      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
                     >
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       {summary.low_confidence_count} low-confidence prediction

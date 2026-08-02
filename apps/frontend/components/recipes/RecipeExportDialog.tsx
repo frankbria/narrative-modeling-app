@@ -124,9 +124,9 @@ export function RecipeExportDialog({
 
               <TabsContent value="formatted" className="mt-4">
                 <div className="space-y-3">
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <p className="text-sm font-medium text-blue-900">Recipe Format</p>
-                    <p className="text-xs text-blue-700 mt-1">
+                  <div className="bg-blue-50 dark:bg-blue-950/40 p-3 rounded-lg">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-200">Recipe Format</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
                       This JSON file contains the complete recipe definition including all transformation steps,
                       metadata, and version information. You can import this file into any compatible system.
                     </p>
@@ -145,7 +145,7 @@ export function RecipeExportDialog({
           )}
 
           {copied && (
-            <Alert className="bg-green-50 text-green-900 border-green-200">
+            <Alert className="bg-green-50 dark:bg-green-950/40 text-green-900 dark:text-green-200 border-green-200 dark:border-green-900">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>Copied to clipboard!</AlertDescription>
             </Alert>

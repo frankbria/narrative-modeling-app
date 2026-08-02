@@ -245,7 +245,7 @@ export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) 
                 .sort((a, b) => a.order - b.order)
                 .map((step, idx) => (
                   <div key={step.step_id} className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-medium">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center text-sm font-medium">
                       {idx + 1}
                     </div>
                     <div className="flex-1">

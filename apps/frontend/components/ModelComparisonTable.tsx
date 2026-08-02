@@ -111,7 +111,7 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
                       <span className="inline-flex items-center gap-2">
                         {value.toFixed(4)}
                         {isBest && (
-                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                          <Badge className="bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-100">
                             Best
                           </Badge>
                         )}

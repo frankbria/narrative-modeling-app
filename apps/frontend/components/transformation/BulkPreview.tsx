@@ -48,7 +48,7 @@ function ColumnPreviewDetail({ preview }: { preview: ColumnPreviewResult }) {
             </Badge>
           )}
           {preview.warnings.length > 0 && (
-            <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">
+            <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300 dark:border-yellow-800">
               <AlertTriangle className="w-3 h-3 mr-1" />
               {preview.warnings.length}
             </Badge>
@@ -60,7 +60,7 @@ function ColumnPreviewDetail({ preview }: { preview: ColumnPreviewResult }) {
       {isExpanded && (
         <div className="p-3 border-t border-border bg-card">
           {preview.error ? (
-            <div className="p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+            <div className="p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded text-red-700 dark:text-red-300 text-sm">
               {preview.error}
             </div>
           ) : (
@@ -83,7 +83,7 @@ function ColumnPreviewDetail({ preview }: { preview: ColumnPreviewResult }) {
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1">After</p>
-                    <div className="bg-green-50 p-2 rounded text-xs space-y-1">
+                    <div className="bg-green-50 dark:bg-green-950/40 p-2 rounded text-xs space-y-1">
                       {Object.entries(preview.stats_after).slice(0, 5).map(([key, value]) => (
                         <div key={key} className="flex justify-between">
                           <span className="text-muted-foreground">{key}:</span>
@@ -133,9 +133,9 @@ function ColumnPreviewDetail({ preview }: { preview: ColumnPreviewResult }) {
                     <AlertTriangle className="w-3 h-3" />
                     Warnings
                   </p>
-                  <ul className="text-xs text-yellow-700 space-y-1">
+                  <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
                     {preview.warnings.map((warning, idx) => (
-                      <li key={idx} className="bg-yellow-50 p-1 rounded">
+                      <li key={idx} className="bg-yellow-50 dark:bg-yellow-950/40 p-1 rounded">
                         {warning}
                       </li>
                     ))}
@@ -226,7 +226,7 @@ export function BulkPreview({
       {/* Global error */}
       {previewData.error && (
         <div className="p-4 border-b border-border">
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-700">
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2 text-red-700 dark:text-red-300">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Error</p>
@@ -239,12 +239,12 @@ export function BulkPreview({
       {/* Global warnings */}
       {previewData.warnings && previewData.warnings.length > 0 && (
         <div className="p-4 border-b border-border">
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="font-medium text-yellow-700 flex items-center gap-1 mb-1">
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-lg">
+            <p className="font-medium text-yellow-700 dark:text-yellow-300 flex items-center gap-1 mb-1">
               <AlertTriangle className="w-4 h-4" />
               Warnings
             </p>
-            <ul className="text-sm text-yellow-700 list-disc list-inside">
+            <ul className="text-sm text-yellow-700 dark:text-yellow-300 list-disc list-inside">
               {previewData.warnings.map((warning, idx) => (
                 <li key={idx}>{warning}</li>
               ))}

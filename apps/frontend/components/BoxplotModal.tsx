@@ -51,7 +51,7 @@ export function BoxplotModal({ isOpen, onClose, columnName, boxplotData }: Boxpl
             {/* Display a simple boxplot visualization using divs */}
             <div className="flex flex-col items-center justify-center h-full">
               <div className="w-full max-w-md">
-                <div className="relative h-8 bg-blue-100 rounded-t-md">
+                <div className="relative h-8 bg-blue-100 dark:bg-blue-900/40 rounded-t-md">
                   {/* Median line */}
                   <div 
                     className="absolute h-8 w-1 bg-blue-600 left-1/2 transform -translate-x-1/2"

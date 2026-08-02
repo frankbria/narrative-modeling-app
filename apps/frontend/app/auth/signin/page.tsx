@@ -69,8 +69,8 @@ export default function SignInPage() {
         <CardContent className="space-y-4">
           {isDevelopment && (
             <>
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-blue-800 font-medium">Test User Login</p>
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md">
+                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">Test User Login</p>
                 <p className="text-xs text-blue-600 mt-1">Use test credentials for E2E testing and development</p>
               </div>
 

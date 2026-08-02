@@ -20,11 +20,11 @@ export type FeatureNode = Node<
 >;
 
 const nodeColors: Record<string, { bg: string; border: string; text: string }> = {
-  column: { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-800' },
-  operation: { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-800' },
-  function: { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-800' },
-  constant: { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-800' },
-  conditional: { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-800' },
+  column: { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-300 dark:border-blue-800', text: 'text-blue-800 dark:text-blue-200' },
+  operation: { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-300 dark:border-green-800', text: 'text-green-800 dark:text-green-200' },
+  function: { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-300 dark:border-orange-800', text: 'text-orange-800 dark:text-orange-200' },
+  constant: { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-300 dark:border-purple-800', text: 'text-purple-800 dark:text-purple-200' },
+  conditional: { bg: 'bg-yellow-50 dark:bg-yellow-950/40', border: 'border-yellow-300 dark:border-yellow-800', text: 'text-yellow-800 dark:text-yellow-200' },
 };
 
 const FeatureNode = memo(({ id, data, selected }: NodeProps<FeatureNode>) => {

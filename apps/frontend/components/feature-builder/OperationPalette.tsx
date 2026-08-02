@@ -107,12 +107,12 @@ export default function OperationPalette() {
                   {ops.map((op) => (
                     <div
                       key={op.type}
-                      className="p-2 bg-green-100 rounded cursor-move border border-green-200 hover:bg-green-200 transition-colors text-center"
+                      className="p-2 bg-green-100 dark:bg-green-900/40 rounded cursor-move border border-green-200 dark:border-green-900 hover:bg-green-200 transition-colors text-center"
                       draggable
                       onDragStart={(e) => handleDragStart(e, op)}
                       title={op.description}
                     >
-                      <span className="font-bold text-green-800">{op.symbol}</span>
+                      <span className="font-bold text-green-800 dark:text-green-200">{op.symbol}</span>
                     </div>
                   ))}
                 </div>

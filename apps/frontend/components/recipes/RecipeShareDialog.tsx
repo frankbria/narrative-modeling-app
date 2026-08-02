@@ -110,7 +110,7 @@ export function RecipeShareDialog({
           )}
 
           {success && (
-            <Alert className="bg-green-50 text-green-900 border-green-200">
+            <Alert className="bg-green-50 dark:bg-green-950/40 text-green-900 dark:text-green-200 border-green-200 dark:border-green-900">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>{success}</AlertDescription>
             </Alert>

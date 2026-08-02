@@ -236,7 +236,7 @@ export function BulkTransformationProgress({
       {/* Error message */}
       {(error || progress?.error_message) && (
         <div className="p-4 border-b border-border">
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-700">
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-start gap-2 text-red-700 dark:text-red-300">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Error</p>
@@ -264,7 +264,7 @@ export function BulkTransformationProgress({
                 <p className="text-muted-foreground mb-1">Successful columns:</p>
                 <div className="flex flex-wrap gap-1">
                   {progress.result.successful_columns.slice(0, 10).map(col => (
-                    <Badge key={col} variant="secondary" className="text-xs bg-green-100 text-green-700">
+                    <Badge key={col} variant="secondary" className="text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
                       {col}
                     </Badge>
                   ))}
@@ -281,8 +281,8 @@ export function BulkTransformationProgress({
                 <p className="text-muted-foreground mb-1">Failed columns:</p>
                 <div className="space-y-1">
                   {progress.result.failed_columns.slice(0, 5).map(({ column_name, error: colError }) => (
-                    <div key={column_name} className="text-xs bg-red-50 p-2 rounded">
-                      <span className="font-medium text-red-700">{column_name}:</span>
+                    <div key={column_name} className="text-xs bg-red-50 dark:bg-red-950/40 p-2 rounded">
+                      <span className="font-medium text-red-700 dark:text-red-300">{column_name}:</span>
                       <span className="text-red-600 ml-1">{colError}</span>
                     </div>
                   ))}

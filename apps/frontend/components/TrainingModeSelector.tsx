@@ -67,15 +67,15 @@ export function TrainingModeSelector({
 
       {recommendedMode && reason && (
         <div
-          className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-start gap-2"
+          className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900 flex items-start gap-2"
           data-testid="mode-recommendation"
         >
           <Sparkles className="w-5 h-5 text-emerald-600 mt-0.5" />
-          <div className="text-sm text-emerald-900">
+          <div className="text-sm text-emerald-900 dark:text-emerald-200">
             <p className="font-semibold">
               Recommended: {recommendedMode === 'quick' ? 'Quick' : 'Comprehensive'}
             </p>
-            <p className="mt-0.5 text-emerald-800">{reason}</p>
+            <p className="mt-0.5 text-emerald-800 dark:text-emerald-200">{reason}</p>
           </div>
         </div>
       )}
@@ -98,7 +98,7 @@ export function TrainingModeSelector({
               data-testid={`mode-option-${option.mode}`}
               className={`text-left p-4 rounded-lg border transition-all ${
                 selected
-                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50'
+                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50 dark:bg-blue-950/40'
                   : 'border-border hover:border-border'
               } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -106,7 +106,7 @@ export function TrainingModeSelector({
                 {option.icon}
                 {option.title}
                 {recommendedMode === option.mode && (
-                  <span className="ml-auto text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full">
                     Recommended
                   </span>
                 )}

@@ -230,8 +230,8 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
 
         {/* Error Message */}
         {progress.status === 'error' && progress.error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-700 font-medium">Error Details:</p>
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md">
+            <p className="text-sm text-red-700 dark:text-red-300 font-medium">Error Details:</p>
             <p className="text-sm text-red-600 mt-1">{progress.error}</p>
           </div>
         )}

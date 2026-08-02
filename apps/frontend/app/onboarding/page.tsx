@@ -166,8 +166,8 @@ export default function OnboardingPage() {
 
   const getStepStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
+      case 'in_progress': return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
       case 'skipped': return 'bg-muted text-muted-foreground';
       default: return 'bg-muted text-muted-foreground';
     }
@@ -248,9 +248,9 @@ export default function OnboardingPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       {showCelebration && (
-        <Alert className="mb-6 border-green-200 bg-green-50">
+        <Alert className="mb-6 border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40">
           <Star className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">
+          <AlertDescription className="text-green-800 dark:text-green-200">
             🎉 Amazing! You&apos;ve earned new achievements! Keep going!
           </AlertDescription>
         </Alert>
@@ -280,7 +280,7 @@ export default function OnboardingPage() {
                     key={step.step_id} 
                     className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
                       currentStep?.step_id === step.step_id 
-                        ? 'bg-blue-50 border border-blue-200' 
+                        ? 'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900' 
                         : 'hover:bg-muted'
                     }`}
                     onClick={() => setCurrentStep(step)}

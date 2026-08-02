@@ -263,14 +263,14 @@ export default function DeployPage() {
               )}
             </div>
 
-            <div className="bg-blue-50 rounded-lg p-6">
+            <div className="bg-blue-50 dark:bg-blue-950/40 rounded-lg p-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Example Request</h3>
                 <a
                   href={docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-blue-700 hover:underline"
+                  className="inline-flex items-center gap-1 text-sm text-blue-700 dark:text-blue-300 hover:underline"
                 >
                   <BookOpen className="w-4 h-4" />
                   View interactive API docs

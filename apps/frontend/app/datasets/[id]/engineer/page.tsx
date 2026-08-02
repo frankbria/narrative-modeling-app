@@ -360,8 +360,8 @@ function FeatureEngineeringContent({
                       <div
                         className={`p-3 rounded-lg ${
                           applyResult.success
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 dark:bg-green-900 dark:text-green-200'
+                            : 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 dark:bg-red-900 dark:text-red-200'
                         }`}
                       >
                         <p className="text-sm">{applyResult.message}</p>

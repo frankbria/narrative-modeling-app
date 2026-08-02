@@ -184,7 +184,7 @@ export function SelectionPatternBuilder({
                 className={`
                   flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all
                   ${selectedTypes.has(type)
-                    ? 'bg-blue-50 border-blue-300'
+                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800'
                     : 'bg-card border-border hover:border-border'}
                 `}
                 onClick={() => handleTypeToggle(type)}
@@ -316,7 +316,7 @@ export function SelectionPatternBuilder({
 
       {/* Error message */}
       {error && (
-        <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-xs">
+        <div className="mt-3 p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-300 text-xs">
           <AlertTriangle className="w-4 h-4" />
           {error}
         </div>
@@ -324,18 +324,18 @@ export function SelectionPatternBuilder({
 
       {/* Preview results */}
       {previewColumns && previewColumns.length > 0 && (
-        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-xs text-blue-700 font-medium mb-1">
+        <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg">
+          <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">
             {previewColumns.length} column{previewColumns.length !== 1 ? 's' : ''} matched:
           </p>
           <div className="flex flex-wrap gap-1">
             {previewColumns.slice(0, 10).map(col => (
-              <span key={col.column_name} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+              <span key={col.column_name} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded text-xs">
                 {col.column_name}
               </span>
             ))}
             {previewColumns.length > 10 && (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded text-xs">
                 +{previewColumns.length - 10} more
               </span>
             )}

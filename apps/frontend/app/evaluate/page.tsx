@@ -122,7 +122,7 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
         <div className="flex items-center justify-between">
           <CardTitle>Model Report Card</CardTitle>
           {explanation.generated_by === 'openai' ? (
-            <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+            <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 hover:bg-purple-100">
               AI-generated
             </Badge>
           ) : (
@@ -418,9 +418,9 @@ export default function EvaluatePage() {
 
         {/* Partial-evaluation banner */}
         {evaluation.partial && (
-          <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2">
+          <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900 flex items-start gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
               Detailed evaluation artifacts aren&apos;t available for this model (trained
               before evaluation persistence). Showing stored training metrics.
             </p>

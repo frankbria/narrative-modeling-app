@@ -174,9 +174,9 @@ export default function ModelPage() {
         {/* Training errors are shown above the form so they remain visible after
             a failure returns the user to the configuration view. */}
         {trainingError && (
-          <div className="mb-6 p-3 bg-red-50 rounded-lg border border-red-200 flex items-start gap-2">
+          <div className="mb-6 p-3 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 flex items-start gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-            <div className="text-sm text-red-800">
+            <div className="text-sm text-red-800 dark:text-red-200">
               <p className="font-semibold">Training failed</p>
               <p>{trainingError}</p>
             </div>
@@ -186,9 +186,9 @@ export default function ModelPage() {
         {/* A cancelled run returns the analyst to the configuration view with a
             notice so they can adjust the setup and start a new run. */}
         {cancelledNotice && !training && (
-          <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-start gap-2">
+          <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900 flex items-start gap-2">
             <Info className="w-5 h-5 text-blue-600 mt-0.5" />
-            <div className="text-sm text-blue-800">
+            <div className="text-sm text-blue-800 dark:text-blue-200">
               <p className="font-semibold">Training cancelled</p>
               <p>The training run was stopped. You can start a new run below.</p>
             </div>
@@ -201,11 +201,11 @@ export default function ModelPage() {
                 algorithms, so the only required input is the target column.
                 The training mode (issue #101) tunes how many algorithms run and
                 the time budget. */}
-            <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200 flex items-start gap-3">
+            <div className="p-4 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-900 flex items-start gap-3">
               <Zap className="w-5 h-5 text-indigo-500 mt-0.5" />
-              <div className="text-sm text-indigo-900">
+              <div className="text-sm text-indigo-900 dark:text-indigo-200">
                 <p className="font-semibold">AI-guided AutoML</p>
-                <p className="mt-1 text-indigo-800">
+                <p className="mt-1 text-indigo-800 dark:text-indigo-200">
                   We automatically detect whether this is a classification or
                   regression problem, train and cross-validate several algorithms
                   (Logistic/Linear Regression, Random Forest, XGBoost and more),
@@ -242,9 +242,9 @@ export default function ModelPage() {
 
             {/* Warning */}
             {!modelConfig.target_column && (
-              <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 flex items-start gap-2">
+              <div className="p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-900 flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-                <div className="text-sm text-yellow-800">
+                <div className="text-sm text-yellow-800 dark:text-yellow-200">
                   <p className="font-semibold">Target column required</p>
                   <p>Please select the column you want to predict.</p>
                 </div>
@@ -277,7 +277,7 @@ export default function ModelPage() {
           <div className="space-y-6">
             {!completedStatus && (
               <div className="text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-full mb-4">
                   <Brain className="w-8 h-8 text-blue-600 animate-pulse" />
                 </div>
                 <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>

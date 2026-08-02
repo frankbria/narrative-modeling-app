@@ -121,7 +121,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         <button
           type="button"
           onClick={handleDownloadPostman}
-          className="inline-flex items-center gap-1 text-sm text-blue-700 hover:underline"
+          className="inline-flex items-center gap-1 text-sm text-blue-700 dark:text-blue-300 hover:underline"
         >
           <Download className="w-4 h-4" />
           Postman collection

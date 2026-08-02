@@ -30,7 +30,7 @@ function getColumnTypeIndicator(fieldType: string) {
       return {
         icon: Hash,
         color: 'text-blue-500',
-        bgColor: 'bg-blue-50',
+        bgColor: 'bg-blue-50 dark:bg-blue-950/40',
         label: 'Numeric'
       };
     case 'categorical':
@@ -38,21 +38,21 @@ function getColumnTypeIndicator(fieldType: string) {
       return {
         icon: Type,
         color: 'text-green-500',
-        bgColor: 'bg-green-50',
+        bgColor: 'bg-green-50 dark:bg-green-950/40',
         label: fieldType.charAt(0).toUpperCase() + fieldType.slice(1)
       };
     case 'datetime':
       return {
         icon: Calendar,
         color: 'text-purple-500',
-        bgColor: 'bg-purple-50',
+        bgColor: 'bg-purple-50 dark:bg-purple-950/40',
         label: 'DateTime'
       };
     case 'boolean':
       return {
         icon: CheckSquare,
         color: 'text-orange-500',
-        bgColor: 'bg-orange-50',
+        bgColor: 'bg-orange-50 dark:bg-orange-950/40',
         label: 'Boolean'
       };
     default:
@@ -124,7 +124,7 @@ function ColumnListItem({
         className={`
           p-3 flex items-start gap-3 rounded-lg border transition-all
           ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-border hover:border-border'}
-          ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-card hover:bg-muted'}
+          ${isSelected ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800' : 'bg-card hover:bg-muted'}
           cursor-pointer
         `}
         onClick={(e) => onToggleColumn(column.column_name, index, e)}
@@ -168,18 +168,18 @@ function ColumnListItem({
               {column.unique_values.toLocaleString()} unique
             </span>
             {column.missing_values > 0 && (
-              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full flex items-center gap-1">
+              <span className="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-full flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {column.missing_values.toLocaleString()} missing
               </span>
             )}
             {column.is_constant && (
-              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">
+              <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 rounded-full">
                 Constant
               </span>
             )}
             {column.is_high_cardinality && (
-              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full">
+              <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 rounded-full">
                 High Cardinality
               </span>
             )}

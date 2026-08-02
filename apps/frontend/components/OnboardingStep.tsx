@@ -52,13 +52,13 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
-      case 'welcome': return 'bg-blue-100 text-blue-800';
-      case 'upload_data': return 'bg-green-100 text-green-800';
-      case 'explore_data': return 'bg-purple-100 text-purple-800';
-      case 'train_model': return 'bg-orange-100 text-orange-800';
-      case 'make_predictions': return 'bg-red-100 text-red-800';
-      case 'export_model': return 'bg-indigo-100 text-indigo-800';
-      case 'completion': return 'bg-yellow-100 text-yellow-800';
+      case 'welcome': return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
+      case 'upload_data': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
+      case 'explore_data': return 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200';
+      case 'train_model': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200';
+      case 'make_predictions': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
+      case 'export_model': return 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200';
+      case 'completion': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
       default: return 'bg-muted text-foreground';
     }
   };
@@ -281,9 +281,9 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               </p>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">What you&apos;ll see:</h4>
-              <ul className="text-blue-800 text-sm space-y-1">
+            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">What you&apos;ll see:</h4>
+              <ul className="text-blue-800 dark:text-blue-200 text-sm space-y-1">
                 <li>• Prediction values for your inputs</li>
                 <li>• Confidence scores showing model certainty</li>
                 <li>• Feature importance rankings</li>
@@ -375,9 +375,9 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         </div>
 
         {step.status === 'completed' && (
-          <Alert className="border-green-200 bg-green-50">
+          <Alert className="border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40">
             <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
+            <AlertDescription className="text-green-800 dark:text-green-200">
               ✅ Step completed successfully!
             </AlertDescription>
           </Alert>
@@ -402,7 +402,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <ol className="space-y-2">
               {step.instructions.map((instruction, index) => (
                 <li key={index} className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+                  <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full flex items-center justify-center text-sm font-medium">
                     {index + 1}
                   </span>
                   <span>{instruction}</span>

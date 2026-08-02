@@ -232,7 +232,7 @@ export function TransformationPreview({
 
       {/* Error State */}
       {error && !loading && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md p-4">
           <div className="flex">
             <div className="flex-shrink-0">
               <svg
@@ -248,11 +248,11 @@ export function TransformationPreview({
               </svg>
             </div>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Preview Error</h3>
-              <p className="text-sm text-red-700 mt-1">{error}</p>
+              <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Preview Error</h3>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
               <button
                 onClick={handleRetry}
-                className="mt-2 text-sm font-medium text-red-800 hover:text-red-900"
+                className="mt-2 text-sm font-medium text-red-800 dark:text-red-200 hover:text-red-900"
               >
                 Try again
               </button>
@@ -276,9 +276,9 @@ export function TransformationPreview({
 
           {/* Warnings */}
           {previewData.preview_result.warnings.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <h4 className="text-sm font-medium text-yellow-800">Warnings</h4>
-              <ul className="mt-2 text-sm text-yellow-700 list-disc list-inside">
+            <div className="bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-md p-4">
+              <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Warnings</h4>
+              <ul className="mt-2 text-sm text-yellow-700 dark:text-yellow-300 list-disc list-inside">
                 {previewData.preview_result.warnings.map((warning, idx) => (
                   <li key={idx}>{warning}</li>
                 ))}

@@ -108,9 +108,9 @@ export function MethodComparisonView({ comparison, onExportCSV }: MethodComparis
       <CardContent className="space-y-6">
         {/* Recommendations */}
         {recommendations && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-blue-900 mb-2">Recommendation</h4>
-            <p className="text-sm text-blue-800">{recommendations}</p>
+          <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">Recommendation</h4>
+            <p className="text-sm text-blue-800 dark:text-blue-200">{recommendations}</p>
           </div>
         )}
 

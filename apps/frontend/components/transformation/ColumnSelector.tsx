@@ -40,28 +40,28 @@ function getColumnTypeIndicator(type: Column['type']) {
       return {
         icon: Hash,
         color: 'text-blue-500',
-        bgColor: 'bg-blue-50',
+        bgColor: 'bg-blue-50 dark:bg-blue-950/40',
         label: 'Numeric'
       };
     case 'categorical':
       return {
         icon: Type,
         color: 'text-green-500',
-        bgColor: 'bg-green-50',
+        bgColor: 'bg-green-50 dark:bg-green-950/40',
         label: 'Categorical'
       };
     case 'datetime':
       return {
         icon: Calendar,
         color: 'text-purple-500',
-        bgColor: 'bg-purple-50',
+        bgColor: 'bg-purple-50 dark:bg-purple-950/40',
         label: 'DateTime'
       };
     case 'text':
       return {
         icon: Database,
         color: 'text-orange-500',
-        bgColor: 'bg-orange-50',
+        bgColor: 'bg-orange-50 dark:bg-orange-950/40',
         label: 'Text'
       };
     default:
@@ -142,7 +142,7 @@ function ColumnListItem({
         className={`
           p-3 flex items-start gap-3 rounded-lg border transition-all
           ${isFocused ? 'ring-2 ring-blue-500 border-blue-400' : 'border-border hover:border-border'}
-          ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-card hover:bg-muted'}
+          ${isSelected ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800' : 'bg-card hover:bg-muted'}
           cursor-pointer
         `}
         onClick={() => onToggleColumn(column.name)}
@@ -186,7 +186,7 @@ function ColumnListItem({
               {column.unique_count.toLocaleString()} unique
             </span>
             {missingPercent > 0 && (
-              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full">
+              <span className="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-full">
                 {missingPercent}% missing
               </span>
             )}
