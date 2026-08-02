@@ -49,6 +49,8 @@ PRICE_TIER_ENV_PREFIX = "STRIPE_PRICE_"
 HANDLED_EVENTS = frozenset(
     {
         "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
+        "checkout.session.async_payment_failed",
         "customer.subscription.created",
         "customer.subscription.updated",
         "customer.subscription.deleted",
@@ -198,21 +200,41 @@ async def _handle(event_type: str, obj: dict[str, Any]) -> bool:
         )
         return False
 
-    if event_type == "checkout.session.completed":
+    if event_type in (
+        "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
+    ):
+        # `completed` does NOT mean paid. Asynchronous methods (bank debits) fire it
+        # with payment_status "unpaid" — the flow finished, the funds have not
+        # cleared — and granting ACTIVE there would entitle a customer who may never
+        # pay. Only a settled session grants access; the async_payment_succeeded
+        # event that follows a cleared debit takes the same path.
+        payment_status = obj.get("payment_status")
+        settled = event_type == "checkout.session.async_payment_succeeded" or (
+            payment_status in ("paid", "no_payment_required")
+        )
+
         # Tier is deliberately NOT set here. A checkout session does not carry the
         # price without an `expand`, and calling tier_for_price(None) would grant
-        # PRO to every completed checkout — including an ENTERPRISE purchase, which
-        # would then sit under-entitled until something else corrected it.
-        #
-        # `customer.subscription.created/updated` follows immediately and DOES
-        # resolve the price, so that event is the source of truth for tier. This one
-        # establishes the link (customer/subscription ids) and the ACTIVE status.
+        # PRO to every completed checkout — including an ENTERPRISE purchase.
+        # `customer.subscription.created/updated` follows and DOES resolve the
+        # price, so that event is the source of truth for tier. This one establishes
+        # the link and, once settled, the ACTIVE status.
         await _upsert(
             user_id,
-            status_=SubscriptionStatus.ACTIVE,
+            status_=(
+                SubscriptionStatus.ACTIVE if settled else SubscriptionStatus.INCOMPLETE
+            ),
             customer_id=obj.get("customer"),
             subscription_id=obj.get("subscription"),
         )
+        return True
+
+    if event_type == "checkout.session.async_payment_failed":
+        # The debit bounced. Without this the INCOMPLETE set above would be the only
+        # thing standing between a failed payment and entitlement, and a
+        # `completed`-then-`updated` sequence could quietly flip it to ACTIVE.
+        await _upsert(user_id, status_=SubscriptionStatus.INCOMPLETE)
         return True
 
     if event_type in ("customer.subscription.created", "customer.subscription.updated"):

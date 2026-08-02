@@ -213,6 +213,7 @@ class TestWebhookEndpoint:
                 "client_reference_id": TEST_USER,
                 "customer": "cus_1",
                 "subscription": "sub_1",
+                "payment_status": "paid",
             },
         )
         response = await async_authorized_client.post(
@@ -226,13 +227,77 @@ class TestWebhookEndpoint:
         assert sub.stripe_customer_id == "cus_1"
         assert sub.is_entitled
 
+    async def test_an_unpaid_checkout_does_not_grant_access(
+        self, async_authorized_client, setup_database
+    ):
+        """`completed` does not mean paid — asynchronous methods (bank debits) fire
+        it with payment_status "unpaid" (#367 review). Granting ACTIVE there would
+        entitle a customer who may never pay."""
+        payload = event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": TEST_USER,
+                "customer": "cus_async",
+                "payment_status": "unpaid",
+            },
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.INCOMPLETE
+        assert not sub.is_entitled
+
+    async def test_a_cleared_async_payment_grants_access(
+        self, async_authorized_client, setup_database
+    ):
+        payload = event(
+            "checkout.session.async_payment_succeeded",
+            {"client_reference_id": TEST_USER, "customer": "cus_async"},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.is_entitled
+
+    async def test_a_failed_async_payment_revokes_access(
+        self, async_authorized_client, setup_database
+    ):
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        payload = event(
+            "checkout.session.async_payment_failed",
+            {"client_reference_id": TEST_USER},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.INCOMPLETE
+        assert sub.effective_tier == PlanTier.FREE
+
     async def test_replaying_an_event_is_a_no_op(
         self, async_authorized_client, setup_database
     ):
         """Stripe delivers at least once; a redelivery must not duplicate."""
         payload = event(
             "checkout.session.completed",
-            {"client_reference_id": TEST_USER, "customer": "cus_1"},
+            {
+                "client_reference_id": TEST_USER,
+                "customer": "cus_1",
+                "payment_status": "paid",
+            },
         )
         headers = {"Stripe-Signature": sign(payload)}
 
@@ -319,7 +384,11 @@ class TestWebhookEndpoint:
         subscription event that follows resolves it."""
         payload = event(
             "checkout.session.completed",
-            {"client_reference_id": TEST_USER, "customer": "cus_x"},
+            {
+                "client_reference_id": TEST_USER,
+                "customer": "cus_x",
+                "payment_status": "paid",
+            },
         )
         await async_authorized_client.post(
             WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
