@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { HistogramChart } from '@/components/HistogramChart'
 import { getHistogram, HistogramData } from '@/lib/services/visualization'
+import { axisTicks } from '@/__tests__/utils/sizedRecharts'
 
 // Mock the visualization service so we can drive the fetch-mode branch
 jest.mock('@/lib/services/visualization', () => ({
@@ -15,31 +16,15 @@ jest.mock('@/lib/auth-helpers', () => ({
   getAuthToken: jest.fn().mockResolvedValue('tok-123'),
 }))
 
-// recharts ResponsiveContainer needs a measurable parent in jsdom; stub the
-// chart primitives so we can assert on the rendered bin labels instead.
-jest.mock('recharts', () => {
-  const Bar = ({ children }: { children?: React.ReactNode }) => <div data-testid="bar">{children}</div>
-  const BarChart = ({ data, children }: { data: Array<{ bin: string; count: number }>; children?: React.ReactNode }) => (
-    <div data-testid="bar-chart">
-      {data.map((d) => (
-        <div key={d.bin} data-testid="bin">
-          {d.bin}:{d.count}
-        </div>
-      ))}
-      {children}
-    </div>
-  )
-  const passthrough = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
-  return {
-    BarChart,
-    Bar,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    CartesianGrid: passthrough,
-    Tooltip: passthrough,
-    ResponsiveContainer: passthrough,
-  }
-})
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the chart (#346). Bin labels below are the real XAxis ticks,
+// so they only appear if `dataKey="bin"` still resolves against the data.
+jest.mock('recharts', () =>
+  jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()
+)
+
+/** Bin labels as recharts actually drew them on the x-axis. */
+const binLabels = (container: HTMLElement) => axisTicks(container, 'x')
 
 const mockGetHistogram = getHistogram as jest.Mock
 
@@ -57,23 +42,24 @@ describe('HistogramChart', () => {
   })
 
   it('renders bins directly from the `data` prop without fetching', () => {
-    render(<HistogramChart data={sampleData} />)
+    const { container } = render(<HistogramChart data={sampleData} />)
 
     expect(mockGetHistogram).not.toHaveBeenCalled()
-    expect(screen.getByText('0.00 - 10.00:3')).toBeInTheDocument()
-    expect(screen.getByText('10.00 - 20.00:5')).toBeInTheDocument()
+    expect(binLabels(container)).toEqual(['0.00 - 10.00', '10.00 - 20.00'])
+    // One bar per bin, drawn by real recharts from `dataKey="count"`.
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(2)
   })
 
   it('fetches histogram data via datasetId+column when no `data` prop is given', async () => {
     mockGetHistogram.mockResolvedValue(sampleData)
 
-    render(<HistogramChart datasetId="ds-1" column="age" />)
+    const { container } = render(<HistogramChart datasetId="ds-1" column="age" />)
 
     // Before resolution the empty-state placeholder is shown.
     expect(screen.getByText('No histogram data available')).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(screen.getByText('0.00 - 10.00:3')).toBeInTheDocument()
+      expect(binLabels(container)).toContain('0.00 - 10.00')
     })
 
     expect(mockGetHistogram).toHaveBeenCalledWith('ds-1', 'age', 50, 'tok-123')
@@ -100,7 +86,7 @@ describe('HistogramChart', () => {
       expect(screen.getByText('Failed to load histogram data')).toBeInTheDocument()
     })
     expect(screen.queryByText('No histogram data available')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('bar-chart')).not.toBeInTheDocument()
+    expect(document.querySelector('.recharts-wrapper')).not.toBeInTheDocument()
   })
 
   it('renders the empty-state when neither data nor datasetId/column are provided', () => {

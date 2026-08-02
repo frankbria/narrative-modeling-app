@@ -3,35 +3,14 @@ import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { ShapSummaryChart } from '@/components/ShapSummaryChart'
 import type { RankedFeature } from '@/lib/types/evaluation'
+import { axisTicks } from '@/__tests__/utils/sizedRecharts'
 
-// Recharts renders SVG that jsdom can't lay out; mock as passthrough divs and
-// expose the data so we can assert what the chart was given (matches the
-// pattern used by the other chart component tests).
-jest.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  )
-  const BarChart = ({
-    data,
-    children,
-  }: {
-    data?: Array<{ feature_name: string }>
-    children?: React.ReactNode
-  }) => (
-    <div data-testid="recharts-barchart" data-order={(data || []).map((d) => d.feature_name).join(',')}>
-      {children}
-    </div>
-  )
-  return {
-    BarChart,
-    Bar: passthrough,
-    XAxis: passthrough,
-    YAxis: passthrough,
-    CartesianGrid: passthrough,
-    Tooltip: passthrough,
-    ResponsiveContainer: passthrough,
-  }
-})
+// Real recharts, with only ResponsiveContainer sized so jsdom's 0x0 layout
+// doesn't blank the chart (#346). The bar order below is read off the real
+// y-axis ticks, so it only holds if `dataKey="feature_name"` still resolves.
+jest.mock('recharts', () =>
+  jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()
+)
 
 const FEATURES: RankedFeature[] = [
   { feature_name: 'age', importance: 0.1 },
@@ -57,19 +36,17 @@ describe('ShapSummaryChart', () => {
   })
 
   it('sorts features by descending importance', () => {
-    render(<ShapSummaryChart features={FEATURES} />)
-    expect(screen.getByTestId('recharts-barchart')).toHaveAttribute(
-      'data-order',
-      'income,score,age'
-    )
+    const { container } = render(<ShapSummaryChart features={FEATURES} />)
+    expect(axisTicks(container, 'y')).toEqual(['income', 'score', 'age'])
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(3)
   })
 
   it('caps the number of bars when maxFeatures is set', () => {
-    render(<ShapSummaryChart features={FEATURES} maxFeatures={2} />)
-    expect(screen.getByTestId('recharts-barchart')).toHaveAttribute(
-      'data-order',
-      'income,score'
+    const { container } = render(
+      <ShapSummaryChart features={FEATURES} maxFeatures={2} />
     )
+    expect(axisTicks(container, 'y')).toEqual(['income', 'score'])
+    expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(2)
   })
 
   it('shows an empty state when there are no features', () => {
