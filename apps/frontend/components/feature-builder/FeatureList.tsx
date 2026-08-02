@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Pencil, Trash2, Copy, Check, AlertCircle, Plus, Search, Tag } from 'lucide-react';
@@ -50,47 +51,39 @@ export default function FeatureList({
   onCreate,
   onApply,
 }: FeatureListProps) {
-  const [features, setFeatures] = useState<Feature[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Memoize loadFeatures to ensure stable reference for useEffect dependency
-  const loadFeatures = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const {
+    data: featureData,
+    loading,
+    error,
+    reload: loadFeatures,
+  } = useAsyncData<Feature[]>(async () => {
+    let response: Response;
     try {
       const token = await getAuthToken();
-      const response = await fetch(
-        `${API_URL}/datasets/${datasetId}/features`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setFeatures(data.features || []);
-      } else {
-        const errData = await response.json();
-        setError(errData.detail || 'Failed to load features');
-      }
+      response = await fetch(`${API_URL}/datasets/${datasetId}/features`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
     } catch (err) {
-      setError('Failed to load features');
+      // Network/auth failure: the old code reported fixed copy here, not err.message.
       console.error('Error loading features:', err);
-    } finally {
-      setLoading(false);
+      throw new Error('Failed to load features');
     }
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Failed to load features');
+    }
+    const data = await response.json();
+    return (data.features || []) as Feature[];
   }, [datasetId]);
-
-  // Load features when datasetId changes
-  useEffect(() => {
-    loadFeatures();
-  }, [loadFeatures]);
+  // The delete handler removed the row optimistically via setFeatures. The list is
+  // owned by the hook now, so track removals separately and filter during render —
+  // same instant feedback, without refetching or reintroducing an effect.
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const features = (featureData ?? []).filter((f) => !deletedIds.includes(f.feature_id));
 
   const handleDelete = async (featureId: string) => {
     if (!confirm('Are you sure you want to delete this feature?')) return;
@@ -109,7 +102,7 @@ export default function FeatureList({
       );
 
       if (response.ok) {
-        setFeatures((prev) => prev.filter((f) => f.feature_id !== featureId));
+        setDeletedIds((prev) => [...prev, featureId]);
       } else {
         const errData = await response.json();
         alert(errData.detail || 'Failed to delete feature');

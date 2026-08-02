@@ -1,17 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import {
-  ProductionService,
-  ModelMetrics,
-  UsageTimeline,
-  DeploymentHealth,
-} from '@/lib/services/production'
-import { ModelService, ModelInfo } from '@/lib/services/model'
-import type { PredictionDistribution } from '@/lib/types/api'
+import { ProductionService } from '@/lib/services/production'
+import { ModelService } from '@/lib/services/model'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -44,35 +39,21 @@ import Link from 'next/link'
 import { LineChart } from '@/components/LineChart'
 import { BarChart } from '@/components/BarChart'
 
-interface PredictionLog {
-  prediction_id: string
-  timestamp: string
-  prediction: unknown
-  probability?: number
-  latency_ms: number
-  api_key_id?: string
-}
-
 export default function ModelMonitoringPage() {
   const params = useParams()
   const { data: session } = useSession()
   
   const modelId = params?.id as string
-  const [model, setModel] = useState<ModelInfo | null>(null)
-  const [metrics, setMetrics] = useState<ModelMetrics | null>(null)
-  const [predictionLogs, setPredictionLogs] = useState<PredictionLog[]>([])
-  const [distribution, setDistribution] = useState<PredictionDistribution | null>(null)
-  const [timeline, setTimeline] = useState<UsageTimeline | null>(null)
-  const [health, setHealth] = useState<DeploymentHealth | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [timeWindow, setTimeWindow] = useState('24')
 
-  const fetchModelData = async () => {
-    try {
-      setIsLoading(true)
+  const {
+    data: monitorData,
+    loading: isLoading,
+    error,
+    reload: fetchModelData,
+  } = useAsyncData(
+    async () => {
       const token = await getAuthToken()
-      
       const hours = parseInt(timeWindow)
       const [modelData, metricsData, logsData, distData, timelineData, healthData] =
         await Promise.all([
@@ -83,26 +64,25 @@ export default function ModelMonitoringPage() {
           ProductionService.getUsageTimeline(modelId, hours, token),
           ProductionService.getDeploymentHealth(modelId, hours, token),
         ])
+      return {
+        model: modelData,
+        metrics: metricsData,
+        predictionLogs: logsData.logs,
+        distribution: distData,
+        timeline: timelineData,
+        health: healthData,
+      }
+    },
+    [modelId, timeWindow],
+    { enabled: !!modelId, errorMessage: 'Failed to load model monitoring data' },
+  )
 
-      setModel(modelData)
-      setMetrics(metricsData)
-      setPredictionLogs(logsData.logs)
-      setDistribution(distData)
-      setTimeline(timelineData)
-      setHealth(healthData)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load model monitoring data')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (modelId) {
-      fetchModelData()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, timeWindow])
+  const model = monitorData?.model ?? null
+  const metrics = monitorData?.metrics ?? null
+  const predictionLogs = monitorData?.predictionLogs ?? []
+  const distribution = monitorData?.distribution ?? null
+  const timeline = monitorData?.timeline ?? null
+  const health = monitorData?.health ?? null
 
   const formatLatency = (ms: number) => {
     if (ms < 1) return '<1ms'

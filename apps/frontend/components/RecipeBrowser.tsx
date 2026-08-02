@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,46 +27,31 @@ interface RecipeBrowserProps {
 
 export function RecipeBrowser({ datasetId, onApplyRecipe }: RecipeBrowserProps) {
   const { data: session } = useSession();
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [popularRecipes, setPopularRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [activeTab, setActiveTab] = useState('my-recipes');
 
-  const fetchPopularRecipes = async () => {
-    if (!session) return;
-    
-    try {
-      const token = await getAuthToken();
-      const response = await TransformationService.getPopularRecipes(token, 10);
-      setPopularRecipes(response.recipes);
-    } catch (error) {
-      console.error('Failed to fetch popular recipes:', error);
-    }
-  };
-
-  const fetchRecipes = async () => {
-    if (!session) return;
-    
-    try {
+  const { data: recipeData, loading } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
       const response = await TransformationService.listRecipes(token);
-      setRecipes(response.recipes);
-    } catch (error) {
-      console.error('Failed to fetch recipes:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.recipes;
+    },
+    [session],
+    { enabled: !!session },
+  );
+  const recipes = recipeData ?? [];
 
-  useEffect(() => {
-    if (session) {
-      fetchRecipes();
-      fetchPopularRecipes();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  const { data: popularData } = useAsyncData(
+    async () => {
+      const token = await getAuthToken();
+      const response = await TransformationService.getPopularRecipes(token, 10);
+      return response.recipes;
+    },
+    [session],
+    { enabled: !!session },
+  );
+  const popularRecipes = popularData ?? [];
 
   const handleApplyRecipe = async (recipe: Recipe) => {
     if (!session) return;

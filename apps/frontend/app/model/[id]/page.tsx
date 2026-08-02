@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import { ModelService, ModelInfo } from '@/lib/services/model'
+import { ModelService } from '@/lib/services/model'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,29 +38,19 @@ export default function ModelDetailPage() {
   const router = useRouter()
   
   const modelId = params?.id as string
-  const [model, setModel] = useState<ModelInfo | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  const fetchModel = async () => {
-    try {
-      setIsLoading(true)
+  const {
+    data: model,
+    loading: isLoading,
+    error,
+  } = useAsyncData(
+    async () => {
       const token = await getAuthToken()
-      const modelData = await ModelService.getModel(modelId, token || '')
-      setModel(modelData)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load model')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (session && modelId) {
-      fetchModel()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, modelId])
+      return ModelService.getModel(modelId, token || '')
+    },
+    [session, modelId],
+    { enabled: !!session && !!modelId },
+  )
 
   if (!session) {
     return (

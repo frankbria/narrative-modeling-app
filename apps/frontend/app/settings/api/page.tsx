@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import { ProductionService, APIKeyInfo, CreateAPIKeyRequest } from '@/lib/services/production'
+import { ProductionService, CreateAPIKeyRequest } from '@/lib/services/production'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,9 +45,7 @@ import {
 } from 'lucide-react'
 export default function APIKeysPage() {
   const { data: session } = useSession()
-  const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [deleteKeyId, setDeleteKeyId] = useState<string | null>(null)
   
   // Create API Key Dialog
@@ -62,31 +61,26 @@ export default function APIKeysPage() {
   const [hasExpiry, setHasExpiry] = useState(false)
   const [expiryDays, setExpiryDays] = useState([30])
 
-  const fetchAPIKeys = async () => {
-    try {
-      setIsLoading(true)
-      const token = await getAuthToken()
-      const keys = await ProductionService.listAPIKeys(token)
-      setApiKeys(keys)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load API keys')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchAPIKeys()
+  const {
+    data: keyData,
+    loading: isLoading,
+    error: fetchError,
+    reload: fetchAPIKeys,
+  } = useAsyncData(async () => {
+    const token = await getAuthToken()
+    return ProductionService.listAPIKeys(token)
   }, [])
+  const apiKeys = keyData ?? []
+  const error = actionError ?? fetchError
 
   const handleCreateKey = async () => {
     if (!keyName.trim()) {
-      setError('Please provide a name for the API key')
+      setActionError('Please provide a name for the API key')
       return
     }
 
     setIsCreating(true)
-    setError(null)
+    setActionError(null)
 
     try {
       const token = await getAuthToken()
@@ -104,7 +98,7 @@ export default function APIKeysPage() {
       // Refresh the list
       await fetchAPIKeys()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create API key')
+      setActionError(err instanceof Error ? err.message : 'Failed to create API key')
     } finally {
       setIsCreating(false)
     }
@@ -116,7 +110,7 @@ export default function APIKeysPage() {
       await ProductionService.revokeAPIKey(keyId, token)
       await fetchAPIKeys()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to revoke API key')
+      setActionError(err instanceof Error ? err.message : 'Failed to revoke API key')
     }
     setDeleteKeyId(null)
   }
@@ -127,7 +121,7 @@ export default function APIKeysPage() {
       setCopiedKey(true)
       setTimeout(() => setCopiedKey(false), 2000)
     } catch {
-      setError('Failed to copy to clipboard')
+      setActionError('Failed to copy to clipboard')
     }
   }
 

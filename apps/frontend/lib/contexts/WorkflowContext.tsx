@@ -181,17 +181,17 @@ export function WorkflowProvider({
   }, [state]);
 
   // Update current stage based on current route
-  useEffect(() => {
-    const currentStageConfig = WORKFLOW_STAGES.find(stage => 
-      pathname?.includes(stage.route)
-    );
-    if (currentStageConfig && currentStageConfig.id !== state.currentStage) {
-      setState(prev => ({
-        ...prev,
-        currentStage: currentStageConfig.id
-      }));
-    }
-  }, [pathname, state.currentStage]);
+  // Keeping currentStage in step with the route is a prop-driven adjustment, so
+  // React's documented place for it is during render rather than in an effect.
+  // Doing it here also means the first paint after a navigation already has the
+  // right stage, instead of rendering the previous one and correcting it.
+  const routeStage = WORKFLOW_STAGES.find(stage => pathname?.includes(stage.route));
+  if (routeStage && routeStage.id !== state.currentStage) {
+    setState(prev => ({
+      ...prev,
+      currentStage: routeStage.id
+    }));
+  }
 
   const canAccessStage = useCallback((stage: WorkflowStage): boolean => {
     const stageConfig = WORKFLOW_STAGES.find(s => s.id === stage);

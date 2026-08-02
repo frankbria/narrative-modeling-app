@@ -9,13 +9,13 @@
  * side-by-side comparison of 2+ selected versions reusing {@link ModelComparisonTable}.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import Link from 'next/link'
 import { getAuthToken } from '@/lib/auth-helpers'
 import { ModelService } from '@/lib/services/model'
 import type {
   ModelVersionEntry,
-  ModelVersionListResponse,
   ModelEvaluationSummary,
 } from '@/lib/types/evaluation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -30,42 +30,60 @@ interface ModelVersionsProps {
 }
 
 export function ModelVersions({ modelId }: ModelVersionsProps) {
-  const [data, setData] = useState<ModelVersionListResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string[]>([])
-  const [comparison, setComparison] = useState<ModelEvaluationSummary[] | null>(null)
+  const [selectionState, setSelectionState] = useState<{
+    modelId: string
+    selected: string[]
+    comparison: ModelEvaluationSummary[] | null
+  }>({ modelId, selected: [], comparison: null })
 
-  const load = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
+  const {
+    data,
+    loading: isLoading,
+    error: loadError,
+    reload: load,
+  } = useAsyncData(
+    async () => {
       const token = await getAuthToken()
-      setData(await ModelService.getModelVersions(modelId, token || ''))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load versions')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [modelId])
+      return ModelService.getModelVersions(modelId, token || '')
+    },
+    [modelId],
+    { errorMessage: undefined },
+  )
 
-  useEffect(() => {
-    // Reset per-model selection/comparison when navigating between models.
-    setSelected([])
-    setComparison(null)
-    load()
-  }, [load])
+  // Promote/compare failures are user actions, kept apart from the load error.
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadError
+
+  // Selection and comparison used to be cleared by the same effect that loaded.
+  // Tagging them with the model they belong to gets the identical reset by
+  // deriving during render.
+  const selected = selectionState.modelId === modelId ? selectionState.selected : []
+  const comparison = selectionState.modelId === modelId ? selectionState.comparison : null
+  const setSelected = (update: string[] | ((prev: string[]) => string[])) =>
+    setSelectionState((prev) => {
+      const base = prev.modelId === modelId ? prev : { modelId, selected: [], comparison: null }
+      return {
+        ...base,
+        modelId,
+        selected: typeof update === 'function' ? update(base.selected) : update,
+      }
+    })
+  const setComparison = (value: ModelEvaluationSummary[] | null) =>
+    setSelectionState((prev) => {
+      const base = prev.modelId === modelId ? prev : { modelId, selected: [], comparison: null }
+      return { ...base, modelId, comparison: value }
+    })
 
   const handlePromote = async (id: string) => {
     try {
       setPromoting(id)
-      setError(null)
+      setActionError(null)
       const token = await getAuthToken()
       await ModelService.promoteModelVersion(id, token || '')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to promote version')
+      setActionError(err instanceof Error ? err.message : 'Failed to promote version')
     } finally {
       setPromoting(null)
     }
@@ -85,12 +103,12 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
 
   const handleCompare = async () => {
     try {
-      setError(null)
+      setActionError(null)
       const token = await getAuthToken()
       const result = await ModelService.compareModels(selected, token || '')
       setComparison(result.models)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compare versions')
+      setActionError(err instanceof Error ? err.message : 'Failed to compare versions')
     }
   }
 

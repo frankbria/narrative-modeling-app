@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
 import { useSession } from 'next-auth/react'
 import { Send, Loader2 } from 'lucide-react'
@@ -11,6 +11,35 @@ interface Message {
   content: string
 }
 
+
+// Welcome-message templates. Extracted so the message can be derived during
+// render instead of assembled inside an effect (#393).
+const WELCOME_ERROR = (contextError: string) => `Hello! I'm your AI data analysis assistant. I noticed there was an issue loading your dataset analysis. 
+
+${contextError}
+
+You can still ask me questions about your data, but I may not have all the context about your dataset.
+
+What would you like to know about your data?`
+
+const WELCOME_WITH_CONTEXT = (contextString: string) => `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
+
+Here's what I've found so far:
+${contextString}
+
+How can I help you analyze this data? You can ask me questions about:
+- Specific patterns or trends
+- Data quality issues
+- Relationships between variables
+- Suggestions for further analysis
+- Or any other aspects of your dataset`
+
+const WELCOME_PLAIN = `Hello! I'm your AI data analysis assistant. I don't see any dataset analysis available yet.
+
+You can upload a dataset to get started, or you can ask me general questions about data analysis.
+
+How can I help you today?`
+
 export function AIChat() {
   const { data: session } = useSession()
   const [messages, setMessages] = useState<Message[]>([])
@@ -20,8 +49,6 @@ export function AIChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const { contextString, isLoading: isContextLoading, error: contextError, isAvailable } = useDatasetChatContext(session?.user?.id ?? null)
-  const initialMessageSetRef = useRef(false)
-  const contextUpdatedRef = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -40,114 +67,24 @@ export function AIChat() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Initialize chat with a welcome message when context is loaded
-  useEffect(() => {
-    // Don't set any messages while the page is loading
-    if (isPageLoading) return;
-    
-    // Don't set messages if we're still loading the context
-    if (isContextLoading) return;
-    
-    // Only set initial message once when context is loaded
-    if (initialMessageSetRef.current) return;
-    
+  // The welcome message is a pure function of the context state, so it is derived
+  // during render and prepended to the conversation rather than written into
+  // `messages` by an effect. That also removes the follow-up effect whose only
+  // job was to rewrite this message once the context finished loading, plus the
+  // two refs that existed to stop these effects fighting each other.
+  const welcomeMessage: Message | null = useMemo(() => {
+    if (isPageLoading || isContextLoading) return null;
     if (contextError) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: `Hello! I'm your AI data analysis assistant. I noticed there was an issue loading your dataset analysis. 
-
-${contextError}
-
-You can still ask me questions about your data, but I may not have all the context about your dataset.
-
-What would you like to know about your data?`
-        }
-      ]);
-      initialMessageSetRef.current = true;
-      return;
+      return { role: 'assistant', content: WELCOME_ERROR(contextError) };
     }
-
-    // Only show "no dataset" message if we're not loading and there's no context
-    if (!contextString && !isAvailable) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: `Hello! I'm your AI data analysis assistant. I don't see any dataset analysis available yet.
-
-You can upload a dataset to get started, or you can ask me general questions about data analysis.
-
-How can I help you today?`
-        }
-      ]);
-      initialMessageSetRef.current = true;
-      return;
-    }
-
-    // Show dataset context if available
     if (contextString && isAvailable) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
-
-Here's what I've found so far:
-${contextString}
-
-How can I help you analyze this data? You can ask me questions about:
-- Specific patterns or trends
-- Data quality issues
-- Relationships between variables
-- Suggestions for further analysis
-- Or any other aspects of your dataset`
-        }
-      ]);
-      initialMessageSetRef.current = true;
+      return { role: 'assistant', content: WELCOME_WITH_CONTEXT(contextString) };
     }
-  }, [contextString, isContextLoading, contextError, isPageLoading, isAvailable]);
+    return { role: 'assistant', content: WELCOME_PLAIN };
+  }, [isPageLoading, isContextLoading, contextError, contextString, isAvailable]);
 
-  // Update messages when context changes after initial load
-  useEffect(() => {
-    // Skip if still loading or if initial message hasn't been set yet
-    if (isPageLoading || isContextLoading || !initialMessageSetRef.current) return;
-    
-    // Only update if we have a new context and it's available
-    if (contextString && isAvailable) {
-      // Use a ref to track if we've already updated for this context
-      if (!contextUpdatedRef.current) {
-        // Update the first message with the new context
-        setMessages(prev => {
-          // Only update if the first message is from the assistant (welcome message)
-          if (prev.length > 0 && prev[0].role === 'assistant') {
-            return [
-              {
-                role: 'assistant',
-                content: `Hello! I'm your AI data analysis assistant. I've analyzed your dataset and can help you explore it further. 
+  const displayedMessages = welcomeMessage ? [welcomeMessage, ...messages] : messages;
 
-Here's what I've found so far:
-${contextString}
-
-How can I help you analyze this data? You can ask me questions about:
-- Specific patterns or trends
-- Data quality issues
-- Relationships between variables
-- Suggestions for further analysis
-- Or any other aspects of your dataset`
-              },
-              ...prev.slice(1) // Keep all other messages
-            ];
-          }
-          return prev;
-        });
-        
-        // Mark that we've updated for this context
-        contextUpdatedRef.current = true;
-      }
-    } else {
-      // Reset the context updated flag when context is not available
-      contextUpdatedRef.current = false;
-    }
-  }, [contextString, isAvailable, isContextLoading, isPageLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,7 +161,7 @@ How can I help you analyze this data? You can ask me questions about:
           </div>
         ) : (
           <>
-            {messages.map((message, index) => (
+            {displayedMessages.map((message, index) => (
               <div
                 key={index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}

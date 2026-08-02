@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import {
   Dialog,
   DialogContent,
@@ -29,32 +30,21 @@ export function RecipeExportDialog({
   recipeId,
   recipeName
 }: RecipeExportDialogProps) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [jsonData, setJsonData] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
-  const loadRecipeJSON = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+  const { data: jsonData, loading, error: loadError } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
       const result = await TransformationService.exportRecipeAsJSON(recipeId, token);
-      setJsonData(JSON.stringify(result, null, 2));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export recipe');
-    } finally {
-      setLoading(false);
-    }
-  };
+      return JSON.stringify(result, null, 2);
+    },
+    [open, recipeId],
+    // Only fetch while the dialog is open, replacing `if (open && !jsonData)`.
+    { enabled: open },
+  );
 
-  useEffect(() => {
-    if (open && !jsonData) {
-      loadRecipeJSON();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, recipeId]);
+  const error = copyError ?? loadError;
 
   const handleDownload = () => {
     if (!jsonData) return;
@@ -78,13 +68,14 @@ export function RecipeExportDialog({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError('Failed to copy to clipboard');
+      setCopyError('Failed to copy to clipboard');
     }
   };
 
   const handleClose = () => {
-    setJsonData(null);
-    setError(null);
+    // jsonData and the load error used to be cleared here; both are keyed on
+    // `open` now, so closing discards them without an explicit reset.
+    setCopyError(null);
     setCopied(false);
     onOpenChange(false);
   };

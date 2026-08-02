@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useSession } from 'next-auth/react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -35,55 +36,46 @@ export function RecipeLibrary({
   includePublic = true
 }: RecipeLibraryProps) {
   const { data: session } = useSession();
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [filteredRecipes, setFilteredRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
 
   const perPage = 12;
 
-  const loadRecipes = async () => {
-    if (!session) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
+  const {
+    data: recipeResponse,
+    loading,
+    error: loadError,
+    reload: loadRecipes,
+  } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
-      const response = await TransformationService.listRecipes(
+      return TransformationService.listRecipes(
         token,
         page,
         perPage,
         includePublic,
         selectedTags.length > 0 ? selectedTags : undefined
       );
+    },
+    [session, page, selectedTags],
+    { enabled: !!session },
+  );
+  // Duplicate/delete failures are the user's action, not a load failure, so they
+  // get their own slot rather than overwriting the list's error.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
+  const recipes = useMemo(() => recipeResponse?.recipes ?? [], [recipeResponse]);
+  const totalPages = recipeResponse ? Math.ceil(recipeResponse.total / perPage) : 0;
 
-      setRecipes(response.recipes);
-      setTotalPages(Math.ceil(response.total / perPage));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load recipes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (session) {
-      loadRecipes();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, page, selectedTags]);
-
-  const applyFiltersAndSort = useCallback(() => {
+  // Pure derivation of props/state — computed during render rather than pushed
+  // into state by an effect, which is both a render cheaper and one less way for
+  // the list to disagree with its inputs.
+  const filteredRecipes = useMemo(() => {
     let filtered = [...recipes];
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -94,7 +86,6 @@ export function RecipeLibrary({
       );
     }
 
-    // Apply sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'popular':
@@ -107,12 +98,7 @@ export function RecipeLibrary({
       }
     });
 
-    setFilteredRecipes(filtered);
-  }, [recipes, searchQuery, sortBy]);
-
-  useEffect(() => {
-    applyFiltersAndSort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return filtered;
   }, [recipes, searchQuery, sortBy]);
 
   const handleDuplicate = async (recipe: Recipe) => {
@@ -122,7 +108,7 @@ export function RecipeLibrary({
       await TransformationService.duplicateRecipe(recipe.id, newName, token);
       await loadRecipes();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to duplicate recipe');
+      setActionError(err instanceof Error ? err.message : 'Failed to duplicate recipe');
     }
   };
 
@@ -132,7 +118,7 @@ export function RecipeLibrary({
       await TransformationService.deleteRecipe(recipe.id, token);
       await loadRecipes();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete recipe');
+      setActionError(err instanceof Error ? err.message : 'Failed to delete recipe');
     }
   };
 

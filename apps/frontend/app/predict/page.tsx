@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -29,15 +30,13 @@ export default function PredictPage() {
 
   const [loading, setLoading] = useState(false);
   const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
-  const [features, setFeatures] = useState<ModelFeatureDescriptor[]>([]);
-  const [predictionInput, setPredictionInput] = useState<PredictionInput>({});
   // Track which fields the user has interacted with so validation errors only
   // surface once "touched" — no red "Required" on a pristine form (issue #282).
   // (The submit button stays disabled until the form is valid, so blur is the
   // trigger that reveals what still needs filling.)
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Batch state
   const [batchFile, setBatchFile] = useState<File | null>(null);
@@ -46,10 +45,9 @@ export default function PredictPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
-  const loadModelFeatures = useCallback(async () => {
-    try {
+  const { data: featureData, error: featuresError } = useAsyncData(
+    async () => {
       const data = await modelService.getModelFeatures(state.modelId as string);
-      setFeatures(data.features);
       const defaultInput: PredictionInput = {};
       data.features.forEach((feature) => {
         defaultInput[feature.name] =
@@ -57,11 +55,37 @@ export default function PredictPage() {
             ? String(feature.options[0])
             : '';
       });
-      setPredictionInput(defaultInput);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load model features');
-    }
-  }, [state.modelId]);
+      return { features: data.features, defaultInput };
+    },
+    [state.modelId],
+    // No errorMessage override: the original surfaced err.message, and only fell
+    // back to fixed copy for non-Error throws, which is the hook's default.
+    { enabled: ready && !!state.modelId },
+  );
+
+  // Prediction failures are the user's action; a schema-load failure is the
+  // page's. Displayed as one value, tracked apart.
+  const error = actionError ?? featuresError;
+
+  const features = featureData?.features ?? [];
+
+  // The form is seeded from the model's schema and then edited, so edits are an
+  // override tagged with the model they belong to — switching models resets it.
+  const [inputOverride, setInputOverride] = useState<{
+    modelId: string;
+    values: PredictionInput;
+  } | null>(null);
+  const predictionInput =
+    inputOverride && inputOverride.modelId === state.modelId
+      ? inputOverride.values
+      : featureData?.defaultInput ?? {};
+  const setPredictionInput = (
+    update: PredictionInput | ((prev: PredictionInput) => PredictionInput),
+  ) =>
+    setInputOverride({
+      modelId: state.modelId ?? '',
+      values: typeof update === 'function' ? update(predictionInput) : update,
+    });
 
   useEffect(() => {
     // Stage access (with a helpful redirect) is handled by useStageGuard, which
@@ -73,9 +97,7 @@ export default function PredictPage() {
         WorkflowStage.MODEL_TRAINING,
         'Train a model before making predictions.'
       );
-      return;
     }
-    loadModelFeatures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, state.modelId]);
 
@@ -116,7 +138,7 @@ export default function PredictPage() {
   const handleSinglePrediction = async () => {
     if (!formValid) return;
     setLoading(true);
-    setError(null);
+    setActionError(null);
     setPrediction(null);
     try {
       const result = await modelService.predict(state.modelId as string, {
@@ -133,7 +155,7 @@ export default function PredictPage() {
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Prediction failed');
+      setActionError(err instanceof Error ? err.message : 'Prediction failed');
     } finally {
       setLoading(false);
     }
@@ -149,7 +171,7 @@ export default function PredictPage() {
   const handleBatchPrediction = async () => {
     if (!batchFile) return;
     setLoading(true);
-    setError(null);
+    setActionError(null);
     setBatchJob(null);
     setBatchProgress(null);
     stopPolling();
@@ -187,11 +209,11 @@ export default function PredictPage() {
           stopPolling();
           if (!isMountedRef.current) return;
           setLoading(false);
-          setError('Lost connection to the batch job. Please refresh.');
+          setActionError('Lost connection to the batch job. Please refresh.');
         }
       }, BATCH_POLL_INTERVAL_MS);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start batch prediction');
+      setActionError(err instanceof Error ? err.message : 'Failed to start batch prediction');
       setLoading(false);
     }
   };
@@ -209,7 +231,7 @@ export default function PredictPage() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download results');
+      setActionError(err instanceof Error ? err.message : 'Failed to download results');
     }
   };
 

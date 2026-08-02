@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -12,10 +13,9 @@ import { ChartControls, ChartFilter } from './ChartControls'
 import { HistogramChart } from './HistogramChart'
 import { BoxplotChart } from './BoxplotChart'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
-import { ScatterPlotChart, ScatterPlotData } from './ScatterPlotChart'
-import { LineChart, LineChartData } from './LineChart'
+import { ScatterPlotChart } from './ScatterPlotChart'
+import { LineChart } from './LineChart'
 import {
-  BoxPlotData,
   getBoxPlot,
   getScatterPlot,
   getLineChart,
@@ -45,17 +45,12 @@ export function InteractiveVisualizationDashboard({
 }: InteractiveVisualizationDashboardProps) {
   const [activeTab, setActiveTab] = useState('configure')
   const [activeChart, setActiveChart] = useState('histogram')
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const [rawSelectedColumns, setSelectedColumns] = useState<string[]>([])
   const [filters, setFilters] = useState<ChartFilter[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   // Real chart data fetched from the backend (issue #170). Histogram fetches
   // itself via HistogramChart's datasetId/column mode; correlation is derived
   // from the `statistics` prop, so only these three need local state here.
-  const [boxplotData, setBoxplotData] = useState<BoxPlotData | null>(null)
-  const [scatterData, setScatterData] = useState<ScatterPlotData | null>(null)
-  const [lineData, setLineData] = useState<LineChartData | null>(null)
   // Bumping this re-runs the fetch effect and remounts HistogramChart.
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -64,106 +59,107 @@ export function InteractiveVisualizationDashboard({
   const [showAnimations, setShowAnimations] = useState(true)
   const [binCount, setBinCount] = useState(50)
 
-  const numericColumns = columns.filter(col => col.type === 'numeric')
+  // Memoised because selectedColumns derives from it and that feeds an effect's
+  // dependency list; a fresh array per render would refetch forever.
+  const numericColumns = useMemo(
+    () => columns.filter(col => col.type === 'numeric'),
+    [columns],
+  )
   const categoricalColumns = columns.filter(col => col.type === 'categorical')
   const datetimeColumns = columns.filter(col => col.type === 'datetime')
+
+  // Auto-select the first numeric column when nothing is chosen. Derived during
+  // render rather than written back by an effect: the default is a function of
+  // the columns, so storing it only creates a second source of truth.
+  // Memoised, not just derived: this feeds the chart-fetch effect's dependency
+  // list, so returning a fresh array each render would refetch forever.
+  const selectedColumns = useMemo(
+    () =>
+      rawSelectedColumns.length === 0 && numericColumns.length > 0
+        ? [numericColumns[0].name]
+        : rawSelectedColumns,
+    [rawSelectedColumns, numericColumns],
+  )
 
   // The numeric columns the user has currently selected, in selection order.
   const selectedNumeric = selectedColumns.filter(name =>
     numericColumns.some(col => col.name === name)
   )
 
-  // Auto-select first numeric column if none selected
-  useEffect(() => {
-    if (selectedColumns.length === 0 && numericColumns.length > 0) {
-      setSelectedColumns([numericColumns[0].name])
-    }
-  }, [columns, selectedColumns.length, numericColumns])
+
 
   // Fetch real data for the active chart from the backend. Histogram and
   // correlation are handled elsewhere (HistogramChart fetch mode / statistics
   // prop), so this only drives boxplot, scatter, and line.
-  useEffect(() => {
-    if (activeChart !== 'boxplot' && activeChart !== 'scatter' && activeChart !== 'line') {
-      setLoading(false)
-      setError(null)
-      return
-    }
+  const numericNames = useMemo(
+    () => new Set(columns.filter(col => col.type === 'numeric').map(col => col.name)),
+    [columns],
+  )
+  const numericSelected = useMemo(
+    () => selectedColumns.filter(name => numericNames.has(name)),
+    [selectedColumns, numericNames],
+  )
+  // Line charts plot a numeric Y series against any-type X (e.g. a date), so
+  // X is the first selected column and Y is the remaining numeric columns.
+  const lineX = selectedColumns[0]
+  const lineY = useMemo(
+    () => selectedColumns.slice(1).filter(name => numericNames.has(name)),
+    [selectedColumns, numericNames],
+  )
 
-    const numericNames = new Set(
-      columns.filter(col => col.type === 'numeric').map(col => col.name)
-    )
-    const numericSelected = selectedColumns.filter(name => numericNames.has(name))
-    // Line charts plot a numeric Y series against any-type X (e.g. a date), so
-    // X is the first selected column and Y is the remaining numeric columns.
-    const lineX = selectedColumns[0]
-    const lineY = selectedColumns.slice(1).filter(name => numericNames.has(name))
+  const isFetchedChart =
+    activeChart === 'boxplot' || activeChart === 'scatter' || activeChart === 'line'
 
-    // Requirements per chart — renderChart() shows matching guidance and we
-    // never fabricate data. Clear any previously fetched data so a now-invalid
-    // selection can't be exported.
-    const canFetch =
-      activeChart === 'boxplot'
-        ? numericSelected.length >= 1
-        : activeChart === 'scatter'
-          ? numericSelected.length >= 2
-          : lineX !== undefined && lineY.length >= 1
-    if (!datasetId || !canFetch) {
-      setLoading(false)
-      setError(null)
-      if (activeChart === 'boxplot') setBoxplotData(null)
-      else if (activeChart === 'scatter') setScatterData(null)
-      else setLineData(null)
-      return
-    }
+  // Requirements per chart — renderChart() shows matching guidance and we
+  // never fabricate data.
+  const canFetch =
+    activeChart === 'boxplot'
+      ? numericSelected.length >= 1
+      : activeChart === 'scatter'
+        ? numericSelected.length >= 2
+        : lineX !== undefined && lineY.length >= 1
 
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    // Clear the active chart's previous data up front so an in-flight refetch or
-    // a failed request can't be exported as the current selection's data.
-    if (activeChart === 'boxplot') setBoxplotData(null)
-    else if (activeChart === 'scatter') setScatterData(null)
-    else setLineData(null)
-
-    const run = async () => {
-      try {
-        const token = (await getAuthToken()) ?? undefined
-        if (activeChart === 'boxplot') {
-          const result = await getBoxPlot(datasetId, numericSelected[0], token)
-          if (!cancelled) setBoxplotData(result)
-        } else if (activeChart === 'scatter') {
-          const result = await getScatterPlot(
-            datasetId,
-            numericSelected[0],
-            numericSelected[1],
-            filters,
-            token
-          )
-          if (!cancelled) setScatterData(result)
-        } else {
-          const result = await getLineChart(datasetId, lineX, lineY, filters, token)
-          if (!cancelled) setLineData(result)
-        }
-      } catch (err) {
-        // Data was cleared above and stays cleared on failure, so export sees no
-        // stale data for the current chart.
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load chart data')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+  const {
+    data: chartData,
+    loading,
+    error: fetchError,
+  } = useAsyncData(
+    async () => {
+      const token = (await getAuthToken()) ?? undefined
+      if (activeChart === 'boxplot') {
+        return { kind: 'boxplot' as const, data: await getBoxPlot(datasetId!, numericSelected[0], token) }
       }
-    }
+      if (activeChart === 'scatter') {
+        return {
+          kind: 'scatter' as const,
+          data: await getScatterPlot(datasetId!, numericSelected[0], numericSelected[1], filters, token),
+        }
+      }
+      return {
+        kind: 'line' as const,
+        data: await getLineChart(datasetId!, lineX, lineY, filters, token),
+      }
+    },
+    [activeChart, datasetId, selectedColumns, filters, columns, refreshKey],
+    { enabled: isFetchedChart && !!datasetId && canFetch, errorMessage: 'Failed to load chart data' },
+  )
 
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [activeChart, datasetId, selectedColumns, filters, columns, refreshKey])
+  // Keyed on the active chart, so an in-flight refetch or a failed request can
+  // never surface the previous selection's data — which is what the old code's
+  // up-front setXData(null) calls were for.
+  // Export failures are the user's action, not the chart load's.
+  const [exportError, setExportError] = useState<string | null>(null)
+  const error = exportError ?? fetchError
+
+  const boxplotData = chartData?.kind === 'boxplot' ? chartData.data : null
+  const scatterData = chartData?.kind === 'scatter' ? chartData.data : null
+  const lineData = chartData?.kind === 'line' ? chartData.data : null
 
   const handleColumnToggle = (columnName: string) => {
-    setSelectedColumns(prev => {
+    // Base the toggle on the derived selection so un-picking the auto-selected
+    // column behaves the way it did when that default was stored.
+    setSelectedColumns(() => {
+      const prev = selectedColumns
       if (prev.includes(columnName)) {
         return prev.filter(name => name !== columnName)
       } else {
@@ -196,7 +192,7 @@ export function InteractiveVisualizationDashboard({
       }
 
       if (exportData == null) {
-        setError('No chart data available to export yet')
+        setExportError('No chart data available to export yet')
         return
       }
 
@@ -210,12 +206,12 @@ export function InteractiveVisualizationDashboard({
       URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Export failed:', err)
-      setError(err instanceof Error ? err.message : 'Export failed')
+      setExportError(err instanceof Error ? err.message : 'Export failed')
     }
   }
 
   const handleRefreshChart = () => {
-    setError(null)
+    setExportError(null)
     setRefreshKey(key => key + 1)
   }
 

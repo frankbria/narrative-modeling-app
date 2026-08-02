@@ -1,11 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { modelService } from '@/lib/services/model'
-import type {
-  ConfusionPair,
-  ErrorAnalysisResponse
-} from '@/lib/types/evaluation'
+import type { ConfusionPair } from '@/lib/types/evaluation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -25,26 +23,13 @@ const pct = (value: number) => `${(value * 100).toFixed(1)}%`
  * `partial` models (no feature matrix → no segments/clusters/patterns).
  */
 export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps) {
-  const [analysis, setAnalysis] = useState<ErrorAnalysisResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [pairFilter, setPairFilter] = useState<ConfusionPair | null>(null)
 
-  const load = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      setAnalysis(await modelService.getErrorAnalysis(modelId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load error analysis')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [modelId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const {
+    data: analysis,
+    loading: isLoading,
+    error,
+  } = useAsyncData(() => modelService.getErrorAnalysis(modelId), [modelId])
 
   const filteredCases = useMemo(() => {
     if (!analysis) return []

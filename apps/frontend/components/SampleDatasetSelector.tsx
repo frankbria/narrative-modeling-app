@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,27 +42,15 @@ interface SampleDatasetSelectorProps {
 }
 
 export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelectorProps) {
-  const [datasets, setDatasets] = useState<SampleDataset[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedDataset, setSelectedDataset] = useState<SampleDataset | null>(null);
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadSampleDatasets = async () => {
-    try {
-      const response = await fetch('/api/v1/onboarding/sample-datasets');
-      const data = await response.json();
-      setDatasets(data);
-    } catch (error) {
-      console.error('Failed to load sample datasets:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadSampleDatasets();
+  const { data: datasetData, loading } = useAsyncData<SampleDataset[]>(async () => {
+    const response = await fetch('/api/v1/onboarding/sample-datasets');
+    return response.json();
   }, []);
+  const datasets = datasetData ?? [];
 
   const loadDataset = async (datasetId: string) => {
     try {

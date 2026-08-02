@@ -23,31 +23,7 @@ const eslintConfig = defineConfig([
       "no-console": ["error", { allow: ["warn", "error"] }],
     },
   },
-  {
-    // React Compiler rules, new in eslint-plugin-react-hooks v7 — which arrives
-    // transitively with eslint-config-next 16, not from any change in this app.
-    // #333 demoted all five to warnings; #373 burns them down. Four are now at
-    // zero and enforced as errors, so a regression fails the build outright.
-    //
-    // set-state-in-effect is the one still pending. Clearing the other four let
-    // the compiler analyse components it had been bailing out of early, which
-    // raised this rule's count from 26 to 46 — those 20 were always present,
-    // just unreachable behind the earlier errors. Every remaining site is the
-    // same shape: an effect calls a loader that runs setLoading(true)/
-    // setError(null) synchronously before its first await. Fixing it means
-    // moving each spinner reset to the interaction that triggers the refetch
-    // (or seeding it as initial state), i.e. a data-fetching refactor across
-    // every page, not a lint edit. Tracked separately — see #393.
-    name: "react-compiler-rules-pending-burndown",
-    rules: {
-      "react-hooks/immutability": "error",
-      "react-hooks/static-components": "error",
-      "react-hooks/refs": "error",
-      "react-hooks/preserve-manual-memoization": "error",
-      "react-hooks/set-state-in-effect": "warn",
-    },
-  },
-  {
+    {
     // Tests and setup may use console freely, and may use require() for the
     // lazy/isolated module loading that jest module-mocking needs. e2e/ is
     // Playwright test code plus its helpers and fixtures — same allowance, and

@@ -29,14 +29,22 @@ export function PreviewControls({
   onExport,
   loading = false,
 }: PreviewControlsProps) {
-  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
+  // Seeded, not null: the old effect ran on mount too, so a component that mounts
+  // already-loaded shows a timestamp immediately rather than only after the next load.
+  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(() =>
+    loading ? null : new Date(),
+  );
+  const [wasLoading, setWasLoading] = React.useState(loading);
 
-  // Update timestamp on load completion
-  React.useEffect(() => {
+  // Not a data load — this stamps the time a load finished. React's documented
+  // way to adjust state from a prop change is to do it during render rather than
+  // in an effect, which also avoids the extra render pass the effect caused.
+  if (wasLoading !== loading) {
+    setWasLoading(loading);
     if (!loading) {
       setLastUpdated(new Date());
     }
-  }, [loading]);
+  }
 
   const handleExport = () => {
     onExport?.();

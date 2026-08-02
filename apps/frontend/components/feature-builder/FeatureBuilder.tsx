@@ -78,8 +78,12 @@ export default function FeatureBuilder({
   // Use ref for node ID counter to avoid stale closure issues with rapid calls
   const nodeIdCounterRef = useRef(1);
 
-  // Load initial feature if editing
-  useEffect(() => {
+  // Seed the editor from the feature being edited. React's documented way to
+  // reset state when a prop changes is during render, not in an effect — which
+  // also means the canvas is correct on first paint instead of after a second one.
+  const [seededFrom, setSeededFrom] = useState<typeof initialFeature | null>(null);
+  if (seededFrom !== initialFeature) {
+    setSeededFrom(initialFeature);
     if (initialFeature) {
       setFeatureName(String(initialFeature.name || ''));
       setFeatureDescription(String(initialFeature.description || ''));
@@ -90,7 +94,7 @@ export default function FeatureBuilder({
         setEdges((canvasState.edges as Edge[]) || []);
       }
     }
-  }, [initialFeature, setNodes, setEdges]);
+  }
 
   // Generate unique node IDs using ref to avoid duplicate IDs when called rapidly
   const generateNodeId = useCallback(() => {

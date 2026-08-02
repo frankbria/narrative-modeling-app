@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
-import { ProductionService, UsageStats, APIKeyUsage } from '@/lib/services/production'
+import { ProductionService } from '@/lib/services/production'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,36 +34,27 @@ import { useRouter } from 'next/navigation'
 export default function MonitoringPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [usageStats, setUsageStats] = useState<UsageStats | null>(null)
-  const [apiKeyUsage, setApiKeyUsage] = useState<APIKeyUsage[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
 
-  const fetchMonitoringData = async () => {
-    try {
-      setIsLoading(true)
+  const {
+    data: monitoring,
+    loading: isLoading,
+    error,
+    reload: fetchMonitoringData,
+  } = useAsyncData(
+    async () => {
       const token = await getAuthToken()
-      
       const [stats, keyUsage] = await Promise.all([
         ProductionService.getUsageOverview(token),
-        ProductionService.getAPIKeyUsage(token)
+        ProductionService.getAPIKeyUsage(token),
       ])
-      
-      setUsageStats(stats)
-      setApiKeyUsage(keyUsage)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load monitoring data')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (session) {
-      fetchMonitoringData()
-    }
-  }, [session])
+      return { stats, keyUsage }
+    },
+    [session],
+    { enabled: !!session },
+  )
+  const usageStats = monitoring?.stats ?? null
+  const apiKeyUsage = monitoring?.keyUsage ?? []
 
   const formatLatency = (ms: number) => {
     if (ms < 1) return '<1ms'

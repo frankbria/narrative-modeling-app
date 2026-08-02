@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { HistogramData, getHistogram } from '@/lib/services/visualization';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -17,37 +17,22 @@ interface HistogramChartProps {
 }
 
 export function HistogramChart({ data, datasetId, column, bins = 50, height = 300 }: HistogramChartProps) {
-  const [fetchedData, setFetchedData] = useState<HistogramData | null>(data ?? null);
-  const [fetchError, setFetchError] = useState(false);
 
-  useEffect(() => {
-    if (data) {
-      setFetchedData(data);
-      return;
-    }
-
-    if (datasetId && column) {
-      let cancelled = false;
-      setFetchError(false);
+  const { data: fetched, error } = useAsyncData(
+    async () => {
       // The histogram route requires auth (get_current_user_id) — resolve and
       // forward the bearer token or every request 401s.
-      getAuthToken()
-        .then((token) => getHistogram(datasetId, column, bins, token ?? undefined))
-        .then((result) => {
-          if (!cancelled) setFetchedData(result);
-        })
-        .catch(() => {
-          // A failed request must be distinguishable from a column with no data.
-          if (!cancelled) {
-            setFetchedData(null);
-            setFetchError(true);
-          }
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [data, datasetId, column, bins]);
+      const token = await getAuthToken();
+      return getHistogram(datasetId!, column!, bins, token ?? undefined);
+    },
+    [datasetId, column, bins],
+    { enabled: !data && !!datasetId && !!column },
+  );
+
+  // A supplied `data` prop always wins; only then does the fetch matter.
+  const fetchedData = data ?? fetched ?? null;
+  // A failed request must stay distinguishable from a column with no data.
+  const fetchError = !data && error !== null;
 
   if (fetchError) {
     return (

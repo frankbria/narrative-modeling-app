@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import {
   ReactFlow,
   Edge,
@@ -64,7 +65,6 @@ export default function TransformationPipeline({
   const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [preview, setPreview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   // Undo/redo history over structural snapshots of the pipeline (#281).
   const [history, setHistory] = useState<
@@ -92,90 +92,94 @@ export default function TransformationPipeline({
     showViewToggle ? 'chain' : 'visual'
   );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [transformationTypes, setTransformationTypes] = useState<TransformationTypeMeta[]>([]);
-  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   // Monotonic counter for collision-free node IDs (mirrors FeatureBuilder);
   // Date.now()+length can collide on rapid adds within the same millisecond.
   const nodeIdCounterRef = useRef(0);
 
-  const loadPreview = async () => {
-    try {
+  const { data: previewData } = useAsyncData(
+    async () => {
       const token = await getAuthToken();
-      const response = await fetch(
-        `${API_URL}/datasets/${datasetId}/preview?rows=100`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPreview(data);
+      const response = await fetch(`${API_URL}/datasets/${datasetId}/preview?rows=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      // A failed preview was only logged before; the pipeline stays usable.
+      if (!response.ok) return null;
+      return response.json();
+    },
+    [datasetId],
+    { enabled: !!datasetId },
+  );
+  // Running a transformation preview replaces the initial dataset preview, so
+  // the action's result is held separately and tagged with its dataset — the
+  // load shows through until an action overrides it, and switching datasets
+  // discards the override by derivation.
+  const [previewOverride, setPreviewOverride] = useState<{
+    datasetId: string;
+    data: unknown;
+  } | null>(null);
+  const preview =
+    previewOverride && previewOverride.datasetId === datasetId
+      ? previewOverride.data
+      : previewData ?? null;
+  const setPreview = (data: unknown) => setPreviewOverride({ datasetId, data });
+
+  // Transformation-type metadata + column names so the Chain view's Edit action
+  // can open a keyboard-accessible parameter dialog (mirrors the wiring in
+  // app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still works
+  // without it (dialog degrades to "no parameters needed").
+  const { data: metadata } = useAsyncData(
+    async () => {
+      const token = await getAuthToken();
+
+      let types: TransformationTypeMeta[] = [];
+      const typesResponse = await fetch(`${API_URL}/transformations/available`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (typesResponse.ok) {
+        types = (await typesResponse.json()).transformations || [];
       }
-    } catch (error) {
-      console.error('Failed to load preview:', error);
-    }
-  };
 
-  // Load initial data preview
-  useEffect(() => {
-    loadPreview();
-  }, [datasetId]);
-
-  // Load transformation-type metadata + column names so the Chain view's Edit
-  // action can open a keyboard-accessible parameter dialog (mirrors the wiring
-  // in app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still
-  // works without it (dialog degrades to "no parameters needed").
-  useEffect(() => {
-    const fetchMetadata = async () => {
-      try {
-        const token = await getAuthToken();
-        const typesResponse = await fetch(`${API_URL}/transformations/available`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (typesResponse.ok) {
-          const typesData = await typesResponse.json();
-          setTransformationTypes(typesData.transformations || []);
+      let columns: string[] = [];
+      const columnsResponse = await fetch(`${API_URL}/data/${datasetId}/preview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (columnsResponse.ok) {
+        const columnsData = await columnsResponse.json();
+        if (Array.isArray(columnsData.columns)) {
+          columns = columnsData.columns.map((col: { name: string }) => col.name);
         }
-
-        const columnsResponse = await fetch(`${API_URL}/data/${datasetId}/preview`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (columnsResponse.ok) {
-          const columnsData = await columnsResponse.json();
-          if (Array.isArray(columnsData.columns)) {
-            setAvailableColumns(
-              columnsData.columns.map((col: { name: string }) => col.name)
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load transformation metadata:', error);
       }
-    };
 
-    if (datasetId) {
-      fetchMetadata();
-    }
-  }, [datasetId]);
+      return { types, columns };
+    },
+    [datasetId],
+    { enabled: !!datasetId },
+  );
+  const transformationTypes = metadata?.types ?? [];
+  const availableColumns = metadata?.columns ?? [];
 
   // Reset the pipeline + undo history when the dataset changes, so switching
   // datasets on a reused component instance (the /prepare routes key only on
   // the route, not datasetId) can't leak one dataset's steps/history into
   // another via Undo (#281 — undo/redo is now live, so this leak is reachable).
-  useEffect(() => {
+  // Split deliberately: the state half is a prop-driven reset, which React's
+  // docs put in render, while the ref half must stay in an effect — writing refs
+  // during render is what react-hooks/refs forbids. Both still key on datasetId,
+  // so they run for the same change.
+  const [pipelineDataset, setPipelineDataset] = useState(datasetId);
+  if (pipelineDataset !== datasetId) {
+    setPipelineDataset(datasetId);
     setNodes([]);
     setEdges([]);
     setHistory([]);
-    historyIndexRef.current = -1;
     setHistoryIndex(-1);
+  }
+
+  useEffect(() => {
+    historyIndexRef.current = -1;
     lastRecordedSignatureRef.current = null;
     isRestoringHistoryRef.current = false;
     nodeIdCounterRef.current = 0;
-    // setNodes/setEdges are stable; keyed on datasetId only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId]);
 
   // Notify parent of unsaved changes

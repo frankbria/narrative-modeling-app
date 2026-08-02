@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React from 'react'
+import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -9,8 +10,6 @@ import { CheckCircle2, AlertCircle, XCircle, Wrench, TrendingUp } from 'lucide-r
 import { LineChart } from '@/components/LineChart'
 import { QualityService } from '@/lib/services/quality'
 import type {
-  QualityReportResponse,
-  QualityTrendResponse,
 } from '@/lib/types/quality'
 
 interface QualityDashboardProps {
@@ -34,43 +33,24 @@ const severityColor: Record<string, string> = {
 }
 
 export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
-  const [report, setReport] = useState<QualityReportResponse | null>(null)
-  const [trend, setTrend] = useState<QualityTrendResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    setTrend(null)  // avoid rendering the previous dataset's trend during a new load
+  const {
+    data: report,
+    loading,
+    error,
+  } = useAsyncData(() => QualityService.getQualityReport(fileId), [fileId], {
+    errorMessage: undefined,
+  })
 
-    QualityService.getQualityReport(fileId)
-      .then((r) => {
-        if (!cancelled) setReport(r)
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load quality report')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    // Trend is best-effort — a dataset without versions just hides the chart.
-    if (datasetId) {
-      QualityService.getQualityTrend(datasetId)
-        .then((t) => {
-          if (!cancelled) setTrend(t)
-        })
-        .catch(() => {
-          /* no trend available — ignore */
-        })
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [fileId, datasetId])
+  // Best-effort: a dataset without versions just hides the chart, so failures are
+  // swallowed rather than surfaced. Re-keying on datasetId also replaces the old
+  // explicit `setTrend(null)`, which existed to stop the previous dataset's trend
+  // rendering during a load — `data` is simply undefined until this key resolves.
+  const { data: trend } = useAsyncData(
+    () => QualityService.getQualityTrend(datasetId!).catch(() => null),
+    [datasetId],
+    { enabled: !!datasetId },
+  )
 
   if (loading) {
     return <div data-testid="quality-dashboard-loading" className="text-sm text-muted-foreground">Loading quality report…</div>

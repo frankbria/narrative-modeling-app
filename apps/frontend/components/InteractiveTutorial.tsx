@@ -49,7 +49,9 @@ export function InteractiveTutorial({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isActive, setIsActive] = useState(autoStart);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
-  const [isHighlighting, setIsHighlighting] = useState(false);
+  // Derived, not stored: highlighting is on exactly when the tutorial is active
+  // and the current step names a target. Storing it duplicated that condition and
+  // required an effect to keep the copy in sync.
 
   const currentStep = steps[currentStepIndex];
   const progress = (currentStepIndex / steps.length) * 100;
@@ -60,8 +62,6 @@ export function InteractiveTutorial({
     
     if (overlay) overlay.remove();
     if (highlight) highlight.remove();
-    
-    setIsHighlighting(false);
   };
 
   const highlightElement = (selector: string) => {
@@ -119,8 +119,6 @@ export function InteractiveTutorial({
         behavior: 'smooth',
         block: 'center'
       });
-
-      setIsHighlighting(true);
     }
   };
 
@@ -134,6 +132,8 @@ export function InteractiveTutorial({
     return () => removeHighlight();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, isActive, currentStep]);
+
+  const isHighlighting = isActive && !!currentStep?.target;
 
   const nextStep = () => {
     if (currentStep) {

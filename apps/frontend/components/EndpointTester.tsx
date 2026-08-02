@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
 import { Play, AlertCircle, CheckCircle } from 'lucide-react';
@@ -15,36 +16,41 @@ import { Play, AlertCircle, CheckCircle } from 'lucide-react';
  * `${API_URL}/production/v1/models/{id}` base); the predict URL is `${endpoint}/predict`.
  */
 export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoint: string }) {
-  const [features, setFeatures] = useState<ModelFeatureDescriptor[]>([]);
-  const [values, setValues] = useState<Record<string, string>>({});
   const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ prediction: unknown; confidence?: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    // Drop any stale schema/inputs from a previous model before refetching.
-    setFeatures([]);
-    setValues({});
-    modelService
-      .getModelFeatures(modelId)
-      .then((data) => {
-        if (active) setFeatures(data.features);
-      })
-      .catch(() => {
-        if (active) setError('Could not load the model input schema.');
-      });
-    return () => {
-      active = false;
-    };
-  }, [modelId]);
+  const { data: schema, error: schemaError } = useAsyncData(
+    () => modelService.getModelFeatures(modelId),
+    [modelId],
+    { errorMessage: 'Could not load the model input schema.' },
+  );
+  const features: ModelFeatureDescriptor[] = schema?.features ?? [];
+
+  // The old effect cleared the typed-in values whenever modelId changed. Tagging
+  // the state with the model it belongs to gets the same reset by deriving during
+  // render, instead of a setState the effect has to fire.
+  const [valueState, setValueState] = useState<{
+    modelId: string;
+    values: Record<string, string>;
+  }>({ modelId, values: {} });
+  const values = valueState.modelId === modelId ? valueState.values : {};
+  const setValues = (
+    update: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>),
+  ) =>
+    setValueState((prev) => {
+      const base = prev.modelId === modelId ? prev.values : {};
+      return { modelId, values: typeof update === 'function' ? update(base) : update };
+    });
+
+  const error = testError ?? schemaError;
 
   const runTest = async () => {
-    setError(null);
+    setTestError(null);
     setResult(null);
     if (!apiKey.trim()) {
-      setError('Enter an API key to call the endpoint.');
+      setTestError('Enter an API key to call the endpoint.');
       return;
     }
     setLoading(true);
@@ -62,13 +68,13 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       });
       if (!response.ok) {
         const detail = await response.text();
-        setError(`Request failed (${response.status}). ${detail.slice(0, 200)}`);
+        setTestError(`Request failed (${response.status}). ${detail.slice(0, 200)}`);
         return;
       }
       const data = await response.json();
       setResult({ prediction: data.predictions?.[0], confidence: data.confidence?.[0] });
     } catch (e) {
-      setError(`Request error: ${e instanceof Error ? e.message : String(e)}`);
+      setTestError(`Request error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }

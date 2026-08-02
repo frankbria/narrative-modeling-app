@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useSession } from 'next-auth/react';
 import { modelService, TrainingJobStatus, TrainingJobSummary } from '@/lib/services/model';
 import { TrainingProgress, formatDuration } from '@/components/training/TrainingProgress';
@@ -58,95 +59,94 @@ function statusBadgeVariant(
  */
 export default function TrainingJobsPage() {
   const { data: session } = useSession();
-  const [inFlightJobs, setInFlightJobs] = useState<TrainingJobSummary[]>([]);
-  const [historyJobs, setHistoryJobs] = useState<TrainingJobSummary[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historySkip, setHistorySkip] = useState(0);
   const [statusFilter, setStatusFilter] = useState<HistoryFilter>('all');
-  const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // Monotonic id so an out-of-order history response (slow request for a
   // previous filter resolving late) can never overwrite newer rows.
-  const historyRequestSeq = useRef(0);
 
-  const fetchInFlight = useCallback(async () => {
-    try {
+  // `session` gets a fresh object identity on re-renders/session refreshes; the
+  // hooks must key off this stable flag or they re-fetch on every render.
+  const isAuthenticated = !!session;
+
+  const {
+    data: inFlightData,
+    loading: isLoadingInFlight,
+    error: inFlightError,
+    reload: fetchInFlight,
+  } = useAsyncData(
+    async () => {
       const [pending, running] = await Promise.all([
         modelService.listTrainingJobs({ status: 'pending', limit: IN_FLIGHT_FETCH_LIMIT }),
         modelService.listTrainingJobs({ status: 'running', limit: IN_FLIGHT_FETCH_LIMIT }),
       ]);
       // A job can transition pending->running between the two queries and
       // show up in both lists; dedupe by model_id (running wins).
-      const deduped = Array.from(
+      return Array.from(
         new Map(
           [...pending.jobs, ...running.jobs].map((job) => [job.model_id, job])
         ).values()
       );
-      setInFlightJobs(deduped);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch training jobs');
-    }
-  }, []);
-
-  const fetchHistory = useCallback(
-    async (filter: HistoryFilter, skip: number, append: boolean) => {
-      const requestId = ++historyRequestSeq.current;
-      try {
-        const response = await modelService.listTrainingJobs({
-          status: filter === 'all' ? ALL_TERMINAL_FILTER : filter,
-          limit: HISTORY_PAGE_SIZE,
-          skip,
-        });
-        if (requestId !== historyRequestSeq.current) return;
-        setHistoryJobs((prev) =>
-          append ? [...prev, ...response.jobs] : response.jobs
-        );
-        setHistoryTotal(response.total_count);
-        setHistorySkip(skip);
-        setError(null);
-      } catch (err) {
-        if (requestId !== historyRequestSeq.current) return;
-        setError(err instanceof Error ? err.message : 'Failed to fetch training history');
-      }
     },
-    []
+    [isAuthenticated],
+    {
+      enabled: isAuthenticated,
+      errorMessage: 'Failed to fetch training jobs',
+      // Polling must not blank the list between ticks.
+      keepPreviousData: true,
+    },
   );
+  const inFlightJobs = inFlightData ?? [];
 
-  // `session` gets a fresh object identity on re-renders/session refreshes;
-  // effects must key off this stable flag or they re-fetch (and silently
-  // reset the filtered history back to "all") on every render.
-  const isAuthenticated = !!session;
-
-  // Initial in-flight load + periodic refresh.
+  // Periodic refresh: reload() runs from the timer callback, not the effect body.
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    let isMounted = true;
-    fetchInFlight().finally(() => {
-      if (isMounted) setIsLoading(false);
-    });
-
     const intervalId = setInterval(fetchInFlight, IN_FLIGHT_REFRESH_MS);
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
+    return () => clearInterval(intervalId);
   }, [isAuthenticated, fetchInFlight]);
 
-  // History load: initial and whenever the status filter changes.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    fetchHistory(statusFilter, 0, false);
-  }, [isAuthenticated, statusFilter, fetchHistory]);
+  // First page of history. Later pages are appended by the Load more handler
+  // below rather than by an effect, because paging is user-driven — which is
+  // also why the accumulating shape never fitted a keyed loader.
+  const {
+    data: historyPage,
+    error: historyError,
+    reload: reloadHistory,
+  } = useAsyncData(
+    () =>
+      modelService.listTrainingJobs({
+        status: statusFilter === 'all' ? ALL_TERMINAL_FILTER : statusFilter,
+        limit: HISTORY_PAGE_SIZE,
+        skip: 0,
+      }),
+    [isAuthenticated, statusFilter],
+    { enabled: isAuthenticated, errorMessage: 'Failed to fetch training history', keepPreviousData: true },
+  );
+
+  // Pages beyond the first, tagged with the filter they belong to so changing
+  // the filter discards them by derivation instead of a reset.
+  const [appended, setAppended] = useState<{
+    filter: HistoryFilter;
+    jobs: TrainingJobSummary[];
+    skip: number;
+  }>({ filter: statusFilter, jobs: [], skip: 0 });
+  const appendedForFilter =
+    appended.filter === statusFilter ? appended : { filter: statusFilter, jobs: [], skip: 0 };
+
+  const historyJobs = [...(historyPage?.jobs ?? []), ...appendedForFilter.jobs];
+  const historyTotal = historyPage?.total_count ?? 0;
+  const historySkip = appendedForFilter.skip;
+
+  const error = inFlightError ?? historyError;
+  const isLoading = isLoadingInFlight;
+
 
   // A card's job finished (completed/failed/cancelled): move it from the
   // in-flight section into the history table.
   const handleJobSettled = useCallback(() => {
     fetchInFlight();
-    fetchHistory(statusFilter, 0, false);
-  }, [fetchInFlight, fetchHistory, statusFilter]);
+    setAppended({ filter: statusFilter, jobs: [], skip: 0 });
+    reloadHistory();
+  }, [fetchInFlight, reloadHistory, statusFilter]);
 
   const hasMoreHistory = historySkip + HISTORY_PAGE_SIZE < historyTotal;
 
@@ -156,7 +156,17 @@ export default function TrainingJobsPage() {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
     try {
-      await fetchHistory(statusFilter, historySkip + HISTORY_PAGE_SIZE, true);
+      const nextSkip = historySkip + HISTORY_PAGE_SIZE;
+      const response = await modelService.listTrainingJobs({
+        status: statusFilter === 'all' ? ALL_TERMINAL_FILTER : statusFilter,
+        limit: HISTORY_PAGE_SIZE,
+        skip: nextSkip,
+      });
+      setAppended((prev) => {
+        const base =
+          prev.filter === statusFilter ? prev : { filter: statusFilter, jobs: [], skip: 0 };
+        return { filter: statusFilter, jobs: [...base.jobs, ...response.jobs], skip: nextSkip };
+      });
     } finally {
       setIsLoadingMore(false);
     }

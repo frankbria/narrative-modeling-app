@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,49 +70,43 @@ interface Achievement {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [status, setStatus] = useState<OnboardingStatus | null>(null);
-  const [steps, setSteps] = useState<StepInfo[]>([]);
-  const [currentStep, setCurrentStep] = useState<StepInfo | null>(null);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [loading, setLoading] = useState(true);
   const [completingStep, setCompletingStep] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  const loadOnboardingData = async () => {
-    try {
-      setLoading(true);
-      
-      // Load onboarding status
-      const statusResponse = await fetch('/api/v1/onboarding/status');
-      const statusData = await statusResponse.json();
-      setStatus(statusData);
+  const {
+    data: onboarding,
+    loading,
+    reload: loadOnboardingData,
+  } = useAsyncData(async () => {
+    const statusResponse = await fetch('/api/v1/onboarding/status');
+    const statusData: OnboardingStatus = await statusResponse.json();
 
-      // Load steps
-      const stepsResponse = await fetch('/api/v1/onboarding/steps');
-      const stepsData = await stepsResponse.json();
-      setSteps(stepsData);
+    const stepsResponse = await fetch('/api/v1/onboarding/steps');
+    const stepsData: StepInfo[] = await stepsResponse.json();
 
-      // Set current step
-      if (statusData.current_step_id) {
-        const current = stepsData.find((s: StepInfo) => s.step_id === statusData.current_step_id);
-        setCurrentStep(current || null);
-      }
+    const achievementsResponse = await fetch('/api/v1/onboarding/achievements');
+    const achievementsData = await achievementsResponse.json();
 
-      // Load achievements
-      const achievementsResponse = await fetch('/api/v1/onboarding/achievements');
-      const achievementsData = await achievementsResponse.json();
-      setAchievements(achievementsData.achievements || []);
-
-    } catch (error) {
-      console.error('Failed to load onboarding data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadOnboardingData();
+    return {
+      status: statusData,
+      steps: stepsData,
+      // Derived from the two above rather than stored separately.
+      currentStep: statusData.current_step_id
+        ? stepsData.find((s) => s.step_id === statusData.current_step_id) || null
+        : null,
+      achievements: (achievementsData.achievements || []) as Achievement[],
+    };
   }, []);
+
+  // currentStep defaults to whatever the backend says is current, but the user can
+  // also click a step in the sidebar to view it, so a local selection overrides it.
+  const [selectedStep, setSelectedStep] = useState<StepInfo | null>(null);
+  const setCurrentStep = setSelectedStep;
+
+  const status = onboarding?.status ?? null;
+  const steps = onboarding?.steps ?? [];
+  const currentStep = selectedStep ?? onboarding?.currentStep ?? null;
+  const achievements = onboarding?.achievements ?? [];
 
   const completeStep = async (stepId: string, completionData?: Record<string, unknown>) => {
     try {

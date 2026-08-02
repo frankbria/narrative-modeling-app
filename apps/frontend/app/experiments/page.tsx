@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,35 +18,25 @@ import {
   Clock,
   Beaker
 } from "lucide-react";
+import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import { abTestingService, ABTest } from "@/lib/services/abTesting";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ExperimentsPage() {
   const router = useRouter();
-  const [experiments, setExperiments] = useState<ABTest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
 
-  const loadExperiments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const status = activeTab === "all" ? undefined : activeTab;
-      const data = await abTestingService.listExperiments(status);
-      setExperiments(data);
-    } catch (err) {
-      console.error("Failed to load experiments:", err);
-      setError("Failed to load experiments. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadExperiments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  const {
+    data: experimentData,
+    loading,
+    error,
+    reload: loadExperiments,
+  } = useAsyncData(
+    () => abTestingService.listExperiments(activeTab === "all" ? undefined : activeTab),
+    [activeTab],
+    { errorMessage: "Failed to load experiments. Please try again." },
+  );
+  const experiments = experimentData ?? [];
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {

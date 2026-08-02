@@ -79,6 +79,19 @@ export function FeatureEngineeringProvider({
   const [expandedSuggestionId, setExpandedSuggestionId] = useState<string | null>(null);
 
   // Load persisted state from localStorage
+  // The one site in #393 that keeps its setState-in-effect, deliberately.
+  //
+  // This hydrates from localStorage, which does not exist during SSR — and this
+  // is a 'use client' component, which Next still prerenders on the server. The
+  // rule's remedies both break here: reading during render throws server-side,
+  // and guarding with `typeof window` makes the server render empty while the
+  // client renders populated, which is a hydration mismatch.
+  //
+  // Deferring to an effect so the first client render matches the server's is
+  // exactly the documented pattern for browser-only storage. Clearing the lint
+  // error would mean introducing a real bug to satisfy a rule that cannot see
+  // the constraint, so the suppression is the honest option.
+  /* eslint-disable react-hooks/set-state-in-effect -- SSR-safe localStorage hydration; see above */
   useEffect(() => {
     try {
       const savedFeatures = localStorage.getItem(`feature_engineering_${datasetId}_selected`);
@@ -105,6 +118,7 @@ export function FeatureEngineeringProvider({
       console.error('Failed to load persisted feature engineering state:', err);
     }
   }, [datasetId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Persist selected features
   useEffect(() => {

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import type { TransformationStep, ParameterValue } from '@/lib/types/recipe';
 import { getAuthToken } from '@/lib/auth-helpers';
@@ -91,100 +92,53 @@ export function TransformationPreview({
   onSampleSizeChange,
 }: TransformationPreviewProps) {
   // State management
-  const [previewData, setPreviewData] = useState<PreviewResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [localSampleSize, setLocalSampleSize] = useState(sampleSize);
 
   // Debounce operations changes (300ms)
   const debouncedOperations = useDebounce(operations, 300);
   const debouncedSampleSize = useDebounce(localSampleSize, 300);
 
-  // Fetch preview when debounced values change
-  useEffect(() => {
-    if (!datasetId || debouncedOperations.length === 0) {
-      setPreviewData(null);
-      return;
-    }
+  // Fetch preview when debounced values change. AbortController and the
+  // isMounted flag are gone: the hook already discards a superseded request.
+  const {
+    data: previewData,
+    loading,
+    error,
+    reload,
+  } = useAsyncData<PreviewResponse>(
+    async () => {
+      const token = await getAuthToken();
+      const transformations = debouncedOperations.map((op) => ({
+        type: op.type,
+        parameters: op.parameters || {},
+      }));
 
-    // AbortController to cancel fetch on cleanup
-    const abortController = new AbortController();
-    let isMounted = true;
-
-    const fetchPreview = async () => {
-      if (!isMounted) return;
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const token = await getAuthToken();
-
-        // Build transformation steps for the API
-        const transformations = debouncedOperations.map((op) => ({
-          type: op.type,
-          parameters: op.parameters || {},
-        }));
-
-        // Call the service method with abort signal
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/transformations/pipeline/preview`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token && { Authorization: `Bearer ${token}` }),
-            },
-            body: JSON.stringify({
-              dataset_id: datasetId,
-              transformations,
-              sample_size: debouncedSampleSize,
-            }),
-            signal: abortController.signal,
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(
-            errorData.detail || 'Failed to generate preview'
-          );
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/transformations/pipeline/preview`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({
+            dataset_id: datasetId,
+            transformations,
+            sample_size: debouncedSampleSize,
+          }),
         }
+      );
 
-        const data = (await response.json()) as PreviewResponse;
-
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setPreviewData(data);
-        }
-      } catch (err) {
-        // Ignore abort errors
-        if (err instanceof Error && err.name === 'AbortError') {
-          return;
-        }
-
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setError(
-            err instanceof Error ? err.message : 'Failed to generate preview'
-          );
-          setPreviewData(null);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate preview');
       }
-    };
 
-    fetchPreview();
-
-    // Cleanup function
-    return () => {
-      isMounted = false;
-      abortController.abort();
-    };
-  }, [datasetId, debouncedOperations, debouncedSampleSize]);
+      return (await response.json()) as PreviewResponse;
+    },
+    [datasetId, debouncedOperations, debouncedSampleSize],
+    { enabled: !!datasetId && debouncedOperations.length > 0 },
+  );
 
   // Handle sample size change
   const handleSampleSizeChange = (newSize: number) => {
@@ -194,9 +148,9 @@ export function TransformationPreview({
 
   // Handle retry on error
   const handleRetry = () => {
-    setError(null);
-    // Re-trigger useEffect by updating state
-    setLocalSampleSize((prev) => prev);
+    // Previously cleared the error and nudged state to re-run the effect; the
+    // hook exposes the refetch directly.
+    reload();
   };
 
   // Export the current transformed preview as a CSV.
