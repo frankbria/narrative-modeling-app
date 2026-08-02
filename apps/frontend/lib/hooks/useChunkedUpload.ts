@@ -27,6 +27,9 @@ interface ChunkedUploadOptions {
 
 export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   const { data: session } = useSession()
+  // `useSession().data` is a new object every render; keying a hook on it re-runs
+  // that hook forever (#402). Depend on the id, which is a string.
+  const userId = session?.user?.id
   const {
     chunkSize = 5 * 1024 * 1024, // 5MB default
     maxRetries = 3,
@@ -124,7 +127,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const uploadFile = useCallback(async (file: File) => {
-    if (!session) {
+    if (!userId) {
       throw new Error('User session not available')
     }
 
@@ -209,10 +212,10 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     } finally {
       setIsUploading(false)
     }
-  }, [session, chunkSize, maxRetries, onProgress, onComplete, onError])
+  }, [userId, chunkSize, maxRetries, onProgress, onComplete, onError])
 
   const resumeUpload = useCallback(async (sessionId: string) => {
-    if (!session) {
+    if (!userId) {
       throw new Error('User session not available')
     }
 
@@ -237,7 +240,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       onError?.(error instanceof Error ? error.message : 'Failed to resume upload')
       throw error
     }
-  }, [session, onError])
+  }, [userId, onError])
 
   const cancelUpload = useCallback(() => {
     setIsUploading(false)

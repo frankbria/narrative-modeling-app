@@ -26,6 +26,18 @@ function requestedUrl(mock: jest.Mock, call = 0): string {
   return typeof arg === 'string' ? arg : arg.url
 }
 
+/**
+ * Paths appended to a base-URL template, from any HTTP client.
+ *
+ * `fetch(` alone is not enough: `app/explore/page.tsx` used `axios.get` and was
+ * therefore missed by the #406 sweep, still requesting /api/v1/api/user_data.
+ */
+export function templateUrlPaths(src: string): string[] {
+  return [
+    ...src.matchAll(/(?:fetch|axios(?:\.\w+)?)\(\s*`\$\{[A-Za-z_]\w*\}([^`]*)`/g),
+  ].map((m) => m[1])
+}
+
 const ok = (body: unknown = {}) => ({
   ok: true,
   status: 200,
@@ -79,14 +91,34 @@ describe('API URL construction (#406)', () => {
 
     // No `/api/v1` or `/api/` literal may appear in a template URL: the base
     // already carries the prefix.
-    const templatedPaths = [...src.matchAll(/fetch\(\s*`\$\{[A-Za-z]+\}([^`]*)`/g)].map(
-      (m) => m[1]
-    )
+    const templatedPaths = templateUrlPaths(src)
     expect(templatedPaths.length).toBeGreaterThan(0)
     for (const path of templatedPaths) {
       expect(path).not.toMatch(/^\/api(\/|$)/)
     }
     expect(templatedPaths).toContain('/upload/chunked/${sessionId}/resume')
+  })
+
+  it('no module re-appends /api to the versioned base, whatever the HTTP client', async () => {
+    // Repo-wide, not per-file: #406 fixed three modules by hand and still missed
+    // app/explore/page.tsx, because that sweep grepped for `fetch(` and the call
+    // there is `axios.get`.
+    const { globSync } = await import('glob')
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const root = join(__dirname, '..', '..')
+
+    const offenders: string[] = []
+    for (const file of globSync('{app,components,lib}/**/*.{ts,tsx}', {
+      cwd: root,
+      ignore: ['**/node_modules/**', 'app/api/**'],
+    })) {
+      for (const path of templateUrlPaths(readFileSync(join(root, file), 'utf8'))) {
+        if (/^\/api(\/|$)/.test(path)) offenders.push(`${file}: \${base}${path}`)
+      }
+    }
+
+    expect(offenders).toEqual([])
   })
 
   it('useDatasetChatContext does not re-append /api to the versioned base', async () => {
@@ -97,9 +129,7 @@ describe('API URL construction (#406)', () => {
       )
     )
 
-    const templatedPaths = [...src.matchAll(/fetch\(\s*`\$\{[A-Za-z]+\}([^`]*)`/g)].map(
-      (m) => m[1]
-    )
+    const templatedPaths = templateUrlPaths(src)
     expect(templatedPaths.length).toBeGreaterThan(0)
     for (const path of templatedPaths) {
       expect(path).not.toMatch(/^\/api(\/|$)/)

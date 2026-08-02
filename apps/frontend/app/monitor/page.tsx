@@ -33,6 +33,12 @@ import { useRouter } from 'next/navigation'
 
 export default function MonitoringPage() {
   const { data: session } = useSession()
+  // `useSession().data` is a NEW OBJECT on every render, and useAsyncData keys
+  // its effect on dep identity — passing `session` re-fetched on every render,
+  // forever, behind a spinner that never cleared (#402). Depend on the user id,
+  // which is a string and therefore stable, and keep `enabled` on the session
+  // itself so the request still waits for auth.
+  const userId = session?.user?.id
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -50,7 +56,7 @@ export default function MonitoringPage() {
       ])
       return { stats, keyUsage }
     },
-    [session],
+    [userId],
     { enabled: !!session },
   )
   const usageStats = monitoring?.stats ?? null
