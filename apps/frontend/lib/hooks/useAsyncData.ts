@@ -73,6 +73,9 @@ interface Resolved<T> {
   error?: string
 }
 
+/** How many distinct keys' watermarks to remember. Bounds the history above. */
+const RECORDED_HISTORY = 8
+
 /** Shallow Object.is comparison, the same identity rule React uses for hook deps. */
 function sameDeps(a: DependencyList, b: DependencyList): boolean {
   if (a.length !== b.length) return false
@@ -135,12 +138,18 @@ export function useAsyncData<T>(
   // case this hook's history is about. Ordering therefore constrains a request only
   // against others for the SAME key.
   //
+  // Why a LIST and not one slot: a single slot remembers only the most recent
+  // record, so recording for B forgets what was already known about A, and a stale
+  // A request that outlived both walks straight back in. Keeping a short history
+  // preserves each key's watermark across an intervening key. Bounded because this
+  // only needs to outlive requests that are still in flight, not the session.
+  //
   // Deliberately NOT "only the newest request may record": that is the rule that
   // reintroduces #411 head-on, since the newest request is the one that never comes
   // back. An older result is welcome while nothing newer for its key has landed; it
   // is only barred from overwriting.
   const requestSeq = useRef(0)
-  const lastRecorded = useRef<{ id: number; deps: DependencyList } | null>(null)
+  const recorded = useRef<{ id: number; deps: DependencyList }[]>([])
 
   const current = useRef({ deps, reloadToken, enabled })
   useEffect(() => {
@@ -164,11 +173,13 @@ export function useAsyncData<T>(
     // `data` after the caller had gated the fetch off.
     const requestId = ++requestSeq.current
 
-    /** Newest already-recorded id for this key; 0 when the last one was another key. */
-    const recordedIdForThisKey = () => {
-      const last = lastRecorded.current
-      return last && sameDeps(last.deps, deps) ? last.id : 0
-    }
+    /**
+     * Id already recorded for THIS key; 0 if this key has never recorded.
+     * `record()` de-dupes by key before appending, so there is at most one entry to
+     * find — a reduce/Math.max here would imply several candidates that cannot exist.
+     */
+    const recordedIdForThisKey = () =>
+      recorded.current.find((entry) => sameDeps(entry.deps, deps))?.id ?? 0
 
     // Note on coverage: `mounted`, `enabled` and the ordering guard each have a
     // test that fails when removed. The `sameDeps` check does NOT — the ordering
@@ -185,7 +196,19 @@ export function useAsyncData<T>(
 
     const record = (next: Resolved<T>) => {
       if (!stillWanted()) return
-      lastRecorded.current = { id: requestId, deps }
+      // Newest entry per key, then trim — slicing AFTER the append is what makes
+      // RECORDED_HISTORY the true cap; trimming first left room for one more.
+      //
+      // Eviction tradeoff, stated here and not only at the top of the file: if more
+      // than RECORDED_HISTORY distinct keys have requests in flight at once, the
+      // oldest watermark is dropped and that key reverts to the round-4 behaviour —
+      // a stale answer for it could be recorded again. Accepted because a single
+      // hook instance having 9+ keys simultaneously outstanding is not a shape any
+      // current call site can produce. If one ever does, this is the line to change.
+      recorded.current = [
+        ...recorded.current.filter((e) => !sameDeps(e.deps, deps)),
+        { id: requestId, deps },
+      ].slice(-RECORDED_HISTORY)
       setResolved(next)
     }
 
