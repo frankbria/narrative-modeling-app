@@ -491,3 +491,38 @@ describe('ordering must be per-key, not global (#418 review round 2)', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+describe('an older answer shown while a newer one is still pending (#418 review round 3)', () => {
+  // This is INTENDED, not a leak, and it is the whole point of #411: given a valid
+  // answer for the key the caller is currently asking about, show it rather than
+  // spin. The newer answer replaces it when it arrives. Asserted here so the
+  // behaviour is a decision on the record rather than a side effect of the
+  // ordering rule — the reviewer on #418 rightly noted nothing pinned it.
+  it('renders the older result, then replaces it when the newer one lands', async () => {
+    const releases: ((v: string) => void)[] = []
+    const loader = jest.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+    rerender({ enabled: false })
+    rerender({ enabled: true })
+    expect(loader).toHaveBeenCalledTimes(2)
+
+    // Older answers first, while the newer is still in flight.
+    await act(async () => {
+      releases[0]('older but valid')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('older but valid')
+    expect(result.current.loading).toBe(false)
+
+    // Newer lands and supersedes it.
+    await act(async () => {
+      releases[1]('newer')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('newer')
+  })
+})
