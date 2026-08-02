@@ -114,7 +114,15 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
             return [str(o).strip() for o in parsed]
     except (json.JSONDecodeError, ValueError):
         pass
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
+
+    # Bracketed but unquoted — `[http://a,http://b]` — is not valid JSON, so it
+    # falls through to the comma split with the brackets still attached, yielding
+    # `[http://a` and `http://b]`: origins that can never match anything, silently.
+    # `.env.example` shipped in exactly that form, so this is the shape people copy.
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+
+    parts = [p.strip().strip("\"'") for p in raw.split(",") if p.strip().strip("\"'")]
     return parts or ["*"]
 
 
