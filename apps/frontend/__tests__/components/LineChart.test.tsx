@@ -81,3 +81,72 @@ describe('LineChart', () => {
     expect(screen.getByText('Sales: 150.00')).toBeInTheDocument()
   })
 })
+
+describe('axis title and legend do not collide (#404)', () => {
+  // On /monitor the x-axis title ("Time") was drawn straight through the legend
+  // row and the tick labels — all three landed in the same ~30px band. recharts
+  // defaults the legend to `height: auto` at `bottom: <margin.bottom>`, i.e. right
+  // where the axis title sits. LineChart now reserves an explicit legend band at
+  // `bottom: 0`, which both separates them and makes the extents computable —
+  // with `height: auto` there is nothing to assert against.
+  const multi = {
+    data: [
+      { x: '11:50 PM', latency: 12, requests: 3 },
+      { x: '02:50 AM', latency: 30, requests: 9 },
+    ],
+    lines: [
+      { dataKey: 'latency', label: 'Avg Latency (ms)' },
+      { dataKey: 'requests', label: 'Requests' },
+    ],
+    xLabel: 'Time',
+    yLabel: 'Count / ms',
+  }
+
+  /** Approximate vertical extent of an SVG <text>, from its baseline. */
+  const textBand = (el: Element) => {
+    const y = Number(el.getAttribute('y'))
+    return { top: y - 12, bottom: y + 4 }
+  }
+
+  it('the legend sits below the axis title, which sits below the ticks', () => {
+    const { container } = render(<LineChart data={multi} />)
+
+    const title = Array.from(container.querySelectorAll('text')).find(
+      (t) => t.textContent === 'Time'
+    )
+    const tick = container.querySelector(
+      '.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value'
+    )
+    const legend = container.querySelector(
+      '.recharts-legend-wrapper'
+    ) as HTMLElement | null
+
+    expect(title).toBeDefined()
+    expect(tick).not.toBeNull()
+    expect(legend).not.toBeNull()
+
+    const chartHeight = 400 // the height sizedRecharts gives ResponsiveContainer
+    const style = legend!.getAttribute('style') ?? ''
+    const legendHeight = Number(/height:\s*(\d+)px/.exec(style)?.[1])
+    const legendBottomOffset = Number(/bottom:\s*(\d+)px/.exec(style)?.[1])
+
+    // `height: auto` would make this NaN — which is the state that made the
+    // collision unassertable in the first place.
+    expect(Number.isFinite(legendHeight)).toBe(true)
+    expect(Number.isFinite(legendBottomOffset)).toBe(true)
+
+    const legendTop = chartHeight - legendBottomOffset - legendHeight
+    const titleBand = textBand(title!)
+    const tickBand = textBand(tick!)
+
+    expect(tickBand.bottom).toBeLessThan(titleBand.top)
+    expect(titleBand.bottom).toBeLessThan(legendTop)
+  })
+
+  it('a single-series chart renders no legend to collide with', () => {
+    const { container } = render(
+      <LineChart data={{ ...multi, lines: [multi.lines[0]] }} />
+    )
+    expect(container.querySelector('.recharts-legend-wrapper')).toBeNull()
+  })
+})

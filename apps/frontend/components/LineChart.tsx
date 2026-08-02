@@ -31,6 +31,11 @@ interface LineChartProps {
 // (react-hooks/static-components). recharts clones the `content` element and
 // injects active/payload/label, so `xLabel` is passed in explicitly instead of
 // being closed over.
+/** Reserved for the legend row, so the x-axis title can sit clear above it (#404). */
+const LEGEND_HEIGHT = 32
+/** Drops the x-axis title below the tick row but above the reserved legend band. */
+const X_LABEL_OFFSET = -10
+
 function CustomTooltip({
   active,
   payload,
@@ -87,13 +92,21 @@ export function LineChart({
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis 
             dataKey="x"
-            label={{ value: data.xLabel, position: 'insideBottom', offset: -10 }}
+            label={{ value: data.xLabel, position: 'insideBottom', offset: X_LABEL_OFFSET }}
           />
           <YAxis 
             label={{ value: data.yLabel, angle: -90, position: 'insideLeft' }}
           />
           <Tooltip content={<CustomTooltip xLabel={data.xLabel} />} />
-          {data.lines.length > 1 && <Legend />}
+          {/* Explicit height and bottom:0 pin the legend to the very bottom of the
+              margin. With recharts' defaults it rendered at `bottom: 60px` — inside
+              the band the x-axis title occupies — so "Time" was drawn straight
+              through the legend row on /monitor (#404). `height: auto` also made the
+              collision impossible to assert, since nothing could compute the
+              legend's extent; fixing the height is what lets the test below check it. */}
+          {data.lines.length > 1 && (
+            <Legend verticalAlign="bottom" height={LEGEND_HEIGHT} wrapperStyle={{ bottom: 0 }} />
+          )}
           
           {data.lines.map((line, index) => (
             <Line
