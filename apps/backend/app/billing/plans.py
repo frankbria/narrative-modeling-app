@@ -31,7 +31,9 @@ class PlanLimits:
         """Look a metric up by the name the metering store uses."""
         try:
             return getattr(self, metric)
-        except AttributeError as exc:  # pragma: no cover - programmer error
+        except AttributeError as exc:
+            # Covered by test_unknown_metric_is_a_clear_error. An earlier
+            # `# pragma: no cover` here claimed otherwise, which was misleading.
             raise KeyError(f"unknown metered metric: {metric}") from exc
 
     def allows(self, metric: str, used: int) -> bool:

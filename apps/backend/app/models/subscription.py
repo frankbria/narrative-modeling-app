@@ -14,7 +14,16 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated
 
-from beanie import Document, Indexed
+from beanie import (
+    Document,
+    Indexed,
+    Insert,
+    Replace,
+    Save,
+    SaveChanges,
+    Update,
+    before_event,
+)
 from pydantic import Field
 
 
@@ -112,6 +121,23 @@ class Subscription(Document):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @before_event(Insert, Replace, Save, SaveChanges, Update)
+    def _touch(self) -> None:
+        """Bump `updated_at` on every write.
+
+        A hook rather than a note for the #367 webhook to remember: the field is
+        only useful if it is always right, and "the caller sets it" is a rule that
+        holds until the first caller forgets. Nothing updates a Subscription yet,
+        which is exactly why this is the moment to make it automatic.
+
+        All five write events are registered deliberately. An earlier version listed
+        only Replace/SaveChanges/Update, and `save()` — the obvious way to persist a
+        change — emits `Save`, so the hook silently never fired. The test caught it
+        only after a sleep was added: without a gap, insert and save land in the
+        same millisecond and an equal timestamp looks like success.
+        """
+        self.updated_at = datetime.now(UTC)
 
     class Settings:
         name = "subscriptions"

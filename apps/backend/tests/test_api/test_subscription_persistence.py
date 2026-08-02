@@ -6,11 +6,14 @@ the thing the webhook (#367) will depend on: the unique index on `user_id`, whic
 is what makes an upsert idempotent under Stripe's at-least-once retries.
 """
 
+import asyncio
+
 import pytest
 from beanie import PydanticObjectId, init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
+from app.utils.datetime import as_utc
 
 TEST_USER = "test_user_123"
 
@@ -68,6 +71,34 @@ class TestSubscriptionPersistence:
         )
 
         assert found is None
+
+    async def test_updated_at_is_bumped_on_write(self, setup_database):
+        """The #367 webhook upserts on every Stripe event; `updated_at` is only
+        useful if it is always right, so a hook does it rather than each caller."""
+        sub = Subscription(user_id=TEST_USER, plan_tier=PlanTier.FREE)
+        await sub.insert()
+        first = as_utc(sub.updated_at)
+
+        # Mongo stores milliseconds. Without a gap, insert and save can land in the
+        # same millisecond and an equal timestamp proves nothing either way.
+        await asyncio.sleep(0.01)
+
+        sub.plan_tier = PlanTier.PRO
+        await sub.save()
+
+        # Every read of a stored datetime goes through as_utc: Mongo drops tzinfo,
+        # and comparing naive against aware raises rather than returning False
+        # (CLAUDE.md). That applies to the in-memory document too, since save()
+        # round-trips it.
+        assert as_utc(sub.updated_at) > first
+
+        reloaded = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert reloaded is not None
+        assert reloaded.plan_tier == PlanTier.PRO
+        # Mongo reads datetimes back NAIVE (CLAUDE.md), so comparing the reloaded
+        # value against an aware `first` raises TypeError rather than returning
+        # False — coerce before the comparison.
+        assert as_utc(reloaded.updated_at) > first
 
     async def test_lookup_by_stripe_customer_id(self, setup_database):
         """The webhook arrives with Stripe ids, not our user_id."""
