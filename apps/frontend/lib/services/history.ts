@@ -1,6 +1,9 @@
 import { HistoryResponse, HistoryData, HistoryEntry } from '@/lib/types/history';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// NEXT_PUBLIC_API_URL carries the /api/v1 prefix (see CLAUDE.md, Environment
+// Variables). Appending it again here produced /api/v1/api/v1/... and 404'd every
+// history call (#406).
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 /**
  * Raw shape of a history entry as emitted by the backend `HistoryDataResponse`
@@ -59,7 +62,7 @@ export class HistoryService {
    */
   async undo(datasetId: string, token: string): Promise<HistoryResponse> {
     const response = await fetch(
-      `${API_BASE}/api/v1/transformations/datasets/${datasetId}/history/undo`,
+      `${API_BASE}/transformations/datasets/${datasetId}/history/undo`,
       {
         method: 'POST',
         headers: {
@@ -81,7 +84,7 @@ export class HistoryService {
    */
   async redo(datasetId: string, token: string): Promise<HistoryResponse> {
     const response = await fetch(
-      `${API_BASE}/api/v1/transformations/datasets/${datasetId}/history/redo`,
+      `${API_BASE}/transformations/datasets/${datasetId}/history/redo`,
       {
         method: 'POST',
         headers: {
@@ -107,7 +110,7 @@ export class HistoryService {
     token: string
   ): Promise<HistoryResponse> {
     const response = await fetch(
-      `${API_BASE}/api/v1/transformations/datasets/${datasetId}/history/jump`,
+      `${API_BASE}/transformations/datasets/${datasetId}/history/jump`,
       {
         method: 'POST',
         headers: {
@@ -130,7 +133,7 @@ export class HistoryService {
    */
   async getHistory(datasetId: string, token: string): Promise<HistoryData> {
     const response = await fetch(
-      `${API_BASE}/api/v1/transformations/datasets/${datasetId}/history`,
+      `${API_BASE}/transformations/datasets/${datasetId}/history`,
       {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -151,7 +154,7 @@ export class HistoryService {
    */
   async clearHistory(datasetId: string, token: string): Promise<void> {
     const response = await fetch(
-      `${API_BASE}/api/v1/transformations/datasets/${datasetId}/history`,
+      `${API_BASE}/transformations/datasets/${datasetId}/history`,
       {
         method: 'DELETE',
         headers: {

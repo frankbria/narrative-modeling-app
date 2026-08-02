@@ -217,9 +217,11 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     }
 
     try {
-      const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/api$/, '')
+      // Matches its init/chunk/complete siblings above: the env var already ends
+      // in /api/v1, and the `/api` strip never matched it (#406).
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
       
-      const response = await fetch(`${backendUrl}/api/v1/upload/chunked/${sessionId}/resume`, {
+      const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/resume`, {
         headers: {
           'Authorization': `Bearer ${await getAuthToken()}`
         }

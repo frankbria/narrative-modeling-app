@@ -76,13 +76,11 @@ export function useDatasetChatContext(datasetId: string | null) {
         // If the ID looks like a user ID (starts with 'user_'), we need to fetch the latest dataset
         if (datasetId.startsWith('user_')) {
           // Ensure the URL has a protocol
-          let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
           if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
             backendUrl = `http://${backendUrl}`;
           }
           
-          // Remove trailing /api if present
-          backendUrl = backendUrl.replace(/\/api$/, '');
           
           try {
             // Get the token first to check if authentication is available
@@ -96,7 +94,7 @@ export function useDatasetChatContext(datasetId: string | null) {
             }
             
             // Fetch the latest dataset for this user
-            const userDataResponse = await fetch(`${backendUrl}/api/user_data/latest`, {
+            const userDataResponse = await fetch(`${backendUrl}/user_data/latest`, {
               headers: {
                 'Authorization': `Bearer ${token}`
               }
@@ -140,16 +138,14 @@ export function useDatasetChatContext(datasetId: string | null) {
         }
         
         // Now fetch the AI summary with the actual dataset ID
-        let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
         if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
           backendUrl = `http://${backendUrl}`;
         }
         
-        // Remove trailing /api if present
-        backendUrl = backendUrl.replace(/\/api$/, '');
         
         const token = await getAuthToken();
-        const response = await fetch(`${backendUrl}/api/user_data/${actualDatasetId}/ai-summary`, {
+        const response = await fetch(`${backendUrl}/user_data/${actualDatasetId}/ai-summary`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -216,13 +212,11 @@ export async function getDatasetSystemPrompt(datasetId: string): Promise<string>
     let actualDatasetId = datasetId;
     if (datasetId.startsWith('user_')) {
       // Ensure the URL has a protocol
-      let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
         backendUrl = `http://${backendUrl}`;
       }
       
-      // Remove trailing /api if present
-      backendUrl = backendUrl.replace(/\/api$/, '');
       
       try {
         // Get the token first to check if authentication is available
@@ -233,7 +227,7 @@ export async function getDatasetSystemPrompt(datasetId: string): Promise<string>
         }
         
         // Fetch the latest dataset for this user
-        const userDataResponse = await fetch(`${backendUrl}/api/user_data/latest`, {
+        const userDataResponse = await fetch(`${backendUrl}/user_data/latest`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -266,16 +260,14 @@ export async function getDatasetSystemPrompt(datasetId: string): Promise<string>
     }
     
     // Now fetch the AI summary with the actual dataset ID
-    let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
     if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
       backendUrl = `http://${backendUrl}`;
     }
     
-    // Remove trailing /api if present
-    backendUrl = backendUrl.replace(/\/api$/, '');
     
     const token = await getAuthToken();
-    const response = await fetch(`${backendUrl}/api/user_data/${actualDatasetId}/ai-summary`, {
+    const response = await fetch(`${backendUrl}/user_data/${actualDatasetId}/ai-summary`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
