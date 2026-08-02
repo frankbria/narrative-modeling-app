@@ -20,7 +20,6 @@ import json
 import time
 
 import pytest
-from pymongo.errors import DuplicateKeyError
 
 from app.billing.stripe_signature import (
     SignatureVerificationError,
@@ -334,12 +333,16 @@ class TestWebhookEndpoint:
         real_apply = billing_webhook._apply
         calls = {"n": 0}
 
+        # Deliberately NOT a synthetic exception. An earlier version of this test
+        # raised DuplicateKeyError, which is what the handler caught — so it was
+        # calibrated to the bug rather than to reality. `save()` on an unpersisted
+        # duplicate actually raises RevisionIdWasChanged (CLAUDE.md), so the race is
+        # produced by really losing it.
         async def _lose_the_first_race(*args, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
-                # Let the "winner" create the row, then fail as the loser would.
-                await Subscription(user_id=TEST_USER).insert()
-                raise DuplicateKeyError("lost the insert race")
+                await Subscription(user_id=TEST_USER).insert()  # the winner
+                await Subscription(user_id=TEST_USER).save()  # raises for real
             return await real_apply(*args, **kwargs)
 
         monkeypatch.setattr(billing_webhook, "_apply", _lose_the_first_race)

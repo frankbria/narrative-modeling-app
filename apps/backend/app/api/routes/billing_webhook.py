@@ -20,6 +20,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from beanie.exceptions import RevisionIdWasChanged
 from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
@@ -116,7 +117,15 @@ async def _upsert(
             period_end=period_end,
             cancel_at_period_end=cancel_at_period_end,
         )
-    except DuplicateKeyError:
+    except (DuplicateKeyError, RevisionIdWasChanged):
+        # BOTH, and RevisionIdWasChanged is the one that actually fires here:
+        # `_apply` persists via `save()`, and Beanie surfaces a unique-index
+        # violation on save() as RevisionIdWasChanged, not DuplicateKeyError.
+        # CLAUDE.md records this and `workflow_service.py:96` already catches the
+        # pair for the same reason — an earlier version of this handler caught only
+        # DuplicateKeyError, so the retry could never fire for the very race it was
+        # written for. Verified against a real collection, not assumed.
+        #
         # The row exists now; the second attempt takes the update path.
         await _apply(
             user_id,
