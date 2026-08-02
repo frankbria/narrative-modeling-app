@@ -5,7 +5,7 @@ truth; this exists so that a request can decide what a caller is entitled to wit
 a network round-trip on every call, and so the app still works when Stripe is
 unreachable.
 
-Plan limits live in `app/config/plans.py` rather than here on purpose: a limit is a
+Plan limits live in `app/billing/plans.py` rather than here on purpose: a limit is a
 product decision that changes without a migration, whereas this document records
 what a tenant actually bought.
 """
@@ -16,7 +16,6 @@ from typing import Annotated
 
 from beanie import Document, Indexed
 from pydantic import Field
-from pymongo import ASCENDING, IndexModel
 
 
 class PlanTier(str, Enum):
@@ -66,6 +65,19 @@ class SubscriptionStatus(str, Enum):
 class Subscription(Document):
     """What a tenant is entitled to, mirrored from Stripe."""
 
+    # Declared ONCE, here, and deliberately auto-named (`user_id_1`).
+    #
+    # An earlier draft had both this annotation and an explicit
+    # `IndexModel(..., name="uniq_user_id")` in Settings. Two definitions for one key
+    # pattern under different names makes Mongo reject the second with
+    # `Index already exists with a different name` — a hard startup crash, which I
+    # reproduced rather than assumed. Naming it at all is the risk: an auto-named
+    # index matches whatever a field-level `Indexed(unique=True)` would already have
+    # created, so both a fresh database and one that already has `user_id_1`
+    # initialise cleanly. Same trap `app/models/version.py` documents.
+    #
+    # Unique so a webhook retry cannot create a second row for one tenant — the
+    # #367 upsert relies on this for idempotency.
     user_id: Annotated[str, Indexed(unique=True)] = Field(
         description="Owning tenant. Unique: one subscription per tenant."
     )
@@ -104,9 +116,8 @@ class Subscription(Document):
     class Settings:
         name = "subscriptions"
         indexes = [
-            # Unique so a webhook retry cannot create a second row for one tenant —
-            # the upsert path relies on this to be idempotent.
-            IndexModel([("user_id", ASCENDING)], unique=True, name="uniq_user_id"),
+            # user_id's unique index is declared on the field itself — see the
+            # comment there for why it must not also appear here.
             "stripe_customer_id",
             "stripe_subscription_id",
         ]
