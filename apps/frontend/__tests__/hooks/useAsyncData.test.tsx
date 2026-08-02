@@ -447,3 +447,47 @@ describe('two in-flight requests for the same key (#418 review)', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+describe('ordering must be per-key, not global (#418 review round 2)', () => {
+  // A single global counter reintroduces #411 via an unrelated key: a fast request
+  // for B bumps the counter past a slow, still-valid request for A, so when A
+  // finally answers it is discarded even though nothing newer FOR A has landed.
+  it('a slow result is still accepted after a different key resolved ahead of it', async () => {
+    const byKey: Record<string, ((v: string) => void)[]> = { A: [], B: [] }
+    const loader = jest.fn(function (this: void) {
+      return new Promise<string>((res) => {
+        // Route by whichever key the current render asked for.
+        byKey[currentKey].push(res)
+      })
+    })
+    let currentKey: 'A' | 'B' = 'A'
+
+    const { result, rerender } = renderHook(({ k }) => useAsyncData(loader, [k]), {
+      initialProps: { k: 'A' as 'A' | 'B' },
+    })
+
+    currentKey = 'B'
+    rerender({ k: 'B' })
+
+    // B answers quickly and records.
+    await act(async () => {
+      byKey.B[0]('B answer')
+      await Promise.resolve()
+    })
+    expect(result.current.data).toBe('B answer')
+
+    // Back to A ("tab away and back"). A third request starts and never answers.
+    currentKey = 'A'
+    rerender({ k: 'A' })
+
+    // The ORIGINAL slow A request finally lands. Nothing newer for A has landed,
+    // so it must settle rather than leave the panel spinning.
+    await act(async () => {
+      byKey.A[0]('A answer, late but still correct')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('A answer, late but still correct')
+    expect(result.current.loading).toBe(false)
+  })
+})
