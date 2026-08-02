@@ -116,15 +116,20 @@ describe('globals.css compiles to a working theme', () => {
     expect(css).toMatch(rule)
   })
 
-  it('does not load the typography plugin yet', () => {
-    // Inverted on purpose. `prose` is used in OnboardingStep, AIInsightsPanel and
-    // app/onboarding, and @tailwindcss/typography is a devDependency — but v4 only
-    // applies a plugin via @plugin, so those blocks render unstyled. That is a
-    // pre-existing bug held back from this PR deliberately (tracked as #398): enabling it restyles
-    // real content, which is a visual change needing its own sign-off rather than
-    // riding along inside a version migration. This assertion pins the scope, so
-    // turning it on is a deliberate edit here and not an accident.
-    expect(css).not.toMatch(/\.prose\s*[,{]/)
+  it('loads the typography plugin (#398)', () => {
+    // `prose` is used in OnboardingStep, AIInsightsPanel and app/onboarding. v4
+    // only applies a plugin via `@plugin`, so listing @tailwindcss/typography in
+    // package.json left every one of those blocks unstyled. This assertion was
+    // deliberately inverted while #345 pinned its scope; #398 turned the plugin on,
+    // so it now guards the opposite direction — dropping the `@plugin` line breaks
+    // the same content again, silently, exactly as it did before.
+    expect(css).toMatch(/\.prose\s*[,{:]/)
+  })
+
+  it('emits the dark-mode prose-invert variant the app relies on', () => {
+    // AIInsightsPanel uses `dark:prose-invert`; without the plugin's invert
+    // modifier that class is inert and dark-mode prose keeps light-mode colours.
+    expect(css).toMatch(/--tw-prose-invert-body|\.prose-invert/)
   })
 
   it('applies the global border colour that @apply border-border provides', () => {

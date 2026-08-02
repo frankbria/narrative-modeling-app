@@ -8,6 +8,10 @@
 /* tailwindcss-animate supplies animate-in / fade-in / slide-in-from-* (used ~9x
    each across dialogs, sheets and toasts). v4 loads v3 plugins via @plugin. */
 @plugin "tailwindcss-animate";
+/* `prose` in OnboardingStep, AIInsightsPanel and app/onboarding rendered unstyled
+   until this line existed: v4 activates a plugin only via @plugin, never from
+   package.json alone (#398). Guarded in __tests__/styles/themeTokens.test.ts. */
+@plugin "@tailwindcss/typography";
 
 /* v4 removed `theme.container`; it is a utility now. Mirrors the old config:
    center: true, padding: "2rem", screens: { "2xl": "1400px" }. */
