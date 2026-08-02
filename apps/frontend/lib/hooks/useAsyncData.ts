@@ -119,9 +119,9 @@ export function useAsyncData<T>(
   // error here) forbids touching a ref while rendering. An effect with no dep
   // array runs after every render, which is early enough — promise continuations
   // are always later still.
-  const current = useRef({ deps, reloadToken })
+  const current = useRef({ deps, reloadToken, enabled })
   useEffect(() => {
-    current.current = { deps, reloadToken }
+    current.current = { deps, reloadToken, enabled }
   })
 
   // `loader` is deliberately NOT a dependency. Call sites pass an inline arrow, so
@@ -133,8 +133,15 @@ export function useAsyncData<T>(
   useEffect(() => {
     if (!enabled) return
 
+    // `enabled` belongs here too. It used to be covered by accident: it was in the
+    // effect's dependency array, so flipping it re-ran the effect and the old
+    // instance's cleanup discarded the in-flight request. Removing that cleanup
+    // (#411) removed the protection with it, and `settled` does not check
+    // `enabled` either — so a request begun while enabled would still populate
+    // `data` after the caller had gated the fetch off.
     const stillWanted = () =>
       mounted.current &&
+      current.current.enabled &&
       current.current.reloadToken === reloadToken &&
       sameDeps(current.current.deps, deps)
 

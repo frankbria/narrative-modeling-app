@@ -345,3 +345,47 @@ describe('a result that lands after an effect cleanup (#411)', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+describe('disabling mid-flight (#417 review)', () => {
+  // Before #411 this was covered by accident: `enabled` was in the fetch effect's
+  // dependency array, so flipping it re-ran the effect and the OLD instance's
+  // cleanup set `cancelled = true`. Removing that cleanup removed the protection
+  // with it — `stillWanted()` checked mounted/token/deps but not `enabled`, and
+  // `settled` does not check it either, so a request begun while enabled would
+  // still populate `data` after the caller had gated the fetch off.
+  it('does not record a result that resolves after enabled goes false', async () => {
+    let release: (v: string) => void = () => {}
+    const loader = jest.fn(() => new Promise<string>((res) => { release = res }))
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAsyncData(loader, ['a'], { enabled }),
+      { initialProps: { enabled: true } }
+    )
+
+    expect(loader).toHaveBeenCalledTimes(1)
+
+    rerender({ enabled: false })
+
+    await act(async () => {
+      release('answer nobody asked for any more')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('still resolves normally when enabled stays true', async () => {
+    let release: (v: string) => void = () => {}
+    const loader = jest.fn(() => new Promise<string>((res) => { release = res }))
+
+    const { result } = renderHook(() => useAsyncData(loader, ['a'], { enabled: true }))
+
+    await act(async () => {
+      release('wanted')
+      await Promise.resolve()
+    })
+
+    expect(result.current.data).toBe('wanted')
+  })
+})
