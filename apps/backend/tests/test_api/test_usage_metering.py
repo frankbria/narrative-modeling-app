@@ -183,6 +183,17 @@ class TestReading:
         with pytest.raises(RuntimeError):
             await metering.usage_for(TEST_USER, "predictions")
 
+    @pytest.mark.parametrize("bad", ["bandwidth", "prediction", "allows"])
+    async def test_reading_an_unknown_metric_raises(self, setup_database, bad):
+        """`record` already rejected these; the READ path silently returned 0,
+        which enforcement would have read as "nothing used" — the same fail-open
+        the module exists to avoid, in a quieter form (#369 review round 3)."""
+        with pytest.raises(KeyError):
+            await metering.usage_for(TEST_USER, bad)
+
+        with pytest.raises(KeyError):
+            await metering.remaining(TEST_USER, bad)
+
     async def test_summary_reports_every_metric(self, setup_database):
         await metering.record(TEST_USER, "predictions", amount=2)
 

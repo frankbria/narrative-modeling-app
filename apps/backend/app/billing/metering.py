@@ -102,7 +102,13 @@ async def usage_for(user_id: str, metric: str, moment: datetime | None = None) -
     whether to allow a request; returning 0 on a storage failure would fail *open*
     and hand out unlimited quota, which is the whole reason the #151 rate-limit
     buckets were unsuitable for billing.
+
+    The metric is validated for the same reason: a typo'd or drifted name would
+    otherwise read back as 0 used, which is the same fail-open in a quieter form.
     """
+    if metric not in METERED_METRICS:
+        raise KeyError(f"unknown metered metric: {metric}")
+
     doc = await UsageRecord.find_one(
         UsageRecord.user_id == user_id,
         UsageRecord.period_key == period_key_for(moment),
@@ -138,7 +144,11 @@ async def effective_tier_for(user_id: str) -> PlanTier:
 
 
 async def remaining(user_id: str, metric: str) -> int | None:
-    """Units of `metric` left this period, or None when the tier is unlimited."""
+    """Units of `metric` left this period, or None when the tier is unlimited.
+
+    Validates via `limit_for` and `usage_for`, both of which raise on an unknown
+    metric rather than reporting a full quota.
+    """
     from app.billing.plans import UNLIMITED
 
     limit = limits_for(await effective_tier_for(user_id)).limit_for(metric)
