@@ -66,6 +66,14 @@ async def reserve(
     limit = limits_for(tier).limit_for(metric)
 
     if await metering.consume(user_id, metric, limit, amount):
+        existing = getattr(request.state, _RESERVATION, None)
+        if existing and existing["metric"] == metric:
+            # ACCUMULATE, do not replace. A batch job reserves twice — once at
+            # admission, then again for its rows once the CSV is counted — and
+            # overwriting means the refund gives back only the second, silently
+            # burning the first on every failed job.
+            existing["amount"] += amount
+            return
         setattr(
             request.state,
             _RESERVATION,

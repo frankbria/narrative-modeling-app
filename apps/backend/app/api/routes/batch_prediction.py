@@ -2,19 +2,28 @@
 Batch prediction API routes
 """
 
+import csv
 import io
 import os
 import tempfile
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing import metering
-from app.billing.enforcement import quota
+from app.billing.enforcement import quota, reserve
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
 from app.utils.upload_limits import read_upload_capped
@@ -98,12 +107,29 @@ def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 # API Routes
+
+def _count_csv_rows(content: bytes) -> int:
+    """Data rows in an uploaded CSV, header excluded.
+
+    `csv` from the stdlib rather than a newline count, because a quoted field may
+    contain newlines and counting those as rows overcharges the caller. Decoded
+    leniently: a file this cannot read is one the job will reject anyway, and
+    returning 0 here lets it do that with its own message.
+    """
+    try:
+        text = content.decode("utf-8", errors="replace")
+        return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
+    except Exception:
+        return 0
+
+
 @router.post(
     "/jobs",
     response_model=BatchJobResponse,
     dependencies=[Depends(quota("predictions"))],
 )
 async def create_batch_job(
+    request: Request,
     file: UploadFile = File(..., description="CSV file with data to predict"),
     model_id: str = Form(..., description="Model ID"),
     output_format: str = Form(default="csv", description="Output format"),
@@ -136,6 +162,19 @@ async def create_batch_job(
         # Read file content
         content = await read_upload_capped(file)
 
+        # Charge the rows BEFORE the job is created. Creating it spawns processing
+        # immediately (`auto_start`), so a check afterwards would have to unwind a
+        # job that is already running — and an unconditional true-up is not a limit
+        # at all: MAX_BATCH_PREDICT_RECORDS is 1,000,000 against a FREE ceiling of
+        # 1,000, so one job could be accepted AND EXECUTED at 1000x the plan. That
+        # is a compute bill, not a bookkeeping error.
+        #
+        # The admission dependency already reserved 1, so only the remainder is
+        # charged here; a refusal leaves that 1 to the refund middleware.
+        rows = _count_csv_rows(content)
+        if rows > 1:
+            await reserve(request, current_user_id, "predictions", rows - 1)
+
         # Save to temporary file
         with tempfile.NamedTemporaryFile(
             mode="wb", delete=False, suffix=".csv"
@@ -163,19 +202,6 @@ async def create_batch_job(
             job.input_size_bytes = len(content)
             await job.save()
 
-            # True up the quota. The dependency reserved ONE unit at admission —
-            # all it can do, since the row count needs the CSV parsed — so a
-            # 100k-row job would otherwise cost the same as a 1-row one and become
-            # the cheap way around the predictions limit.
-            #
-            # ponytail: a true-up, not a second gate. It can overshoot the limit by
-            # one job's rows, because refusing here means unwinding a job that is
-            # already created and the caller has already waited for the upload.
-            # Admission still blocks a tenant who is out of quota. Tighten to a
-            # pre-parse reservation only if that overshoot shows up in real usage.
-            extra = max(0, job.progress.total_records - 1)
-            if extra:
-                await metering.record(current_user_id, "predictions", extra)
 
         finally:
             # Clean up temp file

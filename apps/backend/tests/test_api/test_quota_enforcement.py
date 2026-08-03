@@ -14,6 +14,7 @@ import pytest
 
 from app.billing import metering
 from app.billing.plans import PLAN_LIMITS
+from app.models.batch_job import BatchJob
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 from app.models.usage import UsageRecord
 
@@ -99,6 +100,20 @@ class TestTrainingQuota:
 
         assert response.status_code == 402
         assert response.json()["detail"]["metric"] == "training_runs"
+
+    async def test_a_failed_training_run_is_refunded(
+        self, async_authorized_client, setup_database
+    ):
+        # The third metric through the refund middleware. Training is the one where
+        # a burned unit costs the most — 10 a month on FREE, so two typo'd dataset
+        # ids would be a fifth of the month.
+        response = await async_authorized_client.post(
+            "/api/v1/ml/train",
+            json={"dataset_id": "507f1f77bcf86cd799439011", "target_column": "y"},
+        )
+
+        assert response.status_code >= 400
+        assert await metering.usage_for(TEST_USER, "training_runs") == 0
 
     async def test_a_paid_tier_is_not_stopped_at_the_free_limit(
         self, async_authorized_client, setup_database
@@ -193,6 +208,87 @@ class TestChargedByRecord:
         assert response.status_code == 402
         # Not partially served — still exactly what it was.
         assert await metering.usage_for(TEST_USER, "predictions") == limit - 3
+
+
+class TestBatchJobRowCount:
+    """A batch job costs its rows, and is refused before any of them run.
+
+    The gap this closes: reserving 1 unit at admission and truing up afterwards
+    with an unconditional `record()` is not a limit at all. `MAX_BATCH_PREDICT_
+    RECORDS` is 1,000,000 against a FREE ceiling of 1,000, so a tenant with one
+    unit left could have a million predictions accepted AND EXECUTED — a compute
+    bill, not just a wrong counter. The reservation has to happen before the job is
+    created, because creation spawns processing immediately (`auto_start`), and
+    unwinding a running job is a race.
+    """
+
+    @staticmethod
+    def _csv(rows: int) -> bytes:
+        body = "\n".join(str(i) for i in range(rows))
+        return f"x\n{body}\n".encode()
+
+    async def test_a_batch_larger_than_the_quota_is_refused(
+        self, async_authorized_client, setup_database
+    ):
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+
+        response = await async_authorized_client.post(
+            "/api/v1/batch/jobs",
+            files={"file": ("d.csv", self._csv(limit + 500), "text/csv")},
+            data={"model_id": "m1"},
+        )
+
+        assert response.status_code == 402
+        # Nothing consumed, and — the point — nothing queued to run either.
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
+        assert await BatchJob.find(BatchJob.user_id == TEST_USER).count() == 0
+
+    async def test_the_charge_is_the_row_count_not_one(
+        self, async_authorized_client, setup_database
+    ):
+        """Boundary pair, for the same reason as the JSON one.
+
+        The job itself fails downstream (no such model) and the middleware refunds,
+        so the charge is not observable in the counter afterwards. What *is*
+        observable: 40 rows fit in 40 remaining and not in 39. Charging one unit
+        per request passes neither half.
+        """
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        await _fill(TEST_USER, "predictions", limit - 40)
+
+        fits = await async_authorized_client.post(
+            "/api/v1/batch/jobs",
+            files={"file": ("d.csv", self._csv(40), "text/csv")},
+            data={"model_id": "m1"},
+        )
+        assert fits.status_code != 402
+
+        await UsageRecord.find(UsageRecord.user_id == TEST_USER).delete()
+        await _fill(TEST_USER, "predictions", limit - 39)
+
+        does_not = await async_authorized_client.post(
+            "/api/v1/batch/jobs",
+            files={"file": ("d.csv", self._csv(40), "text/csv")},
+            data={"model_id": "m1"},
+        )
+        assert does_not.status_code == 402
+
+    async def test_a_failed_batch_refunds_every_reserved_row(
+        self, async_authorized_client, setup_database
+    ):
+        """Both reservations, not just the last one.
+
+        A batch reserves twice — 1 at admission, then the remaining rows. If the
+        second overwrites the first on `request.state` instead of accumulating, the
+        refund returns rows-1 and burns one unit per failed job, forever.
+        """
+        await async_authorized_client.post(
+            "/api/v1/batch/jobs",
+            files={"file": ("d.csv", self._csv(40), "text/csv")},
+            data={"model_id": "m1"},
+        )
+
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
 
 
 class TestNonMeteredRoutes:
