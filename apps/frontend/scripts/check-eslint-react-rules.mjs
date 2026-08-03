@@ -51,8 +51,18 @@ export default function App() {
 }
 `
 
+// How many react/* rules eslint-config-next enables today. PINNED, not a floor:
+// a floor lets the set shrink silently, which is coverage quietly disappearing
+// while the check still reports green. If this trips, look at WHY the count moved
+// (a config-next bump usually) and update it deliberately — same ratchet
+// discipline as `--max-warnings`.
+const EXPECTED_RULES = 17
+
 const eslint = new ESLint()
-const config = await eslint.calculateConfigForFile('components/LineChart.tsx')
+// Any path matching the TSX glob resolves the same config; nothing is read from
+// disk, and the file does not need to exist. Named to say so, rather than
+// pointing at a real component whose deletion would puzzle a future reader.
+const config = await eslint.calculateConfigForFile('components/__config_probe__.tsx')
 
 const enabled = Object.entries(config.rules ?? {})
   .filter(([rule]) => rule.startsWith('react/'))
@@ -66,10 +76,15 @@ console.log(`eslint:  ${ESLint.version}`)
 console.log(`plugin:  eslint-plugin-react (peer range says eslint ^9.7)`)
 console.log(`enabled react/* rules: ${enabled.length}\n`)
 
-if (enabled.length < 10) {
-  // An empty or near-empty list would make every check below vacuously green —
-  // the exact failure this file exists to prevent.
-  console.error(`Only ${enabled.length} react/* rules enabled; expected the plugin to be active.`)
+if (enabled.length !== EXPECTED_RULES) {
+  // Catches both directions. Zero (or few) means the plugin stopped loading and
+  // every check below would pass vacuously. Fewer-but-nonzero means rules
+  // silently stopped being enforced. More means new rules nobody has verified.
+  console.error(
+    `Expected ${EXPECTED_RULES} enabled react/* rules, found ${enabled.length}.\n` +
+    `If eslint-config-next changed its rule set, verify the new list and update ` +
+    `EXPECTED_RULES deliberately.`
+  )
   process.exit(1)
 }
 
@@ -94,6 +109,11 @@ let failed = 0
 for (const rule of enabled) {
   // One rule at a time: a crash in any single rule is otherwise masked by
   // whichever rule ESLint happens to load first.
+  //
+  // Bare `'error'`, deliberately dropping any options the real config passes.
+  // This checks that a rule LOADS and RUNS under this ESLint — the failure mode
+  // being guarded — which happens at listener setup and is option-independent.
+  // It is not a check of configured behaviour, and should not be read as one.
   try {
     const messages = new Linter().verify(FIXTURE, {
       // No `files` key: with one present the config does not apply to a string
