@@ -11,6 +11,11 @@
 # the deployed artifact isn't an untested major (issue #277). Refresh all three
 # stage pins together when bumping Node, and keep this comment honest.
 # Pinned 2026-07-12 (node:20-alpine → Node 20.20.2); digest-refresh on #176.
+# node:20-alpine, digest-pinned (#176). This digest is Node 20.20.2, which
+# satisfies the `engines` floor package.json gained with eslint 10
+# (^20.19.0 || ^22.13.0 || >=24). `engine-strict` is not set, so a digest bump to
+# an older 20.x would NOT fail npm ci — it would fail somewhere less obvious.
+# Check `docker run --rm <digest> node -v` against that floor when bumping.
 FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./

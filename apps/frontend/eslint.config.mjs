@@ -2,6 +2,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+import { createRequire } from "node:module";
+
+// The installed react, not the range in package.json: the range can be "^19.2.8"
+// while node_modules holds 19.4, and the plugin wants a concrete version.
+const reactVersion = createRequire(import.meta.url)("react/package.json").version;
+
 // Next 16 removed `next lint`, so `npm run lint` invokes the ESLint CLI directly
 // (`eslint .`). eslint-config-next now ships flat configs as real entry points,
 // so the old FlatCompat bridge is gone. Two consequences of driving the CLI
@@ -15,6 +21,18 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // eslint-config-next sets `settings.react.version = "detect"`, and detection
+    // is the ONLY path that reaches eslint-plugin-react's `resolveBasedir`, which
+    // calls `context.getFilename()` — removed in eslint 10. Pinning the version
+    // explicitly skips detection entirely, which is what unblocks eslint 10 here
+    // (#391). It is also just better: detection stats the filesystem once per
+    // linted file to rediscover a version that is already on disk.
+    //
+    // READ, not hardcoded. A literal string here is a second place to remember on
+    // every React bump, and the one nobody remembers — it would drift silently and
+    // the plugin's version-gated rules would start answering for the wrong React.
+    // This resolves the actually-installed version once, at config load.
+    settings: { react: { version: reactVersion } },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       // Ban debug console output in shipped code; console.warn/error are allowed
