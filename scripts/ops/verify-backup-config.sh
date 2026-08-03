@@ -48,25 +48,57 @@ else
   CHECKED_S3=1
   echo "  bucket: $BUCKET"
 
-  versioning="$(aws s3api get-bucket-versioning --bucket "$BUCKET" \
-    --query 'Status' --output text 2>/dev/null || echo "None")"
-  if [[ "$versioning" == "Enabled" ]]; then
-    pass "bucket versioning enabled"
+  # Capture stderr and the exit code SEPARATELY from the value. `2>/dev/null ||
+  # echo "None"` turned an AccessDenied into "None" — reporting a bucket we are
+  # not allowed to inspect as definitively unconfigured. A verifier that cannot
+  # tell "not there" from "not allowed to look" is worse than no verifier: it
+  # produces a confident answer it has not earned, and both readings are
+  # actionable in opposite directions.
+  vraw="$(aws s3api get-bucket-versioning --bucket "$BUCKET" 2>&1)"
+  if [[ $? -ne 0 ]]; then
+    if grep -qi "AccessDenied\|not authorized" <<<"$vraw"; then
+      fail "cannot read versioning — AccessDenied. This principal lacks s3:GetBucketVersioning; the backup state is UNKNOWN, not absent"
+    else
+      fail "cannot read versioning: $(tr -d '\n' <<<"$vraw" | head -c 160)"
+    fi
+    versioning="unknown"
+    mfa="unknown"
   else
-    fail "bucket versioning is '$versioning' — cascade erasure destroys history immediately without it"
+    versioning="$(python3 -c "
+import json,sys
+try: print(json.loads(sys.argv[1] or '{}').get('Status','None'))
+except Exception: print('None')
+" "$vraw")"
+    mfa="$(python3 -c "
+import json,sys
+try: print(json.loads(sys.argv[1] or '{}').get('MFADelete','None'))
+except Exception: print('None')
+" "$vraw")"
+    if [[ "$versioning" == "Enabled" ]]; then
+      pass "bucket versioning enabled"
+    else
+      fail "bucket versioning is '$versioning' — cascade erasure destroys history immediately without it"
+    fi
   fi
-
-  mfa="$(aws s3api get-bucket-versioning --bucket "$BUCKET" \
-    --query 'MFADelete' --output text 2>/dev/null || echo "None")"
   if [[ "$mfa" == "Enabled" ]]; then
     pass "MFA-delete enabled"
+  elif [[ "$mfa" == "unknown" ]]; then
+    # Same trap one line down: reporting "not enabled" for something we could not
+    # read is the identical false-confidence bug.
+    manual "MFA-delete state UNKNOWN — could not read the bucket's versioning block"
   else
     # Not a FAIL: it needs root + an MFA token, so it is a console step by
     # construction and a non-prod bucket may legitimately not have it.
     manual "MFA-delete not enabled (runbook 3.4 — needs root account + MFA token)"
   fi
 
-  if lifecycle="$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>/dev/null)"; then
+  lraw="$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>&1)"
+  lrc=$?
+  if [[ $lrc -ne 0 ]] && grep -qi "AccessDenied\|not authorized" <<<"$lraw"; then
+    # Same distinction as versioning above. NoSuchLifecycleConfiguration genuinely
+    # means "no rules"; AccessDenied means we do not know.
+    fail "cannot read lifecycle — AccessDenied. This principal lacks s3:GetLifecycleConfiguration; the rules are UNKNOWN, not absent"
+  elif [[ $lrc -eq 0 ]] && lifecycle="$lraw"; then
     if grep -q '"ID": *"expire-noncurrent"' <<<"$lifecycle" \
        || grep -q '"ID":"expire-noncurrent"' <<<"$lifecycle"; then
       pass "lifecycle rule 'expire-noncurrent' present"
