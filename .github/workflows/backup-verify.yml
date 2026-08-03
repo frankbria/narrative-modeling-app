@@ -44,10 +44,21 @@ jobs:
         id: gate
         env:
           AWS_ROLE: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          AWS_REGION_SECRET: ${{ secrets.AWS_REGION }}
           ATLAS_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
         run: |
-          if [ -n "$AWS_ROLE" ]; then echo "aws=true" >> "$GITHUB_OUTPUT"; else echo "aws=false" >> "$GITHUB_OUTPUT"; fi
-          if [ -z "$AWS_ROLE" ] && [ -z "$ATLAS_KEY" ]; then
+          # AWS counts as configured only with BOTH the role and the region.
+          # configure-aws-credentials hard-fails without a region, and that error
+          # reads like a broken workflow rather than a missing secret.
+          if [ -n "$AWS_ROLE" ] && [ -n "$AWS_REGION_SECRET" ]; then
+            echo "aws=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "aws=false" >> "$GITHUB_OUTPUT"
+            if [ -n "$AWS_ROLE" ]; then
+              echo "::warning::AWS_ROLE_TO_ASSUME is set but AWS_REGION is not — skipping the S3 checks."
+            fi
+          fi
+          if { [ -z "$AWS_ROLE" ] || [ -z "$AWS_REGION_SECRET" ]; } && [ -z "$ATLAS_KEY" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Backup verification is not configured — see #299. Set AWS_ROLE_TO_ASSUME / ATLAS_PUBLIC_KEY and friends."
             {
@@ -61,6 +72,11 @@ jobs:
               echo "3. Add the secrets listed at the top of this workflow"
               echo
               echo "Until then this job passes without verifying anything — deliberately."
+              echo
+              echo "| half | configured |"
+              echo "|---|---|"
+              echo "| S3 | $( [ -n "$AWS_ROLE" ] && [ -n "$AWS_REGION_SECRET" ] && echo yes || echo no ) |"
+              echo "| Atlas | $( [ -n "$ATLAS_KEY" ] && echo yes || echo no ) |"
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
