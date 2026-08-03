@@ -2,17 +2,28 @@
 Batch prediction API routes
 """
 
+import csv
 import io
 import os
 import tempfile
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota, reserve
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
 from app.utils.upload_limits import read_upload_capped
@@ -96,8 +107,36 @@ def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 # API Routes
-@router.post("/jobs", response_model=BatchJobResponse)
+
+def _count_csv_rows(content: bytes) -> int:
+    """Data rows in an uploaded CSV, header excluded.
+
+    `csv` from the stdlib rather than a newline count, because a quoted field may
+    contain newlines and counting those as rows overcharges the caller. Decoded
+    leniently: a file this cannot read is one the job will reject anyway, and
+    returning 0 here lets it do that with its own message.
+
+    This count and the service's own (pandas, in `_prepare_input_data`) are two
+    parsers, so a file they disagree about is billed on this one's answer. They
+    agree on well-formed CSV; the plausible divergences are exotic quoting and
+    trailing blank lines, and the difference is a row or two either way — bounded
+    by the upload byte cap, not by the plan. If a real disagreement turns up,
+    charge from the service's count instead and reconcile the delta.
+    """
+    try:
+        text = content.decode("utf-8", errors="replace")
+        return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
+    except Exception:
+        return 0
+
+
+@router.post(
+    "/jobs",
+    response_model=BatchJobResponse,
+    dependencies=[Depends(quota("predictions"))],
+)
 async def create_batch_job(
+    request: Request,
     file: UploadFile = File(..., description="CSV file with data to predict"),
     model_id: str = Form(..., description="Model ID"),
     output_format: str = Form(default="csv", description="Output format"),
@@ -129,6 +168,19 @@ async def create_batch_job(
     try:
         # Read file content
         content = await read_upload_capped(file)
+
+        # Charge the rows BEFORE the job is created. Creating it spawns processing
+        # immediately (`auto_start`), so a check afterwards would have to unwind a
+        # job that is already running — and an unconditional true-up is not a limit
+        # at all: MAX_BATCH_PREDICT_RECORDS is 1,000,000 against a FREE ceiling of
+        # 1,000, so one job could be accepted AND EXECUTED at 1000x the plan. That
+        # is a compute bill, not a bookkeeping error.
+        #
+        # The admission dependency already reserved 1, so only the remainder is
+        # charged here; a refusal leaves that 1 to the refund middleware.
+        rows = _count_csv_rows(content)
+        if rows > 1:
+            await reserve(request, current_user_id, "predictions", rows - 1)
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(

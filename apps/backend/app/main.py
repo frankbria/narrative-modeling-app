@@ -40,6 +40,7 @@ from app.middleware.api_version import APIVersionMiddleware
 from app.middleware.body_size_limit import BodySizeLimitMiddleware
 from app.middleware.error_handlers import RequestIDMiddleware, register_error_handlers
 from app.middleware.metrics import MetricsMiddleware, get_metrics
+from app.billing.enforcement import QuotaRefundMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
@@ -150,6 +151,9 @@ app.state.rate_limit_store = None
 # CORS middleware (added next) stays outermost and still decorates the 429 with
 # CORS headers so browsers can read it.
 app.add_middleware(RateLimitMiddleware)
+# Outside RateLimitMiddleware in registration order, so it wraps the routes and
+# sees the final status of anything that reserved quota (#368).
+app.add_middleware(QuotaRefundMiddleware)
 
 # ✅ Upload byte cap (#270). Added before CORS so it stays inner and CORS still
 # decorates the 413; rejects an oversized Content-Length before the multipart

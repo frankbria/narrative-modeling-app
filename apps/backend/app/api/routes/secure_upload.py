@@ -10,6 +10,7 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.user_data import UserData
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
@@ -27,7 +28,7 @@ upload_handler = ChunkedUploadHandler()
 rate_limiter = RateLimiter()
 
 
-@router.post("/secure")
+@router.post("/secure", dependencies=[Depends(quota("uploads"))])
 async def secure_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),

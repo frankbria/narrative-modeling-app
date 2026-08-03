@@ -24,6 +24,7 @@ from fastapi import (
 )
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.dataset import DatasetMetadata
 from app.schemas.dataset import (
     DatasetDeleteResponse,
@@ -134,7 +135,11 @@ async def list_datasets(
         )
 
 
-@router.post("/datasets/upload", response_model=DatasetUploadResponse)
+@router.post(
+    "/datasets/upload",
+    response_model=DatasetUploadResponse,
+    dependencies=[Depends(quota("uploads"))],
+)
 async def upload_dataset(
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id)
