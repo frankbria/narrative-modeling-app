@@ -29,15 +29,23 @@ fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAILED=1; }
 skip() { printf '  \033[33mSKIP\033[0m  %s\n' "$1"; }
 manual() { printf '  \033[33mMANUAL\033[0m %s\n' "$1"; }
 
+CHECKED_S3=0
+CHECKED_ATLAS=0
+
 echo "=== S3 ==="
 BUCKET="${AWS_BUCKET_NAME:-}"
 if [[ -z "$BUCKET" ]]; then
-  fail "AWS_BUCKET_NAME is not set — cannot verify the app bucket"
+  # SKIP, not FAIL — symmetric with the Atlas half below. A deployment may
+  # legitimately configure one and not the other, and the scheduled job (#299)
+  # would otherwise report a red month for a half it was never asked to check.
+  # "Nothing was checked at all" is still a failure; see the end of the file.
+  skip "AWS_BUCKET_NAME is not set — S3 not checked"
 elif ! command -v aws >/dev/null; then
   fail "aws CLI not found on PATH"
 elif ! aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
   fail "bucket '$BUCKET' not reachable (credentials or permissions)"
 else
+  CHECKED_S3=1
   echo "  bucket: $BUCKET"
 
   versioning="$(aws s3api get-bucket-versioning --bucket "$BUCKET" \
@@ -91,6 +99,7 @@ if [[ -z "${ATLAS_PUBLIC_KEY:-}" || -z "${ATLAS_PRIVATE_KEY:-}" \
   skip "Atlas API credentials not set — checked by hand per runbook section 2"
   echo "       (ATLAS_PUBLIC_KEY / ATLAS_PRIVATE_KEY / ATLAS_GROUP_ID / ATLAS_CLUSTER_NAME)"
 else
+  CHECKED_ATLAS=1
   API="https://cloud.mongodb.com/api/atlas/v2"
   HDR="Accept: application/vnd.atlas.2023-02-01+json"
 
@@ -133,6 +142,16 @@ CURLCFG
 fi
 
 echo
+if [[ $CHECKED_S3 -eq 0 && $CHECKED_ATLAS -eq 0 ]]; then
+  # The one thing worse than a red check is a green one that verified nothing.
+  # Skipping an unconfigured HALF is reasonable; skipping both means this ran and
+  # told you nothing while looking like a pass.
+  echo "Nothing was verified — neither S3 nor Atlas is configured." >&2
+  echo "Set AWS_BUCKET_NAME and/or the ATLAS_* variables (see the header)." >&2
+  exit 1
+fi
+
+echo "checked: S3=$( ((CHECKED_S3)) && echo yes || echo no ), Atlas=$( ((CHECKED_ATLAS)) && echo yes || echo no )"
 if [[ $FAILED -eq 0 ]]; then
   echo "Backup posture OK. Record the run in the drill log:"
   echo "  docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md section 4"

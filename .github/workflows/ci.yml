@@ -383,6 +383,21 @@ jobs:
       # tests against a stubbed `aws` — no AWS account needed.
       - name: ops script behaviour tests
         run: ./scripts/ops/test-configure-s3-backup.sh
+      # shellcheck's scripts/**/*.sh glob cannot see the bash inside workflow
+      # `run:` blocks, and that is where three subtle bugs hid in #434 (a lost
+      # summary under `bash -e`, a never-matching cron comparison). actionlint
+      # shellchecks embedded run: blocks and validates expression contexts.
+      - name: actionlint
+        run: |
+          # info-level shellcheck codes are ignored: the remaining ones are
+          # correct as written (single quotes that intentionally do not expand,
+          # unquoted expansions that cannot word-split). Everything at warning and
+          # above passes today, so this gate covers every workflow rather than a
+          # curated subset — same ratchet discipline as `--max-warnings`.
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
+            -color \
+            -ignore 'shellcheck reported issue in this script: SC(2016|2086|2129|2001):info'
 
   # ── MCP ────────────────────────────────────────────────────────────────────
   mcp-tests:
@@ -488,7 +503,7 @@ jobs:
             -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio server /data
           echo "Waiting for MinIO to become healthy..."
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
               echo "MinIO is ready"
               exit 0

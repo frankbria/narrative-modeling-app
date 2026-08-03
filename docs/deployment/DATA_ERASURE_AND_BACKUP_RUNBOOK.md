@@ -112,7 +112,14 @@ delete-object --version-id <marker>`); confirm the object is readable again.
 
 ## 4. Verifying the posture
 
-Before and after every drill, and quarterly regardless:
+**Automated (#299).** `.github/workflows/backup-verify.yml` runs the verifier on
+the 1st of each month and posts the result to the workflow run's summary, and
+reminds about the restore drill in January/April/July/October. It is secret-gated:
+until the cloud credentials are added it reports "not configured" and passes,
+deliberately, because a monthly red X on a repo that has not set this up yet is
+noise and noise gets workflows disabled.
+
+Manually, before and after every drill:
 
 ```bash
 AWS_BUCKET_NAME=<prod-bucket> ./scripts/ops/verify-backup-config.sh

@@ -1,0 +1,139 @@
+name: Backup Posture Verification
+
+# Closes the "schedule the drills quarterly" item of #299 (AC3 of #259).
+#
+# The runbook asks for a quarterly check, and a quarterly check that lives only in
+# a runbook is one nobody runs. This runs `verify-backup-config.sh` on a schedule
+# against the real cloud accounts, so the backup posture is monitored rather than
+# assumed.
+#
+# SECRET-GATED, like deploy.yml. Before the secrets exist this reports "not
+# configured" and passes: a monthly red X on a repo where backups are not set up
+# yet is noise, and noise gets workflows disabled. Once configured, a failure is
+# real and fails the run.
+#
+# Required secrets (all optional — S3 and Atlas are checked independently):
+#   AWS_ROLE_TO_ASSUME + AWS_REGION + AWS_BUCKET_NAME   → S3 checks
+#   ATLAS_PUBLIC_KEY + ATLAS_PRIVATE_KEY
+#     + ATLAS_GROUP_ID + ATLAS_CLUSTER_NAME             → Atlas checks
+
+on:
+  schedule:
+    # 1st of the month, 09:00 UTC. More often than the quarterly drill on purpose:
+    # verification is read-only and cheap, and catching a disabled backup policy
+    # within a month beats catching it within a quarter.
+    - cron: '0 9 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC for the AWS role; no long-lived keys in secrets
+
+jobs:
+  verify:
+    name: Verify backups are configured
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Secrets are read into a step's env and the decision exported as an output.
+      # The `secrets` context is not usable in an `if:` expression, which is why
+      # deploy.yml gates the same way — same pattern here.
+      - name: Check whether this is configured at all
+        id: gate
+        env:
+          AWS_ROLE: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          AWS_REGION_SECRET: ${{ secrets.AWS_REGION }}
+          ATLAS_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
+        run: |
+          # AWS counts as configured only with BOTH the role and the region.
+          # configure-aws-credentials hard-fails without a region, and that error
+          # reads like a broken workflow rather than a missing secret.
+          if [ -n "$AWS_ROLE" ] && [ -n "$AWS_REGION_SECRET" ]; then
+            echo "aws=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "aws=false" >> "$GITHUB_OUTPUT"
+            if [ -n "$AWS_ROLE" ]; then
+              echo "::warning::AWS_ROLE_TO_ASSUME is set but AWS_REGION is not — skipping the S3 checks."
+            fi
+          fi
+          if { [ -z "$AWS_ROLE" ] || [ -z "$AWS_REGION_SECRET" ]; } && [ -z "$ATLAS_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Backup verification is not configured — see #299. Set AWS_ROLE_TO_ASSUME / ATLAS_PUBLIC_KEY and friends."
+            {
+              echo "## Backup verification not configured"
+              echo
+              echo "No cloud credentials are set, so nothing was checked."
+              echo "This is expected until the #299 operator steps are done:"
+              echo
+              echo "1. Enable Atlas Cloud Backup + PITR + the snapshot policy"
+              echo "2. Run \`scripts/ops/configure-s3-backup.sh\` against the prod bucket"
+              echo "3. Add the secrets listed at the top of this workflow"
+              echo
+              echo "Until then this job passes without verifying anything — deliberately."
+              echo
+              echo "| half | configured |"
+              echo "|---|---|"
+              echo "| S3 | $( [ -n "$AWS_ROLE" ] && [ -n "$AWS_REGION_SECRET" ] && echo yes || echo no ) |"
+              echo "| Atlas | $( [ -n "$ATLAS_KEY" ] && echo yes || echo no ) |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.gate.outputs.aws == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify backup posture
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+          ATLAS_PUBLIC_KEY: ${{ secrets.ATLAS_PUBLIC_KEY }}
+          ATLAS_PRIVATE_KEY: ${{ secrets.ATLAS_PRIVATE_KEY }}
+          ATLAS_GROUP_ID: ${{ secrets.ATLAS_GROUP_ID }}
+          ATLAS_CLUSTER_NAME: ${{ secrets.ATLAS_CLUSTER_NAME }}
+        run: |
+          # `set +e`, deliberately: GitHub runs this under `bash -e`, so a FAILING
+          # verification — the case this job exists to report — would abort the
+          # step before the summary is written. The summary is the whole point.
+          set +e
+          set -o pipefail
+          ./scripts/ops/verify-backup-config.sh 2>&1 | tee /tmp/verify.txt
+          status=$?
+          {
+            echo "## Backup posture"
+            echo
+            echo '```'
+            cat /tmp/verify.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Remind about the quarterly restore drill
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          # Month-checked here rather than in an `if:`. Matching on
+          # github.event.schedule needs the exact cron string to appear in
+          # `on.schedule`; an earlier version compared against a quarterly cron
+          # that was never registered, so this could only ever fire on a manual
+          # dispatch.
+          month=$(date -u +%m)
+          case "$month" in
+            01|04|07|10) ;;
+            *) echo "Not a quarter-start month ($month); no drill reminder."; exit 0 ;;
+          esac
+          # Verification proves the config exists. Only a drill proves a restore
+          # actually works, and that part still needs a human.
+          {
+            echo
+            echo "### Quarterly restore drill due"
+            echo
+            echo "Config verification does not prove a restore works. Run both drills"
+            echo "from \`docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md\` and record"
+            echo "RTO/RPO in the drill log."
+          } >> "$GITHUB_STEP_SUMMARY"
