@@ -76,7 +76,7 @@ except Exception:
 ' "$S3_OUT")"
   else
     versioning="unknown"; mfa="unknown"
-    if grep -qi "AccessDenied\|not authorized" <<<"$S3_ERR"; then
+    if grep -Eqi "AccessDenied|not authorized" <<<"$S3_ERR"; then
       fail "cannot read versioning — AccessDenied (needs s3:GetBucketVersioning). State is UNKNOWN, not absent"
     else
       fail "cannot read versioning: $(tr -d '\n' <<<"$S3_ERR" | head -c 160). State is UNKNOWN, not absent"
@@ -129,14 +129,14 @@ else:
         fail "lifecycle response could not be parsed — state is UNKNOWN, not absent"
         ;;
     esac
-  elif grep -qi "NoSuchLifecycleConfiguration" <<<"$S3_ERR"; then
+  elif grep -Eqi "NoSuchLifecycleConfiguration" <<<"$S3_ERR"; then
     # INVERTED deliberately. This is the ONLY error that legitimately means "no
     # rules exist". Every other failure — throttling, ExpiredToken, wrong region,
     # AllAccessDisabled — is unknown. The previous version special-cased
     # AccessDenied and let everything else fall through to "no lifecycle at all",
     # which narrowed this bug rather than removing it.
     fail "no lifecycle configuration at all (run configure-s3-backup.sh)"
-  elif grep -qi "AccessDenied\|not authorized" <<<"$S3_ERR"; then
+  elif grep -Eqi "AccessDenied|not authorized" <<<"$S3_ERR"; then
     fail "cannot read lifecycle — AccessDenied (needs s3:GetLifecycleConfiguration). Rules are UNKNOWN, not absent"
   else
     fail "cannot read lifecycle: $(tr -d '\n' <<<"$S3_ERR" | head -c 160). Rules are UNKNOWN, not absent"

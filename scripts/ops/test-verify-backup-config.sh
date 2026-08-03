@@ -25,33 +25,47 @@ FAILED=0
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAILED=1; }
 
-# $1 = versioning behaviour, $2 = lifecycle behaviour (see the case blocks below)
+# $1 = versioning behaviour, $2 = lifecycle behaviour.
+#
+# The chosen behaviour is baked into the generated stub rather than branched on at
+# stub runtime. An earlier version used an unquoted heredoc, which expanded the
+# modes at generation time anyway — producing `case "denied" in` against dead
+# branches while reading as though the stub inspected a variable. Same result,
+# but the code lied about how it worked.
+emit_versioning() {
+  case "$1" in
+    enabled)  echo "echo '{\"Status\":\"Enabled\",\"MFADelete\":\"Disabled\"}'" ;;
+    absent)   echo "echo '{}'" ;;
+    denied)   echo "echo 'An error occurred (AccessDenied) ... not authorized to perform: s3:GetBucketVersioning' >&2; exit 254" ;;
+    throttle) echo "echo 'An error occurred (SlowDown) when calling GetBucketVersioning' >&2; exit 254" ;;
+    garbage)  echo "echo 'not json at all'" ;;
+    noisy)    echo "echo 'warning: a benign CLI notice' >&2; echo '{\"Status\":\"Enabled\",\"MFADelete\":\"Disabled\"}'" ;;
+  esac
+}
+
+emit_lifecycle() {
+  case "$1" in
+    ok)      echo "echo '{\"Rules\":[{\"ID\":\"expire-noncurrent\",\"Status\":\"Enabled\",\"AbortIncompleteMultipartUpload\":{\"DaysAfterInitiation\":7}}]}'" ;;
+    norule)  echo "echo '{\"Rules\":[{\"ID\":\"something-else\",\"Status\":\"Enabled\"}]}'" ;;
+    none)    echo "echo 'An error occurred (NoSuchLifecycleConfiguration) ...' >&2; exit 254" ;;
+    denied)  echo "echo 'An error occurred (AccessDenied) ... not authorized to perform: s3:GetLifecycleConfiguration' >&2; exit 254" ;;
+    expired) echo "echo 'An error occurred (ExpiredToken) when calling GetBucketLifecycleConfiguration' >&2; exit 254" ;;
+  esac
+}
+
 make_stub() {
-  local vmode="$1" lmode="$2" dir
+  local dir
   dir="$(mktemp -d)"
-  cat > "$dir/aws" <<STUB
-#!/usr/bin/env bash
-case "\$*" in
-  *"head-bucket"*) exit 0 ;;
-  *"get-bucket-versioning"*)
-    case "$vmode" in
-      enabled)  echo '{"Status":"Enabled","MFADelete":"Disabled"}' ;;
-      absent)   echo '{}' ;;
-      denied)   echo "An error occurred (AccessDenied) ... not authorized to perform: s3:GetBucketVersioning" >&2; exit 254 ;;
-      throttle) echo "An error occurred (SlowDown) when calling GetBucketVersioning" >&2; exit 254 ;;
-      garbage)  echo 'not json at all' ;;
-      noisy)    echo "warning: a benign CLI notice" >&2; echo '{"Status":"Enabled","MFADelete":"Disabled"}' ;;
-    esac ;;
-  *"get-bucket-lifecycle-configuration"*)
-    case "$lmode" in
-      ok)       echo '{"Rules":[{"ID":"expire-noncurrent","Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}' ;;
-      norule)   echo '{"Rules":[{"ID":"something-else","Status":"Enabled"}]}' ;;
-      none)     echo "An error occurred (NoSuchLifecycleConfiguration) ..." >&2; exit 254 ;;
-      denied)   echo "An error occurred (AccessDenied) ... not authorized to perform: s3:GetLifecycleConfiguration" >&2; exit 254 ;;
-      expired)  echo "An error occurred (ExpiredToken) when calling GetBucketLifecycleConfiguration" >&2; exit 254 ;;
-    esac ;;
-esac
-STUB
+  {
+    echo '#!/usr/bin/env bash'
+    echo 'case "$*" in'
+    echo '  *"head-bucket"*) exit 0 ;;'
+    echo '  *"get-bucket-versioning"*)'
+    echo "    $(emit_versioning "$1") ;;"
+    echo '  *"get-bucket-lifecycle-configuration"*)'
+    echo "    $(emit_lifecycle "$2") ;;"
+    echo 'esac'
+  } > "$dir/aws"
   chmod +x "$dir/aws"
   echo "$dir"
 }
