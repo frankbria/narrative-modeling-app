@@ -226,12 +226,19 @@ async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> boo
         return False
 
 
-async def refund(user_id: str, metric: str, amount: int = 1) -> None:
+async def refund(
+    user_id: str, metric: str, amount: int = 1, period_key: str | None = None
+) -> None:
     """Return reserved units after the work they were reserved for failed.
 
     Enforcement consumes at admission, so a request that then 4xxs would otherwise
     burn quota it never used — a free tenant losing their 20 uploads to malformed
     files. Refunding centrally beats each route remembering to.
+
+    `period_key` is the period the unit was TAKEN from, and callers should pass it.
+    Recomputing it here would misfire on a request that reserves just before a UTC
+    month rollover and fails just after: the refund lands on the new month, which
+    was never charged, and last month's unit stays burned.
 
     Clamped at zero via a `units >= amount` filter: a refund with nothing reserved
     must not mint quota, which would turn every failed request into free credit.
@@ -247,7 +254,7 @@ async def refund(user_id: str, metric: str, amount: int = 1) -> None:
         await UsageRecord.get_motor_collection().update_one(
             {
                 "user_id": user_id,
-                "period_key": period_key_for(),
+                "period_key": period_key or period_key_for(),
                 "metric": metric,
                 "units": {"$gte": amount},
             },

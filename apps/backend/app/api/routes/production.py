@@ -20,7 +20,7 @@ from app.api.routes.model_training import (
     required_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing.enforcement import reserve
+from app.billing.enforcement import reserve_records
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
@@ -314,7 +314,7 @@ async def _quota_predictions(
     comes off the key. `verify_api_key` is cached per request by FastAPI, so
     declaring it here as well as on the route does not re-verify.
     """
-    await reserve(request, api_key.user_id, "predictions")
+    await reserve_records(request, api_key.user_id, "predictions")
 
 
 @router.post(

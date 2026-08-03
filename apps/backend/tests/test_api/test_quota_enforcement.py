@@ -159,6 +159,42 @@ class TestPredictionQuota:
         assert response.status_code == 402
 
 
+class TestChargedByRecord:
+    async def test_a_batch_that_exactly_fits_is_allowed(
+        self, async_authorized_client, setup_database
+    ):
+        """The permissive half of the boundary.
+
+        Asserted as a pair with the test below: four records fit in four remaining
+        but not in three. Either test alone is satisfiable by charging per request —
+        together they pin the charge to the record count.
+        """
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        await _fill(TEST_USER, "predictions", limit - 4)
+
+        response = await async_authorized_client.post(
+            "/api/v1/ml/some-model/predict",
+            json={"data": [{"x": i} for i in range(4)]},
+        )
+
+        assert response.status_code != 402
+
+    async def test_a_batch_beyond_the_remaining_quota_is_refused_whole(
+        self, async_authorized_client, setup_database
+    ):
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        await _fill(TEST_USER, "predictions", limit - 3)
+
+        response = await async_authorized_client.post(
+            "/api/v1/ml/some-model/predict",
+            json={"data": [{"x": i} for i in range(5)]},
+        )
+
+        assert response.status_code == 402
+        # Not partially served — still exactly what it was.
+        assert await metering.usage_for(TEST_USER, "predictions") == limit - 3
+
+
 class TestNonMeteredRoutes:
     async def test_reads_are_not_metered(
         self, async_authorized_client, setup_database

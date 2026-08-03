@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import metering
 from app.billing.enforcement import quota
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
@@ -161,6 +162,20 @@ async def create_batch_job(
             # Store input file size
             job.input_size_bytes = len(content)
             await job.save()
+
+            # True up the quota. The dependency reserved ONE unit at admission —
+            # all it can do, since the row count needs the CSV parsed — so a
+            # 100k-row job would otherwise cost the same as a 1-row one and become
+            # the cheap way around the predictions limit.
+            #
+            # ponytail: a true-up, not a second gate. It can overshoot the limit by
+            # one job's rows, because refusing here means unwinding a job that is
+            # already created and the caller has already waited for the upload.
+            # Admission still blocks a tenant who is out of quota. Tighten to a
+            # pre-parse reservation only if that overshoot shows up in real usage.
+            extra = max(0, job.progress.total_records - 1)
+            if extra:
+                await metering.record(current_user_id, "predictions", extra)
 
         finally:
             # Clean up temp file

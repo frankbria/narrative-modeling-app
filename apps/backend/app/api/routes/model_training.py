@@ -1796,7 +1796,7 @@ async def get_model_features(
 @router.post(
     "/{model_id}/predict",
     response_model=PredictResponse,
-    dependencies=[Depends(quota("predictions"))],
+    dependencies=[Depends(quota("predictions", per_record=True))],
 )
 async def predict(
     model_id: str,

@@ -54,17 +54,31 @@ def _period_reset() -> str:
     return datetime(year, month, 1, tzinfo=UTC).isoformat()
 
 
-async def reserve(request: Request, user_id: str, metric: str) -> None:
-    """Reserve one unit of `metric` for this tenant, or raise 402.
+async def reserve(
+    request: Request, user_id: str, metric: str, amount: int = 1
+) -> None:
+    """Reserve `amount` units of `metric` for this tenant, or raise 402.
 
-    Records the reservation on the request so `QuotaRefundMiddleware` can undo it
-    if the request does not succeed.
+    Records the reservation — including the period it was taken from — on the
+    request, so `QuotaRefundMiddleware` can undo exactly it if the request fails.
     """
     tier = await metering.effective_tier_for(user_id)
     limit = limits_for(tier).limit_for(metric)
 
-    if await metering.consume(user_id, metric, limit):
-        setattr(request.state, _RESERVATION, (user_id, metric, 1))
+    if await metering.consume(user_id, metric, limit, amount):
+        setattr(
+            request.state,
+            _RESERVATION,
+            {
+                "user_id": user_id,
+                "metric": metric,
+                "amount": amount,
+                # Captured now, not recomputed at refund time: a request that
+                # reserves just before a UTC month rollover and fails just after
+                # would otherwise refund a month it never charged.
+                "period_key": metering.period_key_for(),
+            },
+        )
         return
 
     used = await metering.usage_for(user_id, metric)
@@ -95,13 +109,84 @@ async def reserve(request: Request, user_id: str, metric: str) -> None:
     )
 
 
-def quota(metric: str):
-    """A dependency that enforces `metric` for the authenticated caller."""
+async def record_count(request: Request) -> int:
+    """How many records a JSON prediction request is asking for.
+
+    Reads the cached body rather than the parsed model, because a dependency runs
+    before the route's own body binding. Starlette caches the bytes, so the route
+    still parses the same body afterwards — this does not consume the stream.
+
+    Falls back to 1 on anything unreadable. A malformed body is the *route's* error
+    to report as a 422, and 500-ing here would replace a clear message with an
+    opaque one. The refund middleware gives the unit back when that 422 lands.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return 1
+
+    data = body.get("data") if isinstance(body, dict) else None
+    if isinstance(data, list) and data:
+        return len(data)
+    return 1
+
+
+async def reserve_records(
+    request: Request,
+    user_id: str,
+    metric: str,
+    limit: int | None = None,
+    body_override: int | None = None,
+) -> None:
+    """Reserve one unit per record in the request body.
+
+    A `predictions` limit of 1000 has to mean 1000 predictions. Charging per
+    *request* lets a tenant send 1000 requests of 1000 records and receive a
+    million — at which point the number enforced has nothing to do with the metric
+    it is named after.
+
+    All-or-nothing: a batch that does not fit is refused whole rather than
+    partially served, because half a prediction request is not something the caller
+    can use. `limit` is for tests; production reads it from the tenant's tier.
+    """
+    amount = body_override if body_override is not None else await record_count(request)
+
+    if limit is not None:
+        # Test seam only — production takes the tier's limit inside `reserve`.
+        if not await metering.consume(user_id, metric, limit, amount):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={"error": "quota_exceeded", "metric": metric},
+            )
+        setattr(
+            request.state,
+            _RESERVATION,
+            {
+                "user_id": user_id,
+                "metric": metric,
+                "amount": amount,
+                "period_key": metering.period_key_for(),
+            },
+        )
+        return
+
+    await reserve(request, user_id, metric, amount)
+
+
+def quota(metric: str, per_record: bool = False):
+    """A dependency that enforces `metric` for the authenticated caller.
+
+    `per_record=True` charges one unit per record in the request body — for the
+    JSON prediction endpoints, where one request is not one prediction.
+    """
 
     async def dependency(
         request: Request, current_user_id: str = Depends(get_current_user_id)
     ) -> None:
-        await reserve(request, current_user_id, metric)
+        if per_record:
+            await reserve_records(request, current_user_id, metric)
+        else:
+            await reserve(request, current_user_id, metric)
 
     return dependency
 
@@ -135,11 +220,17 @@ class QuotaRefundMiddleware(BaseHTTPMiddleware):
         reservation = getattr(request.state, _RESERVATION, None)
         if not reservation:
             return
-        user_id, metric, amount = reservation
         # Cleared first: an exception path can reach this twice otherwise, and a
         # double refund is quota minted from nothing.
         setattr(request.state, _RESERVATION, None)
-        await metering.refund(user_id, metric, amount)
+        await metering.refund(
+            reservation["user_id"],
+            reservation["metric"],
+            # The reserved amount, not 1 — a failed 500-record batch that refunds a
+            # single unit leaves 499 burned.
+            reservation["amount"],
+            period_key=reservation["period_key"],
+        )
 
 
 __all__ = ["quota", "reserve", "QuotaRefundMiddleware"]
