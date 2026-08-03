@@ -115,9 +115,32 @@ class TestRefundTargetsTheReservedPeriod:
 
         await enforcement.reserve(request, "u-carry", "uploads")
 
-        reservation = getattr(request.state, enforcement._RESERVATION)
-        assert reservation["period_key"] == metering.period_key_for()
-        assert reservation["amount"] == 1
+        reservations = getattr(request.state, enforcement._RESERVATION)
+        assert len(reservations) == 1
+        assert reservations[0]["period_key"] == metering.period_key_for()
+        assert reservations[0]["amount"] == 1
+
+    async def test_two_metrics_on_one_request_are_both_refunded(
+        self, setup_database
+    ):
+        """No route composes two metrics today. One will.
+
+        A single reservation slot loses whichever charge is written second — and
+        accumulating into it only rescues the case where both are the *same*
+        metric. Either way the loss is silent, and the symptom is a slow leak of
+        quota nobody can trace. A list has no case to get wrong.
+        """
+        request = _request()
+        await enforcement.reserve(request, "u-two", "uploads")
+        await enforcement.reserve(request, "u-two", "predictions", 4)
+
+        assert await _units("u-two", "uploads") == 1
+        assert await _units("u-two", "predictions") == 4
+
+        await enforcement.QuotaRefundMiddleware._refund(request)
+
+        assert await _units("u-two", "uploads") == 0
+        assert await _units("u-two", "predictions") == 0
 
     async def test_the_middleware_refunds_what_was_reserved(self, setup_database):
         request = _request()

@@ -115,6 +115,13 @@ def _count_csv_rows(content: bytes) -> int:
     contain newlines and counting those as rows overcharges the caller. Decoded
     leniently: a file this cannot read is one the job will reject anyway, and
     returning 0 here lets it do that with its own message.
+
+    This count and the service's own (pandas, in `_prepare_input_data`) are two
+    parsers, so a file they disagree about is billed on this one's answer. They
+    agree on well-formed CSV; the plausible divergences are exotic quoting and
+    trailing blank lines, and the difference is a row or two either way — bounded
+    by the upload byte cap, not by the plan. If a real disagreement turns up,
+    charge from the service's count instead and reconcile the delta.
     """
     try:
         text = content.decode("utf-8", errors="replace")
@@ -201,7 +208,6 @@ async def create_batch_job(
             # Store input file size
             job.input_size_bytes = len(content)
             await job.save()
-
 
         finally:
             # Clean up temp file

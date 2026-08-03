@@ -66,17 +66,15 @@ async def reserve(
     limit = limits_for(tier).limit_for(metric)
 
     if await metering.consume(user_id, metric, limit, amount):
-        existing = getattr(request.state, _RESERVATION, None)
-        if existing and existing["metric"] == metric:
-            # ACCUMULATE, do not replace. A batch job reserves twice — once at
-            # admission, then again for its rows once the CSV is counted — and
-            # overwriting means the refund gives back only the second, silently
-            # burning the first on every failed job.
-            existing["amount"] += amount
-            return
-        setattr(
-            request.state,
-            _RESERVATION,
+        # A LIST, not one entry. A batch job reserves twice — once at admission,
+        # then again for its rows once the CSV is counted — and a single slot means
+        # the second write loses the first, silently burning it on every failed
+        # job. An earlier version accumulated instead, which fixed that case but
+        # only when both charges were the same metric; a future route charging two
+        # different metrics would have hit the same silent loss. A list has no such
+        # case to get wrong.
+        reservations = getattr(request.state, _RESERVATION, None) or []
+        reservations.append(
             {
                 "user_id": user_id,
                 "metric": metric,
@@ -85,8 +83,9 @@ async def reserve(
                 # reserves just before a UTC month rollover and fails just after
                 # would otherwise refund a month it never charged.
                 "period_key": metering.period_key_for(),
-            },
+            }
         )
+        setattr(request.state, _RESERVATION, reservations)
         return
 
     used = await metering.usage_for(user_id, metric)
@@ -166,16 +165,16 @@ async def reserve_records(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail={"error": "quota_exceeded", "metric": metric},
             )
-        setattr(
-            request.state,
-            _RESERVATION,
+        reservations = getattr(request.state, _RESERVATION, None) or []
+        reservations.append(
             {
                 "user_id": user_id,
                 "metric": metric,
                 "amount": amount,
                 "period_key": metering.period_key_for(),
-            },
+            }
         )
+        setattr(request.state, _RESERVATION, reservations)
         return
 
     await reserve(request, user_id, metric, amount)
@@ -225,20 +224,21 @@ class QuotaRefundMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     async def _refund(request: Request) -> None:
-        reservation = getattr(request.state, _RESERVATION, None)
-        if not reservation:
+        reservations = getattr(request.state, _RESERVATION, None)
+        if not reservations:
             return
         # Cleared first: an exception path can reach this twice otherwise, and a
         # double refund is quota minted from nothing.
         setattr(request.state, _RESERVATION, None)
-        await metering.refund(
-            reservation["user_id"],
-            reservation["metric"],
-            # The reserved amount, not 1 — a failed 500-record batch that refunds a
-            # single unit leaves 499 burned.
-            reservation["amount"],
-            period_key=reservation["period_key"],
-        )
+        for reservation in reservations:
+            await metering.refund(
+                reservation["user_id"],
+                reservation["metric"],
+                # The reserved amount, not 1 — a failed 500-record batch that
+                # refunds a single unit leaves 499 burned.
+                reservation["amount"],
+                period_key=reservation["period_key"],
+            )
 
 
 __all__ = ["quota", "reserve", "QuotaRefundMiddleware"]

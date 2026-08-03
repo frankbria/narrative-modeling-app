@@ -14,6 +14,7 @@ import pytest
 
 from app.billing import metering
 from app.billing.plans import PLAN_LIMITS
+from app.models.api_key import APIKey
 from app.models.batch_job import BatchJob
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 from app.models.usage import UsageRecord
@@ -289,6 +290,57 @@ class TestBatchJobRowCount:
         )
 
         assert await metering.usage_for(TEST_USER, "predictions") == 0
+
+
+class TestProductionApiKeySurface:
+    """The X-API-Key predict surface, which resolves its tenant differently.
+
+    A distinct code path — the tenant comes off the key, not a session — and the
+    one route in this PR that the other tests do not reach. Exactly the #267
+    footgun this file exists to avoid: a dependency can be wired and never hit.
+    """
+
+    RAW_KEY = "sk_live_quota_enforcement_test_key_01"
+
+    async def _key(self) -> None:
+        await APIKey(
+            key_id="qk1",
+            key_hash=APIKey.hash_key(self.RAW_KEY),
+            name="quota-test",
+            user_id=TEST_USER,
+        ).insert()
+
+    async def test_a_capped_key_owner_is_refused(
+        self, async_authorized_client, setup_database
+    ):
+        await self._key()
+        await _fill(TEST_USER, "predictions", PLAN_LIMITS[PlanTier.FREE].predictions)
+
+        response = await async_authorized_client.post(
+            "/api/v1/production/v1/models/m1/predict",
+            json={"data": [{"x": 1}]},
+            headers={"X-API-Key": self.RAW_KEY},
+        )
+
+        assert response.status_code == 402
+        assert response.json()["detail"]["metric"] == "predictions"
+
+    async def test_the_production_surface_also_charges_per_record(
+        self, async_authorized_client, setup_database
+    ):
+        await self._key()
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        await _fill(TEST_USER, "predictions", limit - 3)
+
+        response = await async_authorized_client.post(
+            "/api/v1/production/v1/models/m1/predict",
+            json={"data": [{"x": i} for i in range(4)]},
+            headers={"X-API-Key": self.RAW_KEY},
+        )
+
+        # Four records do not fit in three. Charging per request would let this
+        # through, and this is the highest-volume predict surface there is.
+        assert response.status_code == 402
 
 
 class TestNonMeteredRoutes:
