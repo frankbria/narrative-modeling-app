@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 from beanie import PydanticObjectId
 from beanie.odm.operators.update.general import Inc, Set
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 # Reuse the internal predict route's record cap + required-feature resolver so
@@ -20,6 +20,7 @@ from app.api.routes.model_training import (
     required_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import reserve
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
@@ -304,7 +305,23 @@ async def revoke_api_key(
     return {"message": "API key revoked successfully"}
 
 
-@router.post("/v1/models/{model_id}/predict", response_model=ProductionPredictResponse)
+async def _quota_predictions(
+    request: Request, api_key: APIKey = Depends(verify_api_key)
+) -> None:
+    """Meter a production prediction against the KEY OWNER's plan.
+
+    The caller here is a machine holding an API key, not a session, so the tenant
+    comes off the key. `verify_api_key` is cached per request by FastAPI, so
+    declaring it here as well as on the route does not re-verify.
+    """
+    await reserve(request, api_key.user_id, "predictions")
+
+
+@router.post(
+    "/v1/models/{model_id}/predict",
+    response_model=ProductionPredictResponse,
+    dependencies=[Depends(_quota_predictions)],
+)
 async def production_predict(
     model_id: str,
     request: ProductionPredictRequest,

@@ -28,6 +28,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.config import settings
 from app.models.batch_job import JobStatus
 from app.models.ml_model import MLModel
@@ -285,7 +286,11 @@ class CancelTrainingResponse(BaseModel):
     message: str
 
 
-@router.post("/train", response_model=TrainModelResponse)
+@router.post(
+    "/train",
+    response_model=TrainModelResponse,
+    dependencies=[Depends(quota("training_runs"))],
+)
 async def train_model(
     request: TrainModelRequest,
     background_tasks: BackgroundTasks,
@@ -1788,7 +1793,11 @@ async def get_model_features(
     )
 
 
-@router.post("/{model_id}/predict", response_model=PredictResponse)
+@router.post(
+    "/{model_id}/predict",
+    response_model=PredictResponse,
+    dependencies=[Depends(quota("predictions"))],
+)
 async def predict(
     model_id: str,
     request: PredictRequest,

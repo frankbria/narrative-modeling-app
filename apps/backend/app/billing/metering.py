@@ -8,11 +8,12 @@ Two properties matter more than anything else in this module:
   concurrent predictions must count as two.
 * **`remaining()` is NOT an atomic check-and-consume.** It composes two independent
   reads, so concurrent requests can all see quota available before any of them
-  calls `record()` — a bounded overshoot past the limit under load. Fine for
-  display, and acceptable for a soft billing limit, but #368 must decide that
-  explicitly rather than inherit an assumption that this gives a hard guarantee.
-  Closing the window would need a conditional `$inc` that both checks and consumes
-  in one operation, which is a different primitive from the one here.
+  calls `record()`. It is a DISPLAY primitive — the billing page's usage bars —
+  and enforcement must not be built on it.
+
+  #368 decided this rather than inheriting it: `consume()` below closes the window
+  with a conditional `$inc` that checks and consumes in one operation, so the
+  limits are hard rather than a bounded overshoot.
 * **Recording never breaks the request on a storage failure.** A tenant's
   prediction succeeding and then 500-ing because a counter could not be written is
   worse than a slightly under-counted period, so `record()` swallows storage errors
@@ -115,6 +116,110 @@ async def record(user_id: str, metric: str, amount: int = 1) -> None:
     except Exception:
         logger.exception(
             "failed to record usage", extra={"user_id": user_id, "metric": metric}
+        )
+
+
+async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> bool:
+    """Reserve `amount` if it fits under `limit`. True when reserved.
+
+    The check and the consume are ONE operation, which is what `remaining()` +
+    `record()` cannot be. The filter carries the condition (`units <= limit -
+    amount`) and the update carries the consume, so there is no window between
+    them for a concurrent caller to slip through.
+
+    The insert case rides on the unique index. With `upsert=True`, a tenant with
+    no record yet gets one created. A tenant whose record is already at the limit
+    fails the filter, so the upsert tries to *insert* instead — and collides with
+    the unique `(user_id, period_key, metric)` index. That `DuplicateKeyError` is
+    the denial, and it is why this works without a preceding read.
+
+    Fails CLOSED. Unlike `record()`, a storage error here denies rather than
+    swallowing: this is the enforcement path, and an outage that hands out
+    unlimited quota is the failure mode the whole module is built to avoid.
+    """
+    if metric not in METERED_METRICS:
+        raise KeyError(f"unknown metered metric: {metric}")
+
+    if limit == UNLIMITED:
+        # Nothing to check, but still counted — usage reporting and any future
+        # overage pricing both need the number.
+        await record(user_id, metric, amount)
+        return True
+
+    if amount <= 0:
+        return True
+
+    if amount > limit:
+        # Must be caught BEFORE the query. `limit - amount` goes negative here, no
+        # existing record can satisfy it, and the upsert would take the insert path
+        # and create a record above a limit it never checked. `limit == 0` is the
+        # same bug at amount=1.
+        return False
+
+    now = datetime.now(UTC)
+    selector = {
+        "user_id": user_id,
+        "period_key": period_key_for(now),
+        "metric": metric,
+        "units": {"$lte": limit - amount},
+    }
+    update = {
+        "$inc": {"units": amount},
+        "$set": {"updated_at": now},
+        "$setOnInsert": {"created_at": now},
+    }
+
+    try:
+        await UsageRecord.get_motor_collection().update_one(
+            selector, update, upsert=True
+        )
+        return True
+    except DuplicateKeyError:
+        # A record exists and is already at the limit. Ordinary refusal, not an
+        # error — logged at debug rather than warning so a tenant sitting on their
+        # cap does not fill the log.
+        logger.debug(
+            "quota exhausted", extra={"user_id": user_id, "metric": metric}
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "failed to reserve quota; denying",
+            extra={"user_id": user_id, "metric": metric},
+        )
+        return False
+
+
+async def refund(user_id: str, metric: str, amount: int = 1) -> None:
+    """Return reserved units after the work they were reserved for failed.
+
+    Enforcement consumes at admission, so a request that then 4xxs would otherwise
+    burn quota it never used — a free tenant losing their 20 uploads to malformed
+    files. Refunding centrally beats each route remembering to.
+
+    Clamped at zero via a `units >= amount` filter: a refund with nothing reserved
+    must not mint quota, which would turn every failed request into free credit.
+    Swallows storage errors for the same reason `record()` does — a failed refund
+    must not turn a 4xx into a 500.
+    """
+    if metric not in METERED_METRICS:
+        raise KeyError(f"unknown metered metric: {metric}")
+    if amount <= 0:
+        return
+
+    try:
+        await UsageRecord.get_motor_collection().update_one(
+            {
+                "user_id": user_id,
+                "period_key": period_key_for(),
+                "metric": metric,
+                "units": {"$gte": amount},
+            },
+            {"$inc": {"units": -amount}, "$set": {"updated_at": datetime.now(UTC)}},
+        )
+    except Exception:
+        logger.exception(
+            "failed to refund quota", extra={"user_id": user_id, "metric": metric}
         )
 
 

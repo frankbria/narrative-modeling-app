@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.batch_job import JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
 from app.utils.upload_limits import read_upload_capped
@@ -96,7 +97,11 @@ def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 # API Routes
-@router.post("/jobs", response_model=BatchJobResponse)
+@router.post(
+    "/jobs",
+    response_model=BatchJobResponse,
+    dependencies=[Depends(quota("predictions"))],
+)
 async def create_batch_job(
     file: UploadFile = File(..., description="CSV file with data to predict"),
     model_id: str = Form(..., description="Model ID"),

@@ -40,9 +40,15 @@ class TestCleanupEndpointAuth:
 
 
 class TestSecureUploadAPI:
-    """Test cases for secure upload endpoints"""
+    """Test cases for secure upload endpoints
+
+    `setup_database` is required, not incidental: the upload route is quota-metered
+    (#368) and the dependency reads the caller's subscription, so class-level Beanie
+    field access (`Subscription.user_id`) raises AttributeError without an
+    initialised Beanie. `mock_async_client` does not initialise one.
+    """
     
-    async def test_secure_upload_no_pii(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
+    async def test_secure_upload_no_pii(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
         """Test secure upload with clean data"""
         # Create test CSV data without PII
         csv_data = "product_id,price,category\n1001,19.99,electronics\n1002,29.99,books"
@@ -61,7 +67,7 @@ class TestSecureUploadAPI:
         assert data["pii_report"]["has_pii"] is False
         assert "file_id" in data
     
-    async def test_secure_upload_with_pii(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
+    async def test_secure_upload_with_pii(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
         """Test secure upload with PII data"""
         # Create test CSV data with PII
         csv_data = "name,email,phone\nJohn Doe,john@example.com,555-1234"
@@ -80,7 +86,7 @@ class TestSecureUploadAPI:
         assert data["pii_report"]["has_pii"] is True
         assert "file_id" in data
     
-    async def test_secure_upload_invalid_file(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
+    async def test_secure_upload_invalid_file(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
         """Test secure upload with invalid file format"""
         # Create non-CSV data
         text_data = "This is not a CSV file"
