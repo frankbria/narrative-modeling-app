@@ -104,9 +104,20 @@ Automated equivalent: `tests/test_integration/test_erasure_cascade.py`.
    than the legal retention window.
 4. **MFA-delete** on the production bucket for tamper resistance.
 
-**S3 restore drill (quarterly):** delete a throwaway object, confirm the
-delete-marker, then restore by deleting the delete-marker (`aws s3api
-delete-object --version-id <marker>`); confirm the object is readable again.
+**S3 restore drill (quarterly):** scripted — `./scripts/ops/drill-s3-restore.sh`.
+It creates its own throwaway bucket (never the app bucket), enables versioning,
+writes a canary, deletes it, asserts a delete-marker exists, restores by removing
+the marker, and asserts the bytes come back identical. Tears the bucket down even
+on failure.
+
+Add `--endpoint http://localhost:4566` to validate the *procedure* against
+LocalStack at no cost or risk; without it, it is a real drill against real S3.
+
+> **`--version-id=<marker>`, with the equals sign.** Version IDs are base64-ish
+> and can begin with `-`, at which point `--version-id <marker>` is parsed as
+> another flag and the restore dies with "expected one argument". This runbook
+> said the spaced form until the scripted drill hit it (#299) — exactly the kind
+> of step you do not want to debug mid-incident.
 
 ---
 
@@ -136,7 +147,9 @@ Atlas without API credentials instead of quietly counting them as passes.
 
 | Date | Drill | RTO | RPO | Operator | Notes |
 |---|---|---|---|---|---|
-| _pending first run_ | | | | | |
+| 2026-08-03 | S3 restore — **procedure validation** (LocalStack, not production) | n/a | n/a | automated | `drill-s3-restore.sh` end-to-end green. Found and fixed a real defect in the documented step: `--version-id <marker>` fails when the ID starts with `-`. **Not a production drill** — the real one still needs to run against the live bucket. |
+| _pending_ | S3 restore — production | | | | |
+| _pending_ | Atlas restore — production | | | | |
 
 ---
 
