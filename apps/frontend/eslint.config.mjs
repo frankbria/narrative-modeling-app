@@ -34,6 +34,9 @@ const eslintConfig = defineConfig([
       "**/__tests__/**",
       "e2e/**",
       "jest.setup.*",
+      // Developer CLI checks. Printing IS the output — check:adapter (#344) is a
+      // pass/fail report a human and CI both read off stdout.
+      "scripts/**",
     ],
     rules: {
       "no-console": "off",

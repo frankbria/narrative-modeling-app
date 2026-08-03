@@ -19,7 +19,8 @@
     "test:e2e:all": "./test-e2e.sh --project=chromium-full --project=firefox-full --project=webkit-full",
     "test:e2e:ui": "./test-e2e.sh --ui",
     "test:e2e:debug": "./test-e2e.sh --debug",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "check:adapter": "node scripts/check-auth-adapter.mjs"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.3",
@@ -49,7 +50,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.27.0",
-    "mongodb": "6.20.0",
+    "mongodb": "^7.5.0",
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",
     "next-themes": "^0.4.6",
@@ -96,6 +97,7 @@
     "next": {
       "postcss": "^8.5.15"
     },
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "mongodb": "$mongodb"
   }
 }

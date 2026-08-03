@@ -294,6 +294,44 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  frontend-adapter-compat:
+    name: Frontend Adapter Compatibility
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    # Its OWN job, deliberately. We run mongodb 7 against an adapter whose peer
+    # range says ^6, forced with an `overrides` entry (#344) — that silences npm's
+    # warning, so this replaces it by exercising the adapter's real methods against
+    # a real mongod. It needs a service container, and folding it into
+    # frontend-unit made 1393 tests that never touched a database newly dependent
+    # on Docker Hub being up. It isn't; that failure is what prompted this split.
+    #
+    # Not a jest test: the adapter is ESM-only and next/jest's transformIgnore-
+    # Patterns covers all of node_modules, so our config cannot reach it.
+    services:
+      mongodb:
+        # Digest-pinned to the same image as the backend jobs (#176).
+        image: mongo:7.0@sha256:8ecb514b00bdcc0bde67ef4e6c330385377a9dc68e24ee94e28c07c891647348
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+      - name: Check @auth/mongodb-adapter against the installed driver
+        working-directory: apps/frontend
+        run: npm run check:adapter
+
   frontend-docker-build:
     name: Frontend Docker Build
     # Guards the deployed artifact (issue #277): CI otherwise never builds the
@@ -569,6 +607,7 @@ jobs:
       - frontend-lint
       - frontend-typecheck-build
       - frontend-unit
+      - frontend-adapter-compat
       - frontend-docker-build
       - mcp-tests
       - shell-lint
