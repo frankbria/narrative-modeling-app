@@ -15,6 +15,15 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // eslint-config-next sets `settings.react.version = "detect"`, and detection
+    // is the ONLY path that reaches eslint-plugin-react's `resolveBasedir`, which
+    // calls `context.getFilename()` — removed in eslint 10. Pinning the version
+    // explicitly skips detection entirely, which is what unblocks eslint 10 here
+    // (#391). It is also just better: detection stats the filesystem per file to
+    // rediscover a version that is pinned in package.json.
+    //
+    // Keep in step with the `react` dependency on a major bump.
+    settings: { react: { version: "19.2" } },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       // Ban debug console output in shipped code; console.warn/error are allowed
