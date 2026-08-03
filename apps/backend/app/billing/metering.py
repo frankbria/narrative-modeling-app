@@ -175,12 +175,48 @@ async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> boo
         )
         return True
     except DuplicateKeyError:
-        # A record exists and is already at the limit. Ordinary refusal, not an
-        # error — logged at debug rather than warning so a tenant sitting on their
-        # cap does not fill the log.
-        logger.debug(
-            "quota exhausted", extra={"user_id": user_id, "metric": metric}
-        )
+        # AMBIGUOUS, and reading it as "full" is wrong. The filter missed for one of
+        # two reasons: the record is genuinely at the limit, OR a concurrent writer
+        # inserted it between our filter and our insert — the same first-write race
+        # `record()` retries. Denying both turns a normal cold-start race into a
+        # spurious 402 for a tenant with quota to spare.
+        #
+        # The retry disambiguates without a read: the record exists by now, so the
+        # same conditional update succeeds only if there is genuinely room. Still
+        # one operation, still no TOCTOU.
+        #
+        # `upsert=False` on the retry, and that is the whole point of it. Retrying
+        # WITH upsert would take the insert path again whenever the tenant is
+        # genuinely full, collide again, and make the ordinary at-the-cap case
+        # arrive as an exception — two round-trips and a warning per capped request.
+        # Without upsert, a filter miss simply reports `matched_count == 0`, which
+        # is exactly the "full" signal we want and cannot be confused with a race.
+        try:
+            result = await UsageRecord.get_motor_collection().update_one(
+                selector, update
+            )
+        except DuplicateKeyError:
+            # Not reachable without an upsert — there is no insert to collide. Kept
+            # so an unexpected one denies rather than escaping as a 500.
+            logger.warning(
+                "quota reservation collided twice; denying",
+                extra={"user_id": user_id, "metric": metric},
+            )
+            return False
+        except Exception:
+            logger.exception(
+                "failed to reserve quota on retry; denying",
+                extra={"user_id": user_id, "metric": metric},
+            )
+            return False
+
+        if result.matched_count or result.upserted_id:
+            return True
+
+        # Filter missed against an existing record: genuinely at the cap. Logged at
+        # debug, not warning — a tenant sitting on their limit should not fill the
+        # log with it.
+        logger.debug("quota exhausted", extra={"user_id": user_id, "metric": metric})
         return False
     except Exception:
         logger.exception(
