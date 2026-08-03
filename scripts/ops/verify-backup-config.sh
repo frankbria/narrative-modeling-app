@@ -65,10 +65,19 @@ else
     else
       fail "lifecycle exists but has no 'expire-noncurrent' rule — versioning will grow unbounded"
     fi
-    if grep -q 'AbortIncompleteMultipartUpload' <<<"$lifecycle"; then
-      pass "incomplete multipart uploads are aborted"
+    # Scoped to OUR rule, not "appears anywhere in the document". We are the only
+    # writer today, so an unscoped grep passes either way — but the moment someone
+    # adds a second rule carrying an abort clause, an unscoped check would report
+    # our rule as healthy when it has no abort clause at all.
+    if python3 -c "
+import json,sys
+rules = json.load(sys.stdin).get('Rules', [])
+ours = next((r for r in rules if r.get('ID') == 'expire-noncurrent'), None)
+sys.exit(0 if ours and 'AbortIncompleteMultipartUpload' in ours else 1)
+" <<<"$lifecycle" 2>/dev/null; then
+      pass "incomplete multipart uploads are aborted (on the expire-noncurrent rule)"
     else
-      fail "no AbortIncompleteMultipartUpload rule — failed uploads bill forever"
+      fail "the expire-noncurrent rule has no AbortIncompleteMultipartUpload — failed uploads bill forever"
     fi
   else
     fail "no lifecycle configuration at all (run configure-s3-backup.sh)"

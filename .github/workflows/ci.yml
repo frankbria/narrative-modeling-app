@@ -312,7 +312,6 @@ jobs:
             -t narrative-frontend:ci \
             apps/frontend
 
-  # ── MCP ────────────────────────────────────────────────────────────────────
   shell-lint:
     name: Shell Lint (shellcheck)
     timeout-minutes: 5
@@ -332,7 +331,13 @@ jobs:
         run: |
           shopt -s globstar nullglob
           shellcheck --severity=warning scripts/**/*.sh
+      # Lint proves syntax, not behaviour. The lifecycle merge in
+      # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
+      # tests against a stubbed `aws` — no AWS account needed.
+      - name: ops script behaviour tests
+        run: ./scripts/ops/test-configure-s3-backup.sh
 
+  # ── MCP ────────────────────────────────────────────────────────────────────
   mcp-tests:
     name: MCP Tests
     timeout-minutes: 10
