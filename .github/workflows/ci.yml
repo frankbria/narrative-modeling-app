@@ -233,6 +233,15 @@ jobs:
       - name: Lint
         working-directory: apps/frontend
         run: npm run lint
+      # We run eslint-plugin-react outside its declared peer range (it says
+      # eslint ^9.7, we are on 10), which works only because
+      # settings.react.version is pinned — see #432. `npm run lint` alone proves
+      # the rules our source happens to trigger; this proves every ENABLED
+      # react/* rule loads and runs, so a rule nothing currently violates cannot
+      # crash someone's unrelated PR later.
+      - name: Check eslint-plugin-react rules against this ESLint
+        working-directory: apps/frontend
+        run: npm run check:eslint-react
 
   frontend-typecheck-build:
     name: Frontend Type Check & Build
