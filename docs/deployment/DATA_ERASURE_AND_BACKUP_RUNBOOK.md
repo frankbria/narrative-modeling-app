@@ -49,6 +49,32 @@ Automated equivalent: `tests/test_integration/test_erasure_cascade.py`.
 
 ---
 
+## 1b. Permissions the operator needs
+
+The app's own IAM user (`fastapi-s3-uploader`) is deliberately object-scoped and
+**cannot** configure the bucket — `s3:GetBucketVersioning` returns AccessDenied.
+That is correct: the application should not be able to rewrite its own retention
+policy. Backup configuration needs a separate principal.
+
+`ops-backup-iam-policy.json` in this directory is the minimum set. Attach it to an
+ops user/role (not to the app user):
+
+```bash
+aws iam create-policy --policy-name NMABackupPosture \
+  --policy-document file://docs/deployment/ops-backup-iam-policy.json
+aws iam attach-user-policy --user-name <ops-user> \
+  --policy-arn arn:aws:iam::<account>:policy/NMABackupPosture
+```
+
+The second statement is scoped to `nma-restore-drill-*` buckets only, so the drill
+can create and destroy its own throwaway buckets without any standing permission
+over real data.
+
+Atlas needs a separate API key (Project Owner for enabling backup; Project Read
+Only is enough for `verify-backup-config.sh`).
+
+---
+
 ## 2. MongoDB Atlas backups (enable in Atlas)
 
 > Enabling is a console/Admin-API action needing real Atlas credentials, so it
