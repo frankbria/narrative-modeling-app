@@ -61,7 +61,7 @@ describe('eslint config: React version', () => {
     // Guards drift: the config resolves this from node_modules rather than
     // hardcoding it, and this asserts that stays true. A literal that someone
     // "helpfully" pins back would pass every test above and fail this one.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // (no eslint-disable needed: __tests__/** already relaxes no-require-imports)
     const installed = require('react/package.json').version
     expect(version).toBe(installed)
   })
