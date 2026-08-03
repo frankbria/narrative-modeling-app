@@ -382,7 +382,9 @@ jobs:
       # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
       # tests against a stubbed `aws` — no AWS account needed.
       - name: ops script behaviour tests
-        run: ./scripts/ops/test-configure-s3-backup.sh
+        run: |
+          ./scripts/ops/test-configure-s3-backup.sh
+          ./scripts/ops/test-verify-backup-config.sh
       # shellcheck's scripts/**/*.sh glob cannot see the bash inside workflow
       # `run:` blocks, and that is where three subtle bugs hid in #434 (a lost
       # summary under `bash -e`, a never-matching cron comparison). actionlint
