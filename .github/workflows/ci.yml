@@ -312,6 +312,31 @@ jobs:
             -t narrative-frontend:ci \
             apps/frontend
 
+  shell-lint:
+    name: Shell Lint (shellcheck)
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # scripts/ops/* mutate and audit production infrastructure (#299), so a
+      # typo there is more expensive than a typo in application code. shellcheck
+      # ships on the GitHub runner image — no install step.
+      #
+      # severity=warning, not the default: the existing scripts carry `info`
+      # findings that are correct as written (preflight_staging_env.sh writes a
+      # literal compose file, so SC2016's "expressions don't expand in single
+      # quotes" is the point). Everything tracked passes at this level today, so
+      # the gate covers the whole directory rather than only the new files.
+      - name: shellcheck
+        run: |
+          shopt -s globstar nullglob
+          shellcheck --severity=warning scripts/**/*.sh
+      # Lint proves syntax, not behaviour. The lifecycle merge in
+      # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
+      # tests against a stubbed `aws` — no AWS account needed.
+      - name: ops script behaviour tests
+        run: ./scripts/ops/test-configure-s3-backup.sh
+
   # ── MCP ────────────────────────────────────────────────────────────────────
   mcp-tests:
     name: MCP Tests
@@ -546,6 +571,7 @@ jobs:
       - frontend-unit
       - frontend-docker-build
       - mcp-tests
+      - shell-lint
       - e2e-smoke
     runs-on: ubuntu-latest
     steps:
