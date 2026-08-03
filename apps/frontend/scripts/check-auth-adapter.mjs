@@ -38,48 +38,54 @@ console.log('driver:', (await import('mongodb/package.json', { with: { type: 'js
 console.log('adapter peer range: mongodb ^6 (overridden deliberately — see above)')
 console.log('')
 
-const adapter = MongoDBAdapter(client, { databaseName: DB })
-const email = `probe-${Date.now()}@example.com`
+try {
+  const adapter = MongoDBAdapter(client, { databaseName: DB })
+  const email = `probe-${Date.now()}@example.com`
 
-const user = await adapter.createUser({ id: 'x', email, emailVerified: null, name: 'Probe' })
-ok('createUser returns a 24-hex id', /^[0-9a-f]{24}$/.test(user.id))
+  const user = await adapter.createUser({ id: 'x', email, emailVerified: null, name: 'Probe' })
+  ok('createUser returns a 24-hex id', /^[0-9a-f]{24}$/.test(user.id))
 
-const fetched = await adapter.getUser(user.id)
-ok('getUser round-trips', fetched?.email === email)
+  const fetched = await adapter.getUser(user.id)
+  ok('getUser round-trips', fetched?.email === email)
 
-const byEmail = await adapter.getUserByEmail(email)
-ok('getUserByEmail round-trips', byEmail?.id === user.id)
+  const byEmail = await adapter.getUserByEmail(email)
+  ok('getUserByEmail round-trips', byEmail?.id === user.id)
 
-await adapter.linkAccount({
-  userId: user.id, type: 'oauth', provider: 'github',
-  providerAccountId: 'gh-123', access_token: 'tok',
-})
-const byAccount = await adapter.getUserByAccount({ provider: 'github', providerAccountId: 'gh-123' })
-ok('getUserByAccount (every repeat sign-in)', byAccount?.id === user.id)
+  await adapter.linkAccount({
+    userId: user.id, type: 'oauth', provider: 'github',
+    providerAccountId: 'gh-123', access_token: 'tok',
+  })
+  const byAccount = await adapter.getUserByAccount({ provider: 'github', providerAccountId: 'gh-123' })
+  ok('getUserByAccount (every repeat sign-in)', byAccount?.id === user.id)
 
-const updated = await adapter.updateUser({ id: user.id, name: 'Renamed' })
-ok('updateUser', updated.name === 'Renamed')
+  const updated = await adapter.updateUser({ id: user.id, name: 'Renamed' })
+  ok('updateUser', updated.name === 'Renamed')
 
-await adapter.createSession({ sessionToken: 't1', userId: user.id, expires: new Date(Date.now() + 60000) })
-const sess = await adapter.getSessionAndUser('t1')
-ok('getSessionAndUser (every authed request)', sess?.user?.id === user.id)
+  await adapter.createSession({ sessionToken: 't1', userId: user.id, expires: new Date(Date.now() + 60000) })
+  const sess = await adapter.getSessionAndUser('t1')
+  ok('getSessionAndUser (every authed request)', sess?.user?.id === user.id)
 
-await adapter.updateSession({ sessionToken: 't1', expires: new Date(Date.now() + 120000) })
-ok('updateSession', !!(await adapter.getSessionAndUser('t1')))
+  await adapter.updateSession({ sessionToken: 't1', expires: new Date(Date.now() + 120000) })
+  ok('updateSession', !!(await adapter.getSessionAndUser('t1')))
 
-await adapter.deleteSession('t1')
-ok('deleteSession', (await adapter.getSessionAndUser('t1')) === null)
+  await adapter.deleteSession('t1')
+  ok('deleteSession', (await adapter.getSessionAndUser('t1')) === null)
 
-// BSON handling is the thing a driver major is most likely to move.
-const raw = await client.db(DB).collection('users').findOne({ email })
-ok('_id stored as a real ObjectId', raw?._id?.toHexString?.() === user.id)
+  // BSON handling is the thing a driver major is most likely to move.
+  const raw = await client.db(DB).collection('users').findOne({ email })
+  ok('_id stored as a real ObjectId', raw?._id?.toHexString?.() === user.id)
 
-await adapter.unlinkAccount({ provider: 'github', providerAccountId: 'gh-123' })
-ok('unlinkAccount', (await adapter.getUserByAccount({ provider: 'github', providerAccountId: 'gh-123' })) === null)
+  await adapter.unlinkAccount({ provider: 'github', providerAccountId: 'gh-123' })
+  ok('unlinkAccount', (await adapter.getUserByAccount({ provider: 'github', providerAccountId: 'gh-123' })) === null)
 
-await adapter.deleteUser(user.id)
-ok('deleteUser', (await adapter.getUser(user.id)) === null)
-
-await client.db(DB).dropDatabase()
-await client.close()
+  await adapter.deleteUser(user.id)
+  ok('deleteUser', (await adapter.getUser(user.id)) === null)
+} finally {
+  // Drop and disconnect even when an assertion throws. In CI the mongod is an
+  // ephemeral service container so it would not matter, but the script accepts
+  // TEST_MONGODB_URI precisely so it can be pointed at a long-lived instance —
+  // and there a failed run would otherwise leave this database behind forever.
+  await client.db(DB).dropDatabase().catch(() => {})
+  await client.close().catch(() => {})
+}
 console.log(process.exitCode ? '\nRESULT: adapter is NOT compatible' : '\nRESULT: adapter works on this driver')
