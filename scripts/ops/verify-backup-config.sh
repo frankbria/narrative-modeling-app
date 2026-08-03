@@ -48,79 +48,98 @@ else
   CHECKED_S3=1
   echo "  bucket: $BUCKET"
 
-  # Capture stderr and the exit code SEPARATELY from the value. `2>/dev/null ||
-  # echo "None"` turned an AccessDenied into "None" — reporting a bucket we are
-  # not allowed to inspect as definitively unconfigured. A verifier that cannot
-  # tell "not there" from "not allowed to look" is worse than no verifier: it
-  # produces a confident answer it has not earned, and both readings are
-  # actionable in opposite directions.
-  vraw="$(aws s3api get-bucket-versioning --bucket "$BUCKET" 2>&1)"
-  if [[ $? -ne 0 ]]; then
-    if grep -qi "AccessDenied\|not authorized" <<<"$vraw"; then
-      fail "cannot read versioning — AccessDenied. This principal lacks s3:GetBucketVersioning; the backup state is UNKNOWN, not absent"
-    else
-      fail "cannot read versioning: $(tr -d '\n' <<<"$vraw" | head -c 160)"
-    fi
-    versioning="unknown"
-    mfa="unknown"
+  # Every read below follows the same rule, and it is the whole point of this
+  # file: ABSENCE MUST BE PROVEN, never inferred from a failure.
+  #
+  # stdout and stderr are captured separately. Merging them (`2>&1`) means a
+  # benign stderr line — a CLI deprecation notice, a proxy warning — lands in the
+  # JSON, the parse fails, and the fallback reports "not configured". That is the
+  # original bug rebuilt out of its own fix.
+  s3_read() {
+    local out err rc
+    err="$(mktemp)"
+    out="$(aws s3api "$@" --bucket "$BUCKET" 2>"$err")"; rc=$?
+    S3_OUT="$out"; S3_ERR="$(cat "$err")"; rm -f "$err"
+    return $rc
+  }
+
+  if s3_read get-bucket-versioning; then
+    # One parse, both fields. A parse failure yields "unknown", NOT "None" —
+    # unparseable output means we do not know, not that nothing is configured.
+    read -r versioning mfa <<<"$(python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1] or "{}")
+    print(d.get("Status", "None"), d.get("MFADelete", "None"))
+except Exception:
+    print("unknown unknown")
+' "$S3_OUT")"
   else
-    versioning="$(python3 -c "
-import json,sys
-try: print(json.loads(sys.argv[1] or '{}').get('Status','None'))
-except Exception: print('None')
-" "$vraw")"
-    mfa="$(python3 -c "
-import json,sys
-try: print(json.loads(sys.argv[1] or '{}').get('MFADelete','None'))
-except Exception: print('None')
-" "$vraw")"
-    if [[ "$versioning" == "Enabled" ]]; then
-      pass "bucket versioning enabled"
+    versioning="unknown"; mfa="unknown"
+    if grep -qi "AccessDenied\|not authorized" <<<"$S3_ERR"; then
+      fail "cannot read versioning — AccessDenied (needs s3:GetBucketVersioning). State is UNKNOWN, not absent"
     else
-      fail "bucket versioning is '$versioning' — cascade erasure destroys history immediately without it"
+      fail "cannot read versioning: $(tr -d '\n' <<<"$S3_ERR" | head -c 160). State is UNKNOWN, not absent"
     fi
-  fi
-  if [[ "$mfa" == "Enabled" ]]; then
-    pass "MFA-delete enabled"
-  elif [[ "$mfa" == "unknown" ]]; then
-    # Same trap one line down: reporting "not enabled" for something we could not
-    # read is the identical false-confidence bug.
-    manual "MFA-delete state UNKNOWN — could not read the bucket's versioning block"
-  else
-    # Not a FAIL: it needs root + an MFA token, so it is a console step by
-    # construction and a non-prod bucket may legitimately not have it.
-    manual "MFA-delete not enabled (runbook 3.4 — needs root account + MFA token)"
   fi
 
-  lraw="$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>&1)"
-  lrc=$?
-  if [[ $lrc -ne 0 ]] && grep -qi "AccessDenied\|not authorized" <<<"$lraw"; then
-    # Same distinction as versioning above. NoSuchLifecycleConfiguration genuinely
-    # means "no rules"; AccessDenied means we do not know.
-    fail "cannot read lifecycle — AccessDenied. This principal lacks s3:GetLifecycleConfiguration; the rules are UNKNOWN, not absent"
-  elif [[ $lrc -eq 0 ]] && lifecycle="$lraw"; then
-    if grep -q '"ID": *"expire-noncurrent"' <<<"$lifecycle" \
-       || grep -q '"ID":"expire-noncurrent"' <<<"$lifecycle"; then
-      pass "lifecycle rule 'expire-noncurrent' present"
-    else
-      fail "lifecycle exists but has no 'expire-noncurrent' rule — versioning will grow unbounded"
-    fi
-    # Scoped to OUR rule, not "appears anywhere in the document". We are the only
-    # writer today, so an unscoped grep passes either way — but the moment someone
-    # adds a second rule carrying an abort clause, an unscoped check would report
-    # our rule as healthy when it has no abort clause at all.
-    if python3 -c "
-import json,sys
-rules = json.load(sys.stdin).get('Rules', [])
-ours = next((r for r in rules if r.get('ID') == 'expire-noncurrent'), None)
-sys.exit(0 if ours and 'AbortIncompleteMultipartUpload' in ours else 1)
-" <<<"$lifecycle" 2>/dev/null; then
-      pass "incomplete multipart uploads are aborted (on the expire-noncurrent rule)"
-    else
-      fail "the expire-noncurrent rule has no AbortIncompleteMultipartUpload — failed uploads bill forever"
-    fi
-  else
+  case "$versioning" in
+    Enabled) pass "bucket versioning enabled" ;;
+    unknown) : ;;  # already reported above
+    *) fail "bucket versioning is '$versioning' — cascade erasure destroys history immediately without it" ;;
+  esac
+
+  case "$mfa" in
+    Enabled) pass "MFA-delete enabled" ;;
+    unknown) manual "MFA-delete state UNKNOWN — the versioning block could not be read" ;;
+    *) manual "MFA-delete not enabled (runbook 3.4 — needs root account + MFA token)" ;;
+  esac
+
+  if s3_read get-bucket-lifecycle-configuration; then
+    # Parsed as JSON, not grepped. A `grep '"ID"'` match is sensitive to key
+    # ordering and whitespace in the response, and would also match an ID inside
+    # some unrelated rule.
+    lifecycle_state="$(python3 -c '
+import json, sys
+try:
+    rules = json.loads(sys.argv[1] or "{}").get("Rules", [])
+except Exception:
+    print("unknown"); raise SystemExit
+ours = next((r for r in rules if r.get("ID") == "expire-noncurrent"), None)
+if ours is None:
+    print("missing")
+elif "AbortIncompleteMultipartUpload" not in ours:
+    print("no-abort")
+else:
+    print("ok")
+' "$S3_OUT")"
+    case "$lifecycle_state" in
+      ok)
+        pass "lifecycle rule 'expire-noncurrent' present"
+        pass "incomplete multipart uploads are aborted (on the expire-noncurrent rule)"
+        ;;
+      no-abort)
+        pass "lifecycle rule 'expire-noncurrent' present"
+        fail "the expire-noncurrent rule has no AbortIncompleteMultipartUpload — failed uploads bill forever"
+        ;;
+      missing)
+        fail "lifecycle exists but has no 'expire-noncurrent' rule — versioning will grow unbounded"
+        ;;
+      *)
+        fail "lifecycle response could not be parsed — state is UNKNOWN, not absent"
+        ;;
+    esac
+  elif grep -qi "NoSuchLifecycleConfiguration" <<<"$S3_ERR"; then
+    # INVERTED deliberately. This is the ONLY error that legitimately means "no
+    # rules exist". Every other failure — throttling, ExpiredToken, wrong region,
+    # AllAccessDisabled — is unknown. The previous version special-cased
+    # AccessDenied and let everything else fall through to "no lifecycle at all",
+    # which narrowed this bug rather than removing it.
     fail "no lifecycle configuration at all (run configure-s3-backup.sh)"
+  elif grep -qi "AccessDenied\|not authorized" <<<"$S3_ERR"; then
+    fail "cannot read lifecycle — AccessDenied (needs s3:GetLifecycleConfiguration). Rules are UNKNOWN, not absent"
+  else
+    fail "cannot read lifecycle: $(tr -d '\n' <<<"$S3_ERR" | head -c 160). Rules are UNKNOWN, not absent"
   fi
 fi
 
