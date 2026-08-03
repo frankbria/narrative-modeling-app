@@ -269,6 +269,18 @@ jobs:
     name: Frontend Unit Tests
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    services:
+      # For the @auth/mongodb-adapter compatibility check below. Digest-pinned to
+      # the same image as the backend jobs (#176).
+      mongodb:
+        image: mongo:7.0@sha256:8ecb514b00bdcc0bde67ef4e6c330385377a9dc68e24ee94e28c07c891647348
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -284,6 +296,14 @@ jobs:
         run: npm test -- --coverage --watchAll=false
         env:
           CI: true
+      # We run mongodb 7 against an adapter whose peer range says ^6, forced with
+      # an `overrides` entry (#344). That silences npm's warning, so this is what
+      # replaces it: the adapter's real methods against a real mongod. Cannot be a
+      # jest test — the adapter is ESM-only and next/jest ignores all of
+      # node_modules for transforms.
+      - name: Check @auth/mongodb-adapter against the installed driver
+        working-directory: apps/frontend
+        run: npm run check:adapter
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
