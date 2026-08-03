@@ -5,6 +5,7 @@
       "Sid": "BackupPostureConfigure",
       "Effect": "Allow",
       "Action": [
+        "s3:ListBucket",
         "s3:GetBucketVersioning",
         "s3:PutBucketVersioning",
         "s3:GetLifecycleConfiguration",

@@ -70,6 +70,12 @@ The second statement is scoped to `nma-restore-drill-*` buckets only, so the dri
 can create and destroy its own throwaway buckets without any standing permission
 over real data.
 
+> `s3:ListBucket` is in the first statement because `head-bucket` — which both
+> scripts use as their "is this bucket reachable" guard — maps to `ListBucket`,
+> not to a bucket-config action. Without it both scripts fail at their own first
+> check, before doing anything, with an error that looks like a missing bucket
+> rather than a missing permission.
+
 Atlas needs a separate API key (Project Owner for enabling backup; Project Read
 Only is enough for `verify-backup-config.sh`).
 
