@@ -51,7 +51,12 @@ Automated equivalent: `tests/test_integration/test_erasure_cascade.py`.
 
 ## 2. MongoDB Atlas backups (enable in Atlas)
 
-> No IaC in this repo manages Atlas — configure in the Atlas UI / Admin API.
+> Enabling is a console/Admin-API action needing real Atlas credentials, so it
+> stays manual. **Verifying is not** — `./scripts/ops/verify-backup-config.sh`
+> checks `backupEnabled`, `pitEnabled` and the hourly/daily/weekly snapshot policy
+> over the Atlas Admin API when `ATLAS_PUBLIC_KEY` / `ATLAS_PRIVATE_KEY` /
+> `ATLAS_GROUP_ID` / `ATLAS_CLUSTER_NAME` are set, and says SKIP rather than
+> passing silently when they are not.
 
 1. **Cloud Backup** → cluster → **Backup** → enable **Cloud Backup** (snapshots).
 2. Snapshot policy: hourly (2-day retention) + daily (7-day) + weekly (4-week);
@@ -73,7 +78,18 @@ Automated equivalent: `tests/test_integration/test_erasure_cascade.py`.
 
 ## 3. S3 versioning + lifecycle (enable on the bucket)
 
-> Configure on the app bucket (`AWS_BUCKET_NAME`) in the S3 console / IaC.
+> **Scripted (#299).** Do not click through the console:
+>
+> ```bash
+> AWS_BUCKET_NAME=<prod-bucket> ./scripts/ops/configure-s3-backup.sh --dry-run
+> AWS_BUCKET_NAME=<prod-bucket> ./scripts/ops/configure-s3-backup.sh
+> ```
+>
+> Idempotent, and it refuses to run without credentials or a reachable bucket
+> rather than half-applying. It covers steps 1 and 2 below; **MFA-delete (3.4)
+> stays manual** because S3 requires the root account's MFA token on the request.
+> The steps are kept here because a script is not a substitute for knowing what
+> it does — and for the case where you are configuring by hand.
 
 1. **Versioning:** enable **Bucket Versioning** — protects against accidental
    deletes/overwrites and makes the cascade-erasure's `DeleteObject`s create
@@ -94,7 +110,22 @@ delete-object --version-id <marker>`); confirm the object is readable again.
 
 ---
 
-## 4. Drill log
+## 4. Verifying the posture
+
+Before and after every drill, and quarterly regardless:
+
+```bash
+AWS_BUCKET_NAME=<prod-bucket> ./scripts/ops/verify-backup-config.sh
+```
+
+Read-only, and **exits non-zero when anything required is missing** — so it is
+evidence, not reassurance. Paste its output into the drill log rather than
+writing "backups verified". It reports `MANUAL` for MFA-delete and `SKIP` for
+Atlas without API credentials instead of quietly counting them as passes.
+
+---
+
+## 5. Drill log
 
 | Date | Drill | RTO | RPO | Operator | Notes |
 |---|---|---|---|---|---|
