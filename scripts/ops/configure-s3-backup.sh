@@ -22,7 +22,16 @@ set -euo pipefail
 
 BUCKET="${AWS_BUCKET_NAME:-}"
 DRY_RUN=0
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+# Reject anything unrecognised rather than ignoring it. `--dryrun` silently
+# falling through to a real run against a production bucket is the worst
+# possible reading of a typo.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    *) echo "Unknown argument: $1 (did you mean --dry-run?)" >&2; exit 2 ;;
+  esac
+done
 
 if [[ -z "$BUCKET" ]]; then
   echo "AWS_BUCKET_NAME is not set. Refusing to guess which bucket to configure." >&2
@@ -53,20 +62,34 @@ echo
 NONCURRENT_DAYS=30
 ABORT_MPU_DAYS=7
 
-LIFECYCLE=$(cat <<JSON
+OUR_RULE=$(cat <<JSON
 {
-  "Rules": [
-    {
-      "ID": "expire-noncurrent",
-      "Status": "Enabled",
-      "Filter": {"Prefix": ""},
-      "NoncurrentVersionExpiration": {"NoncurrentDays": ${NONCURRENT_DAYS}},
-      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": ${ABORT_MPU_DAYS}}
-    }
-  ]
+  "ID": "expire-noncurrent",
+  "Status": "Enabled",
+  "Filter": {"Prefix": ""},
+  "NoncurrentVersionExpiration": {"NoncurrentDays": ${NONCURRENT_DAYS}},
+  "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": ${ABORT_MPU_DAYS}}
 }
 JSON
 )
+
+# put-bucket-lifecycle-configuration REPLACES the whole configuration — it does
+# not merge. Declaring only our rule would silently delete any cost-tiering or
+# prefix rules the bucket already has, which is a destructive surprise from a
+# script whose job is protecting data. So: read what is there, drop only our own
+# rule by ID (making a re-run converge rather than duplicate), keep the rest.
+EXISTING="$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>/dev/null || echo '{"Rules":[]}')"
+
+LIFECYCLE="$(python3 - "$EXISTING" "$OUR_RULE" <<'PYEOF'
+import json, sys
+existing = json.loads(sys.argv[1] or '{"Rules": []}').get("Rules", [])
+ours = json.loads(sys.argv[2])
+kept = [r for r in existing if r.get("ID") != ours["ID"]]
+if kept:
+    print("KEEPING:" + ",".join(r.get("ID", "<unnamed>") for r in kept), file=sys.stderr)
+print(json.dumps({"Rules": kept + [ours]}))
+PYEOF
+)" || { echo "failed to merge lifecycle rules; refusing to apply" >&2; exit 2; }
 
 current_versioning="$(aws s3api get-bucket-versioning --bucket "$BUCKET" \
   --query 'Status' --output text 2>/dev/null || echo "None")"
@@ -83,7 +106,13 @@ else
 fi
 
 echo
+preserved="$(python3 -c "
+import json,sys
+rules=json.loads(sys.argv[1]).get('Rules',[])
+print(', '.join(r.get('ID','<unnamed>') for r in rules if r.get('ID')!='expire-noncurrent') or '(none)')
+" "$LIFECYCLE")"
 echo "lifecycle: expire-noncurrent (${NONCURRENT_DAYS}d) + abort-incomplete-mpu (${ABORT_MPU_DAYS}d)"
+echo "  preserving existing rules: $preserved"
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "  WOULD apply:"
   echo "$LIFECYCLE"

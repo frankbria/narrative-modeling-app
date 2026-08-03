@@ -18,7 +18,8 @@
 # Absent, the Atlas section reports SKIP and the S3 checks still run.
 #
 # Credentials are read from the environment and the ambient AWS CLI config. This
-# script never prints a credential and never writes one anywhere.
+# script never prints a credential, never writes one anywhere, and never passes
+# one as a command-line argument (argv is readable by other local users).
 
 set -uo pipefail
 
@@ -84,8 +85,18 @@ else
   API="https://cloud.mongodb.com/api/atlas/v2"
   HDR="Accept: application/vnd.atlas.2023-02-01+json"
 
-  cluster="$(curl -s --digest -u "${ATLAS_PUBLIC_KEY}:${ATLAS_PRIVATE_KEY}" \
-    -H "$HDR" "${API}/groups/${ATLAS_GROUP_ID}/clusters/${ATLAS_CLUSTER_NAME}" 2>/dev/null)"
+  # Credentials go to curl on STDIN via `-K -`, never in argv. Command-line
+  # arguments are world-readable through `ps` and /proc for the life of the
+  # process, so `-u "$KEY:$SECRET"` would leak the Atlas API secret to every other
+  # user on the box — and would have made this script's own "never prints a
+  # credential" claim false.
+  atlas_get() {
+    curl -s --digest -H "$HDR" -K - "$1" <<CURLCFG
+user = "${ATLAS_PUBLIC_KEY}:${ATLAS_PRIVATE_KEY}"
+CURLCFG
+  }
+
+  cluster="$(atlas_get "${API}/groups/${ATLAS_GROUP_ID}/clusters/${ATLAS_CLUSTER_NAME}" 2>/dev/null)"
 
   if [[ -z "$cluster" ]] || grep -q '"error"' <<<"$cluster"; then
     fail "Atlas API call failed for cluster '${ATLAS_CLUSTER_NAME}'"
@@ -101,8 +112,7 @@ else
       fail "Point-in-Time Restore is NOT enabled — RPO is the snapshot interval"
     fi
 
-    policy="$(curl -s --digest -u "${ATLAS_PUBLIC_KEY}:${ATLAS_PRIVATE_KEY}" \
-      -H "$HDR" "${API}/groups/${ATLAS_GROUP_ID}/clusters/${ATLAS_CLUSTER_NAME}/backup/schedule" 2>/dev/null)"
+    policy="$(atlas_get "${API}/groups/${ATLAS_GROUP_ID}/clusters/${ATLAS_CLUSTER_NAME}/backup/schedule" 2>/dev/null)"
     for freq in hourly daily weekly; do
       if grep -q "\"frequencyType\" *: *\"${freq}\"" <<<"$policy"; then
         pass "snapshot policy has a ${freq} item"
