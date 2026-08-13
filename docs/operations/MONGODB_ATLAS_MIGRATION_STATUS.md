@@ -14,7 +14,7 @@ The staging server (dev.briaanalytics.com) currently uses:
 - **Self-hosted MongoDB 7.0** running in Docker (container: `narrative-staging-mongodb`)
 - Port: 27018
 - Status: Healthy, running for 5+ days
-- Connection: `mongodb://narrative_user:PASSWORD@localhost:27018/narrative_staging?authSource=admin`
+- Connection: `mongodb://<USERNAME>:<PASSWORD>@localhost:27018/narrative_staging?authSource=admin`
 
 This document outlines the PLAN for migrating to MongoDB Atlas M0 Free Tier when ready.
 
@@ -43,12 +43,12 @@ This document outlines the PLAN for migrating to MongoDB Atlas M0 Free Tier when
 **Changes**:
 ```bash
 # OLD (self-hosted MongoDB)
-MONGODB_ROOT_PASSWORD=...
-MONGODB_PASSWORD=...
-MONGODB_URI=mongodb://...@localhost:27018/...
+MONGODB_ROOT_PASSWORD=<REDACTED>
+MONGODB_PASSWORD=<REDACTED>
+MONGODB_URI=mongodb://<USERNAME>:<PASSWORD>@localhost:27018/...
 
 # NEW (MongoDB Atlas)
-MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@CLUSTER.mongodb.net/narrative_staging?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://<USERNAME>:<PASSWORD>@CLUSTER.mongodb.net/narrative_staging?retryWrites=true&w=majority
 MONGODB_DB=narrative_staging
 ```
 
@@ -62,8 +62,8 @@ MONGODB_DB=narrative_staging
 **Security Issue**: MongoDB Atlas credentials were exposed in git history
 
 **Exposed Credentials**:
-- Password: `[REDACTED]` (now redacted)
-- Username: `frankbria`
+- Password: `<REDACTED — see secret store>`
+- Username: `<REDACTED — see secret store>`
 - Cluster: `<cluster>.mongodb.net`
 - Found in commits: b6935e4 and b779b25
 - File: `apps/backend/.env`
@@ -139,7 +139,7 @@ git reset --hard origin/main
 
 **Format**:
 ```
-mongodb+srv://NEW_USERNAME:NEW_PASSWORD@<cluster>.mongodb.net/narrative_staging?retryWrites=true&w=majority
+mongodb+srv://<USERNAME>:<PASSWORD>@<cluster>.mongodb.net/narrative_staging?retryWrites=true&w=majority
 ```
 
 ### 4. Verify Staging Deployment
