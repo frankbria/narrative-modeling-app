@@ -66,7 +66,13 @@ providers.push(
 )
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: MongoDBAdapter(client),
+  // Name the database explicitly, matching the backend convention (bare
+  // MONGODB_URI + separate MONGODB_DB, see main.py's `client[db_name]`).
+  // Without this the adapter calls `client.db(undefined)`, which falls back to
+  // the URI's default database — and to `test` when the URI has no path at all.
+  // Undefined here reproduces exactly that old behaviour, so environments that
+  // still carry the database in the URI are unaffected.
+  adapter: MongoDBAdapter(client, { databaseName: process.env.MONGODB_DB }),
   providers,
   session: {
     strategy: "jwt",

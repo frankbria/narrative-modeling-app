@@ -126,6 +126,12 @@ services:
       # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
       # lib/db.ts throws on startup without this.
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
+      # Same database as the backend. MONGODB_URI is bare (no path) because the
+      # backend selects with `client[db_name]`, so without this the adapter falls
+      # back to `client.db(undefined)` — which on a pathless URI is the database
+      # literally named `test`, where staging's users and accounts have been going
+      # (sessions are JWTs, not documents — see auth.ts session.strategy).
+      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-staging}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       # NextAuth v5 rejects requests whose Host it doesn't trust (UntrustedHost
       # 500s on every /api/auth/* route). Behind the nginx reverse proxy the
