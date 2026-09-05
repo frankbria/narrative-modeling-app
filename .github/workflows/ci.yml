@@ -11,8 +11,9 @@ name: CI
 #     LocalStack are deliberately NOT provisioned here — the suites that need
 #     them require_service()-skip, and backend-integration covers them with
 #     CI_REQUIRE_SERVICES=true so they cannot skip silently there (#445).
-#   - backend-integration: MongoDB (GitHub service container on 27017), Redis
-#     (6380) and LocalStack S3 (4566) via apps/backend/docker-compose.test.yml.
+#   - backend-integration: every `integration`-marked test in the tree (also by
+#     marker, not path, since #445). MongoDB (GitHub service container on 27017),
+#     Redis (6380) and LocalStack S3 (4566) via apps/backend/docker-compose.test.yml.
 #       NOTE: MONGODB_URI is pointed at the *container*, never a production
 #       cluster — the test job must never hold a production DB handle (#160).
 #       All three services are HARD requirements: CI_REQUIRE_SERVICES=true turns
@@ -203,17 +204,22 @@ jobs:
           fi
           echo "LocalStack healthy."
       - name: Run integration tests with coverage
-        # Scope: the `integration`-marked suite in tests/integration/, now run with
-        # all backing services provisioned — Mongo + Redis (service containers) and
-        # LocalStack S3 (required step above). This includes the S3 fixtures, the
+        # Scope: EVERY `integration`-marked test in the tree, run with all backing
+        # services provisioned — Mongo + Redis (service containers) and LocalStack
+        # S3 (required step above). This includes the S3 fixtures, the
         # train→predict→S3 round-trip, the upload-workflow suite, and the
         # (fully-mocked) OpenAI suite (#221).
+        # Selection is by marker, not path (#445). It named tests/integration/
+        # until then, which collected 56 of 327 — the other 271 (tests/
+        # test_integration/, and the integration-marked route suites under
+        # tests/test_api/) were deselected by the job above for being
+        # `integration` and never picked up here, so they ran in NO required job.
         # CI_REQUIRE_SERVICES=true makes a missing-service skip a hard failure, so
         # the gate can never go green while silently under-testing S3/OpenAI.
         working-directory: apps/backend
         run: |
           PYTHONPATH=. uv run pytest \
-            tests/integration/ \
+            tests/ \
             -m integration \
             --cov=app \
             --cov-report=xml \

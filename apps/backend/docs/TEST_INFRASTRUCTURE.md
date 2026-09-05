@@ -61,11 +61,19 @@ Notes:
     rate-limit, route and middleware suite outside the required gate. Redis and
     LocalStack are not provisioned here; those tests `require_service()`-skip
     and are enforced in the integration job instead.
-  - `backend-integration` provisions a MongoDB **service container** (27017) and
-    Redis + LocalStack via `docker-compose.test.yml`. All three are **hard
-    requirements** (`CI_REQUIRE_SERVICES=true`): the S3/upload/OpenAI
-    integration suites run in the gate and a missing service fails the job
-    instead of skipping (#221).
+  - `backend-integration` runs `pytest tests/ -m integration` (327 tests) with a
+    MongoDB **service container** (27017) plus Redis + LocalStack via
+    `docker-compose.test.yml`. All three are **hard requirements**
+    (`CI_REQUIRE_SERVICES=true`): the S3/upload/OpenAI integration suites run in
+    the gate and a missing service fails the job instead of skipping (#221).
+    This job selected `tests/integration/` by path until #445, collecting 56 of
+    327 — the other 271 (`tests/test_integration/`, `tests/load/`, and the
+    integration-marked route suites under `tests/test_api/`) were deselected by
+    the job above for being `integration` and never picked up here, so they ran
+    in **no** required job at all.
+
+  Between them the two jobs now cover the whole tree: 2069 + 327 = 2396 of 2438,
+  the remaining 42 being the `performance` benchmarks.
 - `.github/workflows/integration-tests.yml` (manual trigger) — the standalone
   integration run; provisions Redis + LocalStack via `docker-compose.test.yml`
   and uses an Atlas test cluster for MongoDB. Requirements in the workflow header.
