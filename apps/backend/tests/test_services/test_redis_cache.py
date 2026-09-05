@@ -1,6 +1,7 @@
 """
 Tests for Redis cache service
 """
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -18,7 +19,11 @@ class TestRedisCacheService:
     @pytest.mark.asyncio
     async def test_init_cache_service(self):
         """Test cache service initialization"""
-        assert self.cache_service.redis_url == "redis://localhost:6379"
+        # REDIS_URL wins when exported; the literal is only the fallback. Pinning
+        # the literal made this fail for anyone who sets the var (#445).
+        assert self.cache_service.redis_url == os.getenv(
+            "REDIS_URL", "redis://localhost:6379"
+        )
         assert self.cache_service.default_ttl == 3600
         assert self.cache_service.redis_client is None
         

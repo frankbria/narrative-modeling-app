@@ -6,7 +6,11 @@ name: CI
 # branch protection on `main` requires.
 #
 # Service requirements (see apps/backend/docs/TEST_INFRASTRUCTURE.md):
-#   - backend-unit / backend-lint / backend-typecheck: NONE (no external services).
+#   - backend-lint / backend-typecheck: NONE (no external services).
+#   - backend-tests: MongoDB (GitHub service container on 27017). Redis and
+#     LocalStack are deliberately NOT provisioned here — the suites that need
+#     them require_service()-skip, and backend-integration covers them with
+#     CI_REQUIRE_SERVICES=true so they cannot skip silently there (#445).
 #   - backend-integration: MongoDB (GitHub service container on 27017), Redis
 #     (6380) and LocalStack S3 (4566) via apps/backend/docker-compose.test.yml.
 #       NOTE: MONGODB_URI is pointed at the *container*, never a production
@@ -73,9 +77,33 @@ jobs:
         run: uv run mypy app/
 
   backend-unit:
-    name: Backend Unit Tests
-    timeout-minutes: 15
+    # Selection is by MARKER, never by path (issue #445). The previous version
+    # of this job named seven directories explicitly, which collected 598 of
+    # 2438 tests — all billing, quota, webhook, API-key, rate-limit, route and
+    # middleware suites were outside the required gate, and every new test
+    # directory joined that blind spot silently. `tests/` + the marker filter
+    # now collects 2069.
+    name: Backend Tests
+    # 15 -> 30: the selection grew 3.5x, and the route suites that joined it do
+    # real database IO against the service container below.
+    timeout-minutes: 30
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        # 58 test files bind Beanie to a real mongod via the `setup_database`
+        # fixture; only the pure-model `beanie_models_initialized` fixture uses
+        # mongomock. Marking those files `integration` instead would move them
+        # into a job that selects tests/integration/ BY PATH — reintroducing the
+        # very defect #445 is about. So the gate gets a database.
+        # Digest-pinned to the same image as the other Mongo jobs (#176).
+        image: mongo:7.0@sha256:8ecb514b00bdcc0bde67ef4e6c330385377a9dc68e24ee94e28c07c891647348
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -86,24 +114,28 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
-      - name: Run unit tests with coverage
-        # Path selection: only suites with zero service dependencies. The marker
-        # filter additionally excludes integration/performance tests in them.
+      - name: Run tests with coverage
+        # The WHOLE tree, minus the two markers. `integration` is covered by the
+        # job below with every backing service; `performance` is the benchmark
+        # suite (marked in tests/benchmarks/conftest.py), whose wall-clock
+        # assertions cannot gate a PR on a contended 2-core runner.
         working-directory: apps/backend
         run: |
           PYTHONPATH=. uv run pytest \
-            tests/test_security/ \
-            tests/test_processing/ \
-            tests/test_utils/ \
-            tests/test_models/ \
-            tests/test_auth/ \
-            tests/test_model_training/test_problem_detector.py \
-            tests/test_model_training/test_feature_engineer.py \
+            tests/ \
             -m "not integration and not performance" \
             --cov=app \
             --cov-report=xml \
             --cov-report=term-missing \
             -v
+        env:
+          # MongoDB service container (NOT a production cluster — see #160).
+          # CI_REQUIRE_SERVICES is deliberately unset: Redis/LocalStack-gated
+          # tests skip here and are enforced in backend-integration instead.
+          TEST_MONGODB_URI: mongodb://localhost:27017/narrative_test
+          TEST_MONGODB_DB: narrative_test
+          MONGODB_URI: mongodb://localhost:27017/narrative_test
+          MONGODB_DB: narrative_test
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:

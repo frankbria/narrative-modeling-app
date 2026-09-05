@@ -42,7 +42,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 
 ## Testing Commands
 - Backend (full): `cd apps/backend && uv run pytest` — needs MongoDB on :27017; optional Redis (:6380) + LocalStack (:4566) via `docker compose -f docker-compose.test.yml up -d` (tests skip with a reason when absent)
-- Backend (service-free): `cd apps/backend && PYTHONPATH=. uv run pytest tests/test_security/ tests/test_processing/ tests/test_utils/ tests/test_models/ tests/test_auth/ tests/test_model_training/test_problem_detector.py tests/test_model_training/test_feature_engineer.py -m "not integration and not performance" -v`
+- Backend (what the PR gate runs, #445): `cd apps/backend && PYTHONPATH=. uv run pytest tests/ -m "not integration and not performance" -v` — needs MongoDB on :27017; Redis/LocalStack-gated tests skip. Selection is by **marker**, never by path: a path allowlist silently drops any new directory, which is how ~1,800 tests sat outside the gate until #445.
 - Frontend: `cd apps/frontend && npm test` | type check: `npm run type-check` | lint: `npm run lint`
 - MCP: `cd apps/mcp && uv run pytest tests/`
 
@@ -56,7 +56,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 
 ## CI & Test Suite Status
 - Backend full suite green locally (~1,460 passed); pytest uses the **test** database, never `MONGODB_URI`.
-- **`ci.yml` is the PR gate.** Runs: backend (ruff **blocking** with `E`/`F`/`I`/`UP`; mypy **blocking** — plain `uv run mypy app/`; service-free pytest), frontend (eslint, `tsc --noEmit`, `next build`, jest), MCP pytest, backend integration (Mongo/Redis/LocalStack, `CI_REQUIRE_SERVICES=true` so services can't silently skip), and the `e2e-smoke` job (Playwright `@smoke` on the full stack).
+- **`ci.yml` is the PR gate.** Runs: backend (ruff **blocking** with `E`/`F`/`I`/`UP`; mypy **blocking** — plain `uv run mypy app/`; the **whole** pytest tree minus `integration`/`performance`, 2069 tests, against a MongoDB service container — #445), frontend (eslint, `tsc --noEmit`, `next build`, jest), MCP pytest, backend integration (Mongo/Redis/LocalStack, `CI_REQUIRE_SERVICES=true` so services can't silently skip), and the `e2e-smoke` job (Playwright `@smoke` on the full stack).
 - The single aggregate **`CI Success`** status is the only required check for `main` — it transitively enforces all of the above (incl. e2e smoke). Advisory-only: `backend-typecheck`, the `@perf` job (`perf-tests.yml`), `security-audit`, and the Claude/GLM review bots.
 - `deploy.yml` ships `main` → staging over SSH (secret-gated). **The VPS firewalls port 22 off the public internet** (`ufw` allows it only from the home subnet and `on tailscale0`), so the runner joins the tailnet first — `HOST` must be the box's **tailnet** name/`100.x` address, never `dev.briaanalytics.com`, and `SSH_KNOWN_HOSTS` must be labelled with that same value (#384). Humans on the home subnet still SSH to the public name directly. `integration-tests.yml`/`e2e-tests.yml` are manual (`workflow_dispatch`).
 - Guides: `apps/backend/docs/TEST_INFRASTRUCTURE.md`, `apps/backend/docs/TDD_GUIDE.md`.

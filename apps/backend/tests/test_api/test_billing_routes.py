@@ -19,6 +19,21 @@ from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 # below use an origin the test environment actually allows.
 APP_ORIGIN = "http://localhost:3000"
 
+
+@pytest.fixture(autouse=True)
+def _allow_app_origin(monkeypatch):
+    """Pin the redirect allowlist to APP_ORIGIN for every test in this module.
+
+    Unset, BACKEND_CORS_ORIGINS resolves to the wildcard `["*"]`, which the
+    origin guard refuses outright (400) — so without this, ten of these tests
+    passed only on machines whose apps/backend/.env happened to set the var,
+    and would have failed the moment they ran anywhere else. They never did:
+    this file was outside the required job's path allowlist until #445.
+    The two tests that exercise the wildcard and unknown-origin paths set their
+    own value inside the test body, which runs after this fixture.
+    """
+    monkeypatch.setenv("BACKEND_CORS_ORIGINS", APP_ORIGIN)
+
 STATUS = "/api/v1/billing/status"
 CHECKOUT = "/api/v1/billing/checkout"
 PORTAL = "/api/v1/billing/portal"
