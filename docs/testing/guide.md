@@ -591,9 +591,12 @@ The testing pipeline consists of three workflows that run automatically:
 - Pushes to main
 
 **Jobs**:
-1. **Backend Unit Tests** (15-minute timeout)
-   - Python 3.11, uv package manager
-   - Tests: `test_security/`, `test_processing/`, `test_utils/`, `test_models/`, `test_auth/`, selected `test_model_training/` files — service-free paths only
+1. **Backend Tests** (30-minute timeout)
+   - Python 3.13, uv package manager
+   - Tests: `pytest tests/ -m "not integration and not performance"` — the whole
+     tree, selected by **marker, never by path** (#445), against a MongoDB
+     service container. Redis/LocalStack-gated tests skip here; the integration
+     job enforces them.
    - Coverage uploaded to Codecov (backend-unit flag)
    - Artifacts: `coverage.xml` (30-day retention)
 
@@ -708,7 +711,7 @@ OPENAI_API_KEY=sk-test-key-for-mocking
 
 | Workflow | Expected Duration | Timeout |
 |----------|------------------|---------|
-| Backend Unit Tests | ~5-8 minutes | 15 minutes |
+| Backend Tests | ~10-15 minutes | 30 minutes |
 | Frontend Unit Tests | ~3-5 minutes | 10 minutes |
 | E2E Tests (per browser) | ~15-30 minutes | 60 minutes |
 | Integration Tests | ~10-15 minutes | 30 minutes |

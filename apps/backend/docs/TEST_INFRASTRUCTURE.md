@@ -50,14 +50,30 @@ Notes:
 
 ### CI encoding
 
-- `.github/workflows/ci.yml` — the primary PR gate (issue #150). Runs the
-  service-free backend paths (`backend-unit`) plus `backend-integration`, which
-  provisions a MongoDB **service container** (27017) and Redis + LocalStack via
-  `docker-compose.test.yml`. It also runs frontend (eslint/tsc/build/jest) and
-  MCP pytest, and exposes the aggregate `CI Success` status. Requirements are
-  documented in the workflow header. All three services are **hard requirements**
-  (`CI_REQUIRE_SERVICES=true`): the S3/upload/OpenAI integration suites run in
-  the gate and a missing service fails the job instead of skipping (#221).
+- `.github/workflows/ci.yml` — the primary PR gate (issue #150). It also runs
+  frontend (eslint/tsc/build/jest) and MCP pytest, and exposes the aggregate
+  `CI Success` status. Requirements are documented in the workflow header.
+  - `backend-unit` ("Backend Tests") runs the **whole** tree —
+    `pytest tests/ -m "not integration and not performance"`, 2069 of 2438
+    tests — against a MongoDB service container (27017). Selection is by
+    **marker, never by path**: it named seven directories until #445, which
+    collected 598 tests and left every billing, quota, webhook, API-key,
+    rate-limit, route and middleware suite outside the required gate. Redis and
+    LocalStack are not provisioned here; those tests `require_service()`-skip
+    and are enforced in the integration job instead.
+  - `backend-integration` runs `pytest tests/ -m integration` (327 tests) with a
+    MongoDB **service container** (27017) plus Redis + LocalStack via
+    `docker-compose.test.yml`. All three are **hard requirements**
+    (`CI_REQUIRE_SERVICES=true`): the S3/upload/OpenAI integration suites run in
+    the gate and a missing service fails the job instead of skipping (#221).
+    This job selected `tests/integration/` by path until #445, collecting 56 of
+    327 — the other 271 (`tests/test_integration/`, `tests/load/`, and the
+    integration-marked route suites under `tests/test_api/`) were deselected by
+    the job above for being `integration` and never picked up here, so they ran
+    in **no** required job at all.
+
+  Between them the two jobs now cover the whole tree: 2069 + 327 = 2396 of 2438,
+  the remaining 42 being the `performance` benchmarks.
 - `.github/workflows/integration-tests.yml` (manual trigger) — the standalone
   integration run; provisions Redis + LocalStack via `docker-compose.test.yml`
   and uses an Atlas test cluster for MongoDB. Requirements in the workflow header.
@@ -70,6 +86,11 @@ Tests are organized using pytest markers to separate unit and integration tests:
 
 - **`@pytest.mark.unit`**: Unit tests that don't require external services (MongoDB, Redis, AWS)
 - **`@pytest.mark.integration`**: Integration tests that require external services and database connections
+- **`@pytest.mark.performance`**: wall-clock benchmarks. Everything under
+  `tests/benchmarks/` gets this marker automatically from that directory's
+  `conftest.py`, so a new benchmark file stays out of the PR gate without anyone
+  remembering to mark it. These two markers are the **only** thing the gate
+  excludes — never re-narrow it by path (#445).
 
 ### Directory Structure
 

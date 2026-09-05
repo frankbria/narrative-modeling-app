@@ -1,6 +1,7 @@
 """
 Shared fixtures for benchmark tests.
 """
+import pathlib
 from typing import Any
 
 import numpy as np
@@ -143,3 +144,22 @@ def trained_model_large(benchmark_data_10k) -> tuple[Any, pd.DataFrame]:
     model.fit(X_train, y_train)
 
     return model, X_test
+
+
+def pytest_collection_modifyitems(items):
+    """Mark everything in tests/benchmarks/ as ``performance``.
+
+    These are pytest-benchmark wall-clock assertions (training 50K rows,
+    10K-row batch prediction) that take tens of minutes and are contended on a
+    2-core runner, so they cannot gate a PR. The required job excludes them by
+    marker, never by path (issue #445), and this hook is what keeps a newly
+    added benchmark file out of the gate automatically instead of silently
+    joining it.
+
+    pytest hands this hook the WHOLE session's item list even though the hook
+    lives in a subdirectory conftest, so the path check is load-bearing.
+    """
+    here = pathlib.Path(__file__).parent
+    for item in items:
+        if here in pathlib.Path(str(item.path)).parents:
+            item.add_marker("performance")
