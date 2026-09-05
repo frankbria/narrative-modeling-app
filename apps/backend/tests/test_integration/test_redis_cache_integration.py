@@ -16,6 +16,7 @@ from app.services.data_processing.statistics_engine import (
 from app.services.onboarding_service import OnboardingService
 from app.services.redis_cache import cache_result
 from app.services.visualization_cache import (
+    DEFAULT_HISTOGRAM_BINS,
     generate_and_cache_histogram,
     get_cached_visualization,
 )
@@ -159,19 +160,31 @@ class TestRedisCacheIntegration:
              patch('pandas.read_csv', return_value=test_df), \
              patch('app.services.visualization_cache.get_file_from_s3', return_value="mock_file_path"):
             
-            # Test histogram caching
-            histogram_data = await generate_and_cache_histogram(dataset_id, "numeric_col", num_bins=5)
-            
+            # The default bin count is the ONLY one the cache may serve or
+            # write — the key does not capture num_bins (#170) — so ask for the
+            # default here, otherwise the cache is bypassed by design.
+            histogram_data = await generate_and_cache_histogram(
+                dataset_id, "numeric_col", num_bins=DEFAULT_HISTOGRAM_BINS
+            )
+
             # Verify cache operations
             mock_cache.get.assert_called()
             mock_cache.set.assert_called()
-            
+
             # Verify histogram data structure
             assert "bins" in histogram_data
             assert "counts" in histogram_data
             assert "bin_edges" in histogram_data
-            assert len(histogram_data["bins"]) == 5
-            
+            assert len(histogram_data["bins"]) == DEFAULT_HISTOGRAM_BINS
+
+            # A non-default bin count must never touch the cache (#170): a hit
+            # would return an earlier request's bin shape.
+            mock_cache.reset_mock()
+            custom = await generate_and_cache_histogram(dataset_id, "numeric_col", num_bins=5)
+            assert len(custom["bins"]) == 5
+            mock_cache.get.assert_not_called()
+            mock_cache.set.assert_not_called()
+
             # Reset mocks for cache hit test
             mock_cache.reset_mock()
             mock_cache.get = AsyncMock(return_value=histogram_data)  # Cache hit
