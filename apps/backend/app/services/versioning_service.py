@@ -179,7 +179,11 @@ class VersioningService(BaseService[DatasetVersion]):
         content_hash = DatasetVersion.compute_content_hash(transformed_content)
         existing_version = await DatasetVersion.find_one(
             DatasetVersion.dataset_id == parent_version.dataset_id,
-            DatasetVersion.content_hash == content_hash
+            DatasetVersion.content_hash == content_hash,
+            # Owner predicate is load-bearing: without it a foreign row sharing
+            # this dataset_id and hash is returned to the caller and has their
+            # description written onto it (found reviewing #447).
+            DatasetVersion.user_id == user_id
         )
 
         if existing_version:

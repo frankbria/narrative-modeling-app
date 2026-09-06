@@ -851,3 +851,108 @@ class TestVersionsAPI:
         assert foreign.status_code == 404
         assert unknown.json()["detail"].endswith("not found")
         assert foreign.json()["detail"].endswith("not found")
+
+    # Test POST /datasets/{id}/versions - Tenant isolation (issue #447, P0.4)
+    #
+    # The handler read `DatasetMetadata` and the latest `DatasetVersion` on
+    # `dataset_id` alone, then wrote the copied content into a version owned by
+    # `current_user_id` — exfiltrating the victim's data into the attacker's
+    # account, where legitimately-scoped endpoints would then serve it back.
+
+    @pytest.mark.asyncio
+    async def test_create_version_against_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+        mock_s3_client,
+    ):
+        """Tenant A cannot create a version against tenant B's dataset."""
+        # ACT
+        response = await async_authorized_client.post(
+            f"/api/v1/datasets/{foreign_dataset_with_versions.dataset_id}/versions",
+            json={"description": "exfiltration attempt", "transformation_steps": []},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_create_version_against_another_tenant_writes_nothing(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+        mock_user_id: str,
+        mock_s3_client,
+    ):
+        """The copy must not happen — a status-only check would pass against a
+        variant that exfiltrates and then 500s."""
+        # ARRANGE
+        dataset_id = foreign_dataset_with_versions.dataset_id
+        before = await DatasetVersion.find(
+            DatasetVersion.dataset_id == dataset_id
+        ).count()
+
+        # ACT
+        await async_authorized_client.post(
+            f"/api/v1/datasets/{dataset_id}/versions",
+            json={"description": "exfiltration attempt", "transformation_steps": []},
+        )
+
+        # ASSERT — nothing created, and nothing landed in the caller's name
+        assert await DatasetVersion.find(
+            DatasetVersion.dataset_id == dataset_id
+        ).count() == before
+        assert await DatasetVersion.find(
+            DatasetVersion.user_id == mock_user_id
+        ).count() == 0
+
+    @pytest.mark.asyncio
+    async def test_create_version_dedup_never_matches_another_tenants_row(
+        self,
+        async_authorized_client: AsyncClient,
+        sample_dataset_metadata: DatasetMetadata,
+        mock_user_id: str,
+        mock_s3_client,
+    ):
+        """Content dedup must not reach across tenants (found reviewing #447).
+
+        `create_transformation_version` looked up an existing version by
+        `(dataset_id, content_hash)` with no owner predicate. A foreign row
+        matching both would be returned in the 201 body — leaking the victim's
+        `user_id`, `file_path` and `s3_url` — and have the caller's description
+        written onto it.
+        """
+        # ARRANGE: the caller's own base version holds content that does NOT
+        # hash to what the transformation will produce, so the planted foreign
+        # row is the only dedup candidate. That makes the match deterministic.
+        base = await versioning_service.create_base_version(
+            dataset_metadata=sample_dataset_metadata,
+            file_content=b"col\n1",
+            user_id=mock_user_id,
+            description="Initial upload",
+        )
+        transformed_hash = DatasetVersion.compute_content_hash(
+            mock_s3_client.get_object()["Body"].read()
+        )
+        assert base.content_hash != transformed_hash
+
+        foreign = make_version(sample_dataset_metadata.dataset_id, 50, OTHER_USER)
+        foreign.content_hash = transformed_hash
+        foreign.description = "victim's own description"
+        await foreign.insert()
+
+        # ACT
+        response = await async_authorized_client.post(
+            f"/api/v1/datasets/{sample_dataset_metadata.dataset_id}/versions",
+            json={"description": "attacker text", "transformation_steps": []},
+        )
+
+        # ASSERT: the foreign row is neither returned nor written to
+        assert response.status_code == 201
+        assert response.json()["version"]["user_id"] == mock_user_id
+        assert response.json()["version"]["version_id"] != foreign.version_id
+
+        reloaded = await DatasetVersion.find_one(
+            DatasetVersion.version_id == foreign.version_id
+        )
+        assert reloaded.description == "victim's own description"

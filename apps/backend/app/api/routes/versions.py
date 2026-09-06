@@ -31,6 +31,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def require_owned_dataset(dataset_id: str, user_id: str) -> DatasetMetadata:
+    """Return the caller's dataset, or 404.
+
+    Unknown and foreign datasets answer identically so the pair is not an
+    existence oracle. Call this OUTSIDE a handler's `try`: the broad
+    `except Exception` blocks in this module would otherwise turn the 404
+    into a 500.
+    """
+    dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id})
+    if not dataset or dataset.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+    return dataset
+
+
 @router.get("/datasets/{dataset_id}/versions", response_model=VersionListResponse)
 async def list_dataset_versions(
     dataset_id: str,
@@ -44,14 +61,7 @@ async def list_dataset_versions(
     Returns versions sorted by version_number (descending).
     Supports pagination via limit and skip parameters.
     """
-    # Ownership check — 404 for unknown or foreign datasets, so the two are
-    # indistinguishable (issue #446).
-    dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id})
-    if not dataset or dataset.user_id != current_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset {dataset_id} not found"
-        )
+    await require_owned_dataset(dataset_id, current_user_id)
 
     try:
         logger.info(f"Listing versions for dataset {dataset_id}")
@@ -103,13 +113,7 @@ async def get_quality_trend(
     Returns per-transformation 0-100 quality scores plus aggregate metrics.
     Empty trend when the dataset has no transformation history. Never 500s.
     """
-    # Ownership check — 404 for unknown or foreign datasets.
-    dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id})
-    if not dataset or dataset.user_id != current_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset {dataset_id} not found"
-        )
+    await require_owned_dataset(dataset_id, current_user_id)
 
     try:
         raw_points = await versioning_service.get_quality_trend(dataset_id)
@@ -151,22 +155,19 @@ async def create_dataset_version(
     This endpoint requires the transformed dataset content to be uploaded
     separately and referenced via file_path or s3_url.
     """
+    # Ownership check before ANY read of the dataset's content: this handler
+    # copies the parent version's bytes into a new version owned by the caller,
+    # so an unscoped read here exfiltrates the victim's data (issue #447).
+    dataset_metadata = await require_owned_dataset(dataset_id, current_user_id)
+
     try:
         logger.info(f"Creating new version for dataset {dataset_id}")
 
-        # Get dataset metadata
-        dataset_metadata = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id
-        })
-        if not dataset_metadata:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Get the latest version to use as parent
+        # Get the latest version to use as parent, scoped to the caller — a
+        # second unscoped read of the same victim data otherwise.
         latest_version = await DatasetVersion.find({
-            "dataset_id": dataset_id
+            "dataset_id": dataset_id,
+            "user_id": current_user_id,
         }).sort("-version_number").first_or_none()
 
         if not latest_version:
