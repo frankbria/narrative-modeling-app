@@ -190,18 +190,23 @@ def upload_file_to_s3(
         return False, None
 
 
-def _allowed_buckets() -> set[str]:
-    """Buckets this deployment is permitted to read from.
+def _allowed_bucket() -> str | None:
+    """The single bucket this deployment may read from, or None if unconfigured.
+
+    Deliberately the same expression as
+    `app/services/s3_service.py::download_file_from_s3`, which has enforced its
+    own allowlist since #257. Two allowlists that resolve their allowed bucket
+    differently is how this class of bug quietly reopens — an earlier version of
+    this function accepted *any* of the four historical env names, which was the
+    more permissive of the two. Consolidating them into one helper is a
+    follow-up; agreeing on the answer comes first.
 
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    from app.config import S3_BUCKET_ENV_NAMES
+    from app.config import resolve_s3_bucket
 
-    # Every historical name, not a hand-rolled subset: #257 canonicalised these
-    # precisely so a deploy setting only S3_BUCKET is not silently unrecognised.
-    values = (os.getenv(name) for name in S3_BUCKET_ENV_NAMES)
-    return {v.strip() for v in values if v and v.strip()}
+    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
 
 
 def require_allowed_bucket(bucket_name: str) -> None:
@@ -219,14 +224,14 @@ def require_allowed_bucket(bucket_name: str) -> None:
     caller against; enforcing a prefix here would break every legitimate read of
     an existing object. Namespacing those keys is tracked separately.
     """
-    allowed = _allowed_buckets()
+    allowed = _allowed_bucket()
     if not allowed:
         logger.error("No S3 bucket configured; refusing to download from %r", bucket_name)
         raise ValueError("No S3 bucket is configured for this deployment")
-    if bucket_name not in allowed:
+    if bucket_name != allowed:
         logger.error(
-            "Refusing to download from unexpected bucket %r (allowed: %s)",
-            bucket_name, sorted(allowed),
+            "Refusing to download from unexpected bucket %r (allowed: %r)",
+            bucket_name, allowed,
         )
         raise ValueError(f"Bucket {bucket_name!r} is not permitted for this deployment")
 

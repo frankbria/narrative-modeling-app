@@ -273,6 +273,9 @@ async def update_user_data(
     for field, value in updated.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(doc, field, value)
     doc.updated_at = get_current_time()
+    # Plain save() rather than a replace: UserData does not use Beanie revisions,
+    # so there is no RevisionIdWasChanged footgun here. Re-check that if the
+    # model ever gains `use_revision`.
     await doc.save()
 
     # Shape the response like the GET endpoints rather than returning the raw

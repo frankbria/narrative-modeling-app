@@ -186,10 +186,7 @@ async def recalculate_column_stats(
                 dataset.s3_url, bucket,
             )
 
-        # This path parses and downloads on its own rather than going through
-        # get_file_from_s3, so the bucket allowlist is applied here too. After
-        # the fallback above, not before: a URL whose bucket cannot be parsed
-        # is meant to resolve to the configured one (#451).
+        # Allowlist applied after the fallback — see get_column_stats (#451).
         require_allowed_bucket(bucket or "")
 
         # Download the file
