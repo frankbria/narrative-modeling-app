@@ -211,3 +211,46 @@ class TestColumnStatsTenantIsolation:
         assert response.status_code == 200
         written = await ColumnStats.find(ColumnStats.user_id == mock_user_id).to_list()
         assert sorted(c.column_name for c in written) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_recalculate_malformed_dataset_id_is_404_not_500(
+        self, async_authorized_client: AsyncClient, setup_database
+    ):
+        """`_require_owned_dataset` is shared, but assert it on both handlers."""
+        # ACT
+        response = await async_authorized_client.post(
+            "/api/v1/column_stats/dataset/not-an-object-id/recalculate"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_recalculate_keeps_existing_stats_when_the_download_fails(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+    ):
+        """The delete must not precede the S3 round-trip.
+
+        This hazard appeared twice in this file — once in `get_column_stats` and
+        again in `recalculate_column_stats` one function below it — so it is
+        pinned rather than left to code review a third time.
+        """
+        # ARRANGE
+        mine = await make_user_data(mock_user_id)
+        await seed_cached_stats(mine, mock_user_id)
+        failing_s3 = MagicMock()
+        failing_s3.get_object.side_effect = RuntimeError("S3 is having a day")
+
+        # ACT
+        with patch(
+            "app.api.routes.column_stats.create_s3_client", return_value=failing_s3
+        ):
+            response = await async_authorized_client.post(
+                f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
+            )
+
+        # ASSERT — the request fails, but the caller's cached stats survive
+        assert response.status_code == 500
+        assert await ColumnStats.get_motor_collection().count_documents(
+            {"dataset_id": mine.id}
+        ) == 1

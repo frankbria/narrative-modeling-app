@@ -151,15 +151,6 @@ async def recalculate_column_stats(
     dataset = await _require_owned_dataset(dataset_id, user_id)
 
     try:
-        # Delete existing column stats. Intentionally NOT scoped by user_id,
-        # unlike the read in get_column_stats: ownership of this dataset is
-        # already established above, and a recalculate should also clear any
-        # stray or legacy rows sitting under it. (Also a no-op against
-        # production data until #543 — see the note in get_column_stats.)
-        await ColumnStats.find(
-            ColumnStats.dataset_id == PydanticObjectId(dataset_id)
-        ).delete()
-
         # Download the data from S3
         s3_client = create_s3_client()
 
@@ -191,6 +182,21 @@ async def recalculate_column_stats(
                     status_code=400,
                     detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
                 )
+
+        # Replace the existing rows only now that the new content is parsed and
+        # in hand. Deleting before the S3 download (where this used to sit) meant
+        # a failed download or parse wiped the caller's good cached stats and
+        # left nothing behind — the same hazard fixed in get_column_stats, which
+        # this handler was missing one function away.
+        #
+        # Intentionally NOT scoped by user_id, unlike the read in
+        # get_column_stats: ownership of this dataset is already established
+        # above, and a recalculate should also clear stray or legacy rows under
+        # it. (A no-op against production data until #543 — see the note in
+        # get_column_stats.)
+        await ColumnStats.find(
+            ColumnStats.dataset_id == PydanticObjectId(dataset_id)
+        ).delete()
 
         # Calculate and store column stats
         await calculate_and_store_column_stats(df, dataset_id, user_id)
