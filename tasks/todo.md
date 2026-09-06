@@ -1,47 +1,46 @@
-# Issue #449 — [P0.6] Cached column stats returned cross-tenant
+# Issue #450 — [P0.7] Two A/B-testing endpoints have no authentication
 
-Branch: `fix/449-column-stats-cache-idor`
+Branch: `fix/450-ab-testing-unauthenticated`
 
 ## Problem
-`GET /api/v1/column-stats/dataset/{dataset_id}` reads the `ColumnStats` cache first and
-only enters the ownership check inside `if not column_stats:`. On a cache hit it returns
-another tenant's distributions, null counts, cardinality and sample values with no
-authorization at all.
+`assign_variant` and `track_prediction` in `app/api/routes/ab_testing.py` omit the
+`get_current_user_id` dependency the other eight endpoints all carry, and the router is
+mounted without `dependencies=[...]`. Both are reachable unauthenticated by anyone.
+`track_prediction` lets an anonymous caller inject prediction outcomes into any tenant's
+experiment metrics — the numbers used to pick a production model. `assign_variant`
+discloses `model_id` for arbitrary experiment ids.
 
-## What the probe established (not assumed)
-1. `ColumnStats.dataset_id` is a `Link[UserData]`, stored as a **DBRef**; the route's
-   `== PydanticObjectId(...)` query matched **0 rows**. So the cache never hits via the
-   normal write path — the vulnerability is **latent today** and goes live with #543.
-2. A raw bare-ObjectId row **does** match and parses cleanly. That is how AC3's
-   cache-hit test is seeded ("directly", per the issue), and it is the shape #543 creates.
-3. Unreported: the ownership check sits inside `try/except Exception` with no
-   `except HTTPException: raise`, so today's 403 is swallowed and surfaces as **500**.
+## Correction to the issue
+The issue gives the paths as `/api/v1/track-prediction` and
+`/api/v1/experiments/{id}/assign-variant`. Those are wrong: it read the `include_router`
+prefix in `main.py` but missed that the router itself declares
+`APIRouter(prefix="/ab-testing")`. The real paths are `/api/v1/ab-testing/...`.
+The vulnerability is real; only the paths were misstated.
 
 ## Plan
-1. **RED** — first route tests for this file (AC4):
-   - cache hit, foreign dataset → 404 (currently returns the victim's stats)
-   - cache miss, foreign dataset → 404 (currently 500, via the swallowed 403)
-   - owner, cache hit → 200 with their own stats
-   - malformed `dataset_id` → 404, not a 500 from `PydanticObjectId(...)`
-   - `POST .../recalculate` on a foreign dataset → 404
-2. **GREEN**
-   - resolve the dataset and check ownership **unconditionally, before** the cache read,
-     and **outside** the `try` so it cannot be swallowed into a 500 (AC1)
-   - add `user_id` to `ColumnStats` (optional, indexed), set it on write, and filter the
-     cache read by it — so a foreign row cannot be returned even if AC1 is later
-     refactored away (AC2). Optional/defaulted so pre-existing rows simply miss the
-     cache and get recomputed, per the repo's degrade-gracefully convention.
-   - 403 → 404 on ownership mismatch in **both** handlers: 403 confirms the dataset
-     exists, and AC3 fixes 404 as the expected answer for this file.
-3. Docs: add both routes to `SECURITY_OWNERSHIP_CHECKS.md`.
+1. **RED** — tests in `tests/test_api/test_ab_testing.py`:
+   - unauthenticated `GET .../assign-variant` → 401 (AC3, via `async_test_client`)
+   - unauthenticated `POST .../track-prediction` → 401 (AC3)
+   - authenticated non-owner on both → 404 (AC2)
+   - owner path still works on both (regression)
+2. **GREEN** — add `current_user_id: str = Depends(get_current_user_id)` to both, and
+   load the experiment with an owner predicate, matching `get_experiment_metrics`
+   two functions away. `track_prediction` currently passes `experiment_id` straight to
+   the service, which fetches unscoped — the route must establish ownership first.
+3. Docs: record both in `SECURITY_OWNERSHIP_CHECKS.md`.
 
-## Deliberately NOT fixed here
-The DBRef-vs-bare-ObjectId mismatch is #543 (P2.20). The issue says to land this first;
-fixing the cache so it hits, before the authorization is fixed, would turn a latent hole
-into a live one.
+## AC4 — answered, not built
+"Consider whether `track-prediction` needs to be callable by the serving path rather
+than a browser session; if so it belongs on the X-API-Key production surface."
+
+Answer: not today. Per #502 no serving path assigns or tracks a variant, so there is no
+serving caller to accommodate — building an API-key surface for a caller that does not
+exist would be speculative, and it is #502 that decides whether this feature ships at
+all. Session auth is the correct scoping now and is strictly safer than the status quo.
+Recorded on #502 so the decision is made with this in view.
 
 ## Acceptance criteria
-- [ ] AC1 ownership check runs unconditionally, before the cache lookup
-- [ ] AC2 the cache read itself is scoped
-- [ ] AC3 route test seeds `ColumnStats` for tenant B so the cache hits; A gets 404
-- [ ] AC4 first route tests for `column_stats.py`
+- [ ] AC1 both endpoints require authentication
+- [ ] AC2 both tenant-scoped; non-owner gets 404
+- [ ] AC3 route tests assert 401 unauthenticated on each
+- [ ] AC4 serving-path question answered in writing

@@ -249,12 +249,14 @@ async def complete_experiment(
 @router.get("/experiments/{experiment_id}/assign-variant", response_model=VariantAssignmentResponse)
 async def assign_variant(
     experiment_id: str,
-    user_identifier: str = Query(..., description="User identifier for consistent assignment")
+    user_identifier: str = Query(..., description="User identifier for consistent assignment"),
+    current_user_id: str = Depends(get_current_user_id)
 ):
-    """Get variant assignment for a user"""
-    
+    """Get variant assignment for a user, within the caller's own experiment."""
+
     experiment = await ABTest.find_one({
         "experiment_id": experiment_id,
+        "user_id": current_user_id,
         "status": ExperimentStatus.RUNNING
     })
     
@@ -297,10 +299,30 @@ async def track_prediction(
     variant_id: str,
     latency_ms: float,
     success: bool = True,
-    custom_metrics: dict[str, float] | None = None
+    custom_metrics: dict[str, float] | None = None,
+    current_user_id: str = Depends(get_current_user_id)
 ):
-    """Track a prediction for an A/B test variant"""
-    
+    """Track a prediction for a variant of the caller's own experiment.
+
+    Ownership is established here rather than in the service:
+    `ABTestingService.track_prediction` looks the experiment up by id alone and
+    returns silently on a miss, which is deliberate for non-blocking tracking
+    but cannot double as an authorization boundary.
+    """
+
+    # The service below re-fetches by experiment_id alone, so this check only
+    # holds while experiment_ids are unique across tenants. They are: ids are
+    # generated server-side and never accepted from a caller. Anything that
+    # writes ABTest documents directly (an import, a migration, a restore) must
+    # preserve that, or the ownership established here no longer describes the
+    # document written. Tracked as #565.
+    experiment = await ABTest.find_one({
+        "experiment_id": experiment_id,
+        "user_id": current_user_id
+    })
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
     await ABTestingService.track_prediction(
         experiment_id=experiment_id,
         variant_id=variant_id,
