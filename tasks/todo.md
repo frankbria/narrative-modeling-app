@@ -1,62 +1,43 @@
-# #368 — Plan enforcement on metered endpoints
+# Issue #446 — [P0.3] [security] IDOR: dataset version listing trusts a client-supplied user_id query param
 
-## The decision the issue forces
+Branch: `fix/446-versions-list-idor`
 
-`metering.remaining()` is two independent reads, so it cannot back a hard limit —
-concurrent requests all see room. Rather than accept a bounded overshoot, close
-the window: add `metering.consume()`, a single conditional `$inc` that checks and
-consumes in one operation.
+## Problem
+`GET /api/v1/datasets/{dataset_id}/versions` takes `user_id` as a query param and passes it
+to `versioning_service.list_versions()`, while the authenticated `current_user_id` is resolved
+and never used. Omitting `user_id` sends `None`, which applies no owner filter at all.
+The `total` count below it is also unscoped.
 
-The trick that makes it one operation: filter on `units <= limit - amount` with
-`upsert=True`. No record yet → the upsert inserts one. A record already at the
-limit → the filter misses, the upsert tries to insert a duplicate, and the unique
-index on `(user_id, period_key, metric)` raises `DuplicateKeyError`, which *is*
-the denial. No read precedes the write.
+## Plan (self-authored from the issue's acceptance criteria; no plan comment existed)
 
-Guard: `amount > limit` is denied up front, or the insert path would create a
-record above a limit it never checked (and `limit == 0` would allow 1 through).
+1. **RED** — add route tests to `apps/backend/tests/test_api/test_versions.py`
+   using `async_authorized_client` + real Mongo docs (never `mock_async_client`):
+   - tenant A requesting tenant B's `dataset_id` → **404**
+   - tenant A passing `?user_id=<B>` → still **404** (param is gone/ignored)
+   - a foreign dataset that has versions does not leak `total`
+   - existing owner-path tests still pass (list + pagination)
+   - unknown `dataset_id` → **404**, identical to the foreign case (no existence oracle)
+2. **GREEN** — `apps/backend/app/api/routes/versions.py::list_dataset_versions`:
+   - delete the `user_id: str | None = None` query parameter (AC1)
+   - add the same ownership guard `get_quality_trend` already uses two handlers below:
+     `DatasetMetadata.find_one({"dataset_id": ...})`, 404 when missing or foreign
+   - pass `user_id=current_user_id` to `list_versions` (AC2)
+   - scope the `total_count` query with `user_id == current_user_id` (AC3)
+3. Update `test_list_versions_nonexistent_dataset` (currently asserts 200 + empty list) to 404.
+4. Quality gate: pytest, ruff, mypy, review.
 
-## Enforcement counts; endpoints do not
+## Autonomous decisions
+- **Unknown dataset now 404s instead of 200-empty.** AC4 requires foreign → 404; leaving
+  unknown at 200-empty would make the pair an existence oracle (404 = "exists, not yours").
+  Matches `get_quality_trend` in the same file.
+- Ownership guard inline in the handler, mirroring `get_quality_trend` — no new helper
+  (the other handlers in this file are P0.4/P0.5/P0.10's scope, out of scope here).
+- `versioning_service.list_versions` keeps its optional `user_id` signature; only the route
+  changes. Other callers: none.
 
-The dependency is the only thing counting these metrics, so nothing
-double-counts. Reserved units are refunded when the request fails, in one
-middleware rather than in every route — otherwise a malformed upload burns quota
-and a free tenant loses their 20 uploads to typos.
-
-## Steps
-
-1. `metering.consume()` / `refund()` — atomic reserve; tests incl. a real race
-2. `app/billing/enforcement.py` — `quota(metric)` dependency, 402 carrying the
-   limit and the reset; a variant for the X-API-Key surface
-3. Refund middleware on any >=400 response
-4. Wire the six metered routes:
-   - `POST /api/v1/ml/train` → training_runs
-   - `POST /api/v1/ml/{id}/predict` → predictions
-   - `POST /api/v1/jobs` (batch) → predictions
-   - `POST /api/v1/production/v1/models/{id}/predict` → predictions
-   - `POST /api/v1/datasets/upload` → uploads
-   - `POST /api/v1/upload/secure` → uploads
-5. ~~Frontend: surface the 402 as an upgrade prompt~~ — **skipped, deliberately.**
-   Not in the issue's scope, and the proactive surface already shipped: the #365
-   Plan & usage page shows per-metric bars that turn amber at 80%, which warns
-   before the wall instead of explaining it afterwards. Wiring 402 handling into
-   every service call site is a large diff for the worse half of the UX. Add when
-   there is a real complaint about the raw error.
-6. Docs: CLAUDE.md conventions
-
-## Invariants
-- Enforcement never fails open — a storage error denies, unlike `record()`.
-- Composes with #261 invite gate and #151 rate limiting; replaces neither.
-- Unlimited (-1) tiers skip the reserve entirely but still count.
-
-## Result
-
-- `consume()`/`refund()` — 15 tests, three mutants killed (read-then-write loses
-  the race 20/5; no `amount > limit` guard allows a 0-limit tenant through; no
-  refund clamp mints negative usage).
-- Route wiring — 8 tests through the full app; unregistering the middleware and
-  detaching the dependency each redden a test.
-- Full backend suite: 2377 passed, 1 pre-existing failure
-  (`test_redis_cache_integration`, fails on a clean tree too).
-- Fixed on the way: `tests/test_api/test_secure_upload.py` ran three tests with no
-  Beanie at all via `mock_async_client`; they now take `setup_database`.
+## Acceptance criteria
+- [ ] AC1 `user_id` query param removed from the signature
+- [ ] AC2 handler filters on `current_user_id`
+- [ ] AC3 total-count query scoped the same way
+- [ ] AC4 route test: A → B's dataset = 404; `?user_id=<B>` does not change the result
+- [ ] AC5 tests use `async_authorized_client` + real Mongo documents
