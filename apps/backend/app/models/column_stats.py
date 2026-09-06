@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
 from beanie import Document, Indexed, Link
 from pydantic import BaseModel, Field
@@ -32,6 +33,10 @@ class ColumnStats(Document):
     """Model for storing per-column descriptive statistics and histograms"""
 
     dataset_id: Link[UserData] = Indexed(Link[UserData])
+    # Owner of the dataset these stats describe. Optional so rows written
+    # before #449 still validate; they simply miss the scoped cache read and
+    # are recomputed, which then stamps this field.
+    user_id: Annotated[str | None, Indexed()] = None
     column_name: str = Indexed(str)
     data_type: str  # 'numeric', 'categorical', 'date', 'text', 'boolean'
 

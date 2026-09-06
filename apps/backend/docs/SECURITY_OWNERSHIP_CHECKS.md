@@ -129,6 +129,22 @@ All three go through `require_owned_dataset(dataset_id, user_id)` in
 module's broad `except Exception` blocks would otherwise convert its 404 into
 a 500.
 
+- `app/api/routes/column_stats.py` (via `_require_owned_dataset`, local to that
+  module — different model and id type from the versions helper):
+  - `GET /api/v1/column_stats/dataset/{dataset_id}` — the ownership check used to
+    live *inside* the `if not column_stats:` branch, so a cache hit returned another
+    tenant's statistics unchecked. It now runs unconditionally, before the cache
+    read, and the cache query itself carries `ColumnStats.user_id == user_id` as a
+    second, deliberately redundant layer (#449).
+  - `POST /api/v1/column_stats/dataset/{dataset_id}/recalculate` — same guard.
+
+  Both guards are raised **outside** the handlers' `try` blocks. Each catches bare
+  `Exception`, which previously turned the ownership refusal into a 500.
+
+  `ColumnStats.user_id` is optional: rows written before #449 have none, so they
+  miss the scoped read and are recomputed. The recompute path deletes those
+  null-owner rows for the dataset first so they cannot accumulate.
+
 `VersioningService.create_transformation_version` scopes its content-dedup
 lookup by `user_id` as well — without that predicate a foreign version sharing
 a `dataset_id` and content hash is returned to the caller and updated with

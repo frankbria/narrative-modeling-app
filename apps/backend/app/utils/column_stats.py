@@ -55,6 +55,7 @@ async def calculate_and_store_column_stats(
         # Create a ColumnStats object
         column_stats = ColumnStats(
             dataset_id=dataset,
+            user_id=user_id,
             column_name=column_name,
             data_type=data_type,
             count=count,

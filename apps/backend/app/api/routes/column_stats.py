@@ -18,6 +18,25 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+async def _require_owned_dataset(dataset_id: str, user_id: str) -> UserData:
+    """Resolve the caller's dataset, or 404 (issue #449).
+
+    Unknown, malformed and foreign ids all answer 404: a 403 would confirm the
+    dataset exists, and an unparseable id would otherwise raise out of
+    ``PydanticObjectId`` as a 500.
+
+    Call this OUTSIDE the handlers' ``try`` blocks — both catch bare
+    ``Exception``, which previously swallowed this refusal into a 500.
+    """
+    if not PydanticObjectId.is_valid(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    dataset = await UserData.get(dataset_id)
+    if not dataset or dataset.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return dataset
+
+
 @router.get("/dataset/{dataset_id}", response_model=list[ColumnStats])
 async def get_column_stats(
     dataset_id: str, user_id: str = Depends(get_current_user_id)
@@ -32,26 +51,32 @@ async def get_column_stats(
     Returns:
         List of ColumnStats objects
     """
-    # Get column stats from database
+    # Ownership is checked BEFORE the cache is read. It used to live inside the
+    # `if not column_stats:` branch below, so a cache hit returned another
+    # tenant's distributions and sample values unchecked (issue #449).
+    dataset = await _require_owned_dataset(dataset_id, user_id)
+
+    # Get column stats from database, scoped to the caller. The owner predicate
+    # is deliberately redundant with the check above (AC2): a stray foreign row
+    # under this dataset_id must not be served even if that check is refactored.
     column_stats = await ColumnStats.find(
-        ColumnStats.dataset_id == PydanticObjectId(dataset_id)
+        ColumnStats.dataset_id == PydanticObjectId(dataset_id),
+        ColumnStats.user_id == user_id,
     ).to_list()
 
     # If no stats exist, calculate them
     if not column_stats:
+        # Drop unservable legacy rows for this dataset first. Rows written before
+        # #449 carry no user_id, so the scoped read above can never return them;
+        # without this they would accumulate as invisible garbage every time the
+        # stats are recomputed. Scoped to a dataset whose ownership is already
+        # established, and to null-owner rows only, so nothing else is touched.
+        await ColumnStats.find(
+            ColumnStats.dataset_id == PydanticObjectId(dataset_id),
+            ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
+        ).delete()
+
         try:
-            # Get the dataset
-            dataset = await UserData.get(dataset_id)
-
-            if not dataset:
-                raise HTTPException(status_code=404, detail="Dataset not found")
-
-            # Verify the user owns the dataset
-            if dataset.user_id != user_id:
-                raise HTTPException(
-                    status_code=403, detail="Not authorized to access this dataset"
-                )
-
             # Download the data from S3
             s3_client = create_s3_client()
 
@@ -93,6 +118,8 @@ async def get_column_stats(
                 df, dataset_id, user_id
             )
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error calculating column stats: {e}")
             raise HTTPException(
@@ -116,19 +143,9 @@ async def recalculate_column_stats(
     Returns:
         Success message
     """
+    dataset = await _require_owned_dataset(dataset_id, user_id)
+
     try:
-        # Get the dataset
-        dataset = await UserData.get(dataset_id)
-
-        if not dataset:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        # Verify the user owns the dataset
-        if dataset.user_id != user_id:
-            raise HTTPException(
-                status_code=403, detail="Not authorized to access this dataset"
-            )
-
         # Delete existing column stats
         await ColumnStats.find(
             ColumnStats.dataset_id == PydanticObjectId(dataset_id)
@@ -171,6 +188,8 @@ async def recalculate_column_stats(
 
         return {"message": "Column statistics recalculated successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error recalculating column stats: {e}")
         raise HTTPException(
