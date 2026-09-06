@@ -95,7 +95,8 @@ Methods with ownership checks:
 
 Methods with ownership checks:
 - `get_version(version_id, mark_accessed=True, user_id=None)`
-- `get_version_content(version_id, user_id=None)`
+- `get_version_content(version_id)` — no owner predicate of its own; callers must
+  establish ownership of the version first (see the route note below)
 - `pin_version(version_id, user_id=None)`
 - `unpin_version(version_id, user_id=None)`
 
@@ -114,6 +115,19 @@ Methods with ownership checks:
     ownership in the handler before listing, and scopes both the list and the
     total count to the session user. Unknown and foreign datasets both answer
     404 so the pair is not an existence oracle (issue #446).
+  - `POST /api/v1/datasets/{dataset_id}/versions` — guards ownership *before*
+    reading any content (the handler copies the parent version's bytes into a
+    new version owned by the caller) and scopes the parent lookup too (#447).
+
+All three go through `require_owned_dataset(dataset_id, user_id)` in
+`app/api/routes/versions.py`. Call it **outside** a handler's `try`: this
+module's broad `except Exception` blocks would otherwise convert its 404 into
+a 500.
+
+`VersioningService.create_transformation_version` scopes its content-dedup
+lookup by `user_id` as well — without that predicate a foreign version sharing
+a `dataset_id` and content hash is returned to the caller and updated with
+their description (#447).
 
 ## Security Benefits
 
