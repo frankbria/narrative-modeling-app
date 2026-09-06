@@ -109,8 +109,8 @@ git reset --hard origin/main
 1. Log in to MongoDB Atlas: https://cloud.mongodb.com
 2. Navigate to Database Access for cluster `<cluster>.mongodb.net`
 3. Either:
-   - Delete user `frankbria` and create new user with different username
-   - OR change password for `frankbria` to a new secure password
+   - Delete user `<USERNAME>` and create new user with different username
+   - OR change password for `<USERNAME>` to a new secure password
 4. Generate new strong password: `openssl rand -base64 32`
 5. Update connection string with new credentials
 
