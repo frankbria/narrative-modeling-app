@@ -1013,6 +1013,31 @@ class TestVersionsAPI:
         assert "base version" not in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
+    async def test_delete_pinned_version_of_another_tenant_is_not_an_oracle(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Same oracle, other guard: 'Cannot delete pinned version' would also
+        confirm the foreign version exists. Symmetric with the base-version case."""
+        # ARRANGE
+        victim = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+        victim.is_pinned = True
+        await victim.save()
+
+        # ACT
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{victim.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert "pinned" not in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
     async def test_delete_own_version_still_works(
         self,
         async_authorized_client: AsyncClient,
