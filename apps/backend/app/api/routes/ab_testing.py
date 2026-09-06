@@ -252,12 +252,7 @@ async def assign_variant(
     user_identifier: str = Query(..., description="User identifier for consistent assignment"),
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Get variant assignment for a user.
-
-    Authenticated and tenant-scoped (issue #450). This endpoint carried no auth
-    dependency at all, so anyone could read `model_id` for an arbitrary
-    experiment id; the eight endpoints around it were scoped all along.
-    """
+    """Get variant assignment for a user, within the caller's own experiment."""
 
     experiment = await ABTest.find_one({
         "experiment_id": experiment_id,
@@ -307,14 +302,12 @@ async def track_prediction(
     custom_metrics: dict[str, float] | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Track a prediction for an A/B test variant.
+    """Track a prediction for a variant of the caller's own experiment.
 
-    Authenticated and tenant-scoped (issue #450). This endpoint carried no auth
-    dependency at all, so anyone on the internet could inject outcomes into any
-    tenant's experiment metrics — the numbers that decide which model goes to
-    production. Ownership is established here because the service below looks
-    the experiment up by id alone and silently returns on a miss, which is
-    deliberate for non-blocking tracking but cannot double as authorization.
+    Ownership is established here rather than in the service:
+    `ABTestingService.track_prediction` looks the experiment up by id alone and
+    returns silently on a miss, which is deliberate for non-blocking tracking
+    but cannot double as an authorization boundary.
     """
 
     experiment = await ABTest.find_one({
