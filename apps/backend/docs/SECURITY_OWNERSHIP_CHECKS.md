@@ -110,6 +110,10 @@ Methods with ownership checks:
 - `app/api/routes/versions.py`:
   - `GET /api/v1/versions/{version_id}`
   - `PATCH /api/v1/versions/{version_id}/pin`
+  - `GET /api/v1/datasets/{dataset_id}/versions` — checks `DatasetMetadata`
+    ownership in the handler before listing, and scopes both the list and the
+    total count to the session user. Unknown and foreign datasets both answer
+    404 so the pair is not an existence oracle (issue #446).
 
 ## Security Benefits
 
