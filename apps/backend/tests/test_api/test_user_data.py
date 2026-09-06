@@ -2,7 +2,7 @@
 Test suite for User Data API endpoints.
 
 Integration tests for user_data routes covering all endpoints:
-- POST / - Create user data
+- POST / - retired, 410 Gone (#451)
 - GET / - List all user data for user
 - GET /latest - Get most recent user data
 - GET /{id} - Get specific user data by ID
@@ -266,7 +266,9 @@ class TestUserDataAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["filename"] == "updated_dataset.csv"
-        assert data["num_rows"] == 150
+        # num_rows describes the stored file and is computed by the pipeline, so
+        # it is not client-settable since #451 — the sent 150 is ignored.
+        assert data["num_rows"] == sample_user_data.num_rows
 
     @pytest.mark.asyncio
     async def test_update_user_data_access_denied(
@@ -563,7 +565,6 @@ class TestUserDataAPI:
 OTHER_USER = "other_user_451"
 
 
-@pytest.mark.integration
 class TestUserDataMassAssignment:
     """Issue #451 (P0.8).
 
@@ -683,15 +684,15 @@ class TestUserDataMassAssignment:
                 "filename": "renamed.csv",
                 "original_filename": "renamed.csv",
                 "num_rows": 99,
-                "num_columns": 4,
-                "data_schema": [],
             },
         )
 
         assert response.status_code == 200
         reloaded = await UserData.get(my_dataset.id)
         assert reloaded.filename == "renamed.csv"
-        assert reloaded.num_rows == 99
+        assert reloaded.original_filename == "renamed.csv"
+        # num_rows is pipeline-computed, so the sent 99 is ignored (#451, AC2)
+        assert reloaded.num_rows == 10
 
     @pytest.mark.asyncio
     async def test_update_of_another_tenants_row_is_404(

@@ -196,12 +196,12 @@ def _allowed_buckets() -> set[str]:
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    names = {
-        os.getenv("AWS_BUCKET_NAME"),
-        os.getenv("S3_BUCKET_NAME"),
-        os.getenv("AWS_S3_BUCKET"),
-    }
-    return {n for n in names if n}
+    from app.config import S3_BUCKET_ENV_NAMES
+
+    # Every historical name, not a hand-rolled subset: #257 canonicalised these
+    # precisely so a deploy setting only S3_BUCKET is not silently unrecognised.
+    values = (os.getenv(name) for name in S3_BUCKET_ENV_NAMES)
+    return {v.strip() for v in values if v and v.strip()}
 
 
 def _require_allowed_bucket(bucket_name: str) -> None:

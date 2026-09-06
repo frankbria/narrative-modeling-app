@@ -7,9 +7,14 @@ credentials, so its output is safe to paste into a public issue.
 Usage (from apps/backend, against whichever cluster you want to check):
 
     MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \
-        uv run python ../../scripts/check_s3_url_ownership.py
+        uv run python scripts/check_s3_url_ownership.py
 
 Exit status is 1 if anything suspicious is found, so it can gate a deploy.
+
+Note for endpoint-style deployments: if AWS_ENDPOINT_URL is set, `upload_file_to_s3`
+writes URLs shaped `{endpoint}/{bucket}/{key}`, whose host is the endpoint rather
+than the bucket. Those parse to the endpoint's first label and would all be
+reported as foreign. Atlas/S3 deployments (no endpoint var) are unaffected.
 """
 import asyncio
 import os

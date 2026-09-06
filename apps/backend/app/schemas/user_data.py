@@ -20,16 +20,17 @@ class UserDataUpdate(BaseModel):
     properly-scoped endpoint. `user_id` decides ownership, and the PII and
     processing flags are written by the pipelines that compute them.
 
+    `num_rows`, `num_columns`, `data_schema` and `file_type` are deliberately
+    absent too: they describe the stored file and are computed from it by the
+    upload and processing pipelines. Letting a client assert them only makes the
+    metadata disagree with the object it describes.
+
     All fields optional: only what the request actually sends is applied, so a
     partial update no longer erases the fields it omitted.
     """
 
     filename: str | None = None
     original_filename: str | None = None
-    file_type: str | None = None
-    num_rows: int | None = None
-    num_columns: int | None = None
-    data_schema: list[SchemaField] | None = None
 
     model_config = ConfigDict(extra="ignore")
 
