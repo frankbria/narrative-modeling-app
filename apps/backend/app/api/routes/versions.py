@@ -346,13 +346,28 @@ async def compare_versions(
         )
 
 
-@router.delete("/versions/{version_id}", response_model=dict)
+@router.delete(
+    "/versions/{version_id}",
+    response_model=dict,
+    summary="Permanently delete a dataset version",
+    description=(
+        "Permanently deletes the version document. This is **not** reversible "
+        "and there is no soft-delete flag or recovery path — the same semantics "
+        "as the retention cleanup in VersioningService. Base versions and pinned "
+        "versions are refused. Versions belonging to another user are answered "
+        "404, identically to versions that do not exist."
+    ),
+)
 async def delete_version(
     version_id: str,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Soft delete a dataset version.
+    Permanently delete a dataset version (issue #448).
+
+    The deletion is a hard delete of the document — no soft-delete flag is
+    written and there is no recovery path. The docstring previously claimed a
+    soft delete, which was never implemented.
 
     Cannot delete:
     - Base versions (first upload)
@@ -361,9 +376,12 @@ async def delete_version(
     try:
         logger.info(f"Deleting version {version_id}")
 
-        # Get version
+        # Get version — scoped to the caller. Ownership is therefore evaluated
+        # before the base/pinned guards below, which would otherwise answer 400
+        # for a foreign version and confirm its existence (issue #448).
         version = await DatasetVersion.find_one(
-            DatasetVersion.version_id == version_id
+            DatasetVersion.version_id == version_id,
+            DatasetVersion.user_id == current_user_id
         )
         if not version:
             raise HTTPException(
