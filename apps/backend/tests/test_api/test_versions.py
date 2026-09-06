@@ -956,3 +956,106 @@ class TestVersionsAPI:
             DatasetVersion.version_id == foreign.version_id
         )
         assert reloaded.description == "victim's own description"
+
+    # Test DELETE /versions/{id} - Tenant isolation (issue #448, P0.5)
+    #
+    # The handler looked the version up by id alone and called `version.delete()`
+    # — a permanent Beanie delete — with `current_user_id` present only in the
+    # signature. Any authenticated user could destroy any tenant's version.
+
+    @pytest.mark.asyncio
+    async def test_delete_version_of_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Tenant A cannot delete tenant B's version, and B's row survives."""
+        # ARRANGE
+        victim = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+
+        # ACT
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{victim.version_id}"
+        )
+
+        # ASSERT — refused, and the document is still there
+        assert response.status_code == 404
+        assert await DatasetVersion.find_one(
+            DatasetVersion.version_id == victim.version_id
+        ) is not None
+
+    @pytest.mark.asyncio
+    async def test_delete_version_of_another_tenant_is_not_an_existence_oracle(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """A foreign *base* version answers 404, not the 400 from the guard below
+        the lookup — otherwise 'Cannot delete base version' confirms it exists."""
+        # ARRANGE
+        victim = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+        victim.is_base_version = True
+        await victim.save()
+
+        # ACT
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{victim.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert "base version" not in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_pinned_version_of_another_tenant_is_not_an_oracle(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Same oracle, other guard: 'Cannot delete pinned version' would also
+        confirm the foreign version exists. Symmetric with the base-version case."""
+        # ARRANGE
+        victim = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+        victim.is_pinned = True
+        await victim.save()
+
+        # ACT
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{victim.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert "pinned" not in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_own_version_still_works(
+        self,
+        async_authorized_client: AsyncClient,
+        sample_dataset_metadata: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """Regression guard on the owner path."""
+        # ARRANGE
+        mine = make_version(sample_dataset_metadata.dataset_id, 7, mock_user_id)
+        await mine.insert()
+
+        # ACT
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{mine.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        assert await DatasetVersion.find_one(
+            DatasetVersion.version_id == mine.version_id
+        ) is None

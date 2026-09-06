@@ -118,6 +118,11 @@ Methods with ownership checks:
   - `POST /api/v1/datasets/{dataset_id}/versions` — guards ownership *before*
     reading any content (the handler copies the parent version's bytes into a
     new version owned by the caller) and scopes the parent lookup too (#447).
+  - `DELETE /api/v1/versions/{version_id}` — the owner predicate lives in the
+    lookup itself, which also puts it *ahead* of the `is_base_version` /
+    `is_pinned` guards below: those answer 400 and would otherwise confirm a
+    foreign version exists. The delete is permanent — no soft-delete flag is
+    written, matching `cleanup_old_versions` (#448).
 
 All three go through `require_owned_dataset(dataset_id, user_id)` in
 `app/api/routes/versions.py`. Call it **outside** a handler's `try`: this
