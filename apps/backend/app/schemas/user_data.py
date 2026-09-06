@@ -29,8 +29,8 @@ class UserDataUpdate(BaseModel):
     partial update no longer erases the fields it omitted.
     """
 
-    filename: str | None = None
-    original_filename: str | None = None
+    filename: str | None = Field(None, min_length=1)
+    original_filename: str | None = Field(None, min_length=1)
 
     model_config = ConfigDict(extra="ignore")
 

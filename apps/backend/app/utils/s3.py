@@ -204,12 +204,13 @@ def _allowed_buckets() -> set[str]:
     return {v.strip() for v in values if v and v.strip()}
 
 
-def _require_allowed_bucket(bucket_name: str) -> None:
+def require_allowed_bucket(bucket_name: str) -> None:
     """Refuse to read from a bucket this deployment does not own (issue #451).
 
     Defense in depth behind the schema fix: `s3_url` is no longer settable from
-    a request, but this function is reached from several paths and a stored URL
-    is only as trustworthy as whatever wrote it. If no bucket is configured the
+    a request, but a stored URL is only as trustworthy as whatever wrote it.
+    Call this at every site that turns a stored URL into a download, not just
+    `get_file_from_s3` — `column_stats` parses and fetches on its own. If no bucket is configured the
     check cannot be evaluated, so it fails closed rather than allowing anything.
 
     Note this deliberately does NOT check the key against a per-tenant prefix.
@@ -256,7 +257,7 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
             if not bucket_name:
                 raise ValueError(f"Invalid S3 URL format: {s3_url}")
 
-        _require_allowed_bucket(bucket_name)
+        require_allowed_bucket(bucket_name)
 
         # Download the file to a BytesIO object
         file_obj = io.BytesIO()

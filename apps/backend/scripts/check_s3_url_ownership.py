@@ -89,6 +89,10 @@ async def main() -> int:
     if foreign_bucket:
         print("\nFOREIGN BUCKET REFERENCES FOUND — evidence of use, not just exposure.")
         return 1
+    if unparseable:
+        print("\nUNPARSEABLE s3_url VALUES — needs manual review; a URL whose bucket"
+              "\ncannot be determined has not been cleared, only skipped.")
+        return 1
     print("\nNo s3_url outside the configured bucket(s).")
     return 0
 
