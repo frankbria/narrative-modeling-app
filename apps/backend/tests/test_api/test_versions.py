@@ -881,6 +881,7 @@ class TestVersionsAPI:
         self,
         async_authorized_client: AsyncClient,
         foreign_dataset_with_versions: DatasetMetadata,
+        mock_user_id: str,
         mock_s3_client,
     ):
         """The copy must not happen — a status-only check would pass against a
@@ -902,7 +903,7 @@ class TestVersionsAPI:
             DatasetVersion.dataset_id == dataset_id
         ).count() == before
         assert await DatasetVersion.find(
-            DatasetVersion.user_id == "test_user_123"
+            DatasetVersion.user_id == mock_user_id
         ).count() == 0
 
     @pytest.mark.asyncio
