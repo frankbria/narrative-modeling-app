@@ -10,6 +10,31 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.user_data import AISummary, SchemaField
 
 
+class UserDataUpdate(BaseModel):
+    """Fields a client may change on an existing dataset (issue #451).
+
+    Everything absent here is server-authoritative and cannot be set from a
+    request body. `s3_url` above all: the visualization and preview endpoints
+    fetch whatever it holds, so accepting it from the client let a tenant point
+    their own row at another tenant's object and read it back through a
+    properly-scoped endpoint. `user_id` decides ownership, and the PII and
+    processing flags are written by the pipelines that compute them.
+
+    `num_rows`, `num_columns`, `data_schema` and `file_type` are deliberately
+    absent too: they describe the stored file and are computed from it by the
+    upload and processing pipelines. Letting a client assert them only makes the
+    metadata disagree with the object it describes.
+
+    All fields optional: only what the request actually sends is applied, so a
+    partial update no longer erases the fields it omitted.
+    """
+
+    filename: str | None = Field(None, min_length=1)
+    original_filename: str | None = Field(None, min_length=1)
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class UserDataResponse(BaseModel):
     """Response model for UserData that properly handles MongoDB ID"""
     

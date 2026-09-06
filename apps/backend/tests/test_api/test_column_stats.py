@@ -193,7 +193,8 @@ class TestColumnStatsTenantIsolation:
 
     @pytest.mark.asyncio
     async def test_recalculate_succeeds_for_the_owner(
-        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
     ):
         """Positive path for the handler whose try/except shape changed.
 
@@ -201,6 +202,7 @@ class TestColumnStatsTenantIsolation:
         the `try` had broken the success path, so this guards the other half.
         """
         # ARRANGE
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         fake_s3 = MagicMock()
         fake_s3.get_object.return_value = {
@@ -237,7 +239,8 @@ class TestColumnStatsTenantIsolation:
 
     @pytest.mark.asyncio
     async def test_recalculate_keeps_existing_stats_when_the_download_fails(
-        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
     ):
         """The delete must not precede the S3 round-trip.
 
@@ -246,6 +249,7 @@ class TestColumnStatsTenantIsolation:
         pinned rather than left to code review a third time.
         """
         # ARRANGE
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         await seed_cached_stats(mine, mock_user_id)
         failing_s3 = MagicMock()
@@ -267,7 +271,8 @@ class TestColumnStatsTenantIsolation:
 
     @pytest.mark.asyncio
     async def test_recompute_clears_legacy_null_owner_rows(
-        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
     ):
         """The one piece of new behaviour not otherwise covered.
 
@@ -277,6 +282,7 @@ class TestColumnStatsTenantIsolation:
         which is precisely why it is worth pinning now.
         """
         # ARRANGE: a legacy row with no owner, and no scoped row to serve
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         await ColumnStats.get_motor_collection().insert_one(
             {

@@ -190,6 +190,52 @@ def upload_file_to_s3(
         return False, None
 
 
+def _allowed_bucket() -> str | None:
+    """The single bucket this deployment may read from, or None if unconfigured.
+
+    Deliberately the same expression as
+    `app/services/s3_service.py::download_file_from_s3`, which has enforced its
+    own allowlist since #257. Two allowlists that resolve their allowed bucket
+    differently is how this class of bug quietly reopens — an earlier version of
+    this function accepted *any* of the four historical env names, which was the
+    more permissive of the two. Consolidating them into one helper is a
+    follow-up; agreeing on the answer comes first.
+
+    Resolved at call time rather than import time so tests and deployments that
+    set the environment after import are honoured.
+    """
+    from app.config import resolve_s3_bucket
+
+    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+
+
+def require_allowed_bucket(bucket_name: str) -> None:
+    """Refuse to read from a bucket this deployment does not own (issue #451).
+
+    Defense in depth behind the schema fix: `s3_url` is no longer settable from
+    a request, but a stored URL is only as trustworthy as whatever wrote it.
+    Call this at every site that turns a stored URL into a download, not just
+    `get_file_from_s3` — `column_stats` parses and fetches on its own. If no bucket is configured the
+    check cannot be evaluated, so it fails closed rather than allowing anything.
+
+    Note this deliberately does NOT check the key against a per-tenant prefix.
+    Legacy `UserData` objects are keyed as a bare "{uuid4}.{ext}" with no tenant
+    component (see `generate_s3_filename`), so there is nothing to compare a
+    caller against; enforcing a prefix here would break every legitimate read of
+    an existing object. Namespacing those keys is tracked separately.
+    """
+    allowed = _allowed_bucket()
+    if not allowed:
+        logger.error("No S3 bucket configured; refusing to download from %r", bucket_name)
+        raise ValueError("No S3 bucket is configured for this deployment")
+    if bucket_name != allowed:
+        logger.error(
+            "Refusing to download from unexpected bucket %r (allowed: %r)",
+            bucket_name, allowed,
+        )
+        raise ValueError(f"Bucket {bucket_name!r} is not permitted for this deployment")
+
+
 def get_file_from_s3(s3_url: str) -> io.BytesIO:
     """
     Download a file from S3 using its URL.
@@ -215,6 +261,8 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
             bucket_name = netloc.split(".")[0]
             if not bucket_name:
                 raise ValueError(f"Invalid S3 URL format: {s3_url}")
+
+        require_allowed_bucket(bucket_name)
 
         # Download the file to a BytesIO object
         file_obj = io.BytesIO()

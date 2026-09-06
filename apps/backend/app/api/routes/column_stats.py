@@ -12,7 +12,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.column_stats import ColumnStats
 from app.models.user_data import UserData
 from app.utils.column_stats import calculate_and_store_column_stats
-from app.utils.s3 import create_s3_client, parse_s3_url
+from app.utils.s3 import create_s3_client, parse_s3_url, require_allowed_bucket
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -86,6 +86,12 @@ async def get_column_stats(
                     "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
                     dataset.s3_url, bucket,
                 )
+
+            # This path parses and downloads on its own rather than going through
+            # get_file_from_s3, so the bucket allowlist is applied here too. After
+            # the fallback above, not before: a URL whose bucket cannot be parsed
+            # is meant to resolve to the configured one (#451).
+            require_allowed_bucket(bucket or "")
 
             # Download the file
             response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -179,6 +185,9 @@ async def recalculate_column_stats(
                 "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
                 dataset.s3_url, bucket,
             )
+
+        # Allowlist applied after the fallback — see get_column_stats (#451).
+        require_allowed_bucket(bucket or "")
 
         # Download the file
         response = s3_client.get_object(Bucket=bucket, Key=key)

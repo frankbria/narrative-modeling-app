@@ -2,7 +2,7 @@
 Test suite for User Data API endpoints.
 
 Integration tests for user_data routes covering all endpoints:
-- POST / - Create user data
+- POST / - retired, 410 Gone (#451)
 - GET / - List all user data for user
 - GET /latest - Get most recent user data
 - GET /{id} - Get specific user data by ID
@@ -89,41 +89,26 @@ class TestUserDataAPI:
         setup_database,
         mock_user_id: str
     ):
-        """Test creating new user data via POST /user-data/."""
-        # Create request payload with all required SchemaField fields
-        user_data_dict = {
-            "filename": "new_dataset.csv",
-            "original_filename": "new_dataset.csv",
-            "s3_url": f"s3://test-bucket/datasets/{mock_user_id}/new_dataset.csv",
-            "num_rows": 50,
-            "num_columns": 2,
-            "data_schema": [
-                {
-                    "field_name": "name",
-                    "field_type": "text",
-                    "data_type": "nominal",
-                    "inferred_dtype": "object",
-                    "unique_values": 50,
-                    "missing_values": 0,
-                    "example_values": ["Alice", "Bob", "Charlie"],
-                    "is_constant": False,
-                    "is_high_cardinality": False
-                }
-            ]
-        }
+        """POST / is retired (#451).
 
+        It asserted a create round-trip through a body that let the client name
+        `s3_url`, which was the vulnerability. The endpoint answers 410; the
+        replacement coverage lives in TestUserDataMassAssignment, and datasets
+        are created through POST /api/v1/upload.
+        """
         response = await async_authorized_client.post(
             "/api/v1/user_data/",
-            json=user_data_dict
+            json={
+                "filename": "new_dataset.csv",
+                "original_filename": "new_dataset.csv",
+                "s3_url": f"s3://test-bucket/datasets/{mock_user_id}/new_dataset.csv",
+                "num_rows": 50,
+                "num_columns": 2,
+                "data_schema": [],
+            },
         )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["filename"] == "new_dataset.csv"
-        assert data["num_rows"] == 50
-        assert data["num_columns"] == 2
-        assert "_id" in data
-        assert data["user_id"] == mock_user_id
+        assert response.status_code == 410
 
     @pytest.mark.asyncio
     async def test_get_all_user_data(
@@ -234,7 +219,7 @@ class TestUserDataAPI:
         async_authorized_client: AsyncClient,
         setup_database
     ):
-        """Test accessing another user's data returns 403."""
+        """Test accessing another user's data returns 404 (#451)."""
         # Create data for different user
         other_user_data = UserData(
             user_id="other_user_123",
@@ -251,8 +236,8 @@ class TestUserDataAPI:
             f"/api/v1/user_data/{str(other_user_data.id)}"
         )
 
-        assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_update_user_data(
@@ -281,7 +266,9 @@ class TestUserDataAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["filename"] == "updated_dataset.csv"
-        assert data["num_rows"] == 150
+        # num_rows describes the stored file and is computed by the pipeline, so
+        # it is not client-settable since #451 — the sent 150 is ignored.
+        assert data["num_rows"] == sample_user_data.num_rows
 
     @pytest.mark.asyncio
     async def test_update_user_data_access_denied(
@@ -289,7 +276,11 @@ class TestUserDataAPI:
         async_authorized_client: AsyncClient,
         setup_database
     ):
-        """Test updating another user's data returns 403."""
+        """Test updating another user's data returns 404.
+
+        Was 403 until #451: that confirmed the row existed and belonged to
+        someone else. Unknown and foreign now answer identically.
+        """
         # Create data for different user
         other_user_data = UserData(
             user_id="other_user_123",
@@ -316,8 +307,8 @@ class TestUserDataAPI:
             json=updated_dict
         )
 
-        assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_delete_user_data(
@@ -346,7 +337,7 @@ class TestUserDataAPI:
         async_authorized_client: AsyncClient,
         setup_database
     ):
-        """Test deleting another user's data returns 403."""
+        """Test deleting another user's data returns 404 (#451)."""
         # Create data for different user
         other_user_data = UserData(
             user_id="other_user_123",
@@ -363,8 +354,8 @@ class TestUserDataAPI:
             f"/api/v1/user_data/{str(other_user_data.id)}"
         )
 
-        assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_get_ai_summary(
@@ -422,7 +413,7 @@ class TestUserDataAPI:
         async_authorized_client: AsyncClient,
         setup_database
     ):
-        """Test accessing another user's AI summary returns 403."""
+        """Test accessing another user's AI summary returns 404 (#451)."""
         other_user_data = UserData(
             user_id="other_user_123",
             filename="other.csv",
@@ -445,8 +436,8 @@ class TestUserDataAPI:
             f"/api/v1/user_data/{str(other_user_data.id)}/ai-summary"
         )
 
-        assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_get_eda_summary(
@@ -479,7 +470,7 @@ class TestUserDataAPI:
         async_authorized_client: AsyncClient,
         setup_database
     ):
-        """Test accessing another user's EDA summary returns 403."""
+        """Test accessing another user's EDA summary returns 404 (#451)."""
         other_user_data = UserData(
             user_id="other_user_123",
             filename="other.csv",
@@ -495,8 +486,8 @@ class TestUserDataAPI:
             f"/api/v1/user_data/{str(other_user_data.id)}/eda-summary"
         )
 
-        assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_get_preview_data_with_s3_success(
@@ -569,3 +560,246 @@ class TestUserDataAPI:
 
         assert response.status_code == 404
         assert "No data found for user" in response.json()["detail"]
+
+
+OTHER_USER = "other_user_451"
+
+
+class TestUserDataMassAssignment:
+    """Issue #451 (P0.8).
+
+    `POST /` and `PUT /{id}` took the Beanie Document itself as the request
+    body, so every field was client-settable — including `s3_url`, which the
+    visualization and preview endpoints later fetch. A tenant could name another
+    tenant's object and read it back through a legitimately-scoped endpoint.
+    """
+
+    @pytest.fixture
+    async def my_dataset(self, setup_database, mock_user_id: str) -> UserData:
+        doc = UserData(
+            user_id=mock_user_id,
+            filename="mine.csv",
+            original_filename="mine.csv",
+            s3_url="s3://test-bucket/mine-owned-object.csv",
+            num_rows=10,
+            num_columns=1,
+            data_schema=[],
+        )
+        await doc.insert()
+        return doc
+
+    @pytest.fixture
+    async def foreign_dataset(self, setup_database) -> UserData:
+        doc = UserData(
+            user_id=OTHER_USER,
+            filename="victim.csv",
+            original_filename="victim.csv",
+            s3_url="s3://test-bucket/victims-secret-payroll.csv",
+            num_rows=10,
+            num_columns=1,
+            data_schema=[],
+        )
+        await doc.insert()
+        yield doc
+        await UserData.find(UserData.user_id == OTHER_USER).delete()
+
+    @pytest.mark.asyncio
+    async def test_create_is_gone(
+        self, async_authorized_client: AsyncClient, setup_database
+    ):
+        """POST existed only to register a client-named S3 URL, which is the
+        vulnerability itself. Retired rather than narrowed (#451)."""
+        response = await async_authorized_client.post(
+            "/api/v1/user_data/",
+            json={
+                "filename": "x.csv",
+                "original_filename": "x.csv",
+                "s3_url": "s3://test-bucket/victims-secret-payroll.csv",
+                "num_rows": 1,
+                "num_columns": 1,
+                "data_schema": [],
+            },
+        )
+
+        assert response.status_code == 410
+        assert "upload" in response.json()["detail"].lower()
+        # and nothing was written
+        assert await UserData.find(UserData.filename == "x.csv").count() == 0
+
+    @pytest.mark.asyncio
+    async def test_update_ignores_a_client_supplied_s3_url(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData,
+        foreign_dataset: UserData,
+    ):
+        """The core exploit: repoint my own row at the victim's object."""
+        original = my_dataset.s3_url
+
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={
+                "filename": "mine.csv",
+                "original_filename": "mine.csv",
+                "s3_url": foreign_dataset.s3_url,
+                "num_rows": 10,
+                "num_columns": 1,
+                "data_schema": [],
+            },
+        )
+
+        assert response.status_code == 200
+        reloaded = await UserData.get(my_dataset.id)
+        assert reloaded.s3_url == original
+        assert "victims-secret-payroll" not in reloaded.s3_url
+
+    @pytest.mark.asyncio
+    async def test_update_ignores_a_client_supplied_user_id(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData,
+        mock_user_id: str,
+    ):
+        """AC2: ownership is server-authoritative, never taken from the body."""
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={
+                "filename": "mine.csv",
+                "original_filename": "mine.csv",
+                "user_id": OTHER_USER,
+                "num_rows": 10,
+                "num_columns": 1,
+                "data_schema": [],
+            },
+        )
+
+        assert response.status_code == 200
+        reloaded = await UserData.get(my_dataset.id)
+        assert reloaded.user_id == mock_user_id
+
+    @pytest.mark.asyncio
+    async def test_update_still_applies_legitimate_fields(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData
+    ):
+        """Regression guard: the safe fields must still be updatable."""
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={
+                "filename": "renamed.csv",
+                "original_filename": "renamed.csv",
+                "num_rows": 99,
+            },
+        )
+
+        assert response.status_code == 200
+        reloaded = await UserData.get(my_dataset.id)
+        assert reloaded.filename == "renamed.csv"
+        assert reloaded.original_filename == "renamed.csv"
+        # num_rows is pipeline-computed, so the sent 99 is ignored (#451, AC2)
+        assert reloaded.num_rows == 10
+
+    @pytest.mark.asyncio
+    async def test_update_of_another_tenants_row_is_404(
+        self, async_authorized_client: AsyncClient, foreign_dataset: UserData
+    ):
+        """403 confirms the row exists; 404 does not."""
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{foreign_dataset.id}",
+            json={
+                "filename": "hijacked.csv",
+                "original_filename": "hijacked.csv",
+                "num_rows": 1,
+                "num_columns": 1,
+                "data_schema": [],
+            },
+        )
+
+        assert response.status_code == 404
+        reloaded = await UserData.get(foreign_dataset.id)
+        assert reloaded.filename == "victim.csv"
+
+    @pytest.mark.asyncio
+    async def test_update_with_an_explicit_null_does_not_brick_the_row(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData
+    ):
+        """An explicit JSON `null` counts as "set" for `exclude_unset`.
+
+        Without `exclude_none` this wrote None onto a required field: the save
+        committed, then every later read of that row failed to validate, so the
+        caller's own list and preview endpoints 500'd from then on. Verified
+        against the pre-fix code, which returned 500 here and left
+        `filename: None` in Mongo.
+        """
+        # ACT
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={"filename": None, "original_filename": "kept.csv"},
+        )
+
+        # ASSERT — the null is ignored, the real value applied
+        assert response.status_code == 200
+        reloaded = await UserData.get(my_dataset.id)
+        assert reloaded.filename == "mine.csv"
+        assert reloaded.original_filename == "kept.csv"
+
+        # and the row is still readable through the endpoints that validate it
+        listing = await async_authorized_client.get("/api/v1/user_data/")
+        assert listing.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_update_response_is_shaped_like_the_get_endpoints(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData
+    ):
+        """PUT returned the raw Beanie document; the GETs return UserDataResponse.
+
+        A consistency fix, not an exposure one: `UserDataResponse` already
+        carries `file_path`, `pii_report`, `quality_report` and `statistics`, so
+        the only field the document adds is Beanie's internal `revision_id`.
+        Stated explicitly because a review claimed the opposite.
+        """
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={"filename": "renamed.csv"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["filename"] == "renamed.csv"
+        assert "revision_id" not in body
+        assert isinstance(body["_id"], str)
+
+class TestS3BucketAllowlist:
+    """Issue #451, AC3 — defense in depth behind the schema fix.
+
+    `s3_url` is no longer settable from a request, but `get_file_from_s3` is
+    reached from several paths and a stored URL is only as trustworthy as
+    whatever wrote it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refuses_a_bucket_outside_the_allowlist(self, monkeypatch):
+        from app.utils.s3 import get_file_from_s3
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "our-own-bucket")
+        with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
+            with pytest.raises(ValueError, match="not permitted"):
+                get_file_from_s3("s3://someone-elses-bucket/payroll.csv")
+            client.return_value.download_fileobj.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fails_closed_when_no_bucket_is_configured(self, monkeypatch):
+        """An unset bucket must deny, not wave everything through."""
+        from app.utils.s3 import get_file_from_s3
+
+        for var in ("AWS_BUCKET_NAME", "S3_BUCKET_NAME", "AWS_S3_BUCKET"):
+            monkeypatch.delenv(var, raising=False)
+        with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
+            with pytest.raises(ValueError, match="No S3 bucket is configured"):
+                get_file_from_s3("s3://any-bucket/x.csv")
+            client.return_value.download_fileobj.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_allows_the_configured_bucket(self, monkeypatch):
+        """Regression guard: the legitimate path must still download."""
+        from app.utils.s3 import get_file_from_s3
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "our-own-bucket")
+        with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
+            get_file_from_s3("s3://our-own-bucket/mine.csv")
+            client.return_value.download_fileobj.assert_called_once()
