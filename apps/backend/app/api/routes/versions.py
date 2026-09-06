@@ -36,29 +36,38 @@ async def list_dataset_versions(
     dataset_id: str,
     limit: int = 50,
     skip: int = 0,
-    user_id: str | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    List all versions for a dataset.
+    List all versions for a dataset owned by the caller.
 
     Returns versions sorted by version_number (descending).
     Supports pagination via limit and skip parameters.
     """
+    # Ownership check — 404 for unknown or foreign datasets, so the two are
+    # indistinguishable (issue #446).
+    dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id})
+    if not dataset or dataset.user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+
     try:
         logger.info(f"Listing versions for dataset {dataset_id}")
 
-        # Get versions from service
+        # Get versions from service, scoped to the session user
         versions = await versioning_service.list_versions(
             dataset_id=dataset_id,
-            user_id=user_id,
+            user_id=current_user_id,
             limit=limit,
             skip=skip
         )
 
-        # Get total count
+        # Get total count, scoped the same way
         total_count = await DatasetVersion.find(
-            DatasetVersion.dataset_id == dataset_id
+            DatasetVersion.dataset_id == dataset_id,
+            DatasetVersion.user_id == current_user_id
         ).count()
 
         # Convert to response models

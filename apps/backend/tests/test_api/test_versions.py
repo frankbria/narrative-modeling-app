@@ -14,6 +14,27 @@ from app.models.dataset import DatasetMetadata, SchemaField
 from app.models.version import DatasetVersion
 from app.services.versioning_service import versioning_service
 
+OTHER_USER = "other_user_446"
+
+
+def make_version(dataset_id: str, version_number: int, user_id: str) -> DatasetVersion:
+    """Build an unsaved DatasetVersion — enough fields to insert, nothing more."""
+    return DatasetVersion(
+        version_id=str(uuid.uuid4()),
+        dataset_id=dataset_id,
+        version_number=version_number,
+        user_id=user_id,
+        content_hash=f"hash-{user_id}-{version_number}",
+        file_size=123,
+        file_path=f"datasets/{user_id}/{dataset_id}/v{version_number}.csv",
+        s3_url=f"s3://test-bucket/datasets/{user_id}/{dataset_id}/v{version_number}.csv",
+        num_rows=10,
+        num_columns=1,
+        columns=["id"],
+        schema_hash=f"schema-{version_number}",
+        created_by=user_id,
+    )
+
 
 @pytest.mark.integration
 class TestVersionsAPI:
@@ -233,7 +254,11 @@ class TestVersionsAPI:
         self,
         async_authorized_client: AsyncClient
     ):
-        """Test listing versions for nonexistent dataset returns empty list."""
+        """Test listing versions for nonexistent dataset returns 404.
+
+        Same answer as a dataset owned by another tenant, so the pair is not an
+        existence oracle (issue #446).
+        """
         # ACT
         nonexistent_id = str(uuid.uuid4())
         response = await async_authorized_client.get(
@@ -241,10 +266,7 @@ class TestVersionsAPI:
         )
 
         # ASSERT
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 0
-        assert len(data["versions"]) == 0
+        assert response.status_code == 404
 
     # Test POST /datasets/{id}/versions - Create new version
     @pytest.mark.asyncio
@@ -703,3 +725,129 @@ class TestVersionsAPI:
 
         # ASSERT
         assert response.status_code == 404
+
+    # Test GET /datasets/{id}/versions - Tenant isolation (issue #446, P0.3)
+    #
+    # The endpoint used to accept a client-supplied `user_id` query parameter and
+    # hand it straight to the service, while the authenticated `current_user_id`
+    # went unused; omitting it applied no owner filter at all.
+
+    @pytest.fixture
+    async def foreign_dataset_with_versions(self, setup_database) -> DatasetMetadata:
+        """A dataset plus two versions owned by someone other than the test user."""
+        dataset_id = str(uuid.uuid4())
+        metadata = DatasetMetadata(
+            user_id=OTHER_USER,
+            dataset_id=dataset_id,
+            filename="foreign.csv",
+            original_filename="foreign.csv",
+            file_type="csv",
+            file_path=f"datasets/{OTHER_USER}/{dataset_id}/foreign.csv",
+            s3_url=f"s3://test-bucket/datasets/{OTHER_USER}/{dataset_id}/foreign.csv",
+            num_rows=10,
+            num_columns=1,
+            columns=["id"],
+            data_schema=[],
+        )
+        await metadata.insert()
+
+        for version_number in (1, 2):
+            await make_version(dataset_id, version_number, OTHER_USER).insert()
+
+        return metadata
+
+    @pytest.mark.asyncio
+    async def test_list_versions_of_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Tenant A gets 404 — not 403, which would confirm the dataset exists."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{foreign_dataset_with_versions.dataset_id}/versions"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert OTHER_USER not in response.text
+
+    @pytest.mark.asyncio
+    async def test_list_versions_user_id_param_cannot_widen_access(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Passing ?user_id=<victim> does not change the result."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{foreign_dataset_with_versions.dataset_id}/versions",
+            params={"user_id": OTHER_USER},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_list_versions_user_id_param_is_inert_on_own_dataset(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+    ):
+        """The parameter is gone from the signature, so supplying it is a no-op."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{base_version.dataset_id}/versions",
+            params={"user_id": OTHER_USER},
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert [v["user_id"] for v in data["versions"]] == ["test_user_123"]
+
+    @pytest.mark.asyncio
+    async def test_list_versions_total_count_is_scoped_to_session_user(
+        self,
+        async_authorized_client: AsyncClient,
+        sample_dataset_metadata: DatasetMetadata,
+        base_version: DatasetVersion,
+    ):
+        """A foreign version sharing the dataset_id must not inflate `total`."""
+        # ARRANGE
+        await make_version(
+            sample_dataset_metadata.dataset_id, 99, OTHER_USER
+        ).insert()
+
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/datasets/{sample_dataset_metadata.dataset_id}/versions"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert len(data["versions"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_versions_unknown_dataset_matches_foreign_dataset(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """No existence oracle: unknown and foreign answer identically."""
+        # ACT
+        unknown = await async_authorized_client.get(
+            f"/api/v1/datasets/{uuid.uuid4()}/versions"
+        )
+        foreign = await async_authorized_client.get(
+            f"/api/v1/datasets/{foreign_dataset_with_versions.dataset_id}/versions"
+        )
+
+        # ASSERT
+        assert unknown.status_code == 404
+        assert foreign.status_code == 404
+        assert unknown.json()["detail"].endswith("not found")
+        assert foreign.json()["detail"].endswith("not found")
