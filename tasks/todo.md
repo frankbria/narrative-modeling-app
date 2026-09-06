@@ -1,46 +1,47 @@
-# Issue #448 — [P0.5] Any tenant can hard-delete another tenant's dataset version
+# Issue #449 — [P0.6] Cached column stats returned cross-tenant
 
-Branch: `fix/448-version-delete-ownership`
+Branch: `fix/449-column-stats-cache-idor`
 
 ## Problem
-`DELETE /api/v1/versions/{version_id}` looks the version up by id alone and calls
-`version.delete()` — a permanent Beanie delete. `current_user_id` appears only in the
-signature. Any authenticated user can destroy any tenant's version. Separately, the
-docstring claims "Soft delete", which is false and reaches OpenAPI.
+`GET /api/v1/column-stats/dataset/{dataset_id}` reads the `ColumnStats` cache first and
+only enters the ownership check inside `if not column_stats:`. On a cache hit it returns
+another tenant's distributions, null counts, cardinality and sample values with no
+authorization at all.
 
-## AC2 — resolved as: keep the hard delete, make the docs honest
-
-Not implementing soft delete. Reasons, in order of weight:
-1. The service's own `cleanup_old_versions` hard-deletes (Mongo row + S3 object). A
-   soft-delete flag on the route only would put two deletion semantics in one model.
-2. It would require auditing all 14 `DatasetVersion` read paths; the issue itself says
-   a half-applied soft delete is worse than an honest hard delete.
-3. It cuts against GDPR erasure (#259/#497) — rows that survive deletion are the thing
-   erasure exists to remove.
-Hard delete is also the reversible choice: adding soft delete later is a clean change,
-removing it once read paths depend on it is not.
+## What the probe established (not assumed)
+1. `ColumnStats.dataset_id` is a `Link[UserData]`, stored as a **DBRef**; the route's
+   `== PydanticObjectId(...)` query matched **0 rows**. So the cache never hits via the
+   normal write path — the vulnerability is **latent today** and goes live with #543.
+2. A raw bare-ObjectId row **does** match and parses cleanly. That is how AC3's
+   cache-hit test is seeded ("directly", per the issue), and it is the shape #543 creates.
+3. Unreported: the ownership check sits inside `try/except Exception` with no
+   `except HTTPException: raise`, so today's 403 is swallowed and surfaces as **500**.
 
 ## Plan
-1. **RED** — route tests (`async_authorized_client`, real documents):
-   - tenant A deleting tenant B's version → 404, and B's document still exists (AC4)
-   - a foreign **base** version → 404, not the 400 "Cannot delete base version" —
-     otherwise the guard below the lookup is an existence oracle
-   - the owner can still delete their own non-base, unpinned version (regression)
-2. **GREEN** — add `DatasetVersion.user_id == current_user_id` to the lookup (AC1).
-   Ownership is then evaluated before the base/pinned guards by construction.
-3. Rewrite the docstring to say the delete is permanent, and give the route an explicit
-   `summary`/`description` so OpenAPI stops advertising a soft delete (AC2).
-4. AC3 is conditional on choosing soft delete — not applicable.
-5. Gate: pytest, ruff, mypy, cross-family review, demo.
+1. **RED** — first route tests for this file (AC4):
+   - cache hit, foreign dataset → 404 (currently returns the victim's stats)
+   - cache miss, foreign dataset → 404 (currently 500, via the swallowed 403)
+   - owner, cache hit → 200 with their own stats
+   - malformed `dataset_id` → 404, not a 500 from `PydanticObjectId(...)`
+   - `POST .../recalculate` on a foreign dataset → 404
+2. **GREEN**
+   - resolve the dataset and check ownership **unconditionally, before** the cache read,
+     and **outside** the `try` so it cannot be swallowed into a 500 (AC1)
+   - add `user_id` to `ColumnStats` (optional, indexed), set it on write, and filter the
+     cache read by it — so a foreign row cannot be returned even if AC1 is later
+     refactored away (AC2). Optional/defaulted so pre-existing rows simply miss the
+     cache and get recomputed, per the repo's degrade-gracefully convention.
+   - 403 → 404 on ownership mismatch in **both** handlers: 403 confirms the dataset
+     exists, and AC3 fixes 404 as the expected answer for this file.
+3. Docs: add both routes to `SECURITY_OWNERSHIP_CHECKS.md`.
 
-## Out of scope, to be filed
-`version.delete()` removes the Mongo row but not the S3 object, so every user-initiated
-version delete orphans an artifact — while `cleanup_old_versions` 30 lines away deletes
-both. Cost/hygiene, not a security hole; no existing issue covers it (#525 is
-transformations, #521 is models). File separately rather than widen a P0 security fix.
+## Deliberately NOT fixed here
+The DBRef-vs-bare-ObjectId mismatch is #543 (P2.20). The issue says to land this first;
+fixing the cache so it hits, before the authorization is fixed, would turn a latent hole
+into a live one.
 
 ## Acceptance criteria
-- [ ] AC1 lookup filters on `current_user_id`; non-owner gets 404
-- [ ] AC2 docstring + OpenAPI description say permanent; no contradiction left
-- [ ] AC3 n/a (soft delete not chosen)
-- [ ] AC4 route test: A cannot delete B's version; B's document survives
+- [ ] AC1 ownership check runs unconditionally, before the cache lookup
+- [ ] AC2 the cache read itself is scoped
+- [ ] AC3 route test seeds `ColumnStats` for tenant B so the cache hits; A gets 404
+- [ ] AC4 first route tests for `column_stats.py`
