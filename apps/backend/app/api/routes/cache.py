@@ -1,5 +1,10 @@
-"""
-Cache management API endpoints
+"""Cache management API endpoints.
+
+Only the caller's own cache is addressable. Before issue #452 this router also
+exposed Redis server stats, arbitrary key delete/probe and a glob-backed
+dataset purge, so any authenticated user could evict any key in the shared
+Redis — including the ``ratelimit:`` buckets, which made it a limiter bypass.
+None of those routes had a caller anywhere in the product.
 """
 import logging
 from typing import Any
@@ -14,122 +19,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/info")
-async def get_cache_info(
+@router.delete("/me")
+async def purge_own_cache(
     current_user: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
-    """Get cache statistics and information"""
+    """Purge the calling user's own cache entries.
+
+    The identity comes from the token, not the path, so there is no segment a
+    caller could point at another tenant or expand into a glob.
+    """
+    if cache_service.redis_client is None:
+        raise HTTPException(status_code=503, detail="Cache service unavailable")
+
     try:
-        info = await cache_service.get_cache_info()
-        if info is None:
-            raise HTTPException(status_code=503, detail="Cache service unavailable")
-        return {
-            "success": True,
-            "cache_info": info
-        }
-    except HTTPException:
-        raise
+        deleted_count = await cache_service.invalidate_user_cache(current_user)
     except Exception as e:
-        logger.error(f"Failed to get cache info: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Failed to purge cache for user {current_user}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to purge cache")
 
-
-@router.delete("/user/{user_id}")
-async def invalidate_user_cache(
-    user_id: str,
-    current_user: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    """Invalidate all cache entries for a specific user"""
-    try:
-        # Users can only invalidate their own cache (or admins can invalidate any)
-        if current_user != user_id:
-            # In a real app, you'd check for admin permissions here
-            raise HTTPException(status_code=403, detail="Can only invalidate your own cache")
-            
-        deleted_count = await cache_service.invalidate_user_cache(user_id)
-        return {
-            "success": True,
-            "deleted_entries": deleted_count,
-            "message": f"Invalidated {deleted_count} cache entries for user {user_id}"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to invalidate user cache: {e}")
-        raise HTTPException(status_code=500, detail="Failed to invalidate user cache")
-
-
-@router.delete("/data/{data_id}")
-async def invalidate_data_cache(
-    data_id: str,
-    current_user: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    """Invalidate all cache entries for a specific dataset"""
-    try:
-        deleted_count = await cache_service.invalidate_data_cache(data_id)
-        return {
-            "success": True,
-            "deleted_entries": deleted_count,
-            "message": f"Invalidated {deleted_count} cache entries for dataset {data_id}"
-        }
-    except Exception as e:
-        logger.error(f"Failed to invalidate data cache: {e}")
-        raise HTTPException(status_code=500, detail="Failed to invalidate data cache")
-
-
-@router.delete("/key/{cache_key}")
-async def delete_cache_key(
-    cache_key: str,
-    current_user: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    """Delete a specific cache key"""
-    try:
-        success = await cache_service.delete(cache_key)
-        return {
-            "success": success,
-            "message": f"Cache key '{cache_key}' {'deleted' if success else 'not found'}"
-        }
-    except Exception as e:
-        logger.error(f"Failed to delete cache key: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete cache key")
-
-
-@router.get("/key/{cache_key}/exists")
-async def check_cache_key_exists(
-    cache_key: str,
-    current_user: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    """Check if a cache key exists"""
-    try:
-        exists = await cache_service.exists(cache_key)
-        return {
-            "success": True,
-            "exists": exists,
-            "key": cache_key
-        }
-    except Exception as e:
-        logger.error(f"Failed to check cache key existence: {e}")
-        raise HTTPException(status_code=500, detail="Failed to check cache key")
-
-
-@router.post("/warmup/user/{user_id}")
-async def warmup_user_cache(
-    user_id: str,
-    current_user: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    """Pre-warm common cache entries for a user"""
-    try:
-        if current_user != user_id:
-            raise HTTPException(status_code=403, detail="Can only warm up your own cache")
-            
-        # This would typically pre-load common data for the user
-        # For now, we'll just return a success message
-        return {
-            "success": True,
-            "message": f"Cache warmup initiated for user {user_id}"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to warm up user cache: {e}")
-        raise HTTPException(status_code=500, detail="Failed to warm up cache")
+    return {
+        "success": True,
+        "deleted_entries": deleted_count,
+    }

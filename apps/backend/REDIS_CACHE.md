@@ -117,11 +117,22 @@ redis:
 ## API Endpoints
 
 ### Cache Management
-- `GET /api/v1/cache/info` - Cache statistics
-- `DELETE /api/v1/cache/user/{user_id}` - Invalidate user cache
-- `DELETE /api/v1/cache/data/{data_id}` - Invalidate dataset cache
-- `DELETE /api/v1/cache/key/{cache_key}` - Delete specific key
-- `GET /api/v1/cache/key/{cache_key}/exists` - Check key existence
+- `DELETE /api/v1/cache/me` - Purge the calling user's own cache entries
+
+This is the whole user-facing cache surface. The identity comes from the token,
+never a path segment. It purges the user-scoped key families declared in
+`app/services/redis_cache.py`: `_USER_SCOPED_KEYS` (exact keys) and
+`_USER_SCOPED_PATTERNS` (patterns anchored to a literal namespace prefix, with
+the user id glob-escaped). Rate-limit buckets live under `ratelimit:` and are
+deliberately outside both lists, so a purge can never reset a limiter.
+
+Issue #452 removed `GET /info`, `DELETE /user/{user_id}`, `DELETE /data/{data_id}`,
+`DELETE /key/{cache_key}`, `GET /key/{cache_key}/exists` and
+`POST /warmup/user/{user_id}`: they let any authenticated user read Redis
+internals and evict any key in the shared instance, and nothing in the product
+called them. Declare any new user-scoped key family in
+`_USER_SCOPED_KEYS`/`_USER_SCOPED_PATTERNS` rather than reintroducing an
+unanchored pattern.
 
 ## Performance Benefits
 

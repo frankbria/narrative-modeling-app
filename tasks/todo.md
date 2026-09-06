@@ -1,52 +1,30 @@
-# Issue #451 — [P0.8] Mass assignment on /api/v1/user_data
+# Issue #452 — [P0.9] Any tenant can purge another tenant's cache
 
-Branch: `fix/451-user-data-mass-assignment`
-
-## Problem
-`POST /api/v1/user_data/` and `PUT /api/v1/user_data/{id}` take the **Beanie Document
-itself** as the request body (`user_data: UserData`, `updated: UserData`). There is no
-request schema, so every field is client-settable — including `s3_url`, which the
-visualization and preview endpoints later fetch. A tenant can point `s3_url` at another
-tenant's object and read it back through a legitimately-scoped endpoint.
-
-## Two things the issue could not have known, which change its criteria
-
-**AC1 says "removed from the create/update request schemas". There are no request
-schemas** — the Document is the body. The fix is to introduce `UserDataCreate` /
-`UserDataUpdate` exposing only client-settable fields, which is a larger change than
-deleting a field but the only one that actually closes it: today `file_path`,
-`contains_pii`, `pii_masked`, `is_processed` and the rest are equally settable.
-
-**AC3's tenant-prefix half is not implementable for this id-space.** Legacy `UserData`
-uploads key objects as `generate_s3_filename()` → `"{uuid4}.{ext}"` — flat, with **no
-tenant component**. There is nothing to check a caller's prefix against, and enforcing
-one would break every legitimate legacy read. (`DatasetMetadata` is the id-space that
-uses `datasets/{user}/...`; the two are separate, per CLAUDE.md.) The bucket-allowlist
-half is implementable and worth having, so that is what gets built; the prefix half is
-reported with the reason, and the durable fix — namespacing new uploads under the owner
-— is filed separately because it changes key layout for existing objects.
+## Findings
+- `app/api/routes/cache.py` exposes 6 routes to any authenticated user.
+  - `DELETE /data/{data_id}`: no owner check; `data_id` reaches `KEYS` globs
+    (`data_stats:{id}`, `eda:{id}`, `predictions:{id}:*`) → `data_id="*"` flushes them all.
+  - `DELETE /key/{cache_key}` / `GET /key/{cache_key}/exists`: arbitrary key delete + probe,
+    including `ratelimit:*` → limiter reset and cross-tenant key-name disclosure.
+  - `GET /info`: Redis server internals to any user.
+  - `POST /warmup/user/{user_id}`: returns success, does nothing (AC6).
+  - `DELETE /user/{user_id}`: self-checked, but `invalidate_user_cache` globs `*:{user_id}*`,
+    which matches `ratelimit:<identity containing user_id>` → resets own limiter (AC3).
+- **Zero consumers.** No frontend/e2e/service call any `/api/v1/cache/*` route; only
+  `apps/backend/REDIS_CACHE.md` documents them.
+- Only user-namespaced cache key in the codebase is `user_progress:{user_id}`
+  (`onboarding_service`). Every other cached key is dataset/model/hash scoped.
 
 ## Plan
-1. **RED** — route tests (`async_authorized_client`, real documents):
-   - POST carrying `s3_url` pointing at another tenant's key → the stored value is
-     server-derived, not the supplied one (AC4)
-   - PUT carrying a foreign `s3_url` → stored value unchanged (AC4)
-   - POST/PUT carrying `user_id` for another tenant → ignored (AC2)
-   - PUT on another tenant's document → 404 (currently 403, which confirms existence)
-   - `get_file_from_s3` rejects a bucket outside the allowlist (AC3)
-2. **GREEN**
-   - `UserDataCreate` / `UserDataUpdate` in `app/schemas/user_data.py` with only
-     client-settable fields; `s3_url`, `user_id`, `id`, timestamps derived server-side
-   - bucket allowlist in `app/utils/s3.py::get_file_from_s3`
-   - PUT's 403 → 404
-3. **AC5 is a data check I cannot run** — it needs the production/staging Atlas cluster,
-   which is not reachable from here (and #444's rotation left the local credential
-   stale). Write the query, hand it to the operator, record on the issue.
-4. Docs: `SECURITY_OWNERSHIP_CHECKS.md`.
-
-## Acceptance criteria
-- [ ] AC1 `s3_url` not acceptable from the client on create/update
-- [ ] AC2 other server-authoritative fields audited (`user_id` above all)
-- [ ] AC3 bucket allowlist (prefix half reported as not applicable, with reasons)
-- [ ] AC4 route test proves a supplied `s3_url` does not land
-- [ ] AC5 data check handed to the operator with an exact query
+1. Reduce the router to one tenant-scoped route: `DELETE /api/v1/cache/me`
+   — purges the caller's own entries, identity from the token, no path segment. (AC1/AC4)
+2. Delete `/info`, `/data/{data_id}`, `/key/{cache_key}`, `/key/{cache_key}/exists`,
+   `/warmup/user/{user_id}`. (AC4, AC6)
+3. `RedisCacheService.invalidate_user_cache` → exact-key deletes of the user's own
+   namespaced keys; no glob. Drop `invalidate_data_cache` (its only caller is the
+   deleted route, and it is the remaining glob builder). (AC2)
+4. Rate-limit buckets stay under `ratelimit:` — unreachable now that no route accepts a
+   key or a pattern. Test proves it. (AC3)
+5. Rewrite `tests/test_api/test_cache.py` for the guarded surface: removed routes 404/405,
+   `/me` purges only the caller, tenant B's keys and `ratelimit:*` survive. (AC5)
+6. Update `apps/backend/REDIS_CACHE.md`.

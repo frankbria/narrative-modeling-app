@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pandas as pd
 import pytest
-from beanie import PydanticObjectId
 
 from app.schemas.onboarding import OnboardingUserProgress
 from app.services.data_processing.statistics_engine import (
@@ -226,28 +225,6 @@ class TestRedisCacheIntegration:
             result2 = await expensive_function("param", 123)
             assert result2 == "cached_result"
             assert call_count == 1  # Function not called again
-
-    @pytest.mark.asyncio
-    async def test_cache_invalidation_integration(self, setup_database):
-        """Test cache invalidation across different services"""
-        user_id = "test_user_123"
-        dataset_id = str(PydanticObjectId())
-        
-        # Mock cache service with some cached data
-        mock_cache = AsyncMock()
-        mock_cache.invalidate_user_cache = AsyncMock(return_value=5)
-        mock_cache.invalidate_data_cache = AsyncMock(return_value=3)
-        
-        with patch('app.services.redis_cache.cache_service', mock_cache):
-            # Test user cache invalidation
-            deleted_user_keys = await mock_cache.invalidate_user_cache(user_id)
-            assert deleted_user_keys == 5
-            mock_cache.invalidate_user_cache.assert_called_with(user_id)
-            
-            # Test data cache invalidation
-            deleted_data_keys = await mock_cache.invalidate_data_cache(dataset_id)
-            assert deleted_data_keys == 3
-            mock_cache.invalidate_data_cache.assert_called_with(dataset_id)
 
     @pytest.mark.asyncio
     async def test_cache_graceful_degradation(self, setup_database):
