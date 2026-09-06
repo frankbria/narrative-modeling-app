@@ -249,12 +249,19 @@ async def complete_experiment(
 @router.get("/experiments/{experiment_id}/assign-variant", response_model=VariantAssignmentResponse)
 async def assign_variant(
     experiment_id: str,
-    user_identifier: str = Query(..., description="User identifier for consistent assignment")
+    user_identifier: str = Query(..., description="User identifier for consistent assignment"),
+    current_user_id: str = Depends(get_current_user_id)
 ):
-    """Get variant assignment for a user"""
-    
+    """Get variant assignment for a user.
+
+    Authenticated and tenant-scoped (issue #450). This endpoint carried no auth
+    dependency at all, so anyone could read `model_id` for an arbitrary
+    experiment id; the eight endpoints around it were scoped all along.
+    """
+
     experiment = await ABTest.find_one({
         "experiment_id": experiment_id,
+        "user_id": current_user_id,
         "status": ExperimentStatus.RUNNING
     })
     
@@ -297,10 +304,26 @@ async def track_prediction(
     variant_id: str,
     latency_ms: float,
     success: bool = True,
-    custom_metrics: dict[str, float] | None = None
+    custom_metrics: dict[str, float] | None = None,
+    current_user_id: str = Depends(get_current_user_id)
 ):
-    """Track a prediction for an A/B test variant"""
-    
+    """Track a prediction for an A/B test variant.
+
+    Authenticated and tenant-scoped (issue #450). This endpoint carried no auth
+    dependency at all, so anyone on the internet could inject outcomes into any
+    tenant's experiment metrics — the numbers that decide which model goes to
+    production. Ownership is established here because the service below looks
+    the experiment up by id alone and silently returns on a miss, which is
+    deliberate for non-blocking tracking but cannot double as authorization.
+    """
+
+    experiment = await ABTest.find_one({
+        "experiment_id": experiment_id,
+        "user_id": current_user_id
+    })
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
     await ABTestingService.track_prediction(
         experiment_id=experiment_id,
         variant_id=variant_id,

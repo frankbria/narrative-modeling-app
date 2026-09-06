@@ -129,6 +129,19 @@ All three go through `require_owned_dataset(dataset_id, user_id)` in
 module's broad `except Exception` blocks would otherwise convert its 404 into
 a 500.
 
+- `app/api/routes/ab_testing.py`:
+  - `GET /api/v1/ab-testing/experiments/{experiment_id}/assign-variant`
+  - `POST /api/v1/ab-testing/track-prediction`
+
+  Both carried **no** auth dependency at all until #450, while the other eight
+  endpoints on the router did and the router is mounted without a router-level
+  `dependencies=[...]`. Both now take `get_current_user_id` and load the
+  experiment with a `user_id` predicate. The ownership check on
+  `track-prediction` lives in the route, not the service:
+  `ABTestingService.track_prediction` looks the experiment up by id alone and
+  returns silently on a miss, which is deliberate for non-blocking tracking but
+  cannot double as authorization.
+
 - `app/api/routes/column_stats.py` (via `_require_owned_dataset`, local to that
   module — different model and id type from the versions helper):
   - `GET /api/v1/column_stats/dataset/{dataset_id}` — the ownership check used to
