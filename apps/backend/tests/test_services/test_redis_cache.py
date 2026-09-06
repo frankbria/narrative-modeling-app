@@ -322,49 +322,55 @@ class TestRedisCacheService:
         retrieved_results = await self.cache_service.get_eda_results("data_123")
         assert retrieved_results == eda_results
         
+    def _fake_redis(self, store):
+        """A Redis double whose KEYS honours backslash-escaped metacharacters."""
+        from tests.test_api.test_cache import FakeRedis
+
+        fake = FakeRedis(store)
+        self.cache_service.redis_client = fake
+        return fake
+
     @pytest.mark.asyncio
-    async def test_cache_invalidation(self):
-        """Test cache invalidation methods"""
-        mock_redis = AsyncMock()
-        mock_redis.keys = AsyncMock(return_value=[b"user:test_user:progress", b"data:test_user:stats"])
-        mock_redis.delete = AsyncMock(return_value=2)
-        
-        self.cache_service.redis_client = mock_redis
-        
-        # Test user cache invalidation
-        result = await self.cache_service.invalidate_user_cache("test_user")
-        assert result == 2
-        
-        # Test data cache invalidation
-        mock_redis.keys = AsyncMock(side_effect=[
-            [b"data_stats:data_123"],
-            [b"eda:data_123"],
-            [b"predictions:data_123:hash1", b"predictions:data_123:hash2"]
-        ])
-        mock_redis.delete = AsyncMock(side_effect=[1, 1, 2])
-        
-        result = await self.cache_service.invalidate_data_cache("data_123")
-        assert result == 4  # 1 + 1 + 2
-        
-    @pytest.mark.asyncio
-    async def test_cache_info(self):
-        """Test cache information retrieval"""
-        mock_redis = AsyncMock()
-        mock_redis.info = AsyncMock(return_value={
-            "used_memory": 1024000,
-            "used_memory_human": "1MB",
-            "connected_clients": 5,
-            "keyspace_hits": 100,
-            "keyspace_misses": 10
+    async def test_invalidate_user_cache_only_touches_that_user(self):
+        """User invalidation stays inside the caller's own keys (issue #452)."""
+        fake = self._fake_redis({
+            "user_progress:test_user": b"x",
+            "feature_selection:ds1:test_user:mutual_info:abc": b"{}",
+            "user_progress:other_user": b"x",
+            "feature_selection:ds1:other_user:mutual_info:abc": b"{}",
+            "ratelimit:user:test_user": b"9",
+            "data_stats:some_dataset": b"{}",
         })
-        
-        self.cache_service.redis_client = mock_redis
-        
-        info = await self.cache_service.get_cache_info()
-        assert info["used_memory"] == 1024000
-        assert info["used_memory_human"] == "1MB"
-        assert info["connected_clients"] == 5
-        
+
+        result = await self.cache_service.invalidate_user_cache("test_user")
+
+        assert result == 2
+        # The other tenant, the rate-limit bucket and dataset caches all survive.
+        assert set(fake.store) == {
+            "user_progress:other_user",
+            "feature_selection:ds1:other_user:mutual_info:abc",
+            "ratelimit:user:test_user",
+            "data_stats:some_dataset",
+        }
+
+    @pytest.mark.asyncio
+    async def test_invalidate_user_cache_escapes_glob_metacharacters(self):
+        """A wildcard in the id matches itself literally, not everyone else."""
+        fake = self._fake_redis({
+            "user_progress:*": b"x",
+            "user_progress:victim": b"x",
+            "feature_selection:ds1:*:mutual_info:abc": b"{}",
+            "feature_selection:ds1:victim:mutual_info:abc": b"{}",
+        })
+
+        result = await self.cache_service.invalidate_user_cache("*")
+
+        assert result == 2
+        assert set(fake.store) == {
+            "user_progress:victim",
+            "feature_selection:ds1:victim:mutual_info:abc",
+        }
+
     @pytest.mark.asyncio
     async def test_operations_without_redis_connection(self):
         """Test operations when Redis is not connected"""

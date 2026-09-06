@@ -23,6 +23,20 @@ _SIGNED_PICKLE_PREFIX = b"\x00SPKL:"
 _SIG_HEX_LEN = 64  # sha256 hex digest length
 
 
+# The cache key families scoped to exactly one user — what DELETE
+# /api/v1/cache/me purges. Everything else the app caches is keyed by
+# dataset/model/content hash. Rate-limit buckets ("ratelimit:") are
+# deliberately absent: a purge must never reset a limiter (issue #452).
+#
+# Patterns are anchored to a literal namespace prefix so they cannot widen past
+# their own family, and the id is glob-escaped before interpolation.
+_USER_SCOPED_KEYS = ("user_progress:{user_id}",)
+_USER_SCOPED_PATTERNS = ("feature_selection:*:{user_id}:*",)
+
+# Redis glob metacharacters, escaped with a backslash.
+_GLOB_ESCAPES = str.maketrans({char: "\\" + char for char in "*?[]\\"})
+
+
 class RedisCacheService:
     """Service for Redis caching operations"""
     
@@ -334,41 +348,21 @@ class RedisCacheService:
         return await self.get(key)
         
     async def invalidate_user_cache(self, user_id: str) -> int:
-        """Invalidate all cache entries for a user"""
-        pattern = f"*:{user_id}*"
-        return await self.delete_pattern(pattern)
-        
-    async def invalidate_data_cache(self, data_id: str) -> int:
-        """Invalidate all cache entries for a dataset"""
-        patterns = [
-            f"data_stats:{data_id}",
-            f"eda:{data_id}",
-            f"predictions:{data_id}:*"
-        ]
-        
-        total_deleted = 0
-        for pattern in patterns:
-            total_deleted += await self.delete_pattern(pattern)
-        return total_deleted
-        
-    async def get_cache_info(self) -> dict[str, Any]:
-        """Get cache statistics"""
-        if not self.redis_client:
-            return {"error": "Redis not connected"}
-            
-        try:
-            info = await self.redis_client.info("memory")
-            return {
-                "used_memory": info.get("used_memory", 0),
-                "used_memory_human": info.get("used_memory_human", "0B"),
-                "connected_clients": info.get("connected_clients", 0),
-                "total_connections_received": info.get("total_connections_received", 0),
-                "keyspace_hits": info.get("keyspace_hits", 0),
-                "keyspace_misses": info.get("keyspace_misses", 0),
-            }
-        except Exception as e:
-            logger.error(f"Failed to get cache info: {e}")
-            return {"error": str(e)}
+        """Delete this user's cache entries across every user-scoped family.
+
+        Each key is either addressed exactly or matched by a pattern anchored
+        to its own namespace. The old ``*:{user_id}*`` pattern was anchored to
+        nothing, so it also matched the ``ratelimit:`` buckets sharing this
+        Redis — letting a user reset their own limiter (issue #452).
+        """
+        escaped_id = user_id.translate(_GLOB_ESCAPES)
+        deleted = 0
+        for template in _USER_SCOPED_KEYS:
+            if await self.delete(template.format(user_id=user_id)):
+                deleted += 1
+        for pattern in _USER_SCOPED_PATTERNS:
+            deleted += await self.delete_pattern(pattern.format(user_id=escaped_id))
+        return deleted
 
 
 # Global cache service instance
