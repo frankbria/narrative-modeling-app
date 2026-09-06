@@ -64,9 +64,17 @@ async def seed_cached_stats(
     )
 
 
-@pytest.mark.integration
 class TestColumnStatsTenantIsolation:
-    """The ownership check must not depend on the cache being cold."""
+    """The ownership check must not depend on the cache being cold.
+
+    Deliberately NOT marked `integration`, unlike the older route suites. These
+    need real MongoDB (via `setup_database`) and nothing else — S3 is patched at
+    the call site, so there is no Redis or LocalStack dependency. The PR gate job
+    runs against a MongoDB service container, so leaving them unmarked means the
+    default selection, `pytest tests/ -m "not integration and not performance"`,
+    exercises the only coverage that closes a live cross-tenant leak — including
+    when a developer runs it locally.
+    """
 
     @pytest.mark.asyncio
     async def test_cached_stats_of_another_tenant_are_not_returned(
