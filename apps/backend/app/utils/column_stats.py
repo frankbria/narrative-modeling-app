@@ -1,6 +1,7 @@
 
 import numpy as np
 import pandas as pd
+from beanie import PydanticObjectId
 
 from app.models.column_stats import (
     CategoricalValueCounts,
@@ -73,9 +74,20 @@ async def calculate_and_store_column_stats(
         elif data_type == "text":
             _add_text_stats(column_stats, series)
 
-        # Save to database
-        await column_stats.insert()
+        # Assign the id up front so a single bulk write can replace the
+        # per-column inserts below without leaving these objects id-less.
+        column_stats.id = PydanticObjectId()
         column_stats_list.append(column_stats)
+
+    # One bulk write rather than an insert per column. `recalculate` has to
+    # delete the old rows before writing the new ones (its delete matches on
+    # dataset_id, so it would otherwise remove what was just inserted), which
+    # leaves a window where a failure part-way through the loop destroyed a
+    # complete set of stats and left a partial one. A single insert_many
+    # narrows that window to one operation — and is a round trip per dataset
+    # instead of one per column.
+    if column_stats_list:
+        await ColumnStats.insert_many(column_stats_list)
 
     return column_stats_list
 

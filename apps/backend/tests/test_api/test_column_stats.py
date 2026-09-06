@@ -211,6 +211,8 @@ class TestColumnStatsTenantIsolation:
         assert response.status_code == 200
         written = await ColumnStats.find(ColumnStats.user_id == mock_user_id).to_list()
         assert sorted(c.column_name for c in written) == ["dept", "salary"]
+        # the bulk write must still give each row an id
+        assert all(c.id is not None for c in written)
 
     @pytest.mark.asyncio
     async def test_recalculate_malformed_dataset_id_is_404_not_500(
