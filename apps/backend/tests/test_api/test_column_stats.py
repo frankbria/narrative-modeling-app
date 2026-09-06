@@ -9,6 +9,8 @@ Mongo documents — `mock_async_client` mounts only two routers, so a test writt
 against it would 404 vacuously and prove nothing (see CLAUDE.md, #267).
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from beanie import PydanticObjectId
 from httpx import AsyncClient
@@ -180,3 +182,32 @@ class TestColumnStatsTenantIsolation:
         assert await ColumnStats.get_motor_collection().count_documents(
             {"dataset_id": PydanticObjectId(str(victim_dataset.id))}
         ) == 1
+
+    @pytest.mark.asyncio
+    async def test_recalculate_succeeds_for_the_owner(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+    ):
+        """Positive path for the handler whose try/except shape changed.
+
+        The refusal tests would still pass if moving the ownership check out of
+        the `try` had broken the success path, so this guards the other half.
+        """
+        # ARRANGE
+        mine = await make_user_data(mock_user_id)
+        fake_s3 = MagicMock()
+        fake_s3.get_object.return_value = {
+            "Body": MagicMock(read=MagicMock(return_value=b"salary,dept\n100,a\n200,b\n"))
+        }
+
+        # ACT
+        with patch(
+            "app.api.routes.column_stats.create_s3_client", return_value=fake_s3
+        ):
+            response = await async_authorized_client.post(
+                f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
+            )
+
+        # ASSERT — 200, and stats were actually written for this caller
+        assert response.status_code == 200
+        written = await ColumnStats.find(ColumnStats.user_id == mock_user_id).to_list()
+        assert sorted(c.column_name for c in written) == ["dept", "salary"]

@@ -66,16 +66,6 @@ async def get_column_stats(
 
     # If no stats exist, calculate them
     if not column_stats:
-        # Drop unservable legacy rows for this dataset first. Rows written before
-        # #449 carry no user_id, so the scoped read above can never return them;
-        # without this they would accumulate as invisible garbage every time the
-        # stats are recomputed. Scoped to a dataset whose ownership is already
-        # established, and to null-owner rows only, so nothing else is touched.
-        await ColumnStats.find(
-            ColumnStats.dataset_id == PydanticObjectId(dataset_id),
-            ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
-        ).delete()
-
         try:
             # Download the data from S3
             s3_client = create_s3_client()
@@ -118,6 +108,21 @@ async def get_column_stats(
                 df, dataset_id, user_id
             )
 
+            # Only once fresh rows exist: drop unservable legacy rows for this
+            # dataset. Rows written before #449 carry no user_id, so the scoped
+            # read above can never return them and they would otherwise pile up
+            # on every recompute. Deliberately after the recompute, not before —
+            # deleting first would destroy them for good if the S3 download or
+            # parse failed, and every later request would recompute from nothing.
+            # Scoped to a dataset whose ownership is already established and to
+            # null-owner rows only, so a real row is never touched. Note this is
+            # a no-op against production data until #543 lands: `dataset_id` is
+            # persisted as a DBRef, which this bare-ObjectId query does not match.
+            await ColumnStats.find(
+                ColumnStats.dataset_id == PydanticObjectId(dataset_id),
+                ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
+            ).delete()
+
         except HTTPException:
             raise
         except Exception as e:
@@ -146,7 +151,11 @@ async def recalculate_column_stats(
     dataset = await _require_owned_dataset(dataset_id, user_id)
 
     try:
-        # Delete existing column stats
+        # Delete existing column stats. Intentionally NOT scoped by user_id,
+        # unlike the read in get_column_stats: ownership of this dataset is
+        # already established above, and a recalculate should also clear any
+        # stray or legacy rows sitting under it. (Also a no-op against
+        # production data until #543 — see the note in get_column_stats.)
         await ColumnStats.find(
             ColumnStats.dataset_id == PydanticObjectId(dataset_id)
         ).delete()
