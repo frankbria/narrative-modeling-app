@@ -129,6 +129,29 @@ All three go through `require_owned_dataset(dataset_id, user_id)` in
 module's broad `except Exception` blocks would otherwise convert its 404 into
 a 500.
 
+- `app/api/routes/user_data.py`:
+  - `POST /api/v1/user_data/` — **retired, 410 Gone** (#451). It took the
+    `UserData` document as its request body, so a client set every field
+    including `s3_url`, which the visualization and preview endpoints fetch.
+    Registering a row against a caller-named object was the endpoint's whole
+    purpose, so it has no safe form. Datasets are created via `POST /upload`,
+    which derives the storage location server-side.
+  - `PUT /api/v1/user_data/{id}` — body is `UserDataUpdate`, not the document.
+    Anything not named there is server-authoritative: `s3_url`, `user_id`,
+    `file_path`, the PII flags, the processing flags and the timestamps cannot
+    be assigned from a request. Only fields actually sent are applied, so a
+    partial update no longer erases what it omitted.
+  - Every ownership refusal in this router answers **404**, not 403 — a 403
+    confirms the row exists and belongs to someone else. Applies to GET
+    `/{id}`, PUT, DELETE, and the AI/EDA summary routes.
+
+  `app/utils/s3.py::get_file_from_s3` validates the bucket against the
+  deployment's configured bucket(s) and **fails closed** when none is set. It
+  deliberately does not check a per-tenant key prefix: legacy `UserData`
+  objects are keyed as a bare `{uuid4}.{ext}` with no tenant component, so
+  there is nothing to compare against (`DatasetMetadata` is the id-space that
+  uses `datasets/{user}/...`).
+
 - `app/api/routes/ab_testing.py`:
   - `GET /api/v1/ab-testing/experiments/{experiment_id}/assign-variant`
   - `POST /api/v1/ab-testing/track-prediction`

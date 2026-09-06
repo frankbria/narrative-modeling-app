@@ -190,6 +190,46 @@ def upload_file_to_s3(
         return False, None
 
 
+def _allowed_buckets() -> set[str]:
+    """Buckets this deployment is permitted to read from.
+
+    Resolved at call time rather than import time so tests and deployments that
+    set the environment after import are honoured.
+    """
+    names = {
+        os.getenv("AWS_BUCKET_NAME"),
+        os.getenv("S3_BUCKET_NAME"),
+        os.getenv("AWS_S3_BUCKET"),
+    }
+    return {n for n in names if n}
+
+
+def _require_allowed_bucket(bucket_name: str) -> None:
+    """Refuse to read from a bucket this deployment does not own (issue #451).
+
+    Defense in depth behind the schema fix: `s3_url` is no longer settable from
+    a request, but this function is reached from several paths and a stored URL
+    is only as trustworthy as whatever wrote it. If no bucket is configured the
+    check cannot be evaluated, so it fails closed rather than allowing anything.
+
+    Note this deliberately does NOT check the key against a per-tenant prefix.
+    Legacy `UserData` objects are keyed as a bare "{uuid4}.{ext}" with no tenant
+    component (see `generate_s3_filename`), so there is nothing to compare a
+    caller against; enforcing a prefix here would break every legitimate read of
+    an existing object. Namespacing those keys is tracked separately.
+    """
+    allowed = _allowed_buckets()
+    if not allowed:
+        logger.error("No S3 bucket configured; refusing to download from %r", bucket_name)
+        raise ValueError("No S3 bucket is configured for this deployment")
+    if bucket_name not in allowed:
+        logger.error(
+            "Refusing to download from unexpected bucket %r (allowed: %s)",
+            bucket_name, sorted(allowed),
+        )
+        raise ValueError(f"Bucket {bucket_name!r} is not permitted for this deployment")
+
+
 def get_file_from_s3(s3_url: str) -> io.BytesIO:
     """
     Download a file from S3 using its URL.
@@ -215,6 +255,8 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
             bucket_name = netloc.split(".")[0]
             if not bucket_name:
                 raise ValueError(f"Invalid S3 URL format: {s3_url}")
+
+        _require_allowed_bucket(bucket_name)
 
         # Download the file to a BytesIO object
         file_obj = io.BytesIO()

@@ -10,8 +10,8 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.models.user_data import UserData
-from app.schemas.user_data import UserDataResponse
+from app.models.user_data import UserData, get_current_time
+from app.schemas.user_data import UserDataResponse, UserDataUpdate
 from app.services.eda_summary import generate_eda_summary
 from app.utils.s3 import create_s3_client, parse_s3_url
 
@@ -21,17 +21,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/", response_model=UserDataResponse)
-async def create_user_data(
-    user_data: UserData, user_id: str = Depends(get_current_user_id)
-) -> UserDataResponse:
-    user_data.user_id = user_id
-    await user_data.insert()
-    # Convert to response model with proper ID handling
-    doc_dict = user_data.model_dump(by_alias=True)
-    if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
-        doc_dict['_id'] = str(doc_dict['_id'])
-    return UserDataResponse.model_validate(doc_dict)
+@router.post("/", status_code=410)
+async def create_user_data_gone() -> None:
+    """Retired (issue #451).
+
+    This route took the `UserData` document as its request body, so a client
+    chose every field — including `s3_url`, which the visualization and preview
+    endpoints fetch. Registering a metadata row against a caller-named S3 object
+    was the endpoint's whole purpose, so there is no version of it that both
+    works as designed and is safe. Datasets are created by uploading them, which
+    derives the storage location server-side.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Create datasets with POST /api/v1/upload. This route accepted a "
+            "client-supplied s3_url and has been retired."
+        ),
+    )
 
 
 @router.get("/", response_model=list[UserDataResponse])
@@ -217,9 +224,11 @@ async def get_user_data(
             logger.error(f"Document not found for ID: {id}")
             raise HTTPException(status_code=404, detail="Dataset not found")
             
+        # 404, not 403: a 403 here confirms the dataset exists and belongs to
+        # someone else. Matches the PUT below (issue #451).
         if doc.user_id != user_id:
-            logger.error(f"Access denied - Doc user: {doc.user_id}, Request user: {user_id}")
-            raise HTTPException(status_code=403, detail="Access denied")
+            logger.warning(f"Access denied - Doc user: {doc.user_id}, Request user: {user_id}")
+            raise HTTPException(status_code=404, detail="Dataset not found")
             
         # Convert to response model with proper ID handling
         doc_dict = doc.model_dump(by_alias=True)
@@ -238,15 +247,27 @@ async def get_user_data(
 
 @router.put("/{id}", response_model=UserData)
 async def update_user_data(
-    id: PydanticObjectId, updated: UserData, user_id: str = Depends(get_current_user_id)
+    id: PydanticObjectId,
+    updated: UserDataUpdate,
+    user_id: str = Depends(get_current_user_id),
 ) -> UserData:
+    """Update the client-settable fields of the caller's own dataset.
+
+    The body is `UserDataUpdate`, not the document: fields it does not name are
+    server-authoritative and cannot be assigned from a request (issue #451).
+    Only the fields actually sent are applied, so an omitted field is left
+    alone rather than erased — this used to overwrite the whole document.
+    """
     doc = await UserData.get(id)
+    # 404 rather than 403: a 403 confirms the row exists and belongs to someone.
     if not doc or doc.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    updated.id = id
-    updated.user_id = user_id  # ensure this isn't overwritten
-    await updated.save()
-    return updated
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    for field, value in updated.model_dump(exclude_unset=True).items():
+        setattr(doc, field, value)
+    doc.updated_at = get_current_time()
+    await doc.save()
+    return doc
 
 
 @router.delete("/{id}")
@@ -255,7 +276,7 @@ async def delete_user_data(
 ) -> dict[str, bool]:
     doc = await UserData.get(id)
     if not doc or doc.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Dataset not found")
     await doc.delete()
     return {"success": True}
 
@@ -272,7 +293,7 @@ async def get_ai_summary(
         # Get the UserData document
         user_data = await UserData.get(id)
         if not user_data or user_data.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=404, detail="Dataset not found")
 
         # Check if AI summary exists
         if not user_data.aiSummary:
@@ -345,7 +366,7 @@ async def get_eda_summary(
         # Get the UserData document
         user_data = await UserData.get(id)
         if not user_data or user_data.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=404, detail="Dataset not found")
 
         # Generate EDA summary using the service
         eda_summary = await generate_eda_summary(user_data)
