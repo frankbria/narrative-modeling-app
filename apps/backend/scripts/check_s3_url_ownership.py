@@ -11,31 +11,31 @@ Usage (from apps/backend, against whichever cluster you want to check):
 
 Exit status is 1 if anything suspicious is found, so it can gate a deploy.
 
-Note for endpoint-style deployments: if AWS_ENDPOINT_URL is set, `upload_file_to_s3`
-writes URLs shaped `{endpoint}/{bucket}/{key}`, whose host is the endpoint rather
-than the bucket. Those parse to the endpoint's first label and would all be
-reported as foreign. Atlas/S3 deployments (no endpoint var) are unaffected.
+Endpoint-style deployments are handled: URL parsing reuses the app's own
+`parse_s3_url`, so set AWS_ENDPOINT_URL here to whatever the deployment uses and
+`{endpoint}/{bucket}/{key}` URLs resolve to their real bucket.
 """
 import asyncio
 import os
 import sys
 from collections import Counter
-from urllib.parse import urlparse
 
 
 def bucket_of(s3_url: str) -> str | None:
-    if not s3_url:
+    """Bucket for a stored URL, using the app's own parser.
+
+    Deliberately not a second implementation: an audit that disagrees with
+    production about what a URL means reports the wrong thing. `parse_s3_url`
+    already handles s3://, path-style endpoint URLs, virtual-host and presigned
+    shapes, so this stays correct as those evolve.
+    """
+    from app.utils.s3 import parse_s3_url
+
+    try:
+        bucket, _ = parse_s3_url(s3_url)
+    except ValueError:
         return None
-    if s3_url.startswith("s3://"):
-        return s3_url[5:].split("/", 1)[0] or None
-    host = urlparse(s3_url).netloc
-    if not host:
-        return None
-    # bucket.s3.region.amazonaws.com  |  s3.region.amazonaws.com/bucket
-    if host.startswith("s3.") or host.startswith("s3-"):
-        path = urlparse(s3_url).path.lstrip("/")
-        return path.split("/", 1)[0] or None
-    return host.split(".")[0] or None
+    return bucket
 
 
 async def main() -> int:

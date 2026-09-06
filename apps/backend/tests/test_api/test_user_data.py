@@ -714,6 +714,55 @@ class TestUserDataMassAssignment:
         reloaded = await UserData.get(foreign_dataset.id)
         assert reloaded.filename == "victim.csv"
 
+    @pytest.mark.asyncio
+    async def test_update_with_an_explicit_null_does_not_brick_the_row(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData
+    ):
+        """An explicit JSON `null` counts as "set" for `exclude_unset`.
+
+        Without `exclude_none` this wrote None onto a required field: the save
+        committed, then every later read of that row failed to validate, so the
+        caller's own list and preview endpoints 500'd from then on. Verified
+        against the pre-fix code, which returned 500 here and left
+        `filename: None` in Mongo.
+        """
+        # ACT
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={"filename": None, "original_filename": "kept.csv"},
+        )
+
+        # ASSERT — the null is ignored, the real value applied
+        assert response.status_code == 200
+        reloaded = await UserData.get(my_dataset.id)
+        assert reloaded.filename == "mine.csv"
+        assert reloaded.original_filename == "kept.csv"
+
+        # and the row is still readable through the endpoints that validate it
+        listing = await async_authorized_client.get("/api/v1/user_data/")
+        assert listing.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_update_response_is_shaped_like_the_get_endpoints(
+        self, async_authorized_client: AsyncClient, my_dataset: UserData
+    ):
+        """PUT returned the raw Beanie document; the GETs return UserDataResponse.
+
+        A consistency fix, not an exposure one: `UserDataResponse` already
+        carries `file_path`, `pii_report`, `quality_report` and `statistics`, so
+        the only field the document adds is Beanie's internal `revision_id`.
+        Stated explicitly because a review claimed the opposite.
+        """
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{my_dataset.id}",
+            json={"filename": "renamed.csv"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["filename"] == "renamed.csv"
+        assert "revision_id" not in body
+        assert isinstance(body["_id"], str)
 
 class TestS3BucketAllowlist:
     """Issue #451, AC3 — defense in depth behind the schema fix.

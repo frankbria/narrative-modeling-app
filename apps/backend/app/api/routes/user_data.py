@@ -245,29 +245,42 @@ async def get_user_data(
 
 
 
-@router.put("/{id}", response_model=UserData)
+@router.put("/{id}", response_model=UserDataResponse)
 async def update_user_data(
     id: PydanticObjectId,
     updated: UserDataUpdate,
     user_id: str = Depends(get_current_user_id),
-) -> UserData:
+) -> UserDataResponse:
     """Update the client-settable fields of the caller's own dataset.
 
     The body is `UserDataUpdate`, not the document: fields it does not name are
     server-authoritative and cannot be assigned from a request (issue #451).
-    Only the fields actually sent are applied, so an omitted field is left
-    alone rather than erased — this used to overwrite the whole document.
+    Unrecognised fields are **ignored rather than rejected**, so sending e.g.
+    `s3_url` or `num_rows` succeeds with those values silently dropped.
+
+    Only the fields actually sent are applied, so an omitted field is left alone
+    rather than erased — this used to overwrite the whole document.
     """
     doc = await UserData.get(id)
     # 404 rather than 403: a 403 confirms the row exists and belongs to someone.
     if not doc or doc.user_id != user_id:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    for field, value in updated.model_dump(exclude_unset=True).items():
+    # exclude_none as well as exclude_unset: an explicit `null` counts as "set",
+    # so without it `{"filename": null}` wrote None onto a required field. The
+    # write committed and every later read of that row then failed to validate,
+    # 500ing the caller's own list and preview endpoints permanently.
+    for field, value in updated.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(doc, field, value)
     doc.updated_at = get_current_time()
     await doc.save()
-    return doc
+
+    # Shape the response like the GET endpoints rather than returning the raw
+    # document, which echoed file_path, pii_report, statistics and quality_report.
+    doc_dict = doc.model_dump(by_alias=True)
+    if '_id' in doc_dict and hasattr(doc_dict['_id'], '__str__'):
+        doc_dict['_id'] = str(doc_dict['_id'])
+    return UserDataResponse.model_validate(doc_dict)
 
 
 @router.delete("/{id}")
