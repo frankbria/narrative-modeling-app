@@ -27,6 +27,13 @@ async def _require_owned_dataset(dataset_id: str, user_id: str) -> UserData:
 
     Call this OUTSIDE the handlers' ``try`` blocks — both catch bare
     ``Exception``, which previously swallowed this refusal into a 500.
+
+    A consequence of sitting outside those blocks: an unexpected failure from
+    ``UserData.get`` no longer picks up the handlers' own ``logger.error``
+    context and is left to the central 5xx handler in
+    ``app/middleware/error_handlers.py``, which logs it with a request id.
+    That is the project's convention (#269), and it is the right trade for not
+    having the ownership refusal swallowed.
     """
     if not PydanticObjectId.is_valid(dataset_id):
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -118,10 +125,19 @@ async def get_column_stats(
             # null-owner rows only, so a real row is never touched. Note this is
             # a no-op against production data until #543 lands: `dataset_id` is
             # persisted as a DBRef, which this bare-ObjectId query does not match.
-            await ColumnStats.find(
-                ColumnStats.dataset_id == PydanticObjectId(dataset_id),
-                ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
-            ).delete()
+            # Best-effort: the stats are already written and correct at this
+            # point, so a hiccup while tidying legacy rows must not turn a
+            # successful recompute into a 500 the caller has to retry.
+            try:
+                await ColumnStats.find(
+                    ColumnStats.dataset_id == PydanticObjectId(dataset_id),
+                    ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
+                ).delete()
+            except Exception:
+                logger.warning(
+                    "Could not clear legacy column-stats rows for dataset %s; "
+                    "the recomputed stats are unaffected.", dataset_id, exc_info=True
+                )
 
         except HTTPException:
             raise

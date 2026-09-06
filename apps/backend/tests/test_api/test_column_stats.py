@@ -264,3 +264,47 @@ class TestColumnStatsTenantIsolation:
         assert await ColumnStats.get_motor_collection().count_documents(
             {"dataset_id": mine.id}
         ) == 1
+
+    @pytest.mark.asyncio
+    async def test_recompute_clears_legacy_null_owner_rows(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+    ):
+        """The one piece of new behaviour not otherwise covered.
+
+        Rows written before this change carry no `user_id`, so the scoped read
+        cannot return them. Without the cleanup they would pile up invisibly on
+        every recompute. Unreachable via the real write path until #543 lands,
+        which is precisely why it is worth pinning now.
+        """
+        # ARRANGE: a legacy row with no owner, and no scoped row to serve
+        mine = await make_user_data(mock_user_id)
+        await ColumnStats.get_motor_collection().insert_one(
+            {
+                "dataset_id": mine.id,
+                "column_name": "legacy",
+                "data_type": "numeric",
+                "count": 1,
+                "missing": 0,
+                "unique": 1,
+            }
+        )
+        fake_s3 = MagicMock()
+        fake_s3.get_object.return_value = {
+            "Body": MagicMock(read=MagicMock(return_value=b"salary,dept\n100,a\n200,b\n"))
+        }
+
+        # ACT: cache misses (the legacy row is unservable), so this recomputes
+        with patch(
+            "app.api.routes.column_stats.create_s3_client", return_value=fake_s3
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        # ASSERT: fresh owned rows, and the legacy row is gone rather than
+        # accumulating alongside them
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+        assert await ColumnStats.get_motor_collection().count_documents(
+            {"dataset_id": mine.id, "user_id": None}
+        ) == 0
