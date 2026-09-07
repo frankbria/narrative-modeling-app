@@ -221,8 +221,9 @@ class ChunkedUploadHandler:
         The session is removed in the same synchronous step it is read, so a
         second concurrent complete — a double-click, or a client retrying after
         a timeout — finds nothing rather than racing to a second S3 object, a
-        second UserData row and a second charged quota unit. Everything after
-        the claim runs on the returned copy.
+        second UserData row and a second charged quota unit. The dict returned
+        is the one that was in the store, not a copy; nothing else can reach it
+        once it is popped.
         """
         session = self.get_session(session_id, user_id)
         if session is None:

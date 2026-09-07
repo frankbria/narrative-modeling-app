@@ -372,6 +372,43 @@ class TestChunkedIngestionIsMetered:
         assert await used() == before
 
 
+class TestChunkHashIsReadFromTheFormBody:
+    """Same class as #463: an undecorated parameter on a multipart route is a
+    query param, so a client sending it in the body would be silently ignored."""
+
+    async def test_a_matching_hash_in_the_form_body_is_accepted(
+        self, client_as, fresh_handler
+    ):
+        import hashlib
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client)).json()["session_id"]
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/chunk/0",
+            files={"file": ("chunk0", io.BytesIO(CSV), "application/octet-stream")},
+            data={"chunk_hash": hashlib.md5(CSV).hexdigest()},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "uploaded"
+
+    async def test_a_mismatched_hash_in_the_form_body_is_rejected(
+        self, client_as, fresh_handler
+    ):
+        client = client_as(TENANT_A)
+        session_id = (await _init(client)).json()["session_id"]
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/chunk/0",
+            files={"file": ("chunk0", io.BytesIO(CSV), "application/octet-stream")},
+            data={"chunk_hash": "0" * 32},
+        )
+
+        assert response.status_code == 400
+        assert "hash mismatch" in response.json()["detail"].lower()
+
+
 class TestUppercaseExtensionsAreAccepted:
     """`data.CSV` is a legitimate filename; the dispatch was case-sensitive."""
 

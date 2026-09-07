@@ -307,7 +307,10 @@ async def init_chunked_upload(
 async def upload_chunk(
     session_id: str,
     chunk_number: int,
-    chunk_hash: str | None = None,
+    # Form, not a bare default: the request is multipart, so an undecorated
+    # parameter is a query param — the same client/server mismatch that made
+    # init unreachable (issue #463). Latent only because no client sends it.
+    chunk_hash: str | None = Form(None),
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
