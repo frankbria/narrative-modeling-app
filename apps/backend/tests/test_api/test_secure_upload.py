@@ -120,7 +120,7 @@ class TestChunkedCompletionSizeCap:
     file into memory (chunked sessions allow very large files)."""
 
     async def test_chunked_completion_rejects_oversized_file_413(self, tmp_path, monkeypatch):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         import pytest
         from fastapi import BackgroundTasks, HTTPException
@@ -133,11 +133,7 @@ class TestChunkedCompletionSizeCap:
 
         with patch.object(
             secure_upload.upload_handler,
-            "complete_upload",
-            AsyncMock(return_value=assembled),
-        ), patch.object(
-            secure_upload.upload_handler,
-            "get_session",
+            "claim_upload",
             return_value={
                 "user_id": "u1",
                 "filename": "assembled.csv",

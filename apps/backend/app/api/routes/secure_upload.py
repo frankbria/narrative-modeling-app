@@ -5,6 +5,7 @@ Secure Upload API with PII detection and resumable uploads
 import io
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -347,113 +348,118 @@ async def complete_chunked_upload(
     Complete chunked upload and process file
     """
     
-    session = upload_handler.get_session(session_id, current_user_id)
+    # Claiming removes the session, so a concurrent or retried complete gets a
+    # clean 404 instead of racing to a second S3 object, a second UserData row
+    # and a second charged quota unit.
+    session = upload_handler.claim_upload(session_id, current_user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
 
-    temp_path = await upload_handler.complete_upload(session_id, current_user_id)
-
-    # Cap the assembled-file read: chunked sessions allow very large files, so
-    # reading the whole thing into memory here would reintroduce the memory-DoS
-    # (issue #270). Reject over MAX_UPLOAD_BYTES before loading it into RAM.
-    if temp_path.stat().st_size > MAX_UPLOAD_BYTES:
-        upload_handler.abort_upload(session_id, current_user_id)
-        temp_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum upload size is "
-            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
-        )
-
-    # Process the complete file
-    with open(temp_path, 'rb') as f:
-        content = f.read()
-
+    temp_path = Path(session["temp_path"])
     filename = session["filename"]
 
-    # Load and process file (similar to secure_upload)
-    if not filename.endswith(('.csv', '.xlsx', '.xls')):
-        upload_handler.abort_upload(session_id, current_user_id)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format: {filename}",
+    # The concurrency slot and the assembled temp file are released on *every*
+    # exit, not just the successful one. Releasing only on success meant a
+    # handful of corrupt uploads pinned a user at the concurrency cap with no
+    # session left to abort, and 429'd their every subsequent init.
+    try:
+        # Cap the assembled-file read: chunked sessions allow very large files,
+        # so reading the whole thing into memory here would reintroduce the
+        # memory-DoS (issue #270). Reject over MAX_UPLOAD_BYTES before loading
+        # it into RAM.
+        if temp_path.stat().st_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum upload size is "
+                f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
+
+        if not filename.endswith(('.csv', '.xlsx', '.xls')):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file format: {filename}",
+            )
+
+        with open(temp_path, 'rb') as f:
+            content = f.read()
+
+        try:
+            if filename.endswith('.csv'):
+                df = pd.read_csv(io.BytesIO(content))
+                file_type, content_type = "csv", "text/csv"
+            elif filename.endswith('.xlsx'):
+                df = pd.read_excel(io.BytesIO(content))
+                file_type, content_type = (
+                    "excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                df = pd.read_excel(io.BytesIO(content))
+                file_type, content_type = "excel", "application/vnd.ms-excel"
+        except Exception as e:
+            # Matches /secure: a corrupt upload is the caller's 400, not a 500.
+            raise HTTPException(
+                status_code=400, detail=f"Failed to parse file: {str(e)}"
+            )
+
+        # Detect PII
+        pii_detections = pii_detector.detect_pii_in_dataframe(df)
+        pii_report = pii_detector.generate_pii_report(pii_detections)
+
+        # Upload to S3 under a server-derived, tenant-prefixed key. The client
+        # filename must never reach the key: two tenants uploading data.csv used
+        # to write the same unprefixed object, so the second silently destroyed
+        # the first (issue #464). This adopts the datasets/{user_id}/...
+        # convention the strict downloader, erasure and lifecycle rules expect;
+        # the non-chunked routes in this module still write bare {uuid}.{ext}
+        # keys (tracked separately).
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'csv'
+        s3_key = f"datasets/{current_user_id}/{uuid.uuid4()}.{ext}"
+        success, s3_url = upload_file_to_s3(content, s3_key, content_type=content_type)
+        if not success or not s3_url:
+            logger.error("S3 upload failed for chunked session %s", session_id)
+            raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+
+        # Create UserData record
+        schema = infer_schema(df)
+        user_data = UserData(
+            user_id=current_user_id,
+            filename=filename,
+            original_filename=filename,
+            s3_url=s3_url,
+            num_rows=len(df),
+            num_columns=len(df.columns),
+            data_schema=schema,
+            file_type=file_type,
+            columns=list(df.columns),
+            data_preview=df.head(100).to_dict('records'),
         )
 
-    try:
-        if filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(content))
-            file_type, content_type = "csv", "text/csv"
-        else:
-            df = pd.read_excel(io.BytesIO(content))
-            file_type, content_type = (
-                "excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        if pii_report["has_pii"]:
+            user_data.pii_report = pii_report
+            user_data.contains_pii = True
+            user_data.pii_risk_level = pii_report["risk_level"]
+
+        await user_data.insert()
+
+        # Background AI summary
+        if pii_report["has_pii"]:
+            masked_df = pii_detector.mask_pii(df, pii_detections)
+            background_tasks.add_task(
+                generate_ai_summary_safe, str(user_data.id), masked_df
             )
-    except Exception as e:
-        # Matches /secure: a corrupt upload is the caller's 400, not a 500 that
-        # also strands the assembled temp file.
-        upload_handler.abort_upload(session_id, current_user_id)
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
+        else:
+            background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
 
-    # Detect PII
-    pii_detections = pii_detector.detect_pii_in_dataframe(df)
-    pii_report = pii_detector.generate_pii_report(pii_detections)
-
-    # Upload to S3 under a server-derived, tenant-prefixed key. The client
-    # filename must never reach the key: two tenants uploading data.csv used to
-    # write the same unprefixed object, so the second silently destroyed the
-    # first (issue #464). This adopts the datasets/{user_id}/... convention the
-    # strict downloader, erasure and lifecycle rules expect; the non-chunked
-    # routes in this module still write bare {uuid}.{ext} keys (tracked
-    # separately).
-    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'csv'
-    s3_key = f"datasets/{current_user_id}/{uuid.uuid4()}.{ext}"
-    success, s3_url = upload_file_to_s3(content, s3_key, content_type=content_type)
-    if not success or not s3_url:
-        logger.error("S3 upload failed for chunked session %s", session_id)
-        raise HTTPException(status_code=500, detail="Failed to upload file to S3")
-
-    # Create UserData record
-    schema = infer_schema(df)
-    user_data = UserData(
-        user_id=current_user_id,
-        filename=filename,
-        original_filename=filename,
-        s3_url=s3_url,
-        num_rows=len(df),
-        num_columns=len(df.columns),
-        data_schema=schema,
-        file_type=file_type,
-        columns=list(df.columns),
-    )
-
-    if pii_report["has_pii"]:
-        user_data.pii_report = pii_report
-        user_data.contains_pii = True
-        user_data.pii_risk_level = pii_report["risk_level"]
-    
-    await user_data.insert()
-    
-    # Drop the session along with the temp file. Leaving it behind meant a
-    # retried or double-clicked complete stat()'d a file the first call had
-    # already unlinked, which is a 500 where a 404 is the honest answer.
-    upload_handler.abort_upload(session_id, current_user_id)
-    
-    # Background AI summary
-    if pii_report["has_pii"]:
-        masked_df = pii_detector.mask_pii(df, pii_detections)
-        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), masked_df)
-    else:
-        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
-    
-    rate_limiter.end_upload(current_user_id)
-    
-    return {
-        "status": "success",
-        "file_id": str(user_data.id),
-        "filename": filename,
-        "pii_report": pii_report
-    }
+        return {
+            "status": "success",
+            "file_id": str(user_data.id),
+            "filename": filename,
+            "pii_report": pii_report
+        }
+    finally:
+        temp_path.unlink(missing_ok=True)
+        rate_limiter.end_upload(current_user_id)
 
 
 @router.delete("/chunked/{session_id}")

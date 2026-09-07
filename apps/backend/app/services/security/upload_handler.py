@@ -115,6 +115,17 @@ class ChunkedUploadHandler:
         # Validate chunk number
         if chunk_number >= session["total_chunks"]:
             raise HTTPException(status_code=400, detail="Invalid chunk number")
+
+        # Bound the payload by the declared geometry. Only read_upload_capped's
+        # 100 MB applied before, so a session declaring a small file could still
+        # put ~2x MAX_UPLOAD_BYTES on disk (last-slot offset plus one oversized
+        # chunk) — which is the disk-DoS the init-time cap (issue #270) is
+        # supposed to prevent.
+        if len(chunk_data) > self.chunk_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Chunk exceeds the declared chunk size of {self.chunk_size} bytes",
+            )
         
         # Check if chunk already uploaded
         if chunk_number in session["uploaded_chunks"]:
@@ -201,20 +212,28 @@ class ChunkedUploadHandler:
             "expires_at": session["expires_at"]
         }
     
-    async def complete_upload(self, session_id: str, user_id: str) -> Path:
-        """Finalize upload and return file path"""
+    def claim_upload(self, session_id: str, user_id: str) -> dict[str, Any] | None:
+        """Take a fully-uploaded session for finalisation, or return None.
 
+        The session is removed in the same synchronous step it is read, so a
+        second concurrent complete — a double-click, or a client retrying after
+        a timeout — finds nothing rather than racing to a second S3 object, a
+        second UserData row and a second charged quota unit. Everything after
+        the claim runs on the returned copy.
+        """
         session = self.get_session(session_id, user_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Upload session not found")
-        
+        if session is None:
+            return None
+
         if session["status"] != "complete":
             raise HTTPException(
                 status_code=400,
                 detail=f"Upload not complete. Progress: {self._calculate_progress(session)}%"
             )
-        
-        return Path(session["temp_path"])
+
+        self.sessions.pop(session_id, None)
+        (self.temp_dir / f"{session_id}.json").unlink(missing_ok=True)
+        return session
     
     def abort_upload(self, session_id: str, user_id: str) -> bool:
         """Discard ``user_id``'s session and its partial file.

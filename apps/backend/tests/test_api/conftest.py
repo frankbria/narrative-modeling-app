@@ -131,7 +131,7 @@ def mock_upload_handler():
         temp_file.write(test_csv_content)
         temp_file.close()
         
-        mock.complete_upload = AsyncMock(return_value=Path(temp_file.name))
+        mock.claim_upload = MagicMock(return_value=Path(temp_file.name))
         mock.get_session = MagicMock(return_value={
             "filename": "test.csv",
             "file_size": 1024,

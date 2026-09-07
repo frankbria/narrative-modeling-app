@@ -203,6 +203,29 @@ class TestCompletionStoresAUsableDataset:
         assert second.status_code == 404
         assert len(s3_calls) == 1  # and no duplicate object was written
 
+    async def test_two_concurrent_completes_produce_one_dataset(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        """Both used to pass the session checks before either finished.
+
+        The result was two S3 objects, two UserData rows and two charged quota
+        units — and both returned 200, so the refund middleware credited nothing.
+        """
+        import asyncio
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client)).json()["session_id"]
+        await _upload_all(client, session_id)
+
+        first, second = await asyncio.gather(
+            client.post(f"/api/v1/upload/chunked/{session_id}/complete"),
+            client.post(f"/api/v1/upload/chunked/{session_id}/complete"),
+        )
+
+        assert sorted([first.status_code, second.status_code]) == [200, 404]
+        assert len(s3_calls) == 1
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 1
+
     async def test_corrupt_csv_is_400_not_500(
         self, client_as, fresh_handler, s3_calls
     ):
@@ -339,6 +362,61 @@ class TestConcurrencySlotAccounting:
             await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
         ).status_code == 200
         assert rate_limiter.active_uploads[TENANT_A] == 0
+
+
+class TestFailureStillReleasesTheConcurrencySlot:
+    """A failed complete used to hold its slot forever.
+
+    Releasing only on the success path meant ten corrupt uploads pinned a user
+    at the concurrency cap, with the session already gone so DELETE could not
+    recover it — every subsequent init 429'd until the worker restarted.
+    """
+
+    async def test_a_failed_complete_does_not_hold_the_slot(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from app.api.routes.secure_upload import rate_limiter
+
+        rate_limiter.active_uploads.pop(TENANT_A, None)
+        client = client_as(TENANT_A)
+
+        for _ in range(3):
+            session_id = (await _init(client)).json()["session_id"]
+            await _upload_all(client, session_id, content=b"a,b\n1,2\n3,4,5,6\n")
+            response = await client.post(
+                f"/api/v1/upload/chunked/{session_id}/complete"
+            )
+            assert response.status_code == 400, response.text
+
+        assert rate_limiter.active_uploads[TENANT_A] == 0
+
+    async def test_a_failed_complete_leaves_no_temp_file(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, filename="notes.txt")).json()["session_id"]
+        await _upload_all(client, session_id, content=b"not a table")
+
+        assert (
+            await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        ).status_code == 400
+        assert list(fresh_handler.temp_dir.iterdir()) == []
+
+
+class TestChunkPayloadIsBoundedByDeclaredGeometry:
+    """#270's init-time cap only bounds disk usage if chunks respect it."""
+
+    async def test_a_chunk_larger_than_chunk_size_is_413(
+        self, client_as, fresh_handler
+    ):
+        fresh_handler.chunk_size = 16
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, file_size=16)).json()["session_id"]
+
+        response = await _upload_all(client, session_id, content=b"x" * 4096)
+
+        assert response.status_code == 413
+        assert not (fresh_handler.temp_dir / f"{session_id}.tmp").exists()
 
 
 class TestSessionsAreBoundToTheirOwner:
