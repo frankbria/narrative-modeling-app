@@ -545,9 +545,21 @@ class VersioningService(BaseService[DatasetVersion]):
             List of TransformationLineage documents in chronological order
         """
         chain: list[TransformationLineage] = []
+        seen: set[str] = set()
         current_version_id: str | None = version_id
 
         while current_version_id:
+            # `parent_version_id` always points at an older version, so a cycle
+            # means corrupt data — but this walk is a security boundary now, and
+            # without the guard a cycle hangs the request rather than failing it.
+            if current_version_id in seen:
+                logger.warning(
+                    f"Cycle in version lineage at {current_version_id}; "
+                    f"stopping the walk from {version_id}"
+                )
+                break
+            seen.add(current_version_id)
+
             version = await self.get_version(current_version_id, mark_accessed=False)
             if not version:
                 break

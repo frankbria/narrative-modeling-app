@@ -1591,3 +1591,35 @@ class TestVersionsAPI:
         assert read.status_code == 200
         assert pin.status_code == 200
         assert pin.json()["is_pinned"] is True
+
+    @pytest.mark.asyncio
+    async def test_lineage_walk_terminates_on_a_cycle(
+        self,
+        setup_database,
+        sample_dataset_metadata: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """A `parent_version_id` cycle must end the walk, not hang the request.
+
+        `parent_version_id` always points at an older version, so a cycle means
+        corrupt data — but the walk is a security boundary now, and an
+        unguarded `while` on corrupt data hangs the worker instead of failing.
+
+        Note: reverting the guard makes this test **hang** rather than fail,
+        which is the point of having it.
+        """
+        # ARRANGE — two versions that name each other as parent
+        first = make_version(sample_dataset_metadata.dataset_id, 11, mock_user_id)
+        second = make_version(sample_dataset_metadata.dataset_id, 12, mock_user_id)
+        first.parent_version_id = second.version_id
+        second.parent_version_id = first.version_id
+        await first.insert()
+        await second.insert()
+
+        # ACT
+        chain = await versioning_service.get_lineage_chain(
+            first.version_id, user_id=mock_user_id
+        )
+
+        # ASSERT
+        assert chain == []
