@@ -13,21 +13,47 @@ concurrency:
 
 jobs:
   review:
-    # Only review substantial changes (5+ files, or 20+ additions, or 20+ deletions)
+    # Skip bot-authored PRs. claude-code-action refuses any run whose actor is
+    # not a User and fails the step to say so, which shows up as a red check on
+    # a PR that was never reviewed. Skipping instead reports it grey and honest.
+    # Dependabot could not be reviewed here even if the guard were opened up:
+    # GitHub runs Dependabot-triggered pull_request workflows with a read-only
+    # token and the separate Dependabot secret store, so ZHIPU_API_KEY would be
+    # empty and the summary comment unpostable. `user.type` covers every bot
+    # rather than naming one.
+    # Then: only review substantial changes (5+ files, or 20+ additions/deletions).
     if: |
-      github.event.pull_request.changed_files >= 5 ||
-      github.event.pull_request.additions >= 20 ||
-      github.event.pull_request.deletions >= 20
+      github.event.pull_request.user.type == 'User' &&
+      (github.event.pull_request.changed_files >= 5 ||
+       github.event.pull_request.additions >= 20 ||
+       github.event.pull_request.deletions >= 20)
     # Pinned to a commit SHA (not @main) so an upstream push can't silently run
     # here with write perms + the ZHIPU_API_KEY secret — matches the repo's
     # action-pinning policy (see claude-code-review.yml).
-    # Runaway guard lives in the called workflow (review.yml sets timeout-minutes:
-    # 20 on its job); a caller that uses a reusable workflow can't set timeout-minutes.
-    uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main @ 2026-07-10
+    #
+    # Re-pinned off b877d15a, which never started here. That callee's job
+    # declared `id-token: write`; this caller did not grant it, and GitHub
+    # refuses to start a run whose caller grants less than the called job
+    # requests. The refusal happens before any job exists, so every run was a
+    # `startup_failure` with no log to explain it — the check had never once run
+    # in this repo. Upstream dropped that grant (glm-review#2) after verifying
+    # the reviewer never mints an OIDC token, and dropped `issues: write`
+    # (glm-review#3) after verifying PR comments are authorised by
+    # `pull-requests` even though they go through /issues/{n}/comments. The two
+    # permissions below are now the complete set the callee declares.
+    #
+    # Keep the pin and the permissions block in step: re-pinning backwards to a
+    # callee that declares more than this grants reproduces the startup failure.
+    #
+    # The new pin also bounds a review by turns (`--max-turns 60`) with a
+    # 35-minute timeout on the review *step* and 40 on the job, uploads the
+    # agent transcript as a 14-day artifact, and rewrites its own tracking
+    # comment into an explicit "GLM review did not complete" notice rather than
+    # leaving a spinner that reads like a clean review.
+    uses: frankbria/glm-review/.github/workflows/review.yml@77dfa9c6633712256edab41fd0db42663a9416b7 # main @ 2026-09-06
     permissions:
       contents: read
       pull-requests: write
-      issues: write         # PR review/issue comments are posted under the issues API
 
     secrets:
       ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
