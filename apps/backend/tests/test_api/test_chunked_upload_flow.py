@@ -493,6 +493,54 @@ class TestFailureStillReleasesTheConcurrencySlot:
         assert list(fresh_handler.temp_dir.iterdir()) == []
 
 
+class TestAbandonedSessionsGiveTheirSlotBack:
+    """A session is released explicitly only by complete or abort.
+
+    While the chunk route double-released, the count sat at 0 and the cap never
+    bound, so this was invisible. Fixing that made the cap real — and made an
+    abandoned session (closed tab, dropped connection) hold its slot with
+    nothing to give it back (issue #526).
+    """
+
+    async def test_expired_sessions_release_their_owner_s_slots_on_init(
+        self, client_as, fresh_handler
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from app.api.routes.secure_upload import rate_limiter
+
+        rate_limiter.active_uploads.pop(TENANT_A, None)
+        client = client_as(TENANT_A)
+
+        for _ in range(3):
+            assert (await _init(client)).status_code == 200
+        assert rate_limiter.active_uploads[TENANT_A] == 3
+
+        # Abandon them: nothing completes, nothing aborts, the window passes.
+        past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        for session in fresh_handler.sessions.values():
+            session["expires_at"] = past
+
+        assert (await _init(client)).status_code == 200
+
+        # The three abandoned slots came back; only the new session holds one.
+        assert rate_limiter.active_uploads[TENANT_A] == 1
+
+    async def test_the_cap_still_binds_for_live_sessions(
+        self, client_as, fresh_handler
+    ):
+        from app.api.routes.secure_upload import rate_limiter
+
+        rate_limiter.active_uploads.pop(TENANT_A, None)
+        client = client_as(TENANT_A)
+
+        for _ in range(rate_limiter.max_concurrent_uploads):
+            assert (await _init(client)).status_code == 200
+
+        assert (await _init(client)).status_code == 429
+        rate_limiter.active_uploads.pop(TENANT_A, None)
+
+
 class TestChunkPayloadIsBoundedByDeclaredGeometry:
     """#270's init-time cap only bounds disk usage if chunks respect it."""
 

@@ -272,6 +272,15 @@ async def confirm_pii_upload(
     }
 
 
+def _release_expired_slots() -> list[str]:
+    """Reap expired sessions and hand their concurrency slots back."""
+    owners = upload_handler.cleanup_expired_sessions()
+    for owner in owners:
+        if owner:
+            rate_limiter.end_upload(owner)
+    return owners
+
+
 @router.post("/chunked/init")
 async def init_chunked_upload(
     filename: str = Form(...),
@@ -288,6 +297,14 @@ async def init_chunked_upload(
     rather than the client — a POST body is the right place for a filename and
     a hash, and it keeps them out of URLs and access logs.
     """
+
+    # Reap first. A session is only released explicitly by complete or abort, so
+    # an abandoned one — closed tab, dropped connection — holds its slot with
+    # nothing to give it back. That was invisible while the chunk route
+    # double-released and pinned the count at 0; now that the cap binds for
+    # real, ten abandoned sessions would 429 a user forever. This bounds the
+    # leak to the session lifetime instead (issue #526).
+    _release_expired_slots()
 
     if not rate_limiter.check_concurrent_limit(current_user_id):
         raise HTTPException(
@@ -510,5 +527,4 @@ async def cleanup_expired_sessions(
     uploads. ponytail: per-worker in-memory sessions (see upload_handler); a
     scheduled reaper is the upgrade path if temp-file accumulation matters.
     """
-    cleaned = upload_handler.cleanup_expired_sessions()
-    return {"cleaned_sessions": cleaned}
+    return {"cleaned_sessions": len(_release_expired_slots())}

@@ -254,14 +254,23 @@ class ChunkedUploadHandler:
         self.sessions.pop(session_id, None)
         return True
 
-    def cleanup_expired_sessions(self):
-        """Clean up expired upload sessions"""
+    def cleanup_expired_sessions(self) -> list[str]:
+        """Reap expired sessions; return the owner id of each one reaped.
+
+        Callers use the owner ids to hand back the concurrency slots those
+        sessions were holding. A session that is abandoned rather than completed
+        or aborted — a closed tab, a dropped connection — is released nowhere
+        else, and `RateLimiter.active_uploads` has no decay of its own.
+        """
         now = datetime.now(UTC)
         expired_sessions = []
         
+        expired_owners = []
+
         for session_id, session in self.sessions.items():
             if datetime.fromisoformat(session["expires_at"]) < now:
                 expired_sessions.append(session_id)
+                expired_owners.append(session.get("user_id", ""))
                 
                 # Delete temp file
                 temp_path = Path(session["temp_path"])
@@ -274,8 +283,8 @@ class ChunkedUploadHandler:
             metadata_path = self.temp_dir / f"{session_id}.json"
             if metadata_path.exists():
                 metadata_path.unlink()
-        
-        return len(expired_sessions)
+
+        return expired_owners
     
     def _generate_session_id(self) -> str:
         """Generate an unguessable session ID.

@@ -30,7 +30,9 @@ class TestCleanupEndpointAuth:
         self, mock_async_client: AsyncClient, mock_upload_handler
     ):
         """With a valid identity the reaper runs and returns the cleaned count."""
-        mock_upload_handler.cleanup_expired_sessions.return_value = 3
+        # The reaper returns the owner id of each session it reaped, so their
+        # concurrency slots can be handed back (issue #526).
+        mock_upload_handler.cleanup_expired_sessions.return_value = ["a", "b", "c"]
 
         response = await mock_async_client.get("/api/v1/upload/cleanup")
 
