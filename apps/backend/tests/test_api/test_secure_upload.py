@@ -103,135 +103,17 @@ class TestSecureUploadAPI:
         data = response.json()
         assert "detail" in data or "error" in data
     
-    async def test_chunked_upload_init(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_upload_handler):
-        """Test chunked upload initialization"""
-        payload = {
-            "filename": "large_file.csv",
-            "file_size": 5242880,  # 5MB
-            "file_hash": "abc123hash"
-        }
-        
-        response = await mock_async_client.post(
-            "/api/v1/upload/chunked/init",
-            params=payload
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["session_id"] == "test_session_123"
-        assert "chunk_size" in data
-        assert "total_chunks" in data
-        assert "expires_at" in data
-    
-    async def test_chunked_upload_chunk(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_upload_handler):
-        """Test uploading a chunk"""
-        # Use mocked session ID directly
-        session_id = "test_session_123"
-        
-        # Upload a chunk
-        chunk_data = b"test chunk data"
-        files = {"file": ("chunk0", io.BytesIO(chunk_data), "application/octet-stream")}
-        
-        response = await mock_async_client.post(
-            f"/api/v1/upload/chunked/{session_id}/chunk/0",
-            files=files
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "uploaded"
-        assert data["chunk_number"] == 0
-    
-    async def test_chunked_upload_resume(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_upload_handler):
-        """Test resuming a chunked upload"""
-        # Use mocked session ID
-        session_id = "test_session_123"
-        
-        # Resume upload
-        response = await mock_async_client.get(
-            f"/api/v1/upload/chunked/{session_id}/resume"
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["session_id"] == session_id
-        assert data["uploaded_chunks"] == 1  # number of uploaded chunks from mock
-        assert data["missing_chunks"] == []  # empty list from mock
-        assert data["progress"] == 100.0  # mocked progress
-    
-    async def test_chunked_upload_complete(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_upload_handler):
-        """Test completing a chunked upload"""
-        # Use mocked session ID directly
-        session_id = "test_session_123"
-        
-        # Complete upload
-        response = await mock_async_client.post(
-            f"/api/v1/upload/chunked/{session_id}/complete"
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert "file_id" in data
-        assert "pii_report" in data
-    
-    async def test_chunked_upload_invalid_session(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """Test chunked upload with invalid session ID"""
-        invalid_session = "invalid_session_123"
-        
-        # Try to upload chunk with invalid session
-        chunk_data = b"test data"
-        files = {"file": ("chunk0", io.BytesIO(chunk_data), "application/octet-stream")}
-        
-        response = await mock_async_client.post(
-            f"/api/v1/upload/chunked/{invalid_session}/chunk/0",
-            files=files
-        )
-        
-        assert response.status_code == 404
-        assert "detail" in response.json()
-    
-    async def test_file_size_limit(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary, mock_upload_handler):
-        """Test file size limit enforcement"""
-        # Try to initialize upload with file too large
-        large_payload = {
-            "filename": "huge_file.csv",
-            "file_size": 200 * 1024 * 1024 * 1024,  # 200GB - should exceed 100GB limit
-            "file_hash": "test_hash"
-        }
-        
-        response = await mock_async_client.post(
-            "/api/v1/upload/chunked/init",
-            params=large_payload
-        )
-        
-        # Should reject file that's too large
-        assert response.status_code == 413
-    
+    # The chunked-upload route tests moved to tests/test_api/test_chunked_upload_flow.py
+    # (issues #454/#462/#463/#464). They ran against `mock_upload_handler` and
+    # `mock_user_data`, which patch out the handler and the UserData model — so
+    # test_chunked_upload_complete asserted 200 against a route that could not
+    # succeed against a real database, and test_chunked_upload_init posted its
+    # payload as query params, which is not what the browser client sends.
+
     # Removed test_upload_metrics_tracking (issue #273): it exercised the deleted
     # in-memory ApplicationMonitor JSON-metrics tracking. Metrics are now Prometheus
     # at GET /metrics (covered by tests/test_middleware/test_metrics.py).
 
-    async def test_concurrent_uploads(self, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """Test handling concurrent uploads"""
-        # Initialize multiple uploads simultaneously
-        tasks = []
-        for i in range(3):
-            payload = {
-                "filename": f"file_{i}.csv",
-                "file_size": 1024,
-                "file_hash": f"hash_{i}"
-            }
-            
-            response = await mock_async_client.post(
-                "/api/v1/upload/chunked/init",
-                params=payload
-            )
-            assert response.status_code == 200
-            tasks.append(response.json()["session_id"])
-        
-        # All sessions should be unique
-        assert len(set(tasks)) == 3
 
 class TestChunkedCompletionSizeCap:
     """Issue #270: chunked upload completion must not read an oversized assembled
@@ -253,6 +135,14 @@ class TestChunkedCompletionSizeCap:
             secure_upload.upload_handler,
             "complete_upload",
             AsyncMock(return_value=assembled),
+        ), patch.object(
+            secure_upload.upload_handler,
+            "get_session",
+            return_value={
+                "user_id": "u1",
+                "filename": "assembled.csv",
+                "temp_path": str(assembled),
+            },
         ):
             with pytest.raises(HTTPException) as exc:
                 await secure_upload.complete_chunked_upload(

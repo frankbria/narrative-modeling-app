@@ -36,6 +36,41 @@ describe('useChunkedUpload', () => {
     json: jest.fn().mockResolvedValue(body),
   });
 
+  // Issue #454: the abort route exists so a cancelled upload does not leave its
+  // partial .tmp on the server until the 24h expiry sweep. Local state must clear
+  // regardless of whether the DELETE succeeds.
+  it('cancelUpload asks the backend to drop the session and clears state', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(makeJsonResponse({ session_id: 'session-abc' })) // init
+      .mockRejectedValueOnce(new Error('interrupted')) // chunk 0 — leaves a live session
+      .mockRejectedValueOnce(new Error('network down')) // the abort DELETE
+
+    const { result } = renderHook(() =>
+      useChunkedUpload({ chunkSize: 1024, maxRetries: 0 })
+    )
+
+    const file = new File(['abcdefghij'], 'data.csv', { type: 'text/csv' })
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new ArrayBuffer(8) })
+
+    await act(async () => {
+      await result.current.uploadFile(file).catch(() => undefined)
+    })
+    expect(result.current.uploadState?.sessionId).toBe('session-abc')
+
+    await act(async () => {
+      result.current.cancelUpload()
+    })
+
+    const deleteCall = (global.fetch as jest.Mock).mock.calls.find(
+      ([, init]) => init?.method === 'DELETE'
+    )
+    expect(deleteCall).toBeDefined()
+    expect(deleteCall![0]).toContain('/upload/chunked/session-abc')
+    // A failed abort must not strand the user mid-cancel.
+    expect(result.current.uploadState).toBeNull()
+    expect(result.current.isUploading).toBe(false)
+  })
+
   // Regression: the chunk/complete requests previously called the non-existent
   // `session.getToken()`, which crashes at runtime. They must instead resolve
   // the token via getAuthToken() and send it as a Bearer header.

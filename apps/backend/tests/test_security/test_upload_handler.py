@@ -7,6 +7,8 @@ import pytest_asyncio
 
 from app.services.security.upload_handler import ChunkedUploadHandler
 
+USER = "handler_test_user"
+
 
 @pytest.mark.integration
 class TestChunkedUploadHandler:
@@ -26,7 +28,7 @@ class TestChunkedUploadHandler:
         file_size = 1024 * 1024  # 1MB
         file_hash = "abc123"
         
-        result = await self.handler.init_upload(filename, file_size, file_hash)
+        result = await self.handler.init_upload(USER, filename, file_size, file_hash)
         
         assert "session_id" in result
         assert result["chunk_size"] == self.handler.chunk_size
@@ -38,14 +40,14 @@ class TestChunkedUploadHandler:
         # First initialize upload
         filename = "test_file.csv"
         file_size = 1024
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload a chunk
         chunk_data = b"test data chunk"
         chunk_number = 0
         
-        result = await self.handler.upload_chunk(session_id, chunk_number, chunk_data)
+        result = await self.handler.upload_chunk(session_id, USER, chunk_number, chunk_data)
         
         assert result["chunk_number"] == chunk_number
         assert result["status"] == "uploaded"
@@ -56,16 +58,16 @@ class TestChunkedUploadHandler:
         # Initialize upload
         filename = "test_file.csv"
         file_size = 1024
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload chunk first time
         chunk_data = b"test data chunk"
         chunk_number = 0
-        await self.handler.upload_chunk(session_id, chunk_number, chunk_data)
+        await self.handler.upload_chunk(session_id, USER, chunk_number, chunk_data)
         
         # Upload same chunk again
-        result = await self.handler.upload_chunk(session_id, chunk_number, chunk_data)
+        result = await self.handler.upload_chunk(session_id, USER, chunk_number, chunk_data)
         
         assert result["status"] == "already_uploaded"
     
@@ -74,15 +76,15 @@ class TestChunkedUploadHandler:
         # Initialize upload
         filename = "test_file.csv"
         file_size = 2048  # 2KB file
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload first chunk
         chunk_data = b"a" * 1024  # 1KB
-        await self.handler.upload_chunk(session_id, 0, chunk_data)
+        await self.handler.upload_chunk(session_id, USER, 0, chunk_data)
         
         # Resume upload
-        result = await self.handler.resume_upload(session_id)
+        result = await self.handler.resume_upload(session_id, USER)
         
         assert result["session_id"] == session_id
         assert result["uploaded_chunks"] == 1  # number of uploaded chunks
@@ -95,7 +97,7 @@ class TestChunkedUploadHandler:
         
         # Try to upload chunk with invalid session
         with pytest.raises(Exception):  # Will raise HTTPException
-            await self.handler.upload_chunk(invalid_session_id, 0, b"data")
+            await self.handler.upload_chunk(invalid_session_id, USER, 0, b"data")
         
         # Try to resume invalid session
         with pytest.raises(Exception):  # Will raise HTTPException
@@ -106,7 +108,7 @@ class TestChunkedUploadHandler:
         # Initialize upload
         filename = "test_file.csv"
         file_size = 1024
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload chunk with correct hash
@@ -114,8 +116,7 @@ class TestChunkedUploadHandler:
         import hashlib
         chunk_hash = hashlib.md5(chunk_data).hexdigest()
         
-        result = await self.handler.upload_chunk(
-            session_id, 0, chunk_data, chunk_hash
+        result = await self.handler.upload_chunk(session_id, USER, 0, chunk_data, chunk_hash
         )
         
         assert result["status"] == "uploaded"
@@ -125,7 +126,7 @@ class TestChunkedUploadHandler:
         # Initialize upload
         filename = "test_file.csv"
         file_size = 1024
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload chunk with wrong hash
@@ -133,8 +134,7 @@ class TestChunkedUploadHandler:
         wrong_hash = "wrong_hash_123"
         
         with pytest.raises(Exception):  # Will raise HTTPException
-            await self.handler.upload_chunk(
-                session_id, 0, chunk_data, wrong_hash
+            await self.handler.upload_chunk(session_id, USER, 0, chunk_data, wrong_hash
             )
     
     async def test_rate_limiting(self):
@@ -142,7 +142,7 @@ class TestChunkedUploadHandler:
         # Create multiple uploads quickly
         uploads = []
         for i in range(5):
-            result = await self.handler.init_upload(f"file_{i}.csv", 1024)
+            result = await self.handler.init_upload(USER, f"file_{i}.csv", 1024)
             uploads.append(result["session_id"])
         
         # All should succeed initially (rate limiting is per-IP in real scenario)
@@ -153,22 +153,22 @@ class TestChunkedUploadHandler:
         # Initialize upload with multiple chunks
         filename = "large_file.csv"
         file_size = 15 * 1024 * 1024  # 15MB file (will need 3 chunks with 5MB each)
-        init_result = await self.handler.init_upload(filename, file_size)
+        init_result = await self.handler.init_upload(USER, filename, file_size)
         session_id = init_result["session_id"]
         
         # Upload first chunk
         chunk_data = b"a" * (5 * 1024 * 1024)  # 5MB
-        await self.handler.upload_chunk(session_id, 0, chunk_data)
+        await self.handler.upload_chunk(session_id, USER, 0, chunk_data)
         
         # Check progress
-        result = await self.handler.resume_upload(session_id)
+        result = await self.handler.resume_upload(session_id, USER)
         assert result["progress"] > 0  # Some progress made
         
         # Upload second chunk
-        await self.handler.upload_chunk(session_id, 1, chunk_data)
+        await self.handler.upload_chunk(session_id, USER, 1, chunk_data)
         
         # Check progress again
-        result = await self.handler.resume_upload(session_id)
+        result = await self.handler.resume_upload(session_id, USER)
         assert result["progress"] > 50  # More than half complete
 
 
@@ -182,5 +182,5 @@ async def test_init_upload_rejects_over_cap():
     handler = ChunkedUploadHandler()
     assert handler.max_file_size == MAX_UPLOAD_BYTES  # not the old 100 GB
     with pytest.raises(HTTPException) as exc:
-        await handler.init_upload("huge.csv", MAX_UPLOAD_BYTES + 1)
+        await handler.init_upload(USER, "huge.csv", MAX_UPLOAD_BYTES + 1)
     assert exc.value.status_code == 413

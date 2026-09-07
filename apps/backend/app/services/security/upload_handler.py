@@ -6,6 +6,8 @@ Handles network interruptions, large files, and security checks
 import hashlib
 import json
 import logging
+import re
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,11 @@ from fastapi import HTTPException
 from app.utils.upload_limits import MAX_UPLOAD_BYTES
 
 logger = logging.getLogger(__name__)
+
+# Session ids are secrets.token_urlsafe output, and they are also spliced into
+# filenames under temp_dir. Anything outside this alphabet is a caller trying to
+# escape the directory (issue #454).
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 class ChunkedUploadHandler:
@@ -37,13 +44,20 @@ class ChunkedUploadHandler:
         self.session_timeout = session_timeout
         self.sessions: dict[str, dict[str, Any]] = {}  # In production, use Redis
     
-    async def init_upload(self, 
-                          filename: str, 
+    async def init_upload(self,
+                          user_id: str,
+                          filename: str,
                           file_size: int,
                           file_hash: str | None = None) -> dict[str, Any]:
-        """Initialize a new upload session"""
+        """Initialize a new upload session owned by ``user_id``."""
         
         # Validate file size
+        if file_size <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="file_size must be greater than zero",
+            )
+
         if file_size > self.max_file_size:
             raise HTTPException(
                 status_code=413,
@@ -51,7 +65,7 @@ class ChunkedUploadHandler:
             )
         
         # Generate session ID
-        session_id = self._generate_session_id(filename, file_size)
+        session_id = self._generate_session_id()
         
         # Calculate chunks
         total_chunks = (file_size + self.chunk_size - 1) // self.chunk_size
@@ -62,6 +76,7 @@ class ChunkedUploadHandler:
         # Initialize session
         session = {
             "id": session_id,
+            "user_id": user_id,
             "filename": filename,
             "file_size": file_size,
             "file_hash": file_hash,
@@ -86,13 +101,14 @@ class ChunkedUploadHandler:
     
     async def upload_chunk(self,
                           session_id: str,
+                          user_id: str,
                           chunk_number: int,
                           chunk_data: bytes,
                           chunk_hash: str | None = None) -> dict[str, Any]:
-        """Upload a single chunk"""
-        
+        """Upload a single chunk into ``user_id``'s session."""
+
         # Get session
-        session = self._get_session(session_id)
+        session = self.get_session(session_id, user_id)
         if not session:
             raise HTTPException(status_code=404, detail="Upload session not found")
         
@@ -158,10 +174,10 @@ class ChunkedUploadHandler:
             "complete": session["status"] == "complete"
         }
     
-    async def resume_upload(self, session_id: str) -> dict[str, Any]:
+    async def resume_upload(self, session_id: str, user_id: str) -> dict[str, Any]:
         """Get resume information for interrupted upload"""
-        
-        session = self._get_session(session_id)
+
+        session = self.get_session(session_id, user_id)
         if not session:
             raise HTTPException(status_code=404, detail="Upload session not found")
         
@@ -185,10 +201,10 @@ class ChunkedUploadHandler:
             "expires_at": session["expires_at"]
         }
     
-    async def complete_upload(self, session_id: str) -> Path:
+    async def complete_upload(self, session_id: str, user_id: str) -> Path:
         """Finalize upload and return file path"""
-        
-        session = self._get_session(session_id)
+
+        session = self.get_session(session_id, user_id)
         if not session:
             raise HTTPException(status_code=404, detail="Upload session not found")
         
@@ -200,6 +216,21 @@ class ChunkedUploadHandler:
         
         return Path(session["temp_path"])
     
+    def abort_upload(self, session_id: str, user_id: str) -> bool:
+        """Discard ``user_id``'s session and its partial file.
+
+        Without this a cancelled upload leaves its .tmp on disk until the 24h
+        expiry sweep.
+        """
+        session = self.get_session(session_id, user_id)
+        if session is None:
+            return False
+
+        Path(session["temp_path"]).unlink(missing_ok=True)
+        (self.temp_dir / f"{session_id}.json").unlink(missing_ok=True)
+        self.sessions.pop(session_id, None)
+        return True
+
     def cleanup_expired_sessions(self):
         """Clean up expired upload sessions"""
         now = datetime.now(UTC)
@@ -223,26 +254,37 @@ class ChunkedUploadHandler:
         
         return len(expired_sessions)
     
-    def _generate_session_id(self, filename: str, file_size: int) -> str:
-        """Generate unique session ID"""
-        data = f"{filename}:{file_size}:{datetime.now(UTC).isoformat()}"
-        return hashlib.sha256(data.encode()).hexdigest()[:16]
+    def _generate_session_id(self) -> str:
+        """Generate an unguessable session ID.
+
+        Was a sha256 of filename + size + timestamp, all of which an attacker
+        either supplies or can narrow to a second — a guessable handle on
+        another tenant's in-flight upload (issue #454).
+        """
+        return secrets.token_urlsafe(32)
     
-    def _get_session(self, session_id: str) -> dict[str, Any] | None:
-        """Get session from memory or disk"""
-        # Check memory first
-        if session_id in self.sessions:
-            return self.sessions[session_id]
-        
-        # Try loading from disk
-        metadata_path = self.temp_dir / f"{session_id}.json"
-        if metadata_path.exists():
+    def get_session(self, session_id: str, user_id: str) -> dict[str, Any] | None:
+        """Get ``user_id``'s session from memory or disk.
+
+        A session owned by someone else is returned as None, so callers answer
+        404 for both "no such session" and "not yours" — a distinguishable
+        response would confirm another tenant's session id exists (issue #454).
+        """
+        if not _SESSION_ID_RE.match(session_id):
+            return None
+
+        session = self.sessions.get(session_id)
+        if session is None:
+            metadata_path = self.temp_dir / f"{session_id}.json"
+            if not metadata_path.exists():
+                return None
             with open(metadata_path) as f:
                 session = json.load(f)
-                self.sessions[session_id] = session
-                return session
-        
-        return None
+            self.sessions[session_id] = session
+
+        if session.get("user_id") != user_id:
+            return None
+        return session
     
     def _save_session_metadata(self, session_id: str, session: dict[str, Any]):
         """Save session metadata to disk for recovery"""
