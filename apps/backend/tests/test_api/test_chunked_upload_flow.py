@@ -406,6 +406,18 @@ class TestFailureStillReleasesTheConcurrencySlot:
 class TestChunkPayloadIsBoundedByDeclaredGeometry:
     """#270's init-time cap only bounds disk usage if chunks respect it."""
 
+    async def test_a_negative_chunk_number_is_400(self, client_as, fresh_handler):
+        """An upper-bound-only check let it through to a negative seek offset."""
+        client = client_as(TENANT_A)
+        session_id = (await _init(client)).json()["session_id"]
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/chunk/-1",
+            files={"file": ("c", io.BytesIO(b"x"), "application/octet-stream")},
+        )
+
+        assert response.status_code == 400
+
     async def test_a_chunk_larger_than_chunk_size_is_413(
         self, client_as, fresh_handler
     ):

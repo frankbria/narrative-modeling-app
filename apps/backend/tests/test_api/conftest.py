@@ -2,7 +2,7 @@
 Test configuration for API tests
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -89,52 +89,14 @@ def mock_ai_summary():
 
 @pytest.fixture
 def mock_upload_handler():
-    """Mock upload handler to avoid file system operations"""
+    """Patch the module-level upload handler.
+
+    Only ``cleanup_expired_sessions`` is stubbed. This used to carry a full set
+    of chunked-flow stubs, which is what let the old route tests assert 200
+    against a handler and a model that were both patched out. Those tests now
+    run the real handler in tests/test_api/test_chunked_upload_flow.py, and the
+    stubs left behind had already drifted off the real signatures — dead, and
+    misleading to the next caller who reached for them.
+    """
     with patch('app.api.routes.secure_upload.upload_handler') as mock:
-        # Mock the upload handler methods
-        def mock_init_upload(filename, file_size, file_hash=None):
-            # Simulate file size limit check
-            if file_size > 100 * 1024 * 1024 * 1024:  # 100GB limit
-                from fastapi import HTTPException
-                raise HTTPException(status_code=413, detail="File too large")
-            return {
-                "session_id": "test_session_123",
-                "chunk_size": 5242880,
-                "total_chunks": 1,
-                "expires_at": "2024-01-01T12:00:00"
-            }
-        mock.init_upload = AsyncMock(side_effect=mock_init_upload)
-        mock.upload_chunk = AsyncMock(return_value={
-            "chunk_number": 0,
-            "status": "uploaded",
-            "progress": 100.0,
-            "complete": True
-        })
-        mock.resume_upload = AsyncMock(return_value={
-            "session_id": "test_session_123",
-            "filename": "test.csv",
-            "file_size": 1024,
-            "chunk_size": 5242880,
-            "total_chunks": 1,
-            "uploaded_chunks": 1,
-            "missing_chunks": [],
-            "progress": 100.0,
-            "expires_at": "2024-01-01T12:00:00"
-        })
-        # Mock file reading by patching open
-        import tempfile
-        from pathlib import Path
-        test_csv_content = b"product_id,price\n1001,19.99"
-        
-        # Create a real temporary file for the test
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
-        temp_file.write(test_csv_content)
-        temp_file.close()
-        
-        mock.claim_upload = MagicMock(return_value=Path(temp_file.name))
-        mock.get_session = MagicMock(return_value={
-            "filename": "test.csv",
-            "file_size": 1024,
-            "status": "complete"
-        })
         yield mock

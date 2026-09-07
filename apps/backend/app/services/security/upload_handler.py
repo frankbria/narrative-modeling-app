@@ -112,8 +112,11 @@ class ChunkedUploadHandler:
         if not session:
             raise HTTPException(status_code=404, detail="Upload session not found")
         
-        # Validate chunk number
-        if chunk_number >= session["total_chunks"]:
+        # Validate chunk number. The lower bound matters: a negative number
+        # passes an upper-bound-only check, then `chunk_number * chunk_size`
+        # gives a negative seek offset and the write fails as an OSError rather
+        # than this 400.
+        if not 0 <= chunk_number < session["total_chunks"]:
             raise HTTPException(status_code=400, detail="Invalid chunk number")
 
         # Bound the payload by the declared geometry. Only read_upload_capped's
