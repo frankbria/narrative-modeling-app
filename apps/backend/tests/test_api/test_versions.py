@@ -11,7 +11,12 @@ import pytest
 from httpx import AsyncClient
 
 from app.models.dataset import DatasetMetadata, SchemaField
-from app.models.version import DatasetVersion
+from app.models.version import (
+    DatasetVersion,
+    TransformationLineage,
+    TransformationStep,
+)
+from app.services.exceptions import NotFoundError
 from app.services.versioning_service import versioning_service
 
 OTHER_USER = "other_user_446"
@@ -1059,3 +1064,608 @@ class TestVersionsAPI:
         assert await DatasetVersion.find_one(
             DatasetVersion.version_id == mine.version_id
         ) is None
+
+    # Test GET /versions/{id}/lineage and POST /versions/compare -
+    # Tenant isolation (issue #453, P0.10)
+    #
+    # Both handlers took `current_user_id` as a dependency and used it nowhere but
+    # the signature. `get_version_lineage` looked the version up by id alone and
+    # returned the whole transformation history; `compare_versions` handed two
+    # arbitrary ids straight to the service, leaking two tenants' schemas at once
+    # and requiring the caller to own neither.
+
+    @pytest.fixture
+    async def foreign_version_with_lineage(
+        self,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ) -> DatasetVersion:
+        """Tenant B's v2, carrying a real transformation lineage record.
+
+        The lineage row holds B's column names and row counts — the payload the
+        unscoped handler served to anyone who could guess a version id.
+        """
+        dataset_id = foreign_dataset_with_versions.dataset_id
+        parent = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+        child = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+
+        lineage = TransformationLineage(
+            lineage_id=str(uuid.uuid4()),
+            parent_version_id=parent.version_id,
+            child_version_id=child.version_id,
+            dataset_id=dataset_id,
+            user_id=OTHER_USER,
+            transformation_steps=[
+                TransformationStep(
+                    step_type="filter",
+                    parameters={"column": "victim_salary"},
+                    affected_columns=["victim_salary"],
+                    rows_affected=10,
+                )
+            ],
+            rows_before=10,
+            rows_after=10,
+            columns_before=2,
+            columns_after=1,
+        )
+        await lineage.insert()
+
+        child.parent_version_id = parent.version_id
+        child.transformation_lineage_id = lineage.lineage_id
+        await child.save()
+        return child
+
+    @pytest.mark.asyncio
+    async def test_get_lineage_of_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_version_with_lineage: DatasetVersion,
+    ):
+        """Tenant A cannot read tenant B's transformation history."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{foreign_version_with_lineage.version_id}/lineage"
+        )
+
+        # ASSERT — refused, and none of B's data appears in the body
+        assert response.status_code == 404
+        assert OTHER_USER not in response.text
+        assert "victim_salary" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_get_lineage_unknown_version_matches_foreign_version(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_version_with_lineage: DatasetVersion,
+    ):
+        """No existence oracle: unknown and foreign answer identically."""
+        # ACT
+        unknown = await async_authorized_client.get(
+            f"/api/v1/versions/{uuid.uuid4()}/lineage"
+        )
+        foreign = await async_authorized_client.get(
+            f"/api/v1/versions/{foreign_version_with_lineage.version_id}/lineage"
+        )
+
+        # ASSERT
+        assert unknown.status_code == 404
+        assert foreign.status_code == 404
+        assert unknown.json()["detail"].endswith("not found")
+        assert foreign.json()["detail"].endswith("not found")
+
+    @pytest.mark.asyncio
+    async def test_compare_two_of_another_tenants_versions_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Tenant A cannot compare two versions it does not own."""
+        # ARRANGE
+        versions = await DatasetVersion.find(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id
+        ).sort("+version_number").to_list()
+
+        # ACT
+        response = await async_authorized_client.post(
+            "/api/v1/versions/compare",
+            json={
+                "version1_id": versions[0].version_id,
+                "version2_id": versions[1].version_id,
+            },
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert "hash-" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_compare_own_version_against_another_tenants_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Owning one side is not enough — the other side is still a foreign read."""
+        # ARRANGE
+        foreign = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+
+        # ACT
+        response = await async_authorized_client.post(
+            "/api/v1/versions/compare",
+            json={
+                "version1_id": base_version.version_id,
+                "version2_id": foreign.version_id,
+            },
+        )
+
+        # ASSERT — 404, not the 400 "must be from the same dataset" the service
+        # would raise after loading both, which would confirm the foreign version
+        # exists and belongs to a different dataset.
+        assert response.status_code == 404
+        assert "same dataset" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_compare_checks_version1_independently_of_version2(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ):
+        """Same pair, swapped: checking only one id still leaks the other."""
+        # ARRANGE
+        foreign = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+
+        # ACT
+        response = await async_authorized_client.post(
+            "/api/v1/versions/compare",
+            json={
+                "version1_id": foreign.version_id,
+                "version2_id": base_version.version_id,
+            },
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert "same dataset" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_lineage_chain_never_crosses_into_another_tenant(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """The chain walk follows `parent_version_id` — it must stay in-tenant.
+
+        Owning the entry version only proves the first hop; the walk itself has
+        to be scoped or a parent pointing at another tenant's version drags that
+        tenant's lineage into the response.
+        """
+        # ARRANGE — the caller's own version is made to point at B's version as
+        # its parent, and B's version carries a lineage record of its own.
+        foreign_parent = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+        foreign_lineage = TransformationLineage(
+            lineage_id=str(uuid.uuid4()),
+            parent_version_id=str(uuid.uuid4()),
+            child_version_id=foreign_parent.version_id,
+            dataset_id=foreign_dataset_with_versions.dataset_id,
+            user_id=OTHER_USER,
+            transformation_steps=[],
+            rows_before=10,
+            rows_after=10,
+            columns_before=1,
+            columns_after=1,
+        )
+        await foreign_lineage.insert()
+        foreign_parent.transformation_lineage_id = foreign_lineage.lineage_id
+        await foreign_parent.save()
+
+        mine = await DatasetVersion.find_one(
+            DatasetVersion.version_id == child_version.version_id
+        )
+        mine.parent_version_id = foreign_parent.version_id
+        await mine.save()
+
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+
+        # ASSERT — the caller's own transformation, and nothing of B's
+        assert response.status_code == 200
+        returned = response.json()["lineage_chain"]
+        assert [entry["lineage_id"] for entry in returned] != []
+        assert foreign_lineage.lineage_id not in [
+            entry["lineage_id"] for entry in returned
+        ]
+        assert OTHER_USER not in response.text
+
+    @pytest.mark.asyncio
+    async def test_lineage_and_compare_still_work_for_the_owner(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        child_version: DatasetVersion,
+    ):
+        """Regression guard: the owner path is untouched by the scoping."""
+        # ACT
+        lineage = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+        compare = await async_authorized_client.post(
+            "/api/v1/versions/compare",
+            json={
+                "version1_id": base_version.version_id,
+                "version2_id": child_version.version_id,
+            },
+        )
+
+        # ASSERT
+        assert lineage.status_code == 200
+        assert len(lineage.json()["lineage_chain"]) == 1
+        assert compare.status_code == 200
+        assert compare.json()["version1_id"] == base_version.version_id
+
+    # Cross-tenant leaks in the lineage *walk* itself (issue #453, found in the
+    # pre-PR cross-family review of the first fix).
+    #
+    # Scoping the walk through `versioning_service.get_version(user_id=...)` was
+    # not enough: that check joins to `DatasetMetadata` and reads
+    # `if dataset and dataset.user_id != user_id`, so a version whose dataset row
+    # is gone passes it. And `compare_versions` never threaded the caller down to
+    # `_find_lineage_path`, leaving both of its walks unscoped.
+
+    @pytest.fixture
+    async def foreign_parent_of_my_version(
+        self,
+        child_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ) -> TransformationLineage:
+        """Point the caller's own version at an *orphaned* foreign parent.
+
+        The foreign dataset row is deleted, so an ownership check that joins
+        through `DatasetMetadata` finds nothing and lets the version through.
+        Returns tenant B's lineage record — the payload that must not appear.
+        """
+        foreign_parent = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+        foreign_lineage = TransformationLineage(
+            lineage_id=str(uuid.uuid4()),
+            parent_version_id=str(uuid.uuid4()),
+            child_version_id=foreign_parent.version_id,
+            dataset_id=foreign_dataset_with_versions.dataset_id,
+            user_id=OTHER_USER,
+            transformation_steps=[
+                TransformationStep(
+                    step_type="filter",
+                    parameters={"column": "victim_salary"},
+                    affected_columns=["victim_salary"],
+                    rows_affected=10,
+                )
+            ],
+            rows_before=10,
+            rows_after=10,
+            columns_before=1,
+            columns_after=1,
+        )
+        await foreign_lineage.insert()
+        foreign_parent.transformation_lineage_id = foreign_lineage.lineage_id
+        await foreign_parent.save()
+
+        mine = await DatasetVersion.find_one(
+            DatasetVersion.version_id == child_version.version_id
+        )
+        mine.parent_version_id = foreign_parent.version_id
+        await mine.save()
+
+        # The orphan state: B's version survives, B's dataset row does not.
+        await foreign_dataset_with_versions.delete()
+        return foreign_lineage
+
+    @pytest.mark.asyncio
+    async def test_lineage_walk_does_not_fall_open_on_an_orphaned_version(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        foreign_parent_of_my_version: TransformationLineage,
+    ):
+        """A missing dataset row must not turn the per-hop check into a no-op."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        assert foreign_parent_of_my_version.lineage_id not in [
+            entry["lineage_id"] for entry in response.json()["lineage_chain"]
+        ]
+        assert "victim_salary" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_compare_lineage_path_does_not_cross_tenants(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        child_version: DatasetVersion,
+        foreign_parent_of_my_version: TransformationLineage,
+    ):
+        """Both compare endpoints are owned, but its walks were still unscoped.
+
+        `compare_versions` -> `_find_lineage_path` -> `get_lineage_chain` ran with
+        no caller, so B's lineage ids reached `lineage_path` and B's
+        transformations were counted in `transformation_count`.
+        """
+        # ACT
+        response = await async_authorized_client.post(
+            "/api/v1/versions/compare",
+            json={
+                "version1_id": base_version.version_id,
+                "version2_id": child_version.version_id,
+            },
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert foreign_parent_of_my_version.lineage_id not in data["lineage_path"]
+        assert OTHER_USER not in response.text
+
+    @pytest.mark.asyncio
+    async def test_lineage_is_not_truncated_when_the_dataset_row_is_gone(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        sample_dataset_metadata: DatasetMetadata,
+    ):
+        """The mirror of the leak: the owner must still get their own chain.
+
+        Authorizing the walk on `DatasetMetadata` rather than on the version's
+        own `user_id` answers 200 with an empty chain — a silent wrong answer —
+        whenever the dataset row is missing or its owner has drifted.
+        """
+        # ARRANGE
+        await sample_dataset_metadata.delete()
+
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        assert len(response.json()["lineage_chain"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_service_compare_versions_refuses_a_foreign_version(
+        self,
+        setup_database,
+        base_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """`compare_versions` defends itself, not just via the route.
+
+        The route's two `require_owned_version` calls are what protect the API
+        today, but the dimensional and schema fields in the response come from
+        versions the service resolved on its own. Called with a `user_id` from
+        anywhere else, it must refuse rather than trust its caller to have
+        checked (raised in review of this fix).
+        """
+        # ARRANGE
+        foreign = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+
+        # ACT / ASSERT
+        with pytest.raises(NotFoundError):
+            await versioning_service.compare_versions(
+                version1_id=base_version.version_id,
+                version2_id=foreign.version_id,
+                user_id=mock_user_id,
+            )
+
+    # The same fall-open predicate on the sibling routes (issue #453, raised by
+    # the post-PR bot review).
+    #
+    # `GET /versions/{id}` and `PATCH /versions/{id}/pin` authorize through
+    # `versioning_service.get_version(user_id=...)`, whose check reads
+    # `if dataset and dataset.user_id != user_id` — so a version whose dataset
+    # row is gone skipped the check entirely. On the pin route that is a
+    # *mutation* of another tenant's row, not just a read. The orphan state is
+    # ordinary: deleting a dataset produces it.
+
+    @pytest.fixture
+    async def orphaned_foreign_version(
+        self,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ) -> DatasetVersion:
+        """Tenant B's version, with tenant B's dataset row deleted."""
+        version = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+        await foreign_dataset_with_versions.delete()
+        return version
+
+    @pytest.mark.asyncio
+    async def test_get_orphaned_version_of_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """A missing dataset row must not open up the single-version read."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert OTHER_USER not in response.text
+
+    @pytest.mark.asyncio
+    async def test_pinning_an_orphaned_version_of_another_tenant_is_refused(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """The mutation case: refused, and tenant B's row is left untouched."""
+        # ACT
+        response = await async_authorized_client.patch(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}/pin",
+            json={"pinned": True},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        reloaded = await DatasetVersion.find_one(
+            DatasetVersion.version_id == orphaned_foreign_version.version_id
+        )
+        assert reloaded.is_pinned is False
+
+    @pytest.mark.asyncio
+    async def test_unpinning_an_orphaned_version_of_another_tenant_is_refused(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """Symmetric with pin — unpin runs through the same check."""
+        # ARRANGE
+        orphaned_foreign_version.is_pinned = True
+        await orphaned_foreign_version.save()
+
+        # ACT
+        response = await async_authorized_client.patch(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}/pin",
+            json={"pinned": False},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        reloaded = await DatasetVersion.find_one(
+            DatasetVersion.version_id == orphaned_foreign_version.version_id
+        )
+        assert reloaded.is_pinned is True
+
+    @pytest.mark.asyncio
+    async def test_owner_can_still_read_and_pin_a_version_with_no_dataset_row(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        sample_dataset_metadata: DatasetMetadata,
+    ):
+        """The mirror: authorizing on the version's own owner must not lock the
+        rightful owner out when their dataset row is missing."""
+        # ARRANGE
+        await sample_dataset_metadata.delete()
+
+        # ACT
+        read = await async_authorized_client.get(
+            f"/api/v1/versions/{base_version.version_id}"
+        )
+        pin = await async_authorized_client.patch(
+            f"/api/v1/versions/{base_version.version_id}/pin",
+            json={"pinned": True},
+        )
+
+        # ASSERT
+        assert read.status_code == 200
+        assert pin.status_code == 200
+        assert pin.json()["is_pinned"] is True
+
+    @pytest.mark.asyncio
+    async def test_lineage_walk_terminates_on_a_cycle(
+        self,
+        setup_database,
+        sample_dataset_metadata: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """A `parent_version_id` cycle must end the walk, not hang the request.
+
+        `parent_version_id` always points at an older version, so a cycle means
+        corrupt data — but the walk is a security boundary now, and an
+        unguarded `while` on corrupt data hangs the worker instead of failing.
+
+        Note: reverting the guard makes this test **hang** rather than fail,
+        which is the point of having it.
+        """
+        # ARRANGE — two versions that name each other as parent
+        first = make_version(sample_dataset_metadata.dataset_id, 11, mock_user_id)
+        second = make_version(sample_dataset_metadata.dataset_id, 12, mock_user_id)
+        first.parent_version_id = second.version_id
+        second.parent_version_id = first.version_id
+        await first.insert()
+        await second.insert()
+
+        # ACT
+        chain = await versioning_service.get_lineage_chain(
+            first.version_id, user_id=mock_user_id
+        )
+
+        # ASSERT
+        assert chain == []
+
+    @pytest.mark.asyncio
+    async def test_lineage_record_itself_is_scoped_to_the_caller(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        mock_user_id: str,
+    ):
+        """Owning the version does not prove the linked lineage record is yours.
+
+        `transformation_lineage_id` is written alongside the version today, so
+        this holds by construction — which is exactly the kind of association
+        this module has twice been burned by trusting instead of checking.
+        """
+        # ARRANGE — repoint the caller's own version at a foreign lineage record
+        foreign_lineage = TransformationLineage(
+            lineage_id=str(uuid.uuid4()),
+            parent_version_id=str(uuid.uuid4()),
+            child_version_id=child_version.version_id,
+            dataset_id=child_version.dataset_id,
+            user_id=OTHER_USER,
+            transformation_steps=[],
+            rows_before=10,
+            rows_after=10,
+            columns_before=1,
+            columns_after=1,
+        )
+        await foreign_lineage.insert()
+
+        mine = await DatasetVersion.find_one(
+            DatasetVersion.version_id == child_version.version_id
+        )
+        mine.transformation_lineage_id = foreign_lineage.lineage_id
+        await mine.save()
+
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        assert foreign_lineage.lineage_id not in [
+            entry["lineage_id"] for entry in response.json()["lineage_chain"]
+        ]
+        assert OTHER_USER not in response.text

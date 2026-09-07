@@ -390,15 +390,19 @@ class VersioningService(BaseService[DatasetVersion]):
         if not version:
             return None
 
-        # Enforce ownership check if user_id is provided
+        # Enforce ownership check if user_id is provided.
+        #
+        # The predicate is the version's own `user_id`, set at creation. This
+        # used to join to `DatasetMetadata` and read `if dataset and ...`, which
+        # meant a version whose dataset row was gone — the ordinary result of
+        # deleting a dataset — skipped the check entirely and was served, or
+        # pinned, for any caller (issue #453). It also locked the rightful owner
+        # out whenever the dataset row's owner had drifted from the version's.
         if user_id is not None:
-            # Get the dataset to check ownership
-            from app.models.dataset import DatasetMetadata
-            dataset = await DatasetMetadata.find_one({"dataset_id": version.dataset_id})
-            if dataset and dataset.user_id != user_id:
+            if version.user_id != user_id:
                 logger.warning(
                     f"Ownership check failed: User {user_id} attempted to access "
-                    f"version {version_id} of dataset {version.dataset_id} owned by {dataset.user_id}"
+                    f"version {version_id} owned by {version.user_id}"
                 )
                 return None
         else:
@@ -514,28 +518,65 @@ class VersioningService(BaseService[DatasetVersion]):
             })
         return points
 
-    async def get_lineage_chain(self, version_id: str) -> list[TransformationLineage]:
+    async def get_lineage_chain(
+        self,
+        version_id: str,
+        user_id: str | None = None
+    ) -> list[TransformationLineage]:
         """
         Get complete lineage chain from base version to specified version.
 
+        Security: when `user_id` is given the parent walk is scoped to that
+        owner, so the chain stops at the first version they do not own rather
+        than following a `parent_version_id` across tenants (issue #453).
+
+        The per-hop predicate is `DatasetVersion.user_id` — the same one the
+        routes authorize on. `get_version`'s ownership check is not usable here:
+        it joins to `DatasetMetadata` and reads `if dataset and ...`, so a hop
+        whose dataset row is gone would pass, and a hop whose dataset owner has
+        drifted would drop the caller's own lineage.
+
         Args:
             version_id: Target version ID
+            user_id: Optional user ID for ownership verification of every hop.
+                    If None, bypasses the check (for internal operations).
 
         Returns:
             List of TransformationLineage documents in chronological order
         """
         chain: list[TransformationLineage] = []
+        seen: set[str] = set()
         current_version_id: str | None = version_id
 
         while current_version_id:
+            # `parent_version_id` always points at an older version, so a cycle
+            # means corrupt data — but this walk is a security boundary now, and
+            # without the guard a cycle hangs the request rather than failing it.
+            if current_version_id in seen:
+                logger.warning(
+                    f"Cycle in version lineage at {current_version_id}; "
+                    f"stopping the walk from {version_id}"
+                )
+                break
+            seen.add(current_version_id)
+
             version = await self.get_version(current_version_id, mark_accessed=False)
             if not version:
                 break
+            if user_id is not None and version.user_id != user_id:
+                break
 
             if version.transformation_lineage_id:
-                lineage = await TransformationLineage.find_one(
+                # Scoped as well: `version.user_id == user_id` does not by
+                # itself prove the linked lineage record is the caller's, and
+                # trusting an association instead of checking it is the class of
+                # bug this walk exists to close.
+                lineage_filter = [
                     TransformationLineage.lineage_id == version.transformation_lineage_id
-                )
+                ]
+                if user_id is not None:
+                    lineage_filter.append(TransformationLineage.user_id == user_id)
+                lineage = await TransformationLineage.find_one(*lineage_filter)
                 if lineage:
                     chain.insert(0, lineage)  # Insert at beginning for chronological order
 
@@ -547,14 +588,21 @@ class VersioningService(BaseService[DatasetVersion]):
     async def compare_versions(
         self,
         version1_id: str,
-        version2_id: str
+        version2_id: str,
+        user_id: str | None = None
     ) -> VersionComparison:
         """
         Compare two dataset versions.
 
+        Security: `user_id` scopes the lineage walk behind `lineage_path` and
+        `transformation_count`. Owning both endpoints does not make the path
+        between them the caller's — a `parent_version_id` reaching another
+        tenant would put their lineage ids in the response (issue #453).
+
         Args:
             version1_id: First version ID
             version2_id: Second version ID
+            user_id: Optional user ID scoping the lineage walk
 
         Returns:
             VersionComparison with detailed differences
@@ -565,6 +613,17 @@ class VersioningService(BaseService[DatasetVersion]):
         """
         version1 = await self.get_version(version1_id, mark_accessed=False)
         version2 = await self.get_version(version2_id, mark_accessed=False)
+
+        # Scope the endpoints themselves, so the dimensional and schema fields
+        # are protected by this method rather than by caller discipline. The
+        # predicate is `DatasetVersion.user_id` for the same reason the walk
+        # uses it — `get_version`'s own `user_id` check joins to
+        # `DatasetMetadata` and falls open when that row is gone.
+        if user_id is not None:
+            if version1 and version1.user_id != user_id:
+                version1 = None
+            if version2 and version2.user_id != user_id:
+                version2 = None
 
         if not version1 or not version2:
             missing_ids = []
@@ -604,7 +663,9 @@ class VersioningService(BaseService[DatasetVersion]):
         )
 
         # Find lineage path
-        lineage_path = await self._find_lineage_path(version1_id, version2_id)
+        lineage_path = await self._find_lineage_path(
+            version1_id, version2_id, user_id=user_id
+        )
 
         # Content similarity based on hash
         content_similarity = 100.0 if version1.content_hash == version2.content_hash else 0.0
@@ -628,12 +689,13 @@ class VersioningService(BaseService[DatasetVersion]):
     async def _find_lineage_path(
         self,
         version1_id: str,
-        version2_id: str
+        version2_id: str,
+        user_id: str | None = None
     ) -> list[TransformationLineage]:
         """Find transformation lineage path between two versions."""
-        # Get lineage chains for both versions
-        chain1 = await self.get_lineage_chain(version1_id)
-        chain2 = await self.get_lineage_chain(version2_id)
+        # Get lineage chains for both versions, scoped to the caller when given
+        chain1 = await self.get_lineage_chain(version1_id, user_id=user_id)
+        chain2 = await self.get_lineage_chain(version2_id, user_id=user_id)
 
         # Find common ancestor and path
         if not chain1 and not chain2:
