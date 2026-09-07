@@ -16,6 +16,7 @@ from app.models.version import (
     TransformationLineage,
     TransformationStep,
 )
+from app.services.exceptions import NotFoundError
 from app.services.versioning_service import versioning_service
 
 OTHER_USER = "other_user_446"
@@ -1451,3 +1452,33 @@ class TestVersionsAPI:
         # ASSERT
         assert response.status_code == 200
         assert len(response.json()["lineage_chain"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_service_compare_versions_refuses_a_foreign_version(
+        self,
+        setup_database,
+        base_version: DatasetVersion,
+        foreign_dataset_with_versions: DatasetMetadata,
+        mock_user_id: str,
+    ):
+        """`compare_versions` defends itself, not just via the route.
+
+        The route's two `require_owned_version` calls are what protect the API
+        today, but the dimensional and schema fields in the response come from
+        versions the service resolved on its own. Called with a `user_id` from
+        anywhere else, it must refuse rather than trust its caller to have
+        checked (raised in review of this fix).
+        """
+        # ARRANGE
+        foreign = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 1,
+        )
+
+        # ACT / ASSERT
+        with pytest.raises(NotFoundError):
+            await versioning_service.compare_versions(
+                version1_id=base_version.version_id,
+                version2_id=foreign.version_id,
+                user_id=mock_user_id,
+            )

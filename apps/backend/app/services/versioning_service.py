@@ -591,6 +591,17 @@ class VersioningService(BaseService[DatasetVersion]):
         version1 = await self.get_version(version1_id, mark_accessed=False)
         version2 = await self.get_version(version2_id, mark_accessed=False)
 
+        # Scope the endpoints themselves, so the dimensional and schema fields
+        # are protected by this method rather than by caller discipline. The
+        # predicate is `DatasetVersion.user_id` for the same reason the walk
+        # uses it — `get_version`'s own `user_id` check joins to
+        # `DatasetMetadata` and falls open when that row is gone.
+        if user_id is not None:
+            if version1 and version1.user_id != user_id:
+                version1 = None
+            if version2 and version2.user_id != user_id:
+                version2 = None
+
         if not version1 or not version2:
             missing_ids = []
             if not version1:
