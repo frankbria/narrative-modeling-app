@@ -48,6 +48,27 @@ async def require_owned_dataset(dataset_id: str, user_id: str) -> DatasetMetadat
     return dataset
 
 
+async def require_owned_version(version_id: str, user_id: str) -> DatasetVersion:
+    """Return the caller's version, or 404.
+
+    The owner predicate is `DatasetVersion.user_id`, which is server-set at
+    creation — not a join through `DatasetMetadata`. Unknown and foreign
+    versions answer identically so the pair is not an existence oracle. Call
+    this OUTSIDE a handler's `try`: the broad `except Exception` blocks in this
+    module would otherwise turn the 404 into a 500.
+    """
+    version = await DatasetVersion.find_one(
+        DatasetVersion.version_id == version_id,
+        DatasetVersion.user_id == user_id
+    )
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Version {version_id} not found"
+        )
+    return version
+
+
 @router.get("/datasets/{dataset_id}/versions", response_model=VersionListResponse)
 async def list_dataset_versions(
     dataset_id: str,
@@ -264,22 +285,20 @@ async def get_version_lineage(
     Get transformation lineage chain for a version.
 
     Returns the complete lineage from base version to the specified version.
+    A version belonging to another user is answered 404, identically to one
+    that does not exist (issue #453).
     """
+    await require_owned_version(version_id, current_user_id)
+
     try:
         logger.info(f"Retrieving lineage for version {version_id}")
 
-        # Check if version exists
-        version = await DatasetVersion.find_one(
-            DatasetVersion.version_id == version_id
+        # Get lineage chain. The walk is scoped too: owning the entry version
+        # only proves the first hop, and a `parent_version_id` pointing at
+        # another tenant would otherwise drag their lineage into the response.
+        lineage_chain = await versioning_service.get_lineage_chain(
+            version_id, user_id=current_user_id
         )
-        if not version:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Version {version_id} not found"
-            )
-
-        # Get lineage chain
-        lineage_chain = await versioning_service.get_lineage_chain(version_id)
 
         # Convert to response models
         lineage_responses = [
@@ -313,7 +332,15 @@ async def compare_versions(
 
     Returns detailed comparison including row/column differences,
     schema changes, and transformation lineage path between versions.
+
+    Both version ids are checked independently (issue #453) — owning one side
+    is not enough, and checking only one still leaks the other. The checks run
+    before the `try` below, which has no `except HTTPException` clause and
+    would otherwise answer 500.
     """
+    await require_owned_version(comparison_request.version1_id, current_user_id)
+    await require_owned_version(comparison_request.version2_id, current_user_id)
+
     try:
         logger.info(
             f"Comparing versions {comparison_request.version1_id} "
@@ -323,7 +350,8 @@ async def compare_versions(
         # Perform comparison using service
         comparison = await versioning_service.compare_versions(
             version1_id=comparison_request.version1_id,
-            version2_id=comparison_request.version2_id
+            version2_id=comparison_request.version2_id,
+            user_id=current_user_id
         )
 
         return VersionComparisonResponse.model_validate(comparison)
@@ -373,21 +401,13 @@ async def delete_version(
     - Base versions (first upload)
     - Pinned versions
     """
+    # Scoped to the caller. Ownership is therefore evaluated before the
+    # base/pinned guards below, which would otherwise answer 400 for a foreign
+    # version and confirm its existence (issue #448).
+    version = await require_owned_version(version_id, current_user_id)
+
     try:
         logger.info(f"Deleting version {version_id}")
-
-        # Get version — scoped to the caller. Ownership is therefore evaluated
-        # before the base/pinned guards below, which would otherwise answer 400
-        # for a foreign version and confirm its existence (issue #448).
-        version = await DatasetVersion.find_one(
-            DatasetVersion.version_id == version_id,
-            DatasetVersion.user_id == current_user_id
-        )
-        if not version:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Version {version_id} not found"
-            )
 
         # Check if base version
         if version.is_base_version:

@@ -514,12 +514,28 @@ class VersioningService(BaseService[DatasetVersion]):
             })
         return points
 
-    async def get_lineage_chain(self, version_id: str) -> list[TransformationLineage]:
+    async def get_lineage_chain(
+        self,
+        version_id: str,
+        user_id: str | None = None
+    ) -> list[TransformationLineage]:
         """
         Get complete lineage chain from base version to specified version.
 
+        Security: when `user_id` is given the parent walk is scoped to that
+        owner, so the chain stops at the first version they do not own rather
+        than following a `parent_version_id` across tenants (issue #453).
+
+        The per-hop predicate is `DatasetVersion.user_id` — the same one the
+        routes authorize on. `get_version`'s ownership check is not usable here:
+        it joins to `DatasetMetadata` and reads `if dataset and ...`, so a hop
+        whose dataset row is gone would pass, and a hop whose dataset owner has
+        drifted would drop the caller's own lineage.
+
         Args:
             version_id: Target version ID
+            user_id: Optional user ID for ownership verification of every hop.
+                    If None, bypasses the check (for internal operations).
 
         Returns:
             List of TransformationLineage documents in chronological order
@@ -530,6 +546,8 @@ class VersioningService(BaseService[DatasetVersion]):
         while current_version_id:
             version = await self.get_version(current_version_id, mark_accessed=False)
             if not version:
+                break
+            if user_id is not None and version.user_id != user_id:
                 break
 
             if version.transformation_lineage_id:
@@ -547,14 +565,21 @@ class VersioningService(BaseService[DatasetVersion]):
     async def compare_versions(
         self,
         version1_id: str,
-        version2_id: str
+        version2_id: str,
+        user_id: str | None = None
     ) -> VersionComparison:
         """
         Compare two dataset versions.
 
+        Security: `user_id` scopes the lineage walk behind `lineage_path` and
+        `transformation_count`. Owning both endpoints does not make the path
+        between them the caller's — a `parent_version_id` reaching another
+        tenant would put their lineage ids in the response (issue #453).
+
         Args:
             version1_id: First version ID
             version2_id: Second version ID
+            user_id: Optional user ID scoping the lineage walk
 
         Returns:
             VersionComparison with detailed differences
@@ -604,7 +629,9 @@ class VersioningService(BaseService[DatasetVersion]):
         )
 
         # Find lineage path
-        lineage_path = await self._find_lineage_path(version1_id, version2_id)
+        lineage_path = await self._find_lineage_path(
+            version1_id, version2_id, user_id=user_id
+        )
 
         # Content similarity based on hash
         content_similarity = 100.0 if version1.content_hash == version2.content_hash else 0.0
@@ -628,12 +655,13 @@ class VersioningService(BaseService[DatasetVersion]):
     async def _find_lineage_path(
         self,
         version1_id: str,
-        version2_id: str
+        version2_id: str,
+        user_id: str | None = None
     ) -> list[TransformationLineage]:
         """Find transformation lineage path between two versions."""
-        # Get lineage chains for both versions
-        chain1 = await self.get_lineage_chain(version1_id)
-        chain2 = await self.get_lineage_chain(version2_id)
+        # Get lineage chains for both versions, scoped to the caller when given
+        chain1 = await self.get_lineage_chain(version1_id, user_id=user_id)
+        chain2 = await self.get_lineage_chain(version2_id, user_id=user_id)
 
         # Find common ancestor and path
         if not chain1 and not chain2:
