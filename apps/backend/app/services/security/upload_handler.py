@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Session ids are secrets.token_urlsafe output, and they are also spliced into
 # filenames under temp_dir. Anything outside this alphabet is a caller trying to
 # escape the directory (issue #454).
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_SESSION_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
 class ChunkedUploadHandler:
@@ -293,7 +293,10 @@ class ChunkedUploadHandler:
         404 for both "no such session" and "not yours" — a distinguishable
         response would confirm another tenant's session id exists (issue #454).
         """
-        if not _SESSION_ID_RE.match(session_id):
+        # fullmatch, not match + `^...$`: `$` also matches immediately before a
+        # single trailing newline, so "abc\n" satisfied an allowlist that claims
+        # to admit nothing outside the alphabet.
+        if not _SESSION_ID_RE.fullmatch(session_id):
             return None
 
         session = self.sessions.get(session_id)

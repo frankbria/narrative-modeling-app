@@ -631,6 +631,21 @@ class TestSessionsAreBoundToTheirOwner:
         )
         assert response.status_code == 404
 
+    def test_the_session_id_allowlist_admits_nothing_outside_its_alphabet(self):
+        """Asserted on the pattern, not through `get_session`.
+
+        A malformed id is rejected by the lookup anyway — no session or file
+        will ever match it — so a behavioural test cannot tell a strict
+        allowlist from a loose one. This is the invariant the comment claims,
+        and `^...$` with `match` did not hold it: `$` matches immediately
+        before a single trailing newline.
+        """
+        from app.services.security.upload_handler import _SESSION_ID_RE
+
+        assert _SESSION_ID_RE.fullmatch("aB3_-x")
+        for bad in ("abc\n", "", "a" * 129, "../x", "a/b", "a.json", "a b"):
+            assert not _SESSION_ID_RE.fullmatch(bad), bad
+
 
 @pytest.mark.integration
 class TestCompletionAgainstRealS3:
