@@ -6,10 +6,22 @@ on:
       - "**/*.md"
       - ".gitignore"
 
-# Cancel superseded runs on rapid pushes (mirrors claude-code-review.yml, post-#187).
-concurrency:
-  group: glm-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No `concurrency:` here, deliberately — the called workflow already declares
+# it, and declaring it here too is what kept this check from running even after
+# the permissions fix below.
+#
+# review.yml's own workflow-level block is
+# `glm-review-${{ github.event.pull_request.number || github.ref }}`, which
+# expands to exactly the same string this file used, with the same
+# `cancel-in-progress: true`. A called reusable workflow joins that group while
+# its caller is already holding it, so the callee cancelled its own parent the
+# moment it queued: run 34084053155 ended in 2 seconds having started no jobs at
+# all. Of the four repos calling this reviewer, this was the only one with a
+# caller-level block, and the only one failing that way.
+#
+# Superseded runs are still cancelled on rapid pushes — that is the callee's
+# block doing the work this one was added for (post-#187), so the behaviour is
+# unchanged. Reinstate a block here only under a group name that cannot collide.
 
 jobs:
   review:
