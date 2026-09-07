@@ -339,6 +339,59 @@ class TestChunkedIngestionIsMetered:
         assert await used() == before + 1
 
 
+    async def test_a_failed_complete_refunds_the_reserved_unit(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        """Reserving at complete is only safe if failure gives the unit back.
+
+        QuotaRefundMiddleware credits any >=400, but the choice to reserve here
+        rather than at init rests on that, so pin it directly.
+        """
+        from app.billing.metering import period_key_for
+        from app.models.usage import UsageRecord
+
+        async def used() -> int:
+            row = await UsageRecord.find_one(
+                UsageRecord.user_id == TENANT_A,
+                UsageRecord.period_key == period_key_for(),
+                UsageRecord.metric == "uploads",
+            )
+            return row.units if row else 0
+
+        before = await used()
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client)).json()["session_id"]
+        await _upload_all(client, session_id, content=b"a,b\n1,2\n3,4,5,6\n")
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/complete"
+        )
+
+        assert response.status_code == 400, response.text
+        assert await used() == before
+
+
+class TestUppercaseExtensionsAreAccepted:
+    """`data.CSV` is a legitimate filename; the dispatch was case-sensitive."""
+
+    async def test_an_uppercase_extension_completes(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, filename="DATA.CSV")).json()["session_id"]
+        await _upload_all(client, session_id)
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/complete"
+        )
+
+        assert response.status_code == 200, response.text
+        key, content_type = s3_calls[-1]
+        assert key.endswith(".csv")  # the key extension is normalised
+        assert content_type == "text/csv"
+
+
 class TestConcurrencySlotAccounting:
     """One start_upload per session must be matched by exactly one release."""
 

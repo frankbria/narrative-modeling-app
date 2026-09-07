@@ -374,7 +374,8 @@ async def complete_chunked_upload(
                 f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
             )
 
-        if not filename.endswith(('.csv', '.xlsx', '.xls')):
+        lowered = filename.lower()
+        if not lowered.endswith(('.csv', '.xlsx', '.xls')):
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported file format: {filename}",
@@ -384,10 +385,10 @@ async def complete_chunked_upload(
             content = f.read()
 
         try:
-            if filename.endswith('.csv'):
+            if lowered.endswith('.csv'):
                 df = pd.read_csv(io.BytesIO(content))
                 file_type, content_type = "csv", "text/csv"
-            elif filename.endswith('.xlsx'):
+            elif lowered.endswith('.xlsx'):
                 df = pd.read_excel(io.BytesIO(content))
                 file_type, content_type = (
                     "excel",
@@ -413,7 +414,7 @@ async def complete_chunked_upload(
         # convention the strict downloader, erasure and lifecycle rules expect;
         # the non-chunked routes in this module still write bare {uuid}.{ext}
         # keys (tracked separately).
-        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'csv'
+        ext = lowered.rsplit('.', 1)[-1]
         s3_key = f"datasets/{current_user_id}/{uuid.uuid4()}.{ext}"
         success, s3_url = upload_file_to_s3(content, s3_key, content_type=content_type)
         if not success or not s3_url:
@@ -470,7 +471,6 @@ async def abort_chunked_upload(
     """Abandon an in-flight chunked upload and drop its partial file."""
     if not upload_handler.abort_upload(session_id, current_user_id):
         raise HTTPException(status_code=404, detail="Upload session not found")
-
 
     rate_limiter.end_upload(current_user_id)
     return {"status": "aborted", "session_id": session_id}
