@@ -243,9 +243,26 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }, [userId, onError])
 
   const cancelUpload = useCallback(() => {
+    // Tell the backend to drop the partial file too; without this the .tmp sits
+    // on the server until the 24h expiry sweep. Fire-and-forget so the UI clears
+    // immediately and a failed abort cannot strand the user mid-cancel.
+    const sessionId = uploadState?.sessionId
+    if (sessionId) {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      void (async () => {
+        try {
+          await fetch(`${backendUrl}/upload/chunked/${sessionId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await getAuthToken()}` }
+          })
+        } catch {
+          // The session expires on its own; nothing useful to surface here.
+        }
+      })()
+    }
     setIsUploading(false)
     setUploadState(null)
-  }, [])
+  }, [uploadState?.sessionId])
 
   const resetUpload = useCallback(() => {
     setUploadState(null)

@@ -4,10 +4,20 @@ Secure Upload API with PII detection and resumable uploads
 
 import io
 import logging
+import uuid
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
@@ -262,26 +272,51 @@ async def confirm_pii_upload(
     }
 
 
+def _release_expired_slots() -> list[str]:
+    """Reap expired sessions and hand their concurrency slots back."""
+    owners = upload_handler.cleanup_expired_sessions()
+    for owner in owners:
+        if owner:
+            rate_limiter.end_upload(owner)
+    return owners
+
+
 @router.post("/chunked/init")
 async def init_chunked_upload(
-    filename: str,
-    file_size: int,
-    file_hash: str | None = None,
+    filename: str = Form(...),
+    file_size: int = Form(...),
+    file_hash: str | None = Form(None),
     current_user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
     """
-    Initialize chunked upload session for large files
+    Initialize chunked upload session for large files.
+
+    These are Form fields, not query parameters: the client posts a
+    url-encoded body (``useChunkedUpload.ts``), so the old query declaration
+    made every init 422 before the handler ran (issue #463). The backend moved
+    rather than the client — a POST body is the right place for a filename and
+    a hash, and it keeps them out of URLs and access logs.
     """
-    
+
+    # Reap first. A session is only released explicitly by complete or abort, so
+    # an abandoned one — closed tab, dropped connection — holds its slot with
+    # nothing to give it back. That was invisible while the chunk route
+    # double-released and pinned the count at 0; now that the cap binds for
+    # real, ten abandoned sessions would 429 a user forever. This bounds the
+    # leak to the session lifetime instead (issue #526).
+    _release_expired_slots()
+
     if not rate_limiter.check_concurrent_limit(current_user_id):
         raise HTTPException(
             status_code=429,
             detail="Too many concurrent uploads"
         )
-    
-    session_info = await upload_handler.init_upload(filename, file_size, file_hash)
+
+    session_info = await upload_handler.init_upload(
+        current_user_id, filename, file_size, file_hash
+    )
     rate_limiter.start_upload(current_user_id)
-    
+
     return session_info
 
 
@@ -289,7 +324,10 @@ async def init_chunked_upload(
 async def upload_chunk(
     session_id: str,
     chunk_number: int,
-    chunk_hash: str | None = None,
+    # Form, not a bare default: the request is multipart, so an undecorated
+    # parameter is a query param — the same client/server mismatch that made
+    # init unreachable (issue #463). Latent only because no client sends it.
+    chunk_hash: str | None = Form(None),
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
@@ -298,12 +336,12 @@ async def upload_chunk(
     """
     
     chunk_data = await read_upload_capped(file)
-    result = await upload_handler.upload_chunk(session_id, chunk_number, chunk_data, chunk_hash)
-    
-    if result.get("complete"):
-        rate_limiter.end_upload(current_user_id)
-    
-    return result
+    # The concurrency slot is released by complete/abort, not here: this used to
+    # decrement on the last chunk as well, so after one finished upload the
+    # user's active count was pinned at 0 and the cap never bound again.
+    return await upload_handler.upload_chunk(
+        session_id, current_user_id, chunk_number, chunk_data, chunk_hash
+    )
 
 
 @router.get("/chunked/{session_id}/resume")
@@ -314,10 +352,13 @@ async def resume_chunked_upload(
     """
     Get resume information for interrupted upload
     """
-    return await upload_handler.resume_upload(session_id)
+    return await upload_handler.resume_upload(session_id, current_user_id)
 
 
-@router.post("/chunked/{session_id}/complete")
+@router.post(
+    "/chunked/{session_id}/complete",
+    dependencies=[Depends(quota("uploads"))],
+)
 async def complete_chunked_upload(
     session_id: str,
     background_tasks: BackgroundTasks,
@@ -327,78 +368,132 @@ async def complete_chunked_upload(
     Complete chunked upload and process file
     """
     
-    temp_path = await upload_handler.complete_upload(session_id)
-
-    # Cap the assembled-file read: chunked sessions allow very large files, so
-    # reading the whole thing into memory here would reintroduce the memory-DoS
-    # (issue #270). Reject over MAX_UPLOAD_BYTES before loading it into RAM.
-    if temp_path.stat().st_size > MAX_UPLOAD_BYTES:
-        temp_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum upload size is "
-            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
-        )
-
-    # Process the complete file
-    with open(temp_path, 'rb') as f:
-        content = f.read()
-    
-    # Get session info to get original filename
-    session = upload_handler._get_session(session_id)
+    # Claiming removes the session, so a concurrent or retried complete gets a
+    # clean 404 instead of racing to a second S3 object, a second UserData row
+    # and a second charged quota unit.
+    session = upload_handler.claim_upload(session_id, current_user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
+
+    temp_path = Path(session["temp_path"])
     filename = session["filename"]
-    
-    # Load and process file (similar to secure_upload)
-    if filename.endswith('.csv'):
-        df = pd.read_csv(io.BytesIO(content))
-    elif filename.endswith(('.xlsx', '.xls')):
-        df = pd.read_excel(io.BytesIO(content))
-    
-    # Detect PII
-    pii_detections = pii_detector.detect_pii_in_dataframe(df)
-    pii_report = pii_detector.generate_pii_report(pii_detections)
-    
-    # Upload to S3
-    s3_url = upload_file_to_s3(content, filename, current_user_id)
-    
-    # Create UserData record
-    schema = infer_schema(df)
-    user_data = UserData(
-        user_id=current_user_id,
-        filename=filename,
-        s3_url=s3_url,
-        num_rows=len(df),
-        num_columns=len(df.columns),
-        data_schema=schema
-    )
-    
-    if pii_report["has_pii"]:
-        user_data.pii_report = pii_report
-        user_data.contains_pii = True
-        user_data.pii_risk_level = pii_report["risk_level"]
-    
-    await user_data.insert()
-    
-    # Clean up temp file
-    temp_path.unlink()
-    
-    # Background AI summary
-    if pii_report["has_pii"]:
-        masked_df = pii_detector.mask_pii(df, pii_detections)
-        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), masked_df)
-    else:
-        background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
-    
+
+    # The concurrency slot and the assembled temp file are released on *every*
+    # exit, not just the successful one. Releasing only on success meant a
+    # handful of corrupt uploads pinned a user at the concurrency cap with no
+    # session left to abort, and 429'd their every subsequent init.
+    try:
+        # Cap the assembled-file read: chunked sessions allow very large files,
+        # so reading the whole thing into memory here would reintroduce the
+        # memory-DoS (issue #270). Reject over MAX_UPLOAD_BYTES before loading
+        # it into RAM.
+        if temp_path.stat().st_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum upload size is "
+                f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
+
+        lowered = filename.lower()
+        if not lowered.endswith(('.csv', '.xlsx', '.xls')):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file format: {filename}",
+            )
+
+        with open(temp_path, 'rb') as f:
+            content = f.read()
+
+        try:
+            if lowered.endswith('.csv'):
+                df = pd.read_csv(io.BytesIO(content))
+                file_type, content_type = "csv", "text/csv"
+            elif lowered.endswith('.xlsx'):
+                df = pd.read_excel(io.BytesIO(content))
+                file_type, content_type = (
+                    "excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                df = pd.read_excel(io.BytesIO(content))
+                file_type, content_type = "excel", "application/vnd.ms-excel"
+        except Exception as e:
+            # Matches /secure: a corrupt upload is the caller's 400, not a 500.
+            raise HTTPException(
+                status_code=400, detail=f"Failed to parse file: {str(e)}"
+            )
+
+        # Detect PII
+        pii_detections = pii_detector.detect_pii_in_dataframe(df)
+        pii_report = pii_detector.generate_pii_report(pii_detections)
+
+        # Upload to S3 under a server-derived, tenant-prefixed key. The client
+        # filename must never reach the key: two tenants uploading data.csv used
+        # to write the same unprefixed object, so the second silently destroyed
+        # the first (issue #464). This adopts the datasets/{user_id}/...
+        # convention the strict downloader, erasure and lifecycle rules expect;
+        # the non-chunked routes in this module still write bare {uuid}.{ext}
+        # keys (tracked separately).
+        ext = lowered.rsplit('.', 1)[-1]
+        s3_key = f"datasets/{current_user_id}/{uuid.uuid4()}.{ext}"
+        success, s3_url = upload_file_to_s3(content, s3_key, content_type=content_type)
+        if not success or not s3_url:
+            logger.error("S3 upload failed for chunked session %s", session_id)
+            raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+
+        # Create UserData record
+        schema = infer_schema(df)
+        user_data = UserData(
+            user_id=current_user_id,
+            filename=filename,
+            original_filename=filename,
+            s3_url=s3_url,
+            num_rows=len(df),
+            num_columns=len(df.columns),
+            data_schema=schema,
+            file_type=file_type,
+            columns=list(df.columns),
+            data_preview=df.head(100).to_dict('records'),
+        )
+
+        if pii_report["has_pii"]:
+            user_data.pii_report = pii_report
+            user_data.contains_pii = True
+            user_data.pii_risk_level = pii_report["risk_level"]
+
+        await user_data.insert()
+
+        # Background AI summary
+        if pii_report["has_pii"]:
+            masked_df = pii_detector.mask_pii(df, pii_detections)
+            background_tasks.add_task(
+                generate_ai_summary_safe, str(user_data.id), masked_df
+            )
+        else:
+            background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
+
+        return {
+            "status": "success",
+            "file_id": str(user_data.id),
+            "filename": filename,
+            "pii_report": pii_report
+        }
+    finally:
+        temp_path.unlink(missing_ok=True)
+        rate_limiter.end_upload(current_user_id)
+
+
+@router.delete("/chunked/{session_id}")
+async def abort_chunked_upload(
+    session_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """Abandon an in-flight chunked upload and drop its partial file."""
+    if not upload_handler.abort_upload(session_id, current_user_id):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+
     rate_limiter.end_upload(current_user_id)
-    
-    return {
-        "status": "success",
-        "file_id": str(user_data.id),
-        "filename": filename,
-        "pii_report": pii_report
-    }
+    return {"status": "aborted", "session_id": session_id}
 
 
 async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
@@ -432,5 +527,4 @@ async def cleanup_expired_sessions(
     uploads. ponytail: per-worker in-memory sessions (see upload_handler); a
     scheduled reaper is the upgrade path if temp-file accumulation matters.
     """
-    cleaned = upload_handler.cleanup_expired_sessions()
-    return {"cleaned_sessions": cleaned}
+    return {"cleaned_sessions": len(_release_expired_slots())}
