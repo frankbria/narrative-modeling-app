@@ -1623,3 +1623,49 @@ class TestVersionsAPI:
 
         # ASSERT
         assert chain == []
+
+    @pytest.mark.asyncio
+    async def test_lineage_record_itself_is_scoped_to_the_caller(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        mock_user_id: str,
+    ):
+        """Owning the version does not prove the linked lineage record is yours.
+
+        `transformation_lineage_id` is written alongside the version today, so
+        this holds by construction — which is exactly the kind of association
+        this module has twice been burned by trusting instead of checking.
+        """
+        # ARRANGE — repoint the caller's own version at a foreign lineage record
+        foreign_lineage = TransformationLineage(
+            lineage_id=str(uuid.uuid4()),
+            parent_version_id=str(uuid.uuid4()),
+            child_version_id=child_version.version_id,
+            dataset_id=child_version.dataset_id,
+            user_id=OTHER_USER,
+            transformation_steps=[],
+            rows_before=10,
+            rows_after=10,
+            columns_before=1,
+            columns_after=1,
+        )
+        await foreign_lineage.insert()
+
+        mine = await DatasetVersion.find_one(
+            DatasetVersion.version_id == child_version.version_id
+        )
+        mine.transformation_lineage_id = foreign_lineage.lineage_id
+        await mine.save()
+
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{child_version.version_id}/lineage"
+        )
+
+        # ASSERT
+        assert response.status_code == 200
+        assert foreign_lineage.lineage_id not in [
+            entry["lineage_id"] for entry in response.json()["lineage_chain"]
+        ]
+        assert OTHER_USER not in response.text

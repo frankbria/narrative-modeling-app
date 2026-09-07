@@ -567,9 +567,16 @@ class VersioningService(BaseService[DatasetVersion]):
                 break
 
             if version.transformation_lineage_id:
-                lineage = await TransformationLineage.find_one(
+                # Scoped as well: `version.user_id == user_id` does not by
+                # itself prove the linked lineage record is the caller's, and
+                # trusting an association instead of checking it is the class of
+                # bug this walk exists to close.
+                lineage_filter = [
                     TransformationLineage.lineage_id == version.transformation_lineage_id
-                )
+                ]
+                if user_id is not None:
+                    lineage_filter.append(TransformationLineage.user_id == user_id)
+                lineage = await TransformationLineage.find_one(*lineage_filter)
                 if lineage:
                     chain.insert(0, lineage)  # Insert at beginning for chronological order
 
