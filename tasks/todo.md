@@ -78,7 +78,19 @@ walks. Three more tests added, each verified to fail against the first fix.
 
 - Owner predicate is `DatasetVersion.user_id`, not a `DatasetMetadata` join — matches the
   predicate #448 shipped for `delete_version`, is indexed, and avoids the second round trip.
-  (`versioning_service.get_version`'s dataset-join check has an `if dataset and ...`
-  fallthrough that admits a version whose dataset row is missing; the direct predicate has no
-  such hole. Not changing that service method here — out of scope, no route in this issue uses it.)
+
+## Third round — post-PR bot review
+
+The bot correctly pushed back on the decision above to leave
+`versioning_service.get_version`'s `if dataset and dataset.user_id != user_id` fallthrough
+alone. The claim that "no route in this issue uses it" was **wrong**: `GET /versions/{id}`
+and `PATCH /versions/{id}/pin` (pin *and* unpin) both authorize through it, and the orphaned
+state it falls open on is ordinary — deleting a dataset produces it. Verified before fixing:
+`PATCH /versions/{id}/pin` on another tenant's orphaned version returned **200 and mutated
+their row**.
+
+Fixed at the source instead of routing around it: `get_version` now checks
+`version.user_id != user_id` and the `DatasetMetadata` join is gone, so all three call sites
+are closed with one predicate and less code. Four more tests, three of which fail against the
+previous state.
 - Ownership check raised **before** the `try` in every handler, per the existing helper's docstring.

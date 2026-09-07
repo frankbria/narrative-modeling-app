@@ -1482,3 +1482,112 @@ class TestVersionsAPI:
                 version2_id=foreign.version_id,
                 user_id=mock_user_id,
             )
+
+    # The same fall-open predicate on the sibling routes (issue #453, raised by
+    # the post-PR bot review).
+    #
+    # `GET /versions/{id}` and `PATCH /versions/{id}/pin` authorize through
+    # `versioning_service.get_version(user_id=...)`, whose check reads
+    # `if dataset and dataset.user_id != user_id` — so a version whose dataset
+    # row is gone skipped the check entirely. On the pin route that is a
+    # *mutation* of another tenant's row, not just a read. The orphan state is
+    # ordinary: deleting a dataset produces it.
+
+    @pytest.fixture
+    async def orphaned_foreign_version(
+        self,
+        foreign_dataset_with_versions: DatasetMetadata,
+    ) -> DatasetVersion:
+        """Tenant B's version, with tenant B's dataset row deleted."""
+        version = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == foreign_dataset_with_versions.dataset_id,
+            DatasetVersion.version_number == 2,
+        )
+        await foreign_dataset_with_versions.delete()
+        return version
+
+    @pytest.mark.asyncio
+    async def test_get_orphaned_version_of_another_tenant_returns_404(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """A missing dataset row must not open up the single-version read."""
+        # ACT
+        response = await async_authorized_client.get(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}"
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        assert OTHER_USER not in response.text
+
+    @pytest.mark.asyncio
+    async def test_pinning_an_orphaned_version_of_another_tenant_is_refused(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """The mutation case: refused, and tenant B's row is left untouched."""
+        # ACT
+        response = await async_authorized_client.patch(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}/pin",
+            json={"pinned": True},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        reloaded = await DatasetVersion.find_one(
+            DatasetVersion.version_id == orphaned_foreign_version.version_id
+        )
+        assert reloaded.is_pinned is False
+
+    @pytest.mark.asyncio
+    async def test_unpinning_an_orphaned_version_of_another_tenant_is_refused(
+        self,
+        async_authorized_client: AsyncClient,
+        orphaned_foreign_version: DatasetVersion,
+    ):
+        """Symmetric with pin — unpin runs through the same check."""
+        # ARRANGE
+        orphaned_foreign_version.is_pinned = True
+        await orphaned_foreign_version.save()
+
+        # ACT
+        response = await async_authorized_client.patch(
+            f"/api/v1/versions/{orphaned_foreign_version.version_id}/pin",
+            json={"pinned": False},
+        )
+
+        # ASSERT
+        assert response.status_code == 404
+        reloaded = await DatasetVersion.find_one(
+            DatasetVersion.version_id == orphaned_foreign_version.version_id
+        )
+        assert reloaded.is_pinned is True
+
+    @pytest.mark.asyncio
+    async def test_owner_can_still_read_and_pin_a_version_with_no_dataset_row(
+        self,
+        async_authorized_client: AsyncClient,
+        base_version: DatasetVersion,
+        sample_dataset_metadata: DatasetMetadata,
+    ):
+        """The mirror: authorizing on the version's own owner must not lock the
+        rightful owner out when their dataset row is missing."""
+        # ARRANGE
+        await sample_dataset_metadata.delete()
+
+        # ACT
+        read = await async_authorized_client.get(
+            f"/api/v1/versions/{base_version.version_id}"
+        )
+        pin = await async_authorized_client.patch(
+            f"/api/v1/versions/{base_version.version_id}/pin",
+            json={"pinned": True},
+        )
+
+        # ASSERT
+        assert read.status_code == 200
+        assert pin.status_code == 200
+        assert pin.json()["is_pinned"] is True

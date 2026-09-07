@@ -390,15 +390,19 @@ class VersioningService(BaseService[DatasetVersion]):
         if not version:
             return None
 
-        # Enforce ownership check if user_id is provided
+        # Enforce ownership check if user_id is provided.
+        #
+        # The predicate is the version's own `user_id`, set at creation. This
+        # used to join to `DatasetMetadata` and read `if dataset and ...`, which
+        # meant a version whose dataset row was gone — the ordinary result of
+        # deleting a dataset — skipped the check entirely and was served, or
+        # pinned, for any caller (issue #453). It also locked the rightful owner
+        # out whenever the dataset row's owner had drifted from the version's.
         if user_id is not None:
-            # Get the dataset to check ownership
-            from app.models.dataset import DatasetMetadata
-            dataset = await DatasetMetadata.find_one({"dataset_id": version.dataset_id})
-            if dataset and dataset.user_id != user_id:
+            if version.user_id != user_id:
                 logger.warning(
                     f"Ownership check failed: User {user_id} attempted to access "
-                    f"version {version_id} of dataset {version.dataset_id} owned by {dataset.user_id}"
+                    f"version {version_id} owned by {version.user_id}"
                 )
                 return None
         else:
