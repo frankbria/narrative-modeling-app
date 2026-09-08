@@ -10,10 +10,13 @@ Kept out of the `Subscription` document deliberately: a limit changes without a
 migration, whereas the document records what a tenant actually bought.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 
 from app.models.subscription import PlanTier
+
+logger = logging.getLogger(__name__)
 
 #: Sentinel for "no ceiling". Comparisons use `>=`, so this is never reached.
 UNLIMITED = -1
@@ -26,11 +29,22 @@ METERED_METRICS = ("training_runs", "predictions", "uploads")
 
 @dataclass(frozen=True)
 class PlanLimits:
-    """What one tier may do per billing period."""
+    """What one tier may do per billing period.
+
+    ``api_key_rate_limit`` is the odd one out: a throughput ceiling per hour, not a
+    per-period counter, so it is deliberately absent from ``METERED_METRICS`` and
+    from ``limit_for`` — nothing reserves against it.
+    """
 
     training_runs: int
     predictions: int
     uploads: int
+    #: Ceiling for a production API key's ``rate_limit`` (requests per
+    #: RATE_LIMIT_APIKEY_WINDOW_SECONDS). Must stay finite and positive on every
+    #: tier: the rate-limit store reads ``limit <= 0`` as "no enforcement", so
+    #: UNLIMITED here would disable the only limiter on the paid serving surface
+    #: — which is the hole #455 closes.
+    api_key_rate_limit: int
 
     def limit_for(self, metric: str) -> int:
         """Look a metric up by the name the metering store uses.
@@ -64,6 +78,33 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    """Like `_env_int`, but `UNLIMITED` and friends are a *mistake* here, loudly.
+
+    `UNLIMITED = -1` is this module's documented "no ceiling" sentinel for every
+    other limit, so an operator setting `PLAN_ENTERPRISE_API_KEY_RATE_LIMIT=-1` is
+    following the convention in this very file. For a rate-limit ceiling it means
+    the opposite: the limiter store reads `limit <= 0` as "no enforcement", so the
+    value is floored to 1 and the tier ends up capped at one request per window.
+
+    Falling back to the default keeps the "never fail boot over a bad number" rule
+    the rest of this module follows, but the warning means the misconfiguration is
+    visible instead of showing up as a support ticket about a bricked API key.
+    """
+    value = _env_int(name, default)
+    if value <= 0:
+        logger.warning(
+            "%s=%s is not a usable rate-limit ceiling (a limit <= 0 disables "
+            "enforcement, so it is floored to 1 request per window, not unlimited). "
+            "Falling back to the default of %s.",
+            name,
+            value,
+            default,
+        )
+        return default
+    return value
+
+
 #: Per-tier, per-period ceilings. FREE is intentionally usable rather than a
 #: teaser: the app is an invite-only beta today (ADR-001), and a free tier that
 #: cannot train a single model would make the beta unusable the moment enforcement
@@ -73,16 +114,21 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
         uploads=_env_int("PLAN_FREE_UPLOADS", 20),
+        api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
         uploads=_env_int("PLAN_PRO_UPLOADS", 500),
+        api_key_rate_limit=_env_positive_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
+        api_key_rate_limit=_env_positive_int(
+            "PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000
+        ),
     ),
 }
 
@@ -90,3 +136,14 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
 def limits_for(tier: PlanTier) -> PlanLimits:
     """Limits for a tier, falling back to FREE for anything unrecognised."""
     return PLAN_LIMITS.get(tier, PLAN_LIMITS[PlanTier.FREE])
+
+
+def api_key_rate_limit_ceiling(tier: PlanTier) -> int:
+    """The highest per-key rate limit `tier` may hold, never below 1 (#455).
+
+    One function rather than two `limits_for(...).api_key_rate_limit` call sites,
+    because the creation clamp and the demotion re-clamp must agree — and because
+    the floor matters: a mis-set `PLAN_*_API_KEY_RATE_LIMIT` override of 0 would
+    otherwise be stored verbatim and read by the limiter as "unlimited".
+    """
+    return max(1, limits_for(tier).api_key_rate_limit)

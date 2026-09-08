@@ -20,6 +20,7 @@ from app.api.routes.model_training import (
     required_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.api_keys import clamped_rate_limit
 from app.billing.enforcement import reserve_records
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
@@ -101,7 +102,12 @@ class CreateAPIKeyRequest(BaseModel):
     model_ids: list[str] | None = Field(
         None, description="Specific model IDs to allow"
     )
-    rate_limit: int = Field(default=1000, description="Requests per hour")
+    # ge=1: a caller-supplied 0 used to disable rate limiting outright on this
+    # surface, since the limiter store reads `limit <= 0` as "no enforcement"
+    # (#455). The value is additionally clamped to the tenant's plan ceiling at
+    # creation — this is a ceiling, not an override, so a tenant may still ask
+    # for less to shrink a key's blast radius.
+    rate_limit: int = Field(default=1000, ge=1, description="Requests per hour")
     expires_in_days: int | None = Field(None, description="Days until expiration")
 
 
@@ -250,7 +256,7 @@ async def create_api_key(
         description=request.description,
         user_id=current_user_id,
         model_ids=request.model_ids or [],
-        rate_limit=request.rate_limit,
+        rate_limit=await clamped_rate_limit(current_user_id, request.rate_limit),
         expires_at=expires_at,
     )
 

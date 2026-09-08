@@ -7,6 +7,7 @@ statuses + bodies — replacing the pre-#267 suite that drove a stub app mountin
 only two routers, so every ``/api/v1/production/*`` request 404'd and the
 ``in [200, 404, 422]`` assertions tested nothing.
 """
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,8 +21,10 @@ from app.api.routes.production import (
     hash_api_key,
     production_predict,
 )
+from app.billing.plans import api_key_rate_limit_ceiling
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
+from app.models.subscription import PlanTier
 
 TEST_USER = "test_user_123"  # matches async_authorized_client's overridden auth
 
@@ -140,7 +143,8 @@ class TestProductionAPIKeyManagement:
         assert create.status_code == 200
         body = create.json()
         assert body["name"] == "Production Key"
-        assert body["rate_limit"] == 5000
+        # 5000 is above the FREE ceiling, so it comes back clamped (#455).
+        assert body["rate_limit"] == api_key_rate_limit_ceiling(PlanTier.FREE)
         assert body["api_key"].startswith("sk_live_")
         key_id = body["key_id"]
 
@@ -160,7 +164,9 @@ class TestProductionAPIKeyManagement:
         assert revoke.status_code == 200
         assert revoke.json() == {"message": "API key revoked successfully"}
 
-        after = (await async_authorized_client.get("/api/v1/production/api-keys")).json()
+        after = (
+            await async_authorized_client.get("/api/v1/production/api-keys")
+        ).json()
         assert next(k for k in after if k["key_id"] == key_id)["is_active"] is False
 
     @pytest.mark.asyncio
@@ -172,6 +178,76 @@ class TestProductionAPIKeyManagement:
             "/api/v1/production/api-keys", json={"rate_limit": 5000}
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("rate_limit", [0, -1])
+    async def test_create_api_key_rejects_non_positive_rate_limit(
+        self, async_authorized_client, setup_database, rate_limit
+    ):
+        """rate_limit=0 used to disable limiting outright on the paid surface (#455)."""
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys",
+            json={"name": "zero", "rate_limit": rate_limit},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_create_api_key_clamps_to_plan_ceiling(
+        self, async_authorized_client, setup_database
+    ):
+        """An absurd value is clamped server-side and stored clamped (#455)."""
+        ceiling = api_key_rate_limit_ceiling(PlanTier.FREE)
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys",
+            json={"name": "greedy", "rate_limit": 10_000_000},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rate_limit"] == ceiling
+
+        stored = await APIKey.find_one({"key_id": resp.json()["key_id"]})
+        assert stored is not None
+        assert stored.rate_limit == ceiling
+
+    @pytest.mark.asyncio
+    async def test_ceiling_follows_the_tenants_tier(
+        self, async_authorized_client, setup_database
+    ):
+        """The clamp reads the *tenant's* tier, not just the FREE floor (#455).
+
+        5,000 is above FREE's ceiling and below PRO's, so it only survives if the
+        subscription lookup actually happened — the extremes alone cannot show that.
+        """
+        from app.models.subscription import Subscription, SubscriptionStatus
+
+        assert (
+            api_key_rate_limit_ceiling(PlanTier.FREE)
+            < 5_000
+            < api_key_rate_limit_ceiling(PlanTier.PRO)
+        )
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys",
+            json={"name": "pro tenant", "rate_limit": 5_000},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rate_limit"] == 5_000
+
+    @pytest.mark.asyncio
+    async def test_create_api_key_keeps_a_self_imposed_lower_limit(
+        self, async_authorized_client, setup_database
+    ):
+        """Clamping is a ceiling, not an override — a tenant may ask for less."""
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys",
+            json={"name": "modest", "rate_limit": 5},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rate_limit"] == 5
 
     @pytest.mark.asyncio
     async def test_revoke_unknown_key_returns_404(
@@ -497,7 +573,9 @@ class TestProductionPredictErrorHandling:
         find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (MagicMock(), None)  # no feature engineer
-            request = ProductionPredictRequest(data=[{"feature1": 1.0}])  # feature2 missing
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0}]
+            )  # feature2 missing
 
             with pytest.raises(HTTPException) as exc:
                 await production_predict("model_123", request, self._api_key())

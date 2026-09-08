@@ -176,7 +176,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             api_key = await APIKey.find_one({"key_hash": key_hash})
             if api_key is None or not api_key.is_valid():
                 return None
-            return (f"apikey:{api_key.key_id}", api_key.rate_limit, self._apikey_window)
+            # Floor at 1: the stores read `limit <= 0` as "no enforcement", so a
+            # stored 0 would remove the only limiter on the paid serving surface
+            # (#455). Creation clamps and rejects <1, but rows written before that
+            # — or by any future path that bypasses the route — must still bind.
+            limit = max(1, api_key.rate_limit)
+            return (f"apikey:{api_key.key_id}", limit, self._apikey_window)
         except Exception as exc:
             # DB not initialised, lookup failure, etc. — fall through to user/IP.
             logger.debug(
