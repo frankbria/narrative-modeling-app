@@ -10,10 +10,13 @@ Kept out of the `Subscription` document deliberately: a limit changes without a
 migration, whereas the document records what a tenant actually bought.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 
 from app.models.subscription import PlanTier
+
+logger = logging.getLogger(__name__)
 
 #: Sentinel for "no ceiling". Comparisons use `>=`, so this is never reached.
 UNLIMITED = -1
@@ -75,6 +78,33 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    """Like `_env_int`, but `UNLIMITED` and friends are a *mistake* here, loudly.
+
+    `UNLIMITED = -1` is this module's documented "no ceiling" sentinel for every
+    other limit, so an operator setting `PLAN_ENTERPRISE_API_KEY_RATE_LIMIT=-1` is
+    following the convention in this very file. For a rate-limit ceiling it means
+    the opposite: the limiter store reads `limit <= 0` as "no enforcement", so the
+    value is floored to 1 and the tier ends up capped at one request per window.
+
+    Falling back to the default keeps the "never fail boot over a bad number" rule
+    the rest of this module follows, but the warning means the misconfiguration is
+    visible instead of showing up as a support ticket about a bricked API key.
+    """
+    value = _env_int(name, default)
+    if value <= 0:
+        logger.warning(
+            "%s=%s is not a usable rate-limit ceiling (a limit <= 0 disables "
+            "enforcement, so it is floored to 1 request per window, not unlimited). "
+            "Falling back to the default of %s.",
+            name,
+            value,
+            default,
+        )
+        return default
+    return value
+
+
 #: Per-tier, per-period ceilings. FREE is intentionally usable rather than a
 #: teaser: the app is an invite-only beta today (ADR-001), and a free tier that
 #: cannot train a single model would make the beta unusable the moment enforcement
@@ -84,19 +114,21 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
         uploads=_env_int("PLAN_FREE_UPLOADS", 20),
-        api_key_rate_limit=_env_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
+        api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
         uploads=_env_int("PLAN_PRO_UPLOADS", 500),
-        api_key_rate_limit=_env_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
+        api_key_rate_limit=_env_positive_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
-        api_key_rate_limit=_env_int("PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000),
+        api_key_rate_limit=_env_positive_int(
+            "PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000
+        ),
     ),
 }
 

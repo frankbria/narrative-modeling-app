@@ -44,6 +44,11 @@ async def clamp_user_api_keys(user_id: str, tier: PlanTier) -> int:
     """
     ceiling = api_key_rate_limit_ceiling(tier)
     try:
+        # `$gt` is type-bracketed, so a corrupted non-numeric `rate_limit` never
+        # matches here. That shape cannot come from this app (the field is written
+        # as an int), and it is already limited — the middleware floor sends it down
+        # the exception path to the default budget. `fix_api_key_rate_limits.py` is
+        # the backstop that actually repairs it.
         result = await APIKey.get_motor_collection().update_many(
             {"user_id": user_id, "rate_limit": {"$gt": ceiling}},
             {"$set": {"rate_limit": ceiling}},
