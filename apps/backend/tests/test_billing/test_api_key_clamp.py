@@ -79,3 +79,38 @@ class TestWebhookReclampsOnDowngrade:
         assert reread is not None
         # CANCELED is not entitled, so effective_tier is FREE regardless of plan_tier.
         assert reread.rate_limit == api_key_rate_limit_ceiling(PlanTier.FREE)
+
+    async def test_out_of_order_event_does_not_clamp(self, setup_database):
+        """`_apply` returns early on a stale event — the clamp must stay behind it.
+
+        Nothing is persisted on that path, so clamping there would apply a tier the
+        subscription never moved to.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from app.api.routes.billing_webhook import _apply
+        from app.models.subscription import SubscriptionStatus
+
+        enterprise = api_key_rate_limit_ceiling(PlanTier.ENTERPRISE)
+        await _key("clamp-user-5", "clamp-5", enterprise)
+
+        now = datetime.now(UTC)
+        await _apply(
+            "clamp-user-5",
+            status_=SubscriptionStatus.ACTIVE,
+            tier=PlanTier.ENTERPRISE,
+            event_at=now,
+        )
+        # A *stale* downgrade arriving after the newer event must be ignored. It
+        # carries its own tier: without one the mutant (clamping before the guard)
+        # would read the unchanged ENTERPRISE off `sub` and look correct.
+        await _apply(
+            "clamp-user-5",
+            status_=SubscriptionStatus.CANCELED,
+            tier=PlanTier.FREE,
+            event_at=now - timedelta(hours=1),
+        )
+
+        reread = await APIKey.find_one({"key_id": "clamp-5"})
+        assert reread is not None
+        assert reread.rate_limit == enterprise
