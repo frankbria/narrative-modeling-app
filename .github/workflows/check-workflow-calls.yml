@@ -1,0 +1,63 @@
+name: Check workflow calls
+
+# Guards the two invariants whose violation left GLM Review silent here for 266
+# consecutive runs across two months while appearing to be configured
+# (frankbria/glm-review#9):
+#
+#   1. A calling job that grants LESS than the called workflow declares. GitHub
+#      refuses such a run before any job exists, so it surfaces as a
+#      `startup_failure` with no log and no annotation naming the missing scope.
+#      Listing a `permissions:` block sets every scope you did NOT list to
+#      `none`, so the denial never appears in the caller's own text — this
+#      repo's caller never mentioned `id-token`, which was the scope it lacked.
+#
+#   2. A caller `concurrency:` group that can expand to the same string as the
+#      callee's. The callee joins that group while its parent still holds it and
+#      cancels the parent on queue: run 34084053155 ended in 2 seconds having
+#      started no jobs at all. The two groups here were NOT identical text —
+#      `glm-review-${{ github.event.pull_request.number }}` against the callee's
+#      `${{ …number || github.ref }}` — they merely expanded the same, which is
+#      why the checker compares possible expansions rather than strings.
+#
+# This cannot be a job inside review.yml: in both failures that workflow never
+# starts, so a guard inside it would never run either. Hence a separate workflow
+# needing only `contents: read`.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  # Also on direct pushes to main. A PR-only trigger leaves the gap wide open:
+  # a workflow edit pushed straight to main is never checked, and no later PR
+  # re-checks it either unless that PR happens to touch .github/workflows/**.
+  # The reviewer's re-pin scenario would then be a silent startup_failure on
+  # every subsequent PR — the exact 266-run mode this file exists to close. This
+  # repo has form for direct-to-main pushes; #591 records one.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  # Runnable on demand as well. The PR trigger only fires when a PR touches
+  # .github/workflows/**, so without this there is no way to re-check the whole
+  # workflow set — say, after an upstream callee changes its declared
+  # permissions, which is a change no PR here would touch.
+  workflow_dispatch:
+
+jobs:
+  check:
+    # Pinned to a SHA, matching this repo's action-pinning policy. `guard_ref`
+    # is pinned to the same commit on purpose: the workflow and the checker
+    # script it runs live in one repo, and leaving the script on `main` while
+    # the workflow is pinned reintroduces exactly the pin-vs-content drift this
+    # guard exists to catch.
+    uses: frankbria/glm-review/.github/workflows/check-workflow-calls.yml@f3dbf009689671f82e7ccfaabcde112d61b5fd1c # main @ 2026-09-08
+    with:
+      # Both extensions. GitHub runs `.yml` and `.yaml` alike, so the callee's
+      # `.yml`-only default would let a `.yaml` workflow run with this repo's
+      # credentials while the guard still printed its all-clear — a false OK
+      # from the guard itself. Fixed upstream in glm-review#12; pinned here to
+      # f3dbf00, which predates that, so it is set explicitly.
+      paths: .github/workflows/*.yml .github/workflows/*.yaml
+      guard_ref: f3dbf009689671f82e7ccfaabcde112d61b5fd1c
+    permissions:
+      contents: read
