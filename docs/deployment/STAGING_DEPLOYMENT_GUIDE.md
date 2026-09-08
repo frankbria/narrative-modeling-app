@@ -199,6 +199,20 @@ ln -s /etc/nginx/sites-available/narrative-staging.conf /etc/nginx/sites-enabled
 systemctl reload nginx
 ```
 
+> **The Stripe webhook needs its own `location`.** The backend mounts
+> `POST /webhooks/stripe/webhook` *outside* `/api/v1` (so the rate limiter cannot 429
+> Stripe's small IP pool, #367), which means a `location /api/` block does not cover
+> it — it falls through to the frontend and the event is lost silently. `#456`.
+> Copy the `location /webhooks/stripe/` block across too, and keep its
+> `client_max_body_size` cap: the endpoint is unauthenticated and the backend reads the
+> whole body before verifying the signature.
+
+> **This step is a manual copy-paste, so the live config drifts.** As of 2026-09-08 the
+> file on the box is *not* `nginx-staging.conf` — it is a separately hand-written
+> certbot-managed config, and the repo file still carries placeholder
+> `yourdomain.com` names that cannot be applied verbatim. **Editing the repo file alone
+> changes nothing in production.** Diff the two before assuming an edge fix has shipped.
+
 ---
 
 ## Step 7: Setup SSL Certificate (Let's Encrypt)
