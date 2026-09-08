@@ -70,10 +70,18 @@ def _location_blocks(text: str) -> dict[str, tuple[str, int]]:
 
 
 def _webhook_mount_prefix() -> str:
-    """The prefix ``main.py`` actually mounts the webhook router under."""
-    m = re.search(r'prefix="(/webhooks/[^"]*)"', MAIN_PY.read_text())
-    assert m, "expected main.py to mount a /webhooks/... router prefix"
-    return m.group(1)
+    """The prefix ``main.py`` actually mounts the webhook router under.
+
+    Insists there is exactly one. Taking the first of several would silently guard
+    one webhook path while a second went unrouted — the #456 failure, green.
+    """
+    found = re.findall(r'prefix="(/webhooks/[^"]*)"', MAIN_PY.read_text())
+    assert found, "expected main.py to mount a /webhooks/... router prefix"
+    assert len(found) == 1, (
+        f"main.py mounts {len(found)} /webhooks/ prefixes {found}; this guard only "
+        "covers one. Parameterise it over all of them before adding another."
+    )
+    return found[0]
 
 
 def _webhook_path() -> str:
