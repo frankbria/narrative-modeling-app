@@ -199,6 +199,24 @@ ln -s /etc/nginx/sites-available/narrative-staging.conf /etc/nginx/sites-enabled
 systemctl reload nginx
 ```
 
+> **The Stripe webhook needs its own `location`.** The backend mounts
+> `POST /webhooks/stripe/webhook` *outside* `/api/v1` (so the rate limiter cannot 429
+> Stripe's small IP pool, #367), which means a `location /api/` block does not cover
+> it — it falls through to the frontend and the event is lost silently. `#456`.
+> Copy the `location /webhooks/stripe/` block across too, and keep its
+> `client_max_body_size` cap: the endpoint is unauthenticated and the backend reads the
+> whole body before verifying the signature.
+
+> **This step is a manual copy-paste, so the live config drifts — and nothing detects
+> it.** `nginx-staging.conf` is not deployed by `deploy.yml` or anything else, and the
+> repo file carries placeholder `yourdomain.com` names that cannot be applied verbatim,
+> so the live file is edited by hand and the two diverge. **Editing the repo file alone
+> changes nothing in production.** Diff the box against the repo before assuming an edge
+> fix has shipped, and apply it in both places. Tracked in
+> [#594](https://github.com/frankbria/narrative-modeling-app/issues/594), which has the
+> current state of the divergence — this note stays true regardless of what that state
+> happens to be today.
+
 ---
 
 ## Step 7: Setup SSL Certificate (Let's Encrypt)

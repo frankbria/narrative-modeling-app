@@ -254,3 +254,56 @@ mistakes, landed by repeating a recorded one.
 branch *before* the next commit, every time. And a `remote:` warning is not a
 rejection: `git push` exiting 0 means it landed, so check `git log origin/main`
 rather than reading the warning text as an outcome.
+
+## #456 — I nearly graded my own fix against a file nothing reads
+
+The issue's AC5 asked whether the repo's `nginx-staging.conf` is the config actually
+applied. It is not: the live file is a separate hand-written 53-line certbot-managed
+config last touched 2026-07-01, while the repo's is 187 lines and still carries
+placeholder `yourdomain.com` names that would fail `nginx -t`. Every other AC could
+have been satisfied by editing the repo file, merging green, and leaving staging
+dropping every Stripe payment event exactly as before.
+
+The only reason this didn't happen is that AC5 existed and I checked it *first*,
+before writing any code — which then reshaped the whole plan (fix both files, demo
+against both).
+
+**Apply:** for any fix to a deployed artifact — nginx, systemd, cron, a compose file,
+a dashboard — establish that the file in git is the file in production *before*
+planning the fix, not after. `stat -c %y` and a line count on the live copy takes ten
+seconds. "It's checked into the repo" is an assumption about a deploy mechanism, and
+here there was no deploy mechanism at all (#594).
+
+## #456 — my mutation harness reported ten false negatives in a row
+
+I ran eleven config mutations and every one came back "NOT CAUGHT". The tests were
+fine; the harness parsed `pytest -q` output for `N failed`, and this repo's conftest
+suppresses that summary line. Ten seconds of reading the output directly showed a
+mutation failing loudly with a perfect assertion message.
+
+The failure mode is the nasty direction: a broken *verification* harness reports
+"your safety net has holes", which is alarming enough to look like a real finding
+and would have sent me rewriting working tests.
+
+**Apply:** already recorded for pytest counts ("trust the exit code") — the new part
+is that it applies to anything *wrapping* pytest, not just reading it. Before
+believing a batch result, run one case by hand and confirm the harness reports it
+correctly. A harness that says everything failed is as suspect as one that says
+everything passed.
+
+## #456 — a test can pin a preference and call it a safety property
+
+I asserted `proxy_request_buffering off` in the block and documented it as what keeps
+the request body byte-exact for Stripe's HMAC. GLM pointed out it is not: nginx
+buffering changes *framing*, never bytes. The directive was harmless and worth
+keeping for consistency with the `/api/` block — but the test and comment were
+teaching a future reader a false rule about why webhook signatures work, which is
+exactly the kind of thing someone reasons from at 2am.
+
+The real invariants (no `proxy_set_body`, no `rewrite`, no URI on `proxy_pass`, no
+header override) were separately assertable, so nothing was lost by dropping it.
+
+**Apply:** for each assertion, ask "what breaks in production if this flips?" If the
+honest answer is "nothing, I just prefer it", keep the config line and delete the
+assertion — or say plainly that it is a consistency check. A wrong *reason* attached
+to a passing test outlives the test.
