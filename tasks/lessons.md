@@ -195,3 +195,46 @@ Then, fixing the second occurrence, I ran `git commit --amend` and `git push --f
 3. **Rewriting history to hide a mistake costs more than the mistake.** Nobody else was on the branch, so nothing broke; that is luck, not justification. A follow-up commit is honest, is reviewable, and cannot race a reviewer or a CI run that has already fetched the old SHA. "It's tidier" is the same reasoning as "it's only docs" from the entry above.
 
 Tooling note for whoever hits it next: this repo's conftest suppresses pytest's terminal summary on large selections — no `N passed` line and no per-test `-v` output on a full-tree run, though smaller selections still print normally. Use the exit code, or `--collect-only` summed per file, rather than concluding a run produced nothing.
+
+## #455 — a test that cannot fail is worse than no test
+
+Twice in one PR I wrote a test that passed for the wrong reason, and only caught
+it by mutating the code:
+
+- `test_out_of_order_event_does_not_clamp` passed with the clamp deliberately
+  hoisted above the guard it was supposed to be behind. A stale event carrying no
+  `tier` makes the mutant read the *unchanged* tier off the subscription, so it
+  clamps to the same number and looks correct. Fixed by giving the stale event its
+  own lower tier.
+- The `PLAN_*_API_KEY_RATE_LIMIT` override test reloaded the module in a `finally`
+  *before* the assertion, so every case compared against the default — which is
+  exactly what the fallback returns. Both non-positive cases passed vacuously.
+
+**Apply:** on a PR whose subject is "a control was disabled and nothing noticed",
+mutate every new assertion before believing it. Run the *full* gate, not the
+targeted file: the `importlib.reload` in that same test rebound `PLAN_LIMITS` and
+broke `test_models/test_subscription.py` from across the suite — invisible to
+`pytest path/to/new_test.py`.
+
+## #455 — verify a reviewer's claim before fixing it
+
+claude-review reported that BSON's `String > Number` ordering makes a string
+`rate_limit` match `{"$gt": ceiling}`, double-counting rows in the audit script. A
+three-line probe against real MongoDB disproved it: range queries are
+**type-bracketed** to the operand's type; type ordering governs *sorts*. GLM later
+reached the same conclusion independently.
+
+**Apply:** a confident, specific, plausible-sounding claim about database
+semantics is still a claim. Probing costs a minute; "fixing" it would have added a
+`$and` clause defending against nothing and implied the buckets were once wrong.
+
+## #455 — a declined finding can come back stronger
+
+I declined "the `max(1, ...)` floor silently absorbs a bad env override" twice as
+scope creep. The third framing was the one that mattered: `UNLIMITED = -1` is that
+module's *documented* sentinel for every other limit, so an operator following the
+file's own convention would brick a tier at 1 request/window.
+
+**Apply:** re-read a repeated finding for a *new argument*, not just a repeated
+one. The severity did not change; the reason did, and the reason is what made it
+worth fixing.
