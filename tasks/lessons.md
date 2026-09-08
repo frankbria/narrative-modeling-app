@@ -238,3 +238,19 @@ file's own convention would brick a tier at 1 request/window.
 **Apply:** re-read a repeated finding for a *new argument*, not just a repeated
 one. The severity did not change; the reason did, and the reason is what made it
 worth fixing.
+
+## #455 — I pushed the lessons file straight to main
+
+Immediately after merging PR #587 I was on `main`, committed `tasks/lessons.md`
+there, and pushed. Git printed `Required status check "CI Success" is expected`
+and **took the push anyway** — `enforce_admins: false`, the admin-bypass
+behaviour #579 already documented as a process failure. I read that line as a
+rejection and only found the commit on `main` by fetching.
+
+The irony is the point: the commit was a lessons file about not repeating
+mistakes, landed by repeating a recorded one.
+
+**Apply:** after a merge, `gh pr merge --delete-branch` leaves you on `main` —
+branch *before* the next commit, every time. And a `remote:` warning is not a
+rejection: `git push` exiting 0 means it landed, so check `git log origin/main`
+rather than reading the warning text as an outcome.
