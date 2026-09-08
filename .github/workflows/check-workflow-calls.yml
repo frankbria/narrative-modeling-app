@@ -1,0 +1,42 @@
+name: Check workflow calls
+
+# Guards the two invariants whose violation left GLM Review silent here for 266
+# consecutive runs across two months while appearing to be configured
+# (frankbria/glm-review#9):
+#
+#   1. A calling job that grants LESS than the called workflow declares. GitHub
+#      refuses such a run before any job exists, so it surfaces as a
+#      `startup_failure` with no log and no annotation naming the missing scope.
+#      Listing a `permissions:` block sets every scope you did NOT list to
+#      `none`, so the denial never appears in the caller's own text — this
+#      repo's caller never mentioned `id-token`, which was the scope it lacked.
+#
+#   2. A caller `concurrency:` group that can expand to the same string as the
+#      callee's. The callee joins that group while its parent still holds it and
+#      cancels the parent on queue: run 34084053155 ended in 2 seconds having
+#      started no jobs at all. The two groups here were NOT identical text —
+#      `glm-review-${{ github.event.pull_request.number }}` against the callee's
+#      `${{ …number || github.ref }}` — they merely expanded the same, which is
+#      why the checker compares possible expansions rather than strings.
+#
+# This cannot be a job inside review.yml: in both failures that workflow never
+# starts, so a guard inside it would never run either. Hence a separate workflow
+# needing only `contents: read`.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+
+jobs:
+  check:
+    # Pinned to a SHA, matching this repo's action-pinning policy. `guard_ref`
+    # is pinned to the same commit on purpose: the workflow and the checker
+    # script it runs live in one repo, and leaving the script on `main` while
+    # the workflow is pinned reintroduces exactly the pin-vs-content drift this
+    # guard exists to catch.
+    uses: frankbria/glm-review/.github/workflows/check-workflow-calls.yml@f3dbf009689671f82e7ccfaabcde112d61b5fd1c # main @ 2026-09-08
+    with:
+      guard_ref: f3dbf009689671f82e7ccfaabcde112d61b5fd1c
+    permissions:
+      contents: read
