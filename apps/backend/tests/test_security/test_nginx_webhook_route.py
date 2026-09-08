@@ -98,17 +98,36 @@ def _webhook_location() -> tuple[str, str, int]:
     green.
     """
     prefix = _webhook_mount_prefix()
-    candidates = [
-        (match, body, offset)
-        for match, (body, offset) in _location_blocks(_server_block()).items()
-        # Prefix locations only (no `~`/`=` modifier) — the webhook is a plain path.
-        # `location /` is excluded: falling through to it is what caused #456.
-        if match.startswith("/")
-        and match.rstrip("/")
-        and prefix.startswith(match.rstrip("/"))
-    ]
+    path = _webhook_path()
+
+    # An `=` location wins outright over every prefix, so if one claims this exact
+    # path it IS the routing, whatever the prefix blocks say.
+    for match, (body, offset) in _location_blocks(_server_block()).items():
+        parts = match.split()
+        if len(parts) == 2 and parts[0] == "=" and parts[1] == path:
+            return match, body, offset
+
+    # Prefix locations. `^~` is one too — it just also suppresses regex evaluation
+    # when it wins — so strip the modifier rather than dropping the block, which
+    # would hide a longer `^~` pointing somewhere else. `location /` is excluded:
+    # falling through to it is what caused #456.
+    candidates = []
+    for match, (body, offset) in _location_blocks(_server_block()).items():
+        parts = match.split()
+        if len(parts) == 2 and parts[0] == "^~":
+            literal = parts[1]
+        elif len(parts) == 1 and match.startswith("/"):
+            literal = match
+        else:
+            continue  # `~`/`~*` regex locations are handled separately
+        # Match against the concrete PATH, not the mount prefix: a location longer
+        # than the prefix (`^~ /webhooks/stripe/webhook`) still matches the request
+        # and outranks this block, and testing against the prefix would skip it.
+        if literal.rstrip("/") and path.startswith(literal.rstrip("/")):
+            candidates.append((match, body, offset, literal))
     if candidates:
-        return max(candidates, key=lambda c: len(c[0]))
+        best = max(candidates, key=lambda c: len(c[3]))
+        return best[0], best[1], best[2]
     raise AssertionError(
         f"no nginx location block covers the webhook mount prefix {prefix!r}; "
         "Stripe events fall through to the frontend and never reach the handler "
