@@ -104,3 +104,14 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
 def limits_for(tier: PlanTier) -> PlanLimits:
     """Limits for a tier, falling back to FREE for anything unrecognised."""
     return PLAN_LIMITS.get(tier, PLAN_LIMITS[PlanTier.FREE])
+
+
+def api_key_rate_limit_ceiling(tier: PlanTier) -> int:
+    """The highest per-key rate limit `tier` may hold, never below 1 (#455).
+
+    One function rather than two `limits_for(...).api_key_rate_limit` call sites,
+    because the creation clamp and the demotion re-clamp must agree — and because
+    the floor matters: a mis-set `PLAN_*_API_KEY_RATE_LIMIT` override of 0 would
+    otherwise be stored verbatim and read by the limiter as "unlimited".
+    """
+    return max(1, limits_for(tier).api_key_rate_limit)

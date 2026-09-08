@@ -24,6 +24,7 @@ from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
 
+from app.billing.api_keys import clamp_user_api_keys
 from app.billing.stripe_signature import (
     SignatureVerificationError,
     verify_signature,
@@ -191,6 +192,11 @@ async def _apply(
         sub.cancel_at_period_end = cancel_at_period_end
 
     await sub.save()
+
+    # A plan change can *lower* what a key may do. The limiter never reads a
+    # subscription on the serving path, so nothing else would ever revisit a key
+    # minted under a richer tier (#455).
+    await clamp_user_api_keys(user_id, sub.effective_tier)
 
 
 def _period_end(obj: dict[str, Any]):

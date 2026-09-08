@@ -20,9 +20,8 @@ from app.api.routes.model_training import (
     required_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing import metering
+from app.billing.api_keys import clamped_rate_limit
 from app.billing.enforcement import reserve_records
-from app.billing.plans import limits_for
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
@@ -234,19 +233,6 @@ async def verify_api_key(api_key: str = Header(..., alias="X-API-Key")) -> APIKe
 
 
 # API Routes
-async def _clamped_rate_limit(user_id: str, requested: int) -> int:
-    """Clamp a caller-supplied per-key rate limit to the tenant's plan ceiling (#455).
-
-    The ceiling lives in `plans.py` so it moves with the tier rather than being a
-    second source of truth. Floored at 1 as well, so a mis-set
-    `PLAN_*_API_KEY_RATE_LIMIT` override cannot produce a stored 0 — which the
-    limiter store would read as "unlimited".
-    """
-    tier = await metering.effective_tier_for(user_id)
-    ceiling = max(1, limits_for(tier).api_key_rate_limit)
-    return min(requested, ceiling)
-
-
 @router.post("/api-keys", response_model=APIKeyResponse)
 async def create_api_key(
     request: CreateAPIKeyRequest, current_user_id: str = Depends(get_current_user_id)
@@ -270,7 +256,7 @@ async def create_api_key(
         description=request.description,
         user_id=current_user_id,
         model_ids=request.model_ids or [],
-        rate_limit=await _clamped_rate_limit(current_user_id, request.rate_limit),
+        rate_limit=await clamped_rate_limit(current_user_id, request.rate_limit),
         expires_at=expires_at,
     )
 
