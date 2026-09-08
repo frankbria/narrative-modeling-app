@@ -27,6 +27,11 @@ on:
   pull_request:
     paths:
       - ".github/workflows/**"
+  # Runnable on demand as well. The PR trigger only fires when a PR touches
+  # .github/workflows/**, so without this there is no way to re-check the whole
+  # workflow set — say, after an upstream callee changes its declared
+  # permissions, which is a change no PR here would touch.
+  workflow_dispatch:
 
 jobs:
   check:
