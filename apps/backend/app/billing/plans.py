@@ -26,11 +26,22 @@ METERED_METRICS = ("training_runs", "predictions", "uploads")
 
 @dataclass(frozen=True)
 class PlanLimits:
-    """What one tier may do per billing period."""
+    """What one tier may do per billing period.
+
+    ``api_key_rate_limit`` is the odd one out: a throughput ceiling per hour, not a
+    per-period counter, so it is deliberately absent from ``METERED_METRICS`` and
+    from ``limit_for`` — nothing reserves against it.
+    """
 
     training_runs: int
     predictions: int
     uploads: int
+    #: Ceiling for a production API key's ``rate_limit`` (requests per
+    #: RATE_LIMIT_APIKEY_WINDOW_SECONDS). Must stay finite and positive on every
+    #: tier: the rate-limit store reads ``limit <= 0`` as "no enforcement", so
+    #: UNLIMITED here would disable the only limiter on the paid serving surface
+    #: — which is the hole #455 closes.
+    api_key_rate_limit: int
 
     def limit_for(self, metric: str) -> int:
         """Look a metric up by the name the metering store uses.
@@ -73,16 +84,19 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
         uploads=_env_int("PLAN_FREE_UPLOADS", 20),
+        api_key_rate_limit=_env_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
         uploads=_env_int("PLAN_PRO_UPLOADS", 500),
+        api_key_rate_limit=_env_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
+        api_key_rate_limit=_env_int("PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000),
     ),
 }
 

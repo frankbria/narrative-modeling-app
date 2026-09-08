@@ -288,3 +288,74 @@ class TestRateLimitMiddleware:
         client = TestClient(app)
         for _ in range(5):
             assert client.get("/api/v1/ping").status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Per-key budget floor (issue #455)
+# --------------------------------------------------------------------------- #
+class TestApiKeyLimitFloor:
+    """A stored ``APIKey.rate_limit`` of 0 must not mean "unlimited".
+
+    Creation now clamps to the plan ceiling and rejects values < 1, but rows
+    written before that (and any future write that bypasses the route) must still
+    be limited — the store reads ``limit <= 0`` as "no enforcement", so the
+    middleware floors the value it hands over.
+    """
+
+    @staticmethod
+    def _app_with_key(store, stored_limit: int, monkeypatch):
+        from app.models.api_key import APIKey
+
+        raw_key = "sk_live_floor_test_key"
+        # model_construct: these tests are service-free, and Document.__init__
+        # would demand an initialised Beanie collection.
+        key = APIKey.model_construct(
+            key_id="key_floor_test",
+            key_hash=APIKey.hash_key(raw_key),
+            name="legacy",
+            user_id="u1",
+            rate_limit=stored_limit,
+            is_active=True,
+            expires_at=None,
+        )
+
+        async def _find_one(*_args, **_kwargs):
+            return key
+
+        monkeypatch.setattr(APIKey, "find_one", _find_one)
+
+        app = _build_app(
+            store,
+            default_requests=1000,
+            default_window_seconds=60,
+            apikey_window_seconds=60,
+        )
+
+        @app.get("/api/v1/production/v1/models/m1/predict")
+        async def predict():
+            return {"ok": True}
+
+        return app, raw_key
+
+    @pytest.mark.parametrize("stored_limit", [0, -1])
+    def test_non_positive_stored_limit_is_still_limited(
+        self, stored_limit, monkeypatch
+    ):
+        app, raw_key = self._app_with_key(
+            InMemoryRateLimitStore(), stored_limit, monkeypatch
+        )
+        client = TestClient(app)
+        headers = {"X-API-Key": raw_key}
+        path = "/api/v1/production/v1/models/m1/predict"
+        # Floored to 1 request per window: the first passes, the second does not.
+        assert client.get(path, headers=headers).status_code == 200
+        assert client.get(path, headers=headers).status_code == 429
+
+    def test_positive_stored_limit_is_untouched(self, monkeypatch):
+        app, raw_key = self._app_with_key(InMemoryRateLimitStore(), 3, monkeypatch)
+        client = TestClient(app)
+        headers = {"X-API-Key": raw_key}
+        path = "/api/v1/production/v1/models/m1/predict"
+        for _ in range(3):
+            assert client.get(path, headers=headers).status_code == 200
+        assert client.get(path, headers=headers).status_code == 429
