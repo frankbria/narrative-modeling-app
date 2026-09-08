@@ -209,6 +209,35 @@ class TestProductionAPIKeyManagement:
         assert stored.rate_limit == ceiling
 
     @pytest.mark.asyncio
+    async def test_ceiling_follows_the_tenants_tier(
+        self, async_authorized_client, setup_database
+    ):
+        """The clamp reads the *tenant's* tier, not just the FREE floor (#455).
+
+        5,000 is above FREE's ceiling and below PRO's, so it only survives if the
+        subscription lookup actually happened — the extremes alone cannot show that.
+        """
+        from app.models.subscription import Subscription, SubscriptionStatus
+
+        assert (
+            api_key_rate_limit_ceiling(PlanTier.FREE)
+            < 5_000
+            < api_key_rate_limit_ceiling(PlanTier.PRO)
+        )
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+        ).insert()
+
+        resp = await async_authorized_client.post(
+            "/api/v1/production/api-keys",
+            json={"name": "pro tenant", "rate_limit": 5_000},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rate_limit"] == 5_000
+
+    @pytest.mark.asyncio
     async def test_create_api_key_keeps_a_self_imposed_lower_limit(
         self, async_authorized_client, setup_database
     ):
