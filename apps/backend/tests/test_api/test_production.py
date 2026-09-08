@@ -21,7 +21,7 @@ from app.api.routes.production import (
     hash_api_key,
     production_predict,
 )
-from app.billing.plans import limits_for
+from app.billing.plans import api_key_rate_limit_ceiling
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.models.subscription import PlanTier
@@ -144,7 +144,7 @@ class TestProductionAPIKeyManagement:
         body = create.json()
         assert body["name"] == "Production Key"
         # 5000 is above the FREE ceiling, so it comes back clamped (#455).
-        assert body["rate_limit"] == limits_for(PlanTier.FREE).api_key_rate_limit
+        assert body["rate_limit"] == api_key_rate_limit_ceiling(PlanTier.FREE)
         assert body["api_key"].startswith("sk_live_")
         key_id = body["key_id"]
 
@@ -196,7 +196,7 @@ class TestProductionAPIKeyManagement:
         self, async_authorized_client, setup_database
     ):
         """An absurd value is clamped server-side and stored clamped (#455)."""
-        ceiling = limits_for(PlanTier.FREE).api_key_rate_limit
+        ceiling = api_key_rate_limit_ceiling(PlanTier.FREE)
         resp = await async_authorized_client.post(
             "/api/v1/production/api-keys",
             json={"name": "greedy", "rate_limit": 10_000_000},

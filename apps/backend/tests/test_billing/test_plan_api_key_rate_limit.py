@@ -5,21 +5,25 @@ exist for every tier and must be finite — `UNLIMITED` (-1) would be read by th
 rate-limit store as "no enforcement" and reopen the hole this closes.
 """
 
-from app.billing.plans import METERED_METRICS, PLAN_LIMITS, limits_for
+from app.billing.plans import (
+    METERED_METRICS,
+    PLAN_LIMITS,
+    api_key_rate_limit_ceiling,
+)
 from app.models.subscription import PlanTier
 
 
 class TestApiKeyRateLimitCeiling:
     def test_every_tier_has_a_finite_positive_ceiling(self):
         for tier in PlanTier:
-            ceiling = limits_for(tier).api_key_rate_limit
+            ceiling = api_key_rate_limit_ceiling(tier)
             assert isinstance(ceiling, int)
             assert ceiling > 0, f"{tier} ceiling must be finite and positive"
 
     def test_ceilings_are_monotonic_by_tier(self):
-        free = limits_for(PlanTier.FREE).api_key_rate_limit
-        pro = limits_for(PlanTier.PRO).api_key_rate_limit
-        enterprise = limits_for(PlanTier.ENTERPRISE).api_key_rate_limit
+        free = api_key_rate_limit_ceiling(PlanTier.FREE)
+        pro = api_key_rate_limit_ceiling(PlanTier.PRO)
+        enterprise = api_key_rate_limit_ceiling(PlanTier.ENTERPRISE)
         assert free <= pro <= enterprise
 
     def test_is_not_a_metered_metric(self):
