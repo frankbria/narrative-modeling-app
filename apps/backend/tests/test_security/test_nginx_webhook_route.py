@@ -25,6 +25,11 @@ required for byte-exactness. Buffering changes framing, never bytes.
 
 These tests parse the real config file and the real router mount, so the two cannot
 drift apart silently.
+
+The parser is text-based rather than `nginx -T`, since CI has no nginx binary. That
+is fine for this file — flat, self-contained, one directive per line — but it would
+not follow an `include`d location fragment or a directive split across lines. If the
+config is ever restructured that way, this needs a real parser, not more regexes.
 """
 
 import re

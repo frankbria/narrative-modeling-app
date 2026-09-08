@@ -207,11 +207,15 @@ systemctl reload nginx
 > `client_max_body_size` cap: the endpoint is unauthenticated and the backend reads the
 > whole body before verifying the signature.
 
-> **This step is a manual copy-paste, so the live config drifts.** As of 2026-09-08 the
-> file on the box is *not* `nginx-staging.conf` — it is a separately hand-written
-> certbot-managed config, and the repo file still carries placeholder
-> `yourdomain.com` names that cannot be applied verbatim. **Editing the repo file alone
-> changes nothing in production.** Diff the two before assuming an edge fix has shipped.
+> **This step is a manual copy-paste, so the live config drifts — and nothing detects
+> it.** `nginx-staging.conf` is not deployed by `deploy.yml` or anything else, and the
+> repo file carries placeholder `yourdomain.com` names that cannot be applied verbatim,
+> so the live file is edited by hand and the two diverge. **Editing the repo file alone
+> changes nothing in production.** Diff the box against the repo before assuming an edge
+> fix has shipped, and apply it in both places. Tracked in
+> [#594](https://github.com/frankbria/narrative-modeling-app/issues/594), which has the
+> current state of the divergence — this note stays true regardless of what that state
+> happens to be today.
 
 ---
 
