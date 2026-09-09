@@ -16,8 +16,13 @@ Two jobs, one script, because they are the same operation:
 
 Deliberately a one-shot script rather than a scheduler: this service has no
 scheduler, and introducing one to cover a case that Stripe's own three-day retry
-window already makes rare is more machinery than the problem is worth. Run it from
-cron on the box, or by hand after an incident.
+window already makes rare is more machinery than the problem is worth.
+
+**When it is not optional.** Any `Subscription` row written while Stripe was live but
+before the `_period_end()` fix carries a null period end, and once the expiry check
+is live such a row lapses on `updated_at` instead. Running `--apply` on those rows is
+part of that deploy, not routine maintenance — see #598. Otherwise: by hand after a
+Stripe incident, or from cron if you want it regularly.
 
 Read-only by default. Reports counts only — no user ids, no Stripe ids — so its
 output is safe to paste into a public issue.
@@ -25,9 +30,12 @@ output is safe to paste into a public issue.
 Usage (from apps/backend, against whichever cluster you want to check):
 
     MONGODB_URI=... MONGODB_DB=... STRIPE_SECRET_KEY=... \
+    STRIPE_PRICE_PRO=... STRIPE_PRICE_ENTERPRISE=... \
         uv run python scripts/reconcile_subscriptions.py
-    MONGODB_URI=... MONGODB_DB=... STRIPE_SECRET_KEY=... \
-        uv run python scripts/reconcile_subscriptions.py --apply
+    # ... same environment, plus --apply, to write
+
+All five are required. The two price ids are not decoration: without them every
+tenant resolves to PRO and `--apply` downgrades your ENTERPRISE customers.
 
 Exit status is 1 when uncorrected drift remains, so it can gate a deploy.
 """
@@ -35,6 +43,7 @@ Exit status is 1 when uncorrected drift remains, so it can gate a deploy.
 import asyncio
 import os
 import sys
+from datetime import UTC, datetime
 
 
 async def main() -> int:
@@ -50,6 +59,25 @@ async def main() -> int:
         return 2
     if not stripe_client.is_configured():
         print("Set STRIPE_SECRET_KEY — this script reads from Stripe.", file=sys.stderr)
+        return 2
+    # Not optional, and the reason is not symmetry with the app's env file.
+    # `tier_for_price` falls back to PRO for any price it cannot match against a
+    # CONFIGURED setting — and an unset setting matches nothing. An operator shell
+    # with only a secret key would therefore resolve every tenant to PRO and
+    # `--apply` would write it, silently downgrading every ENTERPRISE customer on
+    # the cluster. This is the same trap CLAUDE.md documents for the webhook, one
+    # environment removed.
+    missing = [
+        name
+        for name in ("STRIPE_PRICE_PRO", "STRIPE_PRICE_ENTERPRISE")
+        if not stripe_client.setting(name)
+    ]
+    if missing:
+        print(
+            "Set " + " and ".join(missing) + " — without them every tenant resolves\n"
+            "to PRO and --apply would downgrade your ENTERPRISE customers.",
+            file=sys.stderr,
+        )
         return 2
 
     client = AsyncIOMotorClient(uri)
@@ -87,8 +115,19 @@ async def reconcile(collection, fetch, apply: bool) -> int:
     # Imported here rather than at module scope so `--help`-style misuse and the
     # env-var checks above fail before anything touches the app package.
     from app.api.routes.billing_webhook import _period_end, _price_id, tier_for_price
+    from app.billing import stripe_client
     from app.models.subscription import SubscriptionStatus
     from app.utils.datetime import as_utc
+
+    # Defence in depth behind `main()`'s check: `reconcile()` is the tested entry
+    # point and can be called directly, and the failure it guards against rewrites
+    # paying customers' tiers with no error.
+    tiers_resolvable = bool(
+        stripe_client.setting("STRIPE_PRICE_PRO")
+        and stripe_client.setting("STRIPE_PRICE_ENTERPRISE")
+    )
+    if not tiers_resolvable:
+        print("STRIPE_PRICE_* unset: reconciling status and period end only.")
 
     total = drifted = repaired = unreadable = raced = 0
 
@@ -112,7 +151,7 @@ async def reconcile(collection, fetch, apply: bool) -> int:
         # `tier_for_price` falls back to PRO rather than returning None, so passing
         # it unconditionally would silently downgrade an ENTERPRISE tenant whenever
         # Stripe answered without expanded item data.
-        tier = tier_for_price(price).value if price else None
+        tier = tier_for_price(price).value if price and tiers_resolvable else None
 
         changes = {}
         if status != row.get("status"):
@@ -130,6 +169,13 @@ async def reconcile(collection, fetch, apply: bool) -> int:
             changes["current_period_end"] = period_end
         if not changes:
             continue
+
+        # The raw `update_one` below bypasses Beanie, so the model's `_touch()` hook
+        # never fires. That matters here rather than being cosmetic: `is_entitled`
+        # falls back to `updated_at` when no period end is known, so a repair that
+        # confirmed with Stripe that a subscription is live would otherwise leave the
+        # row lapsing on a timestamp from before the repair.
+        changes["updated_at"] = datetime.now(UTC)
 
         drifted += 1
         if apply:

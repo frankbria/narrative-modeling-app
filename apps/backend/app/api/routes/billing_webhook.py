@@ -229,7 +229,11 @@ def _period_end(obj: dict[str, Any]):
         items = (obj.get("items") or {}).get("data") or []
         if items and isinstance(items[0], dict):
             raw = items[0].get("current_period_end")
-    if raw is None:
+    # `bool` subclasses `int`, so a stray `true` would parse as epoch 1 and stamp the
+    # subscription as having lapsed in 1970 — the same trap the `created` handling
+    # below guards, and worth guarding identically rather than relying on the
+    # direction it happens to fail in.
+    if raw is None or isinstance(raw, bool):
         return None
     try:
         return datetime.fromtimestamp(int(raw), tz=UTC)

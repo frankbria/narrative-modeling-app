@@ -15,6 +15,7 @@ import pytest
 
 from app.config import settings as _settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
+from app.utils.datetime import as_utc
 
 pytestmark = pytest.mark.asyncio
 
@@ -97,6 +98,7 @@ class TestReconcile:
         that compared only status and period end would report "everything matches"
         while an ENTERPRISE customer was enforced as PRO."""
         reconcile = _load_reconcile()
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
         monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
         period_end = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
         await _seed("u-upgrade", plan_tier=PlanTier.PRO, current_period_end=period_end)
@@ -115,13 +117,71 @@ class TestReconcile:
         assert sub.plan_tier == PlanTier.ENTERPRISE
         assert sub.effective_tier == PlanTier.ENTERPRISE
 
+    async def test_unconfigured_prices_never_rewrite_the_tier(
+        self, setup_database, monkeypatch
+    ):
+        """The dangerous half of reusing `tier_for_price`: it falls back to PRO for
+        any price it cannot match against a *configured* setting, and an unset
+        setting matches nothing. An operator shell carrying only a secret key would
+        otherwise resolve every tenant to PRO and `--apply` would write it,
+        downgrading every ENTERPRISE customer on the cluster with no error."""
+        reconcile = _load_reconcile()
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "")
+        period_end = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
+        await _seed(
+            "u-unconf", plan_tier=PlanTier.ENTERPRISE, current_period_end=period_end
+        )
+
+        await reconcile(
+            _collection(),
+            lambda _: _remote(
+                "active", int(period_end.timestamp()), price="price_whatever"
+            ),
+            apply=True,
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == "u-unconf")
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+
+    async def test_a_repair_moves_updated_at(self, setup_database):
+        """The raw write bypasses Beanie's `_touch()` hook. That is load-bearing:
+        `is_entitled` falls back to `updated_at` when no period end is known, so a
+        repair that just confirmed with Stripe that a subscription is live would
+        otherwise leave the row lapsing on a pre-repair timestamp."""
+        reconcile = _load_reconcile()
+        stale = (datetime.now(UTC) - timedelta(days=10)).replace(microsecond=0)
+        await _seed(
+            "u-touch", status=SubscriptionStatus.PAST_DUE, current_period_end=None
+        )
+        # Written straight to Mongo: `_touch()` fires on insert and would stamp
+        # `updated_at` with now, so seeding it through the model is a no-op — which
+        # is exactly what made the first version of this test pass with the bump
+        # removed.
+        await _collection().update_one(
+            {"user_id": "u-touch"}, {"$set": {"updated_at": stale}}
+        )
+
+        await reconcile(_collection(), lambda _: _remote("active", None), apply=True)
+
+        sub = await Subscription.find_one(Subscription.user_id == "u-touch")
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert as_utc(sub.updated_at) > stale + timedelta(days=9)
+        assert sub.is_entitled
+
     async def test_a_payload_without_a_price_leaves_the_tier_alone(
-        self, setup_database
+        self, setup_database, monkeypatch
     ):
         """`tier_for_price` falls back to PRO rather than returning None, so passing
         it unconditionally would silently downgrade an ENTERPRISE tenant whenever
         Stripe answered without expanded item data. Same caution the webhook takes."""
         reconcile = _load_reconcile()
+        # Configured, so this test fails for the reason it names rather than
+        # passing through the unconfigured-prices guard above it.
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
         period_end = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
         await _seed(
             "u-noprice", plan_tier=PlanTier.ENTERPRISE, current_period_end=period_end

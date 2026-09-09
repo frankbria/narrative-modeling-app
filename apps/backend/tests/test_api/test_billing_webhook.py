@@ -444,9 +444,7 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.plan_tier == PlanTier.ENTERPRISE
 
-    @pytest.mark.parametrize(
-        "period_end", ["not-a-timestamp", {}, [], 10**20]
-    )
+    @pytest.mark.parametrize("period_end", ["not-a-timestamp", {}, [], 10**20, True])
     async def test_an_unparseable_period_end_is_not_a_500(
         self, async_authorized_client, setup_database, period_end
     ):
@@ -585,7 +583,9 @@ class TestWebhookEndpoint:
         assert sub.current_period_end is not None
         assert int(as_utc(sub.current_period_end).timestamp()) == int(known.timestamp())
 
-    @pytest.mark.parametrize("item_period_end", ["not-a-timestamp", {}, None, 10**20])
+    @pytest.mark.parametrize(
+        "item_period_end", ["not-a-timestamp", {}, None, 10**20, True]
+    )
     async def test_an_unparseable_item_period_end_is_not_a_500(
         self, async_authorized_client, setup_database, item_period_end
     ):
