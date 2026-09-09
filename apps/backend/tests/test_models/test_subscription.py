@@ -6,13 +6,22 @@ revokes paid access:
 * a status Stripe sends that we do not model must not default to "entitled"
 * a canceled subscription must stop granting the tier it records
 * past-due must keep granting it, because Stripe retries for days
+* `unpaid` — where Stripe has GIVEN UP retrying — must not
+* an entitled status whose paid period has lapsed must stop granting it
 * no Subscription document at all must mean FREE, not a crash or a backfill
 """
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.billing.plans import METERED_METRICS, PLAN_LIMITS, UNLIMITED, limits_for
-from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
+from app.models.subscription import (
+    ENTITLEMENT_GRACE,
+    PlanTier,
+    Subscription,
+    SubscriptionStatus,
+)
 
 
 class TestStripeStatusMapping:
@@ -22,7 +31,7 @@ class TestStripeStatusMapping:
             ("active", SubscriptionStatus.ACTIVE),
             ("trialing", SubscriptionStatus.ACTIVE),
             ("past_due", SubscriptionStatus.PAST_DUE),
-            ("unpaid", SubscriptionStatus.PAST_DUE),
+            ("unpaid", SubscriptionStatus.CANCELED),
             ("canceled", SubscriptionStatus.CANCELED),
             ("paused", SubscriptionStatus.CANCELED),
             ("incomplete", SubscriptionStatus.INCOMPLETE),
@@ -53,6 +62,9 @@ def _sub(**kwargs) -> Subscription:
     kwargs.setdefault("user_id", "u-1")
     kwargs.setdefault("plan_tier", PlanTier.FREE)
     kwargs.setdefault("status", SubscriptionStatus.INCOMPLETE)
+    # `model_construct` skips defaults as well as validation, and `is_entitled`
+    # reads `updated_at` when no period end is known.
+    kwargs.setdefault("updated_at", datetime.now(UTC))
     return Subscription.model_construct(**kwargs)
 
 
@@ -89,6 +101,129 @@ class TestEntitlement:
         assert sub.plan_tier == PlanTier.FREE
         assert not sub.is_entitled
         assert sub.effective_tier == PlanTier.FREE
+
+
+def _at(offset: timedelta) -> datetime:
+    return datetime.now(UTC) + offset
+
+
+class TestUnpaidIsTerminal:
+    """`past_due` and `unpaid` are not the same thing in Stripe (#458).
+
+    `past_due` means a payment failed and Stripe is **still retrying**.
+    `unpaid` is what a subscription becomes once Stripe has exhausted its retries
+    and given up — it is terminal, and mapping it onto `past_due` handed permanent
+    paid entitlement to a customer whose payments had permanently failed.
+    """
+
+    def test_unpaid_does_not_map_to_past_due(self):
+        assert SubscriptionStatus.from_stripe("unpaid") != SubscriptionStatus.PAST_DUE
+
+    def test_unpaid_is_not_entitled(self):
+        mapped = SubscriptionStatus.from_stripe("unpaid")
+        assert not _sub(
+            status=mapped, current_period_end=_at(timedelta(days=30))
+        ).is_entitled
+
+    def test_an_unpaid_pro_tenant_is_enforced_as_free(self):
+        sub = _sub(
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.from_stripe("unpaid"),
+            current_period_end=_at(timedelta(days=30)),
+        )
+        assert sub.effective_tier == PlanTier.FREE
+
+
+class TestEntitlementExpiry:
+    """An entitled status alone must not grant access forever (#458 AC3).
+
+    Nothing reconciles against Stripe on a schedule, so a missed webhook would
+    otherwise leave whatever status was last written in place indefinitely. The
+    paid period is the backstop.
+    """
+
+    def test_an_active_subscription_whose_period_has_passed_is_not_entitled(self):
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=_at(-ENTITLEMENT_GRACE - timedelta(days=1)),
+        )
+        assert not sub.is_entitled
+
+    def test_past_due_inside_the_period_is_still_entitled(self):
+        sub = _sub(
+            status=SubscriptionStatus.PAST_DUE,
+            current_period_end=_at(timedelta(days=5)),
+        )
+        assert sub.is_entitled
+
+    def test_the_grace_window_is_honoured(self):
+        """Webhook lag and clock skew must not cut a paying customer off the
+        instant their period rolls over."""
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=_at(-ENTITLEMENT_GRACE + timedelta(hours=1)),
+        )
+        assert sub.is_entitled
+
+    def test_an_expired_pro_tenant_is_enforced_as_free(self):
+        sub = _sub(
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=_at(-ENTITLEMENT_GRACE - timedelta(days=1)),
+        )
+        assert sub.effective_tier == PlanTier.FREE
+
+    def test_a_naive_stored_period_end_is_not_a_typeerror(self):
+        """Mongo reads datetimes back **naive** (CLAUDE.md). Comparing one against
+        an aware `now` raises TypeError, which on the enforcement path is a 500 on
+        every metered request."""
+        naive = (datetime.now(UTC) + timedelta(days=5)).replace(tzinfo=None)
+        sub = _sub(status=SubscriptionStatus.ACTIVE, current_period_end=naive)
+
+        assert sub.is_entitled
+
+    def test_a_missing_period_end_does_not_revoke_access_immediately(self):
+        """`checkout.session.completed` establishes ACTIVE before the
+        tier-resolving `customer.subscription.created` arrives with the period end.
+        Revoking on *missing* data downgrades a customer who has just paid; the
+        expiry check is a backstop for a stale row, not a second payment gate."""
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=None,
+            updated_at=datetime.now(UTC),
+        )
+        assert sub.is_entitled
+
+    def test_a_missing_period_end_still_expires(self):
+        """"No period end" must not mean "entitled forever" — that is the #458 bug
+        with a different field. The follow-up event carrying the period end is
+        exactly the kind Stripe eventually gives up on, and such a row would hold
+        paid access with no expiry and no event left to arrive."""
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=None,
+            updated_at=datetime.now(UTC) - ENTITLEMENT_GRACE - timedelta(days=1),
+        )
+        assert not sub.is_entitled
+        assert sub.effective_tier == PlanTier.FREE
+
+    def test_a_known_period_end_wins_over_updated_at(self):
+        """`updated_at` bumps on every write, so preferring it would extend a
+        lapsed subscription every time any webhook touched the row."""
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=_at(-ENTITLEMENT_GRACE - timedelta(days=1)),
+            updated_at=datetime.now(UTC),
+        )
+        assert not sub.is_entitled
+
+    def test_expiry_does_not_resurrect_a_canceled_subscription(self):
+        """The period check is an AND, not an OR."""
+        sub = _sub(
+            status=SubscriptionStatus.CANCELED,
+            current_period_end=_at(timedelta(days=30)),
+        )
+        assert not sub.is_entitled
 
 
 class TestPlanLimits:

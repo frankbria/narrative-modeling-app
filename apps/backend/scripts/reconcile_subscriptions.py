@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Re-read every Subscription from Stripe and rewrite what has drifted (#458, #510).
+
+Two jobs, one script, because they are the same operation:
+
+* **#510's backfill.** Every row written before the `_period_end()` fix has a null
+  `current_period_end` — the pinned API version moved the field onto the
+  subscription item and nothing read it there. Those rows must be filled in
+  *before* they are judged against #458's expiry check.
+* **#458's reconciliation.** Webhook delivery is the only sync mechanism this
+  service has, and Stripe gives up retrying an event after about three days. The
+  expiry check makes a missed *lapse* fail closed on its own. A missed *renewal*
+  fails the other way — a paying customer loses their tier once the stale period
+  end goes past the grace window — and nothing but re-reading Stripe can repair
+  that. This is that repair.
+
+Deliberately a one-shot script rather than a scheduler: this service has no
+scheduler, and introducing one to cover a case that Stripe's own three-day retry
+window already makes rare is more machinery than the problem is worth. Run it from
+cron on the box, or by hand after an incident.
+
+Read-only by default. Reports counts only — no user ids, no Stripe ids — so its
+output is safe to paste into a public issue.
+
+Usage (from apps/backend, against whichever cluster you want to check):
+
+    MONGODB_URI=... MONGODB_DB=... STRIPE_SECRET_KEY=... \
+        uv run python scripts/reconcile_subscriptions.py
+    MONGODB_URI=... MONGODB_DB=... STRIPE_SECRET_KEY=... \
+        uv run python scripts/reconcile_subscriptions.py --apply
+
+Exit status is 1 when uncorrected drift remains, so it can gate a deploy.
+"""
+
+import asyncio
+import os
+import sys
+
+
+async def main() -> int:
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    from app.billing import stripe_client
+
+    apply = "--apply" in sys.argv[1:]
+
+    uri, db_name = os.getenv("MONGODB_URI"), os.getenv("MONGODB_DB")
+    if not uri or not db_name:
+        print("Set MONGODB_URI and MONGODB_DB.", file=sys.stderr)
+        return 2
+    if not stripe_client.is_configured():
+        print("Set STRIPE_SECRET_KEY — this script reads from Stripe.", file=sys.stderr)
+        return 2
+
+    client = AsyncIOMotorClient(uri)
+    try:
+        return await reconcile(
+            client[db_name]["subscriptions"], _fetch_from_stripe, apply
+        )
+    finally:
+        client.close()
+
+
+def _fetch_from_stripe(subscription_id: str) -> dict | None:
+    """The live subscription, or None if Stripe will not give it to us.
+
+    A single unreadable subscription must not abort a bulk repair — one deleted
+    test subscription would otherwise stop every real row behind it from being
+    fixed.
+    """
+    from app.billing import stripe_client
+
+    try:
+        stripe = stripe_client._client()
+        return dict(stripe.Subscription.retrieve(subscription_id))
+    except Exception as exc:  # noqa: BLE001 - any Stripe failure is per-row, not fatal
+        print(f"  could not read one subscription from Stripe: {type(exc).__name__}")
+        return None
+
+
+async def reconcile(collection, fetch, apply: bool) -> int:
+    """Compare each row against Stripe; rewrite status and period end under --apply.
+
+    `fetch` is injected so this can be tested against a fake without a Stripe
+    account, and so the caller decides what "read from Stripe" means.
+    """
+    # Imported here rather than at module scope so `--help`-style misuse and the
+    # env-var checks above fail before anything touches the app package.
+    from app.api.routes.billing_webhook import _period_end
+    from app.models.subscription import SubscriptionStatus
+    from app.utils.datetime import as_utc
+
+    total = drifted = repaired = unreadable = raced = 0
+
+    cursor = collection.find({"stripe_subscription_id": {"$type": "string"}})
+    async for row in cursor:
+        total += 1
+        remote = fetch(row["stripe_subscription_id"])
+        if remote is None:
+            unreadable += 1
+            continue
+
+        status = SubscriptionStatus.from_stripe(remote.get("status", "")).value
+        period_end = _period_end(remote)
+
+        changes = {}
+        if status != row.get("status"):
+            changes["status"] = status
+        # A null period end is the #510 symptom, so "unset locally, set remotely"
+        # counts as drift; equality alone would leave those rows behind. The stored
+        # value comes back naive (CLAUDE.md) — comparing it directly against the
+        # aware value from Stripe would mark every single row as drifted, forever.
+        stored = row.get("current_period_end")
+        if period_end is not None and (stored is None or as_utc(stored) != period_end):
+            changes["current_period_end"] = period_end
+        if not changes:
+            continue
+
+        drifted += 1
+        if apply:
+            # Conditional on the row not having moved since it was read. A webhook
+            # can land between the Stripe read above and this write — and it is
+            # newer than what the script fetched, so writing over it would undo a
+            # real cancellation and leave the row wrong until somebody happens to
+            # run this again. `_touch()` bumps `updated_at` on every Beanie save, so
+            # a lost race matches nothing and is counted rather than applied.
+            result = await collection.update_one(
+                {"_id": row["_id"], "updated_at": row.get("updated_at")},
+                {"$set": changes},
+            )
+            if result.modified_count:
+                repaired += 1
+            else:
+                raced += 1
+
+    print(f"subscriptions with a stripe id: {total}")
+    print(f"unreadable from stripe:         {unreadable}")
+    print(f"drifted from stripe:            {drifted}")
+    if apply:
+        print(f"repaired:                       {repaired}")
+        print(f"skipped (changed under us):     {raced}")
+        # A raced row is not a failure — a webhook wrote something newer than what
+        # was fetched, which is the outcome we want. Unreadable rows are, and they
+        # will not be fixed by running again with the same Stripe credentials.
+        return 1 if unreadable else 0
+
+    if drifted:
+        print("\nDrift found. Re-run with --apply to rewrite these rows from Stripe.")
+    if unreadable:
+        print("\nSome subscriptions could not be read from Stripe. --apply will not")
+        print("fix those: check the Stripe key's permissions and the account mode.")
+    if drifted or unreadable:
+        return 1
+    print("\nEvery subscription matches Stripe.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

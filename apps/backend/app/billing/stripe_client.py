@@ -64,6 +64,22 @@ def setting(name: str) -> str:
     return (getattr(settings, name, None) or "").strip()
 
 
+#: The Stripe API version this code is written against, pinned explicitly (#510).
+#:
+#: It matters because the payload SHAPE changes between versions, and one field
+#: this service depends on has already moved: `current_period_end` lives on the
+#: subscription *item* here, not on the subscription object, which is why
+#: `_period_end()` in the webhook reads both locations. Writing the version down
+#: means the next reader knows which reference to check rather than guessing from a
+#: blog post.
+#:
+#: Kept in step with the installed SDK's own default rather than diverging from it
+#: — `tests/test_billing/test_stripe_api_version.py` fails if an SDK bump moves the
+#: default, so a version change surfaces as a test to read rather than a silently
+#: reshaped payload.
+STRIPE_API_VERSION = "2026-07-29.dahlia"
+
+
 def _client():
     """The Stripe SDK, configured on first use.
 
@@ -78,6 +94,7 @@ def _client():
     import stripe
 
     stripe.api_key = key
+    stripe.api_version = STRIPE_API_VERSION
     return stripe
 
 

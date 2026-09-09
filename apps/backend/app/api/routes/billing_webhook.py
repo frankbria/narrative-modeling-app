@@ -202,13 +202,33 @@ async def _apply(
 def _period_end(obj: dict[str, Any]):
     """Stripe sends epoch seconds; the model stores a datetime.
 
-    Returns None rather than raising on anything not int-coercible (a future API
-    version sending a string, a schema quirk). Everything else in this file is
-    defensive about shape for one reason — an uncaught raise is a 500, and Stripe
-    retries a non-2xx forever. Losing a period-end is recoverable; a retry loop is
-    not.
+    **Two locations, checked in that order.** The pinned API version
+    (`STRIPE_API_VERSION`) no longer carries `current_period_end` on the
+    subscription object at all — it moved onto each subscription *item*, which the
+    installed SDK's own types confirm: `stripe/_subscription.py` has no such field
+    and `stripe/_subscription_item.py` does. Reading only the old location left the
+    field null on every real subscription. That was invisible while nothing read it
+    and catastrophic the moment `is_entitled` began to (#510, #458).
+
+    The old top-level location is still checked first because a webhook endpoint can
+    be pinned to an older API version than the SDK uses for outbound calls, and an
+    account can have several endpoints on different versions. Where both are present
+    they agree, and preferring the explicit top-level value keeps an older
+    integration reading exactly as it did before.
+
+    Only the FIRST item is read, matching `_price_id` — this product sells one plan
+    per subscription. All items of one subscription share a billing period anyway.
+
+    Returns None rather than raising on anything not int-coercible. Everything else
+    in this file is defensive about shape for one reason — an uncaught raise is a
+    500, and Stripe retries a non-2xx forever. Losing a period-end is recoverable; a
+    retry loop is not.
     """
     raw = obj.get("current_period_end")
+    if raw is None:
+        items = (obj.get("items") or {}).get("data") or []
+        if items and isinstance(items[0], dict):
+            raw = items[0].get("current_period_end")
     if raw is None:
         return None
     try:

@@ -1,56 +1,68 @@
-# Issue #457 — [P0.14] No STRIPE_* or PLAN_* variables reach the backend container
+# #458 (P0.15) + #510 (P1.32) — Stripe entitlement: `unpaid` and period expiry
 
-Branch: `fix/457-staging-stripe-env`
+**Scope**: both issues, together. #510 states explicitly *"Must land before or with
+P0.15"* — and it is confirmed real: the installed SDK (stripe 15.4.0, default API
+version `2026-07-29.dahlia`) has **no** `current_period_end` on `_subscription.py`;
+it exists only on `_subscription_item.py:67`. So `_period_end()` returns `None` for
+every real webhook today. Landing #458's expiry check alone would drop every paying
+customer to FREE at once.
 
-## Problem (verified)
-- `docker-compose.staging.yml` backend `environment:` block has zero `STRIPE_*` / `PLAN_*` keys.
-- `grep -rn STRIPE .env.staging.example .env.production.example apps/backend/.env.example docs/deployment/` → **no hits**.
-- Effect: `stripe_client.is_configured()` false → `/billing/checkout` 503, webhook 400 on every event,
-  `BillingStatus.configured=false`. All silent — degrading gracefully is deliberate (ADR-002).
+## Findings from exploration
 
-## Decisions (stated for the PR)
-- **AC2 — optional, not `${VAR:?}`.** Real Stripe keys are not yet provisioned on the box
-  (issue comment: `printenv | grep STRIPE_` returns nothing). A `${VAR:?}` guard would make
-  `scripts/deploy/preflight_staging_env.sh` fail the *next* deploy and take staging down.
-  So: `${VAR:-}` passthrough now, with an in-file comment naming the exact one-line switch
-  to `${VAR:?}` once the keys exist. The switch is filed as a follow-up issue.
-- **AC4 — `PLAN_*` not passed; `plans.py` defaults are intended.** The defaults are placeholders
-  (ADR-002, #474/P0.31), but the fix for that is real numbers in `plans.py`, one place, applied
-  everywhere. 12 env passthroughs would add 12 drift surfaces on a box whose config is
-  hand-maintained (#594). `_env_int` already falls back on a bad/empty value, so nothing is lost.
-- **`STRIPE_PUBLISHABLE_KEY` not passed.** Read into `Settings` but no code reads it back
-  (`grep` → config.py only) and the frontend has no Stripe code — checkout is hosted.
+- `app/models/subscription.py:66` maps `"unpaid" -> PAST_DUE`; `:161` `is_entitled`
+  reads status only.
+- `app/api/routes/billing_webhook.py:211` `_period_end()` reads the top-level field.
+- Entitlement readers: `metering.effective_tier_for` -> `enforcement.quota()`,
+  `billing.py:125` (UI), `api_keys.py:30` (rate-limit ceiling), webhook `_apply`.
+- No scheduler exists in the app (BackgroundTasks only). Precedent for one-shot
+  operator repair scripts: `scripts/fix_api_key_rate_limits.py` (#455).
 
-## Status: DONE — PR #597 (AC1-AC4); AC5 tracked as #598
+## Plan (TDD — RED first for each step)
 
-## Steps
-1. **RED** — `apps/backend/tests/test_security/test_staging_billing_env.py`: parse the real
-   compose + the real env examples. Assert the backend service passes the four vars, that
-   they are interpolated from the env file (not hardcoded), and that both env examples
-   document each one. Follows the `test_staging_ports.py` / `test_nginx_webhook_route.py`
-   precedent of parsing real artifacts.
-2. **RED** — startup-visibility test: a production-like env with no `STRIPE_SECRET_KEY`
-   logs a warning naming the missing vars. This is the "checklist that would catch the
-   omission" the issue asks for, and the only mechanism that survives a hand-edited box.
-3. **GREEN** — compose: add the four vars to the backend `environment:` block.
-4. **GREEN** — `.env.staging.example` + `apps/backend/.env.example`: document all four,
-   the `PLAN_*` decision, and the Stripe dashboard endpoint URL.
-5. **GREEN** — `app/main.py` lifespan: log billing configuration state next to the existing
-   "Auth mode" line.
-6. Verify: full backend gate suite, ruff, mypy, `preflight_staging_env.sh --self-check`.
-7. Demo: render the compose file with a fake `.env.staging` and show the four values landing
-   in the resolved backend env; run the app locally with those values and show
-   `/billing/status → configured: true` and a signed webhook writing an entitled Subscription.
+### 1. #510 — read `current_period_end` from the right place
+- `_period_end(obj)`: top-level if present (older API versions / older webhook
+  endpoint pins still send it), else `items.data[0].current_period_end`. Reuse
+  `_epoch`. Still never raises — Stripe retries a non-2xx forever.
+- Pin the API version explicitly: `STRIPE_API_VERSION` constant in
+  `app/billing/stripe_client.py`, set on the client in `_client()`.
+- Test: an SDK bump that changes the default version trips a test (guards the
+  payload shape assumption); a dahlia-shaped payload populates `current_period_end`;
+  a legacy top-level payload still works; unparseable values still yield `None`.
 
-## Known limitation (carried into the PR)
-**AC5 cannot be closed in this PR.** It needs (a) real Stripe test keys written into
-`.env.staging` on the box and (b) SSH to the staging VPS — this session has neither
-(SSH is blocked here). The code change is the whole of AC1–AC4; AC5 is an operator step,
-and a follow-up issue carries it with the exact commands.
+### 2. #458 AC1/AC2 — `unpaid` is terminal
+- `"unpaid": cls.CANCELED`. Docstring explains `past_due` (Stripe still retrying —
+  serve) vs `unpaid` (retries exhausted — terminal), so nobody re-merges them.
 
-## Outcome
-All steps done. Three defects found and fixed during verification (see
-`tasks/lessons.md`): a compose comment that made the deploy preflight demand a
-variable named `VAR`; a startup warning that claimed checkout was 503ing in the
-one state where it charges; and `is_configured()` treating a whitespace-only key
-as configured. Evidence: `apps/backend/docs/demos/issue-457-staging-stripe-env.md`.
+### 3. #458 AC3 — expiry in `is_entitled`
+- `is_entitled` = status entitled **AND** not lapsed.
+- Grace window: **3 days** past `current_period_end` (module constant
+  `ENTITLEMENT_GRACE`). Covers webhook lag, clock skew and Stripe's own retry
+  window without extending a free month.
+- `current_period_end is None` -> **no known expiry, stay entitled by status**.
+  Deliberate: a `checkout.session.completed` establishes ACTIVE before the
+  tier-resolving `customer.subscription.created` arrives with the period end, and
+  revoking on *missing* data downgrades a customer who has just paid. With step 1
+  landed, every real paid subscription carries a period end.
+- `as_utc()` on the stored value before comparing (Mongo reads back naive).
+
+### 4. #458 AC4 + #510 AC4 — reconciliation / backfill
+- `scripts/reconcile_subscriptions.py`: read-only by default, `--apply` re-fetches
+  each row's subscription from Stripe and rewrites status + period end. Serves as
+  both #510's backfill and #458's repair path.
+- Record the decision in the model docstring: webhook delivery is the primary sync
+  mechanism; the expiry check makes a missed *lapse* fail closed, and this script is
+  the repair path for a missed *renewal*. No scheduler is introduced.
+- File a follow-up issue: run/schedule the reconciliation on staging + production
+  (operator task — SSH is not available from here).
+
+### 5. Tests
+- `tests/test_models/test_subscription.py`: `unpaid` not entitled; expired ACTIVE
+  not entitled; `past_due` inside the period still entitled; within grace still
+  entitled; past grace not; `None` period end still entitled.
+- `tests/test_api/test_billing_webhook.py`: item-shaped payload populates the field.
+- Existing test at `test_subscription.py:26` asserting `unpaid -> PAST_DUE` must
+  flip (it encodes the bug).
+
+## Non-goals
+- No scheduler / cron infrastructure (AC4 permits the recorded decision).
+- No change to `PAST_DUE` semantics.
