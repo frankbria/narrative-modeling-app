@@ -22,7 +22,9 @@ describe('SiteFooter', () => {
     expect(screen.getByRole('link', { name: /^privacy$/i })).toHaveAttribute('href', '/legal/privacy')
   })
 
-  it('is a labelled landmark so the legal links are reachable by assistive tech', () => {
+  // It is the page's only contentinfo, so it needs no accessible name — the role
+  // alone is what makes the legal links reachable via landmark navigation.
+  it('is a contentinfo landmark', () => {
     render(<SiteFooter />)
     expect(screen.getByRole('contentinfo')).toBeInTheDocument()
   })

@@ -12,8 +12,8 @@ export default function PrivacyPage() {
     <>
       <h1>Privacy Policy</h1>
       <p className="lead">
-        Effective {COMPANY.effectiveDate}. This explains what the {COMPANY.serviceName} service
-        collects, who else sees it, and how long we keep it. It sits alongside our{' '}
+        Effective {COMPANY.effectiveDate}. This explains what the {COMPANY.serviceName}{' '}
+        service collects, who else sees it, and how long we keep it. It sits alongside our{' '}
         <Link href="/legal/terms">Terms of Service</Link>.
       </p>
 
@@ -21,8 +21,9 @@ export default function PrivacyPage() {
         <h2>1. Who we are</h2>
         <p>
           {COMPANY.legalEntity} operates the {COMPANY.serviceName}{' '}
-          service and is the controller of the personal data described here. Where you upload a dataset containing other people&rsquo;s
-          personal data, you are the controller of that data and we process it on your behalf.
+          service and is the controller of the personal data described here. Where you upload a
+          dataset containing other people&rsquo;s personal data, you are the controller of that
+          data and we process it on your behalf.
         </p>
       </section>
 
@@ -111,7 +112,8 @@ export default function PrivacyPage() {
           These features are optional in the sense that the rest of the product works without them,
           and the service runs with the AI features disabled when no API key is configured. If you
           do not want dataset content sent to OpenAI, do not use the AI panels — or tell us at{' '}
-          {COMPANY.privacyEmail} and we will disable them for your account.
+          {COMPANY.privacyEmail}{' '}
+          and we will disable them for your account.
         </p>
       </section>
 
@@ -129,15 +131,18 @@ export default function PrivacyPage() {
             want them gone.
           </li>
           <li>
-            <strong>Deleting everything</strong> — email {COMPANY.privacyEmail} and we will erase
-            all data we hold for you, including anything the self-service delete actions leave
-            behind. We complete these within 30 days and tell you what was removed.
+            <strong>Deleting everything</strong> — email {COMPANY.privacyEmail}{' '}
+            and we will erase the data we hold for you, including records the self-service delete
+            actions do not reach. We action these within 30 days, and the categories listed below
+            are retained afterwards. Ask us to confirm a specific dataset or model has been removed
+            and we will check it individually.
           </li>
           <li>
             <strong>Backups</strong> — database snapshots (hourly for two days, daily for a week,
             weekly for four weeks) and versioned file storage mean a deleted record can survive in
-            backups for up to {COMPANY.backupHorizonDays} days after deletion, after which it is
-            purged. We do not use these copies for anything other than disaster recovery.
+            backups for up to {COMPANY.backupHorizonDays}{' '}
+            days after deletion, after which it is purged. We do not use these copies for anything
+            other than disaster recovery.
           </li>
           <li>
             <strong>What we keep afterwards</strong> — invoices and payment records for as long as
@@ -158,7 +163,8 @@ export default function PrivacyPage() {
           do not sell or share personal information as those terms are defined by the CCPA.
         </p>
         <p>
-          Email {COMPANY.privacyEmail} to exercise any of these. We respond within 30 days and do not
+          Email {COMPANY.privacyEmail}{' '}
+          to exercise any of these. We respond within 30 days and do not
           charge for it. If you are in the EU, UK or EEA and are unsatisfied with our response, you
           may complain to your local supervisory authority.
         </p>

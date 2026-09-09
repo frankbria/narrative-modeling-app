@@ -346,7 +346,7 @@ app.include_router(
 
 # AGPL-3.0 §13: a network-deployed service must offer its users the
 # Corresponding Source. This is the machine-readable half of that offer
-# (the UI half is the frontend SourceOffer link).
+# (the UI half is the frontend SiteFooter link).
 SOURCE_CODE_URL = "https://github.com/frankbria/narrative-modeling-app"
 
 

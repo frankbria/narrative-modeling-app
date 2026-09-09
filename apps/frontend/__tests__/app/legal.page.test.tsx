@@ -87,11 +87,24 @@ describe('Privacy Policy', () => {
 
   it('does not promise deletion the erasure cascade does not perform (AC4)', () => {
     const { container } = render(<PrivacyPage />);
-    const text = container.textContent ?? '';
-    // Issue #497 proves the cascade misses trained models and their artifacts,
-    // so an unqualified "everything is deleted immediately" would be false.
-    expect(text).not.toMatch(/immediately and permanently delete all/i);
-    expect(text).toMatch(/trained models/i);
+    const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+
+    // #497: the cascade misses trained models and their S3 artifacts, AND reports
+    // success anyway. Three claims therefore have to stay off this page, each
+    // phrased the way it would actually be written back in:
+    expect(text).not.toMatch(/all data we hold for you/i); // unqualified completeness
+    expect(text).not.toMatch(/tell you what was removed/i); // an itemised accounting the manifest cannot back
+    expect(text).not.toMatch(/(permanently|immediately) delete (all|everything)/i);
+
+    // And the qualifications that make the remaining promise true have to stay ON
+    // it — a blanket rewrite would drop these, which the negatives alone miss.
+    expect(text).toMatch(/deleting a dataset does not delete the models/i);
+    expect(text).toMatch(/records the self-service delete actions do not reach/i);
+    expect(
+      within(screen.getByRole('heading', { name: /retention/i }).closest('section')!)
+        .getByText(/invoices and payment records/i),
+    ).toBeInTheDocument();
+
     expect(screen.getByRole('link', { name: new RegExp(COMPANY.privacyEmail, 'i') })).toHaveAttribute(
       'href',
       `mailto:${COMPANY.privacyEmail}`,

@@ -107,7 +107,8 @@ export default function TermsPage() {
           already paid for, and you keep access until then.
         </p>
         <p>
-          If you are not satisfied, email {COMPANY.supportEmail} within {COMPANY.refundWindowDays}{' '}
+          If you are not satisfied, email {COMPANY.supportEmail}{' '}
+          within {COMPANY.refundWindowDays}{' '}
           days of your first paid charge and we will refund it in full.
         </p>
         <p>
