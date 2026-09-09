@@ -696,3 +696,29 @@ class TestConfigurationWarning:
         assert warning is not None
         assert "tier" not in warning.lower(), warning
         assert "entitle" in warning.lower()
+
+    def test_a_whitespace_only_key_is_not_a_live_checkout(self, monkeypatch):
+        """A trailing newline out of an env file must not read as a working key.
+
+        `is_configured()` said yes to any non-empty string, so a blank key took the
+        "checkout is live" branch and produced a sentence with no consequence at
+        all — while every Stripe call would fail on an invalid API key.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "  \n", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert not stripe_client.is_configured()
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "503" in warning
+        assert not warning.endswith("but .")
+
+    def test_a_whitespace_only_key_cannot_build_a_client(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "  \n", raising=False)
+
+        with pytest.raises(stripe_client.BillingNotConfigured):
+            stripe_client._client()

@@ -37,6 +37,20 @@ class BillingNotConfigured(Exception):
     """
 
 
+def _setting(name: str) -> str:
+    """A billing setting, normalised, with blank meaning unset.
+
+    Every one of these arrives from an environment variable, and there are three
+    ways to get a blank one: compose passes `${STRIPE_SECRET_KEY:-}` so an absent
+    value becomes the empty string rather than `None`, an env file happily carries
+    `STRIPE_SECRET_KEY=` or a stray trailing newline, and an operator can leave the
+    placeholder's value off. None of those is a usable key, so all of them must
+    answer the same way here — otherwise the code that reports configuration and
+    the code that uses it disagree, and the report is the one that gets believed.
+    """
+    return (getattr(settings, name, None) or "").strip()
+
+
 def _client():
     """The Stripe SDK, configured on first use.
 
@@ -44,18 +58,19 @@ def _client():
     make the SDK a hard requirement of starting the app, which is exactly the
     coupling the free tier must not have.
     """
-    if not settings.STRIPE_SECRET_KEY:
+    key = _setting("STRIPE_SECRET_KEY")
+    if not key:
         raise BillingNotConfigured("STRIPE_SECRET_KEY is not set")
 
     import stripe
 
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_key = key
     return stripe
 
 
 def is_configured() -> bool:
     """Whether this deployment can start a paid flow at all."""
-    return bool(settings.STRIPE_SECRET_KEY)
+    return bool(_setting("STRIPE_SECRET_KEY"))
 
 
 #: Every variable the billing surface needs to work end to end, in the order an
@@ -93,14 +108,9 @@ def missing_configuration() -> list[str]:
     would have entitled anyone — worse than no Stripe at all. Naming each unset
     variable is what makes a half-provisioned deploy visible.
 
-    Blank counts as unset: compose passes `${STRIPE_SECRET_KEY:-}`, so an absent
-    value arrives as the empty string rather than as `None`.
+    Blank counts as unset — see `_setting`.
     """
-    return [
-        name
-        for name in _REQUIRED_SETTINGS
-        if not (getattr(settings, name, None) or "").strip()
-    ]
+    return [name for name in _REQUIRED_SETTINGS if not _setting(name)]
 
 
 def configuration_warning() -> str | None:
