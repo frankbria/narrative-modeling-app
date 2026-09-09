@@ -17,6 +17,7 @@ import pytest
 
 from app.billing.plans import METERED_METRICS, PLAN_LIMITS, UNLIMITED, limits_for
 from app.models.subscription import (
+    DUNNING_GRACE,
     ENTITLEMENT_GRACE,
     PlanTier,
     Subscription,
@@ -206,6 +207,35 @@ class TestEntitlementExpiry:
         )
         assert not sub.is_entitled
         assert sub.effective_tier == PlanTier.FREE
+
+    def test_dunning_outlasts_the_active_grace(self):
+        """Stripe's Smart Retries run out to roughly four weeks. Capping PAST_DUE at
+        the ACTIVE window would cut off a customer on day three whose card succeeds
+        on the retry on day eight — the exact opposite of the "serve through the
+        retries" policy stated on `is_entitled`."""
+        sub = _sub(
+            status=SubscriptionStatus.PAST_DUE,
+            current_period_end=_at(-ENTITLEMENT_GRACE - timedelta(days=5)),
+        )
+        assert sub.is_entitled
+
+    def test_dunning_is_still_bounded(self):
+        """Longer is not forever: a missed `unpaid` event must still lapse."""
+        sub = _sub(
+            status=SubscriptionStatus.PAST_DUE,
+            current_period_end=_at(-DUNNING_GRACE - timedelta(days=1)),
+        )
+        assert not sub.is_entitled
+        assert sub.effective_tier == PlanTier.FREE
+
+    def test_the_longer_window_does_not_apply_to_active(self):
+        """The two windows must not collapse into one — an ACTIVE row whose renewal
+        event never arrived has no dunning to wait for."""
+        sub = _sub(
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=_at(-ENTITLEMENT_GRACE - timedelta(days=1)),
+        )
+        assert not sub.is_entitled
 
     def test_a_known_period_end_wins_over_updated_at(self):
         """`updated_at` bumps on every write, so preferring it would extend a

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import settings as _settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 
 pytestmark = pytest.mark.asyncio
@@ -27,15 +28,25 @@ def _load_reconcile():
     return module.reconcile
 
 
-def _remote(status: str, period_end: int | None, *, on_item: bool = True) -> dict:
+def _remote(
+    status: str,
+    period_end: int | None,
+    *,
+    on_item: bool = True,
+    price: str | None = None,
+) -> dict:
     """A Stripe subscription payload in the pinned version's shape."""
     obj: dict = {"status": status, "id": "sub_x"}
-    if period_end is None:
-        return obj
-    if on_item:
-        obj["items"] = {"data": [{"current_period_end": period_end}]}
-    else:
-        obj["current_period_end"] = period_end
+    item: dict = {}
+    if price is not None:
+        item["price"] = {"id": price}
+    if period_end is not None:
+        if on_item:
+            item["current_period_end"] = period_end
+        else:
+            obj["current_period_end"] = period_end
+    if item:
+        obj["items"] = {"data": [item]}
     return obj
 
 
@@ -80,6 +91,52 @@ class TestReconcile:
         assert sub.status == SubscriptionStatus.CANCELED
         assert not sub.is_entitled
 
+    async def test_a_missed_upgrade_is_repaired(self, setup_database, monkeypatch):
+        """The tier drifts on its own. An upgrade keeps the same subscription, the
+        same status and the same period end and changes only the price, so a script
+        that compared only status and period end would report "everything matches"
+        while an ENTERPRISE customer was enforced as PRO."""
+        reconcile = _load_reconcile()
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
+        period_end = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
+        await _seed("u-upgrade", plan_tier=PlanTier.PRO, current_period_end=period_end)
+
+        code = await reconcile(
+            _collection(),
+            lambda _: _remote(
+                "active", int(period_end.timestamp()), price="price_ent"
+            ),
+            apply=True,
+        )
+
+        assert code == 0
+        sub = await Subscription.find_one(Subscription.user_id == "u-upgrade")
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+        assert sub.effective_tier == PlanTier.ENTERPRISE
+
+    async def test_a_payload_without_a_price_leaves_the_tier_alone(
+        self, setup_database
+    ):
+        """`tier_for_price` falls back to PRO rather than returning None, so passing
+        it unconditionally would silently downgrade an ENTERPRISE tenant whenever
+        Stripe answered without expanded item data. Same caution the webhook takes."""
+        reconcile = _load_reconcile()
+        period_end = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
+        await _seed(
+            "u-noprice", plan_tier=PlanTier.ENTERPRISE, current_period_end=period_end
+        )
+
+        await reconcile(
+            _collection(),
+            lambda _: _remote("active", int(period_end.timestamp())),
+            apply=True,
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == "u-noprice")
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+
     async def test_a_matching_row_is_not_counted_as_drift(self, setup_database):
         """The stored datetime comes back from Mongo naive. Comparing it against
         the aware value from Stripe without coercing would report every row on the
@@ -98,7 +155,7 @@ class TestReconcile:
             apply=False,
         )
 
-        assert code == 0
+        assert code == 0  # no price in the payload, so the tier is left alone
 
     async def test_a_dry_run_reports_drift_without_writing(self, setup_database):
         reconcile = _load_reconcile()

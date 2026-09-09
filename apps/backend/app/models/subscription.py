@@ -45,15 +45,27 @@ from pydantic import Field
 
 from app.utils.datetime import as_utc
 
-#: How long past `current_period_end` a subscription still grants its tier.
+#: How long past `current_period_end` an ACTIVE subscription still grants its tier.
 #:
-#: Not zero, because the period end is only as fresh as the last webhook: a
-#: renewal event delayed by Stripe's own retry backoff, or a few seconds of clock
-#: skew, would otherwise cut off a customer who has paid. Not weeks either — the
-#: window is free service. Three days matches the span over which Stripe retries
-#: a failed payment before giving up, so a subscription that is going to recover
-#: has recovered by the end of it.
+#: Not zero, because the period end is only as fresh as the last webhook: a renewal
+#: event delayed by Stripe's own delivery backoff, or a few seconds of clock skew,
+#: would otherwise cut off a customer who has already paid. Not weeks either — for a
+#: subscription Stripe believes is ACTIVE, the renewal has happened and the event is
+#: merely late, so this only has to outlast a delivery problem.
 ENTITLEMENT_GRACE = timedelta(days=3)
+
+#: The same, for a PAST_DUE subscription, where Stripe is actively dunning.
+#:
+#: Deliberately much longer, because `ENTITLEMENT_GRACE` alone would quietly rescind
+#: the PAST_DUE policy this module states twice over: Stripe's Smart Retries are
+#: configurable out to roughly four weeks, so a card that fails at renewal and
+#: succeeds on a retry on day eight would have been cut off on day three by a single
+#: shared window — "serve through the retries" in the docstring and "stop after
+#: three days" in the code. The clock is the backstop here, not the decision: the
+#: decision is the status change to `unpaid`/`canceled` that Stripe sends when it
+#: gives up, which `from_stripe` now maps to a non-entitled status. This only bounds
+#: how long a *missed* one of those events can go unnoticed.
+DUNNING_GRACE = timedelta(days=30)
 
 
 class PlanTier(str, Enum):
@@ -221,13 +233,22 @@ class Subscription(Document):
         arrive. Bounding the gap by the last thing we actually heard covers the
         ordering window without reopening the hole.
 
+        The grace differs by status — see `ENTITLEMENT_GRACE` and `DUNNING_GRACE`.
+        A PAST_DUE subscription is one Stripe is still retrying, and cutting it off
+        on the ACTIVE window would contradict the policy in the paragraph above.
+
         Mongo reads datetimes back naive, so both stored values are coerced with
         `as_utc` before being compared against an aware now (CLAUDE.md).
         """
         if self.status not in (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE):
             return False
+        grace = (
+            DUNNING_GRACE
+            if self.status is SubscriptionStatus.PAST_DUE
+            else ENTITLEMENT_GRACE
+        )
         lapses = self.current_period_end or self.updated_at
-        return as_utc(lapses) + ENTITLEMENT_GRACE > datetime.now(UTC)
+        return as_utc(lapses) + grace > datetime.now(UTC)
 
     @property
     def effective_tier(self) -> PlanTier:

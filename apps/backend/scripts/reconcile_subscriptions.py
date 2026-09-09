@@ -86,7 +86,7 @@ async def reconcile(collection, fetch, apply: bool) -> int:
     """
     # Imported here rather than at module scope so `--help`-style misuse and the
     # env-var checks above fail before anything touches the app package.
-    from app.api.routes.billing_webhook import _period_end
+    from app.api.routes.billing_webhook import _period_end, _price_id, tier_for_price
     from app.models.subscription import SubscriptionStatus
     from app.utils.datetime import as_utc
 
@@ -102,10 +102,25 @@ async def reconcile(collection, fetch, apply: bool) -> int:
 
         status = SubscriptionStatus.from_stripe(remote.get("status", "")).value
         period_end = _period_end(remote)
+        # The tier drifts on its own: an upgrade keeps the same subscription, the
+        # same status and the same period end, and changes only the price. A missed
+        # `customer.subscription.updated` there leaves a customer paying for
+        # ENTERPRISE and enforced as PRO, and a script that compared only status and
+        # period end would report "everything matches" while it happened.
+        price = _price_id(remote)
+        # No price means leave the tier alone, exactly as the webhook does:
+        # `tier_for_price` falls back to PRO rather than returning None, so passing
+        # it unconditionally would silently downgrade an ENTERPRISE tenant whenever
+        # Stripe answered without expanded item data.
+        tier = tier_for_price(price).value if price else None
 
         changes = {}
         if status != row.get("status"):
             changes["status"] = status
+        if tier is not None and tier != row.get("plan_tier"):
+            changes["plan_tier"] = tier
+        if price and price != row.get("stripe_price_id"):
+            changes["stripe_price_id"] = price
         # A null period end is the #510 symptom, so "unset locally, set remotely"
         # counts as drift; equality alone would leave those rows behind. The stored
         # value comes back naive (CLAUDE.md) — comparing it directly against the
@@ -147,8 +162,15 @@ async def reconcile(collection, fetch, apply: bool) -> int:
     if drifted:
         print("\nDrift found. Re-run with --apply to rewrite these rows from Stripe.")
     if unreadable:
-        print("\nSome subscriptions could not be read from Stripe. --apply will not")
-        print("fix those: check the Stripe key's permissions and the account mode.")
+        print("\nSome subscriptions could not be read from Stripe, and --apply will")
+        print("not fix those — they will keep this exit status at 1 every run. Two")
+        print("causes, and they need opposite responses:")
+        print("  * wrong account MODE (a test key against live ids, or the reverse):")
+        print("    every row reads as missing. Re-run with the matching key; do NOT")
+        print("    cancel anything, the subscriptions are real.")
+        print("  * the subscription really was deleted in Stripe: cancel that row by")
+        print("    hand. This script will not do it for you, because the two cases")
+        print("    look identical from here and one of them ends paid access.")
     if drifted or unreadable:
         return 1
     print("\nEvery subscription matches Stripe.")
