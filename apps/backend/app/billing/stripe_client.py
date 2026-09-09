@@ -69,6 +69,20 @@ _REQUIRED_SETTINGS = (
     "STRIPE_PRICE_ENTERPRISE",
 )
 
+#: What each one being unset actually costs, once `STRIPE_SECRET_KEY` is present
+#: and checkout is therefore live. Stated per-variable rather than as one sentence
+#: naming every consequence: a startup line that describes a missing price id as a
+#: webhook problem points the operator at the wrong fix, which for a diagnostic is
+#: the same as being wrong. `STRIPE_SECRET_KEY` has no entry — without it billing
+#: is simply off, which `configuration_warning` handles separately.
+_CONSEQUENCES = {
+    "STRIPE_WEBHOOK_SECRET": (
+        "the events that would entitle a paying customer are rejected"
+    ),
+    "STRIPE_PRICE_PRO": "the pro tier cannot be sold",
+    "STRIPE_PRICE_ENTERPRISE": "the enterprise tier cannot be sold",
+}
+
 
 def missing_configuration() -> list[str]:
     """Which billing variables are unset, for the startup log (#457).
@@ -111,11 +125,10 @@ def configuration_warning() -> str | None:
             "tenant stays on FREE limits."
         )
 
+    consequences = [_CONSEQUENCES[name] for name in missing if name in _CONSEQUENCES]
     return (
         f"Stripe is only PARTIALLY configured (unset: {', '.join(missing)}). "
-        "Checkout is live and can charge a customer, but an unset "
-        "STRIPE_WEBHOOK_SECRET means the event that would entitle them is thrown "
-        "away, and an unset price id makes that tier unsellable."
+        f"Checkout is live and can charge a customer, but {'; '.join(consequences)}."
     )
 
 

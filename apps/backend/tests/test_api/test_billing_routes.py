@@ -666,3 +666,33 @@ class TestConfigurationWarning:
         assert warning is not None
         assert "STRIPE_PRICE_ENTERPRISE" in warning
         assert "STRIPE_PRICE_PRO" not in warning
+
+    def test_the_consequence_matches_what_is_actually_missing(self, monkeypatch):
+        """A price-only gap must not be described as a webhook problem.
+
+        Naming every consequence unconditionally points the operator at the wrong
+        fix, which for a startup line is the same as being wrong: with the webhook
+        secret present, entitlement works fine and only one tier is unsellable.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "webhook" not in warning.lower(), warning
+        assert "enterprise" in warning.lower()
+
+    def test_a_webhook_only_gap_does_not_mention_unsellable_tiers(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "tier" not in warning.lower(), warning
+        assert "entitle" in warning.lower()
