@@ -357,3 +357,16 @@ passthrough guarantees the empty string rather than "unset", so every predicate 
 it needs the same normalisation — and there should be one place doing it, not two
 that can drift. Same shape as the #453 lesson about fixing a fall-open shared
 predicate at its source.
+
+**And then I made the same mistake one level down.** I normalised the *reporting*
+functions and left `_price_for`, `tier_for_price` and the webhook's signature check
+reading `settings.X` raw — the identical defect, in the same file's neighbours,
+against a principle I had just written into the PR body. claude-review caught it.
+Three consumers, three silent failures: a padded webhook secret makes every real
+Stripe signature mismatch (charged, never entitled, looks like a forgery); a padded
+price id downgrades enterprise customers to PRO; a blank price turns a clean 503
+into a 502. A whitespace-only secret was even *accepted* as a secret.
+
+**Apply:** "fix it at the source" is not finished when the source is fixed — grep
+for every other reader of the same value and convert them in the same commit.
+`grep -n 'settings\.STRIPE_' app/` was the whole audit, and it takes ten seconds.

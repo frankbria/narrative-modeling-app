@@ -145,6 +145,22 @@ entitled — strictly worse than no Stripe. It was also the state the first vers
 of the warning described incorrectly ("checkout answers 503"), caught by
 `codex review`.
 
+### A second bug this found
+
+Normalising blank-means-unset for `STRIPE_SECRET_KEY` alone left the same hole
+open at every *consumer*. A trailing newline out of an env file — the ordinary way
+to get one — then fails three different ways, all silent:
+
+| value | consumer | what happens |
+|---|---|---|
+| `STRIPE_WEBHOOK_SECRET=whsec_x\n` | `verify_signature` | HMAC key material, so **every genuine Stripe signature mismatches**. Checkout charges, nobody is ever entitled, and the 400 is indistinguishable from a forged request. A whitespace-*only* secret was worse still: it was accepted as a secret, and a request signed with that whitespace returned 200. |
+| `STRIPE_PRICE_ENTERPRISE=price_ent\n` | `tier_for_price` | never `==` the incoming price, and the function falls back to PRO — **every enterprise subscriber quietly downgraded**, webhook returns 200. |
+| `STRIPE_PRICE_PRO="   "` | `_price_for` | truthy, so `if not price_id` is skipped and the blank goes to Stripe — an opaque 502 instead of a clean 503. |
+
+`stripe_client.setting()` is now the single accessor for every `STRIPE_*` value.
+Found by `claude-review`; the tests for it are in `TestBlankAndPaddedSettingsAtTheConsumers`
+and `TestPaddedWebhookSecret`, and all six failed before the fix.
+
 ## AC5 — NOT closed by this PR
 
 `GET /api/v1/billing/status` returning `configured: true` **on staging**, and a

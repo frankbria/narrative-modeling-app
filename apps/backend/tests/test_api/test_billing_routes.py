@@ -806,3 +806,26 @@ class TestBlankAndPaddedSettingsAtTheConsumers:
         monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
 
         assert tier_for_price("price_pro") == PlanTier.PRO
+
+    def test_nothing_reads_a_stripe_setting_raw(self):
+        """The audit that would have caught this, as a guard (#457).
+
+        `settings.STRIPE_*` anywhere outside `stripe_client.setting()` is a reader
+        that skips normalisation — which is how the blank/padded fix came to be
+        applied to the reporting layer and not to the three consumers. Ten seconds
+        of grep, twice missed by hand.
+        """
+        import re
+        from pathlib import Path
+
+        app_dir = Path(__file__).resolve().parents[2] / "app"
+        offenders = [
+            f"{path.relative_to(app_dir.parent)}:{i}"
+            for path in app_dir.rglob("*.py")
+            for i, line in enumerate(path.read_text().splitlines(), 1)
+            if re.search(r"settings\.STRIPE_", line)
+        ]
+        assert not offenders, (
+            "read these through stripe_client.setting() so a blank or padded env "
+            f"value cannot mean different things in different places: {offenders}"
+        )
