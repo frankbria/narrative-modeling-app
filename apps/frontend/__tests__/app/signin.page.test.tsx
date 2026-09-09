@@ -55,3 +55,24 @@ describe('SignInPage open-redirect guard (issue #271)', () => {
     );
   });
 });
+
+describe('SignInPage legal notice (issue #473 AC5)', () => {
+  beforeEach(() => {
+    push.mockReset();
+    mockSignIn.mockReset();
+    sessionStatus = 'unauthenticated';
+    search = new URLSearchParams();
+  });
+
+  it('links the Terms and Privacy Policy from the sign-in flow', () => {
+    render(<SignInPage />);
+    expect(screen.getByRole('link', { name: /terms of service/i })).toHaveAttribute(
+      'href',
+      '/legal/terms',
+    );
+    expect(screen.getByRole('link', { name: /privacy policy/i })).toHaveAttribute(
+      'href',
+      '/legal/privacy',
+    );
+  });
+});

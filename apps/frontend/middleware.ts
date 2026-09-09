@@ -11,6 +11,14 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Terms and Privacy Policy (issue #473). These are read before anyone has an
+  // account — by prospective customers, by Stripe's reviewers, and by regulators
+  // — so they cannot sit behind the session wall. The trailing slash keeps the
+  // exemption to the /legal subtree: a future /legality page stays protected.
+  if (pathname.startsWith('/legal/')) {
+    return NextResponse.next();
+  }
+
   // API routes are guarded by their own handlers (which return 401 JSON on missing
   // sessions), not by page-redirect middleware. Let them through untouched.
   if (pathname.startsWith('/api/')) {

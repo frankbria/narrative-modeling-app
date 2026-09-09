@@ -40,6 +40,8 @@ describe('middleware (deny-by-default)', () => {
     '/dashboard',
     '/', // previously the only implicitly-covered root
     '/some-future-page', // proves new pages are protected automatically
+    '/legality', // the /legal public prefix must not leak onto a lookalike path
+    '/legal-review',
   ])('redirects requests without a valid session for protected page %s', async (pathname) => {
     mockGetToken.mockResolvedValue(null) // no / invalid token
     const res = await middleware(mockRequest(pathname))
@@ -59,6 +61,25 @@ describe('middleware (deny-by-default)', () => {
     expect(res.status).not.toBe(307)
     expect(mockGetToken).not.toHaveBeenCalled()
   })
+
+  // Issue #473: Stripe reviewers, regulators and prospective customers all read
+  // these before they have an account. Behind the session wall they are useless.
+  //
+  // Scope note: `mockRequest` sets nextUrl.pathname to the literal string given,
+  // so these cases cover what middleware itself decides and nothing more. Path
+  // normalisation (`/legal/../dashboard`, `//legal/terms`, `/legal%2F..`) happens
+  // in the routing layer BEFORE middleware runs, so a test passing those strings
+  // here would assert against a pathname the runtime never produces and would
+  // pass whether or not normalisation actually protects us. Those are verified
+  // against a real build instead — see the table in PR #601.
+  it.each(['/legal/terms', '/legal/privacy'])(
+    'always allows the public legal page %s (without checking a token)',
+    async (pathname) => {
+      const res = await middleware(mockRequest(pathname))
+      expect(res.status).not.toBe(307)
+      expect(mockGetToken).not.toHaveBeenCalled()
+    },
+  )
 
   it('does not redirect API routes (they self-guard with 401)', async () => {
     const res = await middleware(mockRequest('/api/chat', { method: 'POST' }))
