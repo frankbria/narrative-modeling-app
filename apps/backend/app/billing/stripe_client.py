@@ -37,6 +37,33 @@ class BillingNotConfigured(Exception):
     """
 
 
+def setting(name: str) -> str:
+    """A billing setting, normalised: blank means unset, and padding is stripped.
+
+    **Every consumer of a `STRIPE_*` value goes through here.** These all arrive
+    from environment variables, and there are three ordinary ways to get a bad one:
+    compose passes `${STRIPE_SECRET_KEY:-}` so an absent value becomes the empty
+    string rather than `None`, an env file happily carries `STRIPE_PRICE_PRO=` or a
+    trailing newline, and a pasted value picks up whitespace. Each consumer then
+    fails differently and silently:
+
+    * a padded `STRIPE_WEBHOOK_SECRET` is HMAC key material, so every genuine Stripe
+      signature mismatches — checkout keeps charging and nobody is ever entitled,
+      and the rejection looks exactly like a forged request;
+    * a padded `STRIPE_PRICE_ENTERPRISE` never `==` the incoming price, and
+      `tier_for_price` falls back to PRO, so enterprise customers are quietly
+      downgraded;
+    * a blank price is truthy, so `start_checkout`'s `if not price_id` guard is
+      skipped and the blank goes to Stripe — an opaque 502 instead of a clean 503.
+
+    Normalising in one place is the point: the predicate that *reports*
+    configuration must be the one the consuming code *uses*, or the report is the
+    one that gets believed. Fixing it for `STRIPE_SECRET_KEY` alone left exactly
+    that gap (#457).
+    """
+    return (getattr(settings, name, None) or "").strip()
+
+
 def _client():
     """The Stripe SDK, configured on first use.
 
@@ -44,18 +71,88 @@ def _client():
     make the SDK a hard requirement of starting the app, which is exactly the
     coupling the free tier must not have.
     """
-    if not settings.STRIPE_SECRET_KEY:
+    key = setting("STRIPE_SECRET_KEY")
+    if not key:
         raise BillingNotConfigured("STRIPE_SECRET_KEY is not set")
 
     import stripe
 
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_key = key
     return stripe
 
 
 def is_configured() -> bool:
     """Whether this deployment can start a paid flow at all."""
-    return bool(settings.STRIPE_SECRET_KEY)
+    return bool(setting("STRIPE_SECRET_KEY"))
+
+
+#: Every variable the billing surface needs to work end to end, in the order an
+#: operator provisions them. `STRIPE_PUBLISHABLE_KEY` is not here: it is read into
+#: `Settings` but nothing reads it back, and Checkout is hosted, so the frontend
+#: has no Stripe code to hand it to.
+_REQUIRED_SETTINGS = (
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_PRO",
+    "STRIPE_PRICE_ENTERPRISE",
+)
+
+#: What each one being unset actually costs, once `STRIPE_SECRET_KEY` is present
+#: and checkout is therefore live. Stated per-variable rather than as one sentence
+#: naming every consequence: a startup line that describes a missing price id as a
+#: webhook problem points the operator at the wrong fix, which for a diagnostic is
+#: the same as being wrong. `STRIPE_SECRET_KEY` has no entry — without it billing
+#: is simply off, which `configuration_warning` handles separately.
+_CONSEQUENCES = {
+    "STRIPE_WEBHOOK_SECRET": (
+        "the events that would entitle a paying customer are rejected"
+    ),
+    "STRIPE_PRICE_PRO": "the pro tier cannot be sold",
+    "STRIPE_PRICE_ENTERPRISE": "the enterprise tier cannot be sold",
+}
+
+
+def missing_configuration() -> list[str]:
+    """Which billing variables are unset, for the startup log (#457).
+
+    `is_configured()` is one boolean about one key, which cannot express the state
+    that actually costs money: a `STRIPE_SECRET_KEY` with no `STRIPE_WEBHOOK_SECRET`
+    reports `configured: true`, sells a subscription, and then rejects the event that
+    would have entitled anyone — worse than no Stripe at all. Naming each unset
+    variable is what makes a half-provisioned deploy visible.
+
+    Blank counts as unset — see `setting`.
+    """
+    return [name for name in _REQUIRED_SETTINGS if not setting(name)]
+
+
+def configuration_warning() -> str | None:
+    """The startup line for an incompletely configured deployment, or None (#457).
+
+    Two states, and conflating them is worse than saying nothing. With no
+    `STRIPE_SECRET_KEY` billing is simply off — checkout answers 503 and nobody can
+    be charged. With the secret key present but something else missing, checkout is
+    LIVE: it creates real sessions and takes real money, while the webhook that
+    would entitle the customer is rejected. Telling an operator "checkout answers
+    503" in that second state is exactly backwards, and it is the state most worth
+    getting right.
+    """
+    missing = missing_configuration()
+    if not missing:
+        return None
+
+    if not is_configured():
+        return (
+            f"Stripe is not configured (unset: {', '.join(missing)}). "
+            "POST /billing/checkout answers 503, webhooks are rejected, and every "
+            "tenant stays on FREE limits."
+        )
+
+    consequences = [_CONSEQUENCES[name] for name in missing if name in _CONSEQUENCES]
+    return (
+        f"Stripe is only PARTIALLY configured (unset: {', '.join(missing)}). "
+        f"Checkout is live and can charge a customer, but {'; '.join(consequences)}."
+    )
 
 
 async def _customer_id_for(user_id: str) -> str | None:

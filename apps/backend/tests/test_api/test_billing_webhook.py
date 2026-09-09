@@ -721,3 +721,45 @@ class TestWebhookEndpoint:
         )
 
         assert response.status_code == 400
+
+
+class TestPaddedWebhookSecret:
+    """A trailing newline on `STRIPE_WEBHOOK_SECRET` must not kill entitlement.
+
+    This is the highest-cost version of the blank/padded-env problem (#457, found
+    by claude-review on #597): the secret is HMAC key material, so a stray newline
+    from an env file or a copy-paste makes every genuine Stripe signature mismatch.
+    Checkout keeps succeeding, customers keep being charged, and not one of them is
+    ever entitled — and the rejection is indistinguishable from a forged request.
+    """
+
+    async def test_a_padded_secret_still_verifies_a_real_signature(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        monkeypatch.setattr(
+            _settings, "STRIPE_WEBHOOK_SECRET", f"{SECRET}\n", raising=False
+        )
+        payload = event("charge.refunded", {"metadata": {"user_id": TEST_USER}})
+
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH,
+            content=payload,
+            headers={"Stripe-Signature": sign(payload)},
+        )
+
+        assert response.status_code == 200
+
+    async def test_a_blank_secret_still_refuses_to_verify(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """Stripping must not turn "  " into a secret that signs nothing."""
+        monkeypatch.setattr(_settings, "STRIPE_WEBHOOK_SECRET", "   ", raising=False)
+        payload = event("charge.refunded", {"metadata": {"user_id": TEST_USER}})
+
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH,
+            content=payload,
+            headers={"Stripe-Signature": sign(payload, "   ")},
+        )
+
+        assert response.status_code == 400

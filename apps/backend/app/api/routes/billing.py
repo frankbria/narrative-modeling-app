@@ -102,10 +102,16 @@ class BillingStatus(BaseModel):
 
 
 def _price_for(tier: PlanTier) -> str | None:
-    return {
-        PlanTier.PRO: settings.STRIPE_PRICE_PRO,
-        PlanTier.ENTERPRISE: settings.STRIPE_PRICE_ENTERPRISE,
+    """The configured price id for a tier, or None. Via `stripe_client.setting`
+    so a blank or padded env value answers the same way here as it does in the
+    startup report — see that function for what each one costs otherwise."""
+    name = {
+        PlanTier.PRO: "STRIPE_PRICE_PRO",
+        PlanTier.ENTERPRISE: "STRIPE_PRICE_ENTERPRISE",
     }.get(tier)
+    if name is None:
+        return None
+    return stripe_client.setting(name) or None
 
 
 @router.get("/status", response_model=BillingStatus)

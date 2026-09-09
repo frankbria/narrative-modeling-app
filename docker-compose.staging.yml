@@ -90,6 +90,37 @@ services:
       # would leave the "invite-only" beta open to any Google/GitHub account.
       # The frontend signIn callback is the primary gate; the backend mirrors it.
       INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:?INVITE_ALLOWLIST (comma-separated invitee emails) must be set in .env.staging}
+
+      # Billing (#365/#367, issue #457). Without these the backend runs on FREE
+      # limits and billing is INERT: /billing/checkout answers 503, every webhook
+      # is rejected for want of a signing secret, and BillingStatus.configured is
+      # false. That is a supported configuration (ADR-002), which is exactly why
+      # their absence was invisible here for as long as it was — nothing errors,
+      # the product simply cannot take money. The startup log now names any that
+      # are unset (app/main.py), so a half-provisioned deploy is visible.
+      #
+      # Deliberately OPTIONAL (`:-`) rather than guarded (`:?`), because
+      # scripts/deploy/preflight_staging_env.sh derives its required set from the
+      # `${VAR:?}` guards in this file: adding one for a key that is not yet in
+      # .env.staging fails the NEXT deploy and takes staging down. Once real
+      # values are provisioned, flip `:-` to `:?` on all four — that is the whole
+      # change, and tests/test_security/test_staging_billing_env.py is written to
+      # be updated at the same time.
+      #
+      # Note the half-configured trap: a secret key with no webhook secret takes
+      # money and entitles nobody, which is worse than no Stripe at all. Provision
+      # the four together, and point the Stripe dashboard endpoint at
+      # https://<host>/webhooks/stripe/webhook — outside /api/v1, see #456.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
+      # No PLAN_* overrides, deliberately (#457 AC4). The per-tier limits in
+      # app/billing/plans.py ARE the intended configuration; they are placeholders
+      # today and #474 replaces them there, in one place that applies to every
+      # environment. Twelve env passthroughs would add twelve ways for this box —
+      # whose config is partly hand-maintained (#594) — to silently disagree with
+      # the code, to buy an override nobody is asking for.
     volumes:
       - backend_logs:/app/logs
     depends_on:

@@ -423,6 +423,12 @@ jobs:
         run: |
           ./scripts/ops/test-configure-s3-backup.sh
           ./scripts/ops/test-verify-backup-config.sh
+          # preflight_staging_env.sh gates every staging deploy, and its parsing
+          # is subtle enough to have had a real bug: it derived the required set
+          # from the raw compose text, so a COMMENT documenting the ${VAR:?}
+          # pattern demanded a variable literally named VAR and failed the deploy
+          # (#457). The self-check covers that and the quoting/whitespace rules.
+          ./scripts/deploy/preflight_staging_env.sh --self-check
       # shellcheck's scripts/**/*.sh glob cannot see the bash inside workflow
       # `run:` blocks, and that is where three subtle bugs hid in #434 (a lost
       # summary under `bash -e`, a never-matching cron comparison). actionlint

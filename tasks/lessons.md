@@ -307,3 +307,66 @@ header override) were separately assertable, so nothing was lost by dropping it.
 honest answer is "nothing, I just prefer it", keep the config line and delete the
 assertion — or say plainly that it is a consistency check. A wrong *reason* attached
 to a passing test outlives the test.
+
+## #457 — a comment can become configuration
+
+`preflight_staging_env.sh` derives the *required* variable set by grepping the
+compose file for `${VAR:?}`. I added a comment explaining why the Stripe variables
+are deliberately *not* guarded — and the comment contains that pattern, so the
+preflight began demanding a variable literally named `VAR`. It would have failed
+the very next staging deploy, with an error naming a variable that appears nowhere
+in the file. Nothing about the failure points at a comment.
+
+Two separate things went wrong. The parser was text-based over a structured file
+and never considered comments; and I wrote prose *inside* the input to a parser I
+had just read, without asking whether it would be parsed. Documenting a pattern
+where the pattern is executable is a code change.
+
+**Apply:** if a file is machine-parsed, treat its comments as input until proven
+otherwise — and fix the parser rather than rewording the comment, since anyone who
+documents the pattern hits it again. The generalisation: whenever a tool's contract
+is "grep the source for X", writing about X is writing X.
+
+## #457 — the demo found what the tests could not, twice over
+
+Six tests were green when I ran `docker compose config` for the demo and the
+preflight failed. The tests asserted the compose file *contains* the right things;
+the demo ran the tool that *consumes* it. Tests over an artifact's contents cannot
+see a second consumer of the same artifact.
+
+`codex review` then found two more, both in code my own tests covered: the startup
+warning said "checkout answers 503" for a state where checkout is live and charging
+(the exact state the warning exists to catch), and `is_configured()` treated a
+whitespace-only key as configured. Both had passing tests — the tests asserted the
+variable *name* appeared in the message, never that the *claim* was true.
+
+**Apply:** for a diagnostic, assert the claim, not the vocabulary — `assert "503"
+not in warning` is the test that would have caught it. And run every consumer of a
+changed artifact in the demo, not just the one the change was aimed at.
+
+## #457 — a "is it configured?" predicate must be the one the consumer uses
+
+`is_configured()` was `bool(settings.STRIPE_SECRET_KEY)` while
+`missing_configuration()` stripped whitespace. A blank key therefore reported
+`configured: true` *and* appeared in the missing list — the report and the reality
+disagreed, and the report is the one an operator believes. Fixed with one
+normalising accessor both go through, rather than special-casing the caller.
+
+**Apply:** when a value arrives from the environment, blank is a value. `${VAR:-}`
+passthrough guarantees the empty string rather than "unset", so every predicate over
+it needs the same normalisation — and there should be one place doing it, not two
+that can drift. Same shape as the #453 lesson about fixing a fall-open shared
+predicate at its source.
+
+**And then I made the same mistake one level down.** I normalised the *reporting*
+functions and left `_price_for`, `tier_for_price` and the webhook's signature check
+reading `settings.X` raw — the identical defect, in the same file's neighbours,
+against a principle I had just written into the PR body. claude-review caught it.
+Three consumers, three silent failures: a padded webhook secret makes every real
+Stripe signature mismatch (charged, never entitled, looks like a forgery); a padded
+price id downgrades enterprise customers to PRO; a blank price turns a clean 503
+into a 502. A whitespace-only secret was even *accepted* as a secret.
+
+**Apply:** "fix it at the source" is not finished when the source is fixed — grep
+for every other reader of the same value and convert them in the same commit.
+`grep -n 'settings\.STRIPE_' app/` was the whole audit, and it takes ten seconds.

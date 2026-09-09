@@ -40,6 +40,7 @@ from app.middleware.api_version import APIVersionMiddleware
 from app.middleware.body_size_limit import BodySizeLimitMiddleware
 from app.middleware.error_handlers import RequestIDMiddleware, register_error_handlers
 from app.middleware.metrics import MetricsMiddleware, get_metrics
+from app.billing import stripe_client
 from app.billing.enforcement import QuotaRefundMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.services.rate_limit import build_rate_limit_store
@@ -93,6 +94,17 @@ async def lifespan(app: FastAPI):
         "BYPASSED via SKIP_AUTH" if SKIP_AUTH else "ENFORCED (NextAuth JWT)",
         get_environment(),
     )
+
+    # Billing configuration, stated the same way (issue #457). Running with no
+    # Stripe keys is supported (ADR-002) and silent, which is how staging shipped
+    # with billing inert and nothing noticed. The warning distinguishes "billing is
+    # off" from "checkout is live but cannot entitle anyone", because those call for
+    # opposite reactions.
+    billing_warning = stripe_client.configuration_warning()
+    if billing_warning is None:
+        logger.info("Billing: Stripe configured")
+    else:
+        logger.warning("Billing: %s", billing_warning)
 
     # Connect to DB (single place, all models via the canonical registry)
     mongo_uri = os.getenv("MONGODB_URI")

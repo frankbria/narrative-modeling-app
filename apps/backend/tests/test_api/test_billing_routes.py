@@ -528,3 +528,304 @@ class TestLazyInitialisation:
 
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
         assert stripe_client.is_configured()
+
+
+class TestConfigurationVisibility:
+    """#457: an unconfigured deployment must SAY so, not just quietly answer 503.
+
+    Billing degrading gracefully with no Stripe keys is deliberate (ADR-002), so a
+    deployment that was never given the keys looks identical to one that does not
+    want them — which is how staging shipped with billing inert and nothing noticed.
+    `missing_configuration()` is what makes the difference visible in the startup
+    log, and a log line is the only checklist that survives a hand-maintained box
+    (#594) or a compose file someone edits by hand.
+    """
+
+    def test_reports_every_unset_variable(self, monkeypatch):
+        for var in (
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ):
+            monkeypatch.setattr(settings, var, None, raising=False)
+
+        assert stripe_client.missing_configuration() == [
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ]
+
+    def test_reports_nothing_when_fully_configured(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.missing_configuration() == []
+
+    def test_a_half_configured_deployment_is_the_interesting_case(self, monkeypatch):
+        """A secret key with no webhook secret takes money and never entitles anyone.
+
+        `is_configured()` is true here, so `/billing/status` reports `configured: true`
+        and checkout works — while every webhook is rejected for want of a signing
+        secret. That is strictly worse than no Stripe at all, and it is the case a
+        single `is_configured()` boolean cannot express.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.is_configured()
+        assert stripe_client.missing_configuration() == ["STRIPE_WEBHOOK_SECRET"]
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        """Compose passes `${STRIPE_SECRET_KEY:-}`, so an absent value arrives as ''.
+
+        `os.getenv` then returns the empty string rather than None, so a `is not None`
+        check would report a blank deployment as fully configured — the exact failure
+        this whole guard exists to prevent.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "  ", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.missing_configuration() == [
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+        ]
+
+
+class TestConfigurationWarning:
+    """The startup line must not lie about the one state it exists to catch (#457).
+
+    Saying "checkout answers 503" when `STRIPE_SECRET_KEY` is set is exactly
+    backwards: checkout sells, the customer is charged, and the webhook that would
+    have entitled them is rejected. An operator reading that line would conclude no
+    money can move, which is the opposite of what is happening.
+    """
+
+    def test_silent_when_fully_configured(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.configuration_warning() is None
+
+    def test_billing_off_says_nothing_can_be_sold(self, monkeypatch):
+        for var in (
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ):
+            monkeypatch.setattr(settings, var, None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "503" in warning
+        assert "FREE" in warning
+        assert "STRIPE_SECRET_KEY" in warning
+
+    def test_half_configured_says_checkout_can_still_charge(self, monkeypatch):
+        """Secret key set, webhook secret missing — the dangerous state."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "STRIPE_WEBHOOK_SECRET" in warning
+        # The claim that must NOT appear: checkout is live here.
+        assert "503" not in warning
+        assert "charge" in warning.lower()
+
+    def test_a_missing_price_alone_still_warns(self, monkeypatch):
+        """One price id missing sells the other tier fine and 503s only that tier."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "STRIPE_PRICE_ENTERPRISE" in warning
+        assert "STRIPE_PRICE_PRO" not in warning
+
+    def test_the_consequence_matches_what_is_actually_missing(self, monkeypatch):
+        """A price-only gap must not be described as a webhook problem.
+
+        Naming every consequence unconditionally points the operator at the wrong
+        fix, which for a startup line is the same as being wrong: with the webhook
+        secret present, entitlement works fine and only one tier is unsellable.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "webhook" not in warning.lower(), warning
+        assert "enterprise" in warning.lower()
+
+    def test_a_webhook_only_gap_does_not_mention_unsellable_tiers(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "tier" not in warning.lower(), warning
+        assert "entitle" in warning.lower()
+
+    def test_a_whitespace_only_key_is_not_a_live_checkout(self, monkeypatch):
+        """A trailing newline out of an env file must not read as a working key.
+
+        `is_configured()` said yes to any non-empty string, so a blank key took the
+        "checkout is live" branch and produced a sentence with no consequence at
+        all — while every Stripe call would fail on an invalid API key.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "  \n", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert not stripe_client.is_configured()
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "503" in warning
+        assert not warning.endswith("but .")
+
+    def test_a_whitespace_only_key_cannot_build_a_client(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "  \n", raising=False)
+
+        with pytest.raises(stripe_client.BillingNotConfigured):
+            stripe_client._client()
+
+
+class TestBlankAndPaddedSettingsAtTheConsumers:
+    """The normalisation must reach the code that USES the values, not only the
+    code that reports on them (#457, found by claude-review on #597).
+
+    `setting()` closed this for `STRIPE_SECRET_KEY`, but `_price_for`,
+    `tier_for_price` and the webhook's signature check still read `settings.X`
+    raw. A trailing newline out of an env file is the ordinary way to get one of
+    these, and each consumer fails differently and silently.
+    """
+
+    async def test_a_blank_price_is_configuration_not_a_stripe_call(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """`if not price_id` is skipped by whitespace, so the blank goes to Stripe.
+
+        The clean 503 "this deployment cannot sell that tier" becomes an opaque 502
+        from the provider rejecting a nonsense price.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "   ", raising=False)
+
+        resp = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": f"{APP_ORIGIN}/ok",
+                "cancel_url": f"{APP_ORIGIN}/no",
+            },
+        )
+        assert resp.status_code == 503
+
+    async def test_a_padded_price_still_reaches_stripe_intact(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """`STRIPE_PRICE_PRO=price_pro\\n` must buy the pro plan, not 502."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", " price_pro\n", raising=False)
+
+        seen: dict[str, str] = {}
+
+        async def fake_session(user_id, price_id, success_url, cancel_url):
+            seen["price_id"] = price_id
+            return {"url": "https://checkout.stripe.com/c/pay/cs", "id": "cs"}
+
+        monkeypatch.setattr(stripe_client, "create_checkout_session", fake_session)
+
+        resp = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": f"{APP_ORIGIN}/ok",
+                "cancel_url": f"{APP_ORIGIN}/no",
+            },
+        )
+        assert resp.status_code == 200
+        assert seen["price_id"] == "price_pro"
+
+    def test_a_padded_price_still_maps_back_to_its_tier(self, monkeypatch):
+        """The quiet one: an enterprise subscriber silently entitled to PRO.
+
+        `tier_for_price` compares the incoming price against the configured value
+        with `==`, and falls back to PRO on no match. A trailing newline on
+        STRIPE_PRICE_ENTERPRISE therefore downgrades every enterprise customer,
+        with no error anywhere.
+        """
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent\n", raising=False
+        )
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+        assert tier_for_price("price_ent") == PlanTier.ENTERPRISE
+
+    def test_a_blank_configured_price_matches_nothing(self, monkeypatch):
+        """A blank configured value must not be compared at all."""
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", "  ", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+        assert tier_for_price("price_pro") == PlanTier.PRO
+
+    def test_nothing_reads_a_stripe_setting_raw(self):
+        """The audit that would have caught this, as a guard (#457).
+
+        `settings.STRIPE_*` anywhere outside `stripe_client.setting()` is a reader
+        that skips normalisation — which is how the blank/padded fix came to be
+        applied to the reporting layer and not to the three consumers. Ten seconds
+        of grep, twice missed by hand.
+        """
+        import re
+        from pathlib import Path
+
+        app_dir = Path(__file__).resolve().parents[2] / "app"
+        offenders = [
+            f"{path.relative_to(app_dir.parent)}:{i}"
+            for path in app_dir.rglob("*.py")
+            for i, line in enumerate(path.read_text().splitlines(), 1)
+            if re.search(r"settings\.STRIPE_", line)
+        ]
+        assert not offenders, (
+            "read these through stripe_client.setting() so a blank or padded env "
+            f"value cannot mean different things in different places: {offenders}"
+        )

@@ -15,14 +15,20 @@ if [ "${1:-}" = "--self-check" ]; then
   # The value parsing below is the only non-obvious logic here, so it gets one
   # runnable check. No test framework in this repo for scripts/ — this is it.
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-  printf 'services:\n  a:\n    environment:\n      - X=${SET:?req}\n      - Y=${EMPTY:?req}\n      - Z=${QUOTED_EMPTY:?req}\n      - W=${SPACES:?req}\n      - V=${ABSENT:?req}\n' > "$tmp/compose.yml"
+  printf 'services:\n  a:\n    environment:\n      # docs mentioning ${COMMENTED:?...} must not become requirements\n      - X=${SET:?req}\n      - Y=${EMPTY:?req}\n      - Z=${QUOTED_EMPTY:?req}\n      - W=${SPACES:?req}\n      - V=${ABSENT:?req}\n      - U=${TRAILING:?req}  # unlike ${ALSO_COMMENTED:?...} after a value\n' > "$tmp/compose.yml"
   printf 'SET=real-value\nEMPTY=\nQUOTED_EMPTY=""\nSPACES=   \n' > "$tmp/env"
   out=$("$0" "$tmp/compose.yml" "$tmp/env" 2>&1) && { echo "self-check FAILED: expected exit 1"; exit 1; }
-  for v in EMPTY QUOTED_EMPTY SPACES ABSENT; do
+  for v in EMPTY QUOTED_EMPTY SPACES ABSENT TRAILING; do
     grep -q -- "- $v" <<<"$out" || { echo "self-check FAILED: $v not reported missing"; echo "$out"; exit 1; }
   done
   grep -q -- "- SET" <<<"$out" && { echo "self-check FAILED: SET wrongly reported missing"; exit 1; }
-  printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nABSENT=x\n' > "$tmp/env"
+  # A comment DOCUMENTING the guard pattern must not create a requirement — a
+  # compose file that explains ${VAR:?} in prose would otherwise fail every
+  # deploy demanding a variable literally named after the example (issue #457).
+  for v in COMMENTED ALSO_COMMENTED; do
+    grep -q -- "- $v" <<<"$out" && { echo "self-check FAILED: $v came from a comment"; echo "$out"; exit 1; }
+  done
+  printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nABSENT=x\nTRAILING=x\n' > "$tmp/env"
   "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: expected exit 0"; exit 1; }
   echo "self-check OK"; exit 0
 fi
@@ -33,10 +39,20 @@ env_file="${2:-.env.staging}"
 [ -f "$compose_file" ] || { echo "preflight: compose file not found: $compose_file" >&2; exit 2; }
 [ -f "$env_file" ] || { echo "preflight: env file not found: $env_file" >&2; exit 2; }
 
-# Names inside ${VAR:?...} guards in the compose file. `|| true` because grep
-# exits 1 on no matches, which under `set -e` + `pipefail` would abort the whole
-# script with no diagnostic if the compose file ever has zero guards.
-required=$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:\?' "$compose_file" \
+# Names inside ${VAR:?...} guards in the compose file.
+#
+# Comments are stripped FIRST. A compose file that documents the guard pattern in
+# prose — which this one does, to say why the Stripe vars deliberately are not
+# guarded yet (#457) — would otherwise make every deploy demand a variable named
+# after the example. Nothing about that failure points at a comment. The sed drops
+# a `#` at the start of a line and one preceded by whitespace, which is where YAML
+# comments live; a `#` inside a guard's own message is only ever truncation, and
+# the variable name sits before it either way.
+#
+# `|| true` because grep exits 1 on no matches, which under `set -e` + `pipefail`
+# would abort the whole script with no diagnostic if the file ever has zero guards.
+required=$(sed -E 's/(^|[[:space:]])#.*$//' "$compose_file" \
+  | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:\?' \
   | sed -E 's/^\$\{//; s/:\?$//' | sort -u || true)
 
 missing=()
