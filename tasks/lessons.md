@@ -403,3 +403,43 @@ shape and concluded they were safe.
 **Do:** when a fix comes from one observation, record the *symptom*, the *one site*,
 the habit that sidesteps it, and the *detection command*. Claim a cause only after
 seeing it fail and not-fail on demand.
+
+## A lifecycle hook can make a seeded field a no-op, and the test still passes
+
+I added a test asserting that a repair script bumps `Subscription.updated_at`, seeding
+a deliberately stale value through the model: `_seed("u-touch", updated_at=stale)`. It
+passed. It also passed with the line under test **deleted** — the mutation check is the
+only reason I found out.
+
+The cause: `@before_event(Insert, Replace, Save, SaveChanges, Update)` on `_touch()`
+fires on **insert** too, so the seeded `stale` was overwritten with `now` before it ever
+reached Mongo. The assertion then compared now against now and was true for a reason
+that had nothing to do with the code under test.
+
+The class is wider than Beanie: any `default_factory`, `@before_event`, DB default, or
+ORM `onupdate` that owns a field makes "seed it, then assert on it" meaningless — and
+meaningless in the passing direction, which is the direction nobody investigates.
+
+**Do:** when a test's setup writes a field that some hook also owns, write it **past**
+the model (raw `collection.update_one`) and say why in a comment. And mutation-check
+every test whose whole point is that one line exists — deleting the line must turn the
+test red. Three guards were mutation-checked in that PR; two held, this one did not.
+
+**Related:** same family as [[chart-tests-use-real-recharts]] and the `__mocks__` trap —
+a test that never exercises the real thing fails silently by passing.
+
+## Adopting a review finding can open the next hole
+
+The GLM pass said the reconcile script ignored `plan_tier` drift. True, and I fixed it
+by reusing the webhook's `tier_for_price`. The next review round found that this *new*
+code would downgrade every ENTERPRISE tenant to PRO whenever run without
+`STRIPE_PRICE_*` set — because `tier_for_price` falls back to PRO for any price it
+cannot match against a **configured** setting, and the script is meant to run from an
+operator shell, which is exactly where env is thin.
+
+The fix was correct; the *context transfer* was not. A helper written for the server
+process carries the server process's assumptions about its environment.
+
+**Do:** when reusing an app-internal helper inside a script, cron entry or migration,
+re-derive what it reads from settings and whether that shell has it. And run the review
+loop again after adopting findings — the second round is not ceremony.
