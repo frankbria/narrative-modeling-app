@@ -722,3 +722,87 @@ class TestConfigurationWarning:
 
         with pytest.raises(stripe_client.BillingNotConfigured):
             stripe_client._client()
+
+
+class TestBlankAndPaddedSettingsAtTheConsumers:
+    """The normalisation must reach the code that USES the values, not only the
+    code that reports on them (#457, found by claude-review on #597).
+
+    `_setting()` closed this for `STRIPE_SECRET_KEY`, but `_price_for`,
+    `tier_for_price` and the webhook's signature check still read `settings.X`
+    raw. A trailing newline out of an env file is the ordinary way to get one of
+    these, and each consumer fails differently and silently.
+    """
+
+    async def test_a_blank_price_is_configuration_not_a_stripe_call(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """`if not price_id` is skipped by whitespace, so the blank goes to Stripe.
+
+        The clean 503 "this deployment cannot sell that tier" becomes an opaque 502
+        from the provider rejecting a nonsense price.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "   ", raising=False)
+
+        resp = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": f"{APP_ORIGIN}/ok",
+                "cancel_url": f"{APP_ORIGIN}/no",
+            },
+        )
+        assert resp.status_code == 503
+
+    async def test_a_padded_price_still_reaches_stripe_intact(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """`STRIPE_PRICE_PRO=price_pro\\n` must buy the pro plan, not 502."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", " price_pro\n", raising=False)
+
+        seen: dict[str, str] = {}
+
+        async def fake_session(user_id, price_id, success_url, cancel_url):
+            seen["price_id"] = price_id
+            return {"url": "https://checkout.stripe.com/c/pay/cs", "id": "cs"}
+
+        monkeypatch.setattr(stripe_client, "create_checkout_session", fake_session)
+
+        resp = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": f"{APP_ORIGIN}/ok",
+                "cancel_url": f"{APP_ORIGIN}/no",
+            },
+        )
+        assert resp.status_code == 200
+        assert seen["price_id"] == "price_pro"
+
+    def test_a_padded_price_still_maps_back_to_its_tier(self, monkeypatch):
+        """The quiet one: an enterprise subscriber silently entitled to PRO.
+
+        `tier_for_price` compares the incoming price against the configured value
+        with `==`, and falls back to PRO on no match. A trailing newline on
+        STRIPE_PRICE_ENTERPRISE therefore downgrades every enterprise customer,
+        with no error anywhere.
+        """
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent\n", raising=False
+        )
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+        assert tier_for_price("price_ent") == PlanTier.ENTERPRISE
+
+    def test_a_blank_configured_price_matches_nothing(self, monkeypatch):
+        """A blank configured value must not be compared at all."""
+        from app.api.routes.billing_webhook import tier_for_price
+
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", "  ", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+
+        assert tier_for_price("price_pro") == PlanTier.PRO

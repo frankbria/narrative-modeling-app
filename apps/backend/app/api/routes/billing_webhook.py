@@ -24,12 +24,12 @@ from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
 
+from app.billing import stripe_client
 from app.billing.api_keys import clamp_user_api_keys
 from app.billing.stripe_signature import (
     SignatureVerificationError,
     verify_signature,
 )
-from app.config import settings
 from app.models.subscription import (
     PlanTier,
     Subscription,
@@ -68,8 +68,8 @@ def tier_for_price(price_id: str | None) -> PlanTier:
         return PlanTier.PRO
 
     for tier, configured in (
-        (PlanTier.ENTERPRISE, settings.STRIPE_PRICE_ENTERPRISE),
-        (PlanTier.PRO, settings.STRIPE_PRICE_PRO),
+        (PlanTier.ENTERPRISE, stripe_client.setting("STRIPE_PRICE_ENTERPRISE")),
+        (PlanTier.PRO, stripe_client.setting("STRIPE_PRICE_PRO")),
     ):
         if configured and configured == price_id:
             return tier
@@ -338,7 +338,7 @@ async def stripe_webhook(
 
     try:
         verify_signature(
-            payload, stripe_signature, settings.STRIPE_WEBHOOK_SECRET or ""
+            payload, stripe_signature, stripe_client.setting("STRIPE_WEBHOOK_SECRET")
         )
     except SignatureVerificationError as exc:
         # 400, not 500: a bad request, and one that must not be retried.

@@ -37,16 +37,29 @@ class BillingNotConfigured(Exception):
     """
 
 
-def _setting(name: str) -> str:
-    """A billing setting, normalised, with blank meaning unset.
+def setting(name: str) -> str:
+    """A billing setting, normalised: blank means unset, and padding is stripped.
 
-    Every one of these arrives from an environment variable, and there are three
-    ways to get a blank one: compose passes `${STRIPE_SECRET_KEY:-}` so an absent
-    value becomes the empty string rather than `None`, an env file happily carries
-    `STRIPE_SECRET_KEY=` or a stray trailing newline, and an operator can leave the
-    placeholder's value off. None of those is a usable key, so all of them must
-    answer the same way here — otherwise the code that reports configuration and
-    the code that uses it disagree, and the report is the one that gets believed.
+    **Every consumer of a `STRIPE_*` value goes through here.** These all arrive
+    from environment variables, and there are three ordinary ways to get a bad one:
+    compose passes `${STRIPE_SECRET_KEY:-}` so an absent value becomes the empty
+    string rather than `None`, an env file happily carries `STRIPE_PRICE_PRO=` or a
+    trailing newline, and a pasted value picks up whitespace. Each consumer then
+    fails differently and silently:
+
+    * a padded `STRIPE_WEBHOOK_SECRET` is HMAC key material, so every genuine Stripe
+      signature mismatches — checkout keeps charging and nobody is ever entitled,
+      and the rejection looks exactly like a forged request;
+    * a padded `STRIPE_PRICE_ENTERPRISE` never `==` the incoming price, and
+      `tier_for_price` falls back to PRO, so enterprise customers are quietly
+      downgraded;
+    * a blank price is truthy, so `start_checkout`'s `if not price_id` guard is
+      skipped and the blank goes to Stripe — an opaque 502 instead of a clean 503.
+
+    Normalising in one place is the point: the predicate that *reports*
+    configuration must be the one the consuming code *uses*, or the report is the
+    one that gets believed. Fixing it for `STRIPE_SECRET_KEY` alone left exactly
+    that gap (#457).
     """
     return (getattr(settings, name, None) or "").strip()
 
@@ -58,7 +71,7 @@ def _client():
     make the SDK a hard requirement of starting the app, which is exactly the
     coupling the free tier must not have.
     """
-    key = _setting("STRIPE_SECRET_KEY")
+    key = setting("STRIPE_SECRET_KEY")
     if not key:
         raise BillingNotConfigured("STRIPE_SECRET_KEY is not set")
 
@@ -70,7 +83,7 @@ def _client():
 
 def is_configured() -> bool:
     """Whether this deployment can start a paid flow at all."""
-    return bool(_setting("STRIPE_SECRET_KEY"))
+    return bool(setting("STRIPE_SECRET_KEY"))
 
 
 #: Every variable the billing surface needs to work end to end, in the order an
@@ -110,7 +123,7 @@ def missing_configuration() -> list[str]:
 
     Blank counts as unset — see `_setting`.
     """
-    return [name for name in _REQUIRED_SETTINGS if not _setting(name)]
+    return [name for name in _REQUIRED_SETTINGS if not setting(name)]
 
 
 def configuration_warning() -> str | None:
