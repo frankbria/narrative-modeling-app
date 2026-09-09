@@ -728,7 +728,7 @@ class TestBlankAndPaddedSettingsAtTheConsumers:
     """The normalisation must reach the code that USES the values, not only the
     code that reports on them (#457, found by claude-review on #597).
 
-    `_setting()` closed this for `STRIPE_SECRET_KEY`, but `_price_for`,
+    `setting()` closed this for `STRIPE_SECRET_KEY`, but `_price_for`,
     `tier_for_price` and the webhook's signature check still read `settings.X`
     raw. A trailing newline out of an env file is the ordinary way to get one of
     these, and each consumer fails differently and silently.

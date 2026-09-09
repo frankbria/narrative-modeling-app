@@ -121,7 +121,7 @@ def missing_configuration() -> list[str]:
     would have entitled anyone — worse than no Stripe at all. Naming each unset
     variable is what makes a half-provisioned deploy visible.
 
-    Blank counts as unset — see `_setting`.
+    Blank counts as unset — see `setting`.
     """
     return [name for name in _REQUIRED_SETTINGS if not setting(name)]
 
