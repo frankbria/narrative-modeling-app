@@ -21,6 +21,8 @@ Branch: `fix/457-staging-stripe-env`
 - **`STRIPE_PUBLISHABLE_KEY` not passed.** Read into `Settings` but no code reads it back
   (`grep` → config.py only) and the frontend has no Stripe code — checkout is hosted.
 
+## Status: DONE — PR #597 (AC1-AC4); AC5 tracked as #598
+
 ## Steps
 1. **RED** — `apps/backend/tests/test_security/test_staging_billing_env.py`: parse the real
    compose + the real env examples. Assert the backend service passes the four vars, that
@@ -45,3 +47,10 @@ Branch: `fix/457-staging-stripe-env`
 `.env.staging` on the box and (b) SSH to the staging VPS — this session has neither
 (SSH is blocked here). The code change is the whole of AC1–AC4; AC5 is an operator step,
 and a follow-up issue carries it with the exact commands.
+
+## Outcome
+All steps done. Three defects found and fixed during verification (see
+`tasks/lessons.md`): a compose comment that made the deploy preflight demand a
+variable named `VAR`; a startup warning that claimed checkout was 503ing in the
+one state where it charges; and `is_configured()` treating a whitespace-only key
+as configured. Evidence: `apps/backend/docs/demos/issue-457-staging-stripe-env.md`.
