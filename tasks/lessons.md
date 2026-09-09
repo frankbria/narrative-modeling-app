@@ -370,3 +370,36 @@ into a 502. A whitespace-only secret was even *accepted* as a secret.
 **Apply:** "fix it at the source" is not finished when the source is fixed — grep
 for every other reader of the same value and convert them in the same commit.
 `grep -n 'settings\.STRIPE_' app/` was the whole audit, and it takes ten seconds.
+
+## Verify against a server you proved is current (#473 / PR #601)
+
+`npm start` survived `lsof -ti:PORT | xargs kill` more than once during this run. I
+rebuilt, re-curled, and reported "verified against a real build" — while reading a
+**stale server** that still served the pre-fix text. The venue fix and four `mailto:`
+links were all absent from what I was calling verified output, and it looked exactly
+like a successful check.
+
+What makes this dangerous is that a stale server produces *plausible* output, not an
+error. The failure mode of a dead server (connection refused) is loud; the failure
+mode of a surviving one is a confident wrong answer.
+
+**Do:** after killing, assert the port is actually dead (`curl ... || echo down`) and
+`ps -eo pid,cmd | grep -c "[n]ext-server"` returns 0, before rebuilding. `rm -rf .next`
+so a stale artifact can't be served either. Then verify something that is *new* in this
+build as a canary — if the canary string is absent, the server is old, regardless of
+what else looks right.
+
+**Related:** the same class as [[verify-deployed-artifact-matches-repo]] — editing the
+repo file is not the same as changing what is serving. Here the gap was seconds old
+instead of months, which made it easier to miss, not harder.
+
+## A wrong causal claim in CLAUDE.md is worse than no claim
+
+I documented "two interpolations on one JSX line lose the space after the second" from
+a single observation. The GLM reviewer disproved it in one build: sibling lines with
+that exact shape render fine. Had it shipped, the next person would have hunted by
+shape and concluded they were safe.
+
+**Do:** when a fix comes from one observation, record the *symptom*, the *one site*,
+the habit that sidesteps it, and the *detection command*. Claim a cause only after
+seeing it fail and not-fail on demand.
