@@ -443,3 +443,24 @@ process carries the server process's assumptions about its environment.
 **Do:** when reusing an app-internal helper inside a script, cron entry or migration,
 re-derive what it reads from settings and whether that shell has it. And run the review
 loop again after adopting findings — the second round is not ceremony.
+
+## `git add -A <dir>` stages untracked scratch, and a scoped lint won't see it
+
+CI's Backend Lint went red on a commit where `ruff check app tests scripts` had passed
+locally. Cause: a `git add -A apps/backend` swept in `_demo_77.py` — pre-existing local
+scratch, untracked before the branch and untracked after — whose 26 `print`s are T201.
+My lint command named three directories; the file sat in the fourth place, the package
+root, so it was invisible to the check and visible to CI, which runs `ruff check .`.
+
+Two habits failed together: staging by directory rather than by path, and linting a
+hand-listed subset instead of what CI actually runs. Either alone would have caught it.
+
+**Do:** stage the paths you changed (`git add <file>...`), or check `git status --short`
+for `A ` entries you did not write before committing. Run the *repo's own* lint
+invocation, not a scoped approximation of it — and when local and CI disagree, lint the
+committed tree (`git archive HEAD | tar -x -C tmp`) rather than the working directory,
+which is the only way to see what CI sees.
+
+**Related:** [[backend-lint-scope-and-pytest-summary]] already records that CI runs
+`ruff check .` from `apps/backend` and therefore sees untracked files — I had that note
+and still scoped the command. Knowing the rule is not the same as running it.
