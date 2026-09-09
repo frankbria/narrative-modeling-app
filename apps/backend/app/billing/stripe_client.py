@@ -58,6 +58,37 @@ def is_configured() -> bool:
     return bool(settings.STRIPE_SECRET_KEY)
 
 
+#: Every variable the billing surface needs to work end to end, in the order an
+#: operator provisions them. `STRIPE_PUBLISHABLE_KEY` is not here: it is read into
+#: `Settings` but nothing reads it back, and Checkout is hosted, so the frontend
+#: has no Stripe code to hand it to.
+_REQUIRED_SETTINGS = (
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_PRO",
+    "STRIPE_PRICE_ENTERPRISE",
+)
+
+
+def missing_configuration() -> list[str]:
+    """Which billing variables are unset, for the startup log (#457).
+
+    `is_configured()` is one boolean about one key, which cannot express the state
+    that actually costs money: a `STRIPE_SECRET_KEY` with no `STRIPE_WEBHOOK_SECRET`
+    reports `configured: true`, sells a subscription, and then rejects the event that
+    would have entitled anyone — worse than no Stripe at all. Naming each unset
+    variable is what makes a half-provisioned deploy visible.
+
+    Blank counts as unset: compose passes `${STRIPE_SECRET_KEY:-}`, so an absent
+    value arrives as the empty string rather than as `None`.
+    """
+    return [
+        name
+        for name in _REQUIRED_SETTINGS
+        if not (getattr(settings, name, None) or "").strip()
+    ]
+
+
 async def _customer_id_for(user_id: str) -> str | None:
     """The Stripe customer we already know about for this tenant, if any."""
     sub = await Subscription.find_one(Subscription.user_id == user_id)

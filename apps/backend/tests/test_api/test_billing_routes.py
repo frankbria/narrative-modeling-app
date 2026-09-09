@@ -528,3 +528,78 @@ class TestLazyInitialisation:
 
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
         assert stripe_client.is_configured()
+
+
+class TestConfigurationVisibility:
+    """#457: an unconfigured deployment must SAY so, not just quietly answer 503.
+
+    Billing degrading gracefully with no Stripe keys is deliberate (ADR-002), so a
+    deployment that was never given the keys looks identical to one that does not
+    want them — which is how staging shipped with billing inert and nothing noticed.
+    `missing_configuration()` is what makes the difference visible in the startup
+    log, and a log line is the only checklist that survives a hand-maintained box
+    (#594) or a compose file someone edits by hand.
+    """
+
+    def test_reports_every_unset_variable(self, monkeypatch):
+        for var in (
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ):
+            monkeypatch.setattr(settings, var, None, raising=False)
+
+        assert stripe_client.missing_configuration() == [
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ]
+
+    def test_reports_nothing_when_fully_configured(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.missing_configuration() == []
+
+    def test_a_half_configured_deployment_is_the_interesting_case(self, monkeypatch):
+        """A secret key with no webhook secret takes money and never entitles anyone.
+
+        `is_configured()` is true here, so `/billing/status` reports `configured: true`
+        and checkout works — while every webhook is rejected for want of a signing
+        secret. That is strictly worse than no Stripe at all, and it is the case a
+        single `is_configured()` boolean cannot express.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.is_configured()
+        assert stripe_client.missing_configuration() == ["STRIPE_WEBHOOK_SECRET"]
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        """Compose passes `${STRIPE_SECRET_KEY:-}`, so an absent value arrives as ''.
+
+        `os.getenv` then returns the empty string rather than None, so a `is not None`
+        check would report a blank deployment as fully configured — the exact failure
+        this whole guard exists to prevent.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "  ", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.missing_configuration() == [
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+        ]
