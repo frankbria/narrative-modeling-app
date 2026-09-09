@@ -109,6 +109,26 @@ describe('Plan & usage', () => {
     )
   })
 
+  // #473 AC5: the checkout surface has to carry the terms the charge is made
+  // under. This is the page that sends the customer to Stripe.
+  it('shows the terms and refund policy alongside the upgrade button', async () => {
+    mockStatus(status())
+
+    render(<BillingSettingsPage />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /upgrade to pro/i })).toBeInTheDocument()
+    )
+    expect(screen.getByRole('link', { name: /terms of service/i })).toHaveAttribute(
+      'href',
+      '/legal/terms'
+    )
+    expect(screen.getByRole('link', { name: /refund policy/i })).toHaveAttribute(
+      'href',
+      '/legal/terms#refunds'
+    )
+  })
+
   it('offers management, not an upgrade, on a paid tier', async () => {
     mockStatus(status({ tier: 'pro', status: 'active' }))
 

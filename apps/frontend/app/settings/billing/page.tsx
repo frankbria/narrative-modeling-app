@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useState } from 'react'
+import Link from 'next/link'
 
 const METRIC_LABELS: Record<string, string> = {
   training_runs: 'Training runs',
@@ -181,9 +182,23 @@ export default function BillingSettingsPage() {
           </AlertDescription>
         </Alert>
       ) : status.tier === 'free' ? (
-        <Button disabled={redirecting} onClick={() => go(() => BillingService.startCheckout('pro'))}>
-          {redirecting ? 'Redirecting…' : 'Upgrade to Pro'}
-        </Button>
+        <div className="space-y-2">
+          <Button disabled={redirecting} onClick={() => go(() => BillingService.startCheckout('pro'))}>
+            {redirecting ? 'Redirecting…' : 'Upgrade to Pro'}
+          </Button>
+          {/* The terms the charge is made under, at the point of the charge (#473). */}
+          <p className="text-xs text-muted-foreground">
+            Subscriptions renew monthly until cancelled. By upgrading you agree to our{' '}
+            <Link href="/legal/terms" className="text-primary hover:underline">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/legal/terms#refunds" className="text-primary hover:underline">
+              refund policy
+            </Link>
+            .
+          </p>
+        </div>
       ) : (
         <Button
           variant="outline"

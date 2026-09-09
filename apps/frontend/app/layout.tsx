@@ -12,7 +12,7 @@ import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
 import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
-import { SourceOffer } from '@/components/SourceOffer'
+import { SiteFooter } from '@/components/SiteFooter'
 
 export const metadata: Metadata = {
   title: 'Narrative Modeling App',
@@ -81,14 +81,14 @@ export default async function RootLayout({
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="flex-1 p-4 bg-muted min-h-screen flex flex-col items-center justify-center space-y-6 focus:outline-none"
+                className="flex-1 p-4 bg-muted min-h-screen flex flex-col items-center justify-center-safe space-y-6 focus:outline-none"
               >
                 {children}
               </main>
             )}
-            {/* AGPL-3.0 §13: source offer visible to all network users,
-                authenticated or not. */}
-            <SourceOffer />
+            {/* Source offer (AGPL-3.0 §13) plus the Terms/Privacy links, visible
+                to all network users, authenticated or not. */}
+            <SiteFooter />
           </WorkflowProvider>
         </SessionProvider>
         </ThemeProvider>

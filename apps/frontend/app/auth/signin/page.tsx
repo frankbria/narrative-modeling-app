@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Loader2 } from "lucide-react";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
+import Link from "next/link";
 import { sanitizeCallbackUrl } from "@/lib/safe-redirect";
 
 export default function SignInPage() {
@@ -137,6 +138,18 @@ export default function SignInPage() {
             <SiGithub title="GitHub" className="w-5 h-5" />
             Continue with GitHub
           </Button>
+
+          <p className="pt-2 text-center text-xs text-muted-foreground">
+            By continuing you agree to our{' '}
+            <Link href="/legal/terms" className="text-primary hover:underline">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/legal/privacy" className="text-primary hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </CardContent>
       </Card>
     </div>
