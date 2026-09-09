@@ -43,9 +43,22 @@ describe('Terms of Service', () => {
     }
   });
 
-  it('states the governing law the founder chose', () => {
-    render(<TermsPage />);
+  it('states the governing law the founder chose, with no second literal to drift', () => {
+    const { container } = render(<TermsPage />);
     expect(screen.getByText(new RegExp(COMPANY.governingLaw, 'i'))).toBeInTheDocument();
+    // The venue clause used to name the state again in prose, so changing
+    // COMPANY.governingLaw would have left "governed by X, litigated in Arizona".
+    // The state may appear only where it is interpolated.
+    const state = COMPANY.governingLaw.replace(/^State of /, '').replace(/,.*$/, '');
+    const mentions = (container.textContent ?? '').match(new RegExp(state, 'gi')) ?? [];
+    expect(mentions).toHaveLength(1);
+  });
+
+  it('makes the refund contact address actionable', () => {
+    render(<TermsPage />);
+    expect(
+      screen.getAllByRole('link', { name: new RegExp(COMPANY.supportEmail, 'i') }).length,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it('links to the Privacy Policy', () => {
@@ -105,10 +118,13 @@ describe('Privacy Policy', () => {
         .getByText(/invoices and payment records/i),
     ).toBeInTheDocument();
 
-    expect(screen.getByRole('link', { name: new RegExp(COMPANY.privacyEmail, 'i') })).toHaveAttribute(
-      'href',
-      `mailto:${COMPANY.privacyEmail}`,
-    );
+    // Every mention on a rights-exercise path is actionable, not just the one in
+    // the Contact section — asserting all of them is what makes that durable.
+    const contacts = screen.getAllByRole('link', { name: new RegExp(COMPANY.privacyEmail, 'i') });
+    expect(contacts.length).toBeGreaterThanOrEqual(4);
+    for (const link of contacts) {
+      expect(link).toHaveAttribute('href', `mailto:${COMPANY.privacyEmail}`);
+    }
   });
 
   it('records the cookie decision rather than deferring it (AC6)', () => {
@@ -119,10 +135,11 @@ describe('Privacy Policy', () => {
 
   // Guards a source-level typo only: a dropped space around an interpolated
   // constant reads as "Narrative Modeling Appservice" in a document customers
-  // read closely. It does NOT catch the server-render variant of the same
-  // defect — two interpolations on one JSX line lose the space after the second
-  // in the RSC output while rendering fine here — which is why both pages use an
-  // explicit {' '} after every interpolation followed by prose.
+  // read closely. It does NOT catch the server-render variant of the same defect
+  // — a space after an interpolation can vanish in the RSC output while
+  // rendering correctly here — which is why both pages write {' '} explicitly
+  // after every interpolation followed by prose, and why the durable check is
+  // the curl|grep in CLAUDE.md rather than this test.
   it.each([
     ['Terms', TermsPage],
     ['Privacy', PrivacyPage],

@@ -107,7 +107,8 @@ export default function TermsPage() {
           already paid for, and you keep access until then.
         </p>
         <p>
-          If you are not satisfied, email {COMPANY.supportEmail}{' '}
+          If you are not satisfied, email{' '}
+          <a href={`mailto:${COMPANY.supportEmail}`}>{COMPANY.supportEmail}</a>{' '}
           within {COMPANY.refundWindowDays}{' '}
           days of your first paid charge and we will refund it in full.
         </p>
@@ -175,8 +176,8 @@ export default function TermsPage() {
         <p>
           These terms are governed by the laws of the {COMPANY.governingLaw}, without regard to its
           conflict-of-laws rules. You and we agree to the exclusive jurisdiction of the state and
-          federal courts located in Arizona, except that either party may seek injunctive relief in
-          any court of competent jurisdiction.
+          federal courts located there, except that either party may seek injunctive relief in any
+          court of competent jurisdiction.
         </p>
       </section>
 

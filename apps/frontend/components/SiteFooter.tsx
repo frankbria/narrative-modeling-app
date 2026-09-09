@@ -20,7 +20,7 @@ const SOURCE_URL = 'https://github.com/frankbria/narrative-modeling-app'
 export function SiteFooter({ withSidebar = false }: { withSidebar?: boolean }) {
   return (
     <footer
-      className={`fixed bottom-2 z-20 flex items-center gap-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm ${
+      className={`pointer-events-none fixed bottom-2 z-20 flex items-center gap-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm ${
         withSidebar ? 'left-2 lg:left-[17rem]' : 'left-2'
       }`}
     >
@@ -29,16 +29,16 @@ export function SiteFooter({ withSidebar = false }: { withSidebar?: boolean }) {
         target="_blank"
         rel="noopener noreferrer"
         title="This service is licensed under the GNU AGPL v3. Get the source code."
-        className="hover:text-foreground hover:underline"
+        className="pointer-events-auto hover:text-foreground hover:underline"
       >
         AGPL-3.0 · Source
       </a>
       <span aria-hidden="true">·</span>
-      <a href="/legal/terms" className="hover:text-foreground hover:underline">
+      <a href="/legal/terms" className="pointer-events-auto hover:text-foreground hover:underline">
         Terms
       </a>
       <span aria-hidden="true">·</span>
-      <a href="/legal/privacy" className="hover:text-foreground hover:underline">
+      <a href="/legal/privacy" className="pointer-events-auto hover:text-foreground hover:underline">
         Privacy
       </a>
     </footer>

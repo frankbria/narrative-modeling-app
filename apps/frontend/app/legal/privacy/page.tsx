@@ -112,7 +112,7 @@ export default function PrivacyPage() {
           These features are optional in the sense that the rest of the product works without them,
           and the service runs with the AI features disabled when no API key is configured. If you
           do not want dataset content sent to OpenAI, do not use the AI panels — or tell us at{' '}
-          {COMPANY.privacyEmail}{' '}
+          <a href={`mailto:${COMPANY.privacyEmail}`}>{COMPANY.privacyEmail}</a>{' '}
           and we will disable them for your account.
         </p>
       </section>
@@ -131,7 +131,8 @@ export default function PrivacyPage() {
             want them gone.
           </li>
           <li>
-            <strong>Deleting everything</strong> — email {COMPANY.privacyEmail}{' '}
+            <strong>Deleting everything</strong> — email{' '}
+            <a href={`mailto:${COMPANY.privacyEmail}`}>{COMPANY.privacyEmail}</a>{' '}
             and we will erase the data we hold for you, including records the self-service delete
             actions do not reach. We action these within 30 days, and the categories listed below
             are retained afterwards. Ask us to confirm a specific dataset or model has been removed
@@ -163,7 +164,7 @@ export default function PrivacyPage() {
           do not sell or share personal information as those terms are defined by the CCPA.
         </p>
         <p>
-          Email {COMPANY.privacyEmail}{' '}
+          Email <a href={`mailto:${COMPANY.privacyEmail}`}>{COMPANY.privacyEmail}</a>{' '}
           to exercise any of these. We respond within 30 days and do not
           charge for it. If you are in the EU, UK or EEA and are unsatisfied with our response, you
           may complain to your local supervisory authority.
