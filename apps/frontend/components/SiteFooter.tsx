@@ -13,7 +13,7 @@ const SOURCE_URL = 'https://github.com/frankbria/narrative-modeling-app'
 
 export function SiteFooter() {
   return (
-    <footer className="fixed bottom-2 left-2 z-40 flex items-center gap-2 text-xs text-muted-foreground">
+    <footer className="fixed bottom-2 left-2 z-40 flex items-center gap-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm">
       <a
         href={SOURCE_URL}
         target="_blank"
