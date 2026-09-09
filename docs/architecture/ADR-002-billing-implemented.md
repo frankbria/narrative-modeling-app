@@ -67,3 +67,11 @@ having run.
   Docker builds stay green — the trap recorded in the frontend Docker note.
 - Anything not paid for still works: with no Stripe keys configured, the app runs
   exactly as it does today, on FREE limits.
+- **Degrading silently is the cost of degrading gracefully (#457).** Because nothing
+  errors without Stripe keys, a deployment that was never given them is indistinguishable
+  from one that does not want them — staging ran that way, unnoticed, with no `STRIPE_*`
+  reaching the container at all. The backend therefore names any unset billing variable
+  in its startup log (`stripe_client.configuration_warning`), and separates "billing is
+  off" from the state that costs real money: a `STRIPE_SECRET_KEY` with no
+  `STRIPE_WEBHOOK_SECRET` reports `configured: true`, sells a subscription, and rejects
+  the event that would have entitled the customer.
