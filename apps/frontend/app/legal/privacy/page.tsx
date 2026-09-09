@@ -20,7 +20,8 @@ export default function PrivacyPage() {
       <section id="scope">
         <h2>1. Who we are</h2>
         <p>
-          {COMPANY.legalEntity} operates the {COMPANY.serviceName}{' '}
+          {COMPANY.legalEntity}{' '}
+          operates the {COMPANY.serviceName}{' '}
           service and is the controller of the personal data described here. Where you upload a
           dataset containing other people&rsquo;s personal data, you are the controller of that
           data and we process it on your behalf.

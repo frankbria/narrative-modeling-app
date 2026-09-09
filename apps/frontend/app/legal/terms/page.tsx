@@ -21,7 +21,8 @@ export default function TermsPage() {
       <section id="agreement">
         <h2>1. Who you are contracting with</h2>
         <p>
-          The {COMPANY.serviceName} service is operated by {COMPANY.legalEntity}{' '}
+          The {COMPANY.serviceName}{' '}
+          service is operated by {COMPANY.legalEntity}{' '}
           (&ldquo;we&rdquo;, &ldquo;us&rdquo;). By creating an account or using the
           service you agree to these terms. If you are agreeing on behalf of an organisation, you
           confirm you are authorised to bind it.

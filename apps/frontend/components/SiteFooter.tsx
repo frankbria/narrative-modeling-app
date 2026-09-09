@@ -4,8 +4,9 @@
  * Carries two things that must be reachable from every page for both signed-in
  * and signed-out visitors: the AGPL-3.0 §13 offer of Corresponding Source
  * (issue #260 — the machine-readable half is the backend `GET /`), and the
- * Terms and Privacy Policy links (issue #473). Plain anchors, so this stays a
- * server component with zero client JS.
+ * Terms and Privacy Policy links (issue #473). The source offer is a plain
+ * anchor because it leaves the app; the legal links use next/link so they
+ * client-navigate like every other internal link here.
  *
  * Positioning is not cosmetic. `Sidebar` is `fixed left-0 w-64 z-30` with
  * `justify-between`, so its API Keys / Admin / theme controls sit in this exact
@@ -14,6 +15,8 @@
  * on z, so an open mobile drawer covers the strip rather than the strip
  * covering — and swallowing the clicks of — the controls underneath.
  */
+
+import Link from 'next/link'
 
 const SOURCE_URL = 'https://github.com/frankbria/narrative-modeling-app'
 
@@ -34,13 +37,13 @@ export function SiteFooter({ withSidebar = false }: { withSidebar?: boolean }) {
         AGPL-3.0 · Source
       </a>
       <span aria-hidden="true">·</span>
-      <a href="/legal/terms" className="pointer-events-auto hover:text-foreground hover:underline">
+      <Link href="/legal/terms" className="pointer-events-auto hover:text-foreground hover:underline">
         Terms
-      </a>
+      </Link>
       <span aria-hidden="true">·</span>
-      <a href="/legal/privacy" className="pointer-events-auto hover:text-foreground hover:underline">
+      <Link href="/legal/privacy" className="pointer-events-auto hover:text-foreground hover:underline">
         Privacy
-      </a>
+      </Link>
     </footer>
   )
 }
