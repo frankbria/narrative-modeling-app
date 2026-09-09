@@ -226,9 +226,9 @@ def _period_end(obj: dict[str, Any]):
     """
     raw = obj.get("current_period_end")
     if raw is None:
-        items = (obj.get("items") or {}).get("data") or []
-        if items and isinstance(items[0], dict):
-            raw = items[0].get("current_period_end")
+        item = _first_item(obj)
+        if item is not None:
+            raw = item.get("current_period_end")
     # `bool` subclasses `int`, so a stray `true` would parse as epoch 1 and stamp the
     # subscription as having lapsed in 1970 — the same trap the `created` handling
     # below guards, and worth guarding identically rather than relying on the
@@ -242,18 +242,37 @@ def _period_end(obj: dict[str, Any]):
         return None
 
 
-def _price_id(obj: dict[str, Any]) -> str | None:
-    """The price that decides the tier.
+def _first_item(obj: dict[str, Any]) -> dict[str, Any] | None:
+    """The FIRST subscription line item, or None if the payload is not that shape.
 
-    Reads the FIRST line item only. This product sells one plan per subscription —
-    there are no bundles or add-ons — so a multi-item subscription is not a shape
-    Stripe should ever send us. If that changes, tier attribution has to pick the
-    plan-defining item rather than position 0, and this is the function to change.
+    Reads position 0 only. This product sells one plan per subscription — there are
+    no bundles or add-ons — so a multi-item subscription is not a shape Stripe should
+    ever send us. If that changes, tier attribution has to pick the plan-defining
+    item rather than position 0, and this is the function to change.
+
+    Every level is type-checked rather than merely truthiness-checked. `obj["items"]`
+    arriving as a string would make `.get("data")` an AttributeError, and a `data`
+    that is a bare int would make `[0]` a TypeError — both of which propagate out of
+    `_handle`, which nothing wraps, and become a 500 that Stripe then retries
+    forever. Two callers needed the same walk and the earlier one only guarded the
+    last step, so this is one accessor rather than the same near-miss twice.
     """
-    items = (obj.get("items") or {}).get("data") or []
-    if not items or not isinstance(items[0], dict):
+    items = obj.get("items")
+    if not isinstance(items, dict):
         return None
-    return (items[0].get("price") or {}).get("id")
+    data = items.get("data")
+    if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+        return None
+    return data[0]
+
+
+def _price_id(obj: dict[str, Any]) -> str | None:
+    """The price that decides the tier."""
+    item = _first_item(obj)
+    if item is None:
+        return None
+    price = item.get("price")
+    return price.get("id") if isinstance(price, dict) else None
 
 
 def _epoch(raw: Any):

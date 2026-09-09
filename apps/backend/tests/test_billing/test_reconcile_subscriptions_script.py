@@ -287,7 +287,9 @@ class TestReconcile:
             StaleCursorCollection(), lambda _: _remote("active", None), apply=True
         )
 
-        assert code == 0
+        # Not 0: the row drifted and was not repaired. A run that raced on every row
+        # must not report a finished repair — re-running settles it.
+        assert code == 1
         fresh = await Subscription.find_one(Subscription.user_id == "u-raced")
         assert fresh is not None
         assert fresh.status == SubscriptionStatus.CANCELED

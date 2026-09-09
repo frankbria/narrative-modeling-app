@@ -200,10 +200,13 @@ async def reconcile(collection, fetch, apply: bool) -> int:
     if apply:
         print(f"repaired:                       {repaired}")
         print(f"skipped (changed under us):     {raced}")
-        # A raced row is not a failure — a webhook wrote something newer than what
-        # was fetched, which is the outcome we want. Unreadable rows are, and they
-        # will not be fixed by running again with the same Stripe credentials.
-        return 1 if unreadable else 0
+        # A raced row is the right OUTCOME — a webhook wrote something newer than
+        # what was fetched — but it is not a finished run: that row was found to
+        # have drifted and was not repaired. Returning 0 would let a run that raced
+        # on every row report success having fixed nothing, which matters the moment
+        # this is used to gate anything. Re-running settles it. Unreadable rows will
+        # not settle on a re-run with the same credentials; see below.
+        return 1 if (unreadable or raced) else 0
 
     if drifted:
         print("\nDrift found. Re-run with --apply to rewrite these rows from Stripe.")

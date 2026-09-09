@@ -584,6 +584,44 @@ class TestWebhookEndpoint:
         assert int(as_utc(sub.current_period_end).timestamp()) == int(known.timestamp())
 
     @pytest.mark.parametrize(
+        "items",
+        [
+            "oops",
+            123,
+            {"data": "oops"},
+            {"data": 7},
+            {"data": []},
+            {"data": ["not-a-dict"]},
+            {},
+            None,
+        ],
+    )
+    async def test_a_malformed_items_container_is_not_a_500(
+        self, async_authorized_client, setup_database, items
+    ):
+        """`_period_end` and `_price_id` both walk `items.data[0]`, and nothing wraps
+        `_handle` — an AttributeError on `"oops".get("data")` or a TypeError on
+        `7[0]` becomes a 500, which Stripe then retries forever."""
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "items": items,
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is None
+        assert sub.status == SubscriptionStatus.ACTIVE
+
+    @pytest.mark.parametrize(
         "item_period_end", ["not-a-timestamp", {}, None, 10**20, True]
     )
     async def test_an_unparseable_item_period_end_is_not_a_500(
