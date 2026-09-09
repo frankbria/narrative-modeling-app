@@ -89,6 +89,36 @@ def missing_configuration() -> list[str]:
     ]
 
 
+def configuration_warning() -> str | None:
+    """The startup line for an incompletely configured deployment, or None (#457).
+
+    Two states, and conflating them is worse than saying nothing. With no
+    `STRIPE_SECRET_KEY` billing is simply off — checkout answers 503 and nobody can
+    be charged. With the secret key present but something else missing, checkout is
+    LIVE: it creates real sessions and takes real money, while the webhook that
+    would entitle the customer is rejected. Telling an operator "checkout answers
+    503" in that second state is exactly backwards, and it is the state most worth
+    getting right.
+    """
+    missing = missing_configuration()
+    if not missing:
+        return None
+
+    if not is_configured():
+        return (
+            f"Stripe is not configured (unset: {', '.join(missing)}). "
+            "POST /billing/checkout answers 503, webhooks are rejected, and every "
+            "tenant stays on FREE limits."
+        )
+
+    return (
+        f"Stripe is only PARTIALLY configured (unset: {', '.join(missing)}). "
+        "Checkout is live and can charge a customer, but an unset "
+        "STRIPE_WEBHOOK_SECRET means the event that would entitle them is thrown "
+        "away, and an unset price id makes that tier unsellable."
+    )
+
+
 async def _customer_id_for(user_id: str) -> str | None:
     """The Stripe customer we already know about for this tenant, if any."""
     sub = await Subscription.find_one(Subscription.user_id == user_id)

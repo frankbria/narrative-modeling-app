@@ -97,18 +97,14 @@ async def lifespan(app: FastAPI):
 
     # Billing configuration, stated the same way (issue #457). Running with no
     # Stripe keys is supported (ADR-002) and silent, which is how staging shipped
-    # with billing inert and nothing noticed. A half-provisioned deploy is the
-    # dangerous one — a secret key with no webhook secret sells subscriptions and
-    # entitles nobody — so each unset variable is named, not just counted.
-    missing_billing = stripe_client.missing_configuration()
-    if not missing_billing:
+    # with billing inert and nothing noticed. The warning distinguishes "billing is
+    # off" from "checkout is live but cannot entitle anyone", because those call for
+    # opposite reactions.
+    billing_warning = stripe_client.configuration_warning()
+    if billing_warning is None:
         logger.info("Billing: Stripe configured")
     else:
-        logger.warning(
-            "Billing: Stripe NOT fully configured (unset: %s). Checkout answers 503 "
-            "and webhooks are rejected; every tenant stays on FREE limits.",
-            ", ".join(missing_billing),
-        )
+        logger.warning("Billing: %s", billing_warning)
 
     # Connect to DB (single place, all models via the canonical registry)
     mongo_uri = os.getenv("MONGODB_URI")

@@ -603,3 +603,66 @@ class TestConfigurationVisibility:
             "STRIPE_SECRET_KEY",
             "STRIPE_WEBHOOK_SECRET",
         ]
+
+
+class TestConfigurationWarning:
+    """The startup line must not lie about the one state it exists to catch (#457).
+
+    Saying "checkout answers 503" when `STRIPE_SECRET_KEY` is set is exactly
+    backwards: checkout sells, the customer is charged, and the webhook that would
+    have entitled them is rejected. An operator reading that line would conclude no
+    money can move, which is the opposite of what is happening.
+    """
+
+    def test_silent_when_fully_configured(self, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        assert stripe_client.configuration_warning() is None
+
+    def test_billing_off_says_nothing_can_be_sold(self, monkeypatch):
+        for var in (
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET",
+            "STRIPE_PRICE_PRO",
+            "STRIPE_PRICE_ENTERPRISE",
+        ):
+            monkeypatch.setattr(settings, var, None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "503" in warning
+        assert "FREE" in warning
+        assert "STRIPE_SECRET_KEY" in warning
+
+    def test_half_configured_says_checkout_can_still_charge(self, monkeypatch):
+        """Secret key set, webhook secret missing — the dangerous state."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "STRIPE_WEBHOOK_SECRET" in warning
+        # The claim that must NOT appear: checkout is live here.
+        assert "503" not in warning
+        assert "charge" in warning.lower()
+
+    def test_a_missing_price_alone_still_warns(self, monkeypatch):
+        """One price id missing sells the other tier fine and 503s only that tier."""
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+
+        warning = stripe_client.configuration_warning()
+        assert warning is not None
+        assert "STRIPE_PRICE_ENTERPRISE" in warning
+        assert "STRIPE_PRICE_PRO" not in warning
