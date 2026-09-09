@@ -622,7 +622,11 @@ class TestWebhookEndpoint:
         assert sub.status == SubscriptionStatus.ACTIVE
 
     @pytest.mark.parametrize(
-        "item_period_end", ["not-a-timestamp", {}, None, 10**20, True]
+        # `None` is deliberately absent: it short-circuits on `raw is None`
+        # before the try/except, so it would be testing the no-period-end path
+        # under a name that claims to test parse failures.
+        "item_period_end",
+        ["not-a-timestamp", {}, 10**20, True],
     )
     async def test_an_unparseable_item_period_end_is_not_a_500(
         self, async_authorized_client, setup_database, item_period_end

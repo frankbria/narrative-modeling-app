@@ -144,6 +144,9 @@ class TestReconcile:
         sub = await Subscription.find_one(Subscription.user_id == "u-unconf")
         assert sub is not None
         assert sub.plan_tier == PlanTier.ENTERPRISE
+        # The run announces "status and period end only". `stripe_price_id` is
+        # harmless for entitlement, but writing it would make that line untrue.
+        assert sub.stripe_price_id is None
 
     async def test_a_repair_moves_updated_at(self, setup_database):
         """The raw write bypasses Beanie's `_touch()` hook. That is load-bearing:

@@ -158,7 +158,12 @@ async def reconcile(collection, fetch, apply: bool) -> int:
             changes["status"] = status
         if tier is not None and tier != row.get("plan_tier"):
             changes["plan_tier"] = tier
-        if price and price != row.get("stripe_price_id"):
+        # Gated on the same flag as the tier, not just because it is tidier: the
+        # line printed above tells the operator that only status and period end will
+        # move, and a `stripe_price_id` write would make that untrue. Harmless for
+        # entitlement — enforcement reads `plan_tier` — but a message that overstates
+        # what a repair script left alone is the kind of thing someone later relies on.
+        if price and tiers_resolvable and price != row.get("stripe_price_id"):
             changes["stripe_price_id"] = price
         # A null period end is the #510 symptom, so "unset locally, set remotely"
         # counts as drift; equality alone would leave those rows behind. The stored
