@@ -88,7 +88,7 @@ export default async function RootLayout({
             )}
             {/* Source offer (AGPL-3.0 §13) plus the Terms/Privacy links, visible
                 to all network users, authenticated or not. */}
-            <SiteFooter />
+            <SiteFooter withSidebar={!!session} />
           </WorkflowProvider>
         </SessionProvider>
         </ThemeProvider>

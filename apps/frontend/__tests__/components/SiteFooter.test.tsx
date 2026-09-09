@@ -28,4 +28,17 @@ describe('SiteFooter', () => {
     render(<SiteFooter />)
     expect(screen.getByRole('contentinfo')).toBeInTheDocument()
   })
+
+  // Sidebar is `fixed left-0 w-64 z-30 justify-between`, so its API Keys / Admin
+  // / theme controls occupy this same corner when signed in. Without the offset
+  // this strip covers them and swallows their clicks — the layout must pass the
+  // session through, and the strip must stay under the sidebar on z.
+  it('clears the sidebar when one is rendered, and never stacks above it', () => {
+    const { rerender } = render(<SiteFooter withSidebar />)
+    expect(screen.getByRole('contentinfo')).toHaveClass('lg:left-[17rem]')
+
+    rerender(<SiteFooter />)
+    expect(screen.getByRole('contentinfo')).not.toHaveClass('lg:left-[17rem]')
+    expect(screen.getByRole('contentinfo')).toHaveClass('z-20')
+  })
 })
