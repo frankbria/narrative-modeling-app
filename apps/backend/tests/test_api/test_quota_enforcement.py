@@ -36,7 +36,52 @@ async def _fill(user_id: str, metric: str, units: int) -> None:
     ).insert()
 
 
+#: The routes a real user's upload actually goes through. The frontend calls
+#: `/upload/chunked/*`, `/upload/secure` and `/upload/confirm-pii-upload`; it never
+#: calls `/datasets/upload`, which was the only route these tests used to exercise —
+#: so metering coverage looked healthy while the user-facing paths were unguarded
+#: (#459 AC4). `/datasets/upload` stays in the list: dropping it to fix the aim would
+#: trade one blind spot for another.
+_UPLOAD_ROUTES = [
+    "/api/v1/upload/secure",
+    "/api/v1/upload/confirm-pii-upload",
+    "/api/v1/upload/",
+    "/api/v1/datasets/upload",
+]
+
+
 class TestUploadQuota:
+    @pytest.mark.parametrize("route", _UPLOAD_ROUTES)
+    async def test_every_upload_route_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database, route
+    ):
+        """Parametrized over the real upload surface, not one route of four."""
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            route,
+            files={"file": ("d.csv", b"a,b\n1,2\n", "text/csv")},
+        )
+
+        assert response.status_code == 402, f"{route}: {response.text}"
+        assert response.json()["detail"]["metric"] == "uploads"
+
+    async def test_the_chunked_completion_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database
+    ):
+        """The route the UI uses for large files, and the one #582 repaired.
+
+        A session id that does not exist would normally 404 — the 402 has to come
+        first, or a tenant at their cap still reaches the work.
+        """
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            "/api/v1/upload/chunked/nonexistent-session/complete"
+        )
+
+        assert response.status_code == 402, response.text
+
     async def test_upload_is_refused_at_the_free_limit(
         self, async_authorized_client, setup_database
     ):
@@ -84,6 +129,412 @@ class TestUploadQuota:
 
         assert response.status_code >= 400
         assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+
+class TestSampleDatasetQuota:
+    """The onboarding sample loader creates a real dataset (#459, review round 1).
+
+    It was left out of the first cut of this fix on the reasoning that onboarding
+    content is ours rather than the tenant's upload. That reasoning was wrong: the
+    `insert()` is unconditional — the `sample_datasets_loaded` check afterwards only
+    guards a bookkeeping list — so the route mints a new dataset on every call, without
+    limit, for a tenant already at their cap.
+    """
+
+    LOAD = "/api/v1/onboarding/sample-datasets/sales_data/load"
+
+    async def test_loading_a_sample_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database
+    ):
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(self.LOAD)
+
+        assert response.status_code == 402, response.text
+        assert response.json()["detail"]["metric"] == "uploads"
+
+
+class TestUploadRefunds:
+    """AC5 — a failed upload must give the unit back, on every metered route.
+
+    Reserving happens before the work, so without this a free tenant's twenty uploads
+    are twenty upload *attempts*, typos included.
+    """
+
+    @pytest.mark.parametrize("route", _UPLOAD_ROUTES)
+    async def test_a_failed_upload_is_refunded(
+        self, async_authorized_client, setup_database, route
+    ):
+        response = await async_authorized_client.post(
+            route,
+            files={"file": ("notes.exe", b"MZ\x00", "application/octet-stream")},
+        )
+
+        assert response.status_code >= 400, f"{route} unexpectedly succeeded"
+        assert await metering.usage_for(TEST_USER, "uploads") == 0, route
+
+
+class TestAFailedS3WriteIsNotABillableDataset:
+    """`upload.py` used to return 200 with a placeholder string as the s3_url.
+
+    **Two** branches did it, and the first fix only caught one — the other is what CI
+    then failed on, because the two are reached under opposite conditions and the
+    machine running the test decides which:
+
+    * `s3_upload_failed` — S3 configured, the write failed. Needs credentials present
+      to reach, so it is what a developer with AWS env vars sees.
+    * `s3_not_configured` — no AWS env vars at all, so the write is never attempted.
+      That is CI, and it short-circuits before the branch above.
+
+    Either way the row's `s3_url` is a string that is not a URL, every later read of
+    that dataset fails, and since #459 metered this route the tenant is charged an
+    upload for it. `/upload/secure` already answered 500 for the configured-but-failed
+    case. Both are parametrized here so neither environment can hide the other.
+    """
+
+    CSV = {"file": ("d.csv", b"a,b\n1,2\n", "text/csv")}
+
+    async def test_a_failed_s3_write_does_not_leave_a_charged_broken_dataset(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """S3 configured, write fails."""
+        import app.api.routes.upload as upload_module
+        from app.models.user_data import UserData
+
+        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+            monkeypatch.setenv(var, "present-for-this-test")
+        monkeypatch.setattr(
+            upload_module, "upload_file_to_s3", lambda *a, **k: (False, None)
+        )
+
+        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
+
+        assert response.status_code >= 400, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+        assert await UserData.find_one(UserData.user_id == TEST_USER) is None
+
+    async def test_an_unconfigured_deployment_does_not_charge_for_a_stub_dataset(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """No AWS env at all — the CI case, and the one the first fix missed."""
+        from app.models.user_data import UserData
+
+        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+            monkeypatch.delenv(var, raising=False)
+
+        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
+
+        assert response.status_code == 503, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+        assert await UserData.find_one(UserData.user_id == TEST_USER) is None
+
+
+class TestPiiConfirmationChargesOnce:
+    """The PII flow is two requests and one dataset (#459).
+
+    `/secure` answers **200** with `requires_confirmation` when it finds high-risk PII
+    and creates nothing; `/confirm-pii-upload` then creates the dataset. The refund
+    middleware only sees >= 400, so without an explicit release the tenant is charged
+    at both steps for the one dataset they end up with.
+    """
+
+    #: SSN-shaped *values* under a neutral column name. Deliberately not a column
+    #: called "ssn": `_check_column_name` matches that, returns confidence exactly
+    #: 0.8, and `continue`s past the value check — and "high" requires `> 0.8`, so
+    #: the more obvious fixture is rated *medium* and never reaches the branch under
+    #: test. (That short-circuit looks like a detector bug, but changing a PII
+    #: threshold is not this issue's to make — filed separately.)
+    PII_CSV = (
+        b"identifier,amount\n"
+        b"123-45-6789,10\n"
+        b"987-65-4321,20\n"
+        b"111-22-3333,30\n"
+    )
+
+    async def test_the_whole_two_step_flow_charges_exactly_one_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The claim this PR actually makes, asserted as a chain rather than as two
+        halves.
+
+        `/secure`'s release and `/confirm-pii-upload`'s charge are each pinned
+        separately below, and both would still pass if a regression made *both* steps
+        charge, or *both* release. What a tenant experiences is the sum, so that is
+        what has to be asserted: one dataset, one unit.
+        """
+        import app.api.routes.secure_upload as secure_module
+        from app.models.user_data import UserData
+
+        monkeypatch.setattr(
+            secure_module,
+            "upload_file_to_s3",
+            lambda *a, **k: (True, "s3://bucket/pii.csv"),
+        )
+
+        detected = await async_authorized_client.post(
+            "/api/v1/upload/secure",
+            files={"file": ("pii.csv", self.PII_CSV, "text/csv")},
+        )
+        assert detected.status_code == 200, detected.text
+        assert detected.json().get("requires_confirmation") is True
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+        confirmed = await async_authorized_client.post(
+            "/api/v1/upload/confirm-pii-upload",
+            files={"file": ("pii.csv", self.PII_CSV, "text/csv")},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+        # One dataset, one unit — not two of either.
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
+        assert await UserData.find(UserData.user_id == TEST_USER).count() == 1
+
+    async def test_a_pii_detection_does_not_consume_a_unit(
+        self, async_authorized_client, setup_database
+    ):
+        response = await async_authorized_client.post(
+            "/api/v1/upload/secure",
+            files={"file": ("pii.csv", self.PII_CSV, "text/csv")},
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body.get("requires_confirmation") is True, body
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+
+class TestFeatureApplyQuota:
+    """`features/{id}/apply` creates a whole new dataset when asked to (#459).
+
+    It reaches the same `DatasetService.create_dataset` as `/datasets/upload`, so a
+    tenant at their cap could mint unlimited datasets through it. The charge is
+    conditional rather than a route dependency: `create_new_dataset` defaults to
+    false, and an in-place apply creates nothing to bill for.
+
+    Both cases are asserted at the cap, where a reserve is unmistakable — it is the
+    only thing that can produce a 402. Asserting on usage instead would prove nothing
+    *for these two*, since the request fails downstream and the refund middleware
+    returns the unit either way — but note that only holds because those failures
+    raise. The ones that do not raise are the class below.
+    """
+
+    APPLY = "/api/v1/datasets/ds-feat/features/feat-1/apply"
+
+    async def _seed_feature(self) -> None:
+        from app.models.feature import (
+            ExpressionNode,
+            FeatureDefinition,
+            NodeType,
+        )
+
+        await FeatureDefinition(
+            user_id=TEST_USER,
+            dataset_id="ds-feat",
+            feature_id="feat-1",
+            name="doubled",
+            expression_tree=ExpressionNode(
+                node_id="n1", node_type=NodeType.COLUMN, value="amount"
+            ),
+            is_valid=True,
+        ).insert()
+
+    async def test_creating_a_new_dataset_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database
+    ):
+        await self._seed_feature()
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        assert response.status_code == 402, response.text
+        assert response.json()["detail"]["metric"] == "uploads"
+
+    async def test_applying_in_place_is_not_charged(
+        self, async_authorized_client, setup_database
+    ):
+        """The default. At the cap it must not 402 — an in-place apply adds a column
+        to a dataset the tenant already paid for."""
+        await self._seed_feature()
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": False,
+            },
+        )
+
+        assert response.status_code != 402, response.text
+
+
+class TestFeatureApplyDoesNotLeakOnASilentFailure:
+    """`apply_feature_to_dataset` reports failure by **returning**, not raising.
+
+    Both its failure paths — the S3 write of the new dataframe, and its catch-all —
+    `return {"success": False, ...}`, which the route wraps in an
+    `ApplyFeatureResponse` and answers **200**. `QuotaRefundMiddleware` refunds on
+    >= 400, so the reserved unit is kept for a dataset that was never created.
+
+    This is the `/upload/secure` PII bug in a second place, and it is what `release()`
+    exists for: a 2xx that did no billable work has to hand the unit back itself.
+    A tenant at 19 of 20 uploads who hits an S3 blip here would otherwise burn their
+    last unit, receive nothing, and be 402'd for the rest of the month.
+    """
+
+    APPLY = "/api/v1/datasets/ds-feat/features/feat-1/apply"
+
+    async def _seed_feature(self) -> None:
+        from app.models.feature import ExpressionNode, FeatureDefinition, NodeType
+
+        await FeatureDefinition(
+            user_id=TEST_USER,
+            dataset_id="ds-feat",
+            feature_id="feat-1",
+            name="doubled",
+            expression_tree=ExpressionNode(
+                node_id="n1", node_type=NodeType.COLUMN, value="amount"
+            ),
+            is_valid=True,
+        ).insert()
+
+    @staticmethod
+    def _failing_result():
+        async def _apply(**kwargs):
+            return {
+                "success": False,
+                "dataset_committed": False,  # failed before create_dataset()
+                "dataset_id": "ds-feat",
+                "column_name": "doubled",
+                "rows_computed": 0,
+                "null_values": 0,
+                "warnings": [],
+                "error": "Failed to upload to S3",
+                "s3_url": None,
+            }
+
+        return _apply
+
+    async def test_a_silent_failure_on_the_create_path_returns_the_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            self._failing_result(),
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        # The route's own contract: it answers 200 carrying success=false.
+        assert response.status_code == 200, response.text
+        assert response.json()["success"] is False
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+    async def test_a_dataset_that_was_actually_created_is_still_charged(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The mirror of the leak above, and the reason `success` alone is not enough
+        to decide on.
+
+        `apply_feature_to_dataset`'s catch-all wraps the *whole* create-and-save
+        sequence: `create_dataset()` persists the new dataset in both id-spaces, and
+        `feature.save()` comes after it. If anything between them raises, the service
+        returns `success: False` while a real, billable dataset exists — and releasing
+        on that hands the tenant a free dataset.
+        """
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+
+        async def _apply(**kwargs):
+            return {
+                "success": False,
+                "dataset_committed": True,  # create_dataset() got through
+                "dataset_id": "ds-new",
+                "column_name": "doubled",
+                "rows_computed": 0,
+                "null_values": 0,
+                "warnings": [],
+                "error": "failed after the dataset was written",
+                "s3_url": None,
+            }
+
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            _apply,
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
+
+    async def test_a_successful_create_keeps_its_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The release must be conditional on failure — handing the unit back on a
+        successful create would make the limit unenforceable."""
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+
+        async def _apply(**kwargs):
+            return {
+                "success": True,
+                "dataset_committed": True,
+                "dataset_id": "ds-new",
+                "column_name": "doubled",
+                "rows_computed": 3,
+                "null_values": 0,
+                "warnings": [],
+                "error": None,
+                "s3_url": "s3://bucket/ds-new.parquet",
+            }
+
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            _apply,
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
 
 
 class TestTrainingQuota:

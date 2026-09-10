@@ -7,9 +7,19 @@ validating, and managing feature definitions.
 
 import logging
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import release, reserve
 from app.models.feature import (
     ExpressionNode,
     NodeType,
@@ -588,6 +598,7 @@ async def delete_feature(
     description="Compute the feature and add it as a new column to the dataset."
 )
 async def apply_feature(
+    http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
     feature_id: str = Path(..., description="Feature identifier"),
     request: ApplyFeatureRequest = Body(...),
@@ -611,12 +622,40 @@ async def apply_feature(
                 detail=f"Feature {feature_id} not found in dataset {dataset_id}"
             )
 
+        # Charged only on the branch that creates one. `create_new_dataset` reaches the
+        # same `DatasetService.create_dataset` as `/datasets/upload`, so leaving it
+        # unmetered lets a tenant at their cap mint datasets here instead (#459). A
+        # route dependency would be wrong in the other direction: the flag defaults to
+        # false, and an in-place apply adds a column to a dataset already paid for.
+        #
+        # Inside the `try` is safe here only because this handler has an
+        # `except HTTPException: raise` — without it the module's broad `except`
+        # would turn the 402 into a 500 (the #453 trap).
+        if request.create_new_dataset:
+            await reserve(http_request, current_user_id, "uploads")
+
         result = await feature_builder_service.apply_feature_to_dataset(
             feature_id=feature_id,
             user_id=current_user_id,
             output_column_name=request.output_column_name,
             create_new_dataset=request.create_new_dataset
         )
+
+        # `apply_feature_to_dataset` reports failure by RETURNING, not raising — both
+        # its S3-upload path and its catch-all `return {"success": False, ...}` — and
+        # this route answers 200 carrying that flag. The refund middleware only sees
+        # >= 400, so without this the unit reserved above is kept for a dataset that
+        # was never created: a tenant on their last upload burns it, receives nothing,
+        # and is 402'd until the period rolls. Same shape as `/upload/secure`'s PII
+        # branch, which is what `release()` exists for.
+        # Keyed on `dataset_committed`, NOT on `success`. The two differ in a window
+        # that matters: the service's catch-all wraps `create_dataset()` *and* the
+        # `feature.save()` after it, so a raise in between returns `success: False`
+        # with a real dataset already persisted in both id-spaces. Releasing on
+        # `success` alone would hand that tenant a free dataset — the mirror of the
+        # double-charge this issue set out to fix, and just as invisible.
+        if request.create_new_dataset and not result.get("dataset_committed", False):
+            await release(http_request)
 
         return ApplyFeatureResponse(
             success=result["success"],

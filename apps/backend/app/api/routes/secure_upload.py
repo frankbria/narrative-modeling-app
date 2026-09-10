@@ -16,11 +16,12 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
 )
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing.enforcement import quota
+from app.billing.enforcement import quota, release
 from app.models.user_data import UserData
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
@@ -40,6 +41,7 @@ rate_limiter = RateLimiter()
 
 @router.post("/secure", dependencies=[Depends(quota("uploads"))])
 async def secure_upload(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
@@ -107,6 +109,11 @@ async def secure_upload(
         
         # If high-risk PII found, block upload unless explicitly allowed
         if pii_report["risk_level"] == "high":
+            # No dataset was created, so give the unit back. The refund middleware
+            # only sees >= 400 and this branch answers 200, so without this the
+            # tenant pays here for nothing and pays again at /confirm-pii-upload —
+            # two units for the one dataset they end up with (#459).
+            await release(request)
             return {
                 "status": "pii_detected",
                 "pii_report": pii_report,
@@ -191,7 +198,7 @@ async def secure_upload(
         rate_limiter.end_upload(current_user_id)
 
 
-@router.post("/confirm-pii-upload")
+@router.post("/confirm-pii-upload", dependencies=[Depends(quota("uploads"))])
 async def confirm_pii_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -212,7 +219,16 @@ async def confirm_pii_upload(
         df = pd.read_csv(io.BytesIO(content))
     elif file.filename.endswith(('.xlsx', '.xls')):
         df = pd.read_excel(io.BytesIO(content))
-    
+    else:
+        # Without this the if/elif falls through and `df` is unbound, so an
+        # unsupported extension raised UnboundLocalError — a 500 where /secure
+        # answers a clean 400 for the same file. Found while adding this route's
+        # quota guard (#459).
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: {file.filename}",
+        )
+
     # Detect PII
     pii_detections = pii_detector.detect_pii_in_dataframe(df)
     pii_report = pii_detector.generate_pii_report(pii_detections)

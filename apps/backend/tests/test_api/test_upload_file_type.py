@@ -16,7 +16,16 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
-async def test_upload_sets_file_type_from_extension(async_authorized_client):
+async def test_upload_sets_file_type_from_extension(
+    async_authorized_client, monkeypatch
+):
+    # The patch below says "S3 works"; the route also checks that S3 is *configured*
+    # before attempting a write and now refuses with 503 when it is not (#459), so the
+    # environment has to agree with the premise the patch states. Without this the test
+    # passes only on a machine that happens to carry AWS credentials.
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+        monkeypatch.setenv(var, "configured-for-this-test")
+
     csv_content = b"a,b\n1,2\n3,4\n"
     files = {"file": ("typed_test.csv", io.BytesIO(csv_content), "text/csv")}
 

@@ -464,3 +464,101 @@ which is the only way to see what CI sees.
 **Related:** [[backend-lint-scope-and-pytest-summary]] already records that CI runs
 `ruff check .` from `apps/backend` and therefore sees untracked files — I had that note
 and still scoped the command. Knowing the rule is not the same as running it.
+
+## A green local suite can be green because of your environment, not your code
+
+CI failed a test that passed locally. `upload.py` had **two** branches writing a
+placeholder `s3_url` and returning 200: `s3_upload_failed` (AWS configured, write failed)
+and `s3_not_configured` (no AWS env at all). I fixed the first, and my test passed —
+because my machine has AWS credentials, so it reached the branch I had fixed. CI has
+none, short-circuits earlier, and hit the branch I had not.
+
+The tell was there in the failure output and nowhere else: `"s3_url":"s3_not_configured"`
+— a string I had never grepped for, because I had grepped for the one I already knew.
+
+**Do:** when a route branches on *environment* (credentials present, a service reachable,
+a feature flag), the test has to pin the branch explicitly — `monkeypatch.setenv` /
+`delenv` — rather than inheriting whatever the machine happens to have. One test per
+branch. And before pushing a change to such a route, run the suite once with the relevant
+env unset: `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY ... uv run pytest`.
+
+**Do:** when fixing a sentinel/placeholder value, grep for the *pattern* rather than the
+one literal you found (`grep -n 's3_[a-z_]*"' `), because the second one is written by the
+same author in the same style a few lines away.
+
+**And run the marker CI runs, not just the fast one.** The follow-up failure was an
+`integration`-marked test that the gate selection (`-m "not integration and not
+performance"`) never executes, so two local green runs in a row still missed it. A change
+to a route handler needs `-m integration` too — `ci.yml` runs both jobs and only the pair
+is the gate.
+
+**Related:** same family as [[verify-deployed-artifact-matches-repo]] — "it worked where I
+ran it" is not "it works". Here the difference was env vars rather than a stale server.
+
+## An exclusion written confidently is still an exclusion
+
+I documented in the plan why the onboarding sample-dataset loader was out of scope for the
+quota fix: the content is ours, not the tenant's upload, and metering it would spend a free
+tenant's quota during forced onboarding. Both halves were wrong, and two minutes of reading
+would have shown it — `insert()` is unconditional (the `sample_datasets_loaded` check only
+guards a bookkeeping list, so N calls create N datasets) and the route is a deliberate user
+click, not something onboarding performs. The review caught what the reasoning had waved
+past.
+
+**Do:** an out-of-scope claim about *behaviour* ("it only creates one", "users don't hit
+this") is a factual claim and needs the same grep as an in-scope one. Writing the reason
+down makes it look checked; it isn't, until you check it.
+
+**Related:** [[scoping-claims-need-a-grep]] — same lesson, and I had the memory. Having the
+rule available is not the same as applying it.
+
+## A 2xx that did no work is a whole bug class, not one site
+
+I found and fixed a quota leak on `/upload/secure`'s PII branch — it answers 200 having
+created nothing, and `QuotaRefundMiddleware` only refunds on >= 400, so the unit was kept.
+I wrote `release()` specifically for that shape. Then, in the same PR, I added a new
+reserve to `features/{id}/apply` — whose service reports failure by **returning**
+`{"success": False}` while the route answers 200 — and did not apply it. A reviewer had to
+find the second instance.
+
+Worse, the test docstring I wrote next to it asserted the opposite ("the refund middleware
+returns the unit on the downstream failure either way"), which is true only when failures
+raise. I had not checked which the service does.
+
+**Do:** the moment you write a compensating helper for a failure mode, grep for the *other*
+sites with that property before moving on. Here the query is "handlers that return 2xx on a
+failure path": `grep -n 'success.*False' services/` and check what the route does with it.
+A service that signals failure by return value rather than by raising is invisible to every
+middleware that keys on status code.
+
+**Do:** before asserting in a comment that some middleware "handles it", read the path that
+would trigger it. A confident docstring is how a wrong assumption gets inherited.
+
+**Related:** [[repairing-dead-paths-is-a-feature-launch]] — expect your own fix to open the
+next hole. This is the sharper version: expect your own fix's *shape* to already exist
+elsewhere.
+
+## A mutation check can have a hole; check the check
+
+I fixed a quota bug by having a service report `dataset_committed` and keying a refund on
+it. Mutation check: delete `dataset_committed = True` from the service — **every test
+stayed green.** Every route-level test monkeypatched that service, so the flag could have
+gone permanently unset while the suite reported health and every successful create
+silently refunded its unit.
+
+The mutation check was doing its job; the *test suite it was checking* had no test that
+executed the line at all. Three other mutations in the same batch failed correctly, which
+is what made the one silent pass legible rather than reassuring.
+
+**Do:** when a mutation does not turn anything red, that is a finding, not a pass. Ask
+which test was supposed to catch it — if the answer is "one that mocks the thing I just
+mutated", the coverage is notional. Fix by driving the real unit with only its I/O
+boundaries stubbed.
+
+**Do:** a value that crosses a module boundary and drives a billing/authz decision needs a
+test on the *producer* as well as the consumer. Mocking the producer in every consumer
+test means the contract between them is asserted nowhere.
+
+**Related:** [[chart-tests-use-real-recharts]] and the `__mocks__` trap — a suite that
+never runs the real thing fails silently by passing. This is that lesson arriving through
+a mutation check instead of a library upgrade.

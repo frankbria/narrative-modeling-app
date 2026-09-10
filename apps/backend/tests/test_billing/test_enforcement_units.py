@@ -142,6 +142,51 @@ class TestRefundTargetsTheReservedPeriod:
         assert await _units("u-two", "uploads") == 0
         assert await _units("u-two", "predictions") == 0
 
+    async def test_release_hands_back_a_reservation_the_middleware_cannot_see(
+        self, setup_database
+    ):
+        """A 2xx that did not do the work (#459).
+
+        The middleware refunds on >= 400, which covers failures. It cannot see a
+        route that returns 200 having decided *not* to do the thing — and
+        `/upload/secure` does exactly that when it finds high-risk PII: 200,
+        `requires_confirmation`, no dataset. Without this the tenant pays for a
+        dataset they never received, and pays again at `/confirm-pii-upload`.
+        """
+        request = _request()
+        await enforcement.reserve(request, "u-release", "uploads")
+        assert await _units("u-release", "uploads") == 1
+
+        await enforcement.release(request)
+
+        assert await _units("u-release", "uploads") == 0
+
+    async def test_release_is_idempotent(self, setup_database):
+        """It clears the list, so a later middleware refund on the same request
+        cannot hand back a second unit — quota minted from nothing."""
+        request = _request()
+        await enforcement.reserve(request, "u-twice", "uploads")
+
+        await enforcement.release(request)
+        await enforcement.release(request)
+        await enforcement.QuotaRefundMiddleware._refund(request)
+
+        assert await _units("u-twice", "uploads") == 0
+
+    async def test_release_on_a_request_that_reserved_nothing_is_a_no_op(
+        self, setup_database
+    ):
+        await enforcement.release(_request())
+
+    async def test_quota_marks_its_dependency_with_the_metric(self):
+        """So a route table can be asked what it meters (#459's registry test).
+
+        Reading `__closure__` positionally would work today and break the first
+        time `dependency` grows another free variable.
+        """
+        assert enforcement.quota("uploads").__quota_metric__ == "uploads"
+        assert enforcement.quota("predictions").__quota_metric__ == "predictions"
+
     async def test_the_middleware_refunds_what_was_reserved(self, setup_database):
         request = _request()
         await enforcement.reserve_records(
