@@ -175,30 +175,56 @@ class TestUploadRefunds:
 
 
 class TestAFailedS3WriteIsNotABillableDataset:
-    """`upload.py` used to store the literal string "s3_upload_failed" as the s3_url
-    and return 200 (review round 1).
+    """`upload.py` used to return 200 with a placeholder string as the s3_url.
 
-    Harmless-looking until the route is metered: the tenant is then charged an upload
-    for a dataset whose bytes were never written, and every later read of it fails.
-    `/upload/secure` already answered 500 for the same condition.
+    **Two** branches did it, and the first fix only caught one — the other is what CI
+    then failed on, because the two are reached under opposite conditions and the
+    machine running the test decides which:
+
+    * `s3_upload_failed` — S3 configured, the write failed. Needs credentials present
+      to reach, so it is what a developer with AWS env vars sees.
+    * `s3_not_configured` — no AWS env vars at all, so the write is never attempted.
+      That is CI, and it short-circuits before the branch above.
+
+    Either way the row's `s3_url` is a string that is not a URL, every later read of
+    that dataset fails, and since #459 metered this route the tenant is charged an
+    upload for it. `/upload/secure` already answered 500 for the configured-but-failed
+    case. Both are parametrized here so neither environment can hide the other.
     """
 
-    async def test_an_s3_failure_does_not_leave_a_charged_broken_dataset(
+    CSV = {"file": ("d.csv", b"a,b\n1,2\n", "text/csv")}
+
+    async def test_a_failed_s3_write_does_not_leave_a_charged_broken_dataset(
         self, async_authorized_client, setup_database, monkeypatch
     ):
+        """S3 configured, write fails."""
         import app.api.routes.upload as upload_module
         from app.models.user_data import UserData
 
+        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+            monkeypatch.setenv(var, "present-for-this-test")
         monkeypatch.setattr(
             upload_module, "upload_file_to_s3", lambda *a, **k: (False, None)
         )
 
-        response = await async_authorized_client.post(
-            "/api/v1/upload/",
-            files={"file": ("d.csv", b"a,b\n1,2\n", "text/csv")},
-        )
+        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
 
         assert response.status_code >= 400, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+        assert await UserData.find_one(UserData.user_id == TEST_USER) is None
+
+    async def test_an_unconfigured_deployment_does_not_charge_for_a_stub_dataset(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """No AWS env at all — the CI case, and the one the first fix missed."""
+        from app.models.user_data import UserData
+
+        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+            monkeypatch.delenv(var, raising=False)
+
+        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
+
+        assert response.status_code == 503, response.text
         assert await metering.usage_for(TEST_USER, "uploads") == 0
         assert await UserData.find_one(UserData.user_id == TEST_USER) is None
 

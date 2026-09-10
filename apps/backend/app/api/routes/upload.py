@@ -96,12 +96,21 @@ async def upload_file(
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 
         if missing_vars:
-            # If S3 is not configured, we'll still process the file and store metadata
-            # but without the S3 URL
-            logger.warning(
-                f"S3 upload skipped: Missing environment variables: {', '.join(missing_vars)}"
+            # Was: `s3_url = "s3_not_configured"`, then carry on and return 200. Same
+            # defect as the upload-failed branch below and found the same way — a
+            # dataset row whose s3_url is a placeholder string, which every later read
+            # fails on, and which now costs the tenant an `uploads` unit (#459).
+            #
+            # 503 rather than 500: nothing broke, the deployment simply cannot store
+            # files, and that is an operator fix rather than a retry. The refund
+            # middleware returns the unit either way.
+            logger.error(
+                f"S3 is not configured; refusing upload. Missing: {', '.join(missing_vars)}"
             )
-            s3_url = "s3_not_configured"
+            raise HTTPException(
+                status_code=503,
+                detail="File storage is not configured on this deployment.",
+            )
         else:
             # Log the environment variables (without sensitive values)
             logger.info("AWS environment variables:")
