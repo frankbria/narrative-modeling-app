@@ -511,3 +511,29 @@ down makes it look checked; it isn't, until you check it.
 
 **Related:** [[scoping-claims-need-a-grep]] — same lesson, and I had the memory. Having the
 rule available is not the same as applying it.
+
+## A 2xx that did no work is a whole bug class, not one site
+
+I found and fixed a quota leak on `/upload/secure`'s PII branch — it answers 200 having
+created nothing, and `QuotaRefundMiddleware` only refunds on >= 400, so the unit was kept.
+I wrote `release()` specifically for that shape. Then, in the same PR, I added a new
+reserve to `features/{id}/apply` — whose service reports failure by **returning**
+`{"success": False}` while the route answers 200 — and did not apply it. A reviewer had to
+find the second instance.
+
+Worse, the test docstring I wrote next to it asserted the opposite ("the refund middleware
+returns the unit on the downstream failure either way"), which is true only when failures
+raise. I had not checked which the service does.
+
+**Do:** the moment you write a compensating helper for a failure mode, grep for the *other*
+sites with that property before moving on. Here the query is "handlers that return 2xx on a
+failure path": `grep -n 'success.*False' services/` and check what the route does with it.
+A service that signals failure by return value rather than by raising is invisible to every
+middleware that keys on status code.
+
+**Do:** before asserting in a comment that some middleware "handles it", read the path that
+would trigger it. A confident docstring is how a wrong assumption gets inherited.
+
+**Related:** [[repairing-dead-paths-is-a-feature-launch]] — expect your own fix to open the
+next hole. This is the sharper version: expect your own fix's *shape* to already exist
+elsewhere.
