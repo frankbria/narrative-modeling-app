@@ -930,6 +930,52 @@ class TestBatchRetryQuota:
         assert response.status_code == 200, response.text
         assert await metering.usage_for(TEST_USER, "predictions") == 1
 
+    @pytest.mark.parametrize(
+        ("status_name", "retry_count"),
+        [
+            ("FAILED", 0),
+            ("FAILED", 2),
+            ("FAILED", 3),
+            ("COMPLETED", 0),
+            ("PENDING", 0),
+            ("RUNNING", 0),
+            ("CANCELLED", 0),
+        ],
+    )
+    async def test_the_route_agrees_with_can_retry(
+        self, async_authorized_client, setup_database, monkeypatch, status_name, retry_count
+    ):
+        """The retry rule is written three times and nothing tied them together.
+
+        `BatchJob.can_retry()` states it; the route re-implements it as two checks so
+        it can say *which* precondition failed; and `retry_job` encodes it a third
+        time as a Mongo filter (`status` plus an `$expr` retry budget) so the claim is
+        atomic. Each of those exists for a reason, but a fourth condition — a cooldown,
+        say — added to the model method alone would leave the route's message and the
+        claim's filter quietly disagreeing with it.
+
+        So this asserts the agreement rather than the implementations: whatever
+        `can_retry()` says, the endpoint does.
+        """
+        from app.models.batch_job import BatchJob, JobStatus
+
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        job_id = await self._failed_job(retry_count=retry_count)
+        job = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert job is not None
+        job.status = getattr(JobStatus, status_name)
+        await job.save()
+
+        expected = job.can_retry()
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert (response.status_code == 200) is expected, (
+            f"can_retry()={expected} but the route answered "
+            f"{response.status_code}: {response.text}"
+        )
+
     async def test_a_denied_retry_leaves_usage_exactly_at_the_cap(
         self, async_authorized_client, setup_database
     ):
