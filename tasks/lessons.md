@@ -464,3 +464,44 @@ which is the only way to see what CI sees.
 **Related:** [[backend-lint-scope-and-pytest-summary]] already records that CI runs
 `ruff check .` from `apps/backend` and therefore sees untracked files — I had that note
 and still scoped the command. Knowing the rule is not the same as running it.
+
+## A green local suite can be green because of your environment, not your code
+
+CI failed a test that passed locally. `upload.py` had **two** branches writing a
+placeholder `s3_url` and returning 200: `s3_upload_failed` (AWS configured, write failed)
+and `s3_not_configured` (no AWS env at all). I fixed the first, and my test passed —
+because my machine has AWS credentials, so it reached the branch I had fixed. CI has
+none, short-circuits earlier, and hit the branch I had not.
+
+The tell was there in the failure output and nowhere else: `"s3_url":"s3_not_configured"`
+— a string I had never grepped for, because I had grepped for the one I already knew.
+
+**Do:** when a route branches on *environment* (credentials present, a service reachable,
+a feature flag), the test has to pin the branch explicitly — `monkeypatch.setenv` /
+`delenv` — rather than inheriting whatever the machine happens to have. One test per
+branch. And before pushing a change to such a route, run the suite once with the relevant
+env unset: `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY ... uv run pytest`.
+
+**Do:** when fixing a sentinel/placeholder value, grep for the *pattern* rather than the
+one literal you found (`grep -n 's3_[a-z_]*"' `), because the second one is written by the
+same author in the same style a few lines away.
+
+**Related:** same family as [[verify-deployed-artifact-matches-repo]] — "it worked where I
+ran it" is not "it works". Here the difference was env vars rather than a stale server.
+
+## An exclusion written confidently is still an exclusion
+
+I documented in the plan why the onboarding sample-dataset loader was out of scope for the
+quota fix: the content is ours, not the tenant's upload, and metering it would spend a free
+tenant's quota during forced onboarding. Both halves were wrong, and two minutes of reading
+would have shown it — `insert()` is unconditional (the `sample_datasets_loaded` check only
+guards a bookkeeping list, so N calls create N datasets) and the route is a deliberate user
+click, not something onboarding performs. The review caught what the reasoning had waved
+past.
+
+**Do:** an out-of-scope claim about *behaviour* ("it only creates one", "users don't hit
+this") is a factual claim and needs the same grep as an in-scope one. Writing the reason
+down makes it look checked; it isn't, until you check it.
+
+**Related:** [[scoping-claims-need-a-grep]] — same lesson, and I had the memory. Having the
+rule available is not the same as applying it.
