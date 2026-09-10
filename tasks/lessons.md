@@ -562,3 +562,20 @@ test means the contract between them is asserted nowhere.
 **Related:** [[chart-tests-use-real-recharts]] and the `__mocks__` trap — a suite that
 never runs the real thing fails silently by passing. This is that lesson arriving through
 a mutation check instead of a library upgrade.
+
+## `gh issue create --body "..."` runs backticks as shell
+
+Filing a follow-up, an acceptance criterion came out with three phrases missing. The body
+was a double-quoted bash string containing markdown code spans, and bash ran each
+backtick pair as command substitution — `app.routes`, `_IncludedRouter` and
+`isinstance(r, APIRoute)` were executed, failed, and substituted as empty strings. The
+issue was created, so the failure looked like success; only the stderr noise
+("command not found") and re-reading the issue showed it.
+
+**Do:** pass issue and PR bodies via `--body-file` (a heredoc written with the Write tool,
+or a file), never as a double-quoted inline string. `gh issue create --body-file -` with a
+quoted heredoc (`<<'BODY'`) is also safe — the quoted delimiter is what disables
+substitution.
+
+**Do:** after filing anything with formatting, read it back. A silently-truncated
+acceptance criterion is worse than a missing one, because it still looks complete.
