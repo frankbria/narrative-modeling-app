@@ -403,3 +403,64 @@ shape and concluded they were safe.
 **Do:** when a fix comes from one observation, record the *symptom*, the *one site*,
 the habit that sidesteps it, and the *detection command*. Claim a cause only after
 seeing it fail and not-fail on demand.
+
+## A lifecycle hook can make a seeded field a no-op, and the test still passes
+
+I added a test asserting that a repair script bumps `Subscription.updated_at`, seeding
+a deliberately stale value through the model: `_seed("u-touch", updated_at=stale)`. It
+passed. It also passed with the line under test **deleted** — the mutation check is the
+only reason I found out.
+
+The cause: `@before_event(Insert, Replace, Save, SaveChanges, Update)` on `_touch()`
+fires on **insert** too, so the seeded `stale` was overwritten with `now` before it ever
+reached Mongo. The assertion then compared now against now and was true for a reason
+that had nothing to do with the code under test.
+
+The class is wider than Beanie: any `default_factory`, `@before_event`, DB default, or
+ORM `onupdate` that owns a field makes "seed it, then assert on it" meaningless — and
+meaningless in the passing direction, which is the direction nobody investigates.
+
+**Do:** when a test's setup writes a field that some hook also owns, write it **past**
+the model (raw `collection.update_one`) and say why in a comment. And mutation-check
+every test whose whole point is that one line exists — deleting the line must turn the
+test red. Three guards were mutation-checked in that PR; two held, this one did not.
+
+**Related:** same family as [[chart-tests-use-real-recharts]] and the `__mocks__` trap —
+a test that never exercises the real thing fails silently by passing.
+
+## Adopting a review finding can open the next hole
+
+The GLM pass said the reconcile script ignored `plan_tier` drift. True, and I fixed it
+by reusing the webhook's `tier_for_price`. The next review round found that this *new*
+code would downgrade every ENTERPRISE tenant to PRO whenever run without
+`STRIPE_PRICE_*` set — because `tier_for_price` falls back to PRO for any price it
+cannot match against a **configured** setting, and the script is meant to run from an
+operator shell, which is exactly where env is thin.
+
+The fix was correct; the *context transfer* was not. A helper written for the server
+process carries the server process's assumptions about its environment.
+
+**Do:** when reusing an app-internal helper inside a script, cron entry or migration,
+re-derive what it reads from settings and whether that shell has it. And run the review
+loop again after adopting findings — the second round is not ceremony.
+
+## `git add -A <dir>` stages untracked scratch, and a scoped lint won't see it
+
+CI's Backend Lint went red on a commit where `ruff check app tests scripts` had passed
+locally. Cause: a `git add -A apps/backend` swept in `_demo_77.py` — pre-existing local
+scratch, untracked before the branch and untracked after — whose 26 `print`s are T201.
+My lint command named three directories; the file sat in the fourth place, the package
+root, so it was invisible to the check and visible to CI, which runs `ruff check .`.
+
+Two habits failed together: staging by directory rather than by path, and linting a
+hand-listed subset instead of what CI actually runs. Either alone would have caught it.
+
+**Do:** stage the paths you changed (`git add <file>...`), or check `git status --short`
+for `A ` entries you did not write before committing. Run the *repo's own* lint
+invocation, not a scoped approximation of it — and when local and CI disagree, lint the
+committed tree (`git archive HEAD | tar -x -C tmp`) rather than the working directory,
+which is the only way to see what CI sees.
+
+**Related:** [[backend-lint-scope-and-pytest-summary]] already records that CI runs
+`ruff check .` from `apps/backend` and therefore sees untracked files — I had that note
+and still scoped the command. Knowing the rule is not the same as running it.

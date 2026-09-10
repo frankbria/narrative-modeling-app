@@ -8,9 +8,26 @@ unreachable.
 Plan limits live in `app/billing/plans.py` rather than here on purpose: a limit is a
 product decision that changes without a migration, whereas this document records
 what a tenant actually bought.
+
+**How this mirror stays in sync, and what happens when it does not (#458 AC4).**
+Webhook delivery is the only automatic sync mechanism. There is no scheduled
+reconciliation, deliberately: this service has no scheduler, and Stripe already
+retries a failed delivery with backoff for about three days, so a *permanently*
+missed event is rare. The two ways a stale row can be wrong are not symmetric, and
+each is handled:
+
+* **A missed lapse** — the customer stopped paying and we never heard. The expiry
+  check in `is_entitled` catches this without any help from Stripe: entitlement
+  runs out with the paid period, so a dropped event fails closed rather than
+  granting a tier forever, which is the bug #458 was filed for.
+* **A missed renewal** — the customer paid and we never heard. This one fails the
+  other way, and no local rule can repair it, because the missing information is
+  the payment. `scripts/reconcile_subscriptions.py` re-reads Stripe and rewrites
+  what has drifted; run it from cron on the box, or by hand after a Stripe
+  incident.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
@@ -25,6 +42,30 @@ from beanie import (
     before_event,
 )
 from pydantic import Field
+
+from app.utils.datetime import as_utc
+
+#: How long past `current_period_end` an ACTIVE subscription still grants its tier.
+#:
+#: Not zero, because the period end is only as fresh as the last webhook: a renewal
+#: event delayed by Stripe's own delivery backoff, or a few seconds of clock skew,
+#: would otherwise cut off a customer who has already paid. Not weeks either — for a
+#: subscription Stripe believes is ACTIVE, the renewal has happened and the event is
+#: merely late, so this only has to outlast a delivery problem.
+ENTITLEMENT_GRACE = timedelta(days=3)
+
+#: The same, for a PAST_DUE subscription, where Stripe is actively dunning.
+#:
+#: Deliberately much longer, because `ENTITLEMENT_GRACE` alone would quietly rescind
+#: the PAST_DUE policy this module states twice over: Stripe's Smart Retries are
+#: configurable out to roughly four weeks, so a card that fails at renewal and
+#: succeeds on a retry on day eight would have been cut off on day three by a single
+#: shared window — "serve through the retries" in the docstring and "stop after
+#: three days" in the code. The clock is the backstop here, not the decision: the
+#: decision is the status change to `unpaid`/`canceled` that Stripe sends when it
+#: gives up, which `from_stripe` now maps to a non-entitled status. This only bounds
+#: how long a *missed* one of those events can go unnoticed.
+DUNNING_GRACE = timedelta(days=30)
 
 
 class PlanTier(str, Enum):
@@ -63,7 +104,13 @@ class SubscriptionStatus(str, Enum):
             "trialing": cls.ACTIVE,  # a trial is entitled access
             "past_due": cls.PAST_DUE,
             "canceled": cls.CANCELED,
-            "unpaid": cls.PAST_DUE,
+            # NOT PAST_DUE, however similar the two names look. `past_due` means a
+            # payment failed and Stripe is **still retrying**; serving through it is
+            # deliberate (see `is_entitled`). `unpaid` is what a subscription becomes
+            # once Stripe has **exhausted** those retries and given up. It is
+            # terminal, and merging the two granted permanent paid entitlement to a
+            # customer whose payments had permanently failed (#458).
+            "unpaid": cls.CANCELED,
             "paused": cls.CANCELED,
             "incomplete": cls.INCOMPLETE,
             "incomplete_expired": cls.INCOMPLETE,
@@ -161,11 +208,47 @@ class Subscription(Document):
     def is_entitled(self) -> bool:
         """Whether this subscription currently grants its tier's entitlements.
 
-        PAST_DUE deliberately still counts. Stripe retries a failed payment for days;
-        cutting a paying customer off at the first failure is worse than serving
-        them through a card that is about to be updated. CANCELED does not count.
+        Two conditions, both required.
+
+        **The status must be an entitled one.** PAST_DUE deliberately counts: Stripe
+        retries a failed payment for days, and cutting a paying customer off at the
+        first failure is worse than serving them through a card that is about to be
+        updated. CANCELED — which `from_stripe` now maps `unpaid` onto — does not.
+
+        **The paid period must not have lapsed**, beyond `ENTITLEMENT_GRACE`. Status
+        alone is a value that is only as current as the last webhook that arrived,
+        and nothing in this service reconciles against Stripe on a schedule (see the
+        class docstring), so without an expiry a single dropped event would grant a
+        tier indefinitely.
+
+        A `current_period_end` of `None` falls back to `updated_at` — the last time
+        any Stripe event touched this row — plus the same grace. It is deliberately
+        **not** unbounded. `checkout.session.completed` establishes ACTIVE before the
+        `customer.subscription.created` that carries the period end, so the field is
+        legitimately absent for a few seconds on every new purchase and revoking
+        immediately would downgrade a customer at the instant they paid. But
+        "unknown expiry means entitled forever" is the #458 bug wearing a different
+        hat: the follow-up event is exactly the kind Stripe can drop for good, and
+        that row would then hold paid access with no expiry and no event left to
+        arrive. Bounding the gap by the last thing we actually heard covers the
+        ordering window without reopening the hole.
+
+        The grace differs by status — see `ENTITLEMENT_GRACE` and `DUNNING_GRACE`.
+        A PAST_DUE subscription is one Stripe is still retrying, and cutting it off
+        on the ACTIVE window would contradict the policy in the paragraph above.
+
+        Mongo reads datetimes back naive, so both stored values are coerced with
+        `as_utc` before being compared against an aware now (CLAUDE.md).
         """
-        return self.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE)
+        if self.status not in (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE):
+            return False
+        grace = (
+            DUNNING_GRACE
+            if self.status is SubscriptionStatus.PAST_DUE
+            else ENTITLEMENT_GRACE
+        )
+        lapses = self.current_period_end or self.updated_at
+        return as_utc(lapses) + grace > datetime.now(UTC)
 
     @property
     def effective_tier(self) -> PlanTier:

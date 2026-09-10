@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -27,6 +28,7 @@ from app.billing.stripe_signature import (
 )
 from app.config import settings as _settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
+from app.utils.datetime import as_utc
 
 # Outside /api/v1 on purpose — see the include_router comment in app/main.py.
 WEBHOOK_PATH = "/webhooks/stripe/webhook"
@@ -442,9 +444,7 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.plan_tier == PlanTier.ENTERPRISE
 
-    @pytest.mark.parametrize(
-        "period_end", ["not-a-timestamp", {}, [], 10**20]
-    )
+    @pytest.mark.parametrize("period_end", ["not-a-timestamp", {}, [], 10**20, True])
     async def test_an_unparseable_period_end_is_not_a_500(
         self, async_authorized_client, setup_database, period_end
     ):
@@ -457,6 +457,187 @@ class TestWebhookEndpoint:
                 "status": "active",
                 "id": "sub_1",
                 "current_period_end": period_end,
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is None
+
+    async def test_the_period_end_is_read_from_the_subscription_item(
+        self, async_authorized_client, setup_database
+    ):
+        """The pinned API version moved `current_period_end` off the subscription
+        object and onto its items (#510). Reading only the old location left the
+        field null on every real subscription — invisible until #458 made
+        entitlement depend on it, at which point every paying customer would have
+        read as expired at once.
+        """
+        period_end = 2_000_000_000
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "items": {
+                    "data": [
+                        {
+                            "price": {"id": "price_pro"},
+                            "current_period_end": period_end,
+                        }
+                    ]
+                },
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is not None
+        # Mongo reads datetimes back naive, so `.timestamp()` on the raw value
+        # would read it as local time — 7 hours out on this machine (CLAUDE.md).
+        assert int(as_utc(sub.current_period_end).timestamp()) == period_end
+
+    async def test_a_legacy_top_level_period_end_is_still_read(
+        self, async_authorized_client, setup_database
+    ):
+        """A webhook endpoint pinned to an older API version still sends the old
+        shape, and an account can have several endpoints on different versions."""
+        period_end = 1_900_000_000
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "current_period_end": period_end,
+            },
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is not None
+        # Mongo reads datetimes back naive, so `.timestamp()` on the raw value
+        # would read it as local time — 7 hours out on this machine (CLAUDE.md).
+        assert int(as_utc(sub.current_period_end).timestamp()) == period_end
+
+    async def test_the_top_level_period_end_wins_when_both_are_present(
+        self, async_authorized_client, setup_database
+    ):
+        """The documented precedence, pinned. Without this, flipping the order (or
+        dropping the legacy read outright) passes the whole suite silently."""
+        top_level, on_item = 1_900_000_000, 2_000_000_000
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "current_period_end": top_level,
+                "items": {"data": [{"current_period_end": on_item}]},
+            },
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None and sub.current_period_end is not None
+        assert int(as_utc(sub.current_period_end).timestamp()) == top_level
+
+    async def test_an_event_without_a_period_end_does_not_erase_a_known_one(
+        self, async_authorized_client, setup_database
+    ):
+        """`invoice.payment_failed` and `subscription.deleted` carry no period end.
+        Clearing the stored value on those would strand the row on the `updated_at`
+        fallback and re-open the "no known expiry" gap on every such event."""
+        known = datetime.now(UTC) + timedelta(days=30)
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_end=known,
+        ).insert()
+
+        payload = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is not None
+        assert int(as_utc(sub.current_period_end).timestamp()) == int(known.timestamp())
+
+    @pytest.mark.parametrize(
+        "items",
+        [
+            "oops",
+            123,
+            {"data": "oops"},
+            {"data": 7},
+            {"data": []},
+            {"data": ["not-a-dict"]},
+            {},
+            None,
+        ],
+    )
+    async def test_a_malformed_items_container_is_not_a_500(
+        self, async_authorized_client, setup_database, items
+    ):
+        """`_period_end` and `_price_id` both walk `items.data[0]`, and nothing wraps
+        `_handle` — an AttributeError on `"oops".get("data")` or a TypeError on
+        `7[0]` becomes a 500, which Stripe then retries forever."""
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "items": items,
+            },
+        )
+        response = await async_authorized_client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+        assert response.status_code == 200, response.text
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.current_period_end is None
+        assert sub.status == SubscriptionStatus.ACTIVE
+
+    @pytest.mark.parametrize(
+        # `None` is deliberately absent: it short-circuits on `raw is None`
+        # before the try/except, so it would be testing the no-period-end path
+        # under a name that claims to test parse failures.
+        "item_period_end",
+        ["not-a-timestamp", {}, 10**20, True],
+    )
+    async def test_an_unparseable_item_period_end_is_not_a_500(
+        self, async_authorized_client, setup_database, item_period_end
+    ):
+        payload = event(
+            "customer.subscription.updated",
+            {
+                "metadata": {"user_id": TEST_USER},
+                "status": "active",
+                "id": "sub_1",
+                "items": {"data": [{"current_period_end": item_period_end}]},
             },
         )
         response = await async_authorized_client.post(

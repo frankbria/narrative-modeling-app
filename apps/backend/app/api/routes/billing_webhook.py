@@ -202,14 +202,38 @@ async def _apply(
 def _period_end(obj: dict[str, Any]):
     """Stripe sends epoch seconds; the model stores a datetime.
 
-    Returns None rather than raising on anything not int-coercible (a future API
-    version sending a string, a schema quirk). Everything else in this file is
-    defensive about shape for one reason — an uncaught raise is a 500, and Stripe
-    retries a non-2xx forever. Losing a period-end is recoverable; a retry loop is
-    not.
+    **Two locations, checked in that order.** The pinned API version
+    (`STRIPE_API_VERSION`) no longer carries `current_period_end` on the
+    subscription object at all — it moved onto each subscription *item*, which the
+    installed SDK's own types confirm: `stripe/_subscription.py` has no such field
+    and `stripe/_subscription_item.py` does. Reading only the old location left the
+    field null on every real subscription. That was invisible while nothing read it
+    and catastrophic the moment `is_entitled` began to (#510, #458).
+
+    The old top-level location is still checked first because a webhook endpoint can
+    be pinned to an older API version than the SDK uses for outbound calls, and an
+    account can have several endpoints on different versions. Where both are present
+    they agree, and preferring the explicit top-level value keeps an older
+    integration reading exactly as it did before.
+
+    Only the FIRST item is read, matching `_price_id` — this product sells one plan
+    per subscription. All items of one subscription share a billing period anyway.
+
+    Returns None rather than raising on anything not int-coercible. Everything else
+    in this file is defensive about shape for one reason — an uncaught raise is a
+    500, and Stripe retries a non-2xx forever. Losing a period-end is recoverable; a
+    retry loop is not.
     """
     raw = obj.get("current_period_end")
     if raw is None:
+        item = _first_item(obj)
+        if item is not None:
+            raw = item.get("current_period_end")
+    # `bool` subclasses `int`, so a stray `true` would parse as epoch 1 and stamp the
+    # subscription as having lapsed in 1970 — the same trap the `created` handling
+    # below guards, and worth guarding identically rather than relying on the
+    # direction it happens to fail in.
+    if raw is None or isinstance(raw, bool):
         return None
     try:
         return datetime.fromtimestamp(int(raw), tz=UTC)
@@ -218,18 +242,37 @@ def _period_end(obj: dict[str, Any]):
         return None
 
 
-def _price_id(obj: dict[str, Any]) -> str | None:
-    """The price that decides the tier.
+def _first_item(obj: dict[str, Any]) -> dict[str, Any] | None:
+    """The FIRST subscription line item, or None if the payload is not that shape.
 
-    Reads the FIRST line item only. This product sells one plan per subscription —
-    there are no bundles or add-ons — so a multi-item subscription is not a shape
-    Stripe should ever send us. If that changes, tier attribution has to pick the
-    plan-defining item rather than position 0, and this is the function to change.
+    Reads position 0 only. This product sells one plan per subscription — there are
+    no bundles or add-ons — so a multi-item subscription is not a shape Stripe should
+    ever send us. If that changes, tier attribution has to pick the plan-defining
+    item rather than position 0, and this is the function to change.
+
+    Every level is type-checked rather than merely truthiness-checked. `obj["items"]`
+    arriving as a string would make `.get("data")` an AttributeError, and a `data`
+    that is a bare int would make `[0]` a TypeError — both of which propagate out of
+    `_handle`, which nothing wraps, and become a 500 that Stripe then retries
+    forever. Two callers needed the same walk and the earlier one only guarded the
+    last step, so this is one accessor rather than the same near-miss twice.
     """
-    items = (obj.get("items") or {}).get("data") or []
-    if not items or not isinstance(items[0], dict):
+    items = obj.get("items")
+    if not isinstance(items, dict):
         return None
-    return (items[0].get("price") or {}).get("id")
+    data = items.get("data")
+    if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+        return None
+    return data[0]
+
+
+def _price_id(obj: dict[str, Any]) -> str | None:
+    """The price that decides the tier."""
+    item = _first_item(obj)
+    if item is None:
+        return None
+    price = item.get("price")
+    return price.get("id") if isinstance(price, dict) else None
 
 
 def _epoch(raw: Any):
