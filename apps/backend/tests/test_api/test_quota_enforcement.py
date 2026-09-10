@@ -274,8 +274,10 @@ class TestFeatureApplyQuota:
     false, and an in-place apply creates nothing to bill for.
 
     Both cases are asserted at the cap, where a reserve is unmistakable — it is the
-    only thing that can produce a 402. Asserting on usage instead would prove nothing,
-    since `QuotaRefundMiddleware` returns the unit on the downstream failure either way.
+    only thing that can produce a 402. Asserting on usage instead would prove nothing
+    *for these two*, since the request fails downstream and the refund middleware
+    returns the unit either way — but note that only holds because those failures
+    raise. The ones that do not raise are the class below.
     """
 
     APPLY = "/api/v1/datasets/ds-feat/features/feat-1/apply"
@@ -334,6 +336,118 @@ class TestFeatureApplyQuota:
         )
 
         assert response.status_code != 402, response.text
+
+
+class TestFeatureApplyDoesNotLeakOnASilentFailure:
+    """`apply_feature_to_dataset` reports failure by **returning**, not raising.
+
+    Both its failure paths — the S3 write of the new dataframe, and its catch-all —
+    `return {"success": False, ...}`, which the route wraps in an
+    `ApplyFeatureResponse` and answers **200**. `QuotaRefundMiddleware` refunds on
+    >= 400, so the reserved unit is kept for a dataset that was never created.
+
+    This is the `/upload/secure` PII bug in a second place, and it is what `release()`
+    exists for: a 2xx that did no billable work has to hand the unit back itself.
+    A tenant at 19 of 20 uploads who hits an S3 blip here would otherwise burn their
+    last unit, receive nothing, and be 402'd for the rest of the month.
+    """
+
+    APPLY = "/api/v1/datasets/ds-feat/features/feat-1/apply"
+
+    async def _seed_feature(self) -> None:
+        from app.models.feature import ExpressionNode, FeatureDefinition, NodeType
+
+        await FeatureDefinition(
+            user_id=TEST_USER,
+            dataset_id="ds-feat",
+            feature_id="feat-1",
+            name="doubled",
+            expression_tree=ExpressionNode(
+                node_id="n1", node_type=NodeType.COLUMN, value="amount"
+            ),
+            is_valid=True,
+        ).insert()
+
+    @staticmethod
+    def _failing_result():
+        async def _apply(**kwargs):
+            return {
+                "success": False,
+                "dataset_id": "ds-feat",
+                "column_name": "doubled",
+                "rows_computed": 0,
+                "null_values": 0,
+                "warnings": [],
+                "error": "Failed to upload to S3",
+                "s3_url": None,
+            }
+
+        return _apply
+
+    async def test_a_silent_failure_on_the_create_path_returns_the_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            self._failing_result(),
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        # The route's own contract: it answers 200 carrying success=false.
+        assert response.status_code == 200, response.text
+        assert response.json()["success"] is False
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+    async def test_a_successful_create_keeps_its_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The release must be conditional on failure — handing the unit back on a
+        successful create would make the limit unenforceable."""
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+
+        async def _apply(**kwargs):
+            return {
+                "success": True,
+                "dataset_id": "ds-new",
+                "column_name": "doubled",
+                "rows_computed": 3,
+                "null_values": 0,
+                "warnings": [],
+                "error": None,
+                "s3_url": "s3://bucket/ds-new.parquet",
+            }
+
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            _apply,
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
 
 
 class TestTrainingQuota:

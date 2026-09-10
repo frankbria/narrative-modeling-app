@@ -52,13 +52,17 @@ _MUST_BE_METERED = {
     # the handler is *written* to create a dataset, so exempting it would let #472's fix
     # silently reopen this hole. The reserve is refunded by the 500 in the meantime.
     "/api/v1/",
-    # A sample load is a real dataset: a full UserData row with rows, columns, schema
-    # and a preview, which the tenant then uses like any other. The insert is
-    # unconditional — the `sample_datasets_loaded` check afterwards only guards a
-    # bookkeeping list — so calling it N times creates N datasets. Unmetered it was an
-    # unlimited mint past the cap, which is the whole bug class of #459. It costs the
-    # tenant one of FREE's 20 uploads, and it is a deliberate click (the user picks a
-    # dataset in SampleDatasetSelector), not something onboarding does to them.
+    # A sample load creates a real UserData row — rows, columns, schema, preview — and
+    # the insert is unconditional: the `sample_datasets_loaded` check afterwards only
+    # guards a bookkeeping list, so calling it N times creates N rows. Unmetered that
+    # was an unlimited mint past the cap, which is the bug class of #459. It costs one
+    # of FREE's 20 uploads, and it is a deliberate click (the user picks a dataset in
+    # SampleDatasetSelector) rather than something onboarding does to them.
+    #
+    # Not claiming more than is true: the row's `s3_url` is fabricated and no file is
+    # ever uploaded (#541), so this is not yet a dataset the tenant can *use* like any
+    # other. It is metered for what it creates and for the mint, not on the strength of
+    # that row being sound.
     "/api/v1/onboarding/sample-datasets/{dataset_id}/load",
 }
 

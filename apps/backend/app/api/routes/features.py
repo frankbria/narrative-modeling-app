@@ -19,7 +19,7 @@ from fastapi import (
 )
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing.enforcement import reserve
+from app.billing.enforcement import release, reserve
 from app.models.feature import (
     ExpressionNode,
     NodeType,
@@ -640,6 +640,16 @@ async def apply_feature(
             output_column_name=request.output_column_name,
             create_new_dataset=request.create_new_dataset
         )
+
+        # `apply_feature_to_dataset` reports failure by RETURNING, not raising — both
+        # its S3-upload path and its catch-all `return {"success": False, ...}` — and
+        # this route answers 200 carrying that flag. The refund middleware only sees
+        # >= 400, so without this the unit reserved above is kept for a dataset that
+        # was never created: a tenant on their last upload burns it, receives nothing,
+        # and is 402'd until the period rolls. Same shape as `/upload/secure`'s PII
+        # branch, which is what `release()` exists for.
+        if request.create_new_dataset and not result.get("success", False):
+            await release(http_request)
 
         return ApplyFeatureResponse(
             success=result["success"],
