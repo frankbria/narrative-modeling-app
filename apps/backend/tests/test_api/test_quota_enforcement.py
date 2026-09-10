@@ -905,6 +905,31 @@ class TestBatchRetryQuota:
         assert response.status_code >= 400, response.text
         assert await metering.usage_for(TEST_USER, "predictions") == 0
 
+    @pytest.mark.parametrize("rows", [0, 1])
+    async def test_a_tiny_job_charges_only_the_admission_unit(
+        self, async_authorized_client, setup_database, monkeypatch, rows
+    ):
+        """The `rows > 1` branch, which nothing else exercises — every other test in
+        this class uses 40.
+
+        Asserts the **behaviour**, not the guard: a 0- or 1-row job costs exactly the
+        admission unit. Removing the guard would not change that, because
+        `metering.consume` and `metering.refund` both return early on `amount <= 0` —
+        which is worth stating, since the first version of this docstring claimed the
+        guard prevented `consume()` treating -1 as a credit, and it does not. The
+        guard earns its place by making the call site legible, not by being the thing
+        that holds.
+        """
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        job_id = await self._failed_job(rows=rows)
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 1
+
     async def test_a_denied_retry_leaves_usage_exactly_at_the_cap(
         self, async_authorized_client, setup_database
     ):

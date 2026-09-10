@@ -374,9 +374,7 @@ async def retry_batch_job(
     creation, holds two reservations, and the refund middleware returns both on any
     >= 400.
     """
-    job = await BatchJob.find_one(
-        {"job_id": job_id, "user_id": current_user_id}
-    )
+    job = await BatchJob.find_one({"job_id": job_id, "user_id": current_user_id})
 
     # Distinguished rather than one 400 for everything: a caller who is told "cannot be
     # retried" cannot tell a typo'd id from an exhausted retry budget, and #460 AC3 asks
@@ -402,10 +400,15 @@ async def retry_batch_job(
     # `retry_job` spawns processing immediately, and a check afterwards would have to
     # unwind a job that is already predicting.
     #
-    # `total_records` defaults to 0, which would size to nothing. Only
+    # `total_records` defaults to 0, so a 0 or 1 leaves no remainder to charge. Only
     # `create_batch_prediction_job` writes these documents and it always sets the count,
-    # so a 0 means a document from somewhere else; the admission unit stands and the
-    # remainder is skipped rather than reserving a negative.
+    # so a 0 means a document from somewhere else.
+    #
+    # Defence in depth rather than the thing that makes this safe: `metering.consume`
+    # and `metering.refund` both return early on `amount <= 0`, so a `reserve(0)` or
+    # `reserve(-1)` is already a no-op at the layer below and cannot mint a credit. The
+    # guard is here so the call site says what it charges without the reader having to
+    # go and confirm that.
     rows = job.progress.total_records
     if rows > 1:
         await reserve(request, current_user_id, "predictions", rows - 1)

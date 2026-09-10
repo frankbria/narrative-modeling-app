@@ -342,3 +342,46 @@ class TestTheServiceActuallySetsCommitted:
 
         assert result["success"] is True, result.get("error")
         assert result["dataset_committed"] is True
+
+
+class TestBatchRetryMetersTheRightMetric:
+    """The retry route charges `predictions` from `progress.total_records`, for every
+    `BatchJob` regardless of `job_type` (#460).
+
+    That is correct only while every BatchJob *is* a batch prediction. `JobType` also
+    declares `MODEL_TRAINING` and `DATA_PROCESSING`, and if either were ever wired up to
+    this same document and retry route, the endpoint would silently meter the wrong
+    metric — a training re-run billed as N predictions. Nothing today creates those, so
+    this pins the assumption instead of adding an unreachable runtime branch: wire up a
+    second job type and this fails, forcing the metering question to be answered rather
+    than inherited.
+    """
+
+    def test_every_batch_job_created_is_a_batch_prediction(self):
+        import ast
+        import inspect
+        import textwrap
+
+        from app.services import batch_prediction
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(batch_prediction)))
+        constructions = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "BatchJob"
+        ]
+        assert constructions, "no BatchJob(...) found — did the module move?"
+
+        for call in constructions:
+            job_type = next(
+                (kw.value for kw in call.keywords if kw.arg == "job_type"), None
+            )
+            rendered = ast.unparse(job_type) if job_type is not None else "<missing>"
+            assert rendered == "JobType.BATCH_PREDICTION", (
+                f"BatchJob created with job_type={rendered} at relative line "
+                f"{call.lineno}. The retry route meters every BatchJob as "
+                f"`predictions` sized by progress.total_records — decide what this "
+                f"type should charge before letting it reach that route."
+            )
