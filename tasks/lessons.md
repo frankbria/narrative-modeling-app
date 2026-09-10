@@ -486,6 +486,12 @@ env unset: `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY ... uv run pytest`
 one literal you found (`grep -n 's3_[a-z_]*"' `), because the second one is written by the
 same author in the same style a few lines away.
 
+**And run the marker CI runs, not just the fast one.** The follow-up failure was an
+`integration`-marked test that the gate selection (`-m "not integration and not
+performance"`) never executes, so two local green runs in a row still missed it. A change
+to a route handler needs `-m integration` too — `ci.yml` runs both jobs and only the pair
+is the gate.
+
 **Related:** same family as [[verify-deployed-artifact-matches-repo]] — "it worked where I
 ran it" is not "it works". Here the difference was env vars rather than a stale server.
 
