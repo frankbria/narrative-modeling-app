@@ -837,6 +837,47 @@ class TestBatchRetryQuota:
         # The loser is refunded in full, so a lost race costs nothing.
         assert await metering.usage_for(TEST_USER, "predictions") == self.ROWS
 
+    async def test_a_claimed_job_is_updated_not_duplicated(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The claim hands `_spawn_processing` a document rebuilt from a raw motor
+        dict, and the spawned task saves it as it goes.
+
+        If that reconstruction lost the `_id`, the first save would **insert** rather
+        than update — `job_id` is `Indexed()`, not unique, so there would be no error,
+        just a second document while the claimed original sat `pending` forever. It
+        does preserve it, verified here rather than argued: every other retry test
+        stubs `_spawn_processing`, so nothing else in the suite ever touches the
+        rebuilt object. Raised by review as unverifiable from a runner without beanie.
+        """
+        from app.models.batch_job import BatchJob
+
+        saved_ids: list[object] = []
+
+        async def _process(job):
+            saved_ids.append(job.id)
+            job.progress.current_chunk = 1
+            await job.save()
+
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_process_batch_job", _process
+        )
+        job_id = await self._failed_job()
+        original = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert original is not None
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+        assert response.status_code == 200, response.text
+
+        # Let the spawned task run to completion before counting.
+        for task in list(batch_prediction_routes.batch_service._background_tasks):
+            await task
+
+        assert saved_ids == [original.id], "the rebuilt job lost its _id"
+        assert await BatchJob.find(BatchJob.job_id == job_id).count() == 1, (
+            "the retry inserted a duplicate instead of updating the claimed job"
+        )
+
     async def test_a_failed_retry_refunds_every_reserved_row(
         self, async_authorized_client, setup_database, monkeypatch
     ):
