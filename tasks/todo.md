@@ -1,114 +1,66 @@
-# #459 (P0.16) — dataset-creating upload routes bypass the `uploads` quota
+# #460 (P0.17) — batch-job retry re-runs every prediction with no quota reservation
 
-## The issue is partly stale — verified against the code, not the text
+## Verified against the code
 
-`secure_upload.py:360` (chunked completion) **already carries** `quota("uploads")`; #582
-added it when it repaired that flow. The issue's "three of four" no longer holds. What
-is actually unguarded today:
+- `POST /api/v1/batch/jobs/{job_id}/retry` (`batch_prediction.py:348`) has **no** `quota`
+  dependency and no reserve. It calls `BatchPredictionService.retry_job`, which resets the
+  job and calls `_spawn_processing`. Every prediction re-runs free.
+- Creation does it correctly (`:133-183`): `dependencies=[Depends(quota("predictions"))]`
+  reserves 1 at admission, then `reserve(request, user, "predictions", rows - 1)` charges
+  the remainder **before** the job is created, because creation `auto_start`s processing.
+- **The input survives.** `_prepare_input_data` uploads the CSV to
+  `batch-jobs/{user}/{model}/{ts}/input.csv` in S3, so the temp file `create_batch_job`
+  unlinks is irrelevant and a retry genuinely re-executes the work. This is not a dead path.
+- **`progress.total_records` is reliable at retry time.** Set at creation
+  (`batch_prediction.py:249`), and `retry_job` resets `processed_records` / counters but
+  **not** `total_records`.
 
-| Route | Mounted at | Guard | Creates a dataset? |
-|---|---|---|---|
-| `datasets.py:141` | `POST /api/v1/datasets/upload` | ✅ | yes |
-| `secure_upload.py:41` | `POST /api/v1/upload/secure` | ✅ | yes |
-| `secure_upload.py:358` | `POST /api/v1/upload/chunked/{id}/complete` | ✅ (#582) | yes |
-| `secure_upload.py:194` | `POST /api/v1/upload/confirm-pii-upload` | ❌ | **yes** |
-| `upload.py:38` | `POST /api/v1/upload/` | ❌ | **yes** |
-| `store.py:19` | `POST /api/v1/` | ❌ | yes (but 500s always — #472) |
-| `features.py:584` | `POST /api/v1/datasets/{id}/features/{fid}/apply` | ❌ | **yes, when `create_new_dataset=true`** |
-| `onboarding.py:136` | `POST /api/v1/onboarding/sample-datasets/{id}/load` | ❌ | server-supplied — see below |
+### One correction to the issue
 
-A fan-out exploration found the `features/apply` row, which the issue does not mention:
-with `create_new_dataset=true` it calls the same `DatasetService.create_dataset` that
-`/datasets/upload` does. A tenant at their cap can mint unlimited datasets through it.
-The flag defaults to `false`, so a route-level dependency would over-charge every
-in-place apply — this one needs a **conditional reserve** on the create branch instead.
-
-The same exploration corrected two of my assumptions: `store.py`'s `UserData(...)` passes
-`file_name`/`headers`/`data`, which are not model fields, so it raises `ValidationError`
-before `.insert()` and **never creates a row** (which is #472's 500); and
-`DatasetService.create_dataset` writes **two** rows per call (`DatasetMetadata` plus the
-legacy `UserData` dual-write) — one dataset in two id-spaces, one quota unit, correct.
-
-`app/api/routes/__init__.py`'s `api_router` aggregator is mounted nowhere (#530/#471), so
-it adds no live routes; the four routers above are mounted directly in `main.py`.
-
-The frontend calls `/upload/chunked/*`, `/upload/secure` and `/upload/confirm-pii-upload`.
-It never calls `/datasets/upload` — which is the only route `TestUploadQuota` exercises,
-confirming AC4.
-
-## The one real design problem
-
-`/secure` returns **200** with `status: "pii_detected"` when it finds high-risk PII, and
-creates no dataset. `QuotaRefundMiddleware` refunds only on >= 400, so **that unit is
-already being charged today for a dataset the tenant never received.**
-
-`/confirm-pii-upload` then takes the file again and creates the dataset independently —
-it does not require `/secure` to have run. So it must be guarded on its own, or it is an
-unlimited free dataset factory. But guarding it naively makes the ordinary PII flow cost
-**2 units for 1 dataset**.
-
-Resolution: charge once per dataset actually created. `/secure`'s `pii_detected` branch
-releases its reservation; `/confirm-pii-upload` gets its own guard. No response-contract
-change, so the frontend's `requires_confirmation` handling is untouched.
+The issue says "repeated retries give unlimited free predictions". It is **bounded at 3**:
+`can_retry()` requires `status == FAILED and retry_count < max_retries` (3), and
+`mark_failed` increments `retry_count`. So the ceiling is 3 free re-runs per job — which,
+against `MAX_BATCH_PREDICT_RECORDS` of 1,000,000 and a FREE ceiling of 1,000, is still up
+to 3,000× a monthly plan on one job. P0 stands; the word "unlimited" does not.
 
 ## Plan (TDD — RED first per step)
 
-### 1. `enforcement.release(request)` + a metric marker
-- `release(request)` hands back every reservation on the request and clears it — the same
-  list `QuotaRefundMiddleware._refund` walks, reusing its double-refund guard. For the
-  case the middleware cannot see: a 2xx that did not do the work.
-- `quota()` tags its closure with the metric (`dependency.__quota_metric__ = metric`) so a
-  test can ask a route what it meters instead of digging through `__closure__`.
+### 1. Reserve on retry, mirroring creation exactly (AC1, AC2)
+- Add `dependencies=[Depends(quota("predictions"))]` to the retry route — reserves 1 at
+  admission, and the refund middleware returns it on any >= 400 (unknown job, not
+  retryable, quota denial).
+- In the handler, load the job scoped to the caller, then
+  `reserve(request, user_id, "predictions", total_records - 1)` when `total_records > 1`,
+  **before** calling `retry_job` (which spawns processing immediately, same as creation).
+- `reserve` appends to the reservation list rather than replacing, so the two charges
+  accumulate — AC2 is a property of `reserve`, and gets a test rather than a change.
 
-### 2. Guard the unguarded dataset-creating routes
-- `confirm_pii_upload`, `upload.upload_file`, `store.store_data` get
-  `dependencies=[Depends(quota("uploads"))]`.
-- None of them calls `metering.record()` — confirmed none does today (AC2).
-- `store.py` creates no row today, so this guard is a no-op there (reserve, then the 500
-  refunds it). It goes on anyway rather than into the exempt list: the handler is *written*
-  to create a dataset and only fails on a validation bug, so exempting it would make #472's
-  fix silently reopen this hole. One line now beats a stale exemption later.
+### 2. Denial is not silent (AC3)
+- Quota denial raises 402 carrying metric/limit/used/resets_at/upgrade_available, and the
+  job stays `FAILED` — it was not retried, which is the honest state.
+- **Deliberately not** overwriting `job.error_message` with a quota message: that field
+  holds why the job failed, and replacing it destroys the diagnostic the next retry needs.
+  The 402 is the message naming the limit.
+- The existing `400 "Job cannot be retried"` conflates three cases — unknown job, wrong
+  status, retry budget exhausted. Split so a denied retry says which, since AC3 is about a
+  denial being legible.
 
-### 2b. Conditional reserve on `features/apply`
-- `POST /datasets/{id}/features/{fid}/apply` reserves an `uploads` unit **only** when
-  `create_new_dataset` is true, via `enforcement.reserve(...)` in the handler — the same
-  primitive `quota()` uses, so `QuotaRefundMiddleware` still covers a later failure.
-- Not a route dependency: the flag defaults to false and the in-place apply creates
-  nothing, so a dependency would charge for work that is not an upload.
+### 3. AC5 — is there an automatic retry?
+- An explorer is sweeping for any non-user-triggered path that re-runs a job
+  (`_spawn_processing` callers, background tasks, startup recovery, per-chunk retry loops).
+  Findings fold into the plan before implementation; a chunk-level retry inside processing
+  would be the same bug with no user in the loop.
 
-### 3. Release the reservation on `/secure`'s PII branch
-- One `await release(request)` before the `pii_detected` return. Needs `request: Request`
-  added to that handler's signature.
+### 4. Tests (AC4)
+- Retry at the cap → **402**, and **no predictions executed** (job stays FAILED, status
+  unchanged, nothing spawned) — asserting the 402 alone would not catch a version that
+  denies *and* runs anyway.
+- A retry under the cap charges `total_records`, not 1 — the whole point of the issue.
+- Both reservations land (admission + remainder) rather than the second replacing the first.
+- A denied retry refunds nothing extra and leaves usage exactly at the cap.
 
-### 4. The enumerating test (AC3)
-- Walk `app.routes` for every POST on the dataset-creating routers, compare against a
-  declared registry in the test.
-- A route not in the registry **fails** with an instruction to decide: meter it, or add it
-  to the exempt set with a reason. That is what makes a fifth route fail rather than
-  silently join the gap.
-- Each registry entry marked metered asserts the route really carries a
-  `quota("uploads")` dependency, via the marker from step 1.
-
-### 5. Repoint the existing test (AC4)
-- `TestUploadQuota` moves to `/upload/chunked/{id}/complete` — the route the UI uses.
-- Keep a `/datasets/upload` case too; losing coverage of a guarded route to fix the test's
-  aim would trade one gap for another.
-
-### 6. Refund behaviour on the new paths (AC5)
-- Assert a failed `confirm-pii-upload` and a failed legacy `upload` refund their unit, and
-  that the PII-detected `/secure` leaves usage at 0.
-
-## Deliberately out of scope
-
-- **The onboarding sample-dataset loader.** It creates a `UserData` with an s3_url, but the
-  content is *ours*, not the tenant's upload, and every new user is forced through
-  onboarding (#470) — metering it would spend one of a free tenant's uploads before they
-  have done anything, and 402 the onboarding flow for anyone at their cap. It is also
-  currently broken: it fabricates an S3 URL for a file it never uploads (#541). Recorded in
-  the test's exempt set **with that reason** so it cannot be forgotten, and the product
-  question gets a follow-up issue rather than being decided silently here.
-- The second `UserData(...)` in `onboarding_service.py` (~:846) is an onboarding-progress
-  carrier with no s3_url and no rows — not a dataset, not metered.
-- #472 (store.py's unconditional 500), #541, and the P0.19–P0.21 rewrites named in the
-  issue's Dependencies section. This change only adds a dependency to those handlers; it
-  does not touch their bodies, so it will not collide with a parallel rewrite.
+## Out of scope
+- P1.14 (#486, the CSV row-count bug that can make a reservation 0) — named in the issue's
+  Dependencies as a separate fix.
+- #484 (no stale-job recovery) — unless the explorer finds a recovery path that re-runs
+  predictions, in which case it is AC5's answer and comes into scope.

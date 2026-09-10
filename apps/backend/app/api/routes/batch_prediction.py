@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, reserve
-from app.models.batch_job import JobStatus, JobType
+from app.models.batch_job import BatchJob, JobStatus, JobType
 from app.services.batch_prediction import BatchPredictionService
 from app.utils.upload_limits import read_upload_capped
 
@@ -345,16 +345,78 @@ async def cancel_batch_job(
     return {"message": "Job cancelled successfully"}
 
 
-@router.post("/jobs/{job_id}/retry")
+@router.post(
+    "/jobs/{job_id}/retry",
+    dependencies=[Depends(quota("predictions"))],
+)
 async def retry_batch_job(
-    job_id: str, current_user_id: str = Depends(get_current_user_id)
+    request: Request,
+    job_id: str,
+    current_user_id: str = Depends(get_current_user_id),
 ):
-    """Retry a failed batch job"""
+    """Retry a failed batch job, charging its rows the way creation does (#460).
 
-    success = await batch_service.retry_job(job_id, current_user_id)
+    A retry re-reads the same S3 input from the start — there is no resume — so it
+    re-executes the **full** record count, not the remainder. It was reserving nothing
+    at all, which made every re-run free. Bounded at `max_retries` (3) rather than
+    unlimited, but `MAX_BATCH_PREDICT_RECORDS` is 1,000,000 against a FREE ceiling of
+    1,000, so three free re-runs of one job is still up to 3,000x a monthly plan.
 
-    if not success:
-        raise HTTPException(status_code=400, detail="Job cannot be retried")
+    Charged from `progress.total_records`, the service's own pandas count of the file,
+    which is what will actually run — rather than re-downloading the object to re-count
+    it with the route's `_count_csv_rows`. The two parsers can differ by a row on a
+    trailing blank line (`_count_csv_rows` documents this), so a retry may charge one
+    unit differently from its own creation; the retry's number is the more accurate of
+    the two, being the count the processor will iterate.
+
+    The admission dependency reserves 1 before this body runs, so only the remainder is
+    charged here, and `reserve` **appends** rather than replaces — a retry, like a
+    creation, holds two reservations, and the refund middleware returns both on any
+    >= 400.
+    """
+    job = await BatchJob.find_one(
+        {"job_id": job_id, "user_id": current_user_id}
+    )
+
+    # Distinguished rather than one 400 for everything: a caller who is told "cannot be
+    # retried" cannot tell a typo'd id from an exhausted retry budget, and #460 AC3 asks
+    # for a refusal that says which. The admission unit is refunded on each of these by
+    # the middleware, so being refused never costs quota.
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.FAILED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only a failed job can be retried; this one is {job.status.value}.",
+        )
+    if job.retry_count >= job.max_retries:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Retry limit reached: this job has failed {job.retry_count} times "
+                f"(maximum {job.max_retries})."
+            ),
+        )
+
+    # BEFORE the restart, for the same reason creation charges before the job exists:
+    # `retry_job` spawns processing immediately, and a check afterwards would have to
+    # unwind a job that is already predicting.
+    #
+    # `total_records` defaults to 0, which would size to nothing. Only
+    # `create_batch_prediction_job` writes these documents and it always sets the count,
+    # so a 0 means a document from somewhere else; the admission unit stands and the
+    # remainder is skipped rather than reserving a negative.
+    rows = job.progress.total_records
+    if rows > 1:
+        await reserve(request, current_user_id, "predictions", rows - 1)
+
+    if not await batch_service.retry_job(job_id, current_user_id):
+        # The service claims the job with a single conditional update carrying the same
+        # preconditions, so exactly one of two simultaneous retries wins and the loser
+        # lands here. The checks above are for the *message* — they say which
+        # precondition failed — not for the mutual exclusion, which only the claim
+        # provides. The loser's reservations are refunded by this 409.
+        raise HTTPException(status_code=409, detail="Job cannot be retried")
 
     return {"message": "Job retry initiated"}
 
