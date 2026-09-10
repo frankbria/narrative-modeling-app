@@ -638,6 +638,13 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         # Use feature name if no column name specified
         column_name = output_column_name or feature.name
 
+        # Whether a NEW dataset has actually been persisted. Reported separately from
+        # `success` because the catch-all below wraps `create_dataset()` *and* the
+        # `feature.save()` that follows it: a raise in between leaves a real dataset in
+        # both id-spaces while this returns `success: False`. The caller meters on this
+        # (#459) — refunding on `success` alone would hand out a free dataset.
+        dataset_committed = False
+
         try:
             # Load full dataset
             df = await get_dataframe_from_s3(dataset.s3_url)
@@ -670,6 +677,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 logger.exception(f"Failed to upload dataframe to S3: {upload_error}")
                 return {
                     "success": False,
+                    "dataset_committed": dataset_committed,
                     "dataset_id": feature.dataset_id,
                     "column_name": column_name,
                     "rows_computed": 0,
@@ -709,6 +717,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                     data_schema=new_schema,
                     file_size=None,  # Will be calculated by S3
                 )
+                dataset_committed = True
                 final_dataset_id = new_dataset_id
 
                 # Update feature to point to new dataset
@@ -744,6 +753,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
 
             return {
                 "success": True,
+                "dataset_committed": dataset_committed,
                 "dataset_id": final_dataset_id,
                 "column_name": column_name,
                 "rows_computed": len(result_series),
@@ -757,6 +767,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             logger.exception(f"Error applying feature: {e}")
             return {
                 "success": False,
+                "dataset_committed": dataset_committed,
                 "dataset_id": feature.dataset_id,
                 "column_name": column_name,
                 "rows_computed": 0,

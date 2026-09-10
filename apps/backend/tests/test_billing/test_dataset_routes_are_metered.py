@@ -240,3 +240,105 @@ class TestNoRouteDoubleCounts:
             f"{offenders} both reserve (via quota) and record. Enforcement already "
             f"counted the unit; recording again double-charges."
         )
+
+
+class TestTheFeatureApplyContractIsComplete:
+    """`features/{id}/apply` meters on `dataset_committed`, so it must always be there.
+
+    The route asks the service whether a dataset was actually persisted, because
+    `success` alone cannot distinguish "nothing happened" from "the dataset was written
+    and something after it failed" — the service's catch-all spans both. If a return
+    path ever omits the key, the route's default silently decides for it, and which way
+    it defaults is a choice between overcharging the tenant and giving datasets away.
+    Neither should be reachable by forgetting a dict key.
+    """
+
+    def test_every_return_reports_whether_the_dataset_was_committed(self):
+        import ast
+        import inspect
+        import textwrap
+
+        from app.services.feature_builder_service import FeatureBuilderService
+
+        source = textwrap.dedent(
+            inspect.getsource(FeatureBuilderService.apply_feature_to_dataset)
+        )
+        tree = ast.parse(source)
+
+        missing = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
+                continue
+            keys = {
+                k.value for k in node.value.keys if isinstance(k, ast.Constant)
+            }
+            if "dataset_committed" not in keys:
+                missing.append(node.lineno)
+
+        assert not missing, (
+            "apply_feature_to_dataset returns a dict without `dataset_committed` at "
+            f"relative line(s) {missing}. The quota release on "
+            "`datasets/{id}/features/{fid}/apply` reads that key (#459)."
+        )
+
+
+@pytest.mark.asyncio
+class TestTheServiceActuallySetsCommitted:
+    """The real service must set `dataset_committed` when it creates a dataset.
+
+    Every route-level test above monkeypatches `apply_feature_to_dataset`, so deleting
+    the `dataset_committed = True` line in the service leaves all of them green while
+    every successful create silently refunds its unit — free datasets. This one drives
+    the real method, stubbing only the two S3 boundaries so the create path runs against
+    the real `DatasetService` and the test database.
+    """
+
+    async def test_a_real_create_reports_dataset_committed(
+        self, setup_database, monkeypatch
+    ):
+        import pandas as pd
+
+        from app.models.dataset import DatasetMetadata
+        from app.models.feature import ExpressionNode, FeatureDefinition, NodeType
+        from app.services import feature_builder_service as fbs
+        from app.services.feature_builder_service import FeatureBuilderService
+
+        user_id, dataset_id = "committed-user", "ds-commit"
+        await DatasetMetadata(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            filename="d.parquet",
+            original_filename="d.csv",
+            file_type="csv",
+            file_path=f"datasets/{user_id}/{dataset_id}/d.parquet",
+            s3_url=f"s3://bucket/datasets/{user_id}/{dataset_id}/d.parquet",
+            num_rows=3,
+            num_columns=1,
+            columns=["amount"],
+        ).save()
+        await FeatureDefinition(
+            user_id=user_id,
+            dataset_id=dataset_id,
+            feature_id="feat-commit",
+            name="doubled",
+            expression_tree=ExpressionNode(
+                node_id="n1", node_type=NodeType.COLUMN, value="amount"
+            ),
+            is_valid=True,
+        ).insert()
+
+        async def _load(_url):
+            return pd.DataFrame({"amount": [1, 2, 3]})
+
+        async def _upload(_df, key):
+            return f"s3://bucket/{key}"
+
+        monkeypatch.setattr(fbs, "get_dataframe_from_s3", _load)
+        monkeypatch.setattr(fbs, "upload_dataframe_to_s3", _upload)
+
+        result = await FeatureBuilderService().apply_feature_to_dataset(
+            feature_id="feat-commit", user_id=user_id, create_new_dataset=True
+        )
+
+        assert result["success"] is True, result.get("error")
+        assert result["dataset_committed"] is True

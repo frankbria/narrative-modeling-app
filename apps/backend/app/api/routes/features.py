@@ -648,7 +648,13 @@ async def apply_feature(
         # was never created: a tenant on their last upload burns it, receives nothing,
         # and is 402'd until the period rolls. Same shape as `/upload/secure`'s PII
         # branch, which is what `release()` exists for.
-        if request.create_new_dataset and not result.get("success", False):
+        # Keyed on `dataset_committed`, NOT on `success`. The two differ in a window
+        # that matters: the service's catch-all wraps `create_dataset()` *and* the
+        # `feature.save()` after it, so a raise in between returns `success: False`
+        # with a real dataset already persisted in both id-spaces. Releasing on
+        # `success` alone would hand that tenant a free dataset — the mirror of the
+        # double-charge this issue set out to fix, and just as invisible.
+        if request.create_new_dataset and not result.get("dataset_committed", False):
             await release(http_request)
 
         return ApplyFeatureResponse(

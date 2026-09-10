@@ -373,6 +373,7 @@ class TestFeatureApplyDoesNotLeakOnASilentFailure:
         async def _apply(**kwargs):
             return {
                 "success": False,
+                "dataset_committed": False,  # failed before create_dataset()
                 "dataset_id": "ds-feat",
                 "column_name": "doubled",
                 "rows_computed": 0,
@@ -410,6 +411,53 @@ class TestFeatureApplyDoesNotLeakOnASilentFailure:
         assert response.json()["success"] is False
         assert await metering.usage_for(TEST_USER, "uploads") == 0
 
+    async def test_a_dataset_that_was_actually_created_is_still_charged(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The mirror of the leak above, and the reason `success` alone is not enough
+        to decide on.
+
+        `apply_feature_to_dataset`'s catch-all wraps the *whole* create-and-save
+        sequence: `create_dataset()` persists the new dataset in both id-spaces, and
+        `feature.save()` comes after it. If anything between them raises, the service
+        returns `success: False` while a real, billable dataset exists — and releasing
+        on that hands the tenant a free dataset.
+        """
+        import app.api.routes.features as features_module
+
+        await self._seed_feature()
+
+        async def _apply(**kwargs):
+            return {
+                "success": False,
+                "dataset_committed": True,  # create_dataset() got through
+                "dataset_id": "ds-new",
+                "column_name": "doubled",
+                "rows_computed": 0,
+                "null_values": 0,
+                "warnings": [],
+                "error": "failed after the dataset was written",
+                "s3_url": None,
+            }
+
+        monkeypatch.setattr(
+            features_module.feature_builder_service,
+            "apply_feature_to_dataset",
+            _apply,
+        )
+
+        response = await async_authorized_client.post(
+            self.APPLY,
+            json={
+                "feature_id": "feat-1",
+                "output_column_name": "doubled",
+                "create_new_dataset": True,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
+
     async def test_a_successful_create_keeps_its_unit(
         self, async_authorized_client, setup_database, monkeypatch
     ):
@@ -422,6 +470,7 @@ class TestFeatureApplyDoesNotLeakOnASilentFailure:
         async def _apply(**kwargs):
             return {
                 "success": True,
+                "dataset_committed": True,
                 "dataset_id": "ds-new",
                 "column_name": "doubled",
                 "rows_computed": 3,
