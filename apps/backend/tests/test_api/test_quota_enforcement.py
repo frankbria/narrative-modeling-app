@@ -251,6 +251,44 @@ class TestPiiConfirmationChargesOnce:
         b"111-22-3333,30\n"
     )
 
+    async def test_the_whole_two_step_flow_charges_exactly_one_unit(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The claim this PR actually makes, asserted as a chain rather than as two
+        halves.
+
+        `/secure`'s release and `/confirm-pii-upload`'s charge are each pinned
+        separately below, and both would still pass if a regression made *both* steps
+        charge, or *both* release. What a tenant experiences is the sum, so that is
+        what has to be asserted: one dataset, one unit.
+        """
+        import app.api.routes.secure_upload as secure_module
+        from app.models.user_data import UserData
+
+        monkeypatch.setattr(
+            secure_module,
+            "upload_file_to_s3",
+            lambda *a, **k: (True, "s3://bucket/pii.csv"),
+        )
+
+        detected = await async_authorized_client.post(
+            "/api/v1/upload/secure",
+            files={"file": ("pii.csv", self.PII_CSV, "text/csv")},
+        )
+        assert detected.status_code == 200, detected.text
+        assert detected.json().get("requires_confirmation") is True
+        assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+        confirmed = await async_authorized_client.post(
+            "/api/v1/upload/confirm-pii-upload",
+            files={"file": ("pii.csv", self.PII_CSV, "text/csv")},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+        # One dataset, one unit — not two of either.
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
+        assert await UserData.find(UserData.user_id == TEST_USER).count() == 1
+
     async def test_a_pii_detection_does_not_consume_a_unit(
         self, async_authorized_client, setup_database
     ):
