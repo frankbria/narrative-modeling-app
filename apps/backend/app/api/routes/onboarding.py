@@ -5,6 +5,7 @@ Onboarding API routes for guiding new users through the platform
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.schemas.onboarding import (
     CompleteStepRequest,
     OnboardingStatusResponse,
@@ -133,7 +134,10 @@ async def get_sample_datasets(
     return [SampleDatasetResponse(**dataset) for dataset in datasets]
 
 
-@router.post("/sample-datasets/{dataset_id}/load")
+@router.post(
+    "/sample-datasets/{dataset_id}/load",
+    dependencies=[Depends(quota("uploads"))],
+)
 async def load_sample_dataset(
     dataset_id: str,
     user_id: str = Depends(get_current_user_id)

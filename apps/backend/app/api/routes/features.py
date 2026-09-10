@@ -7,9 +7,19 @@ validating, and managing feature definitions.
 
 import logging
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import reserve
 from app.models.feature import (
     ExpressionNode,
     NodeType,
@@ -588,6 +598,7 @@ async def delete_feature(
     description="Compute the feature and add it as a new column to the dataset."
 )
 async def apply_feature(
+    http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
     feature_id: str = Path(..., description="Feature identifier"),
     request: ApplyFeatureRequest = Body(...),
@@ -610,6 +621,18 @@ async def apply_feature(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Feature {feature_id} not found in dataset {dataset_id}"
             )
+
+        # Charged only on the branch that creates one. `create_new_dataset` reaches the
+        # same `DatasetService.create_dataset` as `/datasets/upload`, so leaving it
+        # unmetered lets a tenant at their cap mint datasets here instead (#459). A
+        # route dependency would be wrong in the other direction: the flag defaults to
+        # false, and an in-place apply adds a column to a dataset already paid for.
+        #
+        # Inside the `try` is safe here only because this handler has an
+        # `except HTTPException: raise` — without it the module's broad `except`
+        # would turn the 402 into a 500 (the #453 trap).
+        if request.create_new_dataset:
+            await reserve(http_request, current_user_id, "uploads")
 
         result = await feature_builder_service.apply_feature_to_dataset(
             feature_id=feature_id,

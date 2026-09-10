@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.user_data import UserData
 
 router = APIRouter()
@@ -16,7 +17,7 @@ class StoreDataRequest(BaseModel):
     data: list[list[Any]]
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(quota("uploads"))])
 async def store_data(
     data: StoreDataRequest, current_user_id: str = Depends(get_current_user_id)
 ):

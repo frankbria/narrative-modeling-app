@@ -180,6 +180,25 @@ async def reserve_records(
     await reserve(request, user_id, metric, amount)
 
 
+async def release(request: Request) -> None:
+    """Hand back this request's reservations because the work was not done (#459).
+
+    The refund middleware covers failures — anything >= 400. It cannot cover a route
+    that returns **200** having decided not to do the thing, and one does:
+    `/upload/secure` answers 200 with `requires_confirmation` when it finds high-risk
+    PII, creating no dataset. Without this the tenant pays for a dataset they never
+    received, and pays again when `/confirm-pii-upload` creates the real one.
+
+    Shares the reservation list — and therefore the clear-before-refund guard — with
+    `QuotaRefundMiddleware._refund`, so calling both on one request cannot mint a unit.
+
+    This is not a licence for routes to do their own accounting. It is for the narrow
+    case of a 2xx that performed no billable work; anything that fails should keep
+    failing and let the middleware handle it in one place.
+    """
+    await QuotaRefundMiddleware._refund(request)
+
+
 def quota(metric: str, per_record: bool = False):
     """A dependency that enforces `metric` for the authenticated caller.
 
@@ -195,6 +214,12 @@ def quota(metric: str, per_record: bool = False):
         else:
             await reserve(request, current_user_id, metric)
 
+    # Stamped so the route table can be asked what a route meters — which is how
+    # `tests/test_billing/test_dataset_routes_are_metered.py` catches a new
+    # dataset-creating route that nobody guarded (#459). Reading `__closure__`
+    # positionally would work today and break when this function grows another free
+    # variable.
+    dependency.__quota_metric__ = metric  # type: ignore[attr-defined]
     return dependency
 
 

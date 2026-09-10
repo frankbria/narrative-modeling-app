@@ -15,6 +15,7 @@ from fastapi import (
 )
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
 from app.utils.s3 import create_s3_client, upload_file_to_s3
@@ -35,7 +36,7 @@ async def test_endpoint():
     return {"message": "Upload endpoint is working"}
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(quota("uploads"))])
 async def upload_file(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -117,8 +118,20 @@ async def upload_file(
             success, upload_url = upload_file_to_s3(content, s3_filename, file.content_type)
 
             if not success or not upload_url:
+                # Was: `s3_url = "s3_upload_failed"`, then carry on and return 200 with
+                # a UserData row pointing at a sentinel string. Every later read of that
+                # dataset fails, and now that this route is metered (#459) the tenant is
+                # charged an upload for it. `/upload/secure` already answers 500 for the
+                # same condition; this makes the two agree, and the refund middleware
+                # returns the unit.
                 logger.error("Failed to upload file to S3")
-                s3_url = "s3_upload_failed"
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Failed to upload file to S3. Please check AWS credentials "
+                        "and bucket configuration."
+                    ),
+                )
             else:
                 s3_url = upload_url
                 logger.info(f"File uploaded successfully to S3: {s3_url}")
