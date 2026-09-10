@@ -537,3 +537,28 @@ would trigger it. A confident docstring is how a wrong assumption gets inherited
 **Related:** [[repairing-dead-paths-is-a-feature-launch]] — expect your own fix to open the
 next hole. This is the sharper version: expect your own fix's *shape* to already exist
 elsewhere.
+
+## A mutation check can have a hole; check the check
+
+I fixed a quota bug by having a service report `dataset_committed` and keying a refund on
+it. Mutation check: delete `dataset_committed = True` from the service — **every test
+stayed green.** Every route-level test monkeypatched that service, so the flag could have
+gone permanently unset while the suite reported health and every successful create
+silently refunded its unit.
+
+The mutation check was doing its job; the *test suite it was checking* had no test that
+executed the line at all. Three other mutations in the same batch failed correctly, which
+is what made the one silent pass legible rather than reassuring.
+
+**Do:** when a mutation does not turn anything red, that is a finding, not a pass. Ask
+which test was supposed to catch it — if the answer is "one that mocks the thing I just
+mutated", the coverage is notional. Fix by driving the real unit with only its I/O
+boundaries stubbed.
+
+**Do:** a value that crosses a module boundary and drives a billing/authz decision needs a
+test on the *producer* as well as the consumer. Mocking the producer in every consumer
+test means the contract between them is asserted nowhere.
+
+**Related:** [[chart-tests-use-real-recharts]] and the `__mocks__` trap — a suite that
+never runs the real thing fails silently by passing. This is that lesson arriving through
+a mutation check instead of a library upgrade.
