@@ -13,6 +13,6 @@ Plan source: self-authored. Approved autonomously — AC3 offers index-or-scope;
 4. Tests: second insert with the same `experiment_id` → `DuplicateKeyError`; service refuses another tenant's experiment even when handed its id.
 
 ## Steps
-- [ ] RED tests
-- [ ] model + service + route + script
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] model + service + route + script
+- [x] gate → PR #645 → demo → CI → merge; operator follow-up #646
