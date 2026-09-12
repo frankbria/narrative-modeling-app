@@ -501,9 +501,9 @@ async def get_transformation_suggestions(
         
     except HTTPException:
         raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
-    except Exception:
-        logger.exception("Get suggestions failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Get suggestions"))
+    except Exception as e:
+        logger.error(f"Get suggestions failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Recipe Management Routes
@@ -549,9 +549,9 @@ async def create_recipe(
             rating=recipe.rating
         )
         
-    except Exception:
-        logger.exception("Create recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Create recipe"))
+    except Exception as e:
+        logger.error(f"Create recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes", response_model=RecipeListResponse)
@@ -610,9 +610,9 @@ async def list_recipes(
             per_page=per_page
         )
         
-    except Exception:
-        logger.exception("List recipes failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("List recipes"))
+    except Exception as e:
+        logger.error(f"List recipes failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes/popular", response_model=RecipeListResponse)
@@ -650,9 +650,9 @@ async def list_popular_recipes(
             per_page=limit
         )
         
-    except Exception:
-        logger.exception("List popular recipes failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("List popular recipes"))
+    except Exception as e:
+        logger.error(f"List popular recipes failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes/shared", response_model=SharedRecipeListResponse)
@@ -678,9 +678,9 @@ async def get_shared_recipes(
             total=len(shared_recipes)
         )
 
-    except Exception:
-        logger.exception("Get shared recipes failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Get shared recipes"))
+    except Exception as e:
+        logger.error(f"Get shared recipes failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes/{recipe_id}", response_model=RecipeResponse)
@@ -721,9 +721,9 @@ async def get_recipe(
         
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Get recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Get recipe"))
+    except Exception as e:
+        logger.error(f"Get recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/{recipe_id}/apply", response_model=TransformationApplyResponse)
@@ -776,7 +776,7 @@ async def apply_recipe(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Apply recipe failed")
+        logger.error(f"Apply recipe failed: {str(e)}")
         await RecipeManager.record_execution(
             recipe_id=recipe_id,
             user_id=current_user_id,
@@ -786,7 +786,7 @@ async def apply_recipe(
             execution_time_ms=int((time.time() - start_time) * 1000),
             error_message=str(e)
         )
-        raise HTTPException(status_code=500, detail=internal_error_message("Apply recipe"))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/{recipe_id}/export", response_model=RecipeExportResponse)
@@ -818,9 +818,9 @@ async def export_recipe(
         
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Export recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Export recipe"))
+    except Exception as e:
+        logger.error(f"Export recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/recipes/{recipe_id}")
@@ -839,9 +839,9 @@ async def delete_recipe(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Delete recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Delete recipe"))
+    except Exception as e:
+        logger.error(f"Delete recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Enhanced Recipe Management Routes
@@ -885,9 +885,9 @@ async def check_recipe_compatibility(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Compatibility check failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Compatibility check"))
+    except Exception as e:
+        logger.error(f"Compatibility check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/{recipe_id}/versions", response_model=RecipeResponse)
@@ -930,9 +930,9 @@ async def create_recipe_version(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Create version failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Create version"))
+    except Exception as e:
+        logger.error(f"Create version failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes/{recipe_id}/versions", response_model=RecipeVersionHistoryResponse)
@@ -974,9 +974,9 @@ async def get_recipe_version_history(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Get version history failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Get version history"))
+    except Exception as e:
+        logger.error(f"Get version history failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/{recipe_id}/duplicate", response_model=RecipeResponse)
@@ -1033,9 +1033,9 @@ async def duplicate_recipe(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Duplicate recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Duplicate recipe"))
+    except Exception as e:
+        logger.error(f"Duplicate recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/{recipe_id}/share", response_model=RecipeShareResponse)
@@ -1064,9 +1064,9 @@ async def share_recipe(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Share recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Share recipe"))
+    except Exception as e:
+        logger.error(f"Share recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recipes/{recipe_id}/export/json", response_model=RecipeExportJSONResponse)
@@ -1094,9 +1094,9 @@ async def export_recipe_json(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Export recipe JSON failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Export recipe JSON"))
+    except Exception as e:
+        logger.error(f"Export recipe JSON failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/recipes/import", response_model=RecipeResponse)
@@ -1137,9 +1137,9 @@ async def import_recipe(
 
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Import recipe failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Import recipe"))
+    except Exception as e:
+        logger.error(f"Import recipe failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Transformation History Routes
@@ -1187,9 +1187,9 @@ async def get_transformation_history(
         raise HTTPException(status_code=404, detail=e.message)
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Get transformation history failed")
-        raise HTTPException(status_code=500, detail=internal_error_message("Get transformation history"))
+    except Exception as e:
+        logger.error(f"Get transformation history failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/available", response_model=list[TransformationTypeInfo])

@@ -577,9 +577,10 @@ class FixSuggestionEngine:
         except OperationError:
             raise
         except Exception as e:
-            logger.error(f"Apply fix failed: {str(e)}")
+            logger.exception("Apply fix failed")
+            # OperationError.message is shown to the client as-is (#637).
             raise OperationError(
-                message=f"Failed to apply fix: {str(e)}",
+                message="Failed to apply fix because of an internal error",
                 operation="apply_fix",
                 original_error=e
             )

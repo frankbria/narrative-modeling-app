@@ -490,11 +490,13 @@ class TransformationEngine:
                 warnings=warnings
             )
 
-        except Exception as e:
-            logger.error(f"Apply transformation failed: {str(e)}")
+        except Exception:
+            # ``error`` travels into 200 bodies via the fix engine's OperationError
+            # and the transformation routes; never str(e) here (#637).
+            logger.exception("Apply transformation failed")
             return TransformationResult(
                 success=False,
-                error=str(e)
+                error="Transformation failed because of an internal error",
             )
     
     def _calculate_stats(self, df: pd.DataFrame) -> dict[str, Any]:
