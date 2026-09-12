@@ -1,30 +1,32 @@
-# Issue #483 — [P1.8] [security] X-Forwarded-For handling lets a client choose its own rate-limit identity
+# Issue #477 — [P1.1] [security] /admin has no authorization check and no admin role exists
 
-Plan source: self-authored (issue had no plan comment). No architectural fork; approved autonomously.
+Plan source: self-authored (no plan comment). No architectural fork; approved autonomously.
 
 ## Design
 
-- nginx sets `X-Real-IP $remote_addr` in every proxied location and **overwrites** it, so behind nginx it is authoritative. `X-Forwarded-For` is **appended** (`$proxy_add_x_forwarded_for`), so element `[0]` is client-controlled — the middleware stops reading XFF entirely.
-- The trust flag still expresses a real choice ("is a trusted proxy in front of me that sets X-Real-IP?"), so it stays, renamed `RATE_LIMIT_TRUST_PROXY` (kwarg `trust_proxy`) so the name matches what it reads. No deployed environment sets the old name (staging compose never passed it).
-- Staging compose passes `RATE_LIMIT_TRUST_PROXY: "true"` as a literal — compose is the contract (#457); without it staging buckets every anonymous request under nginx's container IP.
-- Under **both** flag settings a spoofed `X-Forwarded-For` (and, when untrusted, a spoofed `X-Real-IP`) resolves to the socket peer.
+- **Admin concept = `ADMIN_EMAILS` env allowlist**, checked server-side (`lib/admin-allowlist.ts`), mirroring `lib/invite-allowlist.ts` — but **fail closed**: an empty/unset list means *nobody* is admin (the invite gate's empty-means-open default is wrong for an admin check).
+- **Server guard in `middleware.ts`**: after the session check, requests to `/admin` or `/admin/*` whose token email is not on the list are rewritten to a non-existent path so Next renders its 404 — no existence oracle, same answer as a page that isn't there. Middleware is already the auth chokepoint and covers future `/admin/*` routes automatically.
+- **Sidebar link only for admins**: the client cannot read `ADMIN_EMAILS`, so the NextAuth `session` callback sets `session.isAdmin` server-side and `Sidebar` renders the link only when it is true. Type augmented in `types/next-auth.d.ts`.
+- **Backend (AC3)**: the admin page calls only `/health/status` and `/health/metrics`, neither of which exists (#479). There is no live endpoint to guard; #479 must add an admin dependency when it creates them — comment there post-merge.
+- Env plumbing: `.env.local.example`, `.env.staging.example`, and the frontend service in `docker-compose.staging.yml` (`${ADMIN_EMAILS:-}`, optional until provisioned per #457).
 
 ## Steps
 
-1. [ ] Middleware: replace `_client_ip` with module-level `client_ip(request, trust_proxy)` reading `x-real-ip` only when trusted; rename kwarg/setting; update module docstring. Files: `apps/backend/app/middleware/rate_limit.py`, `apps/backend/app/config.py`, `apps/backend/.env.example`.
-2. [ ] Tests (AC4, AC5): direct key-derivation tests on `client_ip` — spoofed XFF under both settings → peer; X-Real-IP honoured only when trusted; middleware-level test that a varying XFF does not mint buckets when trusted. File: `apps/backend/tests/test_middleware/test_rate_limit.py`.
-3. [ ] Agreement guard (AC2): new `apps/backend/tests/test_security/test_nginx_real_ip.py` — every `location` proxying to the backend upstream sets `proxy_set_header X-Real-IP $remote_addr;` and staging compose passes `RATE_LIMIT_TRUST_PROXY: "true"` to the backend. Reuses the parser helpers from `test_nginx_webhook_route.py`.
-4. [ ] Compose: add `RATE_LIMIT_TRUST_PROXY: "true"` to the backend service in `docker-compose.staging.yml`.
-5. [ ] Docs: CLAUDE.md rate-limiting bullet + `tasks/lessons.md` line about the flag.
+1. [ ] `lib/admin-allowlist.ts` — `isAdminEmail(email, raw = process.env.ADMIN_EMAILS)`; tests in `__tests__/lib/admin-allowlist.test.ts`.
+2. [ ] `middleware.ts` — admin prefix guard; tests in `__tests__/middleware.test.ts` (non-admin → 404 rewrite; admin → passes; unset list → 404 for everyone; `/administration` not affected).
+3. [ ] `auth.ts` session callback sets `isAdmin`; `types/next-auth.d.ts` gains `isAdmin?: boolean`.
+4. [ ] `components/Sidebar.tsx` renders the Admin link only when `session?.isAdmin`; tests in `__tests__/components/Sidebar.test.tsx`.
+5. [ ] Env: `.env.local.example`, `.env.staging.example`, `docker-compose.staging.yml` (frontend service).
+6. [ ] Docs: CLAUDE.md frontend section — the `/admin` guard and the fail-closed allowlist.
 
 ## Acceptance criteria
 
-- [ ] AC1 client IP from `X-Real-IP` (nginx-authoritative), never XFF[0]
-- [ ] AC2 nginx and middleware agree — test parses the real config against the real header
-- [ ] AC3 correct under both flag settings; flag renamed to express the real choice
-- [ ] AC4 test: spoofed XFF does not create a new bucket
-- [ ] AC5 tests exercise the key-derivation function directly (limiter disabled in test env otherwise)
+- [ ] AC1 admin concept exists (`ADMIN_EMAILS`, server-side)
+- [ ] AC2 `/admin` server-guarded (middleware, not a client check)
+- [ ] AC3 backend endpoints the UI calls enforce the check — none exist today; recorded + #479 comment
+- [ ] AC4 sidebar link only for admins
+- [ ] AC5 test: authenticated non-admin gets 404 on `/admin`
 
 ## Known limitation
 
-The live nginx on staging is hand-maintained and has diverged from the repo (#594). The repo config sets X-Real-IP; the operator must confirm the live file does too before trusting the flag there. Follow-up comment on #594.
+`ADMIN_EMAILS` is not yet provisioned on staging; until the operator sets it, nobody is admin and `/admin` 404s for everyone — which is the safe direction. The tiles the page shows are fabricated (#478) and stay so; this issue only stops them being customer-visible.

@@ -179,6 +179,10 @@ services:
       # Optional: where rejected users are pointed to request access (mailto or
       # a form URL). Defaults to a mailto in the error page when unset.
       NEXT_PUBLIC_INVITE_REQUEST_URL: ${NEXT_PUBLIC_INVITE_REQUEST_URL:-}
+      # Admin allowlist (#477): only these emails reach /admin (middleware.ts).
+      # Optional passthrough: unset ⇒ nobody is admin (fails closed), so it is
+      # not a deploy gate until a value is provisioned (#457 pattern).
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_ID: ${GITHUB_ID}

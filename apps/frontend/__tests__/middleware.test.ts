@@ -51,9 +51,12 @@ describe('middleware (deny-by-default)', () => {
   })
 
   it('allows a request with a valid session to a protected page', async () => {
+    // /dashboard rather than /admin: since #477 the admin route also needs the
+    // ADMIN_EMAILS check, which is asserted separately below.
     mockGetToken.mockResolvedValue({ sub: 'user-1' } as never)
-    const res = await middleware(mockRequest('/admin'))
+    const res = await middleware(mockRequest('/dashboard'))
     expect(res.status).not.toBe(307)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
   })
 
   it('always allows the public auth flow (without checking a token)', async () => {
@@ -133,5 +136,67 @@ describe('middleware CORS allowlist (#256)', () => {
     const blocked = await middleware(mockRequest('/dashboard', { method: 'OPTIONS', origin: 'https://evil.example.com' }))
     expect(blocked.status).toBe(204)
     expect(blocked.headers.get('Access-Control-Allow-Origin')).toBeNull()
+  })
+})
+
+// Issue #477: authentication is not authorization. Every signed-in tenant used to
+// reach /admin; now only an email on ADMIN_EMAILS does, decided here — server-side
+// — not by the page hiding itself. A non-admin gets the same answer as for a page
+// that does not exist, so the route is not an existence oracle either.
+describe('middleware /admin authorization (#477)', () => {
+  const ORIGINAL = process.env.ADMIN_EMAILS
+  const NOT_FOUND = 'http://localhost:3000/_not-found'
+
+  beforeEach(() => {
+    mockGetToken.mockReset()
+    process.env.ADMIN_EMAILS = 'root@example.com, Ops@Example.com'
+  })
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.ADMIN_EMAILS
+    else process.env.ADMIN_EMAILS = ORIGINAL
+  })
+
+  it.each(['/admin', '/admin/', '/admin/anything'])(
+    'answers 404 (not-found rewrite) to an authenticated non-admin on %s',
+    async (pathname) => {
+      mockGetToken.mockResolvedValue({ sub: 'user-1', email: 'tenant@example.com' } as never)
+      const res = await middleware(mockRequest(pathname))
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('x-middleware-rewrite')).toBe(NOT_FOUND)
+    },
+  )
+
+  it('lets a listed admin through (case-insensitive)', async () => {
+    mockGetToken.mockResolvedValue({ sub: 'user-2', email: 'ops@example.com' } as never)
+    const res = await middleware(mockRequest('/admin'))
+    expect(res.status).not.toBe(307)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+  })
+
+  it('fails closed: with ADMIN_EMAILS unset nobody reaches /admin', async () => {
+    delete process.env.ADMIN_EMAILS
+    mockGetToken.mockResolvedValue({ sub: 'user-2', email: 'ops@example.com' } as never)
+    const res = await middleware(mockRequest('/admin'))
+    expect(res.headers.get('x-middleware-rewrite')).toBe(NOT_FOUND)
+  })
+
+  it('a token without an email is not an admin', async () => {
+    mockGetToken.mockResolvedValue({ sub: 'user-3' } as never)
+    const res = await middleware(mockRequest('/admin'))
+    expect(res.headers.get('x-middleware-rewrite')).toBe(NOT_FOUND)
+  })
+
+  it('still redirects an unauthenticated request to sign-in first', async () => {
+    mockGetToken.mockResolvedValue(null)
+    const res = await middleware(mockRequest('/admin'))
+    expect(res.status).toBe(307)
+  })
+
+  it('does not treat a lookalike prefix as the admin route', async () => {
+    mockGetToken.mockResolvedValue({ sub: 'user-1', email: 'tenant@example.com' } as never)
+    const res = await middleware(mockRequest('/administration'))
+    expect(res.status).not.toBe(307)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
   })
 })

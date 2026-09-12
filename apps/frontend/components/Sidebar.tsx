@@ -149,10 +149,14 @@ export default function Sidebar() {
             <Key size={20} />
             <span>API Keys</span>
           </Link>
-          <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
-            <Shield size={20} />
-            <span>Admin</span>
-          </Link>
+          {/* Admins only (#477): the flag is computed server-side in auth.ts;
+              middleware.ts guards the route itself, this just hides the door. */}
+          {session?.isAdmin && (
+            <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
+              <Shield size={20} />
+              <span>Admin</span>
+            </Link>
+          )}
           {/* The only way to reach dark mode. Before #407 the `.dark` class was
               never set by anything, so all 27 `dark:` utilities were dead. */}
           <div className="px-2 pt-2">
