@@ -494,11 +494,12 @@ class FixSuggestionEngine:
                 "warnings": result.warnings,
             }
 
-        except Exception as e:
-            logger.error(f"Fix preview failed: {str(e)}")
+        except Exception:
+            logger.exception("Fix preview failed")
+            # The route copies this into a 200 body; never str(e) here (#637).
             return {
                 "success": False,
-                "error": str(e)
+                "error": "Fix preview failed because of an internal error",
             }
 
     def apply_fix(

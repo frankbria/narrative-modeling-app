@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import enforcement
+from app.middleware.error_handlers import internal_error_message
 from app.models.data_issue import (
     DataIssue,
     DataIssueRecord,
@@ -202,8 +203,8 @@ async def detect_issues(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Issue detection failed: {str(e)}")
+    except Exception:
+        logger.exception("Issue detection failed")
         # A request the analyzer DID send before a later step raised (inside the service or
         # here) stays charged: the service keeps the count outside the summary that never came back.
         ai_used = ai_used or getattr(detection_service, "last_ai_calls_made", 0) > 0
@@ -213,7 +214,7 @@ async def detect_issues(
         return IssueDetectionResponse(
             success=False,
             dataset_id=request.dataset_id,
-            error=str(e),
+            error=internal_error_message("Issue detection"),
         )
 
 
@@ -277,9 +278,9 @@ async def get_dataset_issues(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Get issues failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Get issues failed")
+        raise HTTPException(status_code=500, detail=internal_error_message("Get issues"))
 
 
 @router.post("/preview-fix", response_model=FixPreviewResponse)
@@ -375,13 +376,13 @@ async def preview_fix(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Preview fix failed: {str(e)}")
+    except Exception:
+        logger.exception("Preview fix failed")
         return FixPreviewResponse(
             success=False,
             issue_id=request.issue_id,
             fix_id=request.fix_id or "",
-            error=str(e),
+            error=internal_error_message("Preview fix"),
         )
 
 
@@ -517,15 +518,15 @@ async def apply_fix(
             execution_time_ms=int((time.time() - start_time) * 1000),
             error=str(e),
         )
-    except Exception as e:
-        logger.error(f"Apply fix failed: {str(e)}")
+    except Exception:
+        logger.exception("Apply fix failed")
         return FixApplicationResponse(
             success=False,
             dataset_id=request.dataset_id,
             issue_id=request.issue_id,
             fix_id=request.fix_id or "",
             execution_time_ms=int((time.time() - start_time) * 1000),
-            error=str(e),
+            error=internal_error_message("Apply fix"),
         )
 
 
@@ -676,13 +677,13 @@ async def batch_apply_fixes(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Batch fix failed: {str(e)}")
+    except Exception:
+        logger.exception("Batch fix failed")
         return BatchFixResponse(
             success=False,
             dataset_id=request.dataset_id,
             execution_time_ms=int((time.time() - start_time) * 1000),
-            error=str(e),
+            error=internal_error_message("Batch fix"),
         )
 
 
@@ -738,6 +739,6 @@ async def get_issue_history(
             per_page=per_page,
         )
 
-    except Exception as e:
-        logger.error(f"Get history failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Get history failed")
+        raise HTTPException(status_code=500, detail=internal_error_message("Get history"))

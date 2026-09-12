@@ -1,15 +1,20 @@
-# Issue #550 — [P2.33] [security] Security Audit went red — npm advisories against existing frontend deps
+# Issue #637 — [P2.45] [security] data-issues handlers return raw exception text in 200 {success: false} bodies
 
-Plan source: self-authored (issue has ACs, no plan). Approved autonomously — lockfile + one pinned patch bump, no fork.
+Plan source: self-authored. Approved autonomously — no architectural fork (AC1 offers raise-or-generic; generic keeps #471's ai_calls accounting intact, so generic it is).
 
-## Findings (2026-09-12, live advisory DB)
-- The audit has grown from the issue's 6 to 9: the original browserslist ×2 / js-yaml / nanoid / dompurify, plus brace-expansion (high), @humanfs/node, baseline-browser-mapping (moderate), and — new and real — **next 16.2.12: critical** (GHSA-p293-qw3h-jr36 Windows RCE; GHSA-2xp9-vwfh-vxw4 unauthenticated RCE in the Image Optimization API with AVIF) with sharp (high) riding along. Fix: next 16.3.5, same major.
-- CI's job runs `npm audit --audit-level=high`; the issue's AC1 asks for clean at `moderate`.
-- `next` and `eslint-config-next` are pinned exactly (16.2.12); `npm audit fix` cannot cross a pin, so the bump is explicit and both move together.
-- Dependabot #600 bumps next to 16.3.4 (still vulnerable) and is red; superseded once this merges.
+## Findings
+- `data_issues.py`: `error=str(e)` in the `except Exception` of detect, preview-fix, apply-fix (two excepts: domain `ValidationError|OperationError` with a user-facing `.message`, then generic), batch-fix. `get_dataset_issues` / `get_issue_history` raise `HTTPException(500, detail=str(e))` — already sanitised by #269's handler (5xx detail is replaced), so they only need the redundant text dropped.
+- `fix_suggestion_engine.preview_fix` returns `{"success": False, "error": str(e)}` and the route copies it into the 200 body — same leak one layer down.
+- `transformations.py`: same shape in preview, apply, pipeline/apply, validate (`errors=[str(e)]`), auto-clean. `OperationError.message` branches are domain errors and stay.
+- Raising instead would turn a detect failure into a 5xx the refund middleware refunds wholesale — including an AI call the analyzer actually sent — so the 200 `{success:false}` contract stays and the *message* changes (AC2).
+- Frontend consumers render `result.error` verbatim (`BatchFixPanel`) or only branch on `success`; a fixed sentence with a reference id reads fine (AC3). `test_transformations_integration.py:768` asserts the raw S3 text and must move to the new contract.
+
+## Design
+1. `app/middleware/error_handlers.py`: `internal_error_message(what: str) -> str` → `"<what> failed because of an internal error (reference <request id>)"`, reading `request_id_ctx`; the caller logs the exception with `logger.exception`.
+2. Replace every `error=str(e)` / `errors=[str(e)]` in a generic `except Exception` in `data_issues.py` and `transformations.py`; `fix_suggestion_engine.preview_fix` returns a fixed message too (it has no request; the route wraps it).
+3. Tests: force `RuntimeError("s3://secret-bucket/key: boom")` in each handler's service call; assert 200, `success is False`, no "secret-bucket"/"boom" in the body, the reference id equals the `X-Request-ID` response header; keep `test_a_sent_request_stays_charged_when_the_service_fails_after_it` green (AC2).
 
 ## Steps
-- [x] `npm audit fix` (non-breaking): 8 of 9 gone, lockfile only
-- [x] `npm i --save-exact next@16.3.5 eslint-config-next@16.3.5`
-- [x] audit = 0 at moderate; jest, tsc, lint cap 230, next build
-- [x] PR #640 → Security Audit green; e2e exposed predict StrictMode bug + onboarding race + quota exhaustion (all fixed) → merge; #600 superseded
+- [ ] RED tests
+- [ ] helper + route/engine changes
+- [ ] gate → PR → demo → CI → merge
