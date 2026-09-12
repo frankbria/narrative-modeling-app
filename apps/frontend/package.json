@@ -13,7 +13,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "./test-e2e.sh",
-    "test:e2e:smoke": "./test-e2e.sh --grep @smoke --project=chromium-smoke",
+    "test:e2e:smoke": "./test-e2e.sh --grep @smoke --project=chromium-smoke --project=chromium-smoke-onboarding",
     "test:e2e:perf": "./test-e2e.sh --grep @perf --project=chromium-full",
     "test:e2e:full": "./test-e2e.sh --project=chromium-full",
     "test:e2e:all": "./test-e2e.sh --project=chromium-full --project=firefox-full --project=webkit-full",

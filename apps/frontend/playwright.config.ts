@@ -60,6 +60,18 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       grep: /@smoke/,
       testMatch: /.*\.spec\.ts/,
+      // onboarding.spec resets the shared test user's onboarding progress and
+      // walks it back to complete; while it runs, the dashboard redirects every
+      // other test's authenticatedPage to /onboarding (#152 AC1). It gets its
+      // own project below, run after this one, instead of a parallel worker.
+      testIgnore: /onboarding\.spec\.ts/,
+    },
+    {
+      name: 'chromium-smoke-onboarding',
+      use: { ...devices['Desktop Chrome'] },
+      grep: /@smoke/,
+      testMatch: /onboarding\.spec\.ts/,
+      dependencies: ['chromium-smoke'],
     },
 
     // Full suite: All tests on Chromium (default for CI)
