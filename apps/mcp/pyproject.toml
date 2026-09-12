@@ -22,7 +22,9 @@ dependencies = [
     "openai>=1.72.0",
     "python-dotenv>=1.1.0",
     "exceptiongroup>=1.2.2",
-    "mcp>=1.25.0",
+    # <2: the 2.x SDK breaks main.py's import (found while clearing #569); lift
+    # this only as part of a deliberate migration, not a relock.
+    "mcp>=1.25.0,<2",
     "openapi-pydantic>=0.5.1",
     "rich>=14.0.0",
     "typer>=0.15.2",
