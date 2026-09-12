@@ -176,3 +176,57 @@ class TestDetectMetering:
         assert response.status_code == 200, response.text
         assert response.json()["summary"]["ai_analysis_used"] is True
         assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+    async def test_ai_off_is_not_gated_by_an_exhausted_ai_quota(self, async_authorized_client, setup_database, s3_frame):
+        """codex: a route dependency would have 402'd a rule-based-only run for a tenant out of
+        AI quota; the reservation happens inside the handler only when AI is asked for."""
+        from app.billing import metering
+        from app.billing.plans import PLAN_LIMITS
+        from app.models.subscription import PlanTier
+        from app.models.usage import UsageRecord
+
+        ds = await _dataset()
+        limit = PLAN_LIMITS[PlanTier.FREE].ai_calls
+        await UsageRecord(user_id=TEST_USER, period_key=metering.period_key_for(), metric="ai_calls", units=limit).insert()
+        off = await async_authorized_client.post(f"{BASE}/detect", json=_detect_body(str(ds.id)))
+        assert off.status_code == 200, off.text
+        on = await async_authorized_client.post(
+            f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+        )
+        assert on.status_code == 402, on.text
+
+    async def test_a_sent_request_stays_charged_when_a_later_step_fails(self, async_authorized_client, setup_database, s3_frame):
+        """codex: the model was called; storing the result then failed — the unit is owed."""
+        from app.billing import metering
+        from app.utils import ai_issue_analyzer as mod
+
+        async def sent(self, *a, **k):
+            self.calls_made += 1
+            return []
+
+        ds = await _dataset()
+        with patch.object(mod.AIIssueAnalyzer, "_initialize_client", return_value=object()), \
+             patch.object(mod.AIIssueAnalyzer, "analyze_data_patterns", sent), \
+             patch("app.api.routes.data_issues.DataIssueDetectionService.store_detection_results",
+                   new_callable=AsyncMock, side_effect=RuntimeError("mongo down")):
+            response = await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        assert response.status_code == 200 and response.json()["success"] is False
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+    async def test_stored_summary_reads_back_whether_ai_ran(self, async_authorized_client, setup_database, s3_frame):
+        from app.utils import ai_issue_analyzer as mod
+
+        async def sent(self, *a, **k):
+            self.calls_made += 1
+            return []
+
+        ds = await _dataset()
+        with patch.object(mod.AIIssueAnalyzer, "_initialize_client", return_value=object()), \
+             patch.object(mod.AIIssueAnalyzer, "analyze_data_patterns", sent):
+            await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        issues = await async_authorized_client.get(f"{BASE}/{ds.id}/issues")
+        assert issues.status_code == 200 and issues.json()["summary"]["ai_analysis_used"] is True

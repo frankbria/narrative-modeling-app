@@ -115,9 +115,14 @@ _MUST_BE_METERED = {
     # unit on the branch that has no artifacts to explain.
     "/api/v1/ml/{model_id}/evaluation",
     "/api/v1/ml/{model_id}/errors",
-    # data_issues.py (#471) — detection runs AIIssueAnalyzer (OpenAI) when
-    # options.include_ai_analysis, the default; released when it did not run.
-    "/api/v1/data-issues/detect",
+}
+
+#: Routes that reach a model only on a branch, so they reserve INSIDE the handler with
+#: `enforcement.reserve(...)` rather than through a route dependency — a dependency would
+#: 402 a tenant out of AI quota on the branch that calls no model. Each carries the reason.
+_CONDITIONALLY_METERED = {
+    # data_issues.py (#471): AIIssueAnalyzer (OpenAI) runs only when options.include_ai_analysis.
+    "/api/v1/data-issues/detect": "reserves ai_calls only when include_ai_analysis is set",
 }
 
 _NO_MODEL_ML = "MLModel CRUD/serving; no LLM call (training and predictions have their own metrics)."
@@ -171,8 +176,20 @@ def test_a_model_calling_route_charges_ai_calls(path):
     )
 
 
+@pytest.mark.parametrize("path", sorted(_CONDITIONALLY_METERED))
+def test_a_conditionally_metered_route_reserves_in_its_handler(path):
+    import inspect
+
+    routes = _in_scope_routes()
+    assert path in routes, f"{path} is no longer mounted; update this registry"
+    assert not _metered_metrics(routes[path]), f"{path} must not ALSO carry a route dependency"
+    assert 'enforcement.reserve(' in inspect.getsource(routes[path].endpoint), (
+        f"{path} is listed as conditionally metered but its handler never reserves"
+    )
+
+
 def test_no_route_with_model_access_is_unaccounted_for():
-    unaccounted = set(_in_scope_routes()) - _MUST_BE_METERED - set(_EXEMPT)
+    unaccounted = set(_in_scope_routes()) - _MUST_BE_METERED - set(_EXEMPT) - set(_CONDITIONALLY_METERED)
     assert not unaccounted, (
         f"Route(s) in a module that imports a model-calling service: {sorted(unaccounted)}. "
         f'Add each to _MUST_BE_METERED with quota("ai_calls"), or to _EXEMPT with the reason '
