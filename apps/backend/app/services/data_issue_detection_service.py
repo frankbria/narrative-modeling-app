@@ -42,6 +42,7 @@ class DataIssueDetectionService:
     """
 
     def __init__(self):
+        self.last_ai_calls_made = 0  # requests the analyzer sent in the last detect_issues call (#471 metering)
         """Initialize the detection service."""
         self.quality_service = QualityAssessmentService()
         self._severity_thresholds = {
@@ -103,6 +104,7 @@ class DataIssueDetectionService:
 
             # 4. AI-powered analysis (optional)
             ai_analysis_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
+            self.last_ai_calls_made = 0  # readable by the route even if a later step in this method raises
             if include_ai_analysis and options.include_ai_analysis:
                 try:
                     ai_analyzer = AIIssueAnalyzer()
@@ -112,6 +114,7 @@ class DataIssueDetectionService:
                     all_issues.extend(ai_issues)
                     # no key, or the breaker's fallback: nothing was sent, nothing is charged
                     ai_analysis_used = ai_analyzer.calls_made > 0
+                    self.last_ai_calls_made = ai_analyzer.calls_made
                 except ImportError:
                     logger.warning("AI Issue Analyzer not available, skipping AI analysis")
                 except Exception as e:
@@ -120,8 +123,10 @@ class DataIssueDetectionService:
             # 5. Generate fix suggestions for each issue
             for issue in all_issues:
                 if not issue.suggested_fixes:
-                    fixes = self._generate_fix_suggestions(issue, sample_df, column_types)
-                    issue.suggested_fixes = fixes
+                    try:
+                        issue.suggested_fixes = self._generate_fix_suggestions(issue, sample_df, column_types)
+                    except Exception as e:  # best-effort: a suggestion bug must not lose the detection (or a sent AI call)
+                        logger.warning(f"Fix suggestions failed for issue {issue.issue_id}: {e}")
 
             # Calculate summary
             detection_time_ms = int((time.time() - start_time) * 1000)

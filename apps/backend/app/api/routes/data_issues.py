@@ -120,6 +120,7 @@ async def detect_issues(
 
     Returns a list of detected issues with suggested fixes.
     """
+    detection_service = DataIssueDetectionService()
     ai_reserved = False
     ai_used = False
     start_time = time.time()
@@ -158,7 +159,6 @@ async def detect_issues(
             }
 
         # Run detection
-        detection_service = DataIssueDetectionService()
         issues, summary = await detection_service.detect_issues(
             df=df,
             column_types=column_types,
@@ -204,9 +204,11 @@ async def detect_issues(
         raise
     except Exception as e:
         logger.error(f"Issue detection failed: {str(e)}")
+        # A request the analyzer DID send before a later step raised (inside the service or
+        # here) stays charged: the service keeps the count outside the summary that never came back.
+        ai_used = ai_used or getattr(detection_service, "last_ai_calls_made", 0) > 0
         if ai_reserved and not ai_used:
-            # reported as 200 {success: false}, which the refund middleware never sees. A request
-            # that WAS sent before a later step failed stays charged (codex).
+            # reported as 200 {success: false}, which the refund middleware never sees
             await enforcement.release(http_request)
         return IssueDetectionResponse(
             success=False,

@@ -230,3 +230,24 @@ class TestDetectMetering:
             )
         issues = await async_authorized_client.get(f"{BASE}/{ds.id}/issues")
         assert issues.status_code == 200 and issues.json()["summary"]["ai_analysis_used"] is True
+
+    async def test_a_sent_request_stays_charged_when_the_service_fails_after_it(self, async_authorized_client, setup_database, s3_frame):
+        """claude-review: the analyzer sent its request, then a later step INSIDE the service
+        raised — the summary never came back, but the unit is still owed."""
+        from app.billing import metering
+        from app.utils import ai_issue_analyzer as mod
+
+        async def sent(self, *a, **k):
+            self.calls_made += 1
+            return []
+
+        ds = await _dataset()
+        with patch.object(mod.AIIssueAnalyzer, "_initialize_client", return_value=object()), \
+             patch.object(mod.AIIssueAnalyzer, "analyze_data_patterns", sent), \
+             patch("app.api.routes.data_issues.DataIssueDetectionService._create_summary",
+                   side_effect=RuntimeError("summary bug")):
+            response = await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        assert response.status_code == 200 and response.json()["success"] is False
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 1

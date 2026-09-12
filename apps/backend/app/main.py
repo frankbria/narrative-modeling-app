@@ -48,7 +48,6 @@ from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
     ab_testing,
     ai_analysis,
-    data_issues,
     ai_orchestration,
     analytics_result,
     batch_prediction,
@@ -56,6 +55,7 @@ from app.api.routes import (
     billing_webhook,
     cache,
     column_stats,
+    data_issues,
     data_processing,
     datasets,
     feature_engineering,
