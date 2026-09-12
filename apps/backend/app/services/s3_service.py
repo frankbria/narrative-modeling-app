@@ -144,9 +144,9 @@ class S3Service:
     """Service for S3 operations"""
 
     def __init__(self):
-        # Same resolution as the readers' allowlist (#567 AC4); the literal is only
-        # for mock-mode runs with nothing configured, where nothing is read or written.
-        self.bucket_name = configured_bucket() or "narrative-modeling-dev"
+        # bucket_name is a live property (#622); an explicit assignment pins this
+        # instance (tests do that), production never assigns and follows the env.
+        self._bucket_override: str | None = None
 
         # Check if we're using test/mock credentials
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -200,15 +200,30 @@ class S3Service:
             logger.error(f"Error downloading file from S3: {str(e)}")
             raise
     
+    @property
+    def bucket_name(self) -> str:
+        """The one configured bucket, resolved per call like every reader (#567,
+        #622) — never a value frozen at construction, so URL building, erasure's
+        bucket comparison and the boto3 calls below can never disagree. An
+        explicit assignment pins this instance instead (tests pin a fixture
+        bucket); production code never assigns. The literal is only for
+        mock-mode runs with nothing configured, where nothing is read or written."""
+        return self._bucket_override or configured_bucket() or "narrative-modeling-dev"
+
+    @bucket_name.setter
+    def bucket_name(self, value: str) -> None:
+        self._bucket_override = value
+
     def get_file_url(self, file_key: str) -> str:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
 
     def _live_bucket(self) -> str:
-        """The bucket for THIS call (#622): resolved like the readers, never the
-        value captured at construction, so a process whose environment changed
-        cannot download from one bucket and write to another."""
-        return allowed_bucket()
+        """The bucket for THIS call (#622): the instance's explicit pin if one was
+        assigned, else resolved like the readers — never a value captured at
+        construction, so a process whose environment changed cannot download
+        from one bucket and write to another."""
+        return self._bucket_override or allowed_bucket()
 
     @with_circuit_breaker(
         "s3",
