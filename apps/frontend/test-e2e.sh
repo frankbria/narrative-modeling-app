@@ -106,6 +106,11 @@ export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
 export TEST_ADMIN_EMAIL=${TEST_ADMIN_EMAIL:-admin-e2e@narrativeml.com}
 export TEST_ADMIN_PASSWORD=${TEST_ADMIN_PASSWORD:-admin-password-123}
 export ADMIN_EMAILS="$TEST_ADMIN_EMAIL"
+if [ "$TEST_ADMIN_EMAIL" = "$TEST_USER_EMAIL" ]; then
+  echo "TEST_ADMIN_EMAIL must differ from TEST_USER_EMAIL: the credentials provider" >&2
+  echo "checks the ordinary user first, so an equal admin identity would silently be a non-admin." >&2
+  exit 1
+fi
 export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
 export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
