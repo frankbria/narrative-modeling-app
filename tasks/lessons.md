@@ -599,3 +599,10 @@ cheapest available signal that a claim about a guard is wrong.
 **Related:** [[scoping-claims-need-a-grep]] and the wrong-causal-claim entry above — same
 failure, different sentence. The recurring shape this session is prose that outruns what was
 checked, and the fix is always the same: the claim is a query, so run it.
+
+## Issue #483 (2026-09-12): four process traps from one small security fix
+1. **`pkill -f '<pattern>'` matches the shell that runs it.** The pattern text sits in your own `bash -c` command line, so `pkill -f 'opencode run'` killed the tool's shell (exit 144) and left the real process alive — twice. Anchor it (`pkill -f '^opencode run'`) or match on the binary path.
+2. **A stalled reviewer has a signature; probe before waiting.** Two `opencode run` reviews and a one-word `PONG` probe all emitted only the `prompt_submit` event and nothing else for 10–20 min: that is an outage, not a slow review (a real run streams events within ~60 s). Kill it, then fall back to `codex review --base main` — which takes **no** prompt argument with `--base` (`--help` lists `[PROMPT]`, but the two are mutually exclusive).
+3. **`ruff format --check` is not a CI gate here and drops your commit if chained.** 278 tracked files already fail it, so `ruff … && git commit && git push` silently skipped the commit and pushed the *previous* head — the push output looked normal. Chain only real gates (`ruff check`, mypy, pytest); run format as a separate, non-fatal step.
+4. **A base image on a public registry can vanish under a required check.** Docker Hub 404'd `minio/minio` and every e2e-smoke run — main included — went red at `docker pull`. Every other CI service image was already `tag@sha256` pinned; the one bare `docker run <image>` was the one that broke. Pin registry + tag + digest for anything a *required* job pulls, and when a required check is red on main before your PR exists, fix it in the PR (bug ownership) rather than waiting.
+
