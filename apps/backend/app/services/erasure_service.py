@@ -245,7 +245,11 @@ class DatasetErasureService:
                 await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
             # 3. S3 source + redis, then parent LAST.
             await self._delete_s3(
-                _s3_key(parent_meta.file_path or parent_meta.s3_url, self.s3_service.bucket_name, manifest),
+                _s3_key(
+                    parent_meta.file_path or parent_meta.s3_url,
+                    self.s3_service.bucket_name,
+                    manifest,
+                ),
                 manifest,
             )
             await self._evict_redis(dataset_id, manifest)
@@ -255,7 +259,11 @@ class DatasetErasureService:
             for model_cls, field in _LINK_KEYED_MODELS:
                 await self._delete_many(model_cls, {f"{field}.$id": parent_ud.id}, manifest)
             await self._delete_s3(
-                _s3_key(parent_ud.file_path or parent_ud.s3_url, self.s3_service.bucket_name, manifest),
+                _s3_key(
+                    parent_ud.file_path or parent_ud.s3_url,
+                    self.s3_service.bucket_name,
+                    manifest,
+                ),
                 manifest,
             )
             await self._evict_redis(str(parent_ud.id), manifest)

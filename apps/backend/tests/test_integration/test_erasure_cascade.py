@@ -111,9 +111,9 @@ async def _seed_string_space() -> None:
 
 
 async def _seed_userdata_space() -> UserData:
+    """Legacy UserData parent + Link[UserData] children (viz cache, column stats)."""
     # Legacy *shape*, our bucket: a URL naming another bucket is the #616 case,
     # tested on its own below, and is a recorded residual rather than a delete.
-    """Legacy UserData parent + Link[UserData] children (viz cache, column stats)."""
     ud = await UserData(
         user_id=USER,
         filename="legacy.csv",
