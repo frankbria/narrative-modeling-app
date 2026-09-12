@@ -42,8 +42,8 @@ class DataIssueDetectionService:
     """
 
     def __init__(self):
-        self.last_ai_calls_made = 0  # requests the analyzer sent in the last detect_issues call (#471 metering)
         """Initialize the detection service."""
+        self.last_ai_calls_made = 0  # requests the analyzer sent in the last detect_issues call (#471 metering)
         self.quality_service = QualityAssessmentService()
         self._severity_thresholds = {
             "critical": 0.5,   # >50% affected
