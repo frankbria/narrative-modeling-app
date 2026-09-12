@@ -264,13 +264,14 @@ class Settings(BaseModel):
     RATE_LIMIT_APIKEY_WINDOW_SECONDS: int = int(
         os.getenv("RATE_LIMIT_APIKEY_WINDOW_SECONDS", "3600")
     )
-    # Whether to trust the client IP from the X-Forwarded-For header. Default OFF:
-    # an unauthenticated caller can forge XFF to land in a fresh IP bucket on every
-    # request, defeating the anonymous-flood limit. Enable ONLY when the app sits
-    # behind a trusted reverse proxy (e.g. nginx) that overwrites XFF with the real
-    # peer address. When off, the limiter uses the direct socket peer.
-    RATE_LIMIT_TRUST_FORWARDED_FOR: bool = (
-        os.getenv("RATE_LIMIT_TRUST_FORWARDED_FOR", "false").strip().lower() == "true"
+    # Whether a trusted reverse proxy (nginx) fronts the app. When true the rate
+    # limiter takes the client IP from X-Real-IP, which nginx sets from $remote_addr
+    # and OVERWRITES. Default OFF: without the proxy that header is client-supplied,
+    # and an anonymous caller could forge a fresh IP bucket per request. X-Forwarded-For
+    # is never read — nginx APPENDS to it, so its first element is client-controlled
+    # under either setting (#483). docker-compose.staging.yml sets this true.
+    RATE_LIMIT_TRUST_PROXY: bool = (
+        os.getenv("RATE_LIMIT_TRUST_PROXY", "false").strip().lower() == "true"
     )
 
     # Billing (#367/#365). All optional: with none of these set the app runs
