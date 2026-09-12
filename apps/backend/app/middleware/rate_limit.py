@@ -58,6 +58,9 @@ def client_ip(request: Request, *, trust_proxy: bool) -> str:
     ``X-Forwarded-For`` is deliberately never consulted: nginx appends to it, so
     its first element is whatever the client chose, under either setting (#483).
     ``tests/test_security/test_nginx_real_ip.py`` pins the nginx side of this.
+    The value is not validated as an IP literal: trusting it is only as safe as
+    "nothing but nginx can reach this port", which holds because the container
+    publishes on loopback only (#258) — nothing here can enforce that invariant.
     """
     if trust_proxy:
         real_ip = request.headers.get("x-real-ip", "").strip()

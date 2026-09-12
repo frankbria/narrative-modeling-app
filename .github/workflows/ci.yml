@@ -542,12 +542,16 @@ jobs:
 
       # GitHub Actions `services:` blocks cannot override a container's command,
       # and minio/minio requires `server /data` — so MinIO is started manually.
+      # Pulled from quay.io: Docker Hub's minio/minio repository was removed
+      # upstream (404, 2026-09-11) and took every smoke run down with it. Tag AND
+      # digest are pinned so the image cannot change under the gate again.
       - name: Start MinIO (S3-compatible storage)
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772@sha256:cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd \
+            server /data
           echo "Waiting for MinIO to become healthy..."
           for _ in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
