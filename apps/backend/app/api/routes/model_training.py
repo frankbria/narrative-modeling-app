@@ -128,6 +128,10 @@ def _rank_importance(importance: dict[str, float] | None) -> list[RankedFeature]
     ]
 
 
+class TrainingWallClockExceeded(Exception):
+    """The engine run outlived the plan's ``wall_clock_seconds`` (#500)."""
+
+
 class FeatureConfigRequest(BaseModel):
     """Caller-settable feature-engineering knobs (#500).
 
@@ -669,17 +673,25 @@ async def train_model_task(
         # thread cannot be killed and finishes on its own; its result is dropped.
         if wall_clock_seconds is None:
             wall_clock_seconds = training_ceilings_for(PlanTier.FREE).wall_clock_seconds
-        result = await asyncio.wait_for(
-            engine.run(
-                df,
-                request.target_column,
-                feature_config,
-                progress_callback=on_progress,
-                event_callback=on_event,
-                cancel_check=is_cancellation_requested,
-            ),
-            timeout=wall_clock_seconds,
-        )
+        try:
+            result = await asyncio.wait_for(
+                engine.run(
+                    df,
+                    request.target_column,
+                    feature_config,
+                    progress_callback=on_progress,
+                    event_callback=on_event,
+                    cancel_check=is_cancellation_requested,
+                ),
+                timeout=wall_clock_seconds,
+            )
+        except TimeoutError as exc:
+            # Scoped to the engine run only: a socket timeout from the S3
+            # download above is a TimeoutError too and must keep its own message.
+            raise TrainingWallClockExceeded(
+                f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
+                "your plan and was stopped"
+            ) from exc
 
         # Record the training-mode outcome (issue #101) in training_config so it
         # persists on the MLModel alongside the requested mode.
@@ -797,11 +809,8 @@ async def train_model_task(
 
         logger.info(f"Model training completed: {ml_model.model_id}")
 
-    except TimeoutError:
-        reason = (
-            f"Training exceeded the {wall_clock_seconds}s wall-clock limit for your "
-            "plan and was stopped"
-        )
+    except TrainingWallClockExceeded as exc:
+        reason = str(exc)
         logger.warning(f"{reason}: {model_id}")
         if training_job:
             try:

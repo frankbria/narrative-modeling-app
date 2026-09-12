@@ -69,6 +69,16 @@ class TestOverCeilingIs422:
         assert resp.status_code == 422
         assert "max_features" in str(resp.json()["detail"])
 
+    async def test_a_422_hands_the_training_run_back(self, async_authorized_client):
+        from app.billing import metering
+
+        before = await metering.usage_for("test_user_123", "training_runs")
+        resp = await _post(
+            async_authorized_client, training_config={"max_models": FREE.max_models + 1}
+        )
+        assert resp.status_code == 422
+        assert await metering.usage_for("test_user_123", "training_runs") == before
+
     async def test_every_violation_is_reported_at_once(self, async_authorized_client):
         resp = await _post(
             async_authorized_client,
@@ -174,6 +184,91 @@ class TestWallClock:
             assert refreshed.status == JobStatus.FAILED
             assert "wall-clock" in refreshed.error and "0.05" in refreshed.error
             assert any(e.level == "error" for e in refreshed.logs)
+        finally:
+            await job.delete()
+
+    async def test_kill_is_prompt_even_while_a_fit_holds_a_worker_thread(self, setup_database):
+        """The scenario the limitation is about: engine.run is blocked inside
+        asyncio.to_thread. The coroutine is cancelled at the wall clock and the
+        job is FAILED promptly; the thread finishes on its own, result dropped."""
+        import time
+
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
+
+        job = TrainingJob(
+            model_id="model_wall_thread",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+
+        async def fit_in_a_thread(*_a, **_k):
+            await asyncio.to_thread(time.sleep, 3)
+
+        dataset = MagicMock(
+            id="dataset_123", user_id="test_user", file_type="csv",
+            s3_url="s3://test-bucket/uploads/test_user/test_data.csv",
+        )
+        try:
+            with (
+                patch(
+                    "app.services.s3_service.S3Service.download_file_bytes",
+                    new_callable=AsyncMock,
+                    return_value=b"a,target\n1,0\n2,1\n",
+                ),
+                patch("app.api.routes.model_training.AutoMLEngine") as engine_cls,
+            ):
+                engine_cls.return_value.run = fit_in_a_thread
+                started = time.monotonic()
+                await train_model_task(
+                    dataset,
+                    TrainModelRequest(dataset_id="dataset_123", target_column="target"),
+                    "test_user",
+                    "model_wall_thread",
+                    wall_clock_seconds=0.2,
+                )
+                elapsed = time.monotonic() - started
+            assert elapsed < 2, f"kill waited for the thread: {elapsed:.2f}s"
+            refreshed = await TrainingJob.find_one(TrainingJob.model_id == "model_wall_thread")
+            assert refreshed.status == JobStatus.FAILED
+            assert "wall-clock" in refreshed.error
+        finally:
+            await job.delete()
+
+    async def test_an_unrelated_timeout_keeps_its_own_message(self, setup_database):
+        """A socket timeout during the S3 download is a TimeoutError too; it must
+        not be reported as the plan's wall clock."""
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
+
+        job = TrainingJob(
+            model_id="model_s3_timeout",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+        dataset = MagicMock(
+            id="dataset_123", user_id="test_user", file_type="csv",
+            s3_url="s3://test-bucket/uploads/test_user/test_data.csv",
+        )
+        try:
+            with patch(
+                "app.services.s3_service.S3Service.download_file_bytes",
+                new_callable=AsyncMock,
+                side_effect=TimeoutError("read timed out"),
+            ):
+                await train_model_task(
+                    dataset,
+                    TrainModelRequest(dataset_id="dataset_123", target_column="target"),
+                    "test_user",
+                    "model_s3_timeout",
+                    wall_clock_seconds=60,
+                )
+            refreshed = await TrainingJob.find_one(TrainingJob.model_id == "model_s3_timeout")
+            assert refreshed.status == JobStatus.FAILED
+            assert "wall-clock" not in refreshed.error
+            assert "read timed out" in refreshed.error
         finally:
             await job.delete()
 

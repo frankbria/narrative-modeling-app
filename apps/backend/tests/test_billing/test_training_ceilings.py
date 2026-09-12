@@ -26,7 +26,15 @@ def test_ceilings_are_monotonic_by_tier():
     free, pro, ent = (
         training_ceilings_for(t) for t in (PlanTier.FREE, PlanTier.PRO, PlanTier.ENTERPRISE)
     )
-    for name in ("max_models", "time_limit_seconds", "wall_clock_seconds", "tuning_trials"):
+    for name in (
+        "max_models",
+        "cv_folds",
+        "time_limit_seconds",
+        "wall_clock_seconds",
+        "tuning_trials",
+        "tuning_time_budget_seconds",
+        "max_features",
+    ):
         assert getattr(free, name) <= getattr(pro, name) <= getattr(ent, name), name
 
 
