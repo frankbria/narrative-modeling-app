@@ -12,6 +12,7 @@ from bson import ObjectId
 from app.api.routes import data_issues as routes
 from app.schemas.data_issue import (
     BatchFixRequest,
+    DetectionOptions,
     FixApplicationRequest,
     FixPreviewRequest,
     IssueDetectionRequest,
@@ -36,7 +37,7 @@ def _record() -> MagicMock:
 
 
 CALLS = [
-    ("detect", lambda: routes.detect_issues(IssueDetectionRequest(dataset_id=DS), USER)),
+    ("detect", lambda: routes.detect_issues(IssueDetectionRequest(dataset_id=DS, options=DetectionOptions(include_ai_analysis=False)), MagicMock(), USER)),
     ("preview_fix", lambda: routes.preview_fix(FixPreviewRequest(dataset_id=DS, issue_id="i1"), USER)),
     ("apply_fix[preview]", lambda: routes.apply_fix(
         FixApplicationRequest(dataset_id=DS, issue_id="i1", preview_mode=True), USER)),
