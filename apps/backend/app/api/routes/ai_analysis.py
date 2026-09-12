@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
 from app.models.user_data import UserData
+from app.services.ai_chat import ChatRequest, ai_chat_service
 from app.services.dataset_summarization import (
     DatasetSummaryRequest,
     dataset_summarization_service,
@@ -115,6 +116,24 @@ async def get_cached_insights(
         detail="Cached insights are not available. "
                "Use POST /api/v1/ai/analyze/{file_id} for fresh analysis.",
     )
+
+
+@router.post("/chat", dependencies=[Depends(quota("ai_calls"))])
+async def chat(
+    request: ChatRequest,
+    current_user_id: str = Depends(get_current_user_id),
+) -> dict[str, str]:
+    """
+    Dataset chat (#461). The Next.js `/api/chat` proxy forwards here so the call is
+    reserved against `ai_calls` and refunded by the middleware on any failure.
+    """
+    reply = await ai_chat_service.reply(request)
+    if reply is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI chat is not configured on this deployment.",
+        )
+    return {"reply": reply}
 
 
 @router.post("/chat/{file_id}", dependencies=[Depends(quota("ai_calls"))])

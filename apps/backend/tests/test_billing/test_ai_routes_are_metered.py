@@ -20,6 +20,7 @@ _MUST_BE_METERED = {
     "/api/v1/ai/analyze/{file_id}",
     "/api/v1/ai/insights/{file_id}",
     "/api/v1/ai/chat/{file_id}",
+    "/api/v1/ai/chat",  # the frontend proxy forwards here (#461)
     "/api/v1/ai/summarize/{file_id}",
     # ai_orchestration.py: rule-based core, but an OpenAI pass "enhances the summary
     # when a key is present" — a paid call is a paid call, and #461 undercounted
