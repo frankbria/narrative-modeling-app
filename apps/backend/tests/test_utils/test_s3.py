@@ -6,12 +6,16 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 from app.utils.s3 import (
+    MAX_DOWNLOAD_BYTES,
+    allowed_bucket,
     create_s3_client,
     dataset_s3_key,
     get_file_from_s3,
     get_s3_client,
     parse_s3_url,
+    resolve_validated_object,
     upload_file_to_s3,
+    validate_object_key,
 )
 
 
@@ -218,7 +222,8 @@ def test_upload_file_to_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_cli
 def test_get_file_from_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_client):
     """Test downloading a file referenced by an endpoint-style URL (MinIO)."""
     with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
-        s3_url = "http://localhost:9000/test_bucket/test_file.txt"
+        # #531: keys live under a tenant prefix (or the transitional legacy root shape).
+        s3_url = "http://localhost:9000/test_bucket/datasets/u1/test_file.txt"
         expected_content = b"test file content"
 
         def mock_download_fileobj(bucket, key, file_obj):
@@ -226,12 +231,13 @@ def test_get_file_from_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_clie
             file_obj.seek(0)
 
         mock_s3_client.download_fileobj.side_effect = mock_download_fileobj
+        mock_s3_client.head_object.return_value = {"ContentLength": len(expected_content)}
 
         result = get_file_from_s3(s3_url)
 
         assert result.getvalue() == expected_content
         mock_s3_client.download_fileobj.assert_called_once_with(
-            "test_bucket", "test_file.txt", result
+            "test_bucket", "datasets/u1/test_file.txt", result
         )
 
 
@@ -290,7 +296,9 @@ def test_upload_file_to_s3_client_error(mock_env_vars, mock_s3_client):
 def test_get_file_from_s3_success(mock_env_vars, mock_s3_client):
     """Test successful file download from S3."""
     with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
-        s3_url = "https://test_bucket.s3.amazonaws.com/test_file.txt"
+        # #531: keys must sit under a tenant prefix (or be the transitional legacy
+        # root shape) — a bare "test_file.txt" at the root is refused now.
+        s3_url = "https://test_bucket.s3.amazonaws.com/datasets/user1/test_file.txt"
         expected_content = b"test file content"
 
         # Mock the download_fileobj to write content to the BytesIO object
@@ -299,13 +307,14 @@ def test_get_file_from_s3_success(mock_env_vars, mock_s3_client):
             file_obj.seek(0)
 
         mock_s3_client.download_fileobj.side_effect = mock_download_fileobj
+        mock_s3_client.head_object.return_value = {"ContentLength": len(expected_content)}
 
         result = get_file_from_s3(s3_url)
 
         assert isinstance(result, io.BytesIO)
         assert result.getvalue() == expected_content
         mock_s3_client.download_fileobj.assert_called_once_with(
-            "test_bucket", "test_file.txt", result
+            "test_bucket", "datasets/user1/test_file.txt", result
         )
 
 
@@ -334,7 +343,8 @@ def test_get_file_from_s3_invalid_url(mock_env_vars, mock_s3_client):
 def test_get_file_from_s3_download_error(mock_env_vars, mock_s3_client):
     """Test file download when S3 client raises an error."""
     with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
-        s3_url = "https://test_bucket.s3.amazonaws.com/test_file.txt"
+        s3_url = "https://test_bucket.s3.amazonaws.com/datasets/user1/test_file.txt"
+        mock_s3_client.head_object.return_value = {"ContentLength": 10}
         mock_s3_client.download_fileobj.side_effect = ClientError(
             {
                 "Error": {
@@ -390,4 +400,140 @@ class TestDatasetS3Key:
         key = dataset_s3_key("tenant_a", "../../etc/passwd.csv")
         assert key.startswith("datasets/tenant_a/")
         assert ".." not in key and "passwd" not in key
+
+
+# --------------------------------------------------------------------------- #
+# One validated download core (#531, #567)
+# --------------------------------------------------------------------------- #
+class TestParseS3UrlRegional:
+    def test_regional_virtual_host_is_parsed(self, mock_env_vars):
+        # The utils reader used to derive the bucket from the host's first label
+        # for this shape; the parser handles it now so no fallback is needed.
+        assert parse_s3_url("https://b.s3.us-east-1.amazonaws.com/datasets/u/f.csv") == (
+            "b",
+            "datasets/u/f.csv",
+        )
+
+
+class TestAllowedBucket:
+    def test_prefers_explicit_allowlist_var(self, monkeypatch):
+        monkeypatch.setenv("AWS_S3_BUCKET", "allow")
+        monkeypatch.setenv("AWS_BUCKET_NAME", "other")
+        assert allowed_bucket() == "allow"
+
+    def test_falls_back_to_the_canonical_resolver(self, monkeypatch):
+        monkeypatch.delenv("AWS_S3_BUCKET", raising=False)
+        monkeypatch.setenv("AWS_BUCKET_NAME", "canon")
+        assert allowed_bucket() == "canon"
+
+    def test_fails_closed_when_unconfigured(self, monkeypatch):
+        for name in ("AWS_S3_BUCKET", "AWS_BUCKET_NAME", "S3_BUCKET_NAME", "S3_BUCKET"):
+            monkeypatch.delenv(name, raising=False)
+        with pytest.raises(ValueError, match="not configured"):
+            allowed_bucket()
+
+
+class TestValidateObjectKey:
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "datasets/user1/file.csv",
+            "transformed/user-1/out_2.parquet",
+            "datasets%2Fuser1%2Ffile.csv",  # URL-encoded, decodes to a valid key
+        ],
+    )
+    def test_accepts_the_two_app_namespaces(self, key):
+        assert validate_object_key(key).startswith(("datasets/", "transformed/"))
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "datasets/../../admin/secrets.csv",
+            "datasets%2F..%2F..%2Fadmin%2Fsecrets.csv",
+            "/etc/passwd",
+            "//root/.ssh/id_rsa",
+            "unauthorized/path/file.csv",
+            "datasets/file.csv",
+            "datasets/user1/a/b.csv",
+            "models/u/m/model.pkl",
+            "file.csv",
+            "",
+        ],
+    )
+    def test_refuses_traversal_absolute_and_out_of_namespace(self, key):
+        with pytest.raises(ValueError):
+            validate_object_key(key)
+
+    def test_legacy_root_shape_only_when_allowed(self):
+        # Exactly what #615 reconciles: (masked_){uuid}.{ext} at the bucket root.
+        legacy = "masked_3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
+        with pytest.raises(ValueError):
+            validate_object_key(legacy)
+        assert validate_object_key(legacy, allow_legacy_root=True) == legacy
+        # ...and nothing else at the root, even with the allowance.
+        with pytest.raises(ValueError):
+            validate_object_key("report.csv", allow_legacy_root=True)
+        with pytest.raises(ValueError):
+            validate_object_key("../3fa85f64-5717-4562-b3fc-2c963f66afa6.csv", allow_legacy_root=True)
+
+
+class TestResolveValidatedObject:
+    def test_foreign_bucket_is_refused(self, mock_env_vars):
+        with pytest.raises(ValueError, match="not permitted"):
+            resolve_validated_object("https://victim.s3.amazonaws.com/datasets/u/f.csv")
+
+    def test_unattributable_url_is_refused(self, mock_env_vars):
+        with pytest.raises(ValueError, match="Invalid S3 URL"):
+            resolve_validated_object("https://example.com/datasets/u/f.csv")
+
+    def test_own_bucket_and_valid_key_pass(self, mock_env_vars):
+        assert resolve_validated_object("s3://test_bucket/transformed/u/f.parquet") == (
+            "test_bucket",
+            "transformed/u/f.parquet",
+        )
+
+    def test_legacy_root_needs_the_allowance(self, mock_env_vars):
+        url = "https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
+        with pytest.raises(ValueError):
+            resolve_validated_object(url)
+        assert resolve_validated_object(url, allow_legacy_root=True)[1].endswith(".csv")
+
+
+class TestGetFileFromS3Validation:
+    def test_root_non_uuid_key_is_refused_before_any_download(self, mock_env_vars, mock_s3_client):
+        with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+            with pytest.raises(ValueError):
+                get_file_from_s3("https://test_bucket.s3.amazonaws.com/test_file.txt")
+        mock_s3_client.download_fileobj.assert_not_called()
+
+    def test_foreign_bucket_is_refused_before_any_download(self, mock_env_vars, mock_s3_client):
+        with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+            with pytest.raises(ValueError):
+                get_file_from_s3("https://victim.s3.amazonaws.com/datasets/u/f.csv")
+        mock_s3_client.download_fileobj.assert_not_called()
+
+    def test_legacy_root_uuid_object_still_downloads(self, mock_env_vars, mock_s3_client):
+        # Production still holds these until the operator runs #615.
+        mock_s3_client.head_object.return_value = {"ContentLength": 3}
+        mock_s3_client.download_fileobj.side_effect = lambda b, k, f: f.write(b"a,b")
+        with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+            out = get_file_from_s3(
+                "https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
+            )
+        assert out.getvalue() == b"a,b"
+
+    def test_regional_url_downloads_without_the_old_fallback(self, mock_env_vars, mock_s3_client):
+        mock_s3_client.head_object.return_value = {"ContentLength": 1}
+        mock_s3_client.download_fileobj.side_effect = lambda b, k, f: f.write(b"x")
+        with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+            get_file_from_s3("https://test_bucket.s3.eu-west-1.amazonaws.com/datasets/u/f.csv")
+        mock_s3_client.download_fileobj.assert_called_once()
+        assert mock_s3_client.download_fileobj.call_args[0][:2] == ("test_bucket", "datasets/u/f.csv")
+
+    def test_oversize_object_is_refused_before_download(self, mock_env_vars, mock_s3_client):
+        mock_s3_client.head_object.return_value = {"ContentLength": MAX_DOWNLOAD_BYTES + 1}
+        with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
+            with pytest.raises(ValueError, match="too large"):
+                get_file_from_s3("https://test_bucket.s3.amazonaws.com/datasets/u/f.csv")
+        mock_s3_client.download_fileobj.assert_not_called()
 

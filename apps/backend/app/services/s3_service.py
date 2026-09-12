@@ -3,13 +3,16 @@ import logging
 import os
 import re
 import tempfile
-from urllib.parse import unquote
 
 from botocore.exceptions import ClientError
 
-from app.config import resolve_s3_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
-from app.utils.s3 import create_s3_client, parse_s3_url
+from app.utils.s3 import (
+    check_object_size,
+    create_s3_client,
+    resolve_validated_object,
+    validate_object_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,74 +49,18 @@ def download_file_from_s3(s3_url: str) -> str:
                     invalid path structure, or file too large
     """
     try:
-        # SECURITY: Get allowed bucket from environment. Prefer the explicit
-        # AWS_S3_BUCKET allowlist var, but fall back to the app's canonical bucket
-        # (any historical name) so a deploy that sets only AWS_BUCKET_NAME still
-        # works (#257). Fail closed (raise) when no bucket is configured at all.
-        ALLOWED_BUCKET = os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
-        if not ALLOWED_BUCKET:
-            raise ValueError(
-                "S3 bucket not configured: set AWS_S3_BUCKET (or AWS_BUCKET_NAME) — "
-                "download allowlist has no allowed bucket"
-            )
-
-        # SECURITY: Validate S3 URL format and bucket whitelist.
-        # parse_s3_url handles amazonaws and endpoint-style (MinIO/LocalStack)
-        # URLs with exact-origin endpoint matching; URLs it cannot attribute
-        # to a bucket are rejected here.
-        try:
-            bucket_name, object_key = parse_s3_url(s3_url)
-        except ValueError:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
-        if bucket_name is None:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-        # SECURITY: Enforce bucket whitelist
-        if bucket_name != ALLOWED_BUCKET:
-            logger.error(f"Access denied: bucket '{bucket_name}' not in whitelist (allowed: {ALLOWED_BUCKET})")
-            raise ValueError(f"Access denied: S3 bucket '{bucket_name}' not allowed")
-
-        # URL decode the object key
-        object_key = unquote(object_key)
-
-        # SECURITY: Prevent path traversal attacks
-        if '..' in object_key or object_key.startswith('/'):
-            logger.error(f"Path traversal detected in S3 key: {object_key}")
-            raise ValueError("Invalid S3 path: path traversal detected")
-
-        # SECURITY: Validate path structure. Two app-internal namespaces are
-        # trusted, each exactly {prefix}/{user_id}/{filename} (two segments, bounded
-        # charset, no traversal): 'datasets/' (uploads) and 'transformed/' (transform
-        # outputs, written by transformation/bulk/data-issue flows). Transformed
-        # artifacts must be downloadable too — after issue #276 the dataset's s3_url
-        # points at them, so preview/viz/chained-transform read this namespace.
-        path_pattern = r'^(?:datasets|transformed)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$'
-        if not re.match(path_pattern, object_key):
-            logger.error(f"Invalid S3 path structure: {object_key}")
-            raise ValueError(
-                "Invalid S3 path structure: must match "
-                "'{datasets|transformed}/{user_id}/{filename}'"
-            )
+        # One validated core for every reader (#531/#567): parse, bucket
+        # allowlist, traversal + namespace checks. Strict here — this path serves
+        # transformations and data processing, which only ever read the two app
+        # namespaces; the legacy root allowance belongs to the BytesIO reader.
+        bucket_name, object_key = resolve_validated_object(s3_url)
 
         # Initialize S3 client
         s3_client = create_s3_client()
 
         # SECURITY: Check file size before downloading to prevent DoS
-        try:
-            response = s3_client.head_object(Bucket=bucket_name, Key=object_key)
-            file_size = response['ContentLength']
-
-            # Maximum file size: 1 GB
-            MAX_FILE_SIZE = 1024 * 1024 * 1024
-            if file_size > MAX_FILE_SIZE:
-                logger.error(f"File too large: {file_size} bytes (max {MAX_FILE_SIZE})")
-                raise ValueError(f"File too large: {file_size} bytes exceeds maximum {MAX_FILE_SIZE} bytes (1 GB)")
-
-            logger.info(f"File size validated: {file_size} bytes")
-        except ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                raise ValueError(f"File not found in S3: {bucket_name}/{object_key}")
-            raise
+        file_size = check_object_size(s3_client, bucket_name, object_key)
+        logger.info(f"File size validated: {file_size} bytes")
 
         logger.info(f"Downloading file from S3: {bucket_name}/{object_key}")
 
@@ -231,6 +178,10 @@ class S3Service:
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot download files")
 
+        # Callers hand in UserData.s3_url keys and DatasetMetadata.file_path, so
+        # the same key rules as the URL readers apply (legacy root allowed, #615).
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
+
         def _download() -> bytes:
             # boto3 is blocking; run the request + body read off the event loop.
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
@@ -346,8 +297,3 @@ class S3Service:
 # Create singleton instance
 s3_service = S3Service()
 
-
-# Helper functions for backward compatibility
-async def get_file_from_s3(file_key: str) -> bytes:
-    """Get file data from S3"""
-    return await s3_service.download_file_bytes(file_key)

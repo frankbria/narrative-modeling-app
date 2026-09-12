@@ -2,7 +2,6 @@
 
 import io
 import logging
-import os
 from typing import Any
 
 import pandas as pd
@@ -13,7 +12,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData, get_current_time
 from app.schemas.user_data import UserDataResponse, UserDataUpdate
 from app.services.eda_summary import generate_eda_summary
-from app.utils.s3 import create_s3_client, parse_s3_url
+from app.utils.s3 import get_file_from_s3, parse_s3_url
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -99,9 +98,6 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> dict[
         if not user_data:
             raise HTTPException(status_code=404, detail="No data found for user")
 
-        # Initialize S3 client
-        s3_client = create_s3_client()
-
         # Extract the key from the S3 URL (handles all persisted URL shapes).
         # Upload persists placeholders like "s3_not_configured" when S3 is
         # unavailable — return metadata without preview for those instead of
@@ -132,12 +128,9 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> dict[
 
         logger.debug(f"Fetching S3 object for preview: {s3_key}")
 
-        # Get the file from S3
+        # Get the file from S3 through the one validated reader (#531).
         try:
-            response = s3_client.get_object(
-                Bucket=os.getenv("AWS_BUCKET_NAME"),
-                Key=s3_key,
-            )
+            file_obj = get_file_from_s3(s3_url)
         except Exception as e:
             logger.error(f"Error getting S3 object {s3_key}: {e}")
             # If we can't get the file from S3, return the metadata without preview data
@@ -161,7 +154,7 @@ async def get_preview_data(user_id: str = Depends(get_current_user_id)) -> dict[
             }
 
         # Read the file content
-        file_content = response["Body"].read()
+        file_content = file_obj.getvalue()
 
         # Determine file type and read accordingly
         if user_data.filename.endswith(".csv"):

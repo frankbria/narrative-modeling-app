@@ -9,7 +9,8 @@ Mongo documents — `mock_async_client` mounts only two routers, so a test writt
 against it would 404 vacuously and prove nothing (see CLAUDE.md, #267).
 """
 
-from unittest.mock import MagicMock, patch
+import io
+from unittest.mock import patch
 
 import pytest
 from beanie import PydanticObjectId
@@ -204,14 +205,12 @@ class TestColumnStatsTenantIsolation:
         # ARRANGE
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
-        fake_s3 = MagicMock()
-        fake_s3.get_object.return_value = {
-            "Body": MagicMock(read=MagicMock(return_value=b"salary,dept\n100,a\n200,b\n"))
-        }
+        # The route reads through the one validated reader (#531).
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
 
         # ACT
         with patch(
-            "app.api.routes.column_stats.create_s3_client", return_value=fake_s3
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
         ):
             response = await async_authorized_client.post(
                 f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
@@ -252,12 +251,11 @@ class TestColumnStatsTenantIsolation:
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         await seed_cached_stats(mine, mock_user_id)
-        failing_s3 = MagicMock()
-        failing_s3.get_object.side_effect = RuntimeError("S3 is having a day")
 
         # ACT
         with patch(
-            "app.api.routes.column_stats.create_s3_client", return_value=failing_s3
+            "app.api.routes.column_stats.get_file_from_s3",
+            side_effect=RuntimeError("S3 is having a day"),
         ):
             response = await async_authorized_client.post(
                 f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
@@ -294,14 +292,12 @@ class TestColumnStatsTenantIsolation:
                 "unique": 1,
             }
         )
-        fake_s3 = MagicMock()
-        fake_s3.get_object.return_value = {
-            "Body": MagicMock(read=MagicMock(return_value=b"salary,dept\n100,a\n200,b\n"))
-        }
+        # The route reads through the one validated reader (#531).
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
 
         # ACT: cache misses (the legacy row is unservable), so this recomputes
         with patch(
-            "app.api.routes.column_stats.create_s3_client", return_value=fake_s3
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
         ):
             response = await async_authorized_client.get(
                 f"/api/v1/column_stats/dataset/{mine.id}"

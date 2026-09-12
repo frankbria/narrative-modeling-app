@@ -1,27 +1,24 @@
-# Issue #527 — [P2.30] [security] /api/data/[id]/preview forwards the OAuth provider token as the backend bearer
+# Issue #531 — [P3.2] [slop] Consolidate the two divergent get_file_from_s3 implementations (+ #567 two allowlists)
 
-Plan source: self-authored (no plan comment). No architectural fork; approved autonomously.
+Plan source: self-authored. Judgment call, not an architectural fork: keep every existing read working during the transition to prefixed keys (#615) via one explicit, tested allowance instead of breaking production reads.
 
 ## Design
-
-- **Every backend call carries the minted API JWT (`session.apiToken`) and nothing else.** The preview proxy route drops the `getToken` fallback and the `"default"` literal: no session or no `apiToken` → 401, nothing forwarded.
-- **The provider token stops reaching the client at all.** `auth.ts` no longer copies `account.access_token` into the JWT or `session.accessToken`; the type is removed. Nothing legitimately needs a Google/GitHub credential in the browser, and removing the field is what makes the sweep durable.
-- **Sweep (AC4)** found three more offenders: `app/api/store/route.ts` (placeholder `nextauth-<id>` bearer, wrong URL, **no callers** → deleted, plus its dead `NEXT_PUBLIC_BACKEND_URL` example line), `components/FeatureSelection.tsx` and `hooks/useDataIssues.ts` (provider token client-side → `apiToken`). A guard test greps the frontend for `session.accessToken`, `Bearer nextauth-` and `|| 'default'` so the class of bug cannot return.
-- **AC3** is a backend unit test: `Bearer default` → 401 under `SKIP_AUTH=false` (pattern: `test_legacy_nextauth_prefix_token_rejected`).
+- **One validated core in `app/utils/s3.py`**: `allowed_bucket()` (the single resolver; fail closed), `validate_object_key(key, *, allow_legacy_root=False)` (URL-decode; refuse `..` and a leading `/`; require `{datasets|transformed}/{user}/{file}`; the transitional legacy root shape `^(masked_)?{uuid}\.{ext}$` — exactly what #615 reconciles — only when asked), `resolve_validated_object(s3_url, *, allow_legacy_root=False) -> (bucket, key)` (parse → allowlist → key validation), and one `MAX_DOWNLOAD_BYTES`.
+- `parse_s3_url` learns the regional virtual-host shape (`bucket.s3.<region>.amazonaws.com`) so the utils reader's host-label fallback can go.
+- **Exactly one `get_file_from_s3`** (utils, BytesIO) = core (legacy root allowed, because viz/preview read `UserData.s3_url`, which still points at root objects in production) + size check + `download_fileobj`. `download_file_from_s3` (service, temp file) = the same core, strict, + size check + `download_file`. The async `s3_service.get_file_from_s3(file_key)` alias is deleted; its two callers use `s3_service.download_file_bytes`, which validates the key through the core.
+- `column_stats.py`'s two sites stop parsing/fetching themselves and call `get_file_from_s3` (#567 AC1).
+- **Registry test (#567 AC3)**: the only raw boto3 download calls in `app/` live in the two core modules; every public entry point refuses a foreign bucket, traversal, and an out-of-namespace key; exactly one `def get_file_from_s3` and one `def download_file_from_s3` exist (#531 AC4).
 
 ## Steps
-
-1. [ ] Tests first: preview route test (correct bearer; no session → 401 + no fetch; no apiToken → 401), auth session-callback test (apiToken present, accessToken absent, provider token not persisted in the JWT), FeatureSelection mock → `apiToken`, forwarding guard test, backend `default` rejection test.
-2. [ ] Preview route: `session.apiToken` only.
-3. [ ] Delete `app/api/store/route.ts`; drop `NEXT_PUBLIC_BACKEND_URL` from `.env.local.example`.
-4. [ ] `FeatureSelection.tsx`, `useDataIssues.ts` → `session.apiToken`.
-5. [ ] `auth.ts` + `types/next-auth.d.ts`: remove the provider access token from JWT and session.
-6. [ ] Docs: CLAUDE.md frontend bullet.
+1. [ ] Tests first: core unit tests (allowlist, key validation incl. legacy allowance, regional URL), entry-point foreign-bucket/traversal tests, registry test, updated utils tests (root non-uuid key now refused — contract change).
+2. [ ] Core in utils/s3.py; get_file_from_s3 on it; parse_s3_url regional.
+3. [ ] s3_service: download_file_from_s3 + download_file_bytes on the core; delete the async alias; fix 2 callers.
+4. [ ] column_stats.py onto get_file_from_s3.
+5. [ ] Docs: CLAUDE.md gotcha; require_allowed_bucket docstring.
 
 ## Acceptance criteria
-
-- [ ] AC1 route sends the minted API JWT
-- [ ] AC2 `"default"` fallback removed; missing session → 401
-- [ ] AC3 backend rejects `default` under a production-like config (test)
-- [ ] AC4 frontend swept (3 more sites fixed; guard test)
-- [ ] AC5 tests: correct token sent; missing session → 401
+- [ ] #531 AC1 one implementation with bucket allowlist + tenant-prefix validation
+- [ ] #531 AC2 every call site uses it; duplicate deleted
+- [ ] #531 AC3 the temp-file variant wraps the same core
+- [ ] #531 AC4 grep test: no second definition
+- [ ] #567 AC1–4 one allowlist, strictest behaviour, call-site registry test, resolve_s3_bucket the single resolver
