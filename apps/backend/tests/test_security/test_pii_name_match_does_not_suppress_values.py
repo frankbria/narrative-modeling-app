@@ -56,3 +56,21 @@ def test_a_weak_value_signal_does_not_override_a_name_match():
     assert len(detections) == 1
     assert detections[0].confidence == NAME_MATCH_CONFIDENCE
     assert detections[0].sample_count == 0
+
+
+def test_on_an_exact_tie_the_values_win():
+    # 4 of 5 values match → pattern confidence 0.8, equal to the name's; the
+    # pattern detection is kept (type from the values, sample_count from them).
+    detections = PIIDetector().detect_pii_in_dataframe(
+        pd.DataFrame({"ssn": SSNS + ["n/a"]})
+    )
+    assert len(detections) == 1
+    assert detections[0].confidence == NAME_MATCH_CONFIDENCE
+    assert detections[0].sample_count == 4  # came from the value check, not the name
+
+
+def test_when_name_and_values_disagree_the_values_name_the_type():
+    detections = PIIDetector().detect_pii_in_dataframe(pd.DataFrame({"phone": SSNS}))
+    assert len(detections) == 1
+    assert detections[0].pii_type == PIIType.SSN
+    assert detections[0].confidence > HIGH_RISK_CONFIDENCE

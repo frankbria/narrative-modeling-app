@@ -38,15 +38,16 @@ class PIIDetection:
     recommendation: str
 
 
-#: Confidence a column earns from its *name* alone. Deliberately equal to the
-#: high-risk threshold below, and the report requires strictly greater, so a name
-#: by itself is medium risk: a label is a hint, values are evidence (#608).
-NAME_MATCH_CONFIDENCE = 0.8
 #: A detection above this is high risk and, at /upload/secure, needs the caller's
 #: confirmation. Pattern confidence is the match rate over the sample, so a
 #: column that really holds SSNs scores ~1.0 and clears it.
 HIGH_RISK_CONFIDENCE = 0.8
 MEDIUM_RISK_CONFIDENCE = 0.5
+#: Confidence a column earns from its *name* alone: exactly the high-risk
+#: threshold, and the report requires strictly greater, so a name by itself is
+#: medium risk — a label is a hint, values are evidence (#608). Defined in terms
+#: of the threshold so the two cannot drift apart by editing one of them.
+NAME_MATCH_CONFIDENCE = HIGH_RISK_CONFIDENCE
 
 
 class PIIDetector:
@@ -94,7 +95,9 @@ class PIIDetector:
             if len(column_data) > 0:
                 sample_data = column_data.head(sample_size).astype(str)
                 pattern_detection = self._check_patterns(column, sample_data)
-            # One detection per column, carrying the stronger evidence.
+            # One detection per column, carrying the stronger evidence. On a tie
+            # (pattern rate exactly the name confidence) the pattern wins: it
+            # names the type the values actually have and carries a sample count.
             if pattern_detection and (
                 name_detection is None or pattern_detection.confidence >= name_detection.confidence
             ):
