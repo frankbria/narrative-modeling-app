@@ -15,6 +15,6 @@ Plan source: self-authored. Approved autonomously — no architectural fork (AC1
 3. Tests: force `RuntimeError("s3://secret-bucket/key: boom")` in each handler's service call; assert 200, `success is False`, no "secret-bucket"/"boom" in the body, the reference id equals the `X-Request-ID` response header; keep `test_a_sent_request_stays_charged_when_the_service_fails_after_it` green (AC2).
 
 ## Steps
-- [ ] RED tests
-- [ ] helper + route/engine changes
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] helper + route/engine changes (+ engine, fix-engine and bulk-service catch-alls after review)
+- [x] gate → PR #643 → demo → CI → merge
