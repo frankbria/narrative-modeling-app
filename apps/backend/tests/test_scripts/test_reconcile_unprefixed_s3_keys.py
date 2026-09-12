@@ -50,6 +50,20 @@ class TestClassification:
         assert m.new_key_for(f"masked_{U1}.csv", "owner-1") == f"datasets/owner-1/masked_{U1}.csv"
 
 
+class TestArgs:
+    def test_apply_flag(self):
+        m = _load()
+        assert m.parse_args([]) is False
+        assert m.parse_args(["--apply"]) is True
+
+    def test_a_typo_is_an_error_not_a_dry_run(self):
+        m = _load()
+        with pytest.raises(SystemExit):
+            m.parse_args(["--aply"])
+        with pytest.raises(SystemExit):
+            m.parse_args(["--apply", "--force"])
+
+
 class TestPlan:
     def test_partitions_moves_and_orphans(self):
         m = _load()

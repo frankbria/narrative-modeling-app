@@ -11,8 +11,8 @@ bucket when the issue was filed.
 For each such object this script finds the owning ``UserData``/``DatasetMetadata``
 rows by ``s3_url`` (through the app's own ``parse_s3_url``, so every stored URL shape
 resolves), copies the object to ``datasets/{owner}/{same basename}``, verifies the
-copy (ContentLength, then ETag or a streamed SHA-256 when the ETag is multipart), rewrites the rows' ``s3_url``/``file_path``, and only
-then deletes the original. An object with **no** owning row is reported and never
+copy (ContentLength, then ETag or a streamed SHA-256 when the ETag is multipart),
+rewrites the rows' ``s3_url``/``file_path``, and only then deletes the original. An object with **no** owning row is reported and never
 touched — nothing here deletes data it cannot attribute. Rows that disagree about
 the owner are treated the same way.
 
@@ -294,13 +294,26 @@ def _print(report: Report) -> None:
         print("  re-run with --apply to move them")
 
 
+def parse_args(argv: list[str]) -> bool:
+    """Return ``apply``. Anything other than an optional ``--apply`` is an error.
+
+    Strict on purpose: this script mutates production objects and rows, and a
+    typo (``--aply``) that silently degraded to a dry run would read as
+    "nothing to do" (claude-review).
+    """
+    unknown = [a for a in argv if a != "--apply"]
+    if unknown:
+        raise SystemExit(f"unknown argument(s): {' '.join(unknown)} — the only flag is --apply")
+    return "--apply" in argv
+
+
 async def main() -> int:
     from motor.motor_asyncio import AsyncIOMotorClient
 
     from app.config import resolve_s3_bucket
     from app.utils.s3 import get_s3_client
 
-    apply = "--apply" in sys.argv[1:]
+    apply = parse_args(sys.argv[1:])
     uri, db_name = os.getenv("MONGODB_URI"), os.getenv("MONGODB_DB")
     bucket = resolve_s3_bucket()
     if not uri or not db_name or not bucket:
