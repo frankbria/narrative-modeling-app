@@ -12,9 +12,11 @@ The recommend/optimize endpoints work fully without an OpenAI key (rule-based co
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
+from app.billing.enforcement import quota
 from app.models.dataset import DatasetMetadata
 from app.schemas.ai_orchestration import (
     AIFeedbackRequest,
@@ -33,9 +35,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/recommend-tools", response_model=ToolRecommendationResponse)
+@router.post("/recommend-tools", dependencies=[Depends(quota("ai_calls"))], response_model=ToolRecommendationResponse)
 async def recommend_tools(
     request: ToolRecommendationRequest,
+    http_request: Request,
     user_id: str = Depends(get_current_user_id),
 ) -> ToolRecommendationResponse:
     """Recommend tools/transformations for a dataset and objective."""
@@ -45,7 +48,10 @@ async def recommend_tools(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dataset not found",
         )
-    return await ai_orchestration_service.recommend_tools(profile, request, user_id)
+    response = await ai_orchestration_service.recommend_tools(profile, request, user_id)
+    if response.generated_by != "hybrid":
+        await enforcement.release(http_request)  # rule-based only: no paid call, no charge (#461)
+    return response
 
 
 @router.post("/optimize-parameters", response_model=ParameterOptimizationResponse)
@@ -63,9 +69,10 @@ async def optimize_parameters(
     return await ai_orchestration_service.optimize_parameters(profile, request)
 
 
-@router.post("/stage-guidance", response_model=StageGuidanceResponse)
+@router.post("/stage-guidance", dependencies=[Depends(quota("ai_calls"))], response_model=StageGuidanceResponse)
 async def stage_guidance(
     request: StageGuidanceRequest,
+    http_request: Request,
     user_id: str = Depends(get_current_user_id),
 ) -> StageGuidanceResponse:
     """Consistent, context-aware AI guidance for a workflow stage (issue #90).
@@ -79,9 +86,12 @@ async def stage_guidance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dataset not found",
         )
-    return await ai_orchestration_service.generate_stage_guidance(
+    response = await ai_orchestration_service.generate_stage_guidance(
         profile, request.stage, request.accumulated_context, user_id
     )
+    if response.generated_by != "hybrid":
+        await enforcement.release(http_request)  # rule-based only: no paid call, no charge (#461)
+    return response
 
 
 @router.post(

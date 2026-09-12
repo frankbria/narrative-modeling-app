@@ -11,9 +11,20 @@ import uuid
 from datetime import UTC, datetime
 
 import pandas as pd
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
+from app.billing.enforcement import quota
 from app.schemas.feature_engineering import (
     ApplyFeatureRequest,
     ApplyFeatureResponse,
@@ -82,6 +93,7 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
 
 @router.post(
     "/datasets/{dataset_id}/features/suggest",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=FeatureSuggestionResponse,
     summary="Generate AI-powered feature suggestions",
     description="""
@@ -103,6 +115,7 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
     """
 )
 async def suggest_features(
+    http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
     request: FeatureSuggestionRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
@@ -130,6 +143,9 @@ async def suggest_features(
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
+        if not response.metadata.get("ai_used"):
+            # AI off, no key, or breaker open: no model was called, the reserved unit goes back (#461)
+            await enforcement.release(http_request)
         return response
 
     except HTTPException:
@@ -144,6 +160,7 @@ async def suggest_features(
 
 @router.get(
     "/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=FeatureExplanationResponse,
     summary="Get detailed explanation for a suggestion",
     description="Retrieve detailed explanation, example calculations, and use cases for a specific feature suggestion."
@@ -195,6 +212,7 @@ async def get_suggestion_explanation(
 
 @router.post(
     "/features/suggestions/{suggestion_id}/feedback",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=FeatureFeedbackResponse,
     summary="Record feedback on a suggestion",
     description="Record whether a user accepted or rejected a feature suggestion. This feedback is used to improve future suggestions."
@@ -270,6 +288,7 @@ async def record_suggestion_feedback(
 
 @router.post(
     "/datasets/{dataset_id}/features/suggest-more",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=FeatureSuggestionResponse,
     summary="Generate additional suggestions",
     description="Generate additional feature suggestions, excluding previously shown suggestions."
@@ -324,6 +343,7 @@ async def suggest_more_features(
 
 @router.post(
     "/datasets/{dataset_id}/features/apply",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=ApplyFeatureResponse,
     summary="Preview a feature suggestion",
     description="Compute a preview of a single feature suggestion. The new "
@@ -408,6 +428,7 @@ async def apply_feature(
 
 @router.post(
     "/datasets/{dataset_id}/features/apply-multiple",
+    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
     response_model=ApplyFeatureResponse,
     summary="Preview multiple feature suggestions",
     description="Compute a preview of multiple feature suggestions at once. The "

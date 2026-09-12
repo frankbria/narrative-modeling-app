@@ -144,8 +144,10 @@ class FeatureEngineeringService:
 
         # Generate AI suggestions if enabled
         ai_suggestions: list[FeatureSuggestion] = []
+        ai_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
         if include_ai:
             try:
+                ai_used = get_openai_client() is not None  # without a client the step below is a no-op
                 ai_suggestions = await self._generate_ai_suggestions(
                     analysis,
                     existing_suggestions=rule_based
@@ -189,6 +191,7 @@ class FeatureEngineeringService:
             rule_based_count=len([s for s in all_suggestions if s.source == "rule_based"]),
             ai_count=len([s for s in all_suggestions if s.source == "ai"]),
             metadata={
+                "ai_used": ai_used,
                 "processing_time_ms": processing_time,
                 "numeric_columns": len(analysis.numeric_columns),
                 "categorical_columns": len(analysis.categorical_columns),

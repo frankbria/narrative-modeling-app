@@ -10,6 +10,9 @@ pass with the dependency attached to nothing (see the #267 footgun).
 here unambiguous — a 429 would mean something else entirely.
 """
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 import app.api.routes.batch_prediction as batch_prediction_routes
@@ -25,6 +28,7 @@ pytestmark = pytest.mark.asyncio
 #: What `async_authorized_client` overrides the auth dependency to return.
 TEST_USER = "test_user_123"
 FREE_UPLOADS = PLAN_LIMITS[PlanTier.FREE].uploads
+FREE_AI_CALLS = PLAN_LIMITS[PlanTier.FREE].ai_calls
 
 
 def _no_op(*args, **kwargs) -> None:
@@ -1175,3 +1179,175 @@ class TestNonMeteredRoutes:
         response = await async_authorized_client.get("/api/v1/ml/models")
 
         assert response.status_code != 402
+
+
+class TestAiQuota:
+    """#461: a tenant at the `ai_calls` limit is refused before any model is called."""
+
+    @pytest.mark.parametrize(
+        "route, service",
+        [
+            ("/api/v1/ai/summarize/{fid}",
+             "app.services.dataset_summarization.dataset_summarization_service.generate_comprehensive_summary"),
+            ("/api/v1/ai/analyze/{fid}",
+             "app.services.mcp_integration.mcp_service.analyze_dataset"),
+            ("/api/v1/ai/chat", "app.services.ai_chat.ai_chat_service.reply"),
+            ("/api/v1/datasets/ds-1/features/suggest",
+             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
+            ("/api/v1/datasets/ds-1/features/apply",
+             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
+            # orchestration: the 402 lands before the body is even validated
+            ("/api/v1/ai/recommend-tools",
+             "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
+            ("/api/v1/ai/stage-guidance",
+             "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
+        ],
+    )
+    async def test_ai_route_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database, route, service
+    ):
+        await _fill(TEST_USER, "ai_calls", FREE_AI_CALLS)
+        with patch(service, new_callable=AsyncMock) as model_call:
+            response = await async_authorized_client.post(route.format(fid="0" * 24))
+        assert response.status_code == 402, f"{route}: {response.text}"
+        assert response.json()["detail"]["metric"] == "ai_calls"
+        model_call.assert_not_called()
+        # the denial itself must not count
+        assert await metering.usage_for(TEST_USER, "ai_calls") == FREE_AI_CALLS
+
+    async def test_a_501_stub_hands_its_unit_back(self, async_authorized_client, setup_database):
+        """/chat/{file_id} is metered though it is a stub (#274); the 501 refunds."""
+        response = await async_authorized_client.post("/api/v1/ai/chat/" + "0" * 24)
+        assert response.status_code == 501
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    @pytest.mark.parametrize(
+        "route, service",
+        [
+            ("/api/v1/ml/{mid}/evaluation",
+             "app.services.evaluation_explanation_service.evaluation_explanation_service.generate_report_card"),
+            ("/api/v1/ml/{mid}/errors",
+             "app.services.error_analysis_service.error_analysis_service.generate_suggestions"),
+        ],
+    )
+    async def test_model_explanation_routes_are_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database, route, service
+    ):
+        await _fill(TEST_USER, "ai_calls", FREE_AI_CALLS)
+        with patch(service, new_callable=AsyncMock) as model_call:
+            response = await async_authorized_client.get(route.format(mid="m-1"))
+        assert response.status_code == 402, f"{route}: {response.text}"
+        model_call.assert_not_called()
+        assert await metering.usage_for(TEST_USER, "ai_calls") == FREE_AI_CALLS
+
+    async def test_partial_evaluation_hands_its_unit_back(self, async_authorized_client, setup_database):
+        """A model without held-out artifacts gets `partial=true` and no model call — so no charge."""
+        from app.models.ml_model import MLModel
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-partial", name="Partial",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value=None):
+            response = await async_authorized_client.get("/api/v1/ml/m-partial/evaluation")
+        assert response.status_code == 200, response.text
+        assert response.json()["partial"] is True
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_rule_based_suggestions_hand_the_unit_back(self, async_authorized_client, setup_database):
+        """The service reports whether a model call happened (`metadata.ai_used`); the route
+        keeps the unit only when it did."""
+        import pandas as pd
+
+        from app.schemas.feature_engineering import FeatureSuggestionResponse
+
+        def _response(ai_used: bool) -> FeatureSuggestionResponse:
+            return FeatureSuggestionResponse(
+                dataset_id="ds-1", suggestions=[], total_suggestions=0, metadata={"ai_used": ai_used}
+            )
+
+        url = "/api/v1/datasets/ds-1/features/suggest"
+        with patch("app.api.routes.feature_engineering._load_dataset_dataframe",
+                   new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
+             patch("app.services.feature_engineering_service.feature_engineering_service.suggest_features",
+                   new_callable=AsyncMock) as suggest:
+            # the service says no model ran (AI off, no key, or breaker open) -> released
+            suggest.return_value = _response(ai_used=False)
+            assert (await async_authorized_client.post(url, json={})).status_code == 200
+            assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+            # the service says the model ran -> the unit stays charged
+            suggest.return_value = _response(ai_used=True)
+            assert (await async_authorized_client.post(url, json={})).status_code == 200
+            assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+    @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
+    async def test_report_card_is_charged_only_when_the_model_wrote_it(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        from app.models.ml_model import MLModel
+        from app.schemas.evaluation import AIExplanation, ModelEvaluationResponse
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-full", name="Full",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        full = ModelEvaluationResponse(
+            model_id="m-full", problem_type="binary_classification", evaluated_at=datetime.now(UTC),
+            ai_explanation=AIExplanation(overall_assessment="ok", generated_by=generated_by),
+        )
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value={"y_test": [1], "y_pred": [1]}), \
+             patch("app.api.routes.model_training._full_evaluation_response",
+                   new_callable=AsyncMock, return_value=full):
+            response = await async_authorized_client.get("/api/v1/ml/m-full/evaluation")
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged
+
+    @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
+    async def test_error_suggestions_are_charged_only_when_the_model_wrote_them(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        import numpy as np
+
+        from app.models.ml_model import MLModel
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-err", name="Err",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        artifacts = {"y_test": np.array([0, 1, 0, 1]), "y_pred": np.array([0, 1, 1, 1])}
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value=artifacts), \
+             patch("app.services.error_analysis_service.error_analysis_service.generate_suggestions",
+                   new_callable=AsyncMock, return_value=([], generated_by)):
+            response = await async_authorized_client.get("/api/v1/ml/m-err/errors")
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged
+
+    @pytest.mark.parametrize("generated_by, charged", [("rule_based", 0), ("hybrid", 1)])
+    async def test_tool_recommendations_are_charged_only_when_the_model_helped(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        from unittest.mock import MagicMock
+
+        from app.schemas.ai_orchestration import Objective, ToolRecommendationResponse
+
+        response_body = ToolRecommendationResponse(
+            dataset_id="ds-1", objective=Objective.EXPLORATION, recommendations=[], generated_by=generated_by
+        )
+        with patch("app.services.ai_orchestration_service.ai_orchestration_service.build_profile",
+                   new_callable=AsyncMock, return_value=MagicMock()), \
+             patch("app.services.ai_orchestration_service.ai_orchestration_service.recommend_tools",
+                   new_callable=AsyncMock, return_value=response_body):
+            response = await async_authorized_client.post(
+                "/api/v1/ai/recommend-tools", json={"dataset_id": "ds-1", "objective": "exploration"}
+            )
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged

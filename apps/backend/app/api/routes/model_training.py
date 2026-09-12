@@ -28,6 +28,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
 from app.billing.enforcement import quota
 from app.config import settings
 from app.models.batch_job import JobStatus
@@ -1187,9 +1188,13 @@ async def _full_evaluation_response(
     )
 
 
-@router.get("/{model_id}/evaluation", response_model=ModelEvaluationResponse)
+@router.get(
+    "/{model_id}/evaluation",
+    response_model=ModelEvaluationResponse,
+    dependencies=[Depends(quota("ai_calls"))],  # the report card is an OpenAI call (#461)
+)
 async def get_model_evaluation(
-    model_id: str, current_user_id: str = Depends(get_current_user_id)
+    model_id: str, request: Request, current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Full evaluation payload for one model (issue #79).
@@ -1213,15 +1218,21 @@ async def get_model_evaluation(
         or artifacts.get("y_test") is None
         or artifacts.get("y_pred") is None
     ):
+        await enforcement.release(request)  # no model call on this branch
         return _partial_evaluation_response(model)
 
     try:
-        return await _full_evaluation_response(model, artifacts)
+        response = await _full_evaluation_response(model, artifacts)
+        if response.ai_explanation is None or response.ai_explanation.generated_by != "openai":
+            # rule-based fallback (no key, breaker open, call failed): no paid call, no charge
+            await enforcement.release(request)
+        return response
     except Exception as exc:
         logger.error(
             f"Evaluation computation failed for {model_id}; "
             f"degrading to partial results: {exc}"
         )
+        await enforcement.release(request)  # no model call on this branch
         return _partial_evaluation_response(model)
 
 
@@ -1371,9 +1382,13 @@ async def get_tuning_results(
     }
 
 
-@router.get("/{model_id}/errors", response_model=ErrorAnalysisResponse)
+@router.get(
+    "/{model_id}/errors",
+    response_model=ErrorAnalysisResponse,
+    dependencies=[Depends(quota("ai_calls"))],  # improvement suggestions are an OpenAI call (#461)
+)
 async def get_error_analysis(
-    model_id: str, current_user_id: str = Depends(get_current_user_id)
+    model_id: str, request: Request, current_user_id: str = Depends(get_current_user_id)
 ):
     """Error analysis for a model (issue #81).
 
@@ -1399,6 +1414,7 @@ async def get_error_analysis(
         or artifacts.get("y_test") is None
         or artifacts.get("y_pred") is None
     ):
+        await enforcement.release(request)  # no model call without artifacts
         return ErrorAnalysisResponse(
             model_id=model_id,
             model_name=model.name,
@@ -1425,6 +1441,8 @@ async def get_error_analysis(
     suggestions, generated_by = await error_analysis_service.generate_suggestions(
         data, problem_type=model.problem_type, algorithm=model.algorithm
     )
+    if generated_by != "openai":
+        await enforcement.release(request)  # rule-based fallback: no paid call, no charge
 
     message = None
     if not data.has_feature_matrix:

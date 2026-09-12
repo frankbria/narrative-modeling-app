@@ -90,6 +90,23 @@ class TestFeatureEngineeringService:
         assert response.total_suggestions == len(response.suggestions)
 
     @pytest.mark.asyncio
+    async def test_metadata_reports_whether_the_model_ran(self, service, numeric_data):
+        """`metadata.ai_used` is what the route's ai_calls charge keys on (#461)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        off = await service.suggest_features(df=numeric_data, dataset_id="d-off", include_ai=False)
+        assert off.metadata["ai_used"] is False
+
+        with patch("app.services.feature_engineering_service.get_openai_client", return_value=None):
+            no_key = await service.suggest_features(df=numeric_data, dataset_id="d-nokey", include_ai=True)
+        assert no_key.metadata["ai_used"] is False
+
+        with patch("app.services.feature_engineering_service.get_openai_client", return_value=MagicMock()), \
+             patch.object(service, "_generate_ai_suggestions", new=AsyncMock(return_value=[])):
+            ran = await service.suggest_features(df=numeric_data, dataset_id="d-ran", include_ai=True)
+        assert ran.metadata["ai_used"] is True
+
+    @pytest.mark.asyncio
     async def test_suggest_features_detects_problem_type(self, service, numeric_data):
         """Test automatic problem type detection"""
         response = await service.suggest_features(

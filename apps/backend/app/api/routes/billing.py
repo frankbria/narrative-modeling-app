@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import metering, stripe_client
-from app.billing.plans import limits_for
+from app.billing.plans import METERED_METRICS, limits_for
 from app.config import settings
 from app.models.subscription import PlanTier, Subscription
 
@@ -140,7 +140,7 @@ async def billing_status(current_user_id: str = Depends(get_current_user_id)):
         # tell "no ceiling" from "not reported".
         limits={
             metric: limits.limit_for(metric)
-            for metric in ("training_runs", "predictions", "uploads")
+            for metric in METERED_METRICS  # every metered metric, or the page hides one (#461)
         },
     )
 

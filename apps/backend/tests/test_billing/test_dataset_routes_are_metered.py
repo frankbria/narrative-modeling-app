@@ -111,7 +111,11 @@ _EXEMPT = {
 }
 
 
-def _post_routes() -> dict[str, APIRoute]:
+def _post_routes(
+    prefixes: tuple[str, ...] = _IN_SCOPE_PREFIXES,
+    exact: str = _STORE_ROUTE,
+    methods: tuple[str, ...] = ("POST",),
+) -> dict[str, APIRoute]:
     """Every mounted POST route on a dataset-owning router, by path.
 
     `app.routes` is **not** a flat list on this FastAPI version (0.139): routers are
@@ -135,9 +139,9 @@ def _post_routes() -> dict[str, APIRoute]:
                     route.original_router.routes,
                     prefix + (getattr(context, "prefix", "") or ""),
                 )
-            elif isinstance(route, APIRoute) and "POST" in (route.methods or ()):
+            elif isinstance(route, APIRoute) and set(methods) & (route.methods or set()):
                 path = prefix + route.path
-                if path == _STORE_ROUTE or path.startswith(_IN_SCOPE_PREFIXES):
+                if path == exact or path.startswith(prefixes):
                     found[path] = route
 
     walk(app.routes)

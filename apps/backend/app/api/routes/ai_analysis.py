@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.user_data import UserData
+from app.services.ai_chat import ChatRequest, ai_chat_service
 from app.services.dataset_summarization import (
     DatasetSummaryRequest,
     dataset_summarization_service,
@@ -44,7 +46,7 @@ class AnalysisRequest(BaseModel):
     custom_prompts: list[str] | None = Field(default=None, description="Custom analysis prompts")
 
 
-@router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse)
+@router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse, dependencies=[Depends(quota("ai_calls"))])
 async def analyze_with_ai(
     file_id: str = Path(..., description="File ID"),
     request: AnalysisRequest | None = None,
@@ -97,7 +99,7 @@ async def analyze_with_ai(
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
 
-@router.get("/insights/{file_id}")
+@router.get("/insights/{file_id}", dependencies=[Depends(quota("ai_calls"))])
 async def get_cached_insights(
     file_id: str = Path(..., description="File ID"),
     current_user_id: str = Depends(get_current_user_id)
@@ -116,7 +118,25 @@ async def get_cached_insights(
     )
 
 
-@router.post("/chat/{file_id}")
+@router.post("/chat", dependencies=[Depends(quota("ai_calls"))])
+async def chat(
+    request: ChatRequest,
+    current_user_id: str = Depends(get_current_user_id),
+) -> dict[str, str]:
+    """
+    Dataset chat (#461). The Next.js `/api/chat` proxy forwards here so the call is
+    reserved against `ai_calls` and refunded by the middleware on any failure.
+    """
+    reply = await ai_chat_service.reply(request)
+    if reply is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI chat is not configured on this deployment.",
+        )
+    return {"reply": reply}
+
+
+@router.post("/chat/{file_id}", dependencies=[Depends(quota("ai_calls"))])
 async def chat_with_data(
     file_id: str = Path(..., description="File ID"),
     query: str = "",
@@ -136,7 +156,7 @@ async def chat_with_data(
     )
 
 
-@router.post("/summarize/{file_id}")
+@router.post("/summarize/{file_id}", dependencies=[Depends(quota("ai_calls"))])
 async def generate_ai_summary(
     file_id: str = Path(..., description="File ID"),
     focus_areas: list[str] | None = None,
