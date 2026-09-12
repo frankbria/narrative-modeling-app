@@ -381,6 +381,11 @@ class TestDatasetS3Key:
     def test_two_calls_never_collide(self):
         assert dataset_s3_key("t", "a.csv") != dataset_s3_key("t", "a.csv")
 
+    @pytest.mark.parametrize("bad", ["", "a/b", "..", "."])
+    def test_a_user_id_that_could_fold_into_another_prefix_is_refused(self, bad):
+        with pytest.raises(ValueError):
+            dataset_s3_key(bad, "a.csv")
+
     def test_traversal_in_the_filename_cannot_escape_the_prefix(self):
         key = dataset_s3_key("tenant_a", "../../etc/passwd.csv")
         assert key.startswith("datasets/tenant_a/")

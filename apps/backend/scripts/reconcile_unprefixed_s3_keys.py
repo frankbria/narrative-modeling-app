@@ -84,6 +84,7 @@ class Report:
     conflicts: int = 0
     failures: int = 0  # copy/verify/rewrite/delete failed; object left in place
     leftover_duplicates: int = 0  # rows already rewritten by an earlier run; only the delete remained
+    erased_mid_run: int = 0  # owning rows vanished between attribution and rewrite; both objects removed
     applied: bool = False
 
     @property
@@ -195,8 +196,14 @@ def _copy_and_verify(s3, bucket: str, move: Move) -> bool:
     return _sha256(s3, bucket, move.old_key) == _sha256(s3, bucket, move.new_key)
 
 
-async def _rewrite_rows(db, rows: list[tuple[str, object, str]], move: Move) -> int:
-    rewritten = 0
+async def _rewrite_rows(db, rows: list[tuple[str, object, str]], move: Move) -> tuple[int, int]:
+    """Rewrite the attributed rows; return ``(modified, matched)``.
+
+    ``matched`` is how many of the rows still exist. Attribution is a snapshot,
+    and a user may erase the dataset between it and this write — then matched is
+    0 and the caller must not leave a fresh, unowned copy of erased data behind.
+    """
+    rewritten = matched = 0
     for coll, _id, s3_url in rows:
         # Replace the final occurrence of the key so the URL keeps its shape
         # (s3://, virtual-host or endpoint-style) and any query string.
@@ -220,7 +227,8 @@ async def _rewrite_rows(db, rows: list[tuple[str, object, str]], move: Move) -> 
             ],
         )
         rewritten += result.modified_count
-    return rewritten
+        matched += result.matched_count
+    return rewritten, matched
 
 
 async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
@@ -249,7 +257,8 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
                     report.failures += 1  # twin differs: leave both for a human
                     continue
                 move = Move(old_key, twin, attribution.owner_by_key.get(old_key) or "")
-                report.rows_rewritten += await _rewrite_rows(db, attribution.rows_by_key[old_key], move)
+                rewritten, _ = await _rewrite_rows(db, attribution.rows_by_key[old_key], move)
+                report.rows_rewritten += rewritten
                 s3.delete_object(Bucket=bucket, Key=old_key)
                 report.moved += 1
             except Exception:  # noqa: BLE001
@@ -257,6 +266,9 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
 
     the_plan = plan([k for k in candidates if k not in attribution.migrated_twin], attribution.owner_by_key)
     report.planned = len(the_plan.moves)
+    # plan() puts every key whose owner is None into `orphans`; conflicting keys
+    # are exactly the ones _owners() set to None on disagreement, so they are a
+    # subset with no overlap with true orphans — hence the subtraction.
     report.orphans = len(the_plan.orphans) - report.conflicts
     if not apply:
         return report
@@ -271,7 +283,17 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
             if not _copy_and_verify(s3, bucket, move):
                 report.failures += 1
                 continue
-            report.rows_rewritten += await _rewrite_rows(db, rows, move)
+            rewritten, matched = await _rewrite_rows(db, rows, move)
+            if matched == 0:
+                # Every owning row vanished since attribution: the user erased the
+                # dataset mid-run. Erasure removed what it knew about (the old key);
+                # the copy we just made is unowned erased data — remove it, and the
+                # original too if erasure has not got to it yet. Nothing to rewrite.
+                s3.delete_object(Bucket=bucket, Key=move.new_key)
+                s3.delete_object(Bucket=bucket, Key=move.old_key)
+                report.erased_mid_run += 1
+                continue
+            report.rows_rewritten += rewritten
             s3.delete_object(Bucket=bucket, Key=move.old_key)
         except Exception:  # noqa: BLE001
             report.failures += 1
@@ -287,6 +309,7 @@ def _print(report: Report) -> None:
     print(f"  leftovers of an interrupted run (rows already rewritten; delete only): {report.leftover_duplicates}")
     print(f"  moved (copied, verified, rows rewritten, original deleted): {report.moved}")
     print(f"  rows rewritten: {report.rows_rewritten}")
+    print(f"  erased by their owner mid-run (copy and original removed): {report.erased_mid_run}")
     print(f"  orphans (no owning row; left in place): {report.orphans}")
     print(f"  conflicts (rows disagree on owner; left in place): {report.conflicts}")
     print(f"  failures — copy, verify, rewrite or delete (left in place): {report.failures}")

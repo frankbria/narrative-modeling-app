@@ -143,10 +143,12 @@ class _Db:
             if self.fail and self.fail():
                 raise RuntimeError("transient Mongo error")
             # Apply the s3_url rewrite so a second run sees rows pointing at the twin.
+            matched = 0
             for d in self.docs:
                 if d["_id"] == flt["_id"]:
                     d["s3_url"] = pipeline[0]["$set"]["s3_url"]
-            return type("R", (), {"modified_count": 1})()
+                    matched = 1
+            return type("R", (), {"modified_count": matched, "matched_count": matched})()
 
     def __init__(self, *, dual_write: bool = False):
         self.fail_meta_rewrites = False
@@ -157,6 +159,11 @@ class _Db:
             ),
             "dataset_metadata": self._Coll(meta, fail=lambda: self.fail_meta_rewrites),
         }
+
+    def erase_everything(self) -> None:
+        """What a user's erasure does between attribution and rewrite."""
+        for c in self.colls.values():
+            c.docs.clear()
 
     def keys(self) -> dict[str, list[str]]:
         return {n: [d["s3_url"].split("/", 3)[3] for d in c.docs] for n, c in self.colls.items()}
@@ -186,6 +193,37 @@ async def test_a_failing_delete_is_counted_and_a_rerun_finishes_the_move():
     assert second.leftover_duplicates == 1 and second.moved == 1 and second.orphans == 0
     assert set(s3.objects) == {f"datasets/o/{s3.KEY}"}
     assert second.exit_code == 0
+
+
+class _ErasingCopy(_RaisingDelete):
+    """S3 whose copy step is where the user's erasure lands: rows vanish and the
+    old object is deleted by erasure while the script is between attribution and
+    rewrite (claude-review round 6)."""
+
+    fail_delete = False
+
+    def __init__(self, db):
+        super().__init__()
+        self.db = db
+
+    def copy_object(self, Bucket, Key, CopySource, MetadataDirective):
+        super().copy_object(Bucket, Key, CopySource, MetadataDirective)
+        self.db.erase_everything()
+        self.objects.pop(CopySource["Key"], None)  # erasure deleted the old key
+
+    def delete_object(self, Bucket, Key):
+        self.objects.pop(Key, None)  # idempotent like S3
+
+
+@pytest.mark.asyncio
+async def test_a_dataset_erased_mid_run_leaves_no_unowned_copy_behind():
+    m = _load()
+    db = _Db(dual_write=True)
+    s3 = _ErasingCopy(db)
+    report = await m.reconcile(s3, "b", db, apply=True)
+    assert report.erased_mid_run == 1 and report.moved == 0 and report.rows_rewritten == 0
+    assert s3.objects == {}, "the fresh copy of erased data must not survive"
+    assert report.exit_code == 0
 
 
 @pytest.mark.asyncio

@@ -140,8 +140,12 @@ def dataset_s3_key(user_id: str, original_filename: str, *, masked: bool = False
     dataset object must build its key here; there is deliberately no helper that
     can express a key without the owner.
     """
-    # ``user_id`` is trusted as-is: it comes from the verified JWT / API key, never
-    # from the request body, so it is the one input here that needs no sanitising.
+    # ``user_id`` comes from the verified JWT / API key, never from the request
+    # body. This is still the one place every tenant boundary in the bucket is
+    # drawn, so refuse anything that could fold into another prefix rather than
+    # trust every future caller.
+    if not user_id or "/" in user_id or user_id in (".", ".."):
+        raise ValueError(f"unsafe user_id for an S3 prefix: {user_id!r}")
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else ""
     ext = re.sub(r"[^a-z0-9]", "", ext)
     name = f"{'masked_' if masked else ''}{uuid.uuid4()}"
