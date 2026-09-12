@@ -111,6 +111,13 @@ class TestPythonExport:
         assert filename == "Test Model_v1.0_inference.py"
 
     @pytest.mark.asyncio
+    async def test_include_preprocessing_false_leaves_the_engineer_out(self, export_service, mock_model):
+        """claude-review: the flag was accepted and ignored."""
+        with _found(mock_model):
+            code, _ = await export_service.export_python_code(MODEL_ID, USER, include_preprocessing=False)
+        assert "StandardScaler" not in code and "feature_engineer.transform" not in code
+
+    @pytest.mark.asyncio
     async def test_without_a_feature_engineer(self, export_service, mock_model, trained_model):
         export_service.model_storage.load_model = AsyncMock(return_value=(trained_model, None))
         with _found(mock_model):
@@ -147,6 +154,9 @@ class TestDockerExport:
             assert f"scikit-learn=={sklearn.__version__}" in requirements, "pins must match the pickling versions"
             assert f"numpy=={np.__version__}" in requirements
             assert "Test Model" in zf.read("README.md").decode()
+            import sys
+
+            assert f"FROM python:{sys.version_info.major}.{sys.version_info.minor}-slim" in dockerfile
             assert "class ModelInference:" in zf.read("inference.py").decode()
 
     @pytest.mark.asyncio

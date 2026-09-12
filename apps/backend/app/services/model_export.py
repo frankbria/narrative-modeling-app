@@ -5,6 +5,7 @@ import json
 import os
 import pickle
 import shutil
+import sys
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -177,7 +178,7 @@ class ModelExportService:
             f"from {model_module} import {model_class}"
         ]
         
-        if feature_engineer:
+        if feature_engineer and include_preprocessing:  # the flag was accepted but inert before (#468)
             fe_class = feature_engineer.__class__.__name__
             fe_module = feature_engineer.__class__.__module__
             imports.append(f"from {fe_module} import {fe_class}")
@@ -400,7 +401,10 @@ if __name__ == "__main__":
         )
         
         # Create Dockerfile
-        dockerfile_content = '''FROM python:3.11-slim
+        # The base image must install the pinned wheels and unpickle what this interpreter
+        # pickled: use the running Python's minor version, not a hardcoded one.
+        py = f"{sys.version_info.major}.{sys.version_info.minor}"
+        dockerfile_content = f'''FROM python:{py}-slim
 
 # Install required packages
 RUN pip install pandas numpy scikit-learn
