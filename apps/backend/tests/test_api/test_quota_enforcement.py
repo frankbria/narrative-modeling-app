@@ -1255,3 +1255,21 @@ class TestAiQuota:
         assert response.status_code == 200, response.text
         assert response.json()["partial"] is True
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_rule_based_suggestions_hand_the_unit_back(self, async_authorized_client, setup_database):
+        """`include_ai_suggestions: false` calls no model, so the reserved unit is released;
+        the default (AI on) keeps it."""
+        import pandas as pd
+
+        from app.schemas.feature_engineering import FeatureSuggestionResponse
+
+        rule_based = FeatureSuggestionResponse(dataset_id="ds-1", suggestions=[], total_suggestions=0)
+        with patch("app.api.routes.feature_engineering._load_dataset_dataframe",
+                   new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
+             patch("app.services.feature_engineering_service.feature_engineering_service.suggest_features",
+                   new_callable=AsyncMock, return_value=rule_based):
+            url = "/api/v1/datasets/ds-1/features/suggest"
+            assert (await async_authorized_client.post(url, json={"include_ai_suggestions": False})).status_code == 200
+            assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+            assert (await async_authorized_client.post(url, json={"include_ai_suggestions": True})).status_code == 200
+            assert await metering.usage_for(TEST_USER, "ai_calls") == 1

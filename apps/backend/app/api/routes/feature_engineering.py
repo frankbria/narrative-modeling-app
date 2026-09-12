@@ -11,9 +11,19 @@ import uuid
 from datetime import UTC, datetime
 
 import pandas as pd
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
 from app.billing.enforcement import quota
 from app.schemas.feature_engineering import (
     ApplyFeatureRequest,
@@ -105,6 +115,7 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
     """
 )
 async def suggest_features(
+    http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
     request: FeatureSuggestionRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
@@ -132,6 +143,9 @@ async def suggest_features(
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
+        if not request.include_ai_suggestions:
+            # rule-based only: no model was called, so the reserved unit goes back (#461)
+            await enforcement.release(http_request)
         return response
 
     except HTTPException:

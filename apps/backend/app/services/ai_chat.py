@@ -10,7 +10,7 @@ import os
 from typing import Any, Literal, cast
 
 from openai import OpenAI, OpenAIError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.utils.circuit_breaker import with_circuit_breaker
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_CHARS = 4_000
 MAX_CONTEXT_CHARS = 8_000
 MAX_HISTORY_TURNS = 20
+MAX_TOTAL_CHARS = 24_000  # the aggregate cap; per-field caps alone allow ~92k
 
 SYSTEM_PROMPT = """You are an AI data analysis assistant. Your primary goal is to help users understand and analyze their datasets.
 
@@ -44,6 +45,13 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     context: str = Field(default="", max_length=MAX_CONTEXT_CHARS)
     history: list[ChatTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+    @model_validator(mode="after")
+    def _total_within_bounds(self) -> "ChatRequest":
+        total = len(self.message) + len(self.context) + sum(len(t.content) for t in self.history)
+        if total > MAX_TOTAL_CHARS:
+            raise ValueError(f"chat payload exceeds {MAX_TOTAL_CHARS} characters in total")
+        return self
 
 
 class AIChatService:
