@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from app.middleware.error_handlers import internal_error_message
+
 # Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
 from app.models.transformation import TransformationType
 from app.schemas.transformation import TransformationStepRequest
@@ -361,7 +363,7 @@ class TransformationEngine:
             logger.exception("Transformation validation failed")
             return TransformationResult(
                 success=False,
-                error="Validation failed because of an internal error",  # never str(e) (#637)
+                error=internal_error_message("Transformation validation"),  # never str(e) (#637)
             )
 
     def preview_transformation(
@@ -415,7 +417,7 @@ class TransformationEngine:
             logger.exception("Preview transformation failed")
             return TransformationResult(
                 success=False,
-                error="Preview failed because of an internal error",  # never str(e) (#637)
+                error=internal_error_message("Transformation preview"),  # never str(e) (#637)
             )
     
     def apply_transformation(
@@ -496,7 +498,7 @@ class TransformationEngine:
             logger.exception("Apply transformation failed")
             return TransformationResult(
                 success=False,
-                error="Transformation failed because of an internal error",
+                error=internal_error_message("Transformation"),
             )
     
     def _calculate_stats(self, df: pd.DataFrame) -> dict[str, Any]:

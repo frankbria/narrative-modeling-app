@@ -211,10 +211,9 @@ class TestTransformations:
             )
         data = r.json()
         assert data["success"] is False, data
-        # The service wraps the failure in a fixed-message OperationError, so the
-        # domain branch answers here; no reference, but nothing leaks either.
-        assert r.status_code == 200
-        assert "secret-bucket" not in r.text and "boom" not in r.text
+        # The service wraps the failure in an OperationError; its message carries the
+        # reference too, so the domain branch answers the same shape as the generic one.
+        _assert_sanitized(r, data["error"])
 
     async def test_bulk_preview_per_column_failure(self, async_authorized_client, setup_database):
         """Inside BulkTransformationService's per-column loop the engine blows up; the

@@ -340,9 +340,9 @@ class BulkTransformationService:
             }
 
         except Exception as e:
-            logger.error(f"Bulk preview failed: {e}")
+            logger.exception("Bulk preview failed")
             raise OperationError(
-                message="Failed to preview bulk transformation",
+                message=internal_error_message("Bulk transformation preview"),
                 operation="preview_bulk_transformation",
                 original_error=e,
                 details={"dataset_id": dataset_id}

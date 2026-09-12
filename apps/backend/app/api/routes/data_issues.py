@@ -280,7 +280,7 @@ async def get_dataset_issues(
         raise
     except Exception as e:
         logger.error(f"Get issues failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.post("/preview-fix", response_model=FixPreviewResponse)
@@ -741,4 +741,4 @@ async def get_issue_history(
 
     except Exception as e:
         logger.error(f"Get history failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error") from e
