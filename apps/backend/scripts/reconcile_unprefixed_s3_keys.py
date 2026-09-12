@@ -83,13 +83,14 @@ class Report:
     orphans: int = 0
     conflicts: int = 0
     failures: int = 0  # copy/verify/rewrite/delete failed; object left in place
+    leftover_duplicates: int = 0  # rows already rewritten by an earlier run; only the delete remained
     applied: bool = False
 
     @property
     def exit_code(self) -> int:
         unreconciled = self.orphans + self.conflicts + self.failures
         if not self.applied:
-            unreconciled += self.planned
+            unreconciled += self.planned + self.leftover_duplicates
         return 1 if unreconciled else 0
 
 
@@ -106,8 +107,19 @@ def _list_root_candidates(s3, bucket: str) -> list[str]:
     return [k for k in keys if is_unprefixed_dataset_key(k)]
 
 
-async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | None], dict[str, list[tuple[str, object, str]]], int]:
-    """Map key -> owner (None if unknown/conflicting) and key -> [(collection, _id, s3_url)].
+@dataclass
+class Attribution:
+    owner_by_key: dict[str, str | None]
+    rows_by_key: dict[str, list[tuple[str, object, str]]]
+    conflicts: int
+    #: root candidate -> prefixed key a row already points at: an earlier run
+    #: copied and rewrote but its delete failed, leaving this duplicate behind.
+    migrated_twin: dict[str, str]
+
+
+async def _owners(db, bucket: str, keys: list[str]) -> Attribution:
+    """Attribute each root candidate to its rows, or to the prefixed twin a row
+    already points at.
 
     Matching goes through the app's own URL parser: a stored URL is attributed to
     this bucket and key exactly the way production reads it.
@@ -118,6 +130,7 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
     owner_by_key: dict[str, str | None] = {}
     rows_by_key: dict[str, list[tuple[str, object, str]]] = {k: [] for k in keys}
     conflicting: set[str] = set()  # counted once per key, however many rows disagree
+    migrated_twin: dict[str, str] = {}
     for coll in _ROW_COLLECTIONS:
         cursor = db[coll].find(
             {"s3_url": {"$type": "string"}}, {"s3_url": 1, "user_id": 1, "file_path": 1}
@@ -127,7 +140,14 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
                 b, key = parse_s3_url(doc["s3_url"])
             except ValueError:
                 continue
-            if key not in wanted or (b is not None and b != bucket):
+            if b is not None and b != bucket:
+                continue
+            if key.startswith("datasets/") and key.count("/") == 2:
+                basename = key.rsplit("/", 1)[1]
+                if basename in wanted:
+                    migrated_twin.setdefault(basename, key)
+                continue
+            if key not in wanted:
                 continue
             rows_by_key[key].append((coll, doc["_id"], doc["s3_url"]))
             owner = doc.get("user_id")
@@ -138,7 +158,7 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
                 conflicting.add(key)
             else:
                 owner_by_key.setdefault(key, owner)
-    return owner_by_key, rows_by_key, len(conflicting)
+    return Attribution(owner_by_key, rows_by_key, len(conflicting), migrated_twin)
 
 
 def _sha256(s3, bucket: str, key: str) -> str:
@@ -210,14 +230,34 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
     if not candidates:
         return report
 
-    owner_by_key, rows_by_key, report.conflicts = await _owners(db, bucket, candidates)
-    the_plan = plan(candidates, owner_by_key)
+    attribution = await _owners(db, bucket, candidates)
+    report.conflicts = attribution.conflicts
+
+    # An earlier run may have copied and rewritten but failed on the delete: the
+    # rows already point at the prefixed twin, so the root object has no owner
+    # and would otherwise be reported as an orphan forever. If the twin holds the
+    # same bytes, the only thing left to do is the delete.
+    leftovers = [k for k in candidates if k in attribution.migrated_twin and not attribution.owner_by_key.get(k)]
+    report.leftover_duplicates = len(leftovers)
+    if apply:
+        for old_key in leftovers:
+            try:
+                if _sha256(s3, bucket, old_key) == _sha256(s3, bucket, attribution.migrated_twin[old_key]):
+                    s3.delete_object(Bucket=bucket, Key=old_key)
+                    report.moved += 1
+                else:
+                    report.failures += 1  # twin differs: leave both for a human
+            except Exception:  # noqa: BLE001
+                report.failures += 1
+
+    the_plan = plan([k for k in candidates if k not in attribution.migrated_twin], attribution.owner_by_key)
     report.planned = len(the_plan.moves)
     report.orphans = len(the_plan.orphans) - report.conflicts
     if not apply:
         return report
 
     for move in the_plan.moves:
+        rows = attribution.rows_by_key[move.old_key]
         # One bad object must not stop the run — every step is guarded, and the
         # order (copy, verify, rewrite, delete) means a failure at any point leaves
         # either the original or a verified copy plus consistent rows, never
@@ -226,7 +266,7 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
             if not _copy_and_verify(s3, bucket, move):
                 report.failures += 1
                 continue
-            report.rows_rewritten += await _rewrite_rows(db, rows_by_key[move.old_key], move)
+            report.rows_rewritten += await _rewrite_rows(db, rows, move)
             s3.delete_object(Bucket=bucket, Key=move.old_key)
         except Exception:  # noqa: BLE001
             report.failures += 1
@@ -239,12 +279,13 @@ def _print(report: Report) -> None:
     mode = "APPLIED" if report.applied else "DRY RUN"
     print(f"[{mode}] unprefixed objects at bucket root: {report.unprefixed}")
     print(f"  attributable to an owner (planned moves): {report.planned}")
+    print(f"  leftovers of an interrupted run (rows already rewritten; delete only): {report.leftover_duplicates}")
     print(f"  moved (copied, verified, rows rewritten, original deleted): {report.moved}")
     print(f"  rows rewritten: {report.rows_rewritten}")
     print(f"  orphans (no owning row; left in place): {report.orphans}")
     print(f"  conflicts (rows disagree on owner; left in place): {report.conflicts}")
     print(f"  failures — copy, verify, rewrite or delete (left in place): {report.failures}")
-    if not report.applied and report.planned:
+    if not report.applied and (report.planned or report.leftover_duplicates):
         print("  re-run with --apply to move them")
 
 

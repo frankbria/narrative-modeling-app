@@ -88,8 +88,16 @@ class _RaisingDelete:
     def copy_object(self, Bucket, Key, CopySource, MetadataDirective):
         self.objects[Key] = self.objects[CopySource["Key"]]
 
+    fail_delete = True
+
     def delete_object(self, Bucket, Key):
-        raise RuntimeError("AccessDenied on delete")
+        if self.fail_delete:
+            raise RuntimeError("AccessDenied on delete")
+        del self.objects[Key]
+
+    def get_object(self, Bucket, Key):
+        body = self.objects[Key]
+        return {"Body": type("B", (), {"iter_chunks": lambda self_, n: iter([body])})()}
 
 
 class _Db:
@@ -112,7 +120,11 @@ class _Db:
 
             return _Cur()
 
-        async def update_one(self, *_a, **_k):
+        async def update_one(self, flt, pipeline):
+            # Apply the s3_url rewrite so a second run sees rows pointing at the twin.
+            for d in self.docs:
+                if d["_id"] == flt["_id"]:
+                    d["s3_url"] = pipeline[0]["$set"]["s3_url"]
             return type("R", (), {"modified_count": 1})()
 
     def __init__(self):
@@ -128,10 +140,26 @@ class _Db:
 
 
 @pytest.mark.asyncio
-async def test_a_failing_delete_is_counted_and_the_run_continues():
+async def test_a_failing_delete_is_counted_and_a_rerun_finishes_the_move():
+    """The rows were rewritten before the delete failed, so on the next run the
+    root object has no owning row. It must be recognised as the leftover of an
+    interrupted move (its prefixed twin exists and holds the same bytes) and
+    deleted — not reported as an orphan forever (claude-review)."""
     m = _load()
-    report = await m.reconcile(_RaisingDelete(), "b", _Db(), apply=True)
-    assert report.failures == 1 and report.moved == 0 and report.exit_code == 1
+    s3, db = _RaisingDelete(), _Db()
+    first = await m.reconcile(s3, "b", db, apply=True)
+    assert first.failures == 1 and first.moved == 0 and first.rows_rewritten == 1
+    assert first.exit_code == 1
+    assert set(s3.objects) == {s3.KEY, f"datasets/o/{s3.KEY}"}
+
+    s3.fail_delete = False
+    dry = await m.reconcile(s3, "b", db, apply=False)
+    assert dry.leftover_duplicates == 1 and dry.orphans == 0 and dry.exit_code == 1
+
+    second = await m.reconcile(s3, "b", db, apply=True)
+    assert second.leftover_duplicates == 1 and second.moved == 1 and second.orphans == 0
+    assert set(s3.objects) == {f"datasets/o/{s3.KEY}"}
+    assert second.exit_code == 0
 
 
 @pytest.mark.integration
