@@ -2,13 +2,15 @@
 API routes for model training and management
 """
 
+import asyncio
 import io
 import logging
 import math
+import os
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -25,14 +27,16 @@ from fastapi import (
     Request,
     Response,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.billing import enforcement
+from app.billing import enforcement, metering
 from app.billing.enforcement import quota
+from app.billing.plans import TrainingCeilings, training_ceilings_for
 from app.config import settings
 from app.models.batch_job import JobStatus
 from app.models.ml_model import MLModel
+from app.models.subscription import PlanTier
 from app.models.training_job import (
     LogLevel,
     ModelComparisonEntry,
@@ -124,6 +128,71 @@ def _rank_importance(importance: dict[str, float] | None) -> list[RankedFeature]
     ]
 
 
+class TrainingWallClockExceeded(Exception):
+    """The engine run outlived the plan's ``wall_clock_seconds`` (#500)."""
+
+
+class FeatureConfigRequest(BaseModel):
+    """Caller-settable feature-engineering knobs (#500).
+
+    ``extra="forbid"`` on these three models is the bound: a knob that is not
+    declared here cannot reach the pipeline at all. Lower bounds live here;
+    per-tier upper bounds live in ``plans.TrainingCeilings`` and are checked in
+    the route once the caller's tier is known.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    handle_missing: bool | None = None
+    scale_features: bool | None = None
+    encode_categorical: bool | None = None
+    create_interactions: bool | None = None
+    select_features: bool | None = None
+    max_features: int | None = Field(None, ge=1)
+    scaling_method: Literal["standard", "minmax", "robust"] | None = None
+    encoding_method: Literal["onehot", "label"] | None = None
+    missing_strategy: Literal["mean", "median", "most_frequent", "constant"] | None = None
+
+
+class TuningConfigRequest(BaseModel):
+    """Caller-settable hyperparameter-tuning knobs (#500). See ``FeatureConfigRequest``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: Literal["grid", "random", "bayesian"] | None = None
+    time_budget: int | None = Field(None, ge=1)
+    n_trials: int | None = Field(None, ge=1)
+    cv_folds: int | None = Field(None, ge=2)
+    scoring: str | None = Field(None, max_length=64)
+    # -1 is joblib's "all cores"; 0 is invalid there and a large positive value
+    # spawns that many workers, so cap at what the box actually has.
+    n_jobs: int | None = Field(None, ge=-1, le=os.cpu_count() or 1)
+    random_state: int | None = None
+
+    @field_validator("n_jobs")
+    @classmethod
+    def _n_jobs_nonzero(cls, v: int | None) -> int | None:
+        if v == 0:
+            raise ValueError("n_jobs must be -1 (all cores) or a positive worker count")
+        return v
+
+
+class TrainingConfigRequest(BaseModel):
+    """Caller-settable AutoML knobs (#500). See ``FeatureConfigRequest``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    training_mode: str | None = Field(None, max_length=32)
+    max_models: int | None = Field(None, ge=1)
+    cv_folds: int | None = Field(None, ge=2)
+    time_limit: int | None = Field(None, ge=1)
+    test_size: float | None = Field(None, gt=0, lt=1)
+    early_stop_score: float | None = Field(None, ge=0, le=1)
+    enable_tuning: bool | None = None
+    tuning_strategy: Literal["grid", "random", "bayesian"] | None = None
+    tuning_config: TuningConfigRequest | None = None
+
+
 class TrainModelRequest(BaseModel):
     """Request for training a model"""
 
@@ -131,8 +200,49 @@ class TrainModelRequest(BaseModel):
     target_column: str
     name: str | None = None
     description: str | None = None
-    feature_config: dict[str, Any] | None = None
-    training_config: dict[str, Any] | None = None
+    feature_config: FeatureConfigRequest | None = None
+    training_config: TrainingConfigRequest | None = None
+
+    def over_ceiling(self, ceilings: TrainingCeilings) -> list[str]:
+        """Every knob the caller set above what their plan allows, as messages.
+
+        Only *explicit* values are checked: the server's own mode presets are
+        within FREE's ceilings by construction (guarded by a test), so an
+        empty list means the resolved run is within bounds too.
+        """
+        t = self.training_config
+        tune = t.tuning_config if t else None
+        f = self.feature_config
+        checks: list[tuple[str, int | None, int]] = [
+            ("training_config.max_models", t.max_models if t else None, ceilings.max_models),
+            ("training_config.cv_folds", t.cv_folds if t else None, ceilings.cv_folds),
+            (
+                "training_config.time_limit",
+                t.time_limit if t else None,
+                ceilings.time_limit_seconds,
+            ),
+            (
+                "training_config.tuning_config.n_trials",
+                tune.n_trials if tune else None,
+                ceilings.tuning_trials,
+            ),
+            (
+                "training_config.tuning_config.time_budget",
+                tune.time_budget if tune else None,
+                ceilings.tuning_time_budget_seconds,
+            ),
+            (
+                "training_config.tuning_config.cv_folds",
+                tune.cv_folds if tune else None,
+                ceilings.cv_folds,
+            ),
+            ("feature_config.max_features", f.max_features if f else None, ceilings.max_features),
+        ]
+        return [
+            f"{name}={value} exceeds your plan's limit of {limit}"
+            for name, value, limit in checks
+            if value is not None and value > limit
+        ]
 
 
 class TrainModelResponse(BaseModel):
@@ -315,6 +425,14 @@ async def train_model(
     if not user_data:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    # Bound the run to the caller's plan (#500). Rejected, never clamped: a
+    # clamped run trains a model the caller did not ask for. The 422 refunds
+    # the training_runs unit via QuotaRefundMiddleware.
+    ceilings = training_ceilings_for(await metering.effective_tier_for(current_user_id))
+    violations = request.over_ceiling(ceilings)
+    if violations:
+        raise HTTPException(status_code=422, detail=violations)
+
     # Create a unique model id. A short uuid suffix avoids collisions between
     # requests made within the same second (the id is the lookup key for the
     # TrainingJob status endpoint, so it must be unique).
@@ -334,7 +452,12 @@ async def train_model(
 
     # Start training in background
     background_tasks.add_task(
-        train_model_task, user_data, request, current_user_id, model_id
+        train_model_task,
+        user_data,
+        request,
+        current_user_id,
+        model_id,
+        wall_clock_seconds=ceilings.wall_clock_seconds,
     )
 
     return TrainModelResponse(
@@ -345,9 +468,17 @@ async def train_model(
 
 
 async def train_model_task(
-    user_data: UserData, request: TrainModelRequest, user_id: str, model_id: str
+    user_data: UserData,
+    request: TrainModelRequest,
+    user_id: str,
+    model_id: str,
+    wall_clock_seconds: float | None = None,
 ):
     """Background task for model training.
+
+    ``wall_clock_seconds`` is the hard kill for the whole engine run (#500); the
+    route passes the caller's tier ceiling and an absent value falls back to
+    FREE's — fail closed, and no tier lookup from inside the task.
 
     Tracks lifecycle on the ``TrainingJob`` document (created by ``train_model``)
     so that ``GET /ml/{model_id}/status`` reflects real progress, the model
@@ -409,7 +540,9 @@ async def train_model_task(
         # Create feature engineering config
         feature_config = None
         if request.feature_config:
-            feature_config = FeatureEngineeringConfig(**request.feature_config)
+            feature_config = FeatureEngineeringConfig(
+                **request.feature_config.model_dump(exclude_none=True)
+            )
 
         # Create AutoML engine. Hyperparameter tuning (issue #77) is opt-in via
         # the existing training_config dict — no request-schema change. When
@@ -417,7 +550,11 @@ async def train_model_task(
         # (an unknown strategy raises in __post_init__, surfaced as a failed job).
         # Shallow-copy so the per-request stop-outcome write-back below never
         # mutates a dict a caller/test might share.
-        training_config = dict(request.training_config or {})
+        training_config: dict[str, Any] = (
+            request.training_config.model_dump(exclude_none=True)
+            if request.training_config
+            else {}
+        )
 
         # Training mode (issue #101). A "quick"/"comprehensive" mode fills engine
         # defaults (algorithm count, time budget, tuning, early-stop score); any
@@ -530,15 +667,31 @@ async def train_model_task(
             )
             return bool(fresh and fresh.cancellation_requested)
 
-        # Run AutoML
-        result = await engine.run(
-            df,
-            request.target_column,
-            feature_config,
-            progress_callback=on_progress,
-            event_callback=on_event,
-            cancel_check=is_cancellation_requested,
-        )
+        # Run AutoML under the plan's hard wall clock (#500). The engine's own
+        # time_limit is soft (checked between candidates, after tuning); this
+        # is what actually ends a runaway run. A fit already inside a worker
+        # thread cannot be killed and finishes on its own; its result is dropped.
+        if wall_clock_seconds is None:
+            wall_clock_seconds = training_ceilings_for(PlanTier.FREE).wall_clock_seconds
+        try:
+            result = await asyncio.wait_for(
+                engine.run(
+                    df,
+                    request.target_column,
+                    feature_config,
+                    progress_callback=on_progress,
+                    event_callback=on_event,
+                    cancel_check=is_cancellation_requested,
+                ),
+                timeout=wall_clock_seconds,
+            )
+        except TimeoutError as exc:
+            # Scoped to the engine run only: a socket timeout from the S3
+            # download above is a TimeoutError too and must keep its own message.
+            raise TrainingWallClockExceeded(
+                f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
+                "your plan and was stopped"
+            ) from exc
 
         # Record the training-mode outcome (issue #101) in training_config so it
         # persists on the MLModel alongside the requested mode.
@@ -655,6 +808,20 @@ async def train_model_task(
             await training_job.save()
 
         logger.info(f"Model training completed: {ml_model.model_id}")
+
+    except TrainingWallClockExceeded as exc:
+        reason = str(exc)
+        logger.warning(f"{reason}: {model_id}")
+        if training_job:
+            try:
+                training_job = await _refreshed_job(training_job)
+                training_job.mark_failed(reason)
+                training_job.add_log("error", reason)
+                await training_job.save()
+            except Exception as save_exc:
+                logger.error(
+                    f"Failed to persist FAILED status for {model_id}: {save_exc}"
+                )
 
     except TrainingCancelledError:
         logger.info(f"Model training cancelled by user: {model_id}")

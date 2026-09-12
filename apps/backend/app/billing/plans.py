@@ -146,6 +146,65 @@ def limits_for(tier: PlanTier) -> PlanLimits:
     return PLAN_LIMITS.get(tier, PLAN_LIMITS[PlanTier.FREE])
 
 
+@dataclass(frozen=True)
+class TrainingCeilings:
+    """How expensive one training run may be (#500).
+
+    ``training_runs`` counts runs, so without these a single run could cost 1000x
+    another inside one quota unit. Every value is a hard upper bound on what a
+    caller may *request*; anything above it is a 422, never clamped. Seconds are
+    wall-clock. ``wall_clock_seconds`` is the hard kill applied to every run
+    regardless of what was asked for; it must be >= ``time_limit_seconds``, the
+    largest soft budget a caller may set. FREE must stay >= the server's own
+    ``comprehensive`` preset or that mode silently disappears for free users.
+    """
+
+    max_models: int
+    cv_folds: int
+    time_limit_seconds: int
+    wall_clock_seconds: int
+    tuning_trials: int
+    tuning_time_budget_seconds: int
+    max_features: int
+
+
+#: Placeholders like the rest of this module (#474 sets the real product values).
+TRAINING_CEILINGS: dict[PlanTier, TrainingCeilings] = {
+    PlanTier.FREE: TrainingCeilings(
+        max_models=12,
+        cv_folds=10,
+        time_limit_seconds=1_800,
+        wall_clock_seconds=3_600,
+        tuning_trials=30,
+        tuning_time_budget_seconds=600,
+        max_features=500,
+    ),
+    PlanTier.PRO: TrainingCeilings(
+        max_models=20,
+        cv_folds=10,
+        time_limit_seconds=3_600,
+        wall_clock_seconds=7_200,
+        tuning_trials=100,
+        tuning_time_budget_seconds=1_200,
+        max_features=2_000,
+    ),
+    PlanTier.ENTERPRISE: TrainingCeilings(
+        max_models=30,
+        cv_folds=10,
+        time_limit_seconds=7_200,
+        wall_clock_seconds=14_400,
+        tuning_trials=200,
+        tuning_time_budget_seconds=1_800,
+        max_features=5_000,
+    ),
+}
+
+
+def training_ceilings_for(tier: PlanTier) -> TrainingCeilings:
+    """Training ceilings for a tier, falling back to FREE for anything unrecognised."""
+    return TRAINING_CEILINGS.get(tier, TRAINING_CEILINGS[PlanTier.FREE])
+
+
 def api_key_rate_limit_ceiling(tier: PlanTier) -> int:
     """The highest per-key rate limit `tier` may hold, never below 1 (#455).
 
