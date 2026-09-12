@@ -19,7 +19,7 @@ CSV = b"id,name,score\n1, alice ,10\n2,bob,\n3,carol,30\n"
 
 
 @pytest.fixture
-def real_s3_env(monkeypatch, test_s3_bucket):
+def real_s3_env(monkeypatch, test_s3_bucket, s3_client):
     """Point the app's S3 helpers AND S3Service at LocalStack (creds `test`, not `test-`)."""
     monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
@@ -28,6 +28,12 @@ def real_s3_env(monkeypatch, test_s3_bucket):
     monkeypatch.setenv("AWS_BUCKET_NAME", test_s3_bucket)
     monkeypatch.setenv("AWS_S3_BUCKET", test_s3_bucket)
     monkeypatch.setenv("S3_BUCKET_NAME", test_s3_bucket)
+    # The versioning singleton resolved its client and bucket at import (#622), before any
+    # of the above existed in CI — apply_transformation writes a version, so re-point it.
+    from app.services.versioning_service import versioning_service
+
+    monkeypatch.setattr(versioning_service, "s3_client", s3_client)
+    monkeypatch.setattr(versioning_service, "bucket_name", test_s3_bucket)
     return test_s3_bucket
 
 
@@ -81,7 +87,8 @@ async def test_first_transformation_on_a_fresh_upload_succeeds(client, s3_client
     assert body["success"] is True, body  # was: "Invalid S3 URL format: datasets/..."
 
     new_keys = _keys(s3_client, real_s3_env) - keys_before
-    assert len(new_keys) == 1 and next(iter(new_keys)).startswith(f"transformed/{USER}/"), new_keys
+    # the transformed parquet, plus the version snapshot the versioning service writes
+    assert any(k.startswith(f"transformed/{USER}/") for k in new_keys), new_keys
 
     # and the SECOND transformation — the one that always worked — still does
     again = await client.post("/api/v1/transformations/apply", json={

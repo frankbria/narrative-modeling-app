@@ -19,6 +19,12 @@ os.environ.setdefault("ENVIRONMENT", "test")
 # suite and cause spurious 429s. The rate-limit tests opt back in explicitly by
 # constructing their own app/middleware with enabled=True.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+# Every real deployment has a bucket configured; without one, `allowed_bucket()` refuses
+# to place a stored raw key (#466) and every transformation test fails for the wrong
+# reason. Local runs pick AWS_BUCKET_NAME up from .env; CI has no .env, so pin the same
+# variable here — the lowest-precedence name, so a test's own AWS_S3_BUCKET still wins,
+# and tests that assert the *unconfigured* behaviour `monkeypatch.delenv` it explicitly.
+os.environ.setdefault("AWS_BUCKET_NAME", "test-bucket")
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime

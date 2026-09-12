@@ -419,7 +419,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
         # Load data from S3
         # file_path may be a raw key or (after a transformation) a full URL (#466)
-        _, file_key = resolve_validated_object(downloadable_url(dataset.file_path, dataset.s3_url))
+        # allow_legacy_root: pre-#581 datasets still sit at the bucket root until #615 reconciles them
+        _, file_key = resolve_validated_object(
+            downloadable_url(dataset.file_path, dataset.s3_url), allow_legacy_root=True
+        )
         file_bytes = await s3_service.download_file_bytes(file_key)
         if dataset.file_type == "csv":
             file_str = file_bytes.decode('utf-8')
