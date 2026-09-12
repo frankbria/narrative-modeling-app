@@ -101,11 +101,16 @@ class _RaisingDelete:
 
 
 class _Db:
-    """Minimal async collection: one owned row for the fake's key, rewrite succeeds."""
+    """Minimal async collections: one owned row per collection for the fake's key.
+
+    ``fail_meta_rewrites`` makes the dataset_metadata rewrite raise, so a run can
+    be left with the dual-write half-rewritten (claude-review round 4).
+    """
 
     class _Coll:
-        def __init__(self, docs):
+        def __init__(self, docs, fail=None):
             self.docs = docs
+            self.fail = fail
 
         def find(self, *_a, **_k):
             docs = self.docs
@@ -121,19 +126,26 @@ class _Db:
             return _Cur()
 
         async def update_one(self, flt, pipeline):
+            if self.fail and self.fail():
+                raise RuntimeError("transient Mongo error")
             # Apply the s3_url rewrite so a second run sees rows pointing at the twin.
             for d in self.docs:
                 if d["_id"] == flt["_id"]:
                     d["s3_url"] = pipeline[0]["$set"]["s3_url"]
             return type("R", (), {"modified_count": 1})()
 
-    def __init__(self):
+    def __init__(self, *, dual_write: bool = False):
+        self.fail_meta_rewrites = False
+        meta = [{"_id": 2, "user_id": "o", "s3_url": f"s3://b/{_RaisingDelete.KEY}"}] if dual_write else []
         self.colls = {
             "user_data": self._Coll(
                 [{"_id": 1, "user_id": "o", "s3_url": f"s3://b/{_RaisingDelete.KEY}"}]
             ),
-            "dataset_metadata": self._Coll([]),
+            "dataset_metadata": self._Coll(meta, fail=lambda: self.fail_meta_rewrites),
         }
+
+    def keys(self) -> dict[str, list[str]]:
+        return {n: [d["s3_url"].split("/", 3)[3] for d in c.docs] for n, c in self.colls.items()}
 
     def __getitem__(self, name):
         return self.colls[name]
@@ -160,6 +172,32 @@ async def test_a_failing_delete_is_counted_and_a_rerun_finishes_the_move():
     assert second.leftover_duplicates == 1 and second.moved == 1 and second.orphans == 0
     assert set(s3.objects) == {f"datasets/o/{s3.KEY}"}
     assert second.exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_a_half_rewritten_dual_write_is_finished_not_dropped():
+    """user_data was rewritten, dataset_metadata was not (the rewrite raised in
+    between). The key is then both "migrated" and "owned"; an earlier revision
+    excluded it from planning AND from leftovers, so nothing counted it and the
+    exit code claimed everything was reconciled (claude-review round 4)."""
+    m = _load()
+    s3, db = _RaisingDelete(), _Db(dual_write=True)
+    s3.fail_delete = False
+    db.fail_meta_rewrites = True
+    first = await m.reconcile(s3, "b", db, apply=True)
+    assert first.failures == 1 and first.moved == 0
+    assert db.keys() == {"user_data": [f"datasets/o/{s3.KEY}"], "dataset_metadata": [s3.KEY]}
+    assert set(s3.objects) == {s3.KEY, f"datasets/o/{s3.KEY}"}
+
+    db.fail_meta_rewrites = False
+    dry = await m.reconcile(s3, "b", db, apply=False)
+    assert dry.leftover_duplicates == 1 and dry.orphans == 0 and dry.planned == 0
+    assert dry.exit_code == 1, "the half-finished move must keep the exit code red"
+
+    second = await m.reconcile(s3, "b", db, apply=True)
+    assert second.moved == 1 and second.rows_rewritten == 1 and second.exit_code == 0
+    assert db.keys() == {"user_data": [f"datasets/o/{s3.KEY}"], "dataset_metadata": [f"datasets/o/{s3.KEY}"]}
+    assert set(s3.objects) == {f"datasets/o/{s3.KEY}"}
 
 
 @pytest.mark.integration

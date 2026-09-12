@@ -233,20 +233,25 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
     attribution = await _owners(db, bucket, candidates)
     report.conflicts = attribution.conflicts
 
-    # An earlier run may have copied and rewritten but failed on the delete: the
-    # rows already point at the prefixed twin, so the root object has no owner
-    # and would otherwise be reported as an orphan forever. If the twin holds the
-    # same bytes, the only thing left to do is the delete.
-    leftovers = [k for k in candidates if k in attribution.migrated_twin and not attribution.owner_by_key.get(k)]
+    # An earlier run may have copied and rewritten some or all rows, then failed
+    # before the delete. Any row already pointing at the prefixed twin marks the
+    # candidate as such a leftover — whether or not other rows (the dual-written
+    # sibling collection) still point at the old key, because a rewrite can fail
+    # between the two. Finishing it means: prove the twin holds the same bytes,
+    # rewrite whatever rows are still stale, then delete the original.
+    leftovers = [k for k in candidates if k in attribution.migrated_twin]
     report.leftover_duplicates = len(leftovers)
     if apply:
         for old_key in leftovers:
+            twin = attribution.migrated_twin[old_key]
             try:
-                if _sha256(s3, bucket, old_key) == _sha256(s3, bucket, attribution.migrated_twin[old_key]):
-                    s3.delete_object(Bucket=bucket, Key=old_key)
-                    report.moved += 1
-                else:
+                if _sha256(s3, bucket, old_key) != _sha256(s3, bucket, twin):
                     report.failures += 1  # twin differs: leave both for a human
+                    continue
+                move = Move(old_key, twin, attribution.owner_by_key.get(old_key) or "")
+                report.rows_rewritten += await _rewrite_rows(db, attribution.rows_by_key[old_key], move)
+                s3.delete_object(Bucket=bucket, Key=old_key)
+                report.moved += 1
             except Exception:  # noqa: BLE001
                 report.failures += 1
 
