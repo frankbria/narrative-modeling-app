@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --max-warnings 232",
+    "lint": "eslint . --max-warnings 230",
     "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",

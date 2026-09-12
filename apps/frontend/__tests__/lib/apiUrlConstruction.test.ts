@@ -99,6 +99,49 @@ describe('API URL construction (#406)', () => {
     expect(templatedPaths).toContain('/upload/chunked/${sessionId}/resume')
   })
 
+  // #470: the onboarding page and the sample-dataset selector fetched '/api/v1/onboarding/…'
+  // relative to the FRONTEND origin — no base at all, so the guard below this one never saw
+  // them. Pinned here against literals from the backend route table.
+  it.each([
+    ['getStatus', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.getStatus(), '/api/v1/onboarding/status'],
+    ['getSteps', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.getSteps(), '/api/v1/onboarding/steps'],
+    ['getAchievements', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.getAchievements(), '/api/v1/onboarding/achievements'],
+    ['completeStep', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.completeStep('welcome'), '/api/v1/onboarding/steps/welcome/complete'],
+    ['skipStep', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.skipStep('welcome'), '/api/v1/onboarding/skip-step/welcome'],
+    ['getSampleDatasets', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.getSampleDatasets(), '/api/v1/onboarding/sample-datasets'],
+    ['loadSampleDataset', (api: typeof import('@/lib/services/onboarding').onboardingApi) => api.loadSampleDataset('customer_churn'), '/api/v1/onboarding/sample-datasets/customer_churn/load'],
+  ])('onboardingApi.%s requests the real route', async (_name, call, expected) => {
+    const { onboardingApi } = await import('@/lib/services/onboarding')
+    await call(onboardingApi).catch(() => {})
+    const url = requestedUrl(global.fetch as jest.Mock)
+    expect(url).toBe(`${BASE}${expected.replace('/api/v1', '')}`)
+  })
+
+  it('no client code fetches a relative /api/v1 path — that is the frontend origin, not the backend', async () => {
+    // The guard below catches `${base}/api…` templates. The onboarding page (#470) had no
+    // base: a bare '/api/v1/onboarding/status' literal, resolved against the Next.js origin,
+    // 404 for every first-time user. Next.js route handlers under app/api/** are the one
+    // legitimate relative '/api/…' target and are excluded.
+    const { globSync } = await import('glob')
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const root = join(__dirname, '..', '..')
+    const offenders: string[] = []
+    for (const file of globSync('{app,components,lib}/**/*.{ts,tsx}', {
+      cwd: root,
+      ignore: ['**/node_modules/**', 'app/api/**', '**/__tests__/**'],
+    })) {
+      // comments explaining the bug are not the bug: strip them before scanning
+      const src = readFileSync(join(root, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:])\/\/.*$/gm, '$1')
+      for (const m of src.matchAll(/(?:fetch|axios(?:\.\w+)?)\(\s*[`'"](\/api\/v1[^`'"]*)/g)) {
+        offenders.push(`${file}: ${m[1]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('no module re-appends /api to the versioned base, whatever the HTTP client', async () => {
     // Repo-wide, not per-file: #406 fixed three modules by hand and still missed
     // app/explore/page.tsx, because that sweep grepped for `fetch(` and the call
