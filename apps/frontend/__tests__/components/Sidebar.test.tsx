@@ -3,8 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Sidebar from '@/components/Sidebar';
 
+// Mutable so individual tests can flip the server-computed admin flag (#477).
+const mockSession: { isAdmin?: boolean; user: { name: string; email: string } } = {
+  user: { name: 'Tess', email: 't@example.com' },
+};
 jest.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { name: 'Tess', email: 't@example.com' } } }),
+  useSession: () => ({ data: mockSession }),
   signOut: jest.fn(),
 }));
 
@@ -73,5 +77,27 @@ describe('Sidebar navigation', () => {
     const reopened = screen.getByRole('button', { name: /open navigation menu/i });
     expect(reopened).toHaveAttribute('aria-expanded', 'false');
     expect(reopened).toHaveFocus();
+  });
+
+  // ---- Admin link is for admins only (issue #477) ----
+  //
+  // `session.isAdmin` is computed server-side in the NextAuth session callback
+  // from ADMIN_EMAILS; the client never sees the allowlist itself. Hiding the
+  // link is UX — the route is guarded in middleware regardless.
+
+  it('does not render the Admin link for a non-admin session', () => {
+    delete mockSession.isAdmin;
+    render(<Sidebar />);
+    expect(screen.queryByRole('link', { name: /^Admin$/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the Admin link only when the session says isAdmin', () => {
+    mockSession.isAdmin = true;
+    try {
+      render(<Sidebar />);
+      expect(screen.getByRole('link', { name: /^Admin$/i })).toHaveAttribute('href', '/admin');
+    } finally {
+      delete mockSession.isAdmin;
+    }
   });
 });

@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { isAdminEmail } from "@/lib/admin-allowlist";
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -37,6 +38,18 @@ export default async function middleware(request: NextRequest) {
     const signInUrl = new URL('/auth/signin', request.url);
     signInUrl.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(signInUrl);
+  }
+
+  // Authentication is not authorization (issue #477). /admin is for emails on
+  // ADMIN_EMAILS only, decided here on the server — a client-side check would
+  // hide the UI, not the data. A non-admin gets the same answer as for a page
+  // that does not exist (rewrite to Next's not-found route → 404), so the route
+  // is not an existence oracle. The trailing-slash form keeps `/administration`
+  // an ordinary protected page.
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    if (!isAdminEmail(typeof token.email === 'string' ? token.email : null)) {
+      return NextResponse.rewrite(new URL('/_not-found', request.url));
+    }
   }
 
   // Authenticated page request — apply CORS handling. Never reflect an arbitrary

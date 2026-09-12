@@ -8,6 +8,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import client from "./lib/db"
 import { mintApiToken } from "./lib/api-token"
 import { isSignInAllowed } from "./lib/invite-allowlist"
+import { isAdminEmail } from "./lib/admin-allowlist"
 import { assertAuthConfig } from "./lib/auth-config"
 
 // Fail fast (issue #271): in production, refuse to start when OAuth creds or
@@ -96,6 +97,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session?.user) {
         session.user.id = token.id as string
       }
+      // Server-computed admin flag (issue #477): the client cannot read
+      // ADMIN_EMAILS, so the sidebar shows the Admin link from this. It is UX
+      // only — middleware.ts guards the /admin route independently.
+      session.isAdmin = isAdminEmail(token.email)
       // Keep the OAuth provider access token (legacy field).
       session.accessToken = token.accessToken as string | undefined
       // Mint a backend-verifiable HS256 JWT (sub=userId) so API calls
