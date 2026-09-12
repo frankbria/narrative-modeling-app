@@ -38,4 +38,11 @@ describe('SampleDatasetSelector (#470)', () => {
     expect(loadCall[1].method).toBe('POST');
     expect(loadCall[1].headers.Authorization).toBe('Bearer mock-token');
   });
+
+  it('surfaces a failed dataset list instead of an empty grid', async () => {
+    global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 503, json: async () => ({}) })) as jest.Mock;
+    render(<SampleDatasetSelector onDatasetSelected={jest.fn()} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t load the sample datasets/i);
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
 });

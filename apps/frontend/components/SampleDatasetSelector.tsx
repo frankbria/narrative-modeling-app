@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { onboardingApi } from '@/lib/services/onboarding';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,7 +48,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { data: datasetData, loading } = useAsyncData<SampleDataset[]>(
+  const { data: datasetData, loading, error: listError, reload } = useAsyncData<SampleDataset[]>(
     () => onboardingApi.getSampleDatasets<SampleDataset[]>(), // backend base URL + bearer (#470)
     []
   );
@@ -135,6 +136,16 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         </p>
       </div>
 
+      {listError && (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>Couldn&apos;t load the sample datasets. Please try again.</span>
+            <Button variant="outline" size="sm" onClick={() => reload()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       {loadError && (
         <div
           role="alert"

@@ -35,21 +35,23 @@ test.describe('Onboarding talks to the backend (#470)', () => {
     });
 
     await page.goto('/onboarding');
-    await expect(page.getByRole('button', { name: /start tutorial/i })).toBeVisible({ timeout: 20000 });
-    await page.getByRole('button', { name: /start tutorial/i }).click();
+    // After a reset the backend already points at the first step, so the page renders the
+    // step panel directly; the "Start Tutorial" landing card shows only when it does not.
+    const start = page.getByRole('button', { name: /start tutorial/i });
+    const complete = page.getByRole('button', { name: /mark as complete/i });
+    await expect(start.or(complete).first()).toBeVisible({ timeout: 20000 });
+    if (await start.isVisible()) await start.click();
 
-    // Walk the steps: complete where the backend accepts it, otherwise skip. Seven steps.
+    // Walk the seven steps: complete where the backend accepts it, otherwise skip.
     for (let i = 0; i < 12 && !(await page.getByText(/congratulations/i).isVisible()); i++) {
-      const complete = page.getByRole('button', { name: /mark as complete/i });
       const skip = page.getByRole('button', { name: /skip step/i });
       if (await complete.isVisible()) {
+        const statusRefetch = page
+          .waitForResponse((r) => r.url().includes('/onboarding/status'), { timeout: 8000 })
+          .then(() => true, () => false);
         await complete.click();
-        // either the next step renders, or the step refused and we skip it
-        const moved = await Promise.race([
-          page.waitForResponse((r) => r.url().includes('/onboarding/status'), { timeout: 8000 }).then(() => true),
-          page.waitForTimeout(8000).then(() => false),
-        ]);
-        if (!moved && (await skip.isVisible())) await skip.click();
+        // the page refetches status on success; a refused step is skipped instead
+        if (!(await statusRefetch) && (await skip.isVisible())) await skip.click();
       } else if (await skip.isVisible()) {
         await skip.click();
       } else {
