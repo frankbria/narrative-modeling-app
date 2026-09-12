@@ -100,6 +100,10 @@ tuning = [
 observability = [
     "sentry-sdk[fastapi]>=2.0.0",
 ]
+# ONNX model export (issue #468), on the same removable-lever pattern: in default-groups
+# so local dev and CI exercise the real conversion; the Docker build passes
+# `--no-group export` so the image stays slim and the endpoint answers 501 there.
+# PMML is deliberately absent — sklearn2pmml needs a Java runtime, a deployment decision.
 export = [
     "onnx>=1.17",
     "skl2onnx>=1.17",
@@ -108,7 +112,7 @@ export = [
 [tool.uv]
 # Keep shap + optuna installed by default (beta ships both). --no-dev still
 # installs interpretability and tuning; only an explicit --no-group drops them.
-default-groups = ["dev", "interpretability", "tuning", "observability"]
+default-groups = ["dev", "interpretability", "tuning", "observability", "export"]
 
 [tool.ruff.lint]
 # On top of the default rule set (E, F): import-sorting (isort, "I", issue #176)

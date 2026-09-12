@@ -449,7 +449,8 @@ class PredictionResponse(BaseModel):
     timestamp: str
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
+def predict(request: PredictionRequest):  # sync on purpose: FastAPI runs it off the event loop, so
+    # inference.py may asyncio.run() an awaitable transform without a loop already running
     try:
         result = model_inference.predict(request.data)
         return PredictionResponse(**result)
@@ -567,7 +568,7 @@ print(response.json())
                 "name": "PMML",
                 "extension": "pmml",
                 "description": "Predictive Model Markup Language",
-                "available": True
+                "available": shutil.which("java") is not None  # the package shells out to JPMML
             })
         except ImportError:
             formats.append({

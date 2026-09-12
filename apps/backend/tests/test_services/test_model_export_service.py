@@ -150,6 +150,17 @@ class TestDockerExport:
             assert "class ModelInference:" in zf.read("inference.py").decode()
 
     @pytest.mark.asyncio
+    async def test_generated_api_predicts_off_the_event_loop(self, export_service, mock_model):
+        """codex: inference.py may asyncio.run() an awaitable transform; the generated FastAPI
+        handler must therefore be a plain `def` (run in FastAPI's threadpool), not `async def`."""
+        with _found(mock_model):
+            zip_bytes, _ = await export_service.export_docker_container(MODEL_ID, USER)
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            api = zf.read("app.py").decode()
+        assert "def predict(request: PredictionRequest)" in api
+        assert "async def predict(" not in api
+
+    @pytest.mark.asyncio
     async def test_no_feature_engineer_ships_none(self, export_service, mock_model, trained_model):
         export_service.model_storage.load_model = AsyncMock(return_value=(trained_model, None))
         with _found(mock_model):
@@ -212,6 +223,18 @@ class TestOptionalFormats:
         with _found(mock_model), patch("app.services.model_export.ONNX_AVAILABLE", True):
             onnx_bytes, filename = await export_service.export_model_onnx(MODEL_ID, USER)
         assert filename.endswith(".onnx") and len(onnx_bytes) > 100
+
+    @pytest.mark.asyncio
+    async def test_pmml_is_advertised_only_with_a_java_runtime(self, export_service):
+        """codex: the probe imported the package and ignored the JRE the export needs."""
+        import sys
+        import types
+
+        fake = types.ModuleType("sklearn2pmml")
+        with patch.dict(sys.modules, {"sklearn2pmml": fake}), \
+             patch("app.services.model_export.shutil.which", return_value=None):
+            formats = {f["name"]: f for f in await export_service.get_export_formats()}
+        assert formats["PMML"]["available"] is False
 
     @pytest.mark.asyncio
     async def test_formats_report_availability(self, export_service):
