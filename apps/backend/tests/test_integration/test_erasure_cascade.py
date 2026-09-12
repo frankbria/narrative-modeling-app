@@ -12,7 +12,7 @@ Live S3 object deletion is covered by DATA_ERASURE_AND_BACKUP_RUNBOOK.md and the
 existing model_storage S3 tests.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -310,7 +310,14 @@ async def test_foreign_bucket_url_is_recorded_but_does_not_block_the_parent(setu
         user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
         file_type="csv", file_path=foreign, s3_url=foreign, num_rows=10, num_columns=3,
     ).insert()
-    with patch.object(dataset_erasure_service.s3_service, "delete_file") as delete_file:
+    # Leave the module's hermetic mock mode for this one call: with is_mock_mode on,
+    # _delete_s3 returns before it could ever reach delete_file, and "not called"
+    # would prove nothing. A real-looking client + a patched delete_file make the
+    # assertion bite (the matching-bucket control below is what it would have done).
+    svc = dataset_erasure_service.s3_service
+    with patch.object(svc, "is_mock_mode", False), \
+         patch.object(svc, "s3_client", MagicMock()), \
+         patch.object(svc, "delete_file", new_callable=AsyncMock, return_value=True) as delete_file:
         manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
     delete_file.assert_not_called()
     assert manifest.s3_objects_deleted == []
@@ -320,3 +327,16 @@ async def test_foreign_bucket_url_is_recorded_but_does_not_block_the_parent(setu
     assert await DatasetMetadata.find(DatasetMetadata.dataset_id == DATASET_ID).count() == 0
     assert manifest.documents_deleted.get("dataset_metadata") == 1
     assert not [n for n in manifest.notes if "tombstone" in n]
+
+    # Control: the same setup with OUR bucket does call delete_file for the key.
+    ours = f"s3://{BUCKET}/datasets/{USER}/{DATASET_ID}_d.csv"
+    await DatasetMetadata(
+        user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=ours, s3_url=ours, num_rows=10, num_columns=3,
+    ).insert()
+    with patch.object(svc, "is_mock_mode", False), \
+         patch.object(svc, "s3_client", MagicMock()), \
+         patch.object(svc, "delete_file", new_callable=AsyncMock, return_value=True) as delete_file:
+        control = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+    delete_file.assert_awaited_once_with(f"datasets/{USER}/{DATASET_ID}_d.csv")
+    assert control.status == "completed"
