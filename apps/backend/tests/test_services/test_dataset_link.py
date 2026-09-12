@@ -116,3 +116,20 @@ class TestRecordNewFile:
 
         ud2 = await UserData.get(ud.id)
         assert (ud2.num_rows, ud2.num_columns, ud2.columns) == (2, 3, ["a", "b", "c"])
+
+    async def test_file_type_follows_the_new_object(self, setup_database):
+        """codex/#524: writers upload parquet; a CSV-uploaded dataset must not keep file_type=csv,
+        or readers that dispatch on it parse parquet bytes as CSV."""
+        meta, ud = await _twins()
+        assert (meta.file_type, ud.file_type) == ("csv", None)
+        await record_new_file(meta, NEW)  # .parquet
+
+        assert (await DatasetMetadata.get(meta.id)).file_type == "parquet"
+        assert (await UserData.get(ud.id)).file_type == "parquet"
+
+    def test_unknown_extensions_leave_the_type_alone(self):
+        from app.services.dataset_link import _file_type_of
+
+        assert _file_type_of("s3://b/x/y.parquet?X-Amz-Signature=1") == "parquet"
+        assert _file_type_of("s3://b/x/y.PARQUET") == "parquet"
+        assert _file_type_of("s3://b/x/no-extension") is None

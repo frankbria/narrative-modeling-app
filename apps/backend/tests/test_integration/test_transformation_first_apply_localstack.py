@@ -131,6 +131,8 @@ async def test_training_reads_the_transformed_file_after_an_apply(client, s3_cli
     meta = await DatasetMetadata.get(meta.id)
     assert twin.s3_url == meta.s3_url, "the link must survive the transformation"
     assert "/transformed/" in twin.s3_url
+    # the loader dispatches on file_type: it must now take the parquet branch (#524)
+    assert (twin.file_type, meta.file_type) == ("parquet", "parquet")
 
     # exactly what train_model_task does with the twin
     _, key = resolve_validated_object(downloadable_url(twin.file_path, twin.s3_url))

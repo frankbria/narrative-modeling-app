@@ -22,6 +22,15 @@ from app.models.user_data import UserData
 logger = logging.getLogger(__name__)
 
 
+_KNOWN_TYPES = {"parquet", "csv", "json", "xlsx", "xls"}
+
+
+def _file_type_of(url: str) -> str | None:
+    """The stored `file_type` value for a location, from its extension; None if unknown."""
+    ext = url.split("?", 1)[0].rsplit(".", 1)[-1].lower()
+    return ext if ext in _KNOWN_TYPES else None
+
+
 async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None:
     """Point `doc` AND its dual-written twin at `new_url` (a full, downloadable URL).
 
@@ -49,10 +58,16 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
     if twin is None:
         logger.info("No dual-written twin for %s at its current location; moving one side", type(doc).__name__)
 
+    # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
+    # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
+    new_type = _file_type_of(new_url)
+    if new_type:
+        doc.file_type = new_type
+
     # The caller set the new shape (rows/columns) on `doc`; the twin's legacy readers
     # (mode-recommendation, user_data preview) describe the same file, so it follows (codex).
     if twin is not None:
-        for field in ("num_rows", "num_columns", "columns"):
+        for field in ("num_rows", "num_columns", "columns", "file_type"):
             value = getattr(doc, field, None)
             if value is not None:
                 setattr(twin, field, value)
