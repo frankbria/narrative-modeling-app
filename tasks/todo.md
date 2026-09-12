@@ -15,6 +15,6 @@ Plan source: self-authored (DoD in the issue). Approved autonomously — no arch
 5. Tests: registry gains an agreement test (three env names, three values → every resolver, `S3Service`, `VersioningService` agree); write-method tests: traversal/foreign-namespace key refused before boto3 is called, legacy-root admitted for delete, live bucket honoured after an env change.
 
 ## Steps
-- [ ] RED tests
-- [ ] config resolver + versioning property + S3Service writes + docstring
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] config resolver + versioning property + S3Service writes + docstring (+ live bucket_name with pin, _key_of, legacy-root only on delete/head after review)
+- [x] gate → PR #652 → demo → CI → merge
