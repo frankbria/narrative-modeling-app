@@ -80,6 +80,12 @@ kill_port_processes ${BACKEND_PORT}
 export NODE_ENV=development
 export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
 export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
+# /admin guard (#477, #613): the ordinary test user is NOT an admin — deliberately,
+# not because ADMIN_EMAILS happens to be unset. A second dev-credentials identity
+# is the admin, so the smoke spec can observe both the 404 and the 200.
+export TEST_ADMIN_EMAIL=${TEST_ADMIN_EMAIL:-admin-e2e@narrativeml.com}
+export TEST_ADMIN_PASSWORD=${TEST_ADMIN_PASSWORD:-admin-password-123}
+export ADMIN_EMAILS=${ADMIN_EMAILS:-$TEST_ADMIN_EMAIL}
 export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
 export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
