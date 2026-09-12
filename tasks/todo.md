@@ -1,17 +1,18 @@
-# Issue #585 — [P3.18] [security] Upload routes store the client filename verbatim
+# Issue #608 — [P3.25] [security] A column named 'ssn' is rated medium-risk, never high — the name match short-circuits the value check
 
-Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate reject-vs-normalise decision: normalise (Excel/CSV exporters produce odd names; rejection has a real false-positive cost, and a stored-alongside raw copy keeps the trap). No fork.
+Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate boundary decision: name-only evidence stays medium (a label is a hint, values are proof); values decide high. No fork.
 
 ## Findings
-- Writers of `filename`/`original_filename` from client input: `secure_upload.py` (`/secure`, `/confirm-pii-upload`, `/chunked/{id}/complete` via the session's filename), `upload.py:179`, `datasets.py:214` → `UserData` and `DatasetMetadata`. `dataset_s3_key` uses only the extension (#464), so the key is already safe.
-- No consumer builds a header or a path from the fields yet; `data_processing.py` echoes `original_filename` in JSON.
+- `detect_pii_in_dataframe` `continue`s after a name match, so values are never examined for the honestly-named column; `_check_column_name` returns 0.8 and the report's high threshold is `> 0.8` — name-only lands exactly on the boundary and is always medium.
+- `/upload/secure` gates confirmation on `risk_level == "high"`, so a plainly-named SSN column skips the gate that a neutrally-named one triggers.
 
 ## Design
-1. `app/utils/filenames.py::sanitize_filename(name, max_length=255)`: basename after `/` and `\`, control characters (incl. CR/LF, NUL) removed, leading dots/whitespace stripped, empty → `upload`, length capped preserving the extension.
-2. Enforce at the point every writer meets: `field_validator` on `UserData.filename/original_filename` and `DatasetMetadata.filename/original_filename` — one place covers the three routes named, the two others, and any future writer. The stored name *is* the sanitised one (no raw copy).
-3. Tests: unit table for the sanitiser; model round-trip (`../../etc/passwd.csv`, `a\r\nb.csv`, 300-char name) for both documents; chunked complete end-to-end stores the sanitised name.
+1. Always run the value check; when both signals exist, keep one detection per column carrying the stronger confidence (pattern match rate is the stronger evidence for real values).
+2. Named constants: `NAME_MATCH_CONFIDENCE = 0.8`, `HIGH_RISK_CONFIDENCE = 0.8` (strictly greater → high), with the decision written next to them.
+3. Tests: identical SSN values → same risk regardless of column name; `ssn` column of SSNs → `risk_level == "high"`; name-only (no matching values) stays medium; the `/upload/secure` gate returns `requires_confirmation` for an `ssn` column.
+4. Blast radius (AC4): uploads whose PII-named column actually holds PII-shaped values move from medium to high → the confirmation route (which charges an upload unit only when it stores). Stated in the PR.
 
 ## Steps
-- [x] RED tests
-- [x] sanitiser + validators (+ validate_on_save, SafeFilename type, /datasets/upload key component after review)
-- [x] gate → PR #647 → demo → CI → merge; follow-up #648 (model_export Content-Disposition)
+- [ ] RED tests
+- [ ] detector change
+- [ ] gate → PR → demo → CI → merge

@@ -38,6 +38,20 @@ class PIIDetection:
     recommendation: str
 
 
+#: A detection above this is high risk and, at /upload/secure, needs the caller's
+#: confirmation. Pattern confidence is the match rate over the sample, so a
+#: column that really holds SSNs scores ~1.0 and clears it.
+HIGH_RISK_CONFIDENCE = 0.8
+MEDIUM_RISK_CONFIDENCE = 0.5
+#: A value pattern must match more than this share of the sample to count at all.
+PATTERN_MATCH_FLOOR = 0.1
+#: Confidence a column earns from its *name* alone: exactly the high-risk
+#: threshold, and the report requires strictly greater, so a name by itself is
+#: medium risk — a label is a hint, values are evidence (#608). Defined in terms
+#: of the threshold so the two cannot drift apart by editing one of them.
+NAME_MATCH_CONFIDENCE = HIGH_RISK_CONFIDENCE
+
+
 class PIIDetector:
     """Detects potential PII in datasets"""
     
@@ -74,27 +88,24 @@ class PIIDetector:
             List of PII detections
         """
         detections = []
-        
         for column in df.columns:
-            # Check column name first
+            # Both signals, always (#608): the name used to short-circuit the value
+            # check, so the honestly-labelled column was the one rated lower.
             name_detection = self._check_column_name(column)
-            if name_detection:
-                detections.append(name_detection)
-                continue
-            
-            # Sample data for pattern matching
+            pattern_detection = None
             column_data = df[column].dropna()
-            if len(column_data) == 0:
-                continue
-                
-            # Convert to string for pattern matching
-            sample_data = column_data.head(sample_size).astype(str)
-            
-            # Check patterns
-            pattern_detection = self._check_patterns(column, sample_data)
-            if pattern_detection:
+            if len(column_data) > 0:
+                sample_data = column_data.head(sample_size).astype(str)
+                pattern_detection = self._check_patterns(column, sample_data)
+            # One detection per column, carrying the stronger evidence. On a tie
+            # (pattern rate exactly the name confidence) the pattern wins: it
+            # names the type the values actually have and carries a sample count.
+            if pattern_detection and (
+                name_detection is None or pattern_detection.confidence >= name_detection.confidence
+            ):
                 detections.append(pattern_detection)
-        
+            elif name_detection:
+                detections.append(name_detection)
         return detections
     
     def _check_column_name(self, column_name: str) -> PIIDetection | None:
@@ -107,35 +118,45 @@ class PIIDetector:
                     return PIIDetection(
                         column_name=column_name,
                         pii_type=pii_type,
-                        confidence=0.8,
+                        confidence=NAME_MATCH_CONFIDENCE,
                         sample_count=0,
                         recommendation=f"Column name suggests {pii_type.value}. Consider encryption or removal."
                     )
         return None
     
     def _check_patterns(self, column_name: str, data: pd.Series) -> PIIDetection | None:
-        """Check data patterns for PII"""
+        """Check data patterns for PII.
+
+        Every pattern is scored and the best match rate wins (#608): the first
+        pattern in declaration order used to win as soon as it cleared the 10%
+        floor, which was harmless while name-matched columns never got here and
+        is not now that every column does.
+        """
+        best: tuple[float, PIIType, int] | None = None
         for pii_type, pattern in self.patterns.items():
             matches = data.apply(lambda x: bool(pattern.match(str(x))))
-            match_count = matches.sum()
-            
-            if match_count > 0:
-                confidence = match_count / len(data)
-                if confidence > 0.1:  # More than 10% matches
-                    return PIIDetection(
-                        column_name=column_name,
-                        pii_type=pii_type,
-                        confidence=confidence,
-                        sample_count=match_count,
-                        recommendation=self._get_recommendation(pii_type, confidence)
-                    )
-        return None
-    
+            match_count = int(matches.sum())
+            if match_count == 0:
+                continue
+            confidence = match_count / len(data)
+            if confidence > PATTERN_MATCH_FLOOR and (best is None or confidence > best[0]):
+                best = (confidence, pii_type, match_count)
+        if best is None:
+            return None
+        confidence, pii_type, match_count = best
+        return PIIDetection(
+            column_name=column_name,
+            pii_type=pii_type,
+            confidence=confidence,
+            sample_count=match_count,
+            recommendation=self._get_recommendation(pii_type, confidence)
+        )
+
     def _get_recommendation(self, pii_type: PIIType, confidence: float) -> str:
         """Get recommendation based on PII type and confidence"""
-        if confidence > 0.8:
+        if confidence > HIGH_RISK_CONFIDENCE:
             return f"High confidence {pii_type.value} detected. Strongly recommend encryption or removal."
-        elif confidence > 0.5:
+        elif confidence > MEDIUM_RISK_CONFIDENCE:
             return f"Probable {pii_type.value} detected. Consider masking or encryption."
         else:
             return f"Possible {pii_type.value} detected. Review data and apply appropriate protection."
@@ -156,7 +177,7 @@ class PIIDetector:
         df_masked = df.copy()
         
         for detection in detections:
-            if detection.confidence > 0.5:  # Only mask high-confidence PII
+            if detection.confidence > MEDIUM_RISK_CONFIDENCE:  # mask medium and above
                 column = detection.column_name
                 
                 if detection.pii_type == PIIType.EMAIL:
@@ -220,8 +241,8 @@ class PIIDetector:
                 "recommendations": []
             }
         
-        high_risk_count = sum(1 for d in detections if d.confidence > 0.8)
-        medium_risk_count = sum(1 for d in detections if 0.5 < d.confidence <= 0.8)
+        high_risk_count = sum(1 for d in detections if d.confidence > HIGH_RISK_CONFIDENCE)
+        medium_risk_count = sum(1 for d in detections if MEDIUM_RISK_CONFIDENCE < d.confidence <= HIGH_RISK_CONFIDENCE)
         
         risk_level = "high" if high_risk_count > 0 else "medium" if medium_risk_count > 0 else "low"
         
