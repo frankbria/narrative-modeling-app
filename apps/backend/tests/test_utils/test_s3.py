@@ -621,6 +621,16 @@ class TestDownloadableUrl:
         assert downloadable_url(None, "s3://b/datasets/u/f.csv") == "s3://b/datasets/u/f.csv"
         assert downloadable_url("", "s3://b/datasets/u/f.csv") == "s3://b/datasets/u/f.csv"
 
+    def test_a_non_s3_url_is_refused_not_rebucketed(self, monkeypatch):
+        """codex: https://example.com/datasets/u/f.csv must not become s3://ours/datasets/u/f.csv."""
+        from app.utils.s3 import downloadable_url
+
+        monkeypatch.setenv("AWS_S3_BUCKET", "the-bucket")
+        for url in ("https://example.com/datasets/u/f.csv", "http://localhost:9000.attacker.com/datasets/u/f.csv",
+                    "ftp://the-bucket/datasets/u/f.csv"):
+            with pytest.raises(ValueError):
+                downloadable_url(url)
+
     def test_nothing_to_download_is_an_error(self):
         from app.utils.s3 import downloadable_url
 

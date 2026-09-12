@@ -756,3 +756,27 @@ class TestBulkTransformationValidation:
             # Verify error was logged
             mock_logger.error.assert_called_once()
             assert "Test error" in str(mock_logger.error.call_args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("beanie_models_initialized")
+async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
+    """#466: a fresh upload stores a raw key in `file_path`; the bulk processor must hand the
+    downloader a URL. The download is stubbed to stop the job right after the call."""
+    from app.models.bulk_transformation import BulkTransformationJob
+
+    job = BulkTransformationJob(job_id="bj-466", user_id="u1", dataset_id="d1", transformation_type="fill_missing")
+    dataset = MagicMock(file_path="datasets/u1/d1_f.csv", s3_url="s3://test-bucket/datasets/u1/d1_f.csv")
+    seen: list[str] = []
+
+    async def stop(url, *a, **k):
+        seen.append(url)
+        raise RuntimeError("stop here")
+
+    with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
+         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
+         patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=stop), \
+         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+        await bulk_service._process_bulk_job(job)
+
+    assert seen == ["s3://test-bucket/datasets/u1/d1_f.csv"]

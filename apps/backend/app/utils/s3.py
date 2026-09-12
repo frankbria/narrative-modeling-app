@@ -385,11 +385,12 @@ def downloadable_url(path_or_url: str | None, fallback: str | None = None) -> st
     candidate = path_or_url or fallback
     if not candidate:
         raise ValueError("No S3 location stored for this dataset")
-    try:
+    if "://" in candidate:
+        # A URL is taken as stored: a foreign or non-S3 host must be *rejected* by the
+        # resolver, never re-bucketed into ours (that would launder any https:// path).
         bucket, _ = parse_s3_url(candidate)
-    except ValueError:  # not a URL shape at all: it is a key
-        bucket = None
-    if bucket:
+        if not bucket:
+            raise ValueError(f"Invalid S3 URL format: {candidate}")
         return candidate
     return f"s3://{allowed_bucket()}/{candidate.lstrip('/')}"
 

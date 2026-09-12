@@ -408,12 +408,15 @@ class TestFeatureStoreServiceApplication:
              patch('app.services.feature_store_service.DatasetMetadata') as MockDataset, \
              patch('app.services.feature_store_service.FeatureEngineer') as MockEngineer, \
              patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock) as mock_get_file, \
-             patch('app.services.feature_store_service.pd') as mock_pd:
+             patch('app.services.feature_store_service.pd') as mock_pd, \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
 
             mock_get_feature.return_value = mock_feature
             mock_check_compat.return_value = {"is_compatible": True}
             mock_dataset = MagicMock()
-            mock_dataset.file_path = "path/to/file.csv"
+            # a fresh upload stores a raw, namespaced key; the accessor + resolver must accept it (#466)
+            mock_dataset.file_path = "datasets/test_user_123/file.csv"
+            mock_dataset.s3_url = "s3://test-bucket/datasets/test_user_123/file.csv"
             mock_dataset.file_type = "csv"
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
             mock_get_file.return_value = b"data"

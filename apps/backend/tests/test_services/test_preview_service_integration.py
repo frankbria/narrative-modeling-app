@@ -45,6 +45,41 @@ class TestPreviewServiceIntegration:
         mock_dataset.file_path = s3_url
         return mock_dataset
 
+    @pytest.mark.asyncio
+    async def test_fresh_upload_shape_passes_the_location_check(self):
+        """#466: right after an upload `file_path` is a raw key and the caller passes `s3_url`;
+        the two name the same object and must not be reported as a mismatch."""
+        from unittest.mock import AsyncMock, patch
+
+        dataset = self._create_mock_dataset()
+        dataset.file_path = "datasets/user123/dataset456_f.csv"
+        dataset.s3_url = "s3://test-bucket/datasets/user123/dataset456_f.csv"
+        with patch("app.models.dataset.DatasetMetadata") as MockDataset, \
+             patch("app.services.data_processing.preview_service_integration.get_dataframe_from_s3",
+                   new_callable=AsyncMock, side_effect=RuntimeError("past the check")), \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+            MockDataset.find_one = AsyncMock(return_value=dataset)
+            with pytest.raises(Exception, match="past the check"):  # the service wraps it
+                await self.service.generate_preview(
+                    user_id="user123", dataset_id="dataset456", s3_file_path=dataset.s3_url, operations=[TransformationStepRequest(transformation_type="drop_missing", column="age")],
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_different_object_is_still_a_mismatch(self):
+        from unittest.mock import AsyncMock, patch
+
+        dataset = self._create_mock_dataset()
+        dataset.file_path = "datasets/user123/dataset456_f.csv"
+        dataset.s3_url = "s3://test-bucket/datasets/user123/dataset456_f.csv"
+        with patch("app.models.dataset.DatasetMetadata") as MockDataset, \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+            MockDataset.find_one = AsyncMock(return_value=dataset)
+            with pytest.raises(ValueError, match="mismatch"):
+                await self.service.generate_preview(
+                    user_id="user123", dataset_id="dataset456",
+                    s3_file_path="s3://test-bucket/datasets/user123/OTHER.csv", operations=[TransformationStepRequest(transformation_type="drop_missing", column="age")],
+                )
+
     @pytest.fixture
     def sample_dataframe(self):
         """Create a sample DataFrame for testing."""

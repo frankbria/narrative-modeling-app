@@ -20,6 +20,7 @@ from app.schemas.preview import ImpactStatistics, PreviewResult
 from app.schemas.transformation import TransformationStepRequest
 from app.services.data_processing.preview_service import PreviewService
 from app.services.transformation_engine.data_utils import get_dataframe_from_s3
+from app.utils.s3 import downloadable_url, parse_s3_url
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
 )
@@ -103,12 +104,14 @@ class PreviewServiceIntegration:
             logger.error(f"Dataset {dataset_id} not found or not owned by user {user_id}")
             raise ValueError(f"Dataset {dataset_id} not found or not owned by user {user_id}")
 
-        # Verify S3 path matches dataset's stored path
-        expected_path = dataset.file_path or dataset.s3_url
-        if expected_path != s3_file_path:
+        # Verify the caller's S3 location is the dataset's current file. Compare as
+        # (bucket, key): right after an upload `file_path` is a raw key while the caller
+        # passes `s3_url`, so a string comparison failed every first preview (#466).
+        expected = parse_s3_url(downloadable_url(dataset.file_path, dataset.s3_url))
+        if parse_s3_url(downloadable_url(s3_file_path)) != expected:
             logger.error(
                 f"S3 path mismatch for dataset {dataset_id}: "
-                f"expected {expected_path}, got {s3_file_path}"
+                f"expected {expected}, got {s3_file_path}"
             )
             raise ValueError("S3 path mismatch - potential security violation")
 
