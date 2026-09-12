@@ -48,8 +48,10 @@ async def test_update_route_cannot_write_a_raw_name_either(async_authorized_clie
             f"/api/v1/user_data/{doc.id}", json={"filename": name, "original_filename": name}
         )
         assert response.status_code == 200, response.text
-        reloaded = await UserData.get(doc.id)
-        for value in (reloaded.filename, reloaded.original_filename):
+        # Read the raw document: Beanie re-validates on *read* too, so a model-level
+        # reload would look clean even if the raw name had been written to Mongo.
+        raw = await UserData.get_motor_collection().find_one({"_id": doc.id})
+        for value in (raw["filename"], raw["original_filename"]):
             assert value != name
             assert "/" not in value and "\r" not in value and "\n" not in value and len(value) <= 255
     finally:
