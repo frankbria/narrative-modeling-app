@@ -8,7 +8,6 @@ from app.api.routes import (
     onboarding,
     plot,
     secure_upload,
-    store,
     trained_model,
     upload,
     user_data,
@@ -25,7 +24,6 @@ api_router.include_router(
     trained_model.router, prefix="/trained_model", tags=["trained_model"]
 )
 api_router.include_router(upload.router, prefix="/upload", tags=["upload"])
-api_router.include_router(store.router, prefix="/store", tags=["store"])
 api_router.include_router(
     column_stats.router, prefix="/column_stats", tags=["column_stats"]
 )

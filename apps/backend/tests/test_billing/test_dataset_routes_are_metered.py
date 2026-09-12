@@ -27,8 +27,7 @@ from fastapi.routing import APIRoute
 
 from app.main import app
 
-#: Prefixes whose POST routes are in scope, plus store.py's bare-prefix route, which
-#: has to match exactly or the whole API would be in scope.
+#: Prefixes whose POST routes are in scope.
 _IN_SCOPE_PREFIXES = (
     "/api/v1/upload",
     "/api/v1/datasets",
@@ -36,7 +35,6 @@ _IN_SCOPE_PREFIXES = (
     # dataset row, so the whole prefix is policed rather than that one path.
     "/api/v1/onboarding",
 )
-_STORE_ROUTE = "/api/v1/"
 
 #: POST routes that create a dataset and MUST carry `quota("uploads")` as a route
 #: dependency.
@@ -46,12 +44,6 @@ _MUST_BE_METERED = {
     "/api/v1/upload/confirm-pii-upload",
     "/api/v1/upload/chunked/{session_id}/complete",
     "/api/v1/upload/",
-    # store.py cannot actually persist today — the UserData it builds passes
-    # `file_name`/`headers`/`data`, which are not model fields, so it raises before
-    # `.insert()` and the bare `except` turns that into the 500 of #472. Metered anyway:
-    # the handler is *written* to create a dataset, so exempting it would let #472's fix
-    # silently reopen this hole. The reserve is refunded by the 500 in the meantime.
-    "/api/v1/",
     # A sample load creates a real UserData row — rows, columns, schema, preview — and
     # the insert is unconditional: the `sample_datasets_loaded` check afterwards only
     # guards a bookkeeping list, so calling it N times creates N rows. Unmetered that
@@ -113,7 +105,6 @@ _EXEMPT = {
 
 def _post_routes(
     prefixes: tuple[str, ...] = _IN_SCOPE_PREFIXES,
-    exact: str = _STORE_ROUTE,
     methods: tuple[str, ...] = ("POST",),
 ) -> dict[str, APIRoute]:
     """Every mounted POST route on a dataset-owning router, by path.
@@ -141,7 +132,7 @@ def _post_routes(
                 )
             elif isinstance(route, APIRoute) and set(methods) & (route.methods or set()):
                 path = prefix + route.path
-                if path == exact or path.startswith(prefixes):
+                if path.startswith(prefixes):
                     found[path] = route
 
     walk(app.routes)

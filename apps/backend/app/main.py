@@ -71,7 +71,6 @@ from app.api.routes import (
     plot,
     production,
     secure_upload,
-    store,
     transformations,
     upload,
     user_data,
@@ -208,7 +207,6 @@ app.include_router(
 app.include_router(
     secure_upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
 )
-app.include_router(store.router, prefix=settings.API_V1_STR, tags=["store"])
 app.include_router(
     user_data.router, prefix=f"{settings.API_V1_STR}/user_data", tags=["user_data"]
 )
