@@ -54,6 +54,12 @@ class TestS3KeyDerivation:
     def test_bare_key_with_stray_query_is_trimmed(self):
         assert _s3_key("datasets/u/f.csv?X-Amz-Signature=abc", "bucket") == "datasets/u/f.csv"
 
+    def test_bare_key_containing_a_url_mid_string_is_still_a_key(self):
+        # Keys are built from client filenames in places; "://" inside one must not
+        # route it to the URL parser, which would fail and skip the delete silently.
+        key = "datasets/u1/notes http://example.com.csv"
+        assert _s3_key(key, "bucket") == key
+
     def test_url_without_a_key_returns_none(self):
         assert _s3_key("s3://bucket", "bucket") is None
         assert _s3_key("https://bucket.s3.amazonaws.com/", "bucket") is None

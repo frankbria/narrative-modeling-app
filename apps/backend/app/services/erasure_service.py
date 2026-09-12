@@ -77,6 +77,9 @@ _LINK_KEYED_MODELS = [
 ]
 
 
+_URL_SCHEMES = ("s3://", "http://", "https://")
+
+
 def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
     """Derive the S3 object key from a stored URL, or pass a bare key through.
 
@@ -90,8 +93,12 @@ def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
     """
     if not url_or_key:
         return None
-    if "://" not in url_or_key:
-        return url_or_key.split("?", 1)[0] or None  # already a key (e.g. file_path)
+    if not url_or_key.startswith(_URL_SCHEMES):
+        # Already a key (e.g. file_path). A *prefix* test, not `"://" in ...`: keys
+        # are built from client filenames in places, and "notes http://x.csv" is a
+        # legitimate key that must not be handed to the URL parser (which would
+        # fail, return None here, and skip the delete with no failure recorded).
+        return url_or_key.split("?", 1)[0] or None
     try:
         _, key = parse_s3_url(url_or_key)
     except ValueError:

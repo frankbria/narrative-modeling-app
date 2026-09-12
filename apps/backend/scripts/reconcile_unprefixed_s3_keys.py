@@ -82,12 +82,12 @@ class Report:
     rows_rewritten: int = 0
     orphans: int = 0
     conflicts: int = 0
-    copy_failures: int = 0
+    failures: int = 0  # copy/verify/rewrite/delete failed; object left in place
     applied: bool = False
 
     @property
     def exit_code(self) -> int:
-        unreconciled = self.orphans + self.conflicts + self.copy_failures
+        unreconciled = self.orphans + self.conflicts + self.failures
         if not self.applied:
             unreconciled += self.planned
         return 1 if unreconciled else 0
@@ -117,7 +117,7 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
     wanted = set(keys)
     owner_by_key: dict[str, str | None] = {}
     rows_by_key: dict[str, list[tuple[str, object, str]]] = {k: [] for k in keys}
-    conflicts = 0
+    conflicting: set[str] = set()  # counted once per key, however many rows disagree
     for coll in _ROW_COLLECTIONS:
         cursor = db[coll].find(
             {"s3_url": {"$type": "string"}}, {"s3_url": 1, "user_id": 1, "file_path": 1}
@@ -131,12 +131,14 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
                 continue
             rows_by_key[key].append((coll, doc["_id"], doc["s3_url"]))
             owner = doc.get("user_id")
+            if key in conflicting:
+                continue
             if key in owner_by_key and owner_by_key[key] != owner:
                 owner_by_key[key] = None  # rows disagree about the owner
-                conflicts += 1
+                conflicting.add(key)
             else:
                 owner_by_key.setdefault(key, owner)
-    return owner_by_key, rows_by_key, conflicts
+    return owner_by_key, rows_by_key, len(conflicting)
 
 
 def _sha256(s3, bucket: str, key: str) -> str:
@@ -216,15 +218,19 @@ async def reconcile(s3, bucket: str, db, *, apply: bool) -> Report:
         return report
 
     for move in the_plan.moves:
+        # One bad object must not stop the run — every step is guarded, and the
+        # order (copy, verify, rewrite, delete) means a failure at any point leaves
+        # either the original or a verified copy plus consistent rows, never
+        # neither. Re-running picks the object up again.
         try:
-            ok = _copy_and_verify(s3, bucket, move)
-        except Exception:  # noqa: BLE001 - one bad object must not stop the run
-            ok = False
-        if not ok:
-            report.copy_failures += 1
+            if not _copy_and_verify(s3, bucket, move):
+                report.failures += 1
+                continue
+            report.rows_rewritten += await _rewrite_rows(db, rows_by_key[move.old_key], move)
+            s3.delete_object(Bucket=bucket, Key=move.old_key)
+        except Exception:  # noqa: BLE001
+            report.failures += 1
             continue
-        report.rows_rewritten += await _rewrite_rows(db, rows_by_key[move.old_key], move)
-        s3.delete_object(Bucket=bucket, Key=move.old_key)
         report.moved += 1
     return report
 
@@ -237,7 +243,7 @@ def _print(report: Report) -> None:
     print(f"  rows rewritten: {report.rows_rewritten}")
     print(f"  orphans (no owning row; left in place): {report.orphans}")
     print(f"  conflicts (rows disagree on owner; left in place): {report.conflicts}")
-    print(f"  copy failures (left in place): {report.copy_failures}")
+    print(f"  failures — copy, verify, rewrite or delete (left in place): {report.failures}")
     if not report.applied and report.planned:
         print("  re-run with --apply to move them")
 

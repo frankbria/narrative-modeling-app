@@ -69,6 +69,71 @@ class TestPlan:
         assert plan.moves == [] and plan.orphans == [f"{U1}.csv"]
 
 
+class _RaisingDelete:
+    """An S3 client whose delete fails after a good copy (internal review): one bad
+    object must be counted, not abort the run."""
+
+    KEY = f"{uuid.uuid4()}.csv"
+
+    def __init__(self):
+        self.objects = {self.KEY: b"body"}
+
+    def get_paginator(self, _):
+        objs = [{"Key": k} for k in self.objects]
+        return type("P", (), {"paginate": lambda self_, **kw: [{"Contents": objs}]})()
+
+    def head_object(self, Bucket, Key):
+        return {"ContentLength": len(self.objects[Key]), "ETag": '"abc"'}
+
+    def copy_object(self, Bucket, Key, CopySource, MetadataDirective):
+        self.objects[Key] = self.objects[CopySource["Key"]]
+
+    def delete_object(self, Bucket, Key):
+        raise RuntimeError("AccessDenied on delete")
+
+
+class _Db:
+    """Minimal async collection: one owned row for the fake's key, rewrite succeeds."""
+
+    class _Coll:
+        def __init__(self, docs):
+            self.docs = docs
+
+        def find(self, *_a, **_k):
+            docs = self.docs
+
+            class _Cur:
+                def __aiter__(self):
+                    async def gen():
+                        for d in docs:
+                            yield d
+
+                    return gen()
+
+            return _Cur()
+
+        async def update_one(self, *_a, **_k):
+            return type("R", (), {"modified_count": 1})()
+
+    def __init__(self):
+        self.colls = {
+            "user_data": self._Coll(
+                [{"_id": 1, "user_id": "o", "s3_url": f"s3://b/{_RaisingDelete.KEY}"}]
+            ),
+            "dataset_metadata": self._Coll([]),
+        }
+
+    def __getitem__(self, name):
+        return self.colls[name]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_delete_is_counted_and_the_run_continues():
+    m = _load()
+    report = await m.reconcile(_RaisingDelete(), "b", _Db(), apply=True)
+    assert report.failures == 1 and report.moved == 0 and report.exit_code == 1
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestReconcileAgainstRealS3:
@@ -221,10 +286,32 @@ class TestReconcileAgainstRealS3:
             s3_client, test_s3_bucket, UserData.get_motor_collection().database, apply=True
         )
 
-        assert report.copy_failures == 0 and report.moved == 1
+        assert report.failures == 0 and report.moved == 1
         new_key = f"datasets/owner-mp/{key}"
         assert s3_client.get_object(Bucket=test_s3_bucket, Key=new_key)["Body"].read() == body
         assert not self._exists(s3_client, test_s3_bucket, key)
+
+    async def test_three_rows_disagreeing_count_as_one_conflict_not_negative_orphans(
+        self, setup_database, s3_client, test_s3_bucket
+    ):
+        m = _load()
+        from app.models.user_data import UserData
+
+        key = f"{uuid.uuid4()}.csv"
+        await self._seed(s3_client, test_s3_bucket, key, "owner-x")
+        for other in ("owner-y", "owner-z"):
+            await UserData(
+                user_id=other, filename="d.csv", original_filename="d.csv",
+                s3_url=f"http://localhost:4566/{test_s3_bucket}/{key}", file_path=key,
+                num_rows=1, num_columns=1, data_schema=[],
+            ).insert()
+
+        report = await m.reconcile(
+            s3_client, test_s3_bucket, UserData.get_motor_collection().database, apply=True
+        )
+
+        assert report.conflicts == 1 and report.orphans == 0 and report.moved == 0
+        assert self._exists(s3_client, test_s3_bucket, key)
 
     async def test_prefixed_objects_are_not_candidates(
         self, setup_database, s3_client, test_s3_bucket
