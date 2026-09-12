@@ -201,6 +201,7 @@ async def detect_issues(
         raise
     except Exception as e:
         logger.error(f"Issue detection failed: {str(e)}")
+        await enforcement.release(http_request)  # reported as 200 {success: false}: the middleware will not refund it
         return IssueDetectionResponse(
             success=False,
             dataset_id=request.dataset_id,

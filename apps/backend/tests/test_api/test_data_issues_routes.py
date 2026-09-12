@@ -116,3 +116,63 @@ class TestDataIssuesRoutes:
     async def test_unknown_dataset_is_404(self, async_authorized_client, setup_database, s3_frame):
         response = await async_authorized_client.post(f"{BASE}/detect", json=_detect_body(str(ObjectId())))
         assert response.status_code == 404
+
+
+class TestDetectMetering:
+    """#461 on the newly reachable route: the unit stays only when a model request was sent."""
+
+    async def test_ai_off_costs_nothing(self, async_authorized_client, setup_database, s3_frame):
+        from app.billing import metering
+
+        ds = await _dataset()
+        response = await async_authorized_client.post(f"{BASE}/detect", json=_detect_body(str(ds.id)))
+        assert response.status_code == 200 and response.json()["summary"]["ai_analysis_used"] is False
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_a_swallowed_failure_hands_the_unit_back(self, async_authorized_client, setup_database, s3_frame):
+        """codex: the handler reports failures as 200 {success: false}, which the refund middleware
+        never sees — the handler must release the reservation itself."""
+        from app.billing import metering
+
+        ds = await _dataset()
+        with patch("app.api.routes.data_issues.DataIssueDetectionService.detect_issues",
+                   new_callable=AsyncMock, side_effect=RuntimeError("s3 down")):
+            response = await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        assert response.status_code == 200 and response.json()["success"] is False
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_breaker_fallback_is_not_a_paid_call(self, async_authorized_client, setup_database, s3_frame):
+        """codex: a key exists but the analyzer's request never went out (breaker open) — the
+        analyzer counts requests actually sent, so nothing is charged."""
+        from app.billing import metering
+        from app.utils import ai_issue_analyzer as mod
+
+        ds = await _dataset()
+        with patch.object(mod.AIIssueAnalyzer, "_initialize_client", return_value=object()), \
+             patch.object(mod.AIIssueAnalyzer, "_call_openai_analysis", new_callable=AsyncMock, return_value=None):
+            response = await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        assert response.status_code == 200, response.text
+        assert response.json()["summary"]["ai_analysis_used"] is False
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_a_sent_request_is_charged(self, async_authorized_client, setup_database, s3_frame):
+        from app.billing import metering
+        from app.utils import ai_issue_analyzer as mod
+
+        async def sent(self, *a, **k):
+            self.calls_made += 1
+            return []
+
+        ds = await _dataset()
+        with patch.object(mod.AIIssueAnalyzer, "_initialize_client", return_value=object()), \
+             patch.object(mod.AIIssueAnalyzer, "analyze_data_patterns", sent):
+            response = await async_authorized_client.post(
+                f"{BASE}/detect", json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": True}}
+            )
+        assert response.status_code == 200, response.text
+        assert response.json()["summary"]["ai_analysis_used"] is True
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 1

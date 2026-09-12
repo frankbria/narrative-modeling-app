@@ -106,11 +106,12 @@ class DataIssueDetectionService:
             if include_ai_analysis and options.include_ai_analysis:
                 try:
                     ai_analyzer = AIIssueAnalyzer()
-                    ai_analysis_used = ai_analyzer.client is not None  # no key -> the analyzer is a no-op
                     ai_issues = await ai_analyzer.analyze_data_patterns(
                         sample_df, column_types, all_issues
                     )
                     all_issues.extend(ai_issues)
+                    # no key, or the breaker's fallback: nothing was sent, nothing is charged
+                    ai_analysis_used = ai_analyzer.calls_made > 0
                 except ImportError:
                     logger.warning("AI Issue Analyzer not available, skipping AI analysis")
                 except Exception as e:
