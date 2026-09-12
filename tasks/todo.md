@@ -1,19 +1,17 @@
-# Issue #613 — [P3.27] [testing] Smoke-test that an authenticated non-admin gets HTTP 404 on /admin
+# Issue #616 — [P3.28] [security] erasure _s3_key ignores its bucket_name — a URL naming another bucket has its key deleted from ours
 
-Plan source: self-authored. Approved autonomously — the only design question is how one e2e run holds both a non-admin and an admin session; a second dev-credentials identity (test/dev only) is the smallest answer. No fork.
+Plan source: self-authored (DoD in the issue). Approved autonomously — the behaviour decision the issue defers (skip + record vs. delete anyway) is answered by its own DoD: skip, record a manifest failure, never delete in the wrong bucket. No fork.
 
 ## Findings
-- `middleware.ts` rewrites `/admin` to Next's internal `/_not-found` for emails not on `ADMIN_EMAILS`; the unit test can only see the rewrite header. Nothing in CI observes the final HTTP status.
-- The dev credentials provider (`auth.ts`, dev/test only) accepts exactly one identity (`TEST_USER_EMAIL`), so the same run cannot be both a non-admin and an admin unless a second identity exists.
-- `test-e2e.sh` does not export `ADMIN_EMAILS`; "nobody is admin" is incidental today.
+- `_s3_key(url_or_key, bucket_name)` parses the URL through `parse_s3_url` and discards the bucket it names; `_delete_s3` then deletes `key` from `self.s3_service.bucket_name`. A stored URL naming another bucket would delete whatever holds that key in ours.
+- Both call sites (DatasetMetadata and UserData parents) already hold the `DeletionManifest`.
 
 ## Design
-1. `auth.ts` credentials provider (already gated to development/test) also accepts `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` when both are set, returning a distinct user id. Unit-tested.
-2. `test-e2e.sh` exports `TEST_ADMIN_EMAIL` (default `admin-e2e@narrativeml.com`), `TEST_ADMIN_PASSWORD`, and `ADMIN_EMAILS=${ADMIN_EMAILS:-$TEST_ADMIN_EMAIL}` — deliberately, with the comment the issue asks for; the ordinary test user is therefore not an admin by construction.
-3. `e2e/workflows/admin-guard.spec.ts` (@smoke): (a) the default session (test user) → `page.request.get('/admin')` is 404 and the body has no "Admin Dashboard"; (b) a fresh context signs in through the real form as the admin identity → 200 and the heading is present.
-4. CLAUDE.md `/admin` bullet: the smoke spec now repeats the hand check.
+1. `_s3_key(url_or_key, bucket_name, manifest=None)`: when the URL names a bucket and it differs from `bucket_name`, append a failure naming both buckets to the manifest and return `None`; a URL naming no bucket (plain https) falls back to the configured one as before; bare keys pass through.
+2. Call sites pass the manifest. Docstring loses "kept for the call sites".
+3. Tests: matching bucket → key; foreign `s3://` and endpoint-style → `None` + one failure mentioning both buckets; no manifest → still `None`, no crash.
 
 ## Steps
-- [x] RED (spec fails: admin identity cannot sign in / no ADMIN_EMAILS)
-- [x] provider + launcher + spec + docs (+ launcher port check, process-tree shutdown, fixture skipOnboarding after review and CI)
-- [x] gate (jest, tsc, lint cap) → PR #650 → CI e2e-smoke is the demo → merge
+- [ ] RED tests
+- [ ] _s3_key + call sites
+- [ ] gate → PR → demo → CI → merge
