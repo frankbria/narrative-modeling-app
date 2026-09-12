@@ -204,6 +204,12 @@ class S3Service:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
 
+    def _live_bucket(self) -> str:
+        """The bucket for THIS call (#622): resolved like the readers, never the
+        value captured at construction, so a process whose environment changed
+        cannot download from one bucket and write to another."""
+        return allowed_bucket()
+
     @with_circuit_breaker(
         "s3",
         max_attempts=3,
@@ -213,10 +219,12 @@ class S3Service:
     )
     async def get_file_size(self, file_key: str) -> int:
         """Return an object's size in bytes via head_object (no download)."""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot stat files")
         response = await asyncio.to_thread(
-            self.s3_client.head_object, Bucket=self.bucket_name, Key=file_key
+            self.s3_client.head_object, Bucket=self._live_bucket(), Key=file_key
         )
         return response["ContentLength"]
 
@@ -230,9 +238,11 @@ class S3Service:
         route without blocking the event loop (hence no circuit breaker either).
         Pass ``filename`` to force a clean download name via Content-Disposition.
         """
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
-        params: dict[str, str] = {"Bucket": self.bucket_name, "Key": file_key}
+        params: dict[str, str] = {"Bucket": self._live_bucket(), "Key": file_key}
         if filename:
             # Escape internally too so this reusable primitive is safe regardless
             # of the caller: a raw quote/semicolon can't malform the header.
@@ -251,6 +261,8 @@ class S3Service:
     )
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
 
@@ -266,7 +278,7 @@ class S3Service:
 
         try:
             await asyncio.to_thread(
-                self.s3_client.upload_fileobj, file_obj, self.bucket_name, file_key
+                self.s3_client.upload_fileobj, file_obj, self._live_bucket(), file_key
             )
             logger.info(f"File uploaded successfully to {file_key}")
             return self.get_file_url(file_key)
@@ -287,12 +299,14 @@ class S3Service:
     )
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot delete files")
 
         try:
             await asyncio.to_thread(
-                self.s3_client.delete_object, Bucket=self.bucket_name, Key=file_key
+                self.s3_client.delete_object, Bucket=self._live_bucket(), Key=file_key
             )
             logger.info(f"File deleted successfully: {file_key}")
             return True

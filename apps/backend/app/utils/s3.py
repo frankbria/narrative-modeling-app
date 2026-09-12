@@ -9,7 +9,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 
-from app.config import resolve_aws_region, resolve_s3_bucket
+from app.config import resolve_aws_region, resolve_configured_bucket
 
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)
@@ -260,6 +260,10 @@ def allowed_bucket() -> str:
 def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     """URL-decode ``key`` and prove it names something this app is allowed to read.
 
+    Bucket, traversal and namespace **hygiene, not per-tenant authorization**:
+    a key that passes here belongs to *some* tenant's namespace, not necessarily
+    the caller's. Callers pass an ownership-checked URL or key (#622).
+
     Refuses traversal (a ``.``/``..`` segment), an absolute or empty segment, and
     any key outside the app namespaces or without a tenant segment.
     ``allow_legacy_root`` additionally admits exactly the
@@ -336,7 +340,7 @@ def _allowed_bucket() -> str | None:
     # canonical resolver. Writers (S3Service, upload_file_to_s3) resolve through
     # configured_bucket() — this same expression — so readers and writers can
     # never disagree about which bucket is "ours" (#567 AC4, claude-review).
-    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+    return resolve_configured_bucket()
 
 
 def configured_bucket() -> str | None:

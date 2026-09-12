@@ -18,7 +18,6 @@ from typing import Any
 from botocore.exceptions import ClientError
 from pymongo.errors import DuplicateKeyError
 
-from app.config import settings
 from app.models.dataset import DatasetMetadata
 from app.models.version import (
     DatasetVersion,
@@ -33,7 +32,7 @@ from app.services.exceptions import (
     OperationError,
     ValidationError,
 )
-from app.utils.s3 import create_s3_client
+from app.utils.s3 import configured_bucket, create_s3_client
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,12 @@ class VersioningService(BaseService[DatasetVersion]):
     def __init__(self):
         """Initialize versioning service with S3 client."""
         self.s3_client = create_s3_client()
-        self.bucket_name = settings.S3_BUCKET
+
+    @property
+    def bucket_name(self) -> str:
+        """The one configured bucket, resolved per call like every other reader
+        and writer (#622) — not a third precedence frozen at import."""
+        return configured_bucket() or "narrative-modeling-uploads"
 
     def _get_id_field(self) -> str:
         """Return the unique identifier field name for DatasetVersion."""

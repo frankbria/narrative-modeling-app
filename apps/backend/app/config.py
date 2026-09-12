@@ -207,6 +207,19 @@ def resolve_s3_bucket() -> str | None:
     return None
 
 
+def resolve_configured_bucket() -> str | None:
+    """The deployment's ONE bucket, for readers and writers alike (#567, #622).
+
+    `AWS_S3_BUCKET` first — the readers' allowlist has used that name since
+    #257 — then every historical name through `resolve_s3_bucket()`. This is
+    the only place the precedence lives; `app.utils.s3.configured_bucket()` and
+    `allowed_bucket()` delegate here, `S3Service` and the versioning service
+    read through them, and `tests/test_services/test_s3_write_contract.py`
+    asserts they all answer the same when the env names disagree.
+    """
+    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+
+
 def resolve_aws_region(default: str = "us-east-1") -> str:
     """AWS region, preferring AWS_REGION but falling back to boto3's own
     AWS_DEFAULT_REGION so a deploy that sets either name works (#257)."""
@@ -234,14 +247,9 @@ class Settings(BaseModel):
     AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
     AWS_REGION: str = resolve_aws_region()
-    # Prefer an explicit S3_BUCKET (backward compatible), else the app's canonical
-    # bucket under any historical name, else the legacy default (#257). Resolution
-    # is best-effort (not fail-closed) because config is imported everywhere,
-    # including subprocess import tests of other prod-like guards; a truly
-    # bucket-less deploy also breaks uploads and surfaces a NoSuchBucket error.
-    S3_BUCKET: str = (
-        os.getenv("S3_BUCKET") or resolve_s3_bucket() or "narrative-modeling-uploads"
-    )
+    # No S3_BUCKET field (#622): it was a third precedence (`S3_BUCKET` first,
+    # resolved once at import). The bucket is `resolve_configured_bucket()`,
+    # read at call time; the `S3_BUCKET` env var is still honoured through it.
 
     # Redis (shared by the cache service and rate-limit middleware). Empty means
     # "no Redis configured" — the limiter then falls back to a process-local
