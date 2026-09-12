@@ -162,7 +162,7 @@ class PIIDetector:
         df_masked = df.copy()
         
         for detection in detections:
-            if detection.confidence > 0.5:  # Only mask high-confidence PII
+            if detection.confidence > MEDIUM_RISK_CONFIDENCE:  # mask medium and above
                 column = detection.column_name
                 
                 if detection.pii_type == PIIType.EMAIL:

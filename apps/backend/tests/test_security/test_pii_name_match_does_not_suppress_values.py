@@ -45,3 +45,14 @@ def test_a_pii_name_over_non_pii_values_stays_medium():
 def test_the_boundary_is_a_deliberate_constant():
     assert NAME_MATCH_CONFIDENCE <= HIGH_RISK_CONFIDENCE  # name-only can never be high
     assert _risk("customer_email", ["not-an-email"] * 4) == "medium"
+
+
+def test_a_weak_value_signal_does_not_override_a_name_match():
+    # One e-mail in four: the pattern says 0.25, the name says 0.8 — keep the name,
+    # and the column is still medium (a hint plus a whisper is not evidence).
+    detections = PIIDetector().detect_pii_in_dataframe(
+        pd.DataFrame({"customer_email": ["a@x.test", "n/a", "n/a", "n/a"]})
+    )
+    assert len(detections) == 1
+    assert detections[0].confidence == NAME_MATCH_CONFIDENCE
+    assert detections[0].sample_count == 0
