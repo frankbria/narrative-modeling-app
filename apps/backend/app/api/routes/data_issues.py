@@ -45,6 +45,7 @@ from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
     upload_dataframe_to_s3,
 )
+from app.utils.s3 import downloadable_url
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ async def detect_issues(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         # Load data from S3
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         if not file_path:
             raise HTTPException(status_code=400, detail="Dataset has no associated file")
 
@@ -306,7 +307,7 @@ async def preview_fix(
             raise HTTPException(status_code=404, detail="No fix found to preview")
 
         # Load data
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path)
 
         # Preview the fix
@@ -412,7 +413,7 @@ async def apply_fix(
 
         # If preview mode, just return preview
         if request.preview_mode:
-            file_path = user_data.file_path or user_data.s3_url
+            file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(file_path)
             engine = FixSuggestionEngine()
             preview_result = engine.preview_fix(df, issue, fix, n_rows=100)
@@ -429,7 +430,7 @@ async def apply_fix(
             )
 
         # Load data and apply fix
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path)
 
         engine = FixSuggestionEngine()
@@ -568,7 +569,7 @@ async def batch_apply_fixes(
             )
 
         # Load data
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path)
 
         # Apply fixes in batch

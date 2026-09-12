@@ -1,26 +1,25 @@
-# Issue #465 — [P0.22] [bug] ~10 endpoints can never match a document (string vs ObjectId)
+# Issue #466 — [P0.23] [bug] The first transformation on any dataset always fails — bare S3 key passed to a URL-only downloader
 
 Plan source: self-authored; approved autonomously (no architectural fork).
 
 ## Design
-- `app/utils/object_id.py::require_object_id(value, what="id") -> PydanticObjectId`, 400 on a malformed id (AC1).
-- data_processing.py: six `UserData.id == file_id` sites → `== require_object_id(file_id, "file_id")`.
-- transformations.py: four raw-dict `"_id": <str>` sites → `require_object_id(...)`; the four handlers also gain
-  `except HTTPException: raise` — today they swallow the 404 into a 200 `{success: false}` or a 500.
-- Sweep (AC2): `"_id": <var>` and `.id == <str>` across app/ — the ten sites are the whole class; `Document.get(str)`
-  is coerced by Beanie and is not affected; `data_issues.py`/`model_training.py`/`ai_analysis.py` already coerce.
-- Tests (AC3/AC4): `test_data_processing.py` rewritten on real seeded `UserData` docs (no `find_one` patch);
-  new `test_object_id_lookups.py` asserts 200 on every previously-404ing endpoint against a real document,
-  400 on a malformed id, 404 on unknown and foreign ids. `test_transformations_integration.py` stays mocked → #492.
+- `DatasetMetadata.file_path` holds a raw key on a fresh upload and a full URL after a transformation; every
+  `file_path or s3_url` site hands whichever it is to the strict, URL-only downloader → the first transform fails.
+- One accessor, `app/utils/s3.py::downloadable_url(path_or_url, fallback=None)`: returns the value if it parses as a
+  URL, else `s3://{allowed bucket}/{key}` — the validated core then applies its own key/bucket checks (#531).
+- Sweep (AC2): every `file_path or s3_url` → `downloadable_url(...)`: transformation_service (2), transformations.py (3),
+  data_issues.py (5), bulk_transformation_service (2). `feature_store_service` passes `file_path` to a *key-only*
+  downloader — the inverse bug — resolved through the same accessor + `parse_s3_url`.
+- AC3: LocalStack integration test — upload through `/datasets/upload`, apply a transformation through the real
+  service, assert success and the transformed object in the bucket. `integration`-marked; runs in CI's integration job.
 
 ## Steps
-1. [ ] RED: real-document tests (10 endpoints × 200/400/404)
-2. [ ] GREEN: helper + ten sites + re-raise in the four transformation handlers
-3. [ ] Rewrite test_data_processing.py on real documents
-4. [ ] Docs: CLAUDE.md gotcha (`UserData.id` is an ObjectId; coerce with `require_object_id`; handlers must re-raise HTTPException)
+1. [ ] RED: unit tests for `downloadable_url`; integration test (fails today with "Invalid S3 URL format")
+2. [ ] GREEN: accessor + call sites
+3. [ ] Docs: CLAUDE.md gotcha reworded around the accessor
 
 ## Acceptance criteria
-- [ ] AC1 both call-site families coerce; malformed → 400
-- [ ] AC2 repo swept
-- [ ] AC3 data-processing tests use real documents
-- [ ] AC4 every previously-404ing endpoint has a 200-against-seeded-doc test
+- [ ] AC1 transformation call site resolves a full URL
+- [ ] AC2 swept; shared accessor extracted
+- [ ] AC3 end-to-end LocalStack test
+- [ ] AC4 further instances noted on the issue

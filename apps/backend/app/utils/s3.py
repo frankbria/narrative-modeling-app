@@ -371,6 +371,29 @@ def require_allowed_bucket(bucket_name: str) -> None:
         )
 
 
+def downloadable_url(path_or_url: str | None, fallback: str | None = None) -> str:
+    """A URL the validated download core accepts, from whatever a document stores (#466).
+
+    `DatasetMetadata.file_path` / `UserData.file_path` hold a raw key right after an
+    upload and a full URL once a transformation has written one back; `s3_url` is
+    always a URL. Every `file_path or s3_url` site used to hand whichever it got to
+    `download_file_from_s3`, which takes only URLs — so the first transformation on
+    any dataset failed and every later one worked. A URL passes through unchanged;
+    a bare key is placed in the allowed bucket, and `resolve_validated_object` then
+    applies the same bucket and key checks it applies to any other URL.
+    """
+    candidate = path_or_url or fallback
+    if not candidate:
+        raise ValueError("No S3 location stored for this dataset")
+    try:
+        bucket, _ = parse_s3_url(candidate)
+    except ValueError:  # not a URL shape at all: it is a key
+        bucket = None
+    if bucket:
+        return candidate
+    return f"s3://{allowed_bucket()}/{candidate.lstrip('/')}"
+
+
 def get_file_from_s3(s3_url: str) -> io.BytesIO:
     """Download a stored object into memory — the one BytesIO reader (#531).
 

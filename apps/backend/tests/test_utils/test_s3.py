@@ -595,3 +595,43 @@ class TestGetS3ClientBucketResolution:
         monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
         assert get_s3_client() is None
 
+
+
+class TestDownloadableUrl:
+    """`file_path` is a raw key on a fresh upload and a full URL after a transformation;
+    the validated downloader takes only URLs (#466)."""
+
+    def test_a_url_passes_through_unchanged(self, monkeypatch):
+        from app.utils.s3 import downloadable_url
+
+        for url in ("s3://b/datasets/u/f.csv", "https://b.s3.amazonaws.com/datasets/u/f.csv",
+                    "https://b.s3.eu-west-1.amazonaws.com/datasets/u/f.csv?X-Amz-Signature=x"):
+            assert downloadable_url(url) == url
+
+    def test_a_bare_key_gets_the_allowed_bucket(self, monkeypatch):
+        from app.utils.s3 import downloadable_url
+
+        monkeypatch.setenv("AWS_S3_BUCKET", "the-bucket")
+        assert downloadable_url("datasets/u/f.csv") == "s3://the-bucket/datasets/u/f.csv"
+        assert downloadable_url("/datasets/u/f.csv") == "s3://the-bucket/datasets/u/f.csv"
+
+    def test_falls_back_to_the_second_location(self, monkeypatch):
+        from app.utils.s3 import downloadable_url
+
+        assert downloadable_url(None, "s3://b/datasets/u/f.csv") == "s3://b/datasets/u/f.csv"
+        assert downloadable_url("", "s3://b/datasets/u/f.csv") == "s3://b/datasets/u/f.csv"
+
+    def test_nothing_to_download_is_an_error(self):
+        from app.utils.s3 import downloadable_url
+
+        with pytest.raises(ValueError):
+            downloadable_url(None, None)
+
+    def test_the_result_is_accepted_by_the_strict_resolver(self, monkeypatch):
+        """The point of the accessor: whatever a document stores, the validated core takes it."""
+        from app.utils.s3 import downloadable_url, resolve_validated_object
+
+        monkeypatch.setenv("AWS_S3_BUCKET", "the-bucket")
+        for stored in ("datasets/u/f.csv", "s3://the-bucket/transformed/u/x.parquet"):
+            bucket, key = resolve_validated_object(downloadable_url(stored))
+            assert bucket == "the-bucket" and key.startswith(("datasets/", "transformed/"))
