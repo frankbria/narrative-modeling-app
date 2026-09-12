@@ -18,6 +18,10 @@ from app.utils.filenames import sanitize_filename
     ("..", "upload"),
     ("/", "upload"),
     ("", "upload"),
+    (" . .foo.csv", "foo.csv"),  # alternating dots and spaces at the edge
+    ("name.csv.", "name.csv"),  # trailing dot goes too
+    ('evil".csv', "evil.csv"),  # the quote that ends a Content-Disposition parameter
+    ("\u202egnp.csv", "gnp.csv"),  # RTLO extension spoof is a Cf character
 ])
 def test_table(raw, expected):
     assert sanitize_filename(raw) == expected
@@ -33,3 +37,16 @@ def test_idempotent():
     for raw in ("../../etc/passwd.csv", "a\r\nb.csv", "x" * 300 + ".csv"):
         once = sanitize_filename(raw)
         assert sanitize_filename(once) == once
+
+
+def test_a_huge_input_is_bounded_before_the_unicode_pass():
+    # A multi-megabyte "filename" is not one: it is cut at the scan bound first,
+    # so even its extension is not guaranteed — only the size is.
+    assert len(sanitize_filename("a" * 5_000_000 + ".csv")) == 255
+    # A merely long name keeps its extension.
+    assert sanitize_filename("a" * 3000 + ".csv").endswith(".csv")
+
+
+def test_truncation_never_leaves_a_trailing_dot():
+    out = sanitize_filename("x" * 254 + "." + "y" * 40)  # 40-char "extension" is not one
+    assert not out.endswith(".") and len(out) <= 255

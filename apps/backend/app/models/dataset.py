@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
 
-from app.utils.filenames import sanitize_filename
+from app.utils.filenames import SafeFilename
 
 
 def get_current_time() -> datetime:
@@ -105,14 +105,9 @@ class DatasetMetadata(Document):
     dataset_id: Annotated[str, Indexed()] = Field(..., description="Unique dataset identifier")
 
     # File metadata
-    filename: str = Field(..., description="Storage filename (may be generated)")
-    original_filename: str = Field(..., description="Original filename from upload")
+    filename: SafeFilename = Field(..., description="Storage filename (may be generated)")
+    original_filename: SafeFilename = Field(..., description="Original filename from upload (normalised, #585)")
 
-    @field_validator("filename", "original_filename")
-    @classmethod
-    def _safe_filename(cls, v: str) -> str:
-        """Client filenames are normalised at ingestion (#585); see UserData."""
-        return sanitize_filename(v)
     file_type: str = Field(..., description="File type: csv, excel, json, parquet")
     file_path: str = Field(..., description="Storage path (e.g., S3 key)")
     s3_url: str = Field(..., description="S3 URL for file access")
