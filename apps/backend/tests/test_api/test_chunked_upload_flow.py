@@ -734,3 +734,21 @@ class TestCompletionAgainstRealS3:
         obj = s3_client.get_object(Bucket=test_s3_bucket, Key=key)
         assert obj["Body"].read() == CSV
         assert obj["ContentType"] == "text/csv"
+
+
+@pytest.mark.asyncio
+async def test_completed_upload_stores_a_sanitised_filename(client_as, fresh_handler, s3_calls):
+    """#585 AC4 end-to-end: the client's traversal + CR/LF name is normalised before it
+    reaches UserData, not just kept out of the S3 key."""
+    from app.models.user_data import UserData
+
+    client = client_as(TENANT_A)
+    raw = "../../etc/evil\r\nX-Injected: yes\r\n.csv"
+    session_id = (await _init(client, filename=raw)).json()["session_id"]
+    await _upload_all(client, session_id)
+    response = await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+    assert response.status_code == 200, response.text
+    stored = await UserData.get(response.json()["file_id"])
+    assert stored is not None
+    for value in (stored.filename, stored.original_filename):
+        assert value == "evilX-Injected: yes.csv"
