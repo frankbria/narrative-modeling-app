@@ -49,6 +49,14 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
     if twin is None:
         logger.info("No dual-written twin for %s at its current location; moving one side", type(doc).__name__)
 
+    # The caller set the new shape (rows/columns) on `doc`; the twin's legacy readers
+    # (mode-recommendation, user_data preview) describe the same file, so it follows (codex).
+    if twin is not None:
+        for field in ("num_rows", "num_columns", "columns"):
+            value = getattr(doc, field, None)
+            if value is not None:
+                setattr(twin, field, value)
+
     # UserData first: it carries the PII erasure must be able to reach.
     ordered = sorted((d for d in (doc, twin) if d is not None), key=lambda d: isinstance(d, DatasetMetadata))
     moved: list[str] = []

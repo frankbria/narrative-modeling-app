@@ -19,14 +19,14 @@ filed as the follow-up if the inventory (AC4) shows broken links worth repairing
 - AC5: original object retained (`source_s3_url`), lifecycle → #529, cleanup → #525 (comments).
 
 ## Steps
-1. [ ] RED: link helper tests; erasure-after-transform; LocalStack transform→train-loader
-2. [ ] GREEN: field + helper + five writers
-3. [ ] Inventory script + test
-4. [ ] Docs: CLAUDE.md two-id-spaces bullet
+1. [x] RED: link helper tests; erasure-after-transform; LocalStack transform→train-loader
+2. [x] GREEN: field + helper + five writers
+3. [x] Inventory script + test
+4. [x] Docs: CLAUDE.md two-id-spaces bullet
 
 ## Acceptance criteria
-- [ ] AC1 link survives (both twins moved in one helper)
-- [ ] AC2 training reads the transformed file
-- [ ] AC3 erasure reaches the twin after a transformation
-- [ ] AC4 inventory script; operator posts the count
-- [ ] AC5 original retained deliberately; lifecycle/cleanup pointers
+- [x] AC1 link survives (both twins moved in one helper)
+- [x] AC2 training reads the transformed file
+- [x] AC3 erasure reaches the twin after a transformation
+- [x] AC4 inventory script (operator posts the count)
+- [x] AC5 original retained deliberately; lifecycle/cleanup pointers

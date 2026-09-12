@@ -106,3 +106,13 @@ class TestRecordNewFile:
 
         assert "half-moved" in caplog.text and "UserData" in caplog.text
         assert (await UserData.get(ud.id)).s3_url == NEW, "the twin moved before the failure"
+
+    async def test_the_twin_takes_the_new_shape_too(self, setup_database):
+        """codex: the caller updates rows/columns on the document it holds; the twin's legacy
+        readers describe the same file, so those follow the move."""
+        meta, ud = await _twins()
+        meta.num_rows, meta.num_columns, meta.columns = 2, 3, ["a", "b", "c"]
+        await record_new_file(meta, NEW)
+
+        ud2 = await UserData.get(ud.id)
+        assert (ud2.num_rows, ud2.num_columns, ud2.columns) == (2, 3, ["a", "b", "c"])
