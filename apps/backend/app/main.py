@@ -55,6 +55,7 @@ from app.api.routes import (
     billing_webhook,
     cache,
     column_stats,
+    data_issues,
     data_processing,
     datasets,
     feature_engineering,
@@ -294,6 +295,14 @@ app.include_router(
     transformations.router,
     prefix=f"{settings.API_V1_STR}/transformations",
     tags=["transformations"],
+)
+app.include_router(
+    # Was registered only on app/api/routes/__init__.py's api_router, which nothing attaches
+    # to the app, so the whole feature 404'd (#471). tests/test_api/test_every_router_is_mounted.py
+    # now fails on any route module in that state.
+    data_issues.router,
+    prefix=f"{settings.API_V1_STR}/data-issues",
+    tags=["data-issues"],
 )
 app.include_router(
     versions.router,

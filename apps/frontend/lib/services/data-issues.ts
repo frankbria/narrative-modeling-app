@@ -59,6 +59,8 @@ export interface DetectionSummary {
   detection_time_ms: number
   columns_analyzed: number
   rows_analyzed: number
+  /** Whether the AI analyzer actually ran for this detection (#471). */
+  ai_analysis_used?: boolean
 }
 
 export interface IssueDetectionResponse {

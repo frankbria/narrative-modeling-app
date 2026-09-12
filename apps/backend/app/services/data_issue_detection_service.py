@@ -26,6 +26,9 @@ from app.services.data_processing.quality_assessment import (
     QualityDimension,
     QualityIssue,
 )
+from app.utils.ai_issue_analyzer import (
+    AIIssueAnalyzer,  # module-level on purpose (#471): the metering registry follows imports
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,7 @@ class DataIssueDetectionService:
 
     def __init__(self):
         """Initialize the detection service."""
+        self.last_ai_calls_made = 0  # requests the analyzer sent in the last detect_issues call (#471 metering)
         self.quality_service = QualityAssessmentService()
         self._severity_thresholds = {
             "critical": 0.5,   # >50% affected
@@ -99,14 +103,18 @@ class DataIssueDetectionService:
             all_issues.extend(format_issues)
 
             # 4. AI-powered analysis (optional)
+            ai_analysis_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
+            self.last_ai_calls_made = 0  # readable by the route even if a later step in this method raises
             if include_ai_analysis and options.include_ai_analysis:
                 try:
-                    from app.utils.ai_issue_analyzer import AIIssueAnalyzer
                     ai_analyzer = AIIssueAnalyzer()
                     ai_issues = await ai_analyzer.analyze_data_patterns(
                         sample_df, column_types, all_issues
                     )
                     all_issues.extend(ai_issues)
+                    # no key, or the breaker's fallback: nothing was sent, nothing is charged
+                    ai_analysis_used = ai_analyzer.calls_made > 0
+                    self.last_ai_calls_made = ai_analyzer.calls_made
                 except ImportError:
                     logger.warning("AI Issue Analyzer not available, skipping AI analysis")
                 except Exception as e:
@@ -115,8 +123,10 @@ class DataIssueDetectionService:
             # 5. Generate fix suggestions for each issue
             for issue in all_issues:
                 if not issue.suggested_fixes:
-                    fixes = self._generate_fix_suggestions(issue, sample_df, column_types)
-                    issue.suggested_fixes = fixes
+                    try:
+                        issue.suggested_fixes = self._generate_fix_suggestions(issue, sample_df, column_types)
+                    except Exception as e:  # best-effort: a suggestion bug must not lose the detection (or a sent AI call)
+                        logger.warning(f"Fix suggestions failed for issue {issue.issue_id}: {e}")
 
             # Calculate summary
             detection_time_ms = int((time.time() - start_time) * 1000)
@@ -124,7 +134,8 @@ class DataIssueDetectionService:
                 all_issues,
                 detection_time_ms,
                 len(df.columns),
-                len(sample_df)
+                len(sample_df),
+                ai_analysis_used=ai_analysis_used,
             )
 
             return all_issues, summary
@@ -663,9 +674,11 @@ class DataIssueDetectionService:
         detection_time_ms: int,
         columns_analyzed: int,
         rows_analyzed: int,
+        ai_analysis_used: bool = False,
     ) -> DetectionSummary:
         """Create detection summary from issues list."""
         summary = DetectionSummary(
+            ai_analysis_used=ai_analysis_used,
             total_issues=len(issues),
             critical_count=len([i for i in issues if i.severity == IssueSeverity.CRITICAL]),
             high_count=len([i for i in issues if i.severity == IssueSeverity.HIGH]),

@@ -114,6 +114,7 @@ class DetectionSummaryResponse(BaseModel):
     detection_time_ms: int = Field(default=0, description="Detection time in milliseconds")
     columns_analyzed: int = Field(default=0, description="Number of columns analyzed")
     rows_analyzed: int = Field(default=0, description="Number of rows analyzed")
+    ai_analysis_used: bool = Field(default=False, description="Whether the AI analyzer ran for this detection")
 
 
 class IssueDetectionResponse(BaseModel):

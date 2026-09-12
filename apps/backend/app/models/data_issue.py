@@ -105,6 +105,7 @@ class DetectionSummary(BaseModel):
     detection_time_ms: int = Field(default=0, ge=0)
     columns_analyzed: int = Field(default=0, ge=0)
     rows_analyzed: int = Field(default=0, ge=0)
+    ai_analysis_used: bool = Field(default=False, description="Whether the AI analyzer actually ran (#461 metering signal)")
 
 
 class DataIssueRecord(Document):

@@ -44,6 +44,7 @@ class AIIssueAnalyzer:
     def __init__(self):
         """Initialize the AI analyzer."""
         self.client = self._initialize_client()
+        self.calls_made = 0  # requests actually sent; the route's ai_calls charge keys on this (#461/#471)
 
     def _initialize_client(self) -> AsyncOpenAI | None:
         """Initialize the async OpenAI client."""
@@ -304,6 +305,7 @@ Please identify any additional data quality issues not covered above."""
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
+            self.calls_made += 1
 
             content = response.choices[0].message.content
             return json.loads(content)
@@ -424,6 +426,7 @@ Keep the explanation non-technical and easy to understand."""
                 temperature=0.5,
                 max_tokens=200,
             )
+            self.calls_made += 1
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"Failed to generate fix explanation: {str(e)}")
@@ -467,6 +470,7 @@ Return as JSON: {{"risk_level": "...", "consequences": "...", "considerations": 
                 max_tokens=300,
                 response_format={"type": "json_object"},
             )
+            self.calls_made += 1
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.error(f"Failed to assess fix impact: {str(e)}")

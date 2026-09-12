@@ -13,9 +13,10 @@ import time
 from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
 from app.models.data_issue import (
     DataIssue,
     DataIssueRecord,
@@ -103,6 +104,7 @@ def _convert_issue_to_response(issue: DataIssue) -> DataIssueResponse:
 @router.post("/detect", response_model=IssueDetectionResponse)
 async def detect_issues(
     request: IssueDetectionRequest,
+    http_request: Request,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -118,6 +120,9 @@ async def detect_issues(
 
     Returns a list of detected issues with suggested fixes.
     """
+    detection_service = DataIssueDetectionService()
+    ai_reserved = False
+    ai_used = False
     start_time = time.time()
 
     try:
@@ -136,6 +141,11 @@ async def detect_issues(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         # Load data from S3
+        # ai_calls is reserved INSIDE the handler, only when the analyzer is asked for (#461):
+        # a route dependency would 402 a tenant out of AI quota on a rule-based-only run.
+        ai_reserved = bool(request.options.include_ai_analysis)
+        if ai_reserved:
+            await enforcement.reserve(http_request, current_user_id, "ai_calls")
         file_path = _download_url(user_data)
 
         df = await get_dataframe_from_s3(file_path)
@@ -149,13 +159,13 @@ async def detect_issues(
             }
 
         # Run detection
-        detection_service = DataIssueDetectionService()
         issues, summary = await detection_service.detect_issues(
             df=df,
             column_types=column_types,
             options=request.options,
             include_ai_analysis=request.options.include_ai_analysis,
         )
+        ai_used = summary.ai_analysis_used  # decided here: a later failure must not refund a sent request
 
         # Store detection results
         record = await detection_service.store_detection_results(
@@ -165,6 +175,8 @@ async def detect_issues(
             summary=summary,
             options=request.options,
         )
+        if ai_reserved and not ai_used:
+            await enforcement.release(http_request)  # no key, or the breaker's fallback: no paid call, no charge
 
         detection_time_ms = int((time.time() - start_time) * 1000)
 
@@ -183,6 +195,7 @@ async def detect_issues(
                 detection_time_ms=detection_time_ms,
                 columns_analyzed=summary.columns_analyzed,
                 rows_analyzed=summary.rows_analyzed,
+                ai_analysis_used=summary.ai_analysis_used,
             ),
             record_id=str(record.id),
         )
@@ -191,6 +204,12 @@ async def detect_issues(
         raise
     except Exception as e:
         logger.error(f"Issue detection failed: {str(e)}")
+        # A request the analyzer DID send before a later step raised (inside the service or
+        # here) stays charged: the service keeps the count outside the summary that never came back.
+        ai_used = ai_used or getattr(detection_service, "last_ai_calls_made", 0) > 0
+        if ai_reserved and not ai_used:
+            # reported as 200 {success: false}, which the refund middleware never sees
+            await enforcement.release(http_request)
         return IssueDetectionResponse(
             success=False,
             dataset_id=request.dataset_id,
@@ -246,6 +265,7 @@ async def get_dataset_issues(
                 high_count=record.summary.high_count,
                 medium_count=record.summary.medium_count,
                 low_count=record.summary.low_count,
+                ai_analysis_used=record.summary.ai_analysis_used,
                 ai_detected_count=record.summary.ai_detected_count,
                 auto_fixable_count=record.summary.auto_fixable_count,
                 detection_time_ms=record.summary.detection_time_ms,
