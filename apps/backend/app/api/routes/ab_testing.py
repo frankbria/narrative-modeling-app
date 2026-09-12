@@ -304,18 +304,15 @@ async def track_prediction(
 ):
     """Track a prediction for a variant of the caller's own experiment.
 
-    Ownership is established here rather than in the service:
-    `ABTestingService.track_prediction` looks the experiment up by id alone and
-    returns silently on a miss, which is deliberate for non-blocking tracking
-    but cannot double as an authorization boundary.
+    Ownership is checked twice on purpose (#565): here, so an unknown or foreign
+    id answers 404, and again inside `ABTestingService.track_prediction`, which
+    scopes its write to the caller and returns silently on a miss — deliberate
+    for non-blocking tracking, so it cannot double as the 404.
     """
 
-    # The service below re-fetches by experiment_id alone, so this check only
-    # holds while experiment_ids are unique across tenants. They are: ids are
-    # generated server-side and never accepted from a caller. Anything that
-    # writes ABTest documents directly (an import, a migration, a restore) must
-    # preserve that, or the ownership established here no longer describes the
-    # document written. Tracked as #565.
+    # Belt and braces (#565): experiment_id is unique at the database and the
+    # service scopes its own write to the caller, so this check exists for the
+    # 404, not as the only thing standing between tenants.
     experiment = await ABTest.find_one({
         "experiment_id": experiment_id,
         "user_id": current_user_id
@@ -327,6 +324,7 @@ async def track_prediction(
         experiment_id=experiment_id,
         variant_id=variant_id,
         latency_ms=latency_ms,
+        user_id=current_user_id,
         success=success,
         custom_metrics=custom_metrics
     )

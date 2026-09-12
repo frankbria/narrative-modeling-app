@@ -3,10 +3,10 @@ A/B Test model for experiment tracking
 """
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
 
-from beanie import Document, Indexed
+from beanie import Document
 from pydantic import BaseModel, Field
+from pymongo import ASCENDING, IndexModel
 
 from app.utils.datetime import utcnow
 
@@ -50,7 +50,15 @@ class ABTest(Document):
     """A/B Test experiment document"""
     
     # Identification
-    experiment_id: Annotated[str, Indexed()] = Field(description="Unique experiment ID")
+    # Unique (#565): track-prediction authorizes on (experiment_id, user_id) and the
+    # service writes by experiment_id, so the database — not the id helper — must
+    # forbid two documents sharing an id. Declared as a *named* IndexModel below
+    # rather than Indexed(unique=True): an existing collection already holds the
+    # plain `experiment_id_1` index, and Mongo refuses to rebuild the same name
+    # with different options at init_beanie (IndexOptionsConflict), which would
+    # stop the app from starting. scripts/check_ab_test_duplicates.py finds any
+    # duplicates before the unique index is first built and can drop the legacy one.
+    experiment_id: str = Field(description="Unique experiment ID")
     name: str = Field(description="Experiment name")
     description: str | None = Field(None, description="Experiment description")
     
@@ -86,7 +94,7 @@ class ABTest(Document):
     class Settings:
         name = "ab_tests"
         indexes = [
-            "experiment_id",
+            IndexModel([("experiment_id", ASCENDING)], unique=True, name="experiment_id_unique"),
             "user_id",
             "status",
             "created_at"

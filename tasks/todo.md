@@ -1,17 +1,18 @@
-# Issue #563 — [P3.9] [security] GET /api/v1/ai/health is unauthenticated and does outbound work per request
+# Issue #565 — [P3.10] [security] ABTest.experiment_id is not unique, so track-prediction's authorization rests on a convention
 
-Plan source: self-authored. Approved autonomously — AC1 offers "require auth" or "keep public + cache"; every sibling route in the router is authenticated and the MCP server is deployed nowhere (#508), so require auth. No fork.
+Plan source: self-authored. Approved autonomously — AC3 offers index-or-scope; do both (the issue says both is better). No fork.
 
 ## Findings
-- `ai_analysis.py::check_mcp_health` is the only handler in its router without `Depends(get_current_user_id)`; the router is mounted under `/api/v1/ai` without router-level dependencies.
-- Each anonymous call runs `mcp_service.check_health()` — an outbound request to an internal component.
-- Liveness/readiness probes live in `health.py` (`/health`, `/health/ready`, #503 owns the readiness outbound-work question). MCP is not a readiness dependency of this app, so the check does not belong beside them.
+- `ABTest.experiment_id: Annotated[str, Indexed()]` — indexed, not unique; ids are `exp_<ObjectId>` from a helper, so duplicates are unreachable through the API but not forbidden by the database.
+- Route `/track-prediction` authorizes on `(experiment_id, user_id)` then `ABTestingService.track_prediction` re-fetches by `experiment_id` alone (#559's shape).
 
 ## Design
-1. Add `current_user_id: str = Depends(get_current_user_id)` to `check_mcp_health` (unused id is fine — it is the gate). Docstring says why it is authenticated.
-2. Test (AC3): unauthenticated → 401; authenticated → 200 with `mcp_available` bool (MCP health stubbed). Plus keep the #450 auth-sweep test green.
+1. `Indexed(unique=True)` on `experiment_id` (Beanie builds it at `init_beanie`).
+2. `ABTestingService.track_prediction(..., user_id)` filters the write-side lookup on the owner too; the route passes `current_user_id`.
+3. AC2: `scripts/check_ab_test_duplicates.py` — one aggregation listing duplicate `experiment_id`s; run it against a collection before deploying (index build fails at startup otherwise). Local test DB: reported in the PR.
+4. Tests: second insert with the same `experiment_id` → `DuplicateKeyError`; service refuses another tenant's experiment even when handed its id.
 
 ## Steps
-- [x] RED tests
-- [x] dependency on the route
-- [x] gate → PR #644 → demo → CI → merge
+- [ ] RED tests
+- [ ] model + service + route + script
+- [ ] gate → PR → demo → CI → merge

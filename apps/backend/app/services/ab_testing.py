@@ -105,12 +105,16 @@ class ABTestingService:
         experiment_id: str,
         variant_id: str,
         latency_ms: float,
+        user_id: str,
         success: bool = True,
         custom_metrics: dict[str, float] | None = None
     ) -> None:
         """Track a prediction for a variant"""
         
-        experiment = await ABTest.find_one({"experiment_id": experiment_id})
+        # Owner-scoped write (#565): another tenant's id is a silent miss, exactly
+        # like an unknown id, so this method no longer trusts its caller to have
+        # checked ownership.
+        experiment = await ABTest.find_one({"experiment_id": experiment_id, "user_id": user_id})
         if not experiment:
             return  # Silently fail for non-blocking tracking
         
