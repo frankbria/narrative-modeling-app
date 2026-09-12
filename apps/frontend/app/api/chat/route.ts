@@ -71,7 +71,8 @@ export async function POST(request: Request) {
     if (!upstream.ok) {
       // 402 = plan limit reached; the status passes through so the UI can say so.
       const error = upstream.status === 402 ? 'AI call limit reached for your plan' : 'AI service unavailable'
-      return NextResponse.json({ error }, { status: upstream.status })
+      // `detail` is the field AIChat.tsx reads for the message it shows.
+      return NextResponse.json({ error, detail: error }, { status: upstream.status })
     }
     const { reply } = await upstream.json()
     return NextResponse.json({ reply })

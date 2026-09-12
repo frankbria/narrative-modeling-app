@@ -1222,7 +1222,11 @@ async def get_model_evaluation(
         return _partial_evaluation_response(model)
 
     try:
-        return await _full_evaluation_response(model, artifacts)
+        response = await _full_evaluation_response(model, artifacts)
+        if response.ai_explanation is None or response.ai_explanation.generated_by != "openai":
+            # rule-based fallback (no key, breaker open, call failed): no paid call, no charge
+            await enforcement.release(request)
+        return response
     except Exception as exc:
         logger.error(
             f"Evaluation computation failed for {model_id}; "
@@ -1437,6 +1441,8 @@ async def get_error_analysis(
     suggestions, generated_by = await error_analysis_service.generate_suggestions(
         data, problem_type=model.problem_type, algorithm=model.algorithm
     )
+    if generated_by != "openai":
+        await enforcement.release(request)  # rule-based fallback: no paid call, no charge
 
     message = None
     if not data.has_feature_matrix:

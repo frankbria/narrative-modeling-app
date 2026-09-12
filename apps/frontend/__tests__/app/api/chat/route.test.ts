@@ -81,7 +81,9 @@ describe('POST /api/chat', () => {
 
     const res = await POST(chatRequest())
     expect(res.status).toBe(402)
-    expect((await res.json()).error).toMatch(/limit/i)
+    const body = await res.json()
+    expect(body.error).toMatch(/limit/i)
+    expect(body.detail).toBe(body.error) // AIChat.tsx surfaces `detail`
   })
 
   // #461: the proxy is a spend amplifier — every client-controlled dimension is capped

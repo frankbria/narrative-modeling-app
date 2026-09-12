@@ -10,6 +10,7 @@ pass with the dependency attached to nothing (see the #267 footgun).
 here unambiguous — a 429 would mean something else entirely.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1273,3 +1274,51 @@ class TestAiQuota:
             assert await metering.usage_for(TEST_USER, "ai_calls") == 0
             assert (await async_authorized_client.post(url, json={"include_ai_suggestions": True})).status_code == 200
             assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+    @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
+    async def test_report_card_is_charged_only_when_the_model_wrote_it(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        from app.models.ml_model import MLModel
+        from app.schemas.evaluation import AIExplanation, ModelEvaluationResponse
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-full", name="Full",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        full = ModelEvaluationResponse(
+            model_id="m-full", problem_type="binary_classification", evaluated_at=datetime.now(UTC),
+            ai_explanation=AIExplanation(overall_assessment="ok", generated_by=generated_by),
+        )
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value={"y_test": [1], "y_pred": [1]}), \
+             patch("app.api.routes.model_training._full_evaluation_response",
+                   new_callable=AsyncMock, return_value=full):
+            response = await async_authorized_client.get("/api/v1/ml/m-full/evaluation")
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged
+
+    @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
+    async def test_error_suggestions_are_charged_only_when_the_model_wrote_them(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        import numpy as np
+
+        from app.models.ml_model import MLModel
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-err", name="Err",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        artifacts = {"y_test": np.array([0, 1, 0, 1]), "y_pred": np.array([0, 1, 1, 1])}
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value=artifacts), \
+             patch("app.services.error_analysis_service.error_analysis_service.generate_suggestions",
+                   new_callable=AsyncMock, return_value=([], generated_by)):
+            response = await async_authorized_client.get("/api/v1/ml/m-err/errors")
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged
