@@ -11,7 +11,7 @@ bucket when the issue was filed.
 For each such object this script finds the owning ``UserData``/``DatasetMetadata``
 rows by ``s3_url`` (through the app's own ``parse_s3_url``, so every stored URL shape
 resolves), copies the object to ``datasets/{owner}/{same basename}``, verifies the
-copy (ContentLength and ETag), rewrites the rows' ``s3_url``/``file_path``, and only
+copy (ContentLength, then ETag or a streamed SHA-256 when the ETag is multipart), rewrites the rows' ``s3_url``/``file_path``, and only
 then deletes the original. An object with **no** owning row is reported and never
 touched — nothing here deletes data it cannot attribute. Rows that disagree about
 the owner are treated the same way.
@@ -29,6 +29,7 @@ Usage (from apps/backend, against whichever bucket/cluster you want to check):
 """
 
 import asyncio
+import hashlib
 import os
 import re
 import sys
@@ -138,7 +139,24 @@ async def _owners(db, bucket: str, keys: list[str]) -> tuple[dict[str, str | Non
     return owner_by_key, rows_by_key, conflicts
 
 
+def _sha256(s3, bucket: str, key: str) -> str:
+    digest = hashlib.sha256()
+    for chunk in s3.get_object(Bucket=bucket, Key=key)["Body"].iter_chunks(1 << 20):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _copy_and_verify(s3, bucket: str, move: Move) -> bool:
+    """Copy, then prove the copy holds the same bytes before anything is deleted.
+
+    ETag equality is only a proof for two single-part, unencrypted objects. The
+    upload routes go through ``upload_fileobj``, which switches to multipart above
+    8 MB and leaves a ``<md5>-<parts>`` ETag, while ``copy_object`` writes a
+    single-part one — identical bytes, different ETags. Insisting on equality
+    there would strand every large dataset as a "copy failure", so when either
+    ETag is a multipart form (or they simply differ) the bytes are read back and
+    hashed instead.
+    """
     src = s3.head_object(Bucket=bucket, Key=move.old_key)
     s3.copy_object(
         Bucket=bucket,
@@ -147,7 +165,12 @@ def _copy_and_verify(s3, bucket: str, move: Move) -> bool:
         MetadataDirective="COPY",
     )
     dst = s3.head_object(Bucket=bucket, Key=move.new_key)
-    return dst["ContentLength"] == src["ContentLength"] and dst["ETag"] == src["ETag"]
+    if dst["ContentLength"] != src["ContentLength"]:
+        return False
+    single_part = "-" not in src["ETag"] and "-" not in dst["ETag"]
+    if single_part and dst["ETag"] == src["ETag"]:
+        return True
+    return _sha256(s3, bucket, move.old_key) == _sha256(s3, bucket, move.new_key)
 
 
 async def _rewrite_rows(db, rows: list[tuple[str, object, str]], move: Move) -> int:

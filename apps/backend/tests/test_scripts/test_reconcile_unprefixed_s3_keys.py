@@ -185,6 +185,47 @@ class TestReconcileAgainstRealS3:
         assert self._exists(s3_client, test_s3_bucket, key)
         assert report.exit_code == 1  # unreconciled objects remain
 
+    async def test_a_multipart_uploaded_object_is_still_moved(
+        self, setup_database, s3_client, test_s3_bucket
+    ):
+        """Objects over boto3's multipart threshold carry a ``<md5>-N`` ETag that no
+        copy reproduces; verification must fall back to the bytes (codex review)."""
+        import io
+
+        from boto3.s3.transfer import TransferConfig
+
+        m = _load()
+        from app.models.user_data import UserData
+
+        key = f"{uuid.uuid4()}.csv"
+        body = b"x" * (3 * 1024 * 1024)
+        s3_client.upload_fileobj(
+            io.BytesIO(body),
+            test_s3_bucket,
+            key,
+            Config=TransferConfig(multipart_threshold=1024 * 1024, multipart_chunksize=1024 * 1024),
+        )
+        assert "-" in s3_client.head_object(Bucket=test_s3_bucket, Key=key)["ETag"], "not multipart"
+        await UserData(
+            user_id="owner-mp",
+            filename="d.csv",
+            original_filename="d.csv",
+            s3_url=f"http://localhost:4566/{test_s3_bucket}/{key}",
+            file_path=key,
+            num_rows=1,
+            num_columns=1,
+            data_schema=[],
+        ).insert()
+
+        report = await m.reconcile(
+            s3_client, test_s3_bucket, UserData.get_motor_collection().database, apply=True
+        )
+
+        assert report.copy_failures == 0 and report.moved == 1
+        new_key = f"datasets/owner-mp/{key}"
+        assert s3_client.get_object(Bucket=test_s3_bucket, Key=new_key)["Body"].read() == body
+        assert not self._exists(s3_client, test_s3_bucket, key)
+
     async def test_prefixed_objects_are_not_candidates(
         self, setup_database, s3_client, test_s3_bucket
     ):
