@@ -304,10 +304,10 @@ async def track_prediction(
 ):
     """Track a prediction for a variant of the caller's own experiment.
 
-    Ownership is established here rather than in the service:
-    `ABTestingService.track_prediction` looks the experiment up by id alone and
-    returns silently on a miss, which is deliberate for non-blocking tracking
-    but cannot double as an authorization boundary.
+    Ownership is checked twice on purpose (#565): here, so an unknown or foreign
+    id answers 404, and again inside `ABTestingService.track_prediction`, which
+    scopes its write to the caller and returns silently on a miss — deliberate
+    for non-blocking tracking, so it cannot double as the 404.
     """
 
     # Belt and braces (#565): experiment_id is unique at the database and the
