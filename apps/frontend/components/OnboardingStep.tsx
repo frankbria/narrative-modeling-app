@@ -127,8 +127,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                 </CardHeader>
                 <CardContent>
                   <Button className="w-full" onClick={() => {
-                    // Navigate to upload page
-                    window.location.href = '/upload';
+                    router.push('/upload');
                   }}>
                     <FileText className="mr-2 h-4 w-4" />
                     Upload CSV File
@@ -227,8 +226,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </div>
 
             <Button className="w-full" onClick={() => {
-              // Navigate to explore page
-              window.location.href = '/explore';
+              router.push('/explore');
             }}>
               Explore Your Data
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -261,8 +259,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </Alert>
 
             <Button className="w-full" onClick={() => {
-              // Navigate to model training
-              window.location.href = '/model';
+              router.push('/model');
             }}>
               Start Training
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -292,8 +289,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </div>
 
             <Button className="w-full" onClick={() => {
-              // Navigate to predictions
-              window.location.href = '/predict';
+              router.push('/predict');
             }}>
               Make Predictions
               <ArrowRight className="ml-2 h-4 w-4" />

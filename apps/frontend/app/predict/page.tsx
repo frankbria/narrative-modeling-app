@@ -101,8 +101,12 @@ export default function PredictPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, state.modelId]);
 
-  // Clean up the progress poller on unmount.
+  // Clean up the progress poller on unmount. The flag is re-armed on every
+  // mount: StrictMode (and any remount) runs cleanup then the effect again, and
+  // a flag that only ever goes false left the poller returning early forever —
+  // "Processing…" never cleared even after the job reported completed.
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);

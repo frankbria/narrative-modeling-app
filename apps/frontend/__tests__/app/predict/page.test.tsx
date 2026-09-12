@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PredictPage from '@/app/predict/page';
 import { modelService } from '@/lib/services/model';
 import { WorkflowStage } from '@/lib/types/workflow';
@@ -293,5 +293,45 @@ describe('PredictPage — touched-based validation (issue #282)', () => {
 
     fireEvent.change(age, { target: { value: '42' } });
     expect(screen.getByTestId('make-prediction')).toBeEnabled();
+  });
+});
+
+describe('PredictPage — batch polling survives a remount (#550 e2e finding)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('renders the summary once the job reports completed, under StrictMode', async () => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValue({
+      job_id: 'j1', status: 'completed', percentage_complete: 100,
+      processed_records: 3, total_records: 3, success_count: 3, error_count: 0,
+    } as never);
+    svc.getBatchJob.mockResolvedValue({
+      job_id: 'j1', status: 'completed',
+      results: { total_records: 3, success_count: 3, error_count: 0 },
+    } as never);
+
+    // StrictMode runs every effect's cleanup and then the effect again on mount;
+    // a mounted-flag that is only ever cleared stays false, and the poller then
+    // returns early forever — the e2e run saw "Processing…" 30 polls after the
+    // backend said completed.
+    render(
+      <React.StrictMode>
+        <PredictPage />
+      </React.StrictMode>
+    );
+    await screen.findByLabelText('age');
+    fireEvent.click(screen.getByTestId('batch-prediction-link'));
+    const file = new File(['age,city\n1,NYC\n'], 'batch.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('batch-file-input'), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId('start-batch-prediction'));
+    await waitFor(() => expect(svc.createBatchJob).toHaveBeenCalled());
+
+    await act(async () => {
+      jest.advanceTimersByTime(2100);
+    });
+    expect(await screen.findByTestId('batch-summary')).toBeInTheDocument();
+    expect(svc.getBatchJob).toHaveBeenCalledWith('j1');
+    expect(screen.getByTestId('start-batch-prediction')).not.toHaveTextContent('Processing');
   });
 });

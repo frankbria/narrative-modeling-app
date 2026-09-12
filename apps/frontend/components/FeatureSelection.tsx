@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import React, { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {  Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -28,6 +29,7 @@ export function FeatureSelection({
   defaultTargetColumn,
   onComplete
 }: FeatureSelectionProps) {
+  const router = useRouter()
   const { data: session } = useSession()
   const [config, setConfig] = useState<SelectionConfig>({
     method: 'correlation' as SelectionMethod,
@@ -169,10 +171,7 @@ export function FeatureSelection({
               {/* Selected Features Summary */}
               <SelectedFeatureSet
                 result={result}
-                onProceedToModeling={() => {
-                  // Navigate to model training page
-                  window.location.href = `/datasets/${datasetId}/train`
-                }}
+                onProceedToModeling={() => router.push(`/datasets/${datasetId}/train`)}
               />
             </>
           )}

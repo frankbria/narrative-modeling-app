@@ -89,6 +89,15 @@ export SKIP_AUTH=true
 # trip the per-user limit and flake. Rate limiting has its own unit/integration
 # coverage; the E2E suite must not be subject to it.
 export RATE_LIMIT_ENABLED=false
+# Plan limits (#368) count per user per month and every e2e test shares one
+# user: FREE's 20 uploads / 10 training runs are exhausted by a single smoke
+# run with retries, after which every later upload 402s and the failures
+# cascade. The overrides are the module's own lever (`_env_int`); quota
+# behaviour itself is covered by the backend suite, not by e2e.
+export PLAN_FREE_UPLOADS=${PLAN_FREE_UPLOADS:-10000}
+export PLAN_FREE_TRAINING_RUNS=${PLAN_FREE_TRAINING_RUNS:-10000}
+export PLAN_FREE_PREDICTIONS=${PLAN_FREE_PREDICTIONS:-1000000}
+export PLAN_FREE_AI_CALLS=${PLAN_FREE_AI_CALLS:-100000}
 
 # AWS S3 configuration (test/mock values for E2E)
 # When AWS_ENDPOINT_URL is set (e.g. http://localhost:9000 for MinIO in CI),
