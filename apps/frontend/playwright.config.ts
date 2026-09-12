@@ -93,6 +93,9 @@ export default defineConfig({
       name: 'firefox-full',
       use: { ...devices['Desktop Firefox'] },
       testMatch: /.*\.spec\.ts/,
+      // onboarding.spec is a backend walk, not a browser-compat test; it runs
+      // once, isolated, in the chromium-*-onboarding projects (see chromium-smoke).
+      testIgnore: /onboarding\.spec\.ts/,
     },
 
     // Full suite: WebKit (optional, run on demand)
@@ -100,6 +103,9 @@ export default defineConfig({
       name: 'webkit-full',
       use: { ...devices['Desktop Safari'] },
       testMatch: /.*\.spec\.ts/,
+      // onboarding.spec is a backend walk, not a browser-compat test; it runs
+      // once, isolated, in the chromium-*-onboarding projects (see chromium-smoke).
+      testIgnore: /onboarding\.spec\.ts/,
     },
 
     /* Test against mobile viewports. */

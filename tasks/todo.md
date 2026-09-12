@@ -11,5 +11,5 @@ Plan source: self-authored (issue has ACs, no plan). Approved autonomously — l
 ## Steps
 - [x] `npm audit fix` (non-breaking): 8 of 9 gone, lockfile only
 - [x] `npm i --save-exact next@16.3.5 eslint-config-next@16.3.5`
-- [ ] audit = 0 at moderate; jest, tsc, lint cap 230, next build
-- [ ] PR → CI (Security Audit must be green this time) → merge; comment/close #600
+- [x] audit = 0 at moderate; jest, tsc, lint cap 230, next build
+- [x] PR #640 → Security Audit green; e2e exposed predict StrictMode bug + onboarding race + quota exhaustion (all fixed) → merge; #600 superseded
