@@ -24,7 +24,7 @@ UNLIMITED = -1
 #: The metered actions. Named once so the metering store, the enforcement
 #: dependency and PlanLimits cannot drift apart — and so `limit_for` has an
 #: allow-list to validate against rather than trusting getattr.
-METERED_METRICS = ("training_runs", "predictions", "uploads")
+METERED_METRICS = ("training_runs", "predictions", "uploads", "ai_calls")
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,10 @@ class PlanLimits:
     training_runs: int
     predictions: int
     uploads: int
+    #: Model calls per period (#461). Finite on EVERY tier, ENTERPRISE included:
+    #: this is the backstop against an unbounded OpenAI invoice, so it is read
+    #: through `_env_positive_int` and an UNLIMITED override falls back and warns.
+    ai_calls: int
     #: Ceiling for a production API key's ``rate_limit`` (requests per
     #: RATE_LIMIT_APIKEY_WINDOW_SECONDS). Must stay finite and positive on every
     #: tier: the rate-limit store reads ``limit <= 0`` as "no enforcement", so
@@ -94,8 +98,9 @@ def _env_positive_int(name: str, default: int) -> int:
     value = _env_int(name, default)
     if value <= 0:
         logger.warning(
-            "%s=%s is not a usable rate-limit ceiling (a limit <= 0 disables "
-            "enforcement, so it is floored to 1 request per window, not unlimited). "
+            "%s=%s is not a usable ceiling here: this limit must stay finite and "
+            "positive (a rate limit <= 0 is floored to 1 per window; an AI-call "
+            "ceiling <= 0 would remove the spend backstop). "
             "Falling back to the default of %s.",
             name,
             value,
@@ -114,18 +119,21 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
         uploads=_env_int("PLAN_FREE_UPLOADS", 20),
+        ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 50),
         api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
         uploads=_env_int("PLAN_PRO_UPLOADS", 500),
+        ai_calls=_env_positive_int("PLAN_PRO_AI_CALLS", 2_000),
         api_key_rate_limit=_env_positive_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
+        ai_calls=_env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 20_000),
         api_key_rate_limit=_env_positive_int(
             "PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000
         ),

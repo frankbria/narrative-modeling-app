@@ -10,6 +10,8 @@ pass with the dependency attached to nothing (see the #267 footgun).
 here unambiguous — a 429 would mean something else entirely.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 import app.api.routes.batch_prediction as batch_prediction_routes
@@ -25,6 +27,7 @@ pytestmark = pytest.mark.asyncio
 #: What `async_authorized_client` overrides the auth dependency to return.
 TEST_USER = "test_user_123"
 FREE_UPLOADS = PLAN_LIMITS[PlanTier.FREE].uploads
+FREE_AI_CALLS = PLAN_LIMITS[PlanTier.FREE].ai_calls
 
 
 def _no_op(*args, **kwargs) -> None:
@@ -1175,3 +1178,39 @@ class TestNonMeteredRoutes:
         response = await async_authorized_client.get("/api/v1/ml/models")
 
         assert response.status_code != 402
+
+
+class TestAiQuota:
+    """#461: a tenant at the `ai_calls` limit is refused before any model is called."""
+
+    @pytest.mark.parametrize(
+        "route, service",
+        [
+            ("/api/v1/ai/summarize/{fid}",
+             "app.services.dataset_summarization.dataset_summarization_service.generate_comprehensive_summary"),
+            ("/api/v1/ai/analyze/{fid}",
+             "app.services.mcp_integration.mcp_service.analyze_dataset"),
+            # orchestration: the 402 lands before the body is even validated
+            ("/api/v1/ai/recommend-tools",
+             "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
+            ("/api/v1/ai/stage-guidance",
+             "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
+        ],
+    )
+    async def test_ai_route_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database, route, service
+    ):
+        await _fill(TEST_USER, "ai_calls", FREE_AI_CALLS)
+        with patch(service, new_callable=AsyncMock) as model_call:
+            response = await async_authorized_client.post(route.format(fid="0" * 24))
+        assert response.status_code == 402, f"{route}: {response.text}"
+        assert response.json()["detail"]["metric"] == "ai_calls"
+        model_call.assert_not_called()
+        # the denial itself must not count
+        assert await metering.usage_for(TEST_USER, "ai_calls") == FREE_AI_CALLS
+
+    async def test_a_501_stub_hands_its_unit_back(self, async_authorized_client, setup_database):
+        """/chat/{file_id} is metered though it is a stub (#274); the 501 refunds."""
+        response = await async_authorized_client.post("/api/v1/ai/chat/" + "0" * 24)
+        assert response.status_code == 501
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0

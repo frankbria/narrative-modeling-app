@@ -15,6 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing.enforcement import quota
 from app.models.dataset import DatasetMetadata
 from app.schemas.ai_orchestration import (
     AIFeedbackRequest,
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/recommend-tools", response_model=ToolRecommendationResponse)
+@router.post("/recommend-tools", dependencies=[Depends(quota("ai_calls"))], response_model=ToolRecommendationResponse)
 async def recommend_tools(
     request: ToolRecommendationRequest,
     user_id: str = Depends(get_current_user_id),
@@ -63,7 +64,7 @@ async def optimize_parameters(
     return await ai_orchestration_service.optimize_parameters(profile, request)
 
 
-@router.post("/stage-guidance", response_model=StageGuidanceResponse)
+@router.post("/stage-guidance", dependencies=[Depends(quota("ai_calls"))], response_model=StageGuidanceResponse)
 async def stage_guidance(
     request: StageGuidanceRequest,
     user_id: str = Depends(get_current_user_id),
