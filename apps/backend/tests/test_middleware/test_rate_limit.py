@@ -12,8 +12,9 @@ import asyncio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
-from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware, client_ip
 from app.services.rate_limit import (
     InMemoryRateLimitStore,
     RateLimitResult,
@@ -177,57 +178,48 @@ class TestRateLimitMiddleware:
         for _ in range(5):
             assert client.get("/api/v1/ping").status_code == 200
 
-    def test_spoofed_forwarded_for_ignored_when_untrusted(self):
-        # Default (untrusted) — a forged X-Forwarded-For must NOT mint fresh buckets;
-        # all requests share the real socket peer, so the limit still bites.
+    @pytest.mark.parametrize("trust_proxy", [False, True])
+    def test_spoofed_forwarded_for_never_mints_a_bucket(self, trust_proxy):
+        # #483: nginx APPENDS to X-Forwarded-For, so element [0] is whatever the
+        # client sent — under BOTH flag settings a varying XFF must share one bucket.
         app = _build_app(
             InMemoryRateLimitStore(),
             default_requests=2,
             default_window_seconds=60,
-            trust_forwarded_for=False,
+            trust_proxy=trust_proxy,
         )
         client = TestClient(app)
-        assert (
-            client.get(
-                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
-            ).status_code
-            == 200
-        )
-        assert (
-            client.get(
-                "/api/v1/ping", headers={"X-Forwarded-For": "2.2.2.2"}
-            ).status_code
-            == 200
-        )
+        for spoofed in ("1.1.1.1", "2.2.2.2"):
+            assert (
+                client.get(
+                    "/api/v1/ping", headers={"X-Forwarded-For": spoofed}
+                ).status_code
+                == 200
+            )
         blocked = client.get("/api/v1/ping", headers={"X-Forwarded-For": "3.3.3.3"})
         assert blocked.status_code == 429
 
-    def test_forwarded_for_honored_when_trusted(self):
-        # Behind a trusted proxy — each distinct forwarded client gets its own bucket.
+    def test_real_ip_honored_when_trusted(self):
+        # Behind nginx, X-Real-IP is set from $remote_addr and OVERWRITTEN, so it is
+        # authoritative — each distinct real client gets its own bucket.
         app = _build_app(
             InMemoryRateLimitStore(),
             default_requests=1,
             default_window_seconds=60,
-            trust_forwarded_for=True,
+            trust_proxy=True,
         )
         client = TestClient(app)
         assert (
-            client.get(
-                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
-            ).status_code
+            client.get("/api/v1/ping", headers={"X-Real-IP": "1.1.1.1"}).status_code
             == 200
         )
         # Same client → blocked; different client → still allowed.
         assert (
-            client.get(
-                "/api/v1/ping", headers={"X-Forwarded-For": "1.1.1.1"}
-            ).status_code
+            client.get("/api/v1/ping", headers={"X-Real-IP": "1.1.1.1"}).status_code
             == 429
         )
         assert (
-            client.get(
-                "/api/v1/ping", headers={"X-Forwarded-For": "9.9.9.9"}
-            ).status_code
+            client.get("/api/v1/ping", headers={"X-Real-IP": "9.9.9.9"}).status_code
             == 200
         )
 
@@ -359,3 +351,45 @@ class TestApiKeyLimitFloor:
         for _ in range(3):
             assert client.get(path, headers=headers).status_code == 200
         assert client.get(path, headers=headers).status_code == 429
+
+
+# --------------------------------------------------------------------------- #
+# Key derivation, tested directly (#483)
+# --------------------------------------------------------------------------- #
+def _request(headers: dict[str, str], peer: str = "10.0.0.9") -> Request:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/ping",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        "client": (peer, 40000),
+    }
+    return Request(scope)
+
+
+class TestClientIp:
+    """The limiter is disabled in the test env (CLAUDE.md), so the middleware-level
+    tests above opt back in — but the identity rule itself is asserted here directly
+    so it cannot pass vacuously through a disabled limiter."""
+
+    @pytest.mark.parametrize("trust_proxy", [False, True])
+    def test_forwarded_for_is_never_read(self, trust_proxy):
+        req = _request({"X-Forwarded-For": "6.6.6.6, 7.7.7.7"})
+        assert client_ip(req, trust_proxy=trust_proxy) == "10.0.0.9"
+
+    def test_real_ip_ignored_when_untrusted(self):
+        # Without a proxy in front, X-Real-IP is as spoofable as XFF.
+        req = _request({"X-Real-IP": "6.6.6.6"})
+        assert client_ip(req, trust_proxy=False) == "10.0.0.9"
+
+    def test_real_ip_used_when_trusted(self):
+        req = _request({"X-Real-IP": "6.6.6.6"})
+        assert client_ip(req, trust_proxy=True) == "6.6.6.6"
+
+    def test_trusted_but_header_absent_falls_back_to_peer(self):
+        assert client_ip(_request({}), trust_proxy=True) == "10.0.0.9"
+
+    def test_no_peer_is_unknown(self):
+        req = _request({})
+        req.scope["client"] = None
+        assert client_ip(req, trust_proxy=False) == "unknown"

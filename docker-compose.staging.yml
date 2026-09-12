@@ -50,6 +50,10 @@ services:
       APP_VERSION: ${APP_VERSION:-staging}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      # Rate limiting (#483): nginx fronts this container and sets X-Real-IP from
+      # $remote_addr, so the limiter may key anonymous requests on it. Without this
+      # every anonymous request behind nginx shares nginx's container IP as its bucket.
+      RATE_LIMIT_TRUST_PROXY: "true"
 
       # Database (MongoDB Atlas — values come from .env.staging)
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}

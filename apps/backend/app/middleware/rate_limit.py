@@ -11,7 +11,10 @@ request, cheapest first:
 2. Session ``Authorization: Bearer`` token → the authenticated user id, with the
    default per-user budget.
 3. Otherwise the client IP, with the same default budget (guards unauthenticated
-   floods, e.g. against auth endpoints).
+   floods, e.g. against auth endpoints). The IP is the socket peer unless
+   ``RATE_LIMIT_TRUST_PROXY`` is set, in which case it is ``X-Real-IP`` — the header
+   nginx sets from ``$remote_addr`` and *overwrites*. ``X-Forwarded-For`` is never
+   read: nginx *appends* to it, so element ``[0]`` is client-controlled (#483).
 
 Over-budget requests get a ``429`` with a ``Retry-After`` header and never reach
 the route handler. Allowed requests carry ``X-RateLimit-*`` headers when the
@@ -46,6 +49,23 @@ _API_V1_PREFIX = "/api/v1"
 _APIKEY_AUTH_PREFIX = "/api/v1/production/v1/models"
 
 
+def client_ip(request: Request, *, trust_proxy: bool) -> str:
+    """The identity an unauthenticated request is bucketed under.
+
+    ``X-Real-IP`` is honoured only behind a declared trusted proxy: nginx sets it
+    from ``$remote_addr`` and overwrites any client-sent value, so there it is
+    authoritative — without the proxy it is as forgeable as any other header.
+    ``X-Forwarded-For`` is deliberately never consulted: nginx appends to it, so
+    its first element is whatever the client chose, under either setting (#483).
+    ``tests/test_security/test_nginx_real_ip.py`` pins the nginx side of this.
+    """
+    if trust_proxy:
+        real_ip = request.headers.get("x-real-ip", "").strip()
+        if real_ip:
+            return real_ip
+    return request.client.host if request.client else "unknown"
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Fixed-window rate limiting for all ``/api/v1`` routes."""
 
@@ -58,7 +78,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         default_requests: int | None = None,
         default_window_seconds: int | None = None,
         apikey_window_seconds: int | None = None,
-        trust_forwarded_for: bool | None = None,
+        trust_proxy: bool | None = None,
         apikey_auth_prefix: str = _APIKEY_AUTH_PREFIX,
     ) -> None:
         super().__init__(app)
@@ -82,10 +102,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if apikey_window_seconds is None
             else apikey_window_seconds
         )
-        self._trust_forwarded_for = (
-            settings.RATE_LIMIT_TRUST_FORWARDED_FOR
-            if trust_forwarded_for is None
-            else trust_forwarded_for
+        self._trust_proxy = (
+            settings.RATE_LIMIT_TRUST_PROXY if trust_proxy is None else trust_proxy
         )
         self._apikey_auth_prefix = apikey_auth_prefix
 
@@ -150,20 +168,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # 3. Client IP fallback.
         return (
-            f"ip:{self._client_ip(request)}",
+            f"ip:{client_ip(request, trust_proxy=self._trust_proxy)}",
             self._default_requests,
             self._default_window,
         )
-
-    def _client_ip(self, request: Request) -> str:
-        # Only honour X-Forwarded-For when explicitly trusted (app behind a proxy
-        # that overwrites it); otherwise it is attacker-controlled and lets an
-        # anonymous caller forge a fresh bucket per request. See settings.
-        if self._trust_forwarded_for:
-            forwarded = request.headers.get("x-forwarded-for")
-            if forwarded:
-                return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
 
     async def _identity_from_api_key(
         self, raw_key: str
