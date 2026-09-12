@@ -214,6 +214,12 @@ class S3Service:
     def bucket_name(self, value: str) -> None:
         self._bucket_override = value
 
+    @bucket_name.deleter
+    def bucket_name(self) -> None:
+        # unittest.mock.patch(obj, "bucket_name", ...) restores by deleting the
+        # instance attribute it set; clearing the pin is what "delete" means here.
+        self._bucket_override = None
+
     def get_file_url(self, file_key: str) -> str:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
