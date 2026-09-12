@@ -74,3 +74,19 @@ def test_when_name_and_values_disagree_the_values_name_the_type():
     assert len(detections) == 1
     assert detections[0].pii_type == PIIType.SSN
     assert detections[0].confidence > HIGH_RISK_CONFIDENCE
+
+
+def test_the_best_matching_pattern_wins_not_the_first_declared():
+    import re
+
+    detector = PIIDetector()
+    # Declaration order: a loose pattern first that clears the 10% floor on one
+    # value, then the real one that matches every value.
+    detector.patterns = {
+        PIIType.PHONE: re.compile(r"^9"),
+        PIIType.SSN: re.compile(r"\d{3}-\d{2}-\d{4}"),
+    }
+    detections = detector.detect_pii_in_dataframe(pd.DataFrame({"code": SSNS}))
+    assert len(detections) == 1
+    assert detections[0].pii_type == PIIType.SSN
+    assert detections[0].sample_count == 4

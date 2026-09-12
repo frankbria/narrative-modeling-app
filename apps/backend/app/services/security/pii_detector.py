@@ -123,23 +123,33 @@ class PIIDetector:
         return None
     
     def _check_patterns(self, column_name: str, data: pd.Series) -> PIIDetection | None:
-        """Check data patterns for PII"""
+        """Check data patterns for PII.
+
+        Every pattern is scored and the best match rate wins (#608): the first
+        pattern in declaration order used to win as soon as it cleared the 10%
+        floor, which was harmless while name-matched columns never got here and
+        is not now that every column does.
+        """
+        best: tuple[float, PIIType, int] | None = None
         for pii_type, pattern in self.patterns.items():
             matches = data.apply(lambda x: bool(pattern.match(str(x))))
-            match_count = matches.sum()
-            
-            if match_count > 0:
-                confidence = match_count / len(data)
-                if confidence > 0.1:  # More than 10% matches
-                    return PIIDetection(
-                        column_name=column_name,
-                        pii_type=pii_type,
-                        confidence=confidence,
-                        sample_count=match_count,
-                        recommendation=self._get_recommendation(pii_type, confidence)
-                    )
-        return None
-    
+            match_count = int(matches.sum())
+            if match_count == 0:
+                continue
+            confidence = match_count / len(data)
+            if confidence > 0.1 and (best is None or confidence > best[0]):  # More than 10% matches
+                best = (confidence, pii_type, match_count)
+        if best is None:
+            return None
+        confidence, pii_type, match_count = best
+        return PIIDetection(
+            column_name=column_name,
+            pii_type=pii_type,
+            confidence=confidence,
+            sample_count=match_count,
+            recommendation=self._get_recommendation(pii_type, confidence)
+        )
+
     def _get_recommendation(self, pii_type: PIIType, confidence: float) -> str:
         """Get recommendation based on PII type and confidence"""
         if confidence > HIGH_RISK_CONFIDENCE:
