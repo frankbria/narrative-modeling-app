@@ -332,7 +332,11 @@ def _allowed_bucket() -> str | None:
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+    # One precedence for readers and writers (#567 AC4): resolve_s3_bucket() already
+    # walks every historical name (AWS_S3_BUCKET included). Preferring AWS_S3_BUCKET
+    # here while S3Service preferred AWS_BUCKET_NAME meant a deployment that set the
+    # two to different values wrote to one bucket and refused to read from it.
+    return resolve_s3_bucket()
 
 
 def require_allowed_bucket(bucket_name: str) -> None:
@@ -384,4 +388,3 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
     except Exception as e:
         logger.error(f"Error downloading file from S3: {e}")
         raise
-
