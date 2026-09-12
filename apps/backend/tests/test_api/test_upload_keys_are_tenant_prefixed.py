@@ -17,6 +17,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 
+import app.api.routes.datasets as datasets_module
 from app.api.routes import secure_upload as secure_upload_module
 from app.api.routes import upload as upload_module
 
@@ -36,12 +37,16 @@ def s3_keys(monkeypatch):
     """Substitute the S3 write in BOTH route modules, recording every key."""
     keys: list[str] = []
 
-    def fake_upload(content: bytes, s3_filename: str, content_type: str | None = None):
+    def fake_upload(*args, **kwargs):
+        # /upload/* call (content, key, content_type) positionally; /datasets/upload
+        # calls with keywords (file_content=, s3_filename=, content_type=).
+        s3_filename = kwargs["s3_filename"] if "s3_filename" in kwargs else args[1]
         keys.append(s3_filename)
         return True, f"s3://test-bucket/{s3_filename}"
 
     monkeypatch.setattr(secure_upload_module, "upload_file_to_s3", fake_upload)
     monkeypatch.setattr(upload_module, "upload_file_to_s3", fake_upload)
+    monkeypatch.setattr(datasets_module, "upload_file_to_s3", fake_upload)
     # /upload/ refuses to run without these names set; the values are never used
     # because the S3 call above is substituted.
     for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
@@ -139,3 +144,23 @@ class TestEveryDatasetWriterUsesTheOwnerPrefix:
         import app.utils.schema_inference as schema_inference
 
         assert not hasattr(schema_inference, "generate_s3_filename")
+
+
+DATASETS_KEY_RE = re.compile(
+    r"^datasets/" + re.escape(TENANT) + r"/dataset_[0-9a-f]{16}_passwd\.csv$"
+)
+
+
+class TestDatasetsUploadKey:
+    """/datasets/upload keys by dataset_id + the client filename; the filename
+    component is normalised (#585), so a traversal name cannot shape the key."""
+
+    @pytest.mark.asyncio
+    async def test_client_filename_component_is_sanitised(self, client, s3_keys):
+        response = await client.post(
+            "/api/v1/datasets/upload", files=_file(b"id,name\n1,a\n2,b\n", name="../../etc/passwd.csv")
+        )
+        assert response.status_code == 200, response.text
+        assert len(s3_keys) == 1, s3_keys
+        assert DATASETS_KEY_RE.match(s3_keys[0]), s3_keys[0]
+        assert ".." not in s3_keys[0]
