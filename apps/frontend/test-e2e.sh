@@ -43,7 +43,12 @@ check_port_in_use() {
 stop_tree() {
     local pid=$1
     [ -n "$pid" ] || return 0
-    pkill -TERM -P "$pid" 2>/dev/null || true
+    # Recurse first: `next dev` is itself a wrapper around `next-server`, so one
+    # level of children is not enough.
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        stop_tree "$child"
+    done
     kill "$pid" 2>/dev/null || true
 }
 
