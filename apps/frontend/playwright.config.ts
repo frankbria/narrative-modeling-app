@@ -79,6 +79,13 @@ export default defineConfig({
       name: 'chromium-full',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /.*\.spec\.ts/,
+      testIgnore: /onboarding\.spec\.ts/, // same isolation as the smoke project
+    },
+    {
+      name: 'chromium-full-onboarding',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /onboarding\.spec\.ts/,
+      dependencies: ['chromium-full'],
     },
 
     // Full suite: Firefox (optional, run on demand)

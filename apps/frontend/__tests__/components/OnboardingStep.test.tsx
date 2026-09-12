@@ -297,3 +297,15 @@ describe('OnboardingStep', () => {
     expect(screen.getByText('Step 1')).toHaveClass('bg-blue-100', 'text-blue-800');
   });
 });
+describe('OnboardingStep — navigation goes through the router (#550)', () => {
+  it.each([
+    ['upload_data', 'Upload CSV File', '/upload'],
+    ['explore_data', 'Explore Your Data', '/explore'],
+    ['train_model', 'Start Training', '/model'],
+    ['make_predictions', 'Make Predictions', '/predict'],
+  ])('%s: "%s" pushes %s', (stepType, label, path) => {
+    render(<OnboardingStep {...mockProps} step={{ ...mockStep, step_id: stepType, step_type: stepType }} />);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
+    expect((global as unknown as { __NEXT_ROUTER_MOCKS__: { push: jest.Mock } }).__NEXT_ROUTER_MOCKS__.push).toHaveBeenCalledWith(path);
+  });
+});
