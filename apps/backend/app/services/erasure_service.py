@@ -94,11 +94,12 @@ def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
     if not url_or_key:
         return None
     if not url_or_key.startswith(_URL_SCHEMES):
-        # Already a key (e.g. file_path). A *prefix* test, not `"://" in ...`: keys
-        # are built from client filenames in places, and "notes http://x.csv" is a
-        # legitimate key that must not be handed to the URL parser (which would
-        # fail, return None here, and skip the delete with no failure recorded).
-        return url_or_key.split("?", 1)[0] or None
+        # Already a key (e.g. file_path): pass it through UNCHANGED. Keys are built
+        # from client filenames in places (datasets.py), so "notes http://x.csv" and
+        # "what?.csv" are legitimate keys — a prefix test keeps the first out of the
+        # URL parser, and no query-string trimming keeps the second whole. Either
+        # mistake makes delete_object miss and the erasure report success anyway.
+        return url_or_key
     try:
         _, key = parse_s3_url(url_or_key)
     except ValueError:

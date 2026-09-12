@@ -49,6 +49,12 @@ async def client(setup_database, real_s3_env, monkeypatch) -> AsyncGenerator:
     async def noop(*args, **kwargs):
         return None
 
+    # Both background summary entry points: /secure schedules
+    # generate_dataset_summary (imported inside the handler, so patch the source
+    # module), /confirm and chunked schedule generate_ai_summary_safe.
+    import app.utils.ai_summary as ai_summary
+
+    monkeypatch.setattr(ai_summary, "generate_dataset_summary", noop)
     monkeypatch.setattr(secure_upload_module, "generate_ai_summary_safe", noop)
 
     async def override() -> str:
@@ -92,8 +98,20 @@ async def test_erasing_a_secure_upload_removes_its_object(client, s3_client, rea
     # A fresh service instance picks up the LocalStack environment set above.
     service = DatasetErasureService()
     assert not service.s3_service.is_mock_mode
+    # The "s3" circuit breaker is a process-wide singleton. Earlier integration
+    # tests in the same run can trip it (failed S3 calls elsewhere), and erasure
+    # then swallows the open-breaker error into the manifest as a delete failure —
+    # which is what a first CI run of this test reported. Start it closed.
+    from app.utils.circuit_breaker import get_circuit_breaker
+
+    get_circuit_breaker("s3").reset()
     manifest = await service.erase_dataset(file_id, USER)
 
     assert await UserData.get(file_id) is None
-    assert _keys(s3_client, bucket) == set(), "the /secure object survived erasure"
-    assert manifest is not None
+    assert _keys(s3_client, bucket) == set(), (
+        "the /secure object survived erasure: "
+        f"s3_objects_deleted={manifest.s3_objects_deleted} failures={manifest.failures} "
+        f"notes={manifest.notes} stored_url={stored.s3_url!r} "
+        f"service_bucket={service.s3_service.bucket_name!r} "
+        f"endpoint={service.s3_service.s3_client.meta.endpoint_url!r}"
+    )

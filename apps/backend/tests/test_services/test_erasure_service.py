@@ -51,8 +51,12 @@ class TestS3KeyDerivation:
     def test_s3_url_with_query_and_fragment(self):
         assert _s3_key("s3://bucket/datasets/u/f.csv?versionId=1#x", "bucket") == "datasets/u/f.csv"
 
-    def test_bare_key_with_stray_query_is_trimmed(self):
-        assert _s3_key("datasets/u/f.csv?X-Amz-Signature=abc", "bucket") == "datasets/u/f.csv"
+    def test_bare_key_containing_a_question_mark_is_not_truncated(self):
+        # `?` is legal in an S3 key and datasets.py puts the raw client filename in
+        # file_path; trimming at `?` (an earlier revision of this PR) would delete
+        # "…/ds1_what" — a key that does not exist — and report success.
+        key = "datasets/u1/ds1_what?.csv"
+        assert _s3_key(key, "bucket") == key
 
     def test_bare_key_containing_a_url_mid_string_is_still_a_key(self):
         # Keys are built from client filenames in places; "://" inside one must not

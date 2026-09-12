@@ -140,6 +140,8 @@ def dataset_s3_key(user_id: str, original_filename: str, *, masked: bool = False
     dataset object must build its key here; there is deliberately no helper that
     can express a key without the owner.
     """
+    # ``user_id`` is trusted as-is: it comes from the verified JWT / API key, never
+    # from the request body, so it is the one input here that needs no sanitising.
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else ""
     ext = re.sub(r"[^a-z0-9]", "", ext)
     name = f"{'masked_' if masked else ''}{uuid.uuid4()}"

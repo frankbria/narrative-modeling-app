@@ -56,8 +56,14 @@ def no_ai_summary(monkeypatch):
     async def noop(*args, **kwargs):
         return None
 
+    # Three entry points: /secure schedules generate_dataset_summary via an import
+    # inside the handler (patch the source module); /upload/ imports it at module
+    # level (patch its binding); /confirm and chunked schedule generate_ai_summary_safe.
+    import app.utils.ai_summary as ai_summary
+
+    monkeypatch.setattr(ai_summary, "generate_dataset_summary", noop)
+    monkeypatch.setattr(upload_module, "generate_dataset_summary", noop)
     monkeypatch.setattr(secure_upload_module, "generate_ai_summary_safe", noop)
-    monkeypatch.setattr(upload_module, "generate_ai_summary_safe", noop, raising=False)
 
 
 @pytest_asyncio.fixture

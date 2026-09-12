@@ -113,6 +113,9 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \
 ```
 
 Exit status is 1 while any object remains unreconciled (planned-but-not-applied,
-orphaned, conflicting owners, or a failed copy). Tested end-to-end against
+orphaned, conflicting owners, or a failed step). Attribution scans every
+`user_data` and `dataset_metadata` row (there is no server-side filter by key), so
+runtime scales with total row count, not with the number of unprefixed objects —
+a dry run followed by `--apply` is two full scans. Tested end-to-end against
 LocalStack in `tests/test_scripts/test_reconcile_unprefixed_s3_keys.py`.
 
