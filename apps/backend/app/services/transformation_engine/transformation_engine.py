@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from app.middleware.error_handlers import internal_error_message
+
 # Import canonical TransformationType from models - SINGLE SOURCE OF TRUTH
 from app.models.transformation import TransformationType
 from app.schemas.transformation import TransformationStepRequest
@@ -357,11 +359,11 @@ class TransformationEngine:
                 success=False,
                 error=f"Invalid parameters: {str(e)}"
             )
-        except Exception as e:
-            logger.error(f"Transformation validation failed: {str(e)}")
+        except Exception:
+            logger.exception("Transformation validation failed")
             return TransformationResult(
                 success=False,
-                error=f"Validation error: {str(e)}"
+                error=internal_error_message("Transformation validation"),  # never str(e) (#637)
             )
 
     def preview_transformation(
@@ -411,11 +413,11 @@ class TransformationEngine:
                 warnings=validation_result.warnings
             )
 
-        except Exception as e:
-            logger.error(f"Preview transformation failed: {str(e)}")
+        except Exception:
+            logger.exception("Preview transformation failed")
             return TransformationResult(
                 success=False,
-                error=str(e)
+                error=internal_error_message("Transformation preview"),  # never str(e) (#637)
             )
     
     def apply_transformation(
@@ -490,11 +492,13 @@ class TransformationEngine:
                 warnings=warnings
             )
 
-        except Exception as e:
-            logger.error(f"Apply transformation failed: {str(e)}")
+        except Exception:
+            # ``error`` travels into 200 bodies via the fix engine's OperationError
+            # and the transformation routes; never str(e) here (#637).
+            logger.exception("Apply transformation failed")
             return TransformationResult(
                 success=False,
-                error=str(e)
+                error=internal_error_message("Transformation"),
             )
     
     def _calculate_stats(self, df: pd.DataFrame) -> dict[str, Any]:

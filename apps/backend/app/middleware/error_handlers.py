@@ -55,6 +55,19 @@ _GENERIC_5XX_BY_STATUS = {
 }
 
 
+def internal_error_message(what: str) -> str:
+    """A fixed, client-safe sentence for a handler that reports failure in a 2xx body.
+
+    Routes that answer ``200 {"success": false, "error": ...}`` bypass the 5xx
+    sanitiser above, and ``str(e)`` there hands S3 keys, driver text and library
+    internals to the client (#637). The reference is the request id the
+    middleware stamped, so the operator can find the logged traceback; the
+    caller logs it with ``logger.exception`` before returning this.
+    """
+    rid = request_id_ctx.get() or "n/a"
+    return f"{what} failed because of an internal error (reference {rid})"
+
+
 def _request_id(request: Request) -> str:
     """Request id set by the middleware; fall back to a fresh one defensively."""
     rid = getattr(request.state, "request_id", None)

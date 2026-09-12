@@ -765,7 +765,9 @@ class TestErrorHandling:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["success"] is False
-                assert "S3 connection failed" in data["error"]
+                # #637: internals never reach the client; the reference is the request id.
+                assert "S3 connection failed" not in data["error"]
+                assert response.headers["X-Request-ID"] in data["error"]
     
     @pytest.mark.asyncio
     async def test_handle_invalid_transformation_type(self, authorized_client, mock_user_data, mock_s3_operations):

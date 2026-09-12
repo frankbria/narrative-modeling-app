@@ -11,6 +11,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.middleware.error_handlers import internal_error_message
 from app.models.user_data import UserData
 from app.schemas.transformation import (
     AutoCleanRequest,
@@ -155,11 +156,11 @@ async def preview_transformation(
             success=False,
             error=e.message
         )
-    except Exception as e:
-        logger.error(f"Preview transformation failed: {str(e)}")
+    except Exception:
+        logger.exception("Preview transformation failed")
         return TransformationPreviewResponse(
             success=False,
-            error=str(e)
+            error=internal_error_message("Preview transformation")
         )
 
 
@@ -204,14 +205,14 @@ async def apply_transformation(
             execution_time_ms=0,
             error=e.message
         )
-    except Exception as e:
-        logger.error(f"Apply transformation failed: {str(e)}")
+    except Exception:
+        logger.exception("Apply transformation failed")
         return TransformationApplyResponse(
             success=False,
             dataset_id=request.dataset_id,
             transformation_id="",
             execution_time_ms=0,
-            error=str(e)
+            error=internal_error_message("Apply transformation")
         )
 
 
@@ -315,14 +316,14 @@ async def apply_transformation_pipeline(
         
     except HTTPException:
         raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
-    except Exception as e:
-        logger.error(f"Apply pipeline failed: {str(e)}")
+    except Exception:
+        logger.exception("Apply pipeline failed")
         return TransformationApplyResponse(
             success=False,
             dataset_id=request.dataset_id,
             transformation_id="",
             execution_time_ms=0,
-            error=str(e)
+            error=internal_error_message("Apply pipeline")
         )
 
 
@@ -378,11 +379,11 @@ async def validate_transformations(
         
     except HTTPException:
         raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
-    except Exception as e:
-        logger.error(f"Validation failed: {str(e)}")
+    except Exception:
+        logger.exception("Validation failed")
         return ValidationResponse(
             is_valid=False,
-            errors=[str(e)]
+            errors=[internal_error_message("Validation")]
         )
 
 
@@ -446,14 +447,14 @@ async def auto_clean_dataset(
         
     except HTTPException:
         raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
-    except Exception as e:
-        logger.error(f"Auto-clean failed: {str(e)}")
+    except Exception:
+        logger.exception("Auto-clean failed")
         return TransformationApplyResponse(
             success=False,
             dataset_id=request.dataset_id,
             transformation_id="",
             execution_time_ms=0,
-            error=str(e)
+            error=internal_error_message("Auto-clean")
         )
 
 
@@ -1657,12 +1658,12 @@ async def preview_bulk_transformation(
             column_previews=[],
             error=e.message
         )
-    except Exception as e:
-        logger.exception(f"Error previewing bulk transformation: {e}")
+    except Exception:
+        logger.exception("Bulk transformation preview failed")
         return BulkTransformationPreviewResponse(
             success=False,
             column_previews=[],
-            error=str(e)
+            error=internal_error_message("Bulk transformation preview"),
         )
 
 

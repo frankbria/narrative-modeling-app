@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 from beanie import PydanticObjectId
 
+from app.middleware.error_handlers import internal_error_message
 from app.models.bulk_transformation import (
     BulkJobStatus,
     BulkTransformationJob,
@@ -312,8 +313,8 @@ class BulkTransformationService:
                     else:
                         failed += 1
 
-                except Exception as e:
-                    logger.error(f"Preview failed for column {column}: {e}")
+                except Exception:
+                    logger.exception(f"Preview failed for column {column}")
                     column_previews.append({
                         "column_name": column,
                         "success": False,
@@ -321,7 +322,8 @@ class BulkTransformationService:
                         "stats_before": None,
                         "stats_after": None,
                         "affected_rows": 0,
-                        "error": str(e),
+                        # Returned inside a 200 body; never str(e) (#637).
+                        "error": internal_error_message(f"Preview for column {column!r}"),
                         "warnings": [],
                     })
                     failed += 1
@@ -338,9 +340,9 @@ class BulkTransformationService:
             }
 
         except Exception as e:
-            logger.error(f"Bulk preview failed: {e}")
+            logger.exception("Bulk preview failed")
             raise OperationError(
-                message="Failed to preview bulk transformation",
+                message=internal_error_message("Bulk transformation preview"),
                 operation="preview_bulk_transformation",
                 original_error=e,
                 details={"dataset_id": dataset_id}
@@ -594,9 +596,10 @@ class BulkTransformationService:
 
             await job.save()
 
-        except Exception as e:
-            logger.exception(f"Bulk transformation job {job.job_id} failed: {e}")
-            job.mark_failed(str(e))
+        except Exception:
+            logger.exception(f"Bulk transformation job {job.job_id} failed")
+            # error_message is read back verbatim by the job-status route (#637).
+            job.mark_failed(internal_error_message("Bulk transformation job"))
             await job.save()
 
     async def _apply_column_transformation(
@@ -665,14 +668,14 @@ class BulkTransformationService:
                     stats_after=None,
                 )
 
-        except Exception as e:
+        except Exception:
             execution_time_ms = int((time.time() - start_time) * 1000)
-            logger.error(f"Failed to apply transformation to column {column}: {e}")
+            logger.exception(f"Failed to apply transformation to column {column}")
             return df, ColumnResult(
                 column_name=column,
                 success=False,
                 affected_rows=0,
-                error=str(e),
+                error=internal_error_message(f"Transformation of column {column!r}"),
                 warnings=[],
                 execution_time_ms=execution_time_ms,
             )

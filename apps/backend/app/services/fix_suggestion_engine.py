@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.middleware.error_handlers import internal_error_message
 from app.models.data_issue import (
     AppliedFix,
     DataIssue,
@@ -494,12 +495,10 @@ class FixSuggestionEngine:
                 "warnings": result.warnings,
             }
 
-        except Exception as e:
-            logger.error(f"Fix preview failed: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+        except Exception:
+            logger.exception("Fix preview failed")
+            # The route copies this into a 200 body; never str(e) here (#637).
+            return {"success": False, "error": internal_error_message("Fix preview")}
 
     def apply_fix(
         self,
@@ -576,9 +575,10 @@ class FixSuggestionEngine:
         except OperationError:
             raise
         except Exception as e:
-            logger.error(f"Apply fix failed: {str(e)}")
+            logger.exception("Apply fix failed")
+            # OperationError.message is shown to the client as-is (#637).
             raise OperationError(
-                message=f"Failed to apply fix: {str(e)}",
+                message=internal_error_message("Apply fix"),
                 operation="apply_fix",
                 original_error=e
             )
