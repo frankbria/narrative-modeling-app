@@ -30,7 +30,7 @@ check_port_in_use() {
     # dev server from an earlier run keep the port while the new one bound the
     # next free port — and every spec then hit the old server's environment (#613).
     if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1 \
-        || (command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE "[:.]${port} "); then
+        || (command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE ":${port} "); then
         return 0  # Port is in use
     else
         return 1  # Port is free
@@ -50,6 +50,14 @@ stop_tree() {
         stop_tree "$child"
     done
     kill "$pid" 2>/dev/null || true
+    # TERM first, then a short grace, then KILL: a server that ignores TERM would
+    # otherwise outlive the script and hold the port for the next run.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.5
+    done
+    kill -9 "$pid" 2>/dev/null || true
 }
 
 # Function to kill processes on a port

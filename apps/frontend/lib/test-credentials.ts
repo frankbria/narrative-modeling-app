@@ -25,6 +25,8 @@ export function resolveTestAdmin(
   const adminEmail = env.TEST_ADMIN_EMAIL;
   const adminSecret = env.TEST_ADMIN_PASSWORD;
   if (!adminEmail || !adminSecret || !email || !secret) return null;
+  // Plain comparison, like the test-user check beside it: this provider exists
+  // only in development/test builds, so timing safety buys nothing here.
   if (email !== adminEmail || secret !== adminSecret) return null;
   return { id: 'test-admin-12345', email: adminEmail, name: 'Test Admin', image: null };
 }
