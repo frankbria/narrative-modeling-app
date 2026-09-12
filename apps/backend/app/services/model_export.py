@@ -4,6 +4,7 @@ Model export service for converting trained models to various formats
 import json
 import os
 import pickle
+import shutil
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -103,6 +104,12 @@ class ModelExportService:
                 "PMML export requires sklearn2pmml and a Java runtime; neither is installed on "
                 "this deployment"
             ) from None
+        if shutil.which("java") is None:
+            # sklearn2pmml shells out to JPMML; without a JRE the conversion fails with a
+            # generic error the route would report as 400 — it is an unavailable format (codex)
+            raise ExportFormatUnavailable(
+                "PMML export requires a Java runtime, which is not installed on this deployment"
+            )
         trained_model, _ = await self.model_storage.load_model(model.model_id, user_id)
         
         try:

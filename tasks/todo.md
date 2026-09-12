@@ -21,8 +21,8 @@ Plan source: self-authored; approved autonomously (no architectural fork; the is
 4. [ ] Docs: CLAUDE.md gotcha
 
 ## Acceptance criteria
-- [ ] AC1 load_model(model_id, user_id), tuple unpacked
-- [ ] AC2 authenticated user; foreign → 404
-- [ ] AC3 tests on the real signature; self-patching test gone; mutation-checked
-- [ ] AC4 ONNX/PMML: optional group + 501 when absent
+- [x] AC1 load_model(model_id, user_id), tuple unpacked
+- [x] AC2 authenticated user; foreign → 404
+- [x] AC3 tests on the real signature; self-patching test gone; mutation-checked
+- [x] AC4 ONNX/PMML: optional group + 501 when absent
 - [ ] AC5 Docker ZIP complete; image built once

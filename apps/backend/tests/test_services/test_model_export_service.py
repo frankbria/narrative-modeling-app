@@ -189,6 +189,22 @@ class TestOptionalFormats:
                 await export_service.export_model_pmml(MODEL_ID, USER)
 
     @pytest.mark.asyncio
+    async def test_pmml_without_a_java_runtime_is_unavailable(self, export_service, mock_model):
+        """codex: the package can be importable while the JRE it shells out to is missing."""
+        import sys
+        import types
+
+        fake = types.ModuleType("sklearn2pmml")
+        fake.sklearn2pmml = lambda *a, **k: None  # type: ignore[attr-defined]
+        fake_pipeline = types.ModuleType("sklearn2pmml.pipeline")
+        fake_pipeline.PMMLPipeline = object  # type: ignore[attr-defined]
+        with _found(mock_model), patch.dict(sys.modules, {"sklearn2pmml": fake, "sklearn2pmml.pipeline": fake_pipeline}), \
+             patch("app.services.model_export.shutil.which", return_value=None):
+            with pytest.raises(ExportFormatUnavailable, match="Java runtime"):
+                await export_service.export_model_pmml(MODEL_ID, USER)
+        export_service.model_storage.load_model.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_onnx_export_when_installed(self, export_service, mock_model, trained_model):
         """Runs only where the `export` dependency group is installed."""
         pytest.importorskip("skl2onnx")
