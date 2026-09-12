@@ -1,18 +1,17 @@
-# Issue #565 — [P3.10] [security] ABTest.experiment_id is not unique, so track-prediction's authorization rests on a convention
+# Issue #585 — [P3.18] [security] Upload routes store the client filename verbatim
 
-Plan source: self-authored. Approved autonomously — AC3 offers index-or-scope; do both (the issue says both is better). No fork.
+Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate reject-vs-normalise decision: normalise (Excel/CSV exporters produce odd names; rejection has a real false-positive cost, and a stored-alongside raw copy keeps the trap). No fork.
 
 ## Findings
-- `ABTest.experiment_id: Annotated[str, Indexed()]` — indexed, not unique; ids are `exp_<ObjectId>` from a helper, so duplicates are unreachable through the API but not forbidden by the database.
-- Route `/track-prediction` authorizes on `(experiment_id, user_id)` then `ABTestingService.track_prediction` re-fetches by `experiment_id` alone (#559's shape).
+- Writers of `filename`/`original_filename` from client input: `secure_upload.py` (`/secure`, `/confirm-pii-upload`, `/chunked/{id}/complete` via the session's filename), `upload.py:179`, `datasets.py:214` → `UserData` and `DatasetMetadata`. `dataset_s3_key` uses only the extension (#464), so the key is already safe.
+- No consumer builds a header or a path from the fields yet; `data_processing.py` echoes `original_filename` in JSON.
 
 ## Design
-1. `Indexed(unique=True)` on `experiment_id` (Beanie builds it at `init_beanie`).
-2. `ABTestingService.track_prediction(..., user_id)` filters the write-side lookup on the owner too; the route passes `current_user_id`.
-3. AC2: `scripts/check_ab_test_duplicates.py` — one aggregation listing duplicate `experiment_id`s; run it against a collection before deploying (index build fails at startup otherwise). Local test DB: reported in the PR.
-4. Tests: second insert with the same `experiment_id` → `DuplicateKeyError`; service refuses another tenant's experiment even when handed its id.
+1. `app/utils/filenames.py::sanitize_filename(name, max_length=255)`: basename after `/` and `\`, control characters (incl. CR/LF, NUL) removed, leading dots/whitespace stripped, empty → `upload`, length capped preserving the extension.
+2. Enforce at the point every writer meets: `field_validator` on `UserData.filename/original_filename` and `DatasetMetadata.filename/original_filename` — one place covers the three routes named, the two others, and any future writer. The stored name *is* the sanitised one (no raw copy).
+3. Tests: unit table for the sanitiser; model round-trip (`../../etc/passwd.csv`, `a\r\nb.csv`, 300-char name) for both documents; chunked complete end-to-end stores the sanitised name.
 
 ## Steps
-- [x] RED tests
-- [x] model + service + route + script
-- [x] gate → PR #645 → demo → CI → merge; operator follow-up #646
+- [ ] RED tests
+- [ ] sanitiser + validators
+- [ ] gate → PR → demo → CI → merge

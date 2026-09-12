@@ -12,6 +12,8 @@ from typing import Annotated, Any
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field, field_validator
 
+from app.utils.filenames import SafeFilename
+
 
 def get_current_time() -> datetime:
     """Get current UTC time for default timestamps."""
@@ -103,8 +105,9 @@ class DatasetMetadata(Document):
     dataset_id: Annotated[str, Indexed()] = Field(..., description="Unique dataset identifier")
 
     # File metadata
-    filename: str = Field(..., description="Storage filename (may be generated)")
-    original_filename: str = Field(..., description="Original filename from upload")
+    filename: SafeFilename = Field(..., description="Storage filename (may be generated)")
+    original_filename: SafeFilename = Field(..., description="Original filename from upload (normalised, #585)")
+
     file_type: str = Field(..., description="File type: csv, excel, json, parquet")
     file_path: str = Field(..., description="Storage path (e.g., S3 key)")
     s3_url: str = Field(..., description="S3 URL for file access")
@@ -152,6 +155,10 @@ class DatasetMetadata(Document):
 
     class Settings:
         name = "dataset_metadata"
+        # Re-run the field validators on save()/replace() (#585): a route that
+        # setattr()s a client value onto a loaded document would otherwise skip
+        # them — Pydantic validates on construction, not on assignment.
+        validate_on_save = True
         indexes = [
             # Single field indexes for basic queries
             "user_id",

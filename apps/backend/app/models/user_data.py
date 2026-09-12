@@ -6,6 +6,8 @@ from typing import Any
 from beanie import Document, Indexed, PydanticObjectId
 from pydantic import BaseModel, Field
 
+from app.utils.filenames import SafeFilename
+
 
 def get_current_time() -> datetime:
     return datetime.now(UTC)
@@ -38,8 +40,9 @@ class UserData(Document):
     """Model for storing user uploaded data metadata"""
 
     user_id: str = Indexed(str)
-    filename: str
-    original_filename: str  # Original filename from upload
+    filename: SafeFilename
+    original_filename: SafeFilename  # client filename, normalised at ingestion (#585)
+
     s3_url: str
     num_rows: int
     num_columns: int
@@ -74,6 +77,10 @@ class UserData(Document):
 
     class Settings:
         name = "user_data"
+        # Re-run the field validators on save()/replace() (#585): a route that
+        # setattr()s a client value onto a loaded document would otherwise skip
+        # them — Pydantic validates on construction, not on assignment.
+        validate_on_save = True
         indexes = [
             "user_id",
             "created_at",

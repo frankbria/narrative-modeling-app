@@ -59,6 +59,7 @@ from app.services.model_training.feature_selection_service import (
     FeatureSelectionService,
 )
 from app.services.versioning_service import versioning_service
+from app.utils.filenames import sanitize_filename
 from app.utils.s3 import upload_file_to_s3
 from app.utils.upload_limits import read_upload_capped
 
@@ -178,7 +179,10 @@ async def upload_dataset(
         file_size = len(file_content)
 
         # Upload to S3
-        file_path = f"datasets/{current_user_id}/{dataset_id}_{file.filename}"
+        # The filename component is normalised (#585): the key stays owner-prefixed
+        # and dataset_id-keyed, but a client name can no longer put "..", separators
+        # or control characters into it. (#464's uuid keys cover the /upload routes.)
+        file_path = f"datasets/{current_user_id}/{dataset_id}_{sanitize_filename(file.filename)}"
         success, s3_url = upload_file_to_s3(
             file_content=file_content,
             s3_filename=file_path,
