@@ -8,7 +8,8 @@ import type { MethodComparisonResponse } from '@/lib/services/featureSelection'
 // --- Mocks -----------------------------------------------------------------
 
 jest.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { accessToken: 'mock-token' } })
+  // The minted backend JWT (#527) — never the OAuth provider's accessToken.
+  useSession: () => ({ data: { apiToken: 'mock-token' } })
 }))
 
 jest.mock('@/lib/services/featureSelection', () => {
@@ -132,6 +133,8 @@ describe('FeatureSelection', () => {
 
     await waitFor(() => {
       expect(FeatureSelectionService.compareMethods).toHaveBeenCalledTimes(1)
+      // Third positional argument is the bearer handed to the backend.
+      expect((FeatureSelectionService.compareMethods as jest.Mock).mock.calls[0][2]).toBe('mock-token')
     })
 
     await waitFor(() => {

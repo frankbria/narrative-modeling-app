@@ -41,7 +41,8 @@ interface UseDataIssuesReturn extends UseDataIssuesState {
 
 export function useDataIssues(datasetId: string): UseDataIssuesReturn {
   const { data: session } = useSession()
-  const token = (session as any)?.accessToken || null
+  // The minted backend JWT (#527), never the OAuth provider's token.
+  const token = session?.apiToken ?? null
 
   const [state, setState] = useState<UseDataIssuesState>({
     issues: [],
