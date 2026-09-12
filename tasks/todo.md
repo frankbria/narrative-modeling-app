@@ -14,6 +14,6 @@ Plan source: self-authored. Approved autonomously — the only design question i
 4. CLAUDE.md `/admin` bullet: the smoke spec now repeats the hand check.
 
 ## Steps
-- [ ] RED (spec fails: admin identity cannot sign in / no ADMIN_EMAILS)
-- [ ] provider + launcher + spec + docs
-- [ ] gate (jest, tsc, lint cap) → PR → CI e2e-smoke is the demo → merge
+- [x] RED (spec fails: admin identity cannot sign in / no ADMIN_EMAILS)
+- [x] provider + launcher + spec + docs (+ launcher port check, process-tree shutdown, fixture skipOnboarding after review and CI)
+- [x] gate (jest, tsc, lint cap) → PR #650 → CI e2e-smoke is the demo → merge
