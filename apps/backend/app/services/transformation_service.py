@@ -463,8 +463,10 @@ class TransformationService(BaseService[TransformationConfig]):
             # Get parent version (most recent version for this dataset)
             from app.models.version import DatasetVersion
             from app.services.versioning_service import versioning_service
+            # Owner-scoped (#559): the service now refuses a foreign parent, so an
+            # unscoped "latest" here would turn a stray row into a denial.
             parent_version = await DatasetVersion.find(
-                {"dataset_id": dataset_id}
+                {"dataset_id": dataset_id, "user_id": user_id}
             ).sort("-version_number").first_or_none()
 
             version_id = None

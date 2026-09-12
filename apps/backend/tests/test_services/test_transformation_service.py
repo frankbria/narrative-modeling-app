@@ -148,6 +148,8 @@ class TestApplyTransformationVersioning:
             mock_versioning.create_transformation_version.assert_called_once()
             call_args = mock_versioning.create_transformation_version.call_args
             assert call_args is not None
+            # Parent selection is owner-scoped, not "latest for this dataset_id" (#559)
+            assert mock_find.call_args.args[0] == {"dataset_id": dataset_id, "user_id": user_id}
 
     @pytest.mark.asyncio
     async def test_apply_transformation_updates_s3_url_with_file_path(
