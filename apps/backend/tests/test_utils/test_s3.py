@@ -418,13 +418,18 @@ class TestParseS3UrlRegional:
 class TestAllowedBucket:
     def test_readers_and_writers_agree_when_two_names_differ(self, monkeypatch):
         # claude-review on #621: the allowlist preferred AWS_S3_BUCKET while the
-        # writers' resolver preferred AWS_BUCKET_NAME — set both, differently, and
-        # the app wrote to one bucket and refused to read from it.
-        from app.config import resolve_s3_bucket
+        # writers preferred AWS_BUCKET_NAME — set both, differently, and the app
+        # wrote to one bucket and refused to read from it. Writers now resolve
+        # through configured_bucket(), the readers' own expression.
+        from app.services.s3_service import S3Service
+        from app.utils.s3 import configured_bucket
 
         monkeypatch.setenv("AWS_S3_BUCKET", "allow")
         monkeypatch.setenv("AWS_BUCKET_NAME", "other")
-        assert allowed_bucket() == resolve_s3_bucket()
+        monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)  # mock mode: no client
+        assert allowed_bucket() == "allow"
+        assert configured_bucket() == "allow"
+        assert S3Service().bucket_name == "allow"
 
     def test_explicit_allowlist_var_alone_is_honoured(self, monkeypatch):
         for name in ("AWS_BUCKET_NAME", "S3_BUCKET", "S3_BUCKET_NAME"):

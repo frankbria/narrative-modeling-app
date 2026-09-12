@@ -6,11 +6,11 @@ import tempfile
 
 from botocore.exceptions import ClientError
 
-from app.config import resolve_s3_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
 from app.utils.s3 import (
     allowed_bucket,
     check_object_size,
+    configured_bucket,
     create_s3_client,
     resolve_validated_object,
     validate_object_key,
@@ -144,9 +144,9 @@ class S3Service:
     """Service for S3 operations"""
 
     def __init__(self):
-        # The canonical resolver (#567 AC4); the literal is only for mock-mode
-        # runs with nothing configured, where no read or write ever happens.
-        self.bucket_name = resolve_s3_bucket() or "narrative-modeling-dev"
+        # Same resolution as the readers' allowlist (#567 AC4); the literal is only
+        # for mock-mode runs with nothing configured, where nothing is read or written.
+        self.bucket_name = configured_bucket() or "narrative-modeling-dev"
 
         # Check if we're using test/mock credentials
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")

@@ -109,7 +109,7 @@ def get_s3_client():
     # canonical resolver (#257/#567) so a deployment that sets only AWS_S3_BUCKET or
     # S3_BUCKET_NAME is not refused here while every other reader accepts it.
     missing_vars = [v for v in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") if not os.getenv(v)]
-    if not resolve_s3_bucket():
+    if not configured_bucket():
         missing_vars.append("AWS_BUCKET_NAME (or any S3 bucket variable)")
 
     if missing_vars:
@@ -173,8 +173,8 @@ def upload_file_to_s3(
     if client is None:
         return False, None
 
-    # The one canonical bucket resolver (#567 AC4).
-    bucket_name = resolve_s3_bucket()
+    # Same resolution as the readers' allowlist (#567 AC4).
+    bucket_name = configured_bucket()
     if not bucket_name:
         logger.error("No S3 bucket configured (AWS_BUCKET_NAME or a sibling variable)")
         return False, None
@@ -332,11 +332,20 @@ def _allowed_bucket() -> str | None:
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    # One precedence for readers and writers (#567 AC4): resolve_s3_bucket() already
-    # walks every historical name (AWS_S3_BUCKET included). Preferring AWS_S3_BUCKET
-    # here while S3Service preferred AWS_BUCKET_NAME meant a deployment that set the
-    # two to different values wrote to one bucket and refused to read from it.
-    return resolve_s3_bucket()
+    # The explicit allowlist variable wins, then every historical name via the
+    # canonical resolver. Writers (S3Service, upload_file_to_s3) resolve through
+    # configured_bucket() — this same expression — so readers and writers can
+    # never disagree about which bucket is "ours" (#567 AC4, claude-review).
+    return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+
+
+def configured_bucket() -> str | None:
+    """The deployment's bucket for readers AND writers, or None if unconfigured.
+
+    Same resolution as `allowed_bucket()` without the fail-closed raise, for
+    the write side (uploads, S3Service) and for "is S3 configured" checks.
+    """
+    return _allowed_bucket()
 
 
 def require_allowed_bucket(bucket_name: str) -> None:
