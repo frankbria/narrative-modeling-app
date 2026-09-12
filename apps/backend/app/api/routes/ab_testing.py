@@ -310,12 +310,9 @@ async def track_prediction(
     but cannot double as an authorization boundary.
     """
 
-    # The service below re-fetches by experiment_id alone, so this check only
-    # holds while experiment_ids are unique across tenants. They are: ids are
-    # generated server-side and never accepted from a caller. Anything that
-    # writes ABTest documents directly (an import, a migration, a restore) must
-    # preserve that, or the ownership established here no longer describes the
-    # document written. Tracked as #565.
+    # Belt and braces (#565): experiment_id is unique at the database and the
+    # service scopes its own write to the caller, so this check exists for the
+    # 404, not as the only thing standing between tenants.
     experiment = await ABTest.find_one({
         "experiment_id": experiment_id,
         "user_id": current_user_id
@@ -327,6 +324,7 @@ async def track_prediction(
         experiment_id=experiment_id,
         variant_id=variant_id,
         latency_ms=latency_ms,
+        user_id=current_user_id,
         success=success,
         custom_metrics=custom_metrics
     )
