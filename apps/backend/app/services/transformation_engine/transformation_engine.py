@@ -357,11 +357,11 @@ class TransformationEngine:
                 success=False,
                 error=f"Invalid parameters: {str(e)}"
             )
-        except Exception as e:
-            logger.error(f"Transformation validation failed: {str(e)}")
+        except Exception:
+            logger.exception("Transformation validation failed")
             return TransformationResult(
                 success=False,
-                error=f"Validation error: {str(e)}"
+                error="Validation failed because of an internal error",  # never str(e) (#637)
             )
 
     def preview_transformation(
@@ -411,11 +411,11 @@ class TransformationEngine:
                 warnings=validation_result.warnings
             )
 
-        except Exception as e:
-            logger.error(f"Preview transformation failed: {str(e)}")
+        except Exception:
+            logger.exception("Preview transformation failed")
             return TransformationResult(
                 success=False,
-                error=str(e)
+                error="Preview failed because of an internal error",  # never str(e) (#637)
             )
     
     def apply_transformation(

@@ -125,19 +125,28 @@ class TestDataIssues:
         assert result["success"] is False
         assert "secret-bucket" not in result["error"] and "boom" not in result["error"]
 
-    def test_transformation_engine_catch_all_does_not_echo(self):
+    @pytest.mark.parametrize("method", ["apply_transformation", "preview_transformation"])
+    def test_transformation_engine_catch_alls_do_not_echo(self, method):
+        """Both the validation catch-all (create_transformation raises inside
+        validate_transformation) and the apply/preview catch-all (validation passes,
+        then the transformation blows up) used to return str(e) as result.error."""
         from app.models.transformation import TransformationType
         from app.services.transformation_engine.transformation_engine import (
             TransformationEngine,
+            TransformationResult,
         )
 
         engine = TransformationEngine()
+        ttype = list(TransformationType)[0]
+        df = pd.DataFrame({"a": [" x "]})
         with patch.object(engine, "create_transformation", side_effect=SECRET):
-            result = engine.apply_transformation(
-                df=pd.DataFrame({"a": [" x "]}), transformation_type=list(TransformationType)[0], parameters={}
-            )
-        assert result.success is False
-        assert "secret-bucket" not in (result.error or "") and "boom" not in (result.error or "")
+            via_validation = getattr(engine, method)(df=df, transformation_type=ttype, parameters={})
+        with patch.object(engine, "validate_transformation", return_value=TransformationResult(success=True)), \
+             patch.object(engine, "create_transformation", side_effect=SECRET):
+            via_catch_all = getattr(engine, method)(df=df, transformation_type=ttype, parameters={})
+        for result in (via_validation, via_catch_all):
+            assert result.success is False
+            assert "secret-bucket" not in (result.error or "") and "boom" not in (result.error or "")
 
 
 class TestTransformations:
@@ -169,6 +178,24 @@ class TestTransformations:
              patch("app.services.s3_service.download_file_from_s3", side_effect=SECRET), \
              patch("app.api.routes.transformations.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET, create=True):
             r = await async_authorized_client.post(f"{self.BASE}/{path}", json={"dataset_id": ds.dataset_id, **body})
+        data = r.json()
+        assert data["success"] is False, data
+        _assert_sanitized(r, data["error"])
+
+    @pytest.mark.parametrize("path,body", [
+        ("auto-clean", {}),
+        ("datasets/{id}/bulk-preview", {"selected_columns": ["a"], "transformation_type": "trim_whitespace"}),
+    ])
+    async def test_lookup_failure_hits_the_handlers_own_generic_branch(self, async_authorized_client, setup_database, path, body):
+        """auto-clean and bulk-preview delegate the work (and its failures) to code that
+        already answers success:false; their own generic branch is reached when the
+        dataset lookup itself blows up."""
+        ds = self._dataset()
+        with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, side_effect=SECRET), \
+             patch("app.models.user_data.UserData.find_one", new_callable=AsyncMock, side_effect=SECRET):
+            r = await async_authorized_client.post(
+                f"{self.BASE}/{path.replace('{id}', ds.dataset_id)}", json={"dataset_id": ds.dataset_id, **body}
+            )
         data = r.json()
         assert data["success"] is False, data
         _assert_sanitized(r, data["error"])
