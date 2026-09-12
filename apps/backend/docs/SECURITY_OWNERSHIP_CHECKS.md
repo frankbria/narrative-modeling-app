@@ -99,6 +99,10 @@ Methods with ownership checks:
   establish ownership of the version first (see the route note below)
 - `pin_version(version_id, user_id=None)`
 - `unpin_version(version_id, user_id=None)`
+- `create_transformation_version(parent_version_id, ..., user_id, verify_parent_ownership=True)`
+  — resolves the parent through `get_version(user_id=user_id)`, so a parent owned by
+  another user raises the same `NotFoundError` as a missing one (#559). Internal
+  operations may pass `verify_parent_ownership=False`; the bypass is audit-logged.
 
 ### API Routes Updated
 

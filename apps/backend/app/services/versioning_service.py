@@ -140,7 +140,8 @@ class VersioningService(BaseService[DatasetVersion]):
         description: str | None = None,
         transformation_config_id: str | None = None,
         quality_before: dict[str, Any] | None = None,
-        quality_after: dict[str, Any] | None = None
+        quality_after: dict[str, Any] | None = None,
+        verify_parent_ownership: bool = True,
     ) -> tuple[DatasetVersion, TransformationLineage]:
         """
         Create new version after transformation application.
@@ -151,6 +152,9 @@ class VersioningService(BaseService[DatasetVersion]):
             transformation_steps: List of transformation step dictionaries
             dataset_metadata: Updated dataset metadata
             user_id: User performing transformation
+            verify_parent_ownership: Refuse a parent that user_id does not own
+                (default). Internal operations may pass False; the bypass is
+                audit-logged by get_version.
             description: Optional version description
             transformation_config_id: Optional reference to full config
             quality_before: Optional quality report (dict) of the parent data
@@ -160,14 +164,20 @@ class VersioningService(BaseService[DatasetVersion]):
             Tuple of (new_version, lineage)
 
         Raises:
-            NotFoundError: If parent version not found
+            NotFoundError: If parent version not found, or not owned by user_id
+                (the two answer identically — no existence oracle, #559)
             OperationError: If S3 upload fails
         """
         logger.info(f"Creating transformation version from parent {parent_version_id}")
 
         # Retrieve parent version
-        parent_version = await DatasetVersion.find_one(
-            DatasetVersion.version_id == parent_version_id
+        # Ownership is asserted here, not left to callers (#559): the route
+        # pre-verifies, but this is also reached from transformation_service,
+        # and a service that trusts every caller is one new caller from a hole.
+        parent_version = await self.get_version(
+            parent_version_id,
+            mark_accessed=False,  # deriving a child is not a read of the parent
+            user_id=user_id if verify_parent_ownership else None,
         )
         if not parent_version:
             raise NotFoundError(
