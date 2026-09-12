@@ -93,8 +93,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       }
       
-      // Return previous token if the access token has not expired yet
-      return token
+      // Existing sessions: a JWT issued before #527 still carries the provider
+      // access token as a claim, and this path used to return it untouched until
+      // the cookie expired. Strip it on every read so the cleanup is not gated on
+      // a re-login (codex review).
+      const { accessToken: _legacy, access_token: _legacySnake, ...rest } = token as Record<string, unknown>
+      void _legacy
+      void _legacySnake
+      return rest
     },
     async session({ session, token }) {
       if (session?.user) {

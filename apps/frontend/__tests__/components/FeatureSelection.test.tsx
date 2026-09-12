@@ -126,6 +126,22 @@ describe('FeatureSelection', () => {
     expect(screen.queryByTestId('method-comparison-view')).not.toBeInTheDocument()
   })
 
+  it('runs a selection with the minted API token as the bearer', async () => {
+    ;(FeatureSelectionService.selectFeatures as jest.Mock).mockResolvedValue({
+      dataset_id: 'ds-1',
+      selected_features: [],
+      method: 'correlation',
+    })
+    renderComponent()
+
+    fireEvent.click(screen.getByText('Run Selection'))
+
+    await waitFor(() => {
+      expect(FeatureSelectionService.selectFeatures).toHaveBeenCalledTimes(1)
+    })
+    expect((FeatureSelectionService.selectFeatures as jest.Mock).mock.calls[0][2]).toBe('mock-token')
+  })
+
   it('stores the full comparison response and switches to the comparison tab', async () => {
     renderComponent()
 

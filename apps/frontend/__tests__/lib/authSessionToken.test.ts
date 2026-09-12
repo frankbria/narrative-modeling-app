@@ -64,6 +64,18 @@ describe('auth.ts token exposure', () => {
     expect(token).not.toHaveProperty('accessToken')
   })
 
+  it('the jwt callback strips a legacy provider token from an existing session', async () => {
+    // A cookie issued before #527: no `account`, token already holds the claim.
+    const { jwt } = loadCallbacks()
+    const token = await jwt({
+      token: { id: 'user_1', email: 'a@example.com', accessToken: 'ya29.legacy', access_token: 'ya29.legacy2' },
+    })
+    expect(token.id).toBe('user_1')
+    expect(token).not.toHaveProperty('accessToken')
+    expect(token).not.toHaveProperty('access_token')
+    expect(JSON.stringify(token)).not.toContain('ya29.')
+  })
+
   it('the session callback exposes apiToken and has no accessToken field', async () => {
     const { session } = loadCallbacks()
     const result = await session({
