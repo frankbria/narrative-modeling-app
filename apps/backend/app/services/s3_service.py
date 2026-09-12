@@ -144,9 +144,9 @@ class S3Service:
     """Service for S3 operations"""
 
     def __init__(self):
-        # Same resolution as the readers' allowlist (#567 AC4); the literal is only
-        # for mock-mode runs with nothing configured, where nothing is read or written.
-        self.bucket_name = configured_bucket() or "narrative-modeling-dev"
+        # bucket_name is a live property (#622); an explicit assignment pins this
+        # instance (tests do that), production never assigns and follows the env.
+        self._bucket_override: str | None = None
 
         # Check if we're using test/mock credentials
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -185,7 +185,7 @@ class S3Service:
         # The same core as the URL readers (#531/#567): the bucket is the one
         # allowlisted bucket (fail closed when unconfigured), the key follows the
         # same rules (legacy root allowed until #615), and the size cap applies.
-        bucket = allowed_bucket()
+        bucket = self._live_bucket()  # same pin-or-live answer as the writers (#622)
         file_key = validate_object_key(file_key, allow_legacy_root=True)
 
         def _download() -> bytes:
@@ -200,9 +200,42 @@ class S3Service:
             logger.error(f"Error downloading file from S3: {str(e)}")
             raise
     
+    @property
+    def bucket_name(self) -> str:
+        """The one configured bucket, resolved per call like every reader (#567,
+        #622) — never a value frozen at construction, so URL building, erasure's
+        bucket comparison and the boto3 calls below can never disagree. An
+        explicit assignment pins this instance instead (tests pin a fixture
+        bucket); production code never assigns. The literal is only for
+        mock-mode runs with nothing configured, where nothing is read or written."""
+        # The two services keep their historical unconfigured defaults ("…-dev"
+        # here, "…-uploads" in versioning): mock-mode only, nothing is written.
+        return self._pin() or configured_bucket() or "narrative-modeling-dev"
+
+    @bucket_name.setter
+    def bucket_name(self, value: str) -> None:
+        self._bucket_override = value
+
+    @bucket_name.deleter
+    def bucket_name(self) -> None:
+        # unittest.mock.patch(obj, "bucket_name", ...) restores by deleting the
+        # instance attribute it set; clearing the pin is what "delete" means here.
+        self._bucket_override = None
+
     def get_file_url(self, file_key: str) -> str:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
+
+    def _pin(self) -> str | None:
+        # getattr: tests build instances with __new__ and never run __init__.
+        return getattr(self, "_bucket_override", None)
+
+    def _live_bucket(self) -> str:
+        """The bucket for THIS call (#622): the instance's explicit pin if one was
+        assigned, else resolved like the readers — never a value captured at
+        construction, so a process whose environment changed cannot download
+        from one bucket and write to another."""
+        return self._pin() or allowed_bucket()
 
     @with_circuit_breaker(
         "s3",
@@ -213,10 +246,12 @@ class S3Service:
     )
     async def get_file_size(self, file_key: str) -> int:
         """Return an object's size in bytes via head_object (no download)."""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot stat files")
         response = await asyncio.to_thread(
-            self.s3_client.head_object, Bucket=self.bucket_name, Key=file_key
+            self.s3_client.head_object, Bucket=self._live_bucket(), Key=file_key
         )
         return response["ContentLength"]
 
@@ -230,9 +265,12 @@ class S3Service:
         route without blocking the event loop (hence no circuit breaker either).
         Pass ``filename`` to force a clean download name via Content-Disposition.
         """
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
-        params: dict[str, str] = {"Bucket": self.bucket_name, "Key": file_key}
+        params: dict[str, str] = {"Bucket": self._live_bucket(), "Key": file_key}
         if filename:
             # Escape internally too so this reusable primitive is safe regardless
             # of the caller: a raw quote/semicolon can't malform the header.
@@ -251,6 +289,9 @@ class S3Service:
     )
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
 
@@ -266,7 +307,7 @@ class S3Service:
 
         try:
             await asyncio.to_thread(
-                self.s3_client.upload_fileobj, file_obj, self.bucket_name, file_key
+                self.s3_client.upload_fileobj, file_obj, self._live_bucket(), file_key
             )
             logger.info(f"File uploaded successfully to {file_key}")
             return self.get_file_url(file_key)
@@ -287,12 +328,14 @@ class S3Service:
     )
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
+        # Hygiene, not authorization (#622): the caller has already checked ownership.
+        file_key = validate_object_key(file_key, allow_legacy_root=True)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot delete files")
 
         try:
             await asyncio.to_thread(
-                self.s3_client.delete_object, Bucket=self.bucket_name, Key=file_key
+                self.s3_client.delete_object, Bucket=self._live_bucket(), Key=file_key
             )
             logger.info(f"File deleted successfully: {file_key}")
             return True
