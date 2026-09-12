@@ -3,6 +3,9 @@ Model export service for converting trained models to various formats
 """
 import json
 import os
+import pickle
+import shutil
+import sys
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -18,8 +21,13 @@ except ImportError:
     ONNX_AVAILABLE = False
 
 from app.models.ml_model import MLModel
+from app.services.exceptions import NotFoundError
 from app.services.model_storage import ModelStorageService
 from app.services.s3_service import S3Service
+
+
+class ExportFormatUnavailable(RuntimeError):
+    """The format's converter is not installed on this deployment (routes answer 501)."""
 
 
 class ModelExportService:
@@ -29,6 +37,26 @@ class ModelExportService:
         self.model_storage = ModelStorageService()
         self.s3_service = S3Service()
     
+    async def _load_owned(self, model_id: str, user_id: str) -> tuple[MLModel, Any, Any]:
+        """The caller's model plus its trained estimator and feature engineer (#468).
+
+        `load_model(model_id, user_id)` is tenant-scoped and returns a tuple; the old
+        call passed `model.model_path` alone and subscripted the result like a dict, so
+        every export format 500'd. A model the caller does not own is a `NotFoundError`
+        (404), identical to a missing one.
+        """
+        model = await self._owned(model_id, user_id)
+        trained_model, feature_engineer = await self.model_storage.load_model(model.model_id, user_id)
+        return model, trained_model, feature_engineer
+
+    async def _owned(self, model_id: str, user_id: str) -> MLModel:
+        """The caller's model document, or `NotFoundError` — checked before anything else,
+        so a converter that is missing here still answers 404 for a model you do not own."""
+        model = await MLModel.find_one({"model_id": model_id, "user_id": user_id})
+        if not model:
+            raise NotFoundError(resource_type="Model", resource_id=model_id)
+        return model
+
     async def export_model_onnx(
         self,
         model_id: str,
@@ -36,21 +64,13 @@ class ModelExportService:
     ) -> tuple[bytes, str]:
         """Export model to ONNX format"""
         
+        model = await self._owned(model_id, user_id)
         if not ONNX_AVAILABLE:
-            raise ValueError("ONNX export requires skl2onnx and onnx packages")
-        
-        # Get model
-        model = await MLModel.find_one({
-            "model_id": model_id,
-            "user_id": user_id
-        })
-        
-        if not model:
-            raise ValueError("Model not found")
-        
-        # Load model artifacts
-        model_artifacts = await self.model_storage.load_model(model.model_path)
-        trained_model = model_artifacts["model"]
+            raise ExportFormatUnavailable(
+                "ONNX export requires the 'export' dependency group (skl2onnx, onnx); "
+                "it is not installed on this deployment"
+            )
+        trained_model, _ = await self.model_storage.load_model(model.model_id, user_id)
         
         try:
             # Convert to ONNX
@@ -76,24 +96,22 @@ class ModelExportService:
     ) -> tuple[str, str]:
         """Export model to PMML format"""
         
+        model = await self._owned(model_id, user_id)
         try:
             from sklearn2pmml import sklearn2pmml
             from sklearn2pmml.pipeline import PMMLPipeline
         except ImportError:
-            raise ValueError("PMML export requires sklearn2pmml package")
-        
-        # Get model
-        model = await MLModel.find_one({
-            "model_id": model_id,
-            "user_id": user_id
-        })
-        
-        if not model:
-            raise ValueError("Model not found")
-        
-        # Load model artifacts
-        model_artifacts = await self.model_storage.load_model(model.model_path)
-        trained_model = model_artifacts["model"]
+            raise ExportFormatUnavailable(
+                "PMML export requires sklearn2pmml and a Java runtime; neither is installed on "
+                "this deployment"
+            ) from None
+        if shutil.which("java") is None:
+            # sklearn2pmml shells out to JPMML; without a JRE the conversion fails with a
+            # generic error the route would report as 400 — it is an unavailable format (codex)
+            raise ExportFormatUnavailable(
+                "PMML export requires a Java runtime, which is not installed on this deployment"
+            )
+        trained_model, _ = await self.model_storage.load_model(model.model_id, user_id)
         
         try:
             # Create PMML pipeline
@@ -124,19 +142,7 @@ class ModelExportService:
     ) -> tuple[str, str]:
         """Generate Python code for the model"""
         
-        # Get model
-        model = await MLModel.find_one({
-            "model_id": model_id,
-            "user_id": user_id
-        })
-        
-        if not model:
-            raise ValueError("Model not found")
-        
-        # Load model artifacts
-        model_artifacts = await self.model_storage.load_model(model.model_path)
-        trained_model = model_artifacts["model"]
-        feature_engineer = model_artifacts.get("feature_engineer")
+        model, trained_model, feature_engineer = await self._load_owned(model_id, user_id)
         
         # Generate Python code
         code = self._generate_python_code(
@@ -165,12 +171,14 @@ class ModelExportService:
         imports = [
             "import pandas as pd",
             "import numpy as np",
+            "import asyncio",
+            "import inspect",
             "import pickle",
             "from typing import List, Dict, Any, Union",
             f"from {model_module} import {model_class}"
         ]
         
-        if feature_engineer:
+        if feature_engineer and include_preprocessing:  # the flag was accepted but inert before (#468)
             fe_class = feature_engineer.__class__.__name__
             fe_module = feature_engineer.__class__.__module__
             imports.append(f"from {fe_module} import {fe_class}")
@@ -262,6 +270,8 @@ class ModelInference:
         # Apply feature engineering if available
         if self.feature_engineer:
             X = self.feature_engineer.transform(df)
+            if inspect.isawaitable(X):  # the platform's FeatureEngineer.transform is async
+                X = asyncio.run(X)
         else:
             X = df[self.feature_names]
         
@@ -384,20 +394,17 @@ if __name__ == "__main__":
     ) -> tuple[bytes, str]:
         """Generate a Docker container with the model"""
         
-        # Get model
-        model = await MLModel.find_one({
-            "model_id": model_id,
-            "user_id": user_id
-        })
-        
-        if not model:
-            raise ValueError("Model not found")
-        
-        # Generate Python code
-        python_code, _ = await self.export_python_code(model_id, user_id)
+        model, trained_model, feature_engineer = await self._load_owned(model_id, user_id)
+        python_code = self._generate_python_code(
+            model=model, trained_model=trained_model, feature_engineer=feature_engineer,
+            include_preprocessing=True,
+        )
         
         # Create Dockerfile
-        dockerfile_content = '''FROM python:3.11-slim
+        # The base image must install the pinned wheels and unpickle what this interpreter
+        # pickled: use the running Python's minor version, not a hardcoded one.
+        py = f"{sys.version_info.major}.{sys.version_info.minor}"
+        dockerfile_content = f'''FROM python:{py}-slim
 
 # Install required packages
 RUN pip install pandas numpy scikit-learn
@@ -446,7 +453,8 @@ class PredictionResponse(BaseModel):
     timestamp: str
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
+def predict(request: PredictionRequest):  # sync on purpose: FastAPI runs it off the event loop, so
+    # inference.py may asyncio.run() an awaitable transform without a loop already running
     try:
         result = model_inference.predict(request.data)
         return PredictionResponse(**result)
@@ -466,12 +474,19 @@ if __name__ == "__main__":
 '''
         
         # Create requirements.txt
-        requirements = '''fastapi==0.104.1
-uvicorn==0.24.0
-pandas==2.1.3
-numpy==1.25.2
-scikit-learn==1.3.2
-'''
+        # Pin the versions that pickled these artifacts: a different scikit-learn or
+        # numpy in the container fails to unpickle them (#468).
+        import numpy
+        import pandas
+        import sklearn
+
+        requirements = (
+            "fastapi==0.104.1\n"
+            "uvicorn==0.24.0\n"
+            f"pandas=={pandas.__version__}\n"
+            f"numpy=={numpy.__version__}\n"
+            f"scikit-learn=={sklearn.__version__}\n"
+        )
         
         # Create ZIP file with all components
         zip_buffer = BytesIO()
@@ -480,6 +495,11 @@ scikit-learn==1.3.2
             zip_file.writestr("inference.py", python_code)
             zip_file.writestr("app.py", api_code)
             zip_file.writestr("requirements.txt", requirements)
+            # The artifacts the Dockerfile COPYs and inference.py unpickles (#468). A model
+            # without a feature engineer ships `None`, which inference.py treats as "no
+            # preprocessing".
+            zip_file.writestr("model.pkl", pickle.dumps(trained_model))
+            zip_file.writestr("feature_engineer.pkl", pickle.dumps(feature_engineer))
             
             # Add README
             readme = f'''# {model.name} Docker Container
@@ -552,7 +572,7 @@ print(response.json())
                 "name": "PMML",
                 "extension": "pmml",
                 "description": "Predictive Model Markup Language",
-                "available": True
+                "available": shutil.which("java") is not None  # the package shells out to JPMML
             })
         except ImportError:
             formats.append({

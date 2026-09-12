@@ -44,11 +44,11 @@ WORKDIR /app
 # the app degrades to model-native importance and `import app.main` stays valid
 # (shap is lazy-imported). See pyproject.toml [dependency-groups] (issue #204).
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --no-group export
 
 # Application code, then install the project itself into the venv.
 COPY . .
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-group export
 
 # ── runtime: minimal image with only the built venv + code ──────────────────
 # Same digest as the builder above (see note there) — keep the two in sync.
