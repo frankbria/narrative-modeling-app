@@ -80,6 +80,7 @@ from app.services.transformation_engine.transformation_engine import (
 )
 from app.services.transformation_engine.validators import TransformationValidator
 from app.utils.object_id import require_object_id
+from app.utils.s3 import downloadable_url
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -232,7 +233,7 @@ async def apply_transformation_pipeline(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data from S3
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path)
         
         # Create transformation engine
@@ -343,7 +344,7 @@ async def validate_transformations(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data sample
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path, nrows=1000)
         
         # Validate each transformation
@@ -474,7 +475,7 @@ async def get_transformation_suggestions(
             raise HTTPException(status_code=404, detail="Dataset not found")
         
         # Load data sample
-        file_path = user_data.file_path or user_data.s3_url
+        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(file_path, nrows=1000)
         
         # Get suggestions

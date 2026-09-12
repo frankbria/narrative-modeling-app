@@ -26,6 +26,7 @@ from app.services.model_training.feature_engineer import (
     parse_feature_definition,
 )
 from app.services.s3_service import s3_service
+from app.utils.s3 import downloadable_url, resolve_validated_object
 
 logger = logging.getLogger(__name__)
 
@@ -417,7 +418,12 @@ class FeatureStoreService(BaseService[StoredFeature]):
             )
 
         # Load data from S3
-        file_bytes = await s3_service.download_file_bytes(dataset.file_path)
+        # file_path may be a raw key or (after a transformation) a full URL (#466)
+        # allow_legacy_root: pre-#581 datasets still sit at the bucket root until #615 reconciles them
+        _, file_key = resolve_validated_object(
+            downloadable_url(dataset.file_path, dataset.s3_url), allow_legacy_root=True
+        )
+        file_bytes = await s3_service.download_file_bytes(file_key)
         if dataset.file_type == "csv":
             file_str = file_bytes.decode('utf-8')
             df = pd.read_csv(io.StringIO(file_str))

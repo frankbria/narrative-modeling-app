@@ -36,6 +36,7 @@ from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType,
 )
+from app.utils.s3 import downloadable_url
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +259,7 @@ class BulkTransformationService:
 
         try:
             # Load data from S3
-            file_path = dataset.file_path or dataset.s3_url
+            file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(file_path)
 
             # Validate selected columns exist
@@ -486,7 +487,7 @@ class BulkTransformationService:
                 return
 
             # Load data from S3
-            file_path = dataset.file_path or dataset.s3_url
+            file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(file_path)
 
             # Track results

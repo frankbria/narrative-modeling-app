@@ -387,6 +387,40 @@ class TestFeatureStoreServiceApplication:
             assert "salary" in result['missing_columns']
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("stored", [
+        "datasets/test_user_123/file.csv",                          # fresh upload: namespaced raw key
+        "s3://test-bucket/transformed/test_user_123/x.parquet",     # after a transformation: full URL
+        "3f2a9c1e-8b7d-4c6e-9a1f-2b3c4d5e6f70.csv",                  # pre-#581 legacy root key (codex)
+    ])
+    async def test_apply_feature_resolves_every_stored_location_shape(self, stored):
+        """#466: whatever `file_path` holds, the key-only downloader gets a validated key."""
+        feature_id, dataset_id, user_id = "f1", "d1", "test_user_123"
+        mock_feature = MagicMock(feature_id=feature_id, user_id=user_id, output_column_name="c",
+                                 applied_to_datasets=[], increment_usage=MagicMock(), save=AsyncMock())
+        with patch.object(self.service, 'get_feature', new_callable=AsyncMock, return_value=mock_feature), \
+             patch.object(self.service, 'check_compatibility', new_callable=AsyncMock,
+                          return_value={"is_compatible": True}), \
+             patch('app.services.feature_store_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.feature_store_service.FeatureEngineer') as MockEngineer, \
+             patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock,
+                   return_value=b"data") as mock_get_file, \
+             patch('app.services.feature_store_service.pd') as mock_pd, \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+            MockDataset.find_one = AsyncMock(return_value=MagicMock(
+                file_path=stored, s3_url="s3://test-bucket/datasets/test_user_123/file.csv", file_type="csv"))
+            mock_pd.read_csv.return_value = MagicMock()
+            MockEngineer.return_value = MagicMock(apply_stored_feature=AsyncMock(return_value=MagicMock()))
+
+            await self.service.apply_feature(feature_id, dataset_id, user_id)
+
+        key = mock_get_file.await_args.args[0]
+        assert "://" not in key and not key.startswith("/")  # a key, never a URL
+        if stored.startswith("s3://"):
+            assert key == stored.split("/", 3)[-1]  # the URL's key part
+        else:
+            assert key == stored  # a key is passed through as is
+
+    @pytest.mark.asyncio
     async def test_apply_feature_increments_usage(self):
         """🔴 RED: Test applying feature increments usage count."""
         # ARRANGE
@@ -408,12 +442,15 @@ class TestFeatureStoreServiceApplication:
              patch('app.services.feature_store_service.DatasetMetadata') as MockDataset, \
              patch('app.services.feature_store_service.FeatureEngineer') as MockEngineer, \
              patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock) as mock_get_file, \
-             patch('app.services.feature_store_service.pd') as mock_pd:
+             patch('app.services.feature_store_service.pd') as mock_pd, \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
 
             mock_get_feature.return_value = mock_feature
             mock_check_compat.return_value = {"is_compatible": True}
             mock_dataset = MagicMock()
-            mock_dataset.file_path = "path/to/file.csv"
+            # a fresh upload stores a raw, namespaced key; the accessor + resolver must accept it (#466)
+            mock_dataset.file_path = "datasets/test_user_123/file.csv"
+            mock_dataset.s3_url = "s3://test-bucket/datasets/test_user_123/file.csv"
             mock_dataset.file_type = "csv"
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
             mock_get_file.return_value = b"data"
