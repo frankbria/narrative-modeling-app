@@ -16,15 +16,21 @@ unit reuses `quota()` verbatim. No stop needed.
 - Billing page: `ai_calls: 'AI calls'` label (types are `Record<string, number>` already).
 
 ## Steps
-1. [ ] Backend RED: plans tests (finite, monotonic, override refused), registry, 402 route tests
-2. [ ] Backend GREEN: plans.py, ai_analysis.py; `setup_database` on the AI route tests that now touch Subscription
-3. [ ] Frontend RED/GREEN: route.test.ts caps + context handling; route.ts; billing label
-4. [ ] Docs: CLAUDE.md plan-enforcement bullet (ai_calls, finite ceiling, /api/chat is bounded not metered)
+1. [x] Backend RED: plans tests (finite, monotonic, override refused), registry, 402 route tests
+2. [x] Backend GREEN: plans.py, ai_analysis.py; `setup_database` on the AI route tests that now touch Subscription
+3. [x] Frontend RED/GREEN: route.test.ts caps + context handling; route.ts; billing label
+4. [x] Docs: CLAUDE.md plan-enforcement bullet (ai_calls, finite ceiling, /api/chat is bounded not metered)
 
 ## Acceptance criteria
-- [ ] AC1 metric with per-tier ceilings
-- [ ] AC2 four routes carry quota
-- [ ] AC3 /api/chat history/size caps + rate cap
-- [ ] AC4 context validated and constrained
-- [ ] AC5 finite per-tenant ceiling that config cannot lift
-- [ ] AC6 402 tests with no OpenAI call
+- [x] AC1 metric with per-tier ceilings
+- [x] AC2 four routes carry quota
+- [x] AC3 /api/chat history/size caps + rate cap
+- [x] AC4 context validated and constrained
+- [x] AC5 finite per-tenant ceiling that config cannot lift
+- [x] AC6 402 tests with no OpenAI call
+
+## Scope widened during the run (reviews)
+- codex: `/api/chat` proxy must not call OpenAI itself → backend `POST /ai/chat` under quota; frontend `openai` dep dropped.
+- codex: `/billing/status` limits derived from `METERED_METRICS`.
+- internal: 8 more model-calling routes (features suggest/lookups, ml evaluation/errors) → metered; registry scope derived from imports.
+- codex r2: aggregate 24k cap server-side; rule-based `suggest` releases its unit.
