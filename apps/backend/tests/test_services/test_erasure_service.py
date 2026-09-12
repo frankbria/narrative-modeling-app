@@ -8,6 +8,7 @@ covered by tests/test_integration/test_erasure_cascade.py (real Mongo + S3).
 import pytest
 from beanie import PydanticObjectId
 
+from app.schemas.erasure import DeletionManifest
 from app.services.erasure_service import _as_object_id, _s3_key
 
 pytestmark = pytest.mark.unit
@@ -47,6 +48,37 @@ class TestS3KeyDerivation:
         monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:9000")
         url = "http://localhost:9000/bucket/datasets/u/file.csv?X-Amz-Signature=abc"
         assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    # #616: the bucket a stored URL names must be OUR bucket, or nothing is deleted
+    # and the manifest says why — never a delete of whatever holds that key in ours.
+    def test_matching_bucket_yields_the_key_and_no_failure(self):
+        manifest = DeletionManifest(target_type="dataset", target_id="d", subject_user_id="u")
+        assert _s3_key("s3://bucket/datasets/u/file.csv", "bucket", manifest) == "datasets/u/file.csv"
+        assert manifest.failures == []
+
+    def test_foreign_s3_url_is_refused_and_recorded(self):
+        manifest = DeletionManifest(target_type="dataset", target_id="d", subject_user_id="u")
+        assert _s3_key("s3://someone-elses-bucket/datasets/u/file.csv", "ours", manifest) is None
+        assert len(manifest.failures) == 1
+        assert "someone-elses-bucket" in manifest.failures[0]
+        assert "'ours'" in manifest.failures[0]  # the configured bucket, quoted, not a substring accident
+
+    def test_foreign_endpoint_style_url_is_refused(self, monkeypatch):
+        monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+        manifest = DeletionManifest(target_type="dataset", target_id="d", subject_user_id="u")
+        url = "http://localhost:4566/staging-bucket/datasets/u/file.csv"
+        assert _s3_key(url, "bucket", manifest) is None
+        assert manifest.failures and "staging-bucket" in manifest.failures[0]
+
+    def test_foreign_bucket_without_a_manifest_still_refuses(self):
+        assert _s3_key("s3://other/datasets/u/file.csv", "bucket") is None
+
+    def test_bucketless_url_falls_back_to_the_configured_bucket(self):
+        manifest = DeletionManifest(target_type="dataset", target_id="d", subject_user_id="u")
+        # parse_s3_url returns bucket=None for an arbitrary https host; the key is
+        # the path and the caller's bucket is the only one there is.
+        assert _s3_key("https://files.example.com/datasets/u/file.csv", "bucket", manifest) == "datasets/u/file.csv"
+        assert manifest.failures == []
 
     def test_s3_url_with_query_and_fragment(self):
         assert _s3_key("s3://bucket/datasets/u/f.csv?versionId=1#x", "bucket") == "datasets/u/f.csv"

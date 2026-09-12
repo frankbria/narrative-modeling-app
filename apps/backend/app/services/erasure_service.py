@@ -80,7 +80,9 @@ _LINK_KEYED_MODELS = [
 _URL_SCHEMES = ("s3://", "http://", "https://")
 
 
-def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
+def _s3_key(
+    url_or_key: str | None, bucket_name: str, manifest: DeletionManifest | None = None
+) -> str | None:
     """Derive the S3 object key from a stored URL, or pass a bare key through.
 
     Goes through the app's own ``parse_s3_url`` (#481) rather than a third
@@ -88,8 +90,14 @@ def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
     endpoint-style URL (MinIO/LocalStack, ``{endpoint}/{bucket}/{key}``) yielded
     ``bucket/key`` and a presigned URL kept its ``?X-Amz-...`` query — in both
     cases ``delete_object`` matched nothing and the erasure reported success
-    while the object survived. ``bucket_name`` is kept for the call sites; the
-    parser attributes the URL to its own bucket.
+    while the object survived.
+
+    ``bucket_name`` is the bucket erasure deletes from. A URL that names a
+    *different* bucket (a stale staging URL, a copied row) yields ``None`` and,
+    when a ``manifest`` is given, a failure naming both buckets (#616): the key
+    is not ours to delete, and deleting it from our bucket would remove whatever
+    unrelated object happens to share the name. A URL that names no bucket at
+    all falls back to ``bucket_name`` as before.
     """
     if not url_or_key:
         return None
@@ -101,8 +109,19 @@ def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
         # mistake makes delete_object miss and the erasure report success anyway.
         return url_or_key
     try:
-        _, key = parse_s3_url(url_or_key)
+        bucket, key = parse_s3_url(url_or_key)
     except ValueError:
+        return None
+    if bucket is not None and bucket != bucket_name:
+        if manifest is not None:
+            # "s3 delete" prefix on purpose: _delete_parent_if_clean treats S3
+            # failures as non-blocking (Mongo stays the source of truth), and the
+            # URL never changes between runs, so a blocking failure would make the
+            # dataset permanently un-erasable.
+            manifest.failures.append(
+                f"s3 delete skipped {url_or_key}: URL names bucket {bucket!r} but "
+                f"erasure runs against {bucket_name!r}"
+            )
         return None
     return key.split("#", 1)[0] or None
 
@@ -226,7 +245,11 @@ class DatasetErasureService:
                 await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
             # 3. S3 source + redis, then parent LAST.
             await self._delete_s3(
-                _s3_key(parent_meta.file_path or parent_meta.s3_url, self.s3_service.bucket_name),
+                _s3_key(
+                    parent_meta.file_path or parent_meta.s3_url,
+                    self.s3_service.bucket_name,
+                    manifest,
+                ),
                 manifest,
             )
             await self._evict_redis(dataset_id, manifest)
@@ -236,7 +259,11 @@ class DatasetErasureService:
             for model_cls, field in _LINK_KEYED_MODELS:
                 await self._delete_many(model_cls, {f"{field}.$id": parent_ud.id}, manifest)
             await self._delete_s3(
-                _s3_key(parent_ud.file_path or parent_ud.s3_url, self.s3_service.bucket_name),
+                _s3_key(
+                    parent_ud.file_path or parent_ud.s3_url,
+                    self.s3_service.bucket_name,
+                    manifest,
+                ),
                 manifest,
             )
             await self._evict_redis(str(parent_ud.id), manifest)
