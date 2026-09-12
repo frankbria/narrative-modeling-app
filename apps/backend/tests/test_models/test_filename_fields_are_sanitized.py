@@ -26,10 +26,31 @@ def _metadata(name: str) -> DatasetMetadata:
 
 @pytest.mark.parametrize("name", BAD)
 @pytest.mark.parametrize("build", [_user_data, _metadata], ids=["UserData", "DatasetMetadata"])
-def test_stored_name_is_sanitised(build, name):
+def test_stored_name_is_sanitised(setup_database, build, name):
+    # setup_database: constructing a Beanie Document needs an initialised Beanie,
+    # or the run order decides whether this file passes.
     doc = build(name)
     for value in (doc.filename, doc.original_filename):
         assert value != name
         assert "/" not in value and "\\" not in value and ".." not in value
         assert "\r" not in value and "\n" not in value
         assert len(value) <= 255
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", BAD)
+async def test_update_route_cannot_write_a_raw_name_either(async_authorized_client, name):
+    """PUT /user_data/{id} setattr()s client fields onto a loaded document; without
+    validate_on_save the field validators never ran on that path."""
+    doc = await _user_data("clean.csv").model_copy(update={"user_id": "test_user_123"}).insert()
+    try:
+        response = await async_authorized_client.put(
+            f"/api/v1/user_data/{doc.id}", json={"filename": name, "original_filename": name}
+        )
+        assert response.status_code == 200, response.text
+        reloaded = await UserData.get(doc.id)
+        for value in (reloaded.filename, reloaded.original_filename):
+            assert value != name
+            assert "/" not in value and "\r" not in value and "\n" not in value and len(value) <= 255
+    finally:
+        await doc.delete()

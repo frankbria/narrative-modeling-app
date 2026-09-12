@@ -83,6 +83,10 @@ class UserData(Document):
 
     class Settings:
         name = "user_data"
+        # Re-run the field validators on save()/replace() (#585): a route that
+        # setattr()s a client value onto a loaded document would otherwise skip
+        # them — Pydantic validates on construction, not on assignment.
+        validate_on_save = True
         indexes = [
             "user_id",
             "created_at",
