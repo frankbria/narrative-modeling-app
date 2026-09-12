@@ -105,7 +105,6 @@ _EXEMPT = {
 
 def _post_routes(
     prefixes: tuple[str, ...] = _IN_SCOPE_PREFIXES,
-    exact: str = "",
     methods: tuple[str, ...] = ("POST",),
 ) -> dict[str, APIRoute]:
     """Every mounted POST route on a dataset-owning router, by path.
@@ -133,7 +132,7 @@ def _post_routes(
                 )
             elif isinstance(route, APIRoute) and set(methods) & (route.methods or set()):
                 path = prefix + route.path
-                if path == exact or path.startswith(prefixes):
+                if path.startswith(prefixes):
                     found[path] = route
 
     walk(app.routes)
