@@ -12,6 +12,6 @@ Plan source: self-authored (DoD in the issue). Approved autonomously — the beh
 3. Tests: matching bucket → key; foreign `s3://` and endpoint-style → `None` + one failure mentioning both buckets; no manifest → still `None`, no crash.
 
 ## Steps
-- [ ] RED tests
-- [ ] _s3_key + call sites
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] _s3_key + call sites (+ non-blocking prefix and cascade test after review)
+- [x] gate → PR #651 → demo → CI → merge
