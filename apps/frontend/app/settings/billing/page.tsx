@@ -19,6 +19,7 @@ const METRIC_LABELS: Record<string, string> = {
   training_runs: 'Training runs',
   predictions: 'Predictions',
   uploads: 'Uploads',
+  ai_calls: 'AI calls',
 }
 
 /** A metered row. `-1` is unlimited, which has no bar to draw. */
