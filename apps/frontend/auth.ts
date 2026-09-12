@@ -82,16 +82,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user, account, isNewUser }) {
       // Initial sign in
       if (account && user) {
+        // Deliberately NOT persisting account.access_token: that is the OAuth
+        // provider's credential. Nothing here calls Google/GitHub on the user's
+        // behalf, and exposing it to the browser led to it being forwarded to
+        // our own backend as the bearer (#527).
         return {
           ...token,
           id: user.id,
-          accessToken: account.access_token,
           isNewUser: isNewUser, // Track if this is a new user
         }
       }
       
-      // Return previous token if the access token has not expired yet
-      return token
+      // Existing sessions: a JWT issued before #527 still carries the provider
+      // access token as a claim, and this path used to return it untouched until
+      // the cookie expired. Strip it on every read so the cleanup is not gated on
+      // a re-login (codex review).
+      const { accessToken: _legacy, access_token: _legacySnake, ...rest } = token as Record<string, unknown>
+      void _legacy
+      void _legacySnake
+      return rest
     },
     async session({ session, token }) {
       if (session?.user) {
@@ -101,8 +110,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // ADMIN_EMAILS, so the sidebar shows the Admin link from this. It is UX
       // only — middleware.ts guards the /admin route independently.
       session.isAdmin = isAdminEmail(token.email)
-      // Keep the OAuth provider access token (legacy field).
-      session.accessToken = token.accessToken as string | undefined
       // Mint a backend-verifiable HS256 JWT (sub=userId) so API calls
       // authenticate under SKIP_AUTH=false. Best-effort: a missing secret
       // must not crash session reads (the backend then returns 401).

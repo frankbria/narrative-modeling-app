@@ -5,7 +5,6 @@ declare module "next-auth" {
     user: {
       id: string
     } & DefaultSession["user"]
-    accessToken?: string
     /** Backend-verifiable HS256 JWT (sub=userId) for API Authorization. */
     apiToken?: string
     /** Email is on ADMIN_EMAILS (#477); computed server-side, UX-only. */

@@ -42,7 +42,7 @@ export function FeatureSelection({
   const [activeTab, setActiveTab] = useState<'configure' | 'results' | 'comparison'>('configure')
 
   const handleRunSelection = async () => {
-    if (!session?.accessToken) {
+    if (!session?.apiToken) {
       setError('Please sign in to run feature selection')
       return
     }
@@ -67,7 +67,7 @@ export function FeatureSelection({
           problem_type: config.problemType,
           sample_size: config.sampleSize
         },
-        session.accessToken
+        session.apiToken
       )
 
       setResult(selectionResult)
@@ -81,7 +81,7 @@ export function FeatureSelection({
   }
 
   const handleCompare = async () => {
-    if (!session?.accessToken) {
+    if (!session?.apiToken) {
       setError('Please sign in to compare methods')
       return
     }
@@ -111,7 +111,7 @@ export function FeatureSelection({
           top_k: config.topK || 10,
           problem_type: config.problemType
         },
-        session.accessToken
+        session.apiToken
       )
 
       // Preserve the full comparison response and surface it in the Comparison tab.

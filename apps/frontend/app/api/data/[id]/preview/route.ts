@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { auth } from '@/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -20,26 +19,17 @@ export async function GET(
       );
     }
     
-    // Get auth session
+    // The backend accepts exactly one credential: the HS256 API JWT minted in the
+    // NextAuth session callback (sub=userId). Never the OAuth provider's access
+    // token — that is Google's/GitHub's credential, not ours — and never a
+    // placeholder: without a token this is a 401, not a guess (#527).
     const session = await auth();
-    
-    if (!session) {
+    const apiToken = session?.apiToken;
+    if (!session || !apiToken) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
-    }
-    
-    // Get token from session or use the JWT token with secret
-    let accessToken = session.accessToken;
-    if (!accessToken) {
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET
-      });
-      // Custom JWT claims are typed as unknown — narrow before assigning
-      const tokenValue = token?.accessToken ?? token?.access_token;
-      accessToken = typeof tokenValue === 'string' ? tokenValue : undefined;
     }
 
     // Get query parameters
@@ -52,7 +42,7 @@ export async function GET(
       `${API_URL}/data/${id}/preview?rows=${rows}&offset=${offset}`,
       {
         headers: {
-          'Authorization': `Bearer ${accessToken || 'default'}`,
+          'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
       }

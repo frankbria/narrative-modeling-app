@@ -89,6 +89,18 @@ async def test_legacy_nextauth_prefix_token_rejected(mock_env_vars):
 
 
 @pytest.mark.asyncio
+async def test_placeholder_default_token_rejected(mock_env_vars):
+    """The frontend preview proxy used to send the literal string "default" as the
+    bearer when it had no token (#527 AC3). Under a production-like config
+    (SKIP_AUTH=false) that must be a 401, never a user."""
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer("default"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid authentication token"
+
+
+@pytest.mark.asyncio
 async def test_wrong_signature_rejected(mock_env_vars):
     """A JWT signed with a different secret is rejected with 401."""
     token = make_token({"sub": SAMPLE_USER_ID}, secret="some-other-secret")
