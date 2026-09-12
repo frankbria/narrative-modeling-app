@@ -50,3 +50,10 @@ def test_a_huge_input_is_bounded_before_the_unicode_pass():
 def test_truncation_never_leaves_a_trailing_dot():
     out = sanitize_filename("x" * 254 + "." + "y" * 40)  # 40-char "extension" is not one
     assert not out.endswith(".") and len(out) <= 255
+
+
+def test_a_small_max_length_never_slices_from_the_end():
+    # keep = max_length - len(ext) - 1 would be negative here; that must not turn
+    # into a Python slice-from-the-end.
+    out = sanitize_filename("abcdefghij.parquet", max_length=6)
+    assert out == "abcdef"

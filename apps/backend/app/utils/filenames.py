@@ -43,8 +43,9 @@ def sanitize_filename(name: str, max_length: int = MAX_FILENAME_LENGTH) -> str:
         return _FALLBACK
     if len(base) > max_length:
         stem, dot, ext = base.rpartition(".")
-        if dot and stem and 0 < len(ext) <= 16:
-            base = stem[: max_length - len(ext) - 1] + "." + ext
+        keep = max_length - len(ext) - 1  # room left for the stem
+        if dot and stem and 0 < len(ext) <= 16 and keep > 0:
+            base = stem[:keep] + "." + ext
         else:
             base = base[:max_length]
         base = _EDGE_DOTS_AND_SPACE.sub("", base) or _FALLBACK
