@@ -13,6 +13,6 @@ Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate 
 4. Blast radius (AC4): uploads whose PII-named column actually holds PII-shaped values move from medium to high → the confirmation route (which charges an upload unit only when it stores). Stated in the PR.
 
 ## Steps
-- [ ] RED tests
-- [ ] detector change
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] detector change (+ best-pattern-wins, named floor, coupled constants after review)
+- [x] gate → PR #649 → demo → CI → merge
