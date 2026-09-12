@@ -445,10 +445,16 @@ class TestValidateObjectKey:
             "datasets/user1/ds1_my data.csv",
             "datasets/user1/ds1_data (1).csv",
             "datasets/user1/ds1_r\u00e9sum\u00e9.xlsx",
-            # The versioning layout.
+            # The versioning layout, feature-builder outputs — any depth under the tenant.
             "datasets/user1/ds1/versions/v1/data.csv",
+            "datasets/user1/ds1/data_1700000000.parquet",
             # ".." inside a filename is a name, not a traversal (codex review).
             "datasets/user1/ds1_experiment..csv",
+            # The other namespaces the key-based reader serves (CI integration runs).
+            "models/user1/model_abc/model.pkl",
+            "models/user1/model_abc/evaluation_data.json",
+            "batch-jobs/user1/model_abc/20260912T000000/input.csv",
+            "exports/user1/file1/export.csv",
         ],
     )
     def test_accepts_the_two_app_namespaces(self, key):
@@ -462,10 +468,9 @@ class TestValidateObjectKey:
             "/etc/passwd",
             "//root/.ssh/id_rsa",
             "unauthorized/path/file.csv",
-            "datasets/file.csv",
-            "datasets/user1/a/b.csv",  # arbitrary depth is not the versions layout
-            "datasets/user1/ds1/versions/v1/x/y.csv",
-            "datasets/user1/ds1/snapshots/v1/y.csv",
+            "datasets/file.csv",  # no tenant segment
+            "datasets/user1/",  # nothing after the tenant
+            "predictions/user1/x.csv",  # not a namespace the app writes
             "datasets/user 1/file.csv",  # the user_id segment stays bounded
             "datasets/user1/..",  # a ".." *segment* is traversal
             "datasets//file.csv",  # an empty segment is not a namespace

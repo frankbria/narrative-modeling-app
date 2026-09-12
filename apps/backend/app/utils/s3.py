@@ -219,18 +219,18 @@ def upload_file_to_s3(
 #: and temp-file readers, so an unbounded object cannot exhaust memory or /tmp.
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
-#: The two app-internal namespaces every stored object lives in:
-#: ``{datasets|transformed}/{user_id}/{filename}``, plus the versioning layout
-#: ``datasets/{user_id}/{dataset_id}/versions/{version_id}/{filename}``. The
-#: user_id and ids are bounded-charset; the *filename* may be anything without a
-#: slash, because datasets.py stores the raw client filename (``my data.csv``,
-#: ``data (1).csv``) and refusing those made the app's own objects unreadable
-#: (#496). Traversal and absolute paths are refused before this is consulted, and
-#: a slash-free final segment cannot leave the tenant prefix.
+#: Every namespace the app writes objects under. A readable key is
+#: ``{namespace}/{user_id}/…``: the namespace comes from this list, the tenant
+#: segment is bounded-charset, and anything may follow at any depth as long as no
+#: segment is empty, "." or ".." (checked before this regex runs). Depth carries
+#: no security meaning once the tenant prefix holds — the app itself writes
+#: ``datasets/{user}/{dataset}/data_{ts}.parquet``, the versions layout,
+#: ``models/{user}/{model}/model.pkl`` and ``batch-jobs/{user}/{model}/{ts}/…`` —
+#: and the filename is the raw client name for datasets.py (``my data.csv``), so
+#: it may be anything without a slash (#496).
+_APP_NAMESPACES = ("datasets", "transformed", "models", "batch-jobs", "exports")
 _NAMESPACED_KEY = re.compile(
-    r"^(?:datasets|transformed)/[a-zA-Z0-9_-]+/"
-    r"(?:[a-zA-Z0-9_-]+/versions/[a-zA-Z0-9_-]+/)?"
-    r"[^/]+$"
+    r"^(?:" + "|".join(re.escape(ns) for ns in _APP_NAMESPACES) + r")/[a-zA-Z0-9_-]+/(?:[^/]+/)*[^/]+$"
 )
 #: The pre-#581 shape still sitting at the production bucket root until the
 #: operator runs the reconciliation (#615): (masked_){uuid4}.{ext}, nothing else.
@@ -260,8 +260,9 @@ def allowed_bucket() -> str:
 def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     """URL-decode ``key`` and prove it names something this app is allowed to read.
 
-    Refuses traversal (``..``), an absolute path, and any key outside the two
-    app namespaces. ``allow_legacy_root`` additionally admits exactly the
+    Refuses traversal (a ``.``/``..`` segment), an absolute or empty segment, and
+    any key outside the app namespaces or without a tenant segment.
+    ``allow_legacy_root`` additionally admits exactly the
     pre-#581 root-level ``(masked_){uuid}.{ext}`` shape that ``UserData.s3_url``
     still points at in production until #615 moves those objects; nothing else at
     the root is ever accepted. Returns the decoded key.
@@ -282,7 +283,7 @@ def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     logger.error("Invalid S3 path structure: %r", decoded)
     raise ValueError(
         "Invalid S3 path structure: must match "
-        "'{datasets|transformed}/{user_id}/{filename}'"
+        "'{datasets|transformed|models|batch-jobs|exports}/{user_id}/...'"
     )
 
 

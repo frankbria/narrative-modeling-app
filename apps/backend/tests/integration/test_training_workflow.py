@@ -71,7 +71,7 @@ async def test_train_workflow_completes_with_comparison(
 
     try:
         with patch(
-            "app.api.routes.model_training.get_file_from_s3",
+            "app.services.s3_service.S3Service.download_file_bytes",
             new_callable=AsyncMock,
             return_value=sample_classification_csv,
         ), patch(

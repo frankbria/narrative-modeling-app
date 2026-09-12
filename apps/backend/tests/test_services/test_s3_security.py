@@ -215,7 +215,10 @@ class TestS3SecurityValidation:
                 "https://test-bucket.s3.amazonaws.com/file.csv",  # Missing datasets prefix
                 "https://test-bucket.s3.amazonaws.com/datasets/file.csv",  # Missing user_id
                 "https://test-bucket.s3.amazonaws.com/unauthorized/user1/file.csv",  # Wrong prefix
-                "https://test-bucket.s3.amazonaws.com/datasets/user1/subdir/file.csv",  # Too many levels
+                # Depth under the tenant prefix is NOT refused since #531: the app
+                # writes datasets/{user}/{dataset}/data_{ts}.parquet and the
+                # versions layout, and depth carries no security meaning once
+                # traversal and the tenant segment are enforced.
             ]
 
             for url in invalid_paths:
