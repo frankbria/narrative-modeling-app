@@ -388,6 +388,8 @@ def downloadable_url(path_or_url: str | None, fallback: str | None = None) -> st
     if "://" in candidate:
         # A URL is taken as stored: a foreign or non-S3 host must be *rejected* by the
         # resolver, never re-bucketed into ours (that would launder any https:// path).
+        # Assumes keys never contain "://" — true of every server-derived key since #581
+        # (UUID-based); a legacy client-named key with "://" fails loudly here, not silently.
         bucket, _ = parse_s3_url(candidate)
         if not bucket:
             raise ValueError(f"Invalid S3 URL format: {candidate}")

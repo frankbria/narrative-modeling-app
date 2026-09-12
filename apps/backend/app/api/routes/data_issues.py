@@ -61,6 +61,8 @@ def _download_url(user_data: UserData) -> str:
         return downloadable_url(user_data.file_path, user_data.s3_url)
     except ValueError:
         raise HTTPException(status_code=400, detail="Dataset has no associated file") from None
+
+
 logger = logging.getLogger(__name__)
 
 
