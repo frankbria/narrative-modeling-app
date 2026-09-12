@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import re
+import uuid
 from urllib.parse import urlparse
 
 import boto3
@@ -127,6 +128,24 @@ def get_s3_client():
         return None
 
 
+def dataset_s3_key(user_id: str, original_filename: str, *, masked: bool = False) -> str:
+    """The S3 key for a newly uploaded dataset object: ``datasets/{user_id}/[masked_]{uuid4}.{ext}``.
+
+    The owner prefix is what the strict downloader, ``DatasetErasureService`` and
+    any per-tenant lifecycle rule key on; an object written anywhere else is
+    unreachable to the first, invisible to the second and untargetable by the third
+    (#464, #581). Only the extension of the client filename survives — the name
+    itself never reaches the key, so two tenants uploading ``data.csv`` cannot
+    collide and a ``../`` in it cannot escape the prefix. Every route that writes a
+    dataset object must build its key here; there is deliberately no helper that
+    can express a key without the owner.
+    """
+    ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else ""
+    ext = re.sub(r"[^a-z0-9]", "", ext)
+    name = f"{'masked_' if masked else ''}{uuid.uuid4()}"
+    return f"datasets/{user_id}/{name}.{ext}" if ext else f"datasets/{user_id}/{name}"
+
+
 def upload_file_to_s3(
     file_content: bytes, s3_filename: str, content_type: str | None = None
 ) -> tuple[bool, str | None]:
@@ -219,10 +238,10 @@ def require_allowed_bucket(bucket_name: str) -> None:
     check cannot be evaluated, so it fails closed rather than allowing anything.
 
     Note this deliberately does NOT check the key against a per-tenant prefix.
-    Legacy `UserData` objects are keyed as a bare "{uuid4}.{ext}" with no tenant
-    component (see `generate_s3_filename`), so there is nothing to compare a
-    caller against; enforcing a prefix here would break every legitimate read of
-    an existing object. Namespacing those keys is tracked separately.
+    Every route now writes ``datasets/{user_id}/...`` via `dataset_s3_key` (#581),
+    but objects written before that were a bare "{uuid4}.{ext}" and stay readable
+    until `scripts/reconcile_unprefixed_s3_keys.py` has moved them; enforcing a
+    prefix here before that run would break every legitimate read of those.
     """
     allowed = _allowed_bucket()
     if not allowed:

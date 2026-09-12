@@ -27,6 +27,37 @@ class TestS3KeyDerivation:
         url = "https://bucket.s3.us-east-1.amazonaws.com/datasets/u/file.csv"
         assert _s3_key(url, "bucket") == "datasets/u/file.csv"
 
+    # #481: every persisted shape must derive the key of the object actually
+    # written, or delete_object matches nothing and erasure "succeeds" anyway.
+    def test_presigned_url_drops_the_query_string(self):
+        url = (
+            "https://bucket.s3.amazonaws.com/datasets/u/file.csv"
+            "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=abc"
+        )
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_endpoint_style_url_drops_the_bucket_segment(self, monkeypatch):
+        # MinIO/LocalStack: {endpoint}/{bucket}/{key}. The old parser returned
+        # "bucket/datasets/u/file.csv" here.
+        monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+        url = "http://localhost:4566/bucket/datasets/u/file.csv"
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_endpoint_style_presigned_url(self, monkeypatch):
+        monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:9000")
+        url = "http://localhost:9000/bucket/datasets/u/file.csv?X-Amz-Signature=abc"
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_s3_url_with_query_and_fragment(self):
+        assert _s3_key("s3://bucket/datasets/u/f.csv?versionId=1#x", "bucket") == "datasets/u/f.csv"
+
+    def test_bare_key_with_stray_query_is_trimmed(self):
+        assert _s3_key("datasets/u/f.csv?X-Amz-Signature=abc", "bucket") == "datasets/u/f.csv"
+
+    def test_url_without_a_key_returns_none(self):
+        assert _s3_key("s3://bucket", "bucket") is None
+        assert _s3_key("https://bucket.s3.amazonaws.com/", "bucket") is None
+
     def test_none_returns_none(self):
         assert _s3_key(None, "bucket") is None
 

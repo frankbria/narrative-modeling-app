@@ -92,3 +92,27 @@ This is normal - the script will update the existing user. Use `--clear` to star
 ModuleNotFoundError: No module named 'pymongo'
 ```
 Solution: Run `uv sync` in the backend directory to install dependencies.
+
+## S3 key reconciliation
+
+### `reconcile_unprefixed_s3_keys.py`
+
+Moves dataset objects written at the bucket root as bare `{uuid}.{ext}` (every
+non-chunked upload before #581) under their owner's `datasets/{user_id}/` prefix,
+where the strict downloader, erasure and lifecycle rules can find them. Each move is
+copy → verify (ETag + length) → rewrite the owning `UserData`/`DatasetMetadata`
+rows → delete the original. Objects with no owning row are reported and never
+touched. Read-only by default; counts only in the output.
+
+```bash
+cd apps/backend
+MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \
+  uv run python scripts/reconcile_unprefixed_s3_keys.py          # dry run
+  uv run python scripts/reconcile_unprefixed_s3_keys.py --apply  # move them
+```
+
+Exit status is 1 while any object remains unreconciled (planned-but-not-applied,
+orphaned, conflicting owners, or a failed copy). Tested end-to-end against
+LocalStack in `tests/test_scripts/test_reconcile_unprefixed_s3_keys.py`.
+
