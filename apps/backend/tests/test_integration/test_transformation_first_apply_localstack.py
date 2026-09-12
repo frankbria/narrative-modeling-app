@@ -33,7 +33,8 @@ def real_s3_env(monkeypatch, test_s3_bucket, s3_client):
     from app.services.versioning_service import versioning_service
 
     monkeypatch.setattr(versioning_service, "s3_client", s3_client)
-    monkeypatch.setattr(versioning_service, "bucket_name", test_s3_bucket)
+    # versioning_service.bucket_name is a live property over the env since #622;
+    # the setenv calls above are what point it at the test bucket.
     # Same for the S3Service singleton (training's download_file_bytes goes through it).
     from app.services.s3_service import s3_service
 
