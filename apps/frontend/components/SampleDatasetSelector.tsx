@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
+import { onboardingApi } from '@/lib/services/onboarding';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,10 +48,10 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { data: datasetData, loading } = useAsyncData<SampleDataset[]>(async () => {
-    const response = await fetch('/api/v1/onboarding/sample-datasets');
-    return response.json();
-  }, []);
+  const { data: datasetData, loading, error: listError, reload } = useAsyncData<SampleDataset[]>(
+    () => onboardingApi.getSampleDatasets<SampleDataset[]>(), // backend base URL + bearer (#470)
+    []
+  );
   const datasets = datasetData ?? [];
 
   const loadDataset = async (datasetId: string) => {
@@ -57,11 +59,9 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       setLoadingDataset(datasetId);
       setLoadError(null);
 
-      const response = await fetch(`/api/v1/onboarding/sample-datasets/${datasetId}/load`, {
-        method: 'POST'
-      });
-
-      const result = response.ok ? await response.json() : null;
+      const result = await onboardingApi
+        .loadSampleDataset<{ success?: boolean; dataset_id?: string }>(datasetId)
+        .catch(() => null); // a non-2xx is the same failure as a bad body below
 
       if (result?.success && result.dataset_id) {
         // Hand back the id of the UserData record the backend just created
@@ -136,6 +136,16 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         </p>
       </div>
 
+      {listError && (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>Couldn&apos;t load the sample datasets. Please try again.</span>
+            <Button variant="outline" size="sm" onClick={() => reload()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       {loadError && (
         <div
           role="alert"

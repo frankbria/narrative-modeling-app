@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import OnboardingPage from '@/app/onboarding/page';
+import { API_URL } from '@/lib/constants';
 
 // Radix tab triggers need the full pointer sequence in JSDOM.
 const activateTab = (name: RegExp) => {
@@ -28,7 +29,7 @@ const sampleDataset = {
   download_url: '/download/customer_churn',
 };
 
-const mockFetch = (url: string, init?: RequestInit) => {
+const mockFetch = (url: string) => {
   const u = String(url);
   if (u.includes('/onboarding/status')) {
     return Promise.resolve({
@@ -72,7 +73,7 @@ describe('OnboardingPage (#281 dead controls)', () => {
     fireEvent.click(await screen.findByText('Use This'));
 
     await waitFor(() => {
-      expect((global as any).__NEXT_ROUTER_MOCKS__.push).toHaveBeenCalledWith(
+      expect((global as unknown as { __NEXT_ROUTER_MOCKS__: { push: jest.Mock } }).__NEXT_ROUTER_MOCKS__.push).toHaveBeenCalledWith(
         '/explore/real-userdata-123'
       );
     });
@@ -100,5 +101,25 @@ describe('OnboardingPage (#281 dead controls)', () => {
     // The placeholder "Video Tutorials" buttons pointed at nothing — gone now.
     expect(screen.queryByText('Platform Overview (3 min)')).not.toBeInTheDocument();
     expect(screen.queryByText('Video Tutorials')).not.toBeInTheDocument();
+  });
+
+  // #470: every onboarding request must target the backend base URL and carry the API JWT —
+  // the page used to fetch('/api/v1/...') relative to the frontend origin, unauthenticated.
+  it('requests the backend base URL with the API bearer, never a relative /api/v1 path', async () => {
+    render(<OnboardingPage />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const calls = (global.fetch as jest.Mock).mock.calls as [string, RequestInit][];
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const [url, init] of calls) {
+      expect(String(url).startsWith(`${API_URL}/onboarding/`)).toBe(true);
+      expect(String(url)).not.toMatch(/\/api\/v1\/api/);
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe('Bearer mock-token');
+    }
+  });
+
+  it('surfaces a backend failure instead of a silently dead screen', async () => {
+    global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 502, json: async () => ({}) })) as jest.Mock;
+    render(<OnboardingPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t load|failed|try again/i);
   });
 });

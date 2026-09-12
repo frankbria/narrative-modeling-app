@@ -9,22 +9,24 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  CheckCircle, 
-  Circle, 
-  Play, 
-  SkipForward, 
-  Trophy, 
-  Clock, 
+import {
+  CheckCircle,
+  Circle,
+  Play,
+  SkipForward,
+  Trophy,
+  Clock,
   BookOpen,
   ArrowRight,
   Star,
   Target,
-  Zap
+  Zap,
+  AlertCircle,
 } from 'lucide-react';
 import { OnboardingStep } from '@/components/OnboardingStep';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
+import { onboardingApi } from '@/lib/services/onboarding';
 import { AchievementsBadge } from '@/components/AchievementsBadge';
 
 interface OnboardingStatus {
@@ -73,19 +75,19 @@ export default function OnboardingPage() {
   const [completingStep, setCompletingStep] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const {
     data: onboarding,
     loading,
+    error,
     reload: loadOnboardingData,
   } = useAsyncData(async () => {
-    const statusResponse = await fetch('/api/v1/onboarding/status');
-    const statusData: OnboardingStatus = await statusResponse.json();
-
-    const stepsResponse = await fetch('/api/v1/onboarding/steps');
-    const stepsData: StepInfo[] = await stepsResponse.json();
-
-    const achievementsResponse = await fetch('/api/v1/onboarding/achievements');
-    const achievementsData = await achievementsResponse.json();
+    // Backend base URL + API bearer, via the one onboarding client (#470). A non-2xx
+    // throws, so `error` below is set instead of parsing an error page as JSON.
+    const statusData = await onboardingApi.getStatus<OnboardingStatus>();
+    const stepsData = await onboardingApi.getSteps<StepInfo[]>();
+    const achievementsData = await onboardingApi.getAchievements<{ achievements?: Achievement[] }>();
 
     return {
       status: statusData,
@@ -111,15 +113,13 @@ export default function OnboardingPage() {
   const completeStep = async (stepId: string, completionData?: Record<string, unknown>) => {
     try {
       setCompletingStep(true);
-      
-      const response = await fetch(`/api/v1/onboarding/steps/${stepId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completion_data: completionData || {} })
-      });
+      setActionError(null);
 
-      const result = await response.json();
-      
+      const result = await onboardingApi.completeStep<{ success?: boolean; achievements?: unknown[] }>(
+        stepId,
+        completionData || {}
+      );
+
       if (result.success) {
         // Show celebration if achievements were earned
         if (result.achievements && result.achievements.length > 0) {
@@ -130,8 +130,9 @@ export default function OnboardingPage() {
         // Reload data to update progress
         await loadOnboardingData();
       }
-    } catch (error) {
-      console.error('Failed to complete step:', error);
+    } catch (err) {
+      console.error('Failed to complete step:', err);
+      setActionError("Couldn't save that step. Please try again.");
     } finally {
       setCompletingStep(false);
     }
@@ -139,15 +140,12 @@ export default function OnboardingPage() {
 
   const skipStep = async (stepId: string) => {
     try {
-      const response = await fetch(`/api/v1/onboarding/skip-step/${stepId}`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        await loadOnboardingData();
-      }
-    } catch (error) {
-      console.error('Failed to skip step:', error);
+      setActionError(null);
+      await onboardingApi.skipStep(stepId);
+      await loadOnboardingData();
+    } catch (err) {
+      console.error('Failed to skip step:', err);
+      setActionError("Couldn't skip that step. Please try again.");
     }
   };
 
@@ -172,6 +170,22 @@ export default function OnboardingPage() {
       default: return 'bg-muted text-muted-foreground';
     }
   };
+
+  if (error && !loading) {
+    return (
+      <div className="container mx-auto p-6 max-w-2xl">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>Couldn&apos;t load your onboarding progress. Please try again.</span>
+            <Button variant="outline" size="sm" onClick={() => loadOnboardingData()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -301,6 +315,12 @@ export default function OnboardingPage() {
 
         {/* Main Content */}
         <div className="lg:col-span-3">
+          {actionError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{actionError}</AlertDescription>
+            </Alert>
+          )}
           {currentStep ? (
             <OnboardingStep
               step={currentStep}
