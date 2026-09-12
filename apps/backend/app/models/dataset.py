@@ -161,6 +161,7 @@ class DatasetMetadata(Document):
             # Compound indexes for common query patterns
             [("user_id", 1), ("created_at", -1)],  # List user datasets chronologically
             [("user_id", 1), ("dataset_id", 1)],  # Unique lookup
+            [("user_id", 1), ("s3_url", 1)],  # the dual-write join to UserData (#467)
             [("user_id", 1), ("is_processed", 1)],  # Filter unprocessed datasets
             [("user_id", 1), ("is_processed", 1), ("created_at", -1)],  # Processed datasets chronologically
         ]

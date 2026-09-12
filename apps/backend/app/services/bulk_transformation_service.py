@@ -572,7 +572,10 @@ class BulkTransformationService:
                     f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
                 )
 
-                # Update dataset — and its dual-written twin (#467, #627)
+                # Update dataset — and its dual-written twin (#467, #627). No transaction spans
+                # the two documents: if this raises after one side moved, the job is marked
+                # failed below while the dataset is half-moved (logged at ERROR by the helper;
+                # scripts/inventory_dataset_links.py finds it). Accepted, see dataset_link.py.
                 dataset.num_rows = len(df)
                 dataset.num_columns = len(df.columns)
                 dataset.columns = df.columns.tolist()

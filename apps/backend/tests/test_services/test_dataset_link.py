@@ -133,3 +133,28 @@ class TestRecordNewFile:
         assert _file_type_of("s3://b/x/y.parquet?X-Amz-Signature=1") == "parquet"
         assert _file_type_of("s3://b/x/y.PARQUET") == "parquet"
         assert _file_type_of("s3://b/x/no-extension") is None
+
+    async def test_a_failure_before_anything_moved_is_not_a_half_move(self, setup_database, caplog):
+        """The ERROR is for the half-moved state only: a failure on the FIRST save raises plainly."""
+        import logging
+        from unittest.mock import AsyncMock, patch
+
+        meta, ud = await _twins()
+        with patch.object(UserData, "save", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")), \
+             caplog.at_level(logging.ERROR):
+            with pytest.raises(RuntimeError):
+                await record_new_file(meta, NEW)
+
+        assert "half-moved" not in caplog.text
+        assert (await DatasetMetadata.get(meta.id)).s3_url == OLD  # nothing moved
+
+    async def test_an_unsaved_document_moves_without_a_twin_lookup_by_id(self, setup_database):
+        """`doc.id is None` skips the re-read; the twin is still found through the stored URL."""
+        _, ud = await _twins()
+        unsaved = DatasetMetadata(
+            user_id=USER, dataset_id="unsaved", filename="d.csv", original_filename="d.csv", file_type="csv",
+            file_path=f"datasets/{USER}/ds_d.csv", s3_url=OLD, num_rows=3, num_columns=2,
+        )
+        await record_new_file(unsaved, NEW)
+        assert unsaved.s3_url == NEW and unsaved.id is not None  # save() inserted it
+        assert (await UserData.get(ud.id)).s3_url == NEW

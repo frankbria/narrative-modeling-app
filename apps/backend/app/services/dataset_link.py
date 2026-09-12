@@ -73,9 +73,14 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
                 setattr(twin, field, value)
 
     # UserData first: it carries the PII erasure must be able to reach.
-    ordered = sorted((d for d in (doc, twin) if d is not None), key=lambda d: isinstance(d, DatasetMetadata))
+    if isinstance(doc, DatasetMetadata):
+        ordered = [twin, doc]
+    else:
+        ordered = [doc, twin]
     moved: list[str] = []
     for d in ordered:
+        if d is None:
+            continue
         if isinstance(d, DatasetMetadata):
             if not d.source_s3_url:
                 # a stale in-memory doc must not overwrite a source the DB already knows

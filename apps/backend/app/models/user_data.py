@@ -74,7 +74,12 @@ class UserData(Document):
 
     class Settings:
         name = "user_data"
-        indexes = ["user_id", "created_at"]
+        indexes = [
+            "user_id",
+            "created_at",
+            # the dual-write join to DatasetMetadata (#467): looked up on every file move
+            [("user_id", 1), ("s3_url", 1)],
+        ]
 
     model_config = {
         "populate_by_name": True,
