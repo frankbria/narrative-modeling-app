@@ -415,7 +415,10 @@ class TestFeatureStoreServiceApplication:
 
         key = mock_get_file.await_args.args[0]
         assert "://" not in key and not key.startswith("/")  # a key, never a URL
-        assert key == stored.split("/", 3)[-1] if stored.startswith("s3://") else key == stored
+        if stored.startswith("s3://"):
+            assert key == stored.split("/", 3)[-1]  # the URL's key part
+        else:
+            assert key == stored  # a key is passed through as is
 
     @pytest.mark.asyncio
     async def test_apply_feature_increments_usage(self):
