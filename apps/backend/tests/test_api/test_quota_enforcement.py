@@ -1191,6 +1191,10 @@ class TestAiQuota:
             ("/api/v1/ai/analyze/{fid}",
              "app.services.mcp_integration.mcp_service.analyze_dataset"),
             ("/api/v1/ai/chat", "app.services.ai_chat.ai_chat_service.reply"),
+            ("/api/v1/datasets/ds-1/features/suggest",
+             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
+            ("/api/v1/datasets/ds-1/features/apply",
+             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
             # orchestration: the 402 lands before the body is even validated
             ("/api/v1/ai/recommend-tools",
              "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
@@ -1214,4 +1218,40 @@ class TestAiQuota:
         """/chat/{file_id} is metered though it is a stub (#274); the 501 refunds."""
         response = await async_authorized_client.post("/api/v1/ai/chat/" + "0" * 24)
         assert response.status_code == 501
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    @pytest.mark.parametrize(
+        "route, service",
+        [
+            ("/api/v1/ml/{mid}/evaluation",
+             "app.services.evaluation_explanation_service.evaluation_explanation_service.generate_report_card"),
+            ("/api/v1/ml/{mid}/errors",
+             "app.services.error_analysis_service.error_analysis_service.generate_suggestions"),
+        ],
+    )
+    async def test_model_explanation_routes_are_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database, route, service
+    ):
+        await _fill(TEST_USER, "ai_calls", FREE_AI_CALLS)
+        with patch(service, new_callable=AsyncMock) as model_call:
+            response = await async_authorized_client.get(route.format(mid="m-1"))
+        assert response.status_code == 402, f"{route}: {response.text}"
+        model_call.assert_not_called()
+        assert await metering.usage_for(TEST_USER, "ai_calls") == FREE_AI_CALLS
+
+    async def test_partial_evaluation_hands_its_unit_back(self, async_authorized_client, setup_database):
+        """A model without held-out artifacts gets `partial=true` and no model call — so no charge."""
+        from app.models.ml_model import MLModel
+
+        await MLModel(
+            user_id=TEST_USER, dataset_id="ds-1", model_id="m-partial", name="Partial",
+            problem_type="binary_classification", algorithm="Random Forest", target_column="y",
+            feature_names=["f1"], cv_score=0.8, test_score=0.8, training_time=1.0, model_size=1,
+            n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
+        ).insert()
+        with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",
+                   new_callable=AsyncMock, return_value=None):
+            response = await async_authorized_client.get("/api/v1/ml/m-partial/evaluation")
+        assert response.status_code == 200, response.text
+        assert response.json()["partial"] is True
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0

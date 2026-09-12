@@ -119,21 +119,21 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
         uploads=_env_int("PLAN_FREE_UPLOADS", 20),
-        ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 50),
+        ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 100),
         api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
         uploads=_env_int("PLAN_PRO_UPLOADS", 500),
-        ai_calls=_env_positive_int("PLAN_PRO_AI_CALLS", 2_000),
+        ai_calls=_env_positive_int("PLAN_PRO_AI_CALLS", 5_000),
         api_key_rate_limit=_env_positive_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
-        ai_calls=_env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 20_000),
+        ai_calls=_env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 50_000),
         api_key_rate_limit=_env_positive_int(
             "PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000
         ),

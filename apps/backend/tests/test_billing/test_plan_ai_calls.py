@@ -34,5 +34,5 @@ def test_an_unlimited_override_is_refused(monkeypatch, caplog):
 
     monkeypatch.setenv("PLAN_ENTERPRISE_AI_CALLS", "-1")
     with caplog.at_level(logging.WARNING):
-        assert _env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 20_000) == 20_000
+        assert _env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 50_000) == 50_000
     assert "PLAN_ENTERPRISE_AI_CALLS" in caplog.text
