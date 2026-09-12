@@ -46,6 +46,7 @@ from app.schemas.erasure import DeletionManifest
 from app.services.model_storage import ModelStorageService
 from app.services.redis_cache import cache_service
 from app.services.s3_service import S3Service
+from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -76,20 +77,34 @@ _LINK_KEYED_MODELS = [
 ]
 
 
+_URL_SCHEMES = ("s3://", "http://", "https://")
+
+
 def _s3_key(url_or_key: str | None, bucket_name: str) -> str | None:
-    """Derive a raw S3 object key from a stored ``s3://.../key`` URL or a bare key."""
+    """Derive the S3 object key from a stored URL, or pass a bare key through.
+
+    Goes through the app's own ``parse_s3_url`` (#481) rather than a third
+    hand-rolled parser: the previous one assumed the virtual-host shape, so an
+    endpoint-style URL (MinIO/LocalStack, ``{endpoint}/{bucket}/{key}``) yielded
+    ``bucket/key`` and a presigned URL kept its ``?X-Amz-...`` query — in both
+    cases ``delete_object`` matched nothing and the erasure reported success
+    while the object survived. ``bucket_name`` is kept for the call sites; the
+    parser attributes the URL to its own bucket.
+    """
     if not url_or_key:
         return None
-    if url_or_key.startswith("s3://"):
-        # s3://bucket/key... -> key...
-        without_scheme = url_or_key[len("s3://"):]
-        parts = without_scheme.split("/", 1)
-        return parts[1] if len(parts) == 2 else None
-    if url_or_key.startswith("http"):
-        # https://bucket.s3[.region].amazonaws.com/key... -> key...
-        after_host = url_or_key.split("/", 3)
-        return after_host[3] if len(after_host) == 4 else None
-    return url_or_key  # already a key (e.g. DatasetMetadata.file_path)
+    if not url_or_key.startswith(_URL_SCHEMES):
+        # Already a key (e.g. file_path): pass it through UNCHANGED. Keys are built
+        # from client filenames in places (datasets.py), so "notes http://x.csv" and
+        # "what?.csv" are legitimate keys — a prefix test keeps the first out of the
+        # URL parser, and no query-string trimming keeps the second whole. Either
+        # mistake makes delete_object miss and the erasure report success anyway.
+        return url_or_key
+    try:
+        _, key = parse_s3_url(url_or_key)
+    except ValueError:
+        return None
+    return key.split("#", 1)[0] or None
 
 
 class DatasetErasureService:

@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 
 from app.utils.s3 import (
     create_s3_client,
+    dataset_s3_key,
     get_file_from_s3,
     get_s3_client,
     parse_s3_url,
@@ -346,3 +347,47 @@ def test_get_file_from_s3_download_error(mock_env_vars, mock_s3_client):
 
         with pytest.raises(Exception):
             get_file_from_s3(s3_url)
+
+
+class TestDatasetS3Key:
+    """#581: every dataset object lives under its owner's prefix.
+
+    The strict downloader, erasure and any per-tenant lifecycle rule all key on
+    ``datasets/{user_id}/``; a bare ``{uuid}.{ext}`` is invisible to all three.
+    """
+
+    UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+
+    def test_key_is_owner_prefixed_with_a_server_generated_name(self):
+        import re
+
+        key = dataset_s3_key("tenant_a", "sales Q3 (final).CSV")
+        assert re.fullmatch(rf"datasets/tenant_a/{self.UUID_RE}\.csv", key), key
+        # The client filename never reaches the key.
+        assert "sales" not in key and " " not in key and "(" not in key
+
+    def test_masked_variant_keeps_the_prefix(self):
+        import re
+
+        key = dataset_s3_key("tenant_a", "people.csv", masked=True)
+        assert re.fullmatch(rf"datasets/tenant_a/masked_{self.UUID_RE}\.csv", key), key
+
+    def test_no_extension_yields_no_trailing_dot(self):
+        key = dataset_s3_key("tenant_a", "README")
+        assert key.startswith("datasets/tenant_a/")
+        assert not key.endswith(".")
+        assert "." not in key.rsplit("/", 1)[1]
+
+    def test_two_calls_never_collide(self):
+        assert dataset_s3_key("t", "a.csv") != dataset_s3_key("t", "a.csv")
+
+    @pytest.mark.parametrize("bad", ["", "a/b", "..", "."])
+    def test_a_user_id_that_could_fold_into_another_prefix_is_refused(self, bad):
+        with pytest.raises(ValueError):
+            dataset_s3_key(bad, "a.csv")
+
+    def test_traversal_in_the_filename_cannot_escape_the_prefix(self):
+        key = dataset_s3_key("tenant_a", "../../etc/passwd.csv")
+        assert key.startswith("datasets/tenant_a/")
+        assert ".." not in key and "passwd" not in key
+

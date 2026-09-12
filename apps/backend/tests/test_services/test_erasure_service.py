@@ -27,6 +27,47 @@ class TestS3KeyDerivation:
         url = "https://bucket.s3.us-east-1.amazonaws.com/datasets/u/file.csv"
         assert _s3_key(url, "bucket") == "datasets/u/file.csv"
 
+    # #481: every persisted shape must derive the key of the object actually
+    # written, or delete_object matches nothing and erasure "succeeds" anyway.
+    def test_presigned_url_drops_the_query_string(self):
+        url = (
+            "https://bucket.s3.amazonaws.com/datasets/u/file.csv"
+            "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=abc"
+        )
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_endpoint_style_url_drops_the_bucket_segment(self, monkeypatch):
+        # MinIO/LocalStack: {endpoint}/{bucket}/{key}. The old parser returned
+        # "bucket/datasets/u/file.csv" here.
+        monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+        url = "http://localhost:4566/bucket/datasets/u/file.csv"
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_endpoint_style_presigned_url(self, monkeypatch):
+        monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:9000")
+        url = "http://localhost:9000/bucket/datasets/u/file.csv?X-Amz-Signature=abc"
+        assert _s3_key(url, "bucket") == "datasets/u/file.csv"
+
+    def test_s3_url_with_query_and_fragment(self):
+        assert _s3_key("s3://bucket/datasets/u/f.csv?versionId=1#x", "bucket") == "datasets/u/f.csv"
+
+    def test_bare_key_containing_a_question_mark_is_not_truncated(self):
+        # `?` is legal in an S3 key and datasets.py puts the raw client filename in
+        # file_path; trimming at `?` (an earlier revision of this PR) would delete
+        # "…/ds1_what" — a key that does not exist — and report success.
+        key = "datasets/u1/ds1_what?.csv"
+        assert _s3_key(key, "bucket") == key
+
+    def test_bare_key_containing_a_url_mid_string_is_still_a_key(self):
+        # Keys are built from client filenames in places; "://" inside one must not
+        # route it to the URL parser, which would fail and skip the delete silently.
+        key = "datasets/u1/notes http://example.com.csv"
+        assert _s3_key(key, "bucket") == key
+
+    def test_url_without_a_key_returns_none(self):
+        assert _s3_key("s3://bucket", "bucket") is None
+        assert _s3_key("https://bucket.s3.amazonaws.com/", "bucket") is None
+
     def test_none_returns_none(self):
         assert _s3_key(None, "bucket") is None
 

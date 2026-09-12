@@ -4,7 +4,6 @@ Secure Upload API with PII detection and resumable uploads
 
 import io
 import logging
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +24,8 @@ from app.billing.enforcement import quota, release
 from app.models.user_data import UserData
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
-from app.utils.s3 import upload_file_to_s3
-from app.utils.schema_inference import generate_s3_filename, infer_schema
+from app.utils.s3 import dataset_s3_key, upload_file_to_s3
+from app.utils.schema_inference import infer_schema
 from app.utils.upload_limits import MAX_UPLOAD_BYTES, read_upload_capped
 
 logger = logging.getLogger(__name__)
@@ -125,7 +124,7 @@ async def secure_upload(
         schema = infer_schema(df)
         
         # Generate unique S3 filename
-        s3_filename = generate_s3_filename(file.filename)
+        s3_filename = dataset_s3_key(current_user_id, file.filename)
         
         # Upload to S3
         logger.info(f"Uploading file {file.filename} to S3 as {s3_filename}")
@@ -233,19 +232,18 @@ async def confirm_pii_upload(
     pii_detections = pii_detector.detect_pii_in_dataframe(df)
     pii_report = pii_detector.generate_pii_report(pii_detections)
     
-    # Generate unique S3 filename
-    s3_filename = generate_s3_filename(file.filename)
-    
     # Mask PII if requested
     if mask_pii and pii_detections:
         df_processed = pii_detector.mask_pii(df, pii_detections)
-        # Upload masked version
+        # Upload masked version — under the owner prefix like every other object
+        # (before #581 this was a second bare shape, ``masked_{uuid}.csv``).
         processed_content = df_processed.to_csv(index=False).encode()
-        masked_filename = f"masked_{s3_filename}"
-        success, s3_url = upload_file_to_s3(processed_content, masked_filename, content_type="text/csv")
+        masked_key = dataset_s3_key(current_user_id, file.filename, masked=True)
+        success, s3_url = upload_file_to_s3(processed_content, masked_key, content_type="text/csv")
     else:
         # Upload original
-        success, s3_url = upload_file_to_s3(content, s3_filename, content_type=file.content_type)
+        s3_key = dataset_s3_key(current_user_id, file.filename)
+        success, s3_url = upload_file_to_s3(content, s3_key, content_type=file.content_type)
         df_processed = df
     
     # Infer schema
@@ -446,12 +444,9 @@ async def complete_chunked_upload(
         # Upload to S3 under a server-derived, tenant-prefixed key. The client
         # filename must never reach the key: two tenants uploading data.csv used
         # to write the same unprefixed object, so the second silently destroyed
-        # the first (issue #464). This adopts the datasets/{user_id}/...
-        # convention the strict downloader, erasure and lifecycle rules expect;
-        # the non-chunked routes in this module still write bare {uuid}.{ext}
-        # keys (tracked separately).
-        ext = lowered.rsplit('.', 1)[-1]
-        s3_key = f"datasets/{current_user_id}/{uuid.uuid4()}.{ext}"
+        # the first (issue #464). `dataset_s3_key` is the one place that shape
+        # is built; the non-chunked routes adopted it in #581.
+        s3_key = dataset_s3_key(current_user_id, lowered)
         success, s3_url = upload_file_to_s3(content, s3_key, content_type=content_type)
         if not success or not s3_url:
             logger.error("S3 upload failed for chunked session %s", session_id)

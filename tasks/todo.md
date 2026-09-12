@@ -1,32 +1,30 @@
-# Issue #477 — [P1.1] [security] /admin has no authorization check and no admin role exists
+# Issue #581 — [P1.35] [data-integrity] /secure and /confirm-pii-upload write bare {uuid} S3 keys with no tenant prefix — 155 such objects exist
 
 Plan source: self-authored (no plan comment). No architectural fork; approved autonomously.
 
 ## Design
 
-- **Admin concept = `ADMIN_EMAILS` env allowlist**, checked server-side (`lib/admin-allowlist.ts`), mirroring `lib/invite-allowlist.ts` — but **fail closed**: an empty/unset list means *nobody* is admin (the invite gate's empty-means-open default is wrong for an admin check).
-- **Server guard in `middleware.ts`**: after the session check, requests to `/admin` or `/admin/*` whose token email is not on the list are rewritten to a non-existent path so Next renders its 404 — no existence oracle, same answer as a page that isn't there. Middleware is already the auth chokepoint and covers future `/admin/*` routes automatically.
-- **Sidebar link only for admins**: the client cannot read `ADMIN_EMAILS`, so the NextAuth `session` callback sets `session.isAdmin` server-side and `Sidebar` renders the link only when it is true. Type augmented in `types/next-auth.d.ts`.
-- **Backend (AC3)**: the admin page calls only `/health/status` and `/health/metrics`, neither of which exists (#479). There is no live endpoint to guard; #479 must add an admin dependency when it creates them — comment there post-merge.
-- Env plumbing: `.env.local.example`, `.env.staging.example`, and the frontend service in `docker-compose.staging.yml` (`${ADMIN_EMAILS:-}`, optional until provisioned per #457).
+- **One key builder.** `dataset_s3_key(user_id, original_filename, *, masked=False)` in `app/utils/s3.py` returns `datasets/{user_id}/[masked_]{uuid4}.{ext}`. It replaces `generate_s3_filename` (deleted — a helper that cannot express the prefix must not exist for the next route to reach for) at **all four** call sites: `/upload/secure`, `/upload/confirm-pii-upload`, `/upload/` (`upload.py` — a third bare-key writer the issue did not list), and the chunked `complete` route (#464's inline f-string, consolidated).
+- **Reconciliation** `scripts/reconcile_unprefixed_s3_keys.py`: list root-level objects matching `^(masked_)?{uuid4}\.\w+$`, match each to `UserData`/`DatasetMetadata` rows by `s3_url` (via the app's own `parse_s3_url`), copy under `datasets/{owner}/{basename}`, verify the copy (ContentLength + ETag), rewrite the rows' `s3_url` (and `file_path` when it held the old key), then delete the original. **Orphans (no owning row) are reported and never touched.** Dry-run by default, `--apply` to write, counts only in output. Exit 1 while unreconciled objects remain.
+- **AC3 needs the operator.** The local backend has no AWS credentials; the 155-object production run is filed as a deployment follow-up with the exact command (the #589 pattern).
 
 ## Steps
 
-1. [ ] `lib/admin-allowlist.ts` — `isAdminEmail(email, raw = process.env.ADMIN_EMAILS)`; tests in `__tests__/lib/admin-allowlist.test.ts`.
-2. [ ] `middleware.ts` — admin prefix guard; tests in `__tests__/middleware.test.ts` (non-admin → 404 rewrite; admin → passes; unset list → 404 for everyone; `/administration` not affected).
-3. [ ] `auth.ts` session callback sets `isAdmin`; `types/next-auth.d.ts` gains `isAdmin?: boolean`.
-4. [ ] `components/Sidebar.tsx` renders the Admin link only when `session?.isAdmin`; tests in `__tests__/components/Sidebar.test.tsx`.
-5. [ ] Env: `.env.local.example`, `.env.staging.example`, `docker-compose.staging.yml` (frontend service).
-6. [ ] Docs: CLAUDE.md frontend section — the `/admin` guard and the fail-closed allowlist.
+1. [ ] `dataset_s3_key` + tests (`tests/test_utils/test_s3.py`): shape, masked variant, extension lowering/absence, uniqueness.
+2. [ ] Replace the four call sites; delete `generate_s3_filename`; update the `require_allowed_bucket` docstring that cites it.
+3. [ ] Route tests (AC4): `/upload/secure`, `/upload/confirm-pii-upload` (masked and unmasked), `/upload/` each write a key under `datasets/{user_id}/`, following `test_chunked_upload_flow.py`'s capture pattern.
+4. [ ] Reconcile script + unit tests for `plan()` + an `integration`-marked LocalStack test: bare object + row → moved, row rewritten, original deleted; orphan → reported, untouched; dry-run → nothing written.
+5. [ ] Erasure re-verified (AC5): `integration` test uploads through the real `/upload/secure` against LocalStack, erases, asserts the object is gone.
+6. [ ] Docs: CLAUDE.md chunked-upload bullet (drop the "#581 still bare" note, record the helper), `require_allowed_bucket` docstring, `scripts/README.md`.
 
 ## Acceptance criteria
 
-- [ ] AC1 admin concept exists (`ADMIN_EMAILS`, server-side)
-- [ ] AC2 `/admin` server-guarded (middleware, not a client check)
-- [ ] AC3 backend endpoints the UI calls enforce the check — none exist today; recorded + #479 comment
-- [ ] AC4 sidebar link only for admins
-- [ ] AC5 test: authenticated non-admin gets 404 on `/admin`
+- [ ] AC1 both routes (and the other two) write `datasets/{user_id}/{uuid}.{ext}`
+- [ ] AC2 `generate_s3_filename` replaced by a helper that takes the owner
+- [ ] AC3 155 objects reconciled — script + tests here; production run is the operator's (follow-up issue)
+- [ ] AC4 a test per route asserts the prefixed key
+- [ ] AC5 erasure verified against a `/secure` upload
 
 ## Known limitation
 
-`ADMIN_EMAILS` is not yet provisioned on staging; until the operator sets it, nobody is admin and `/admin` 404s for everyone — which is the safe direction. The tiles the page shows are fabricated (#478) and stay so; this issue only stops them being customer-visible.
+The production reconciliation itself cannot run from this environment (no AWS credentials). Filed for the operator with the dry-run and `--apply` commands.

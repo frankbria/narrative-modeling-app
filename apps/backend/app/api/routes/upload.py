@@ -18,8 +18,8 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
 from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
-from app.utils.s3 import create_s3_client, upload_file_to_s3
-from app.utils.schema_inference import generate_s3_filename, infer_schema
+from app.utils.s3 import create_s3_client, dataset_s3_key, upload_file_to_s3
+from app.utils.schema_inference import infer_schema
 from app.utils.upload_limits import read_upload_capped
 
 # Set up logging
@@ -84,8 +84,8 @@ async def upload_file(
         # Infer schema
         schema_fields = infer_schema(df)
 
-        # Generate a unique S3 filename
-        s3_filename = generate_s3_filename(file.filename)
+        # Owner-prefixed, server-derived key (#581): see dataset_s3_key.
+        s3_filename = dataset_s3_key(current_user_id, file.filename)
 
         # Check if AWS environment variables are set
         required_env_vars = [

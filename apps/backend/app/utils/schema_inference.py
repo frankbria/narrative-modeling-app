@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Any
 
@@ -112,16 +111,3 @@ def infer_schema(df: pd.DataFrame) -> list[dict[str, Any]]:
     return schema
 
 
-def generate_s3_filename(original_filename: str) -> str:
-    """
-    Generate a unique S3 filename using UUID.
-    Preserves the original file extension.
-    """
-    # Get the file extension
-    ext = original_filename.split(".")[-1] if "." in original_filename else ""
-
-    # Generate a UUID
-    unique_id = str(uuid.uuid4())
-
-    # Combine with extension
-    return f"{unique_id}.{ext}" if ext else unique_id
