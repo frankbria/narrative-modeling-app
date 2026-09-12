@@ -43,6 +43,8 @@ class PIIDetection:
 #: column that really holds SSNs scores ~1.0 and clears it.
 HIGH_RISK_CONFIDENCE = 0.8
 MEDIUM_RISK_CONFIDENCE = 0.5
+#: A value pattern must match more than this share of the sample to count at all.
+PATTERN_MATCH_FLOOR = 0.1
 #: Confidence a column earns from its *name* alone: exactly the high-risk
 #: threshold, and the report requires strictly greater, so a name by itself is
 #: medium risk — a label is a hint, values are evidence (#608). Defined in terms
@@ -137,7 +139,7 @@ class PIIDetector:
             if match_count == 0:
                 continue
             confidence = match_count / len(data)
-            if confidence > 0.1 and (best is None or confidence > best[0]):  # More than 10% matches
+            if confidence > PATTERN_MATCH_FLOOR and (best is None or confidence > best[0]):
                 best = (confidence, pii_type, match_count)
         if best is None:
             return None
