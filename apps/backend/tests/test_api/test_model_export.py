@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.main import app
+from app.services.exceptions import NotFoundError
+from app.services.model_export import ExportFormatUnavailable
 
 
 @pytest.fixture
@@ -180,7 +182,7 @@ class TestModelExportRoutes:
         
         # Setup mocks
         mock_export_service.export_python_code = AsyncMock(
-            side_effect=ValueError("Model not found")
+            side_effect=NotFoundError(resource_type="Model", resource_id="test_model_456")
         )
         
         # Make request
@@ -189,7 +191,7 @@ class TestModelExportRoutes:
         # Verify error response
         assert response.status_code == 404
         data = response.json()
-        assert "Model not found" in data["detail"]
+        assert "not found" in data["detail"]
     
     @patch('app.api.routes.model_export.export_service')
     def test_export_docker_container_success(
@@ -261,16 +263,16 @@ class TestModelExportRoutes:
     ):
         """Test ONNX export when ONNX is not available"""
         mock_export_service.export_model_onnx = AsyncMock(
-            side_effect=ValueError("ONNX export requires skl2onnx package")
+            side_effect=ExportFormatUnavailable("ONNX export requires the export dependency group")
         )
         
         # Make request
         response = client.get(f"/api/v1/models/{mock_model_id}/export/onnx")
         
         # Verify error response
-        assert response.status_code == 400
+        assert response.status_code == 501  # not installed here, not a bad request
         data = response.json()
-        assert "ONNX export requires" in data["detail"]
+        assert data.get("request_id")  # 5xx bodies are sanitised (#269): status is the signal, the reason is in /export/formats
     
     @patch('app.api.routes.model_export.export_service')
     def test_export_pmml_success(
@@ -387,7 +389,7 @@ class TestModelExportRoutes:
         # Verify error response
         assert response.status_code == 404
         data = response.json()
-        assert "Model not found" in data["detail"]
+        assert "not found" in data["detail"]
     
     @patch('app.api.routes.model_export.export_service')
     def test_export_service_internal_error(

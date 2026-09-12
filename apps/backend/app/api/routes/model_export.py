@@ -9,7 +9,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.services.model_export import ModelExportService
+from app.services.exceptions import NotFoundError
+from app.services.model_export import ExportFormatUnavailable, ModelExportService
 
 router = APIRouter(prefix="/models", tags=["model-export"])
 
@@ -64,8 +65,12 @@ async def export_python_code(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except NotFoundError as e:  # missing or another tenant's model — identical answers
+        raise HTTPException(status_code=404, detail=e.message)
+    except ExportFormatUnavailable as e:  # converter not installed here
+        raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:  # conversion failed
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
@@ -90,7 +95,11 @@ async def export_onnx(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
-    except ValueError as e:
+    except NotFoundError as e:  # missing or another tenant's model — identical answers
+        raise HTTPException(status_code=404, detail=e.message)
+    except ExportFormatUnavailable as e:  # converter not installed here
+        raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:  # conversion failed
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ONNX export failed: {str(e)}")
@@ -116,7 +125,11 @@ async def export_pmml(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
-    except ValueError as e:
+    except NotFoundError as e:  # missing or another tenant's model — identical answers
+        raise HTTPException(status_code=404, detail=e.message)
+    except ExportFormatUnavailable as e:  # converter not installed here
+        raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:  # conversion failed
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PMML export failed: {str(e)}")
@@ -142,8 +155,12 @@ async def export_docker_container(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except NotFoundError as e:  # missing or another tenant's model — identical answers
+        raise HTTPException(status_code=404, detail=e.message)
+    except ExportFormatUnavailable as e:  # converter not installed here
+        raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:  # conversion failed
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Docker export failed: {str(e)}")
 
@@ -215,8 +232,12 @@ async def export_model_custom(
 
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except NotFoundError as e:  # missing or another tenant's model — identical answers
+        raise HTTPException(status_code=404, detail=e.message)
+    except ExportFormatUnavailable as e:  # converter not installed here
+        raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:  # conversion failed
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 

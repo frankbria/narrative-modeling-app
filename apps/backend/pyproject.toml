@@ -100,6 +100,10 @@ tuning = [
 observability = [
     "sentry-sdk[fastapi]>=2.0.0",
 ]
+export = [
+    "onnx>=1.17",
+    "skl2onnx>=1.17",
+]
 
 [tool.uv]
 # Keep shap + optuna installed by default (beta ships both). --no-dev still
