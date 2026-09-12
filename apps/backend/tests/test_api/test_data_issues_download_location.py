@@ -81,3 +81,60 @@ async def test_a_dataset_with_no_stored_location_is_a_400_not_a_swallowed_error(
             await call()
     assert exc.value.status_code == 400, label
     download.assert_not_called()
+
+
+async def test_batch_apply_moves_the_dataset_and_its_twin():
+    """#467/#627: after applying fixes the handler used to set `user_data.file_path` alone;
+    it must move both twins through `record_new_file` with the uploaded URL."""
+    import pandas as pd
+
+    applied = MagicMock(issue_id="i1", fix_id="fx", success=True, rows_affected=1, error_message=None)
+    engine = MagicMock()
+    engine.apply_batch_fixes = AsyncMock(return_value=(pd.DataFrame({"a": [1, 2]}), [applied], []))
+    record = _record()
+    record.save = AsyncMock()
+    user_data = _user_data()
+    new_url = f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"
+
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=user_data), \
+         patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=record), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
+         patch.object(routes, "FixSuggestionEngine", return_value=engine), \
+         patch.object(routes, "upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
+         patch.object(routes, "record_new_file", new_callable=AsyncMock) as move, \
+         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+        response = await routes.batch_apply_fixes(
+            BatchFixRequest(dataset_id=DS, issue_ids=["i1"], preview_mode=False), USER
+        )
+
+    assert response.success is True, response
+    move.assert_awaited_once_with(user_data, new_url)
+    assert user_data.num_rows == 2
+
+
+async def test_apply_fix_moves_the_dataset_and_its_twin():
+    """#467/#627: the non-preview apply path must move both twins through `record_new_file`."""
+    import pandas as pd
+
+    applied = MagicMock(issue_id="i1", fix_id="fx", success=True, rows_affected=1, error_message=None)
+    engine = MagicMock()
+    engine.apply_fix = MagicMock(return_value=(pd.DataFrame({"a": [1, 2, 3]}), applied))
+    record = _record()
+    record.save = AsyncMock()
+    user_data = _user_data()
+    new_url = f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"
+
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=user_data), \
+         patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=record), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2, 3]})), \
+         patch.object(routes, "FixSuggestionEngine", return_value=engine), \
+         patch.object(routes, "upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
+         patch.object(routes, "record_new_file", new_callable=AsyncMock) as move, \
+         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+        response = await routes.apply_fix(
+            FixApplicationRequest(dataset_id=DS, issue_id="i1", preview_mode=False), USER
+        )
+
+    assert response.success is True, response
+    move.assert_awaited_once_with(user_data, new_url)
+    assert user_data.num_rows == 3

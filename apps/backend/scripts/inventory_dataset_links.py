@@ -70,7 +70,7 @@ async def _main(as_json: bool) -> int:
     if not uri or not db:
         print("MONGODB_URI and MONGODB_DB are required", file=sys.stderr)
         return 2
-    client = AsyncIOMotorClient(uri)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(uri)
     await init_beanie(database=client[db], document_models=DOCUMENT_MODELS)
     inv = await inventory()
     if as_json:

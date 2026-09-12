@@ -6,8 +6,12 @@ severed that join: erasure lost the PII-carrying `UserData` twin, and training �
 reads `UserData.s3_url` — silently kept using the pre-transform file. Every writer that
 moves a dataset to a new current file goes through here so both twins move together.
 
-No multi-document transaction: the `UserData` twin is written first, so a failure between
-the two writes leaves the erasure-critical side already moved.
+No multi-document transaction. The join is symmetric, so a failure between the two
+writes leaves it broken whichever side went first: `erase_dataset` (which joins from the
+metadata's `s3_url` to the twin) would then miss the PII-carrying `UserData` row. Writing
+`UserData` first protects `erase_user`, which sweeps `UserData` rows by `user_id` without
+the join. A half-failure is logged at ERROR with both locations so the operator can repair
+it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 """
 import logging
 from datetime import UTC, datetime
@@ -25,7 +29,15 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
     dataset with no twin (only one side was ever written) moves alone. The original
     upload is kept in `DatasetMetadata.source_s3_url` the first time.
     """
-    old_url = doc.s3_url
+    # Look the twin up at the dataset's CURRENT stored location, not the one this
+    # in-memory `doc` was loaded with: two overlapping transformations each load the
+    # dataset, the first moves both twins, and the second would otherwise search the
+    # stale URL, find nothing, and move its own side alone — re-severing the link (codex).
+    model: type[DatasetMetadata] | type[UserData] = (
+        DatasetMetadata if isinstance(doc, DatasetMetadata) else UserData
+    )
+    current = await model.get(doc.id) if doc.id is not None else None
+    old_url = (current.s3_url if current is not None else None) or doc.s3_url
     twin: DatasetMetadata | UserData | None = None
     if old_url:
         if isinstance(doc, DatasetMetadata):
@@ -39,10 +51,13 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
 
     # UserData first: it carries the PII erasure must be able to reach.
     ordered = sorted((d for d in (doc, twin) if d is not None), key=lambda d: isinstance(d, DatasetMetadata))
+    moved: list[str] = []
     for d in ordered:
         if isinstance(d, DatasetMetadata):
             if not d.source_s3_url:
-                d.source_s3_url = old_url
+                # a stale in-memory doc must not overwrite a source the DB already knows
+                stored = current.source_s3_url if isinstance(current, DatasetMetadata) else None
+                d.source_s3_url = stored or old_url
             d.file_path = new_url
             d.s3_url = new_url
             d.update_timestamp()
@@ -50,4 +65,14 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
             d.file_path = new_url
             d.s3_url = new_url
             d.updated_at = datetime.now(UTC)
-        await d.save()
+        try:
+            await d.save()
+        except Exception:
+            if moved:
+                logger.error(
+                    "Dataset link half-moved: %s already at %s, %s still at %s (user %s) — "
+                    "run scripts/inventory_dataset_links.py and repair",
+                    ", ".join(moved), new_url, type(d).__name__, old_url, d.user_id,
+                )
+            raise
+        moved.append(type(d).__name__)

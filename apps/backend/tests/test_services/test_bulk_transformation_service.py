@@ -780,3 +780,36 @@ async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
         await bulk_service._process_bulk_job(job)
 
     assert seen == ["s3://test-bucket/datasets/u1/d1_f.csv"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("beanie_models_initialized")
+async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk_service):
+    """#467/#627: a completed bulk job used to set `dataset.file_path` alone; it must move
+    both twins through `record_new_file` with the uploaded URL."""
+    from app.models.bulk_transformation import BulkTransformationJob
+
+    job = BulkTransformationJob(job_id="bj-467", user_id="u1", dataset_id="d1",
+                                transformation_type="fill_missing", selected_columns=["age"],
+                                global_parameters={"method": "mean"})
+    dataset = MagicMock(file_path="datasets/u1/d1_f.csv", s3_url="s3://test-bucket/datasets/u1/d1_f.csv")
+    frame = pd.DataFrame({"age": [1.0, None, 3.0], "name": ["a", "b", "c"]})
+    new_url = "s3://test-bucket/transformed/u1/d1_bulk.parquet"
+
+    async def get_df(url, *a, **k):
+        return frame
+
+    with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
+         patch.object(BulkTransformationJob, "find_one", new_callable=AsyncMock, return_value=job), \
+         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
+         patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=get_df), \
+         patch("app.services.bulk_transformation_service.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
+         patch("app.services.bulk_transformation_service.record_new_file", new_callable=AsyncMock) as move, \
+         patch("app.services.bulk_transformation_service.cache_service") as cache, \
+         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+        cache.delete_pattern = AsyncMock()
+        await bulk_service._process_bulk_job(job)
+
+    assert job.status.value == "completed", job.error_message if hasattr(job, "error_message") else job.status
+    move.assert_awaited_once_with(dataset, new_url)
+    assert dataset.num_rows == 3  # counts are set on the dataset before the move persists them
