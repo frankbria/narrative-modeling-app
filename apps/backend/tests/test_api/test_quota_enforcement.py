@@ -254,12 +254,8 @@ class TestPiiConfirmationChargesOnce:
     at both steps for the one dataset they end up with.
     """
 
-    #: SSN-shaped *values* under a neutral column name. Deliberately not a column
-    #: called "ssn": `_check_column_name` matches that, returns confidence exactly
-    #: 0.8, and `continue`s past the value check — and "high" requires `> 0.8`, so
-    #: the more obvious fixture is rated *medium* and never reaches the branch under
-    #: test. (That short-circuit looks like a detector bug, but changing a PII
-    #: threshold is not this issue's to make — filed separately.)
+    #: SSN-shaped values; since #608 the column name no longer lowers the risk
+    #: rating, the neutral one is just what this fixture always used.
     PII_CSV = (
         b"identifier,amount\n"
         b"123-45-6789,10\n"

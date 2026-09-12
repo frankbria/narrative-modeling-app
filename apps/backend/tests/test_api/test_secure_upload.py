@@ -70,24 +70,39 @@ class TestSecureUploadAPI:
         assert "file_id" in data
     
     async def test_secure_upload_with_pii(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """Test secure upload with PII data"""
-        # Create test CSV data with PII
+        """A PII-named column that really holds PII values is high risk and needs
+        the caller's confirmation (#608). Before #608 the column *name* short-
+        circuited the value check and this exact file sailed through as medium."""
         csv_data = "name,email,phone\nJohn Doe,john@example.com,555-1234"
         csv_file = io.BytesIO(csv_data.encode('utf-8'))
-        
         files = {"file": ("test_pii.csv", csv_file, "text/csv")}
-        
         response = await mock_async_client.post(
             "/api/v1/upload/secure",
             files=files
         )
-        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "pii_detected"
+        assert data["requires_confirmation"] is True
+        assert data["pii_report"]["has_pii"] is True
+        assert data["pii_report"]["risk_level"] == "high"
+
+    async def test_secure_upload_with_pii_named_columns_but_plain_values(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
+        """A label alone is a hint, not proof: medium risk, stored without the gate."""
+        csv_data = "name,email,phone\nJohn Doe,not provided,unknown"
+        csv_file = io.BytesIO(csv_data.encode('utf-8'))
+        files = {"file": ("test_pii_names.csv", csv_file, "text/csv")}
+        response = await mock_async_client.post(
+            "/api/v1/upload/secure",
+            files=files
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert data["pii_report"]["has_pii"] is True
+        assert data["pii_report"]["risk_level"] == "medium"
         assert "file_id" in data
-    
+
     async def test_secure_upload_invalid_file(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
         """Test secure upload with invalid file format"""
         # Create non-CSV data
