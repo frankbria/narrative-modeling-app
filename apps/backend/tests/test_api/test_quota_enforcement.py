@@ -1258,21 +1258,29 @@ class TestAiQuota:
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0
 
     async def test_rule_based_suggestions_hand_the_unit_back(self, async_authorized_client, setup_database):
-        """`include_ai_suggestions: false` calls no model, so the reserved unit is released;
-        the default (AI on) keeps it."""
+        """The service reports whether a model call happened (`metadata.ai_used`); the route
+        keeps the unit only when it did."""
         import pandas as pd
 
         from app.schemas.feature_engineering import FeatureSuggestionResponse
 
-        rule_based = FeatureSuggestionResponse(dataset_id="ds-1", suggestions=[], total_suggestions=0)
+        def _response(ai_used: bool) -> FeatureSuggestionResponse:
+            return FeatureSuggestionResponse(
+                dataset_id="ds-1", suggestions=[], total_suggestions=0, metadata={"ai_used": ai_used}
+            )
+
+        url = "/api/v1/datasets/ds-1/features/suggest"
         with patch("app.api.routes.feature_engineering._load_dataset_dataframe",
                    new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
              patch("app.services.feature_engineering_service.feature_engineering_service.suggest_features",
-                   new_callable=AsyncMock, return_value=rule_based):
-            url = "/api/v1/datasets/ds-1/features/suggest"
-            assert (await async_authorized_client.post(url, json={"include_ai_suggestions": False})).status_code == 200
+                   new_callable=AsyncMock) as suggest:
+            # the service says no model ran (AI off, no key, or breaker open) -> released
+            suggest.return_value = _response(ai_used=False)
+            assert (await async_authorized_client.post(url, json={})).status_code == 200
             assert await metering.usage_for(TEST_USER, "ai_calls") == 0
-            assert (await async_authorized_client.post(url, json={"include_ai_suggestions": True})).status_code == 200
+            # the service says the model ran -> the unit stays charged
+            suggest.return_value = _response(ai_used=True)
+            assert (await async_authorized_client.post(url, json={})).status_code == 200
             assert await metering.usage_for(TEST_USER, "ai_calls") == 1
 
     @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
@@ -1320,5 +1328,26 @@ class TestAiQuota:
              patch("app.services.error_analysis_service.error_analysis_service.generate_suggestions",
                    new_callable=AsyncMock, return_value=([], generated_by)):
             response = await async_authorized_client.get("/api/v1/ml/m-err/errors")
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "ai_calls") == charged
+
+    @pytest.mark.parametrize("generated_by, charged", [("rule_based", 0), ("hybrid", 1)])
+    async def test_tool_recommendations_are_charged_only_when_the_model_helped(
+        self, async_authorized_client, setup_database, generated_by, charged
+    ):
+        from unittest.mock import MagicMock
+
+        from app.schemas.ai_orchestration import Objective, ToolRecommendationResponse
+
+        response_body = ToolRecommendationResponse(
+            dataset_id="ds-1", objective=Objective.EXPLORATION, recommendations=[], generated_by=generated_by
+        )
+        with patch("app.services.ai_orchestration_service.ai_orchestration_service.build_profile",
+                   new_callable=AsyncMock, return_value=MagicMock()), \
+             patch("app.services.ai_orchestration_service.ai_orchestration_service.recommend_tools",
+                   new_callable=AsyncMock, return_value=response_body):
+            response = await async_authorized_client.post(
+                "/api/v1/ai/recommend-tools", json={"dataset_id": "ds-1", "objective": "exploration"}
+            )
         assert response.status_code == 200, response.text
         assert await metering.usage_for(TEST_USER, "ai_calls") == charged

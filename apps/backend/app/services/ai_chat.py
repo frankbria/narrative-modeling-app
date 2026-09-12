@@ -72,7 +72,11 @@ class AIChatService:
     @with_circuit_breaker("openai", max_attempts=2, failure_threshold=5, recovery_timeout=60.0,
                           exceptions=(OpenAIError,))
     async def reply(self, request: ChatRequest) -> str | None:
-        """The model's reply, or None when no key is configured (the route answers 503)."""
+        """The model's reply; None when no key is configured (the route answers 503).
+
+        OpenAI errors and an open breaker raise instead — the middleware refunds the unit on
+        that 5xx as it does on the 503.
+        """
         if self.client is None:
             return None
         response = await asyncio.to_thread(

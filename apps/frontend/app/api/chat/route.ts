@@ -24,7 +24,8 @@ type Turn = { role: 'user' | 'assistant'; content: string }
 /** Validate + rebuild the client payload; null when any bound is broken. */
 function boundedInput(body: unknown): { message: string; context: string; history: Turn[] } | null {
   if (typeof body !== 'object' || body === null) return null
-  const { message, context, messageHistory = [] } = body as Record<string, unknown>
+  // `context` may be omitted (backend default is ''), but if present it must be a string
+  const { message, context = '', messageHistory = [] } = body as Record<string, unknown>
   if (typeof message !== 'string' || message.length === 0 || message.length > MAX_MESSAGE_CHARS) return null
   if (typeof context !== 'string' || context.length > MAX_CONTEXT_CHARS) return null
   if (!Array.isArray(messageHistory) || messageHistory.length > MAX_HISTORY_TURNS) return null

@@ -107,6 +107,12 @@ describe('POST /api/chat', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
+    it('an omitted context is forwarded as an empty string', async () => {
+      const res = await POST(chatRequest({ message: 'hi' }))
+      expect(res.status).toBe(200)
+      expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).context).toBe('')
+    })
+
     it('a maximal valid request goes through', async () => {
       const res = await POST(chatRequest({
         message: 'x'.repeat(4000), context: 'c'.repeat(8000),

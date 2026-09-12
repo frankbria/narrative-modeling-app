@@ -143,8 +143,8 @@ async def suggest_features(
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
-        if not request.include_ai_suggestions:
-            # rule-based only: no model was called, so the reserved unit goes back (#461)
+        if not response.metadata.get("ai_used"):
+            # AI off, no key, or breaker open: no model was called, the reserved unit goes back (#461)
             await enforcement.release(http_request)
         return response
 
