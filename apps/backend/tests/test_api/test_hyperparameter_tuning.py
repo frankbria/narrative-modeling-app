@@ -134,7 +134,7 @@ class TestTrainTaskTuningWiring:
         df.to_csv(csv, index=False)
 
         with patch(
-            "app.api.routes.model_training.get_file_from_s3",
+            "app.services.s3_service.S3Service.download_file_bytes",
             new_callable=AsyncMock,
             return_value=csv.getvalue(),
         ), patch(

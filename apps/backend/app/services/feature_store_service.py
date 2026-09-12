@@ -25,7 +25,7 @@ from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     parse_feature_definition,
 )
-from app.services.s3_service import get_file_from_s3
+from app.services.s3_service import s3_service
 
 logger = logging.getLogger(__name__)
 
@@ -417,7 +417,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
             )
 
         # Load data from S3
-        file_bytes = await get_file_from_s3(dataset.file_path)
+        file_bytes = await s3_service.download_file_bytes(dataset.file_path)
         if dataset.file_type == "csv":
             file_str = file_bytes.decode('utf-8')
             df = pd.read_csv(io.StringIO(file_str))

@@ -510,13 +510,8 @@ class TestUserDataAPI:
         mock_df.to_csv(csv_buffer, index=False)
         csv_content = csv_buffer.getvalue()
 
-        with patch('app.api.routes.user_data.create_s3_client') as mock_create_client:
-            mock_s3_client = MagicMock()
-            mock_s3_client.get_object.return_value = {
-                "Body": MagicMock(read=MagicMock(return_value=csv_content))
-            }
-            mock_create_client.return_value = mock_s3_client
-
+        # The route reads through the one validated reader (#531).
+        with patch('app.api.routes.user_data.get_file_from_s3', return_value=io.BytesIO(csv_content)):
             response = await async_authorized_client.get("/api/v1/user_data/preview")
 
             assert response.status_code == 200
@@ -535,11 +530,7 @@ class TestUserDataAPI:
         sample_user_data: UserData
     ):
         """Test getting preview data when S3 retrieval fails (returns error but not 500)."""
-        with patch('app.api.routes.user_data.create_s3_client') as mock_create_client:
-            mock_s3_client = MagicMock()
-            mock_s3_client.get_object.side_effect = Exception("S3 error")
-            mock_create_client.return_value = mock_s3_client
-
+        with patch('app.api.routes.user_data.get_file_from_s3', side_effect=Exception("S3 error")):
             response = await async_authorized_client.get("/api/v1/user_data/preview")
 
             # Should return 200 with error field instead of failing
@@ -779,7 +770,7 @@ class TestS3BucketAllowlist:
         monkeypatch.setenv("AWS_BUCKET_NAME", "our-own-bucket")
         with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
             with pytest.raises(ValueError, match="not permitted"):
-                get_file_from_s3("s3://someone-elses-bucket/payroll.csv")
+                get_file_from_s3("s3://someone-elses-bucket/datasets/u/payroll.csv")
             client.return_value.download_fileobj.assert_not_called()
 
     @pytest.mark.asyncio
@@ -790,8 +781,8 @@ class TestS3BucketAllowlist:
         for var in ("AWS_BUCKET_NAME", "S3_BUCKET_NAME", "AWS_S3_BUCKET"):
             monkeypatch.delenv(var, raising=False)
         with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
-            with pytest.raises(ValueError, match="No S3 bucket is configured"):
-                get_file_from_s3("s3://any-bucket/x.csv")
+            with pytest.raises(ValueError, match="not configured"):
+                get_file_from_s3("s3://any-bucket/datasets/u/x.csv")
             client.return_value.download_fileobj.assert_not_called()
 
     @pytest.mark.asyncio
@@ -801,5 +792,7 @@ class TestS3BucketAllowlist:
 
         monkeypatch.setenv("AWS_BUCKET_NAME", "our-own-bucket")
         with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
-            get_file_from_s3("s3://our-own-bucket/mine.csv")
+            client.return_value.head_object.return_value = {"ContentLength": 3}
+            # #531: keys live under a tenant prefix (or the transitional legacy root shape).
+            get_file_from_s3("s3://our-own-bucket/datasets/u/mine.csv")
             client.return_value.download_fileobj.assert_called_once()

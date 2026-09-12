@@ -2,7 +2,6 @@
 
 import io
 import logging
-import os
 
 import pandas as pd
 from beanie import PydanticObjectId
@@ -12,7 +11,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.column_stats import ColumnStats
 from app.models.user_data import UserData
 from app.utils.column_stats import calculate_and_store_column_stats
-from app.utils.s3 import create_s3_client, parse_s3_url, require_allowed_bucket
+from app.utils.s3 import get_file_from_s3
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -74,28 +73,9 @@ async def get_column_stats(
     # If no stats exist, calculate them
     if not column_stats:
         try:
-            # Download the data from S3
-            s3_client = create_s3_client()
-
-            # Extract bucket and key from S3 URL (handles all persisted
-            # shapes: s3://, presigned amazonaws, endpoint-style)
-            bucket, key = parse_s3_url(dataset.s3_url)
-            if bucket is None:
-                bucket = os.getenv("AWS_BUCKET_NAME")
-                logger.debug(
-                    "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
-                    dataset.s3_url, bucket,
-                )
-
-            # This path parses and downloads on its own rather than going through
-            # get_file_from_s3, so the bucket allowlist is applied here too. After
-            # the fallback above, not before: a URL whose bucket cannot be parsed
-            # is meant to resolve to the configured one (#451).
-            require_allowed_bucket(bucket or "")
-
-            # Download the file
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            file_content = response["Body"].read()
+            # Download through the one validated reader (#531): bucket allowlist,
+            # traversal and namespace checks, size cap.
+            file_content = get_file_from_s3(dataset.s3_url).getvalue()
 
             # Read the data into a pandas DataFrame
             if dataset.filename.endswith(".csv"):
@@ -173,25 +153,9 @@ async def recalculate_column_stats(
     dataset = await _require_owned_dataset(dataset_id, user_id)
 
     try:
-        # Download the data from S3
-        s3_client = create_s3_client()
-
-        # Extract bucket and key from S3 URL (handles all persisted
-        # shapes: s3://, presigned amazonaws, endpoint-style)
-        bucket, key = parse_s3_url(dataset.s3_url)
-        if bucket is None:
-            bucket = os.getenv("AWS_BUCKET_NAME")
-            logger.debug(
-                "Could not determine bucket from URL %r; falling back to AWS_BUCKET_NAME=%r",
-                dataset.s3_url, bucket,
-            )
-
-        # Allowlist applied after the fallback — see get_column_stats (#451).
-        require_allowed_bucket(bucket or "")
-
-        # Download the file
-        response = s3_client.get_object(Bucket=bucket, Key=key)
-        file_content = response["Body"].read()
+        # Download through the one validated reader (#531): bucket allowlist,
+        # traversal and namespace checks, size cap.
+        file_content = get_file_from_s3(dataset.s3_url).getvalue()
 
         # Read the data into a pandas DataFrame
         if dataset.filename.endswith(".csv"):

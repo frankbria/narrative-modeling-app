@@ -90,7 +90,7 @@ from app.services.model_training.training_mode import (
 )
 from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
-from app.services.s3_service import get_file_from_s3
+from app.services.s3_service import s3_service
 from app.services.sdk_generator import SUPPORTED_LANGUAGES, SDKGenerator
 from app.utils.s3 import parse_s3_url
 
@@ -379,7 +379,7 @@ async def train_model_task(
         _, file_key = parse_s3_url(user_data.s3_url)
 
         # Load data from S3
-        file_bytes = await get_file_from_s3(file_key)
+        file_bytes = await s3_service.download_file_bytes(file_key)
 
         if training_job:
             training_job.add_log(

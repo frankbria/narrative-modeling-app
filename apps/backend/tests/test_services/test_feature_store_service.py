@@ -407,7 +407,7 @@ class TestFeatureStoreServiceApplication:
              patch.object(self.service, 'check_compatibility', new_callable=AsyncMock) as mock_check_compat, \
              patch('app.services.feature_store_service.DatasetMetadata') as MockDataset, \
              patch('app.services.feature_store_service.FeatureEngineer') as MockEngineer, \
-             patch('app.services.feature_store_service.get_file_from_s3', new_callable=AsyncMock) as mock_get_file, \
+             patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock) as mock_get_file, \
              patch('app.services.feature_store_service.pd') as mock_pd:
 
             mock_get_feature.return_value = mock_feature

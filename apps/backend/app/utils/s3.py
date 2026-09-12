@@ -3,13 +3,13 @@ import logging
 import os
 import re
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 
-from app.config import resolve_aws_region
+from app.config import resolve_aws_region, resolve_s3_bucket
 
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)
@@ -85,7 +85,8 @@ def parse_s3_url(s3_url: str) -> tuple[str | None, str]:
             path = parsed.path.lstrip("/")
             bucket, _, key = path.partition("/")
         else:
-            match = re.match(r"https://([^.]+)\.s3\.amazonaws\.com/([^?]+)", s3_url)
+            # Virtual-host, with or without a region label (bucket.s3.eu-west-1.amazonaws.com).
+            match = re.match(r"https://([^.]+)\.s3(?:\.[a-z0-9-]+)?\.amazonaws\.com/([^?]+)", s3_url)
             if match:
                 bucket, key = match.group(1), match.group(2)
             elif parsed.scheme in ("http", "https"):
@@ -104,13 +105,12 @@ def get_s3_client():
     """
     global s3_client
 
-    # Check for required environment variables
-    required_env_vars = [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_BUCKET_NAME",
-    ]
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    # Credentials are required by name; the bucket is resolved through the one
+    # canonical resolver (#257/#567) so a deployment that sets only AWS_S3_BUCKET or
+    # S3_BUCKET_NAME is not refused here while every other reader accepts it.
+    missing_vars = [v for v in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") if not os.getenv(v)]
+    if not configured_bucket():
+        missing_vars.append("AWS_BUCKET_NAME (or any S3 bucket variable)")
 
     if missing_vars:
         logger.warning(
@@ -173,10 +173,10 @@ def upload_file_to_s3(
     if client is None:
         return False, None
 
-    # Get the bucket name
-    bucket_name = os.getenv("AWS_BUCKET_NAME")
+    # Same resolution as the readers' allowlist (#567 AC4).
+    bucket_name = configured_bucket()
     if not bucket_name:
-        logger.error("AWS_BUCKET_NAME environment variable not set")
+        logger.error("No S3 bucket configured (AWS_BUCKET_NAME or a sibling variable)")
         return False, None
 
     try:
@@ -215,6 +215,109 @@ def upload_file_to_s3(
         return False, None
 
 
+#: Largest object any reader will download (1 GB). One cap, shared by the BytesIO
+#: and temp-file readers, so an unbounded object cannot exhaust memory or /tmp.
+MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
+
+#: Every namespace the app writes objects under. A readable key is
+#: ``{namespace}/{user_id}/…``: the namespace comes from this list, the tenant
+#: segment is bounded-charset, and anything may follow at any depth as long as no
+#: segment is empty, "." or ".." (checked before this regex runs). Depth carries
+#: no security meaning once the tenant prefix holds — the app itself writes
+#: ``datasets/{user}/{dataset}/data_{ts}.parquet``, the versions layout,
+#: ``models/{user}/{model}/model.pkl`` and ``batch-jobs/{user}/{model}/{ts}/…`` —
+#: and the filename is the raw client name for datasets.py (``my data.csv``), so
+#: it may be anything without a slash (#496).
+_APP_NAMESPACES = ("datasets", "transformed", "models", "batch-jobs", "exports")
+_NAMESPACED_KEY = re.compile(
+    r"^(?:" + "|".join(re.escape(ns) for ns in _APP_NAMESPACES) + r")/[a-zA-Z0-9_-]+/(?:[^/]+/)*[^/]+$"
+)
+#: The pre-#581 shape still sitting at the production bucket root until the
+#: operator runs the reconciliation (#615): (masked_){uuid4}.{ext}, nothing else.
+_LEGACY_ROOT_KEY = re.compile(
+    r"^(?:masked_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]+)?$",
+    re.IGNORECASE,
+)
+
+
+def allowed_bucket() -> str:
+    """The single bucket this deployment may read from (#567).
+
+    Fails closed: with no bucket configured there is nothing to compare a URL
+    against, so reading is refused rather than allowed. Every reader resolves the
+    bucket through this one function — the #567 failure was two allowlists that
+    resolved it with different code and drifted.
+    """
+    bucket = _allowed_bucket()
+    if not bucket:
+        raise ValueError(
+            "S3 bucket not configured: set AWS_S3_BUCKET (or AWS_BUCKET_NAME) — "
+            "download allowlist has no allowed bucket"
+        )
+    return bucket
+
+
+def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
+    """URL-decode ``key`` and prove it names something this app is allowed to read.
+
+    Refuses traversal (a ``.``/``..`` segment), an absolute or empty segment, and
+    any key outside the app namespaces or without a tenant segment.
+    ``allow_legacy_root`` additionally admits exactly the
+    pre-#581 root-level ``(masked_){uuid}.{ext}`` shape that ``UserData.s3_url``
+    still points at in production until #615 moves those objects; nothing else at
+    the root is ever accepted. Returns the decoded key.
+    """
+    decoded = unquote(key or "")
+    # Traversal is a *segment* that is "." or "..", or an absolute/empty segment
+    # ("/etc/passwd", "a//b"). A ".." inside a filename ("experiment..csv") is a
+    # legitimate name datasets.py will happily store, and cannot traverse
+    # because the segment contains no slash.
+    segments = decoded.split("/")
+    if not decoded or decoded.startswith("/") or any(seg in ("", ".", "..") for seg in segments):
+        logger.error("Path traversal or absolute path in S3 key: %r", key)
+        raise ValueError("Invalid S3 path: path traversal detected")
+    if _NAMESPACED_KEY.match(decoded):
+        return decoded
+    if allow_legacy_root and _LEGACY_ROOT_KEY.match(decoded):
+        return decoded
+    logger.error("Invalid S3 path structure: %r", decoded)
+    raise ValueError(
+        "Invalid S3 path structure: must match "
+        "'{datasets|transformed|models|batch-jobs|exports}/{user_id}/...'"
+    )
+
+
+def resolve_validated_object(s3_url: str, *, allow_legacy_root: bool = False) -> tuple[str, str]:
+    """Turn a stored URL into ``(bucket, key)`` that may be downloaded (#531, #567).
+
+    The one place every reader goes through: parse (all persisted shapes), refuse
+    a URL the parser cannot attribute to a bucket, refuse a bucket other than
+    this deployment's, then validate the key. Raises ``ValueError`` on every
+    refusal — deterministic, so callers' retry/breaker logic must not count it.
+    """
+    bucket, key = parse_s3_url(s3_url)
+    if bucket is None:
+        raise ValueError(f"Invalid S3 URL format: {s3_url}")
+    require_allowed_bucket(bucket)
+    return bucket, validate_object_key(key, allow_legacy_root=allow_legacy_root)
+
+
+def check_object_size(client, bucket: str, key: str) -> int:
+    """HEAD the object and refuse anything over ``MAX_DOWNLOAD_BYTES`` before a byte is read."""
+    try:
+        size = int(client.head_object(Bucket=bucket, Key=key)["ContentLength"])
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "404":
+            raise ValueError(f"File not found in S3: {bucket}/{key}") from e
+        raise
+    if size > MAX_DOWNLOAD_BYTES:
+        logger.error("File too large: %d bytes (max %d)", size, MAX_DOWNLOAD_BYTES)
+        raise ValueError(
+            f"File too large: {size} bytes exceeds maximum {MAX_DOWNLOAD_BYTES} bytes (1 GB)"
+        )
+    return size
+
+
 def _allowed_bucket() -> str | None:
     """The single bucket this deployment may read from, or None if unconfigured.
 
@@ -229,9 +332,20 @@ def _allowed_bucket() -> str | None:
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    from app.config import resolve_s3_bucket
-
+    # The explicit allowlist variable wins, then every historical name via the
+    # canonical resolver. Writers (S3Service, upload_file_to_s3) resolve through
+    # configured_bucket() — this same expression — so readers and writers can
+    # never disagree about which bucket is "ours" (#567 AC4, claude-review).
     return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
+
+
+def configured_bucket() -> str | None:
+    """The deployment's bucket for readers AND writers, or None if unconfigured.
+
+    Same resolution as `allowed_bucket()` without the fail-closed raise, for
+    the write side (uploads, S3Service) and for "is S3 configured" checks.
+    """
+    return _allowed_bucket()
 
 
 def require_allowed_bucket(bucket_name: str) -> None:
@@ -243,53 +357,37 @@ def require_allowed_bucket(bucket_name: str) -> None:
     `get_file_from_s3` — `column_stats` parses and fetches on its own. If no bucket is configured the
     check cannot be evaluated, so it fails closed rather than allowing anything.
 
-    Note this deliberately does NOT check the key against a per-tenant prefix.
-    Every route now writes ``datasets/{user_id}/...`` via `dataset_s3_key` (#581),
-    but objects written before that were a bare "{uuid4}.{ext}" and stay readable
-    until `scripts/reconcile_unprefixed_s3_keys.py` has moved them; enforcing a
-    prefix here before that run would break every legitimate read of those.
+    The key is validated separately by `validate_object_key`, which admits the
+    legacy root shape only where a reader explicitly asks for it (#581/#615).
     """
-    allowed = _allowed_bucket()
-    if not allowed:
-        logger.error("No S3 bucket configured; refusing to download from %r", bucket_name)
-        raise ValueError("No S3 bucket is configured for this deployment")
+    allowed = allowed_bucket()  # raises the one "not configured" error when unset
     if bucket_name != allowed:
         logger.error(
             "Refusing to download from unexpected bucket %r (allowed: %r)",
             bucket_name, allowed,
         )
-        raise ValueError(f"Bucket {bucket_name!r} is not permitted for this deployment")
+        raise ValueError(
+            f"Access denied: S3 bucket '{bucket_name}' not allowed (not permitted for this deployment)"
+        )
 
 
 def get_file_from_s3(s3_url: str) -> io.BytesIO:
-    """
-    Download a file from S3 using its URL.
+    """Download a stored object into memory — the one BytesIO reader (#531).
 
-    Args:
-        s3_url: The S3 URL of the file to download
-
-    Returns:
-        A BytesIO object containing the file content
+    Same validated core as ``s3_service.download_file_from_s3`` (bucket allowlist,
+    traversal and namespace checks, size cap); differs only in where the bytes
+    land. This reader serves preview/viz/column-stats, which read
+    ``UserData.s3_url`` — and production still has pre-#581 objects at the bucket
+    root — so it alone admits the legacy root shape, until #615 retires it.
     """
-    # Get the S3 client
     client = get_s3_client()
     if client is None:
         raise Exception("Failed to initialize S3 client")
 
-    # Parse the S3 URL to get bucket and key (all persisted URL shapes)
     try:
-        bucket_name, key = parse_s3_url(s3_url)
-        if bucket_name is None:
-            # Legacy fallback: derive the bucket from the host's first label
-            # (e.g. "bucket.s3.amazonaws.com" variants parse_s3_url doesn't map)
-            netloc = urlparse(s3_url if "://" in s3_url else f"https://{s3_url}").netloc
-            bucket_name = netloc.split(".")[0]
-            if not bucket_name:
-                raise ValueError(f"Invalid S3 URL format: {s3_url}")
+        bucket_name, key = resolve_validated_object(s3_url, allow_legacy_root=True)
+        check_object_size(client, bucket_name, key)
 
-        require_allowed_bucket(bucket_name)
-
-        # Download the file to a BytesIO object
         file_obj = io.BytesIO()
         client.download_fileobj(bucket_name, key, file_obj)
         file_obj.seek(0)
