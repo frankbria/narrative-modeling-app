@@ -21,6 +21,7 @@ import httpx
 import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
+from pymongo import ReturnDocument
 
 from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
 from app.models.ml_model import MLModel
@@ -1002,26 +1003,46 @@ class BatchPredictionService:
         return True
 
     async def retry_job(self, job_id: str, user_id: str) -> bool:
-        """Retry a failed job"""
+        """Claim a failed job for a retry and restart it. False if it cannot be.
 
-        job = await BatchJob.find_one({"job_id": job_id, "user_id": user_id})
+        The claim is a single conditional update, not read-check-write. `can_retry()`
+        followed by `save()` lets two simultaneous retries — a double-click is enough —
+        both pass the check before either writes, and then **both** spawn processing:
+        two `_process_batch_job` tasks interleaving per-chunk saves from separate
+        in-memory copies of the document, two output uploads, and one `retry_count`
+        increment for two executions. Billing survives that (the caller reserves per
+        request, so two runs are charged twice) but the job document does not.
 
-        if not job or not job.can_retry():
+        Same shape as the chunked-upload `complete` claim: put every precondition in
+        the filter so the database decides the winner, and let the loser see `None`.
+        `max_retries` is per-document, hence `$expr` rather than a literal bound.
+        """
+        claimed = await BatchJob.get_motor_collection().find_one_and_update(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": JobStatus.FAILED.value,
+                "$expr": {"$lt": ["$retry_count", "$max_retries"]},
+            },
+            {
+                "$set": {
+                    "status": JobStatus.PENDING.value,
+                    "started_at": None,
+                    "completed_at": None,
+                    "error_message": None,
+                    "progress.processed_records": 0,
+                    "progress.success_count": 0,
+                    "progress.error_count": 0,
+                    "progress.current_chunk": 0,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if claimed is None:
             return False
 
-        # Reset job status
-        job.status = JobStatus.PENDING
-        job.started_at = None
-        job.completed_at = None
-        job.error_message = None
-        job.progress.processed_records = 0
-        job.progress.success_count = 0
-        job.progress.error_count = 0
-        job.progress.current_chunk = 0
-
-        await job.save()
-
-        # Start processing again
+        job = BatchJob.model_validate(claimed)
         self._spawn_processing(job)
 
         return True

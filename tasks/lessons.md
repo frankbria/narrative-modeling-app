@@ -579,3 +579,23 @@ substitution.
 
 **Do:** after filing anything with formatting, read it back. A silently-truncated
 acceptance criterion is worse than a missing one, because it still looks complete.
+
+## "This guard prevents X" needs a look at the layer below
+
+Writing a test for a `if rows > 1: reserve(rows - 1)` branch, I documented it as preventing
+`consume()` from treating a -1 as a credit. The mutation check disagreed: flipping it to
+`rows >= 1` changed no behaviour and failed nothing. Reading one layer down explained why —
+`metering.consume` and `metering.refund` **both** start with `if amount <= 0: return`. The
+guard is legibility, not safety, and the comment claimed otherwise.
+
+Nothing was broken. But a comment asserting a guard is load-bearing is how the guard gets
+treated as untouchable, and how the *actual* protection (two early returns in another
+module) stays undiscovered by the next person who needs it.
+
+**Do:** before writing "this prevents X", call or read the thing that would do X. One
+`grep -n "def consume" -A 20` would have settled it. A mutation that changes nothing is the
+cheapest available signal that a claim about a guard is wrong.
+
+**Related:** [[scoping-claims-need-a-grep]] and the wrong-causal-claim entry above — same
+failure, different sentence. The recurring shape this session is prose that outruns what was
+checked, and the fix is always the same: the claim is a query, so run it.

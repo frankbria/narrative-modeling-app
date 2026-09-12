@@ -12,6 +12,7 @@ here unambiguous — a 429 would mean something else entirely.
 
 import pytest
 
+import app.api.routes.batch_prediction as batch_prediction_routes
 from app.billing import metering
 from app.billing.plans import PLAN_LIMITS
 from app.models.api_key import APIKey
@@ -24,6 +25,17 @@ pytestmark = pytest.mark.asyncio
 #: What `async_authorized_client` overrides the auth dependency to return.
 TEST_USER = "test_user_123"
 FREE_UPLOADS = PLAN_LIMITS[PlanTier.FREE].uploads
+
+
+def _no_op(*args, **kwargs) -> None:
+    """Stand-in for `_spawn_processing`, so a test does not leave a background task
+    running past its own teardown and re-saving its document into the next test."""
+
+
+async def _returns_false(*args, **kwargs) -> bool:
+    """Stand-in for `retry_job` losing the race, so the route 409s after both
+    reservations have landed — the only point at which the refund is observable."""
+    return False
 
 
 async def _fill(user_id: str, metric: str, units: int) -> None:
@@ -660,6 +672,360 @@ class TestChargedByRecord:
         assert response.status_code == 402
         # Not partially served — still exactly what it was.
         assert await metering.usage_for(TEST_USER, "predictions") == limit - 3
+
+
+class TestBatchRetryQuota:
+    """A retry re-runs every prediction, so it must charge like a creation (#460).
+
+    The retry path reset the job and re-spawned processing with no reservation at all,
+    so the same N predictions ran again for free. Bounded at 3 by `max_retries` rather
+    than unlimited — `mark_failed` increments `retry_count` and `can_retry()` checks it —
+    but `MAX_BATCH_PREDICT_RECORDS` is 1,000,000 against a FREE ceiling of 1,000, so three
+    free re-runs of one job is still up to 3,000x a monthly plan.
+
+    The input survives in S3 (`batch-jobs/{user}/{model}/{ts}/input.csv`), so this is a
+    live path that really does re-execute the work, not a dead one.
+    """
+
+    ROWS = 40
+
+    async def _failed_job(
+        self,
+        *,
+        rows: int | None = None,
+        retry_count: int = 0,
+        job_id: str = "job-retry-1",
+        user_id: str = TEST_USER,
+    ) -> str:
+        """A job in the one state `can_retry()` accepts."""
+        from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
+
+        job = BatchJob(
+            job_id=job_id,
+            job_type=JobType.BATCH_PREDICTION,
+            user_id=user_id,
+            config={"model_id": "m1"},
+            input_path="batch-jobs/u/m1/ts/input.csv",
+            status=JobStatus.FAILED,
+            retry_count=retry_count,
+            error_message="original failure",
+            progress=JobProgress(total_records=rows if rows is not None else self.ROWS),
+        )
+        await job.insert()
+        return job.job_id
+
+    async def test_a_retry_at_the_limit_is_refused(
+        self, async_authorized_client, setup_database
+    ):
+        job_id = await self._failed_job()
+        await _fill(TEST_USER, "predictions", PLAN_LIMITS[PlanTier.FREE].predictions)
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 402, response.text
+        assert response.json()["detail"]["metric"] == "predictions"
+
+    async def test_a_refused_retry_runs_nothing(
+        self, async_authorized_client, setup_database
+    ):
+        """AC4's second half. A 402 that still restarts the job is the bug with a
+        different status code on it — the predictions are what cost money."""
+        from app.models.batch_job import BatchJob, JobStatus
+
+        job_id = await self._failed_job()
+        await _fill(TEST_USER, "predictions", PLAN_LIMITS[PlanTier.FREE].predictions)
+
+        await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        job = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert job is not None
+        assert job.status == JobStatus.FAILED, "the job was restarted despite the 402"
+        assert job.started_at is None
+
+    async def test_a_retry_costs_its_rows_not_one(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The whole issue: 40 rows fit in 40 remaining and not in 39. Charging one
+        unit per retry passes neither half.
+
+        Two **separate** jobs, not one retried twice. Reusing one would need the first
+        retry's background task to fail it back to FAILED before the second POST — an
+        unsynchronized race that nothing awaits, and which would fail this test with a
+        409 pointing nowhere near the cause. Processing is stubbed out for the same
+        reason: a live task outliving the test can re-save its document into the next
+        test's freshly wiped collection.
+        """
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        fits_id = await self._failed_job(job_id="job-fits")
+        over_id = await self._failed_job(job_id="job-over")
+
+        await _fill(TEST_USER, "predictions", limit - self.ROWS)
+        fits = await async_authorized_client.post(f"/api/v1/batch/jobs/{fits_id}/retry")
+        assert fits.status_code != 402, fits.text
+
+        await UsageRecord.find(UsageRecord.user_id == TEST_USER).delete()
+        await _fill(TEST_USER, "predictions", limit - self.ROWS + 1)
+        does_not = await async_authorized_client.post(
+            f"/api/v1/batch/jobs/{over_id}/retry"
+        )
+        assert does_not.status_code == 402, does_not.text
+
+    async def test_another_tenants_job_is_not_retryable(
+        self, async_authorized_client, setup_database
+    ):
+        """Foreign and unknown must answer identically, or the status code is an
+        existence oracle — and a refactor to `find_one({"job_id"})` would otherwise
+        sail through this suite while letting one tenant restart another's job at
+        their expense."""
+        from app.models.batch_job import BatchJob, JobStatus
+
+        job_id = await self._failed_job(job_id="job-theirs", user_id="someone-else")
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 404, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
+        theirs = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert theirs is not None
+        assert theirs.status == JobStatus.FAILED, "another tenant's job was restarted"
+
+    async def test_an_accepted_retry_charges_its_rows(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        job_id = await self._failed_job()
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == self.ROWS
+
+    async def test_two_simultaneous_retries_start_the_job_once(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """A double-click must not run the job twice.
+
+        `retry_job` used to be read-check-write — `find_one`, `can_retry()`, `save()` —
+        so both requests could pass the check before either wrote, and both would spawn
+        processing: two tasks interleaving per-chunk saves from separate in-memory
+        copies, two output uploads, and one `retry_count` increment for two executions.
+        The claim is now a single conditional update, so the database picks the winner.
+        """
+        import asyncio
+
+        spawned: list[str] = []
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service,
+            "_spawn_processing",
+            lambda job: spawned.append(job.job_id),
+        )
+        job_id = await self._failed_job()
+
+        first, second = await asyncio.gather(
+            async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry"),
+            async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry"),
+        )
+
+        codes = sorted([first.status_code, second.status_code])
+        assert codes == [200, 409], f"{codes}: {first.text} / {second.text}"
+        assert spawned == [job_id], f"processing started {len(spawned)} times"
+        # The loser is refunded in full, so a lost race costs nothing.
+        assert await metering.usage_for(TEST_USER, "predictions") == self.ROWS
+
+    async def test_a_claimed_job_is_updated_not_duplicated(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """The claim hands `_spawn_processing` a document rebuilt from a raw motor
+        dict, and the spawned task saves it as it goes.
+
+        If that reconstruction lost the `_id`, the first save would **insert** rather
+        than update — `job_id` is `Indexed()`, not unique, so there would be no error,
+        just a second document while the claimed original sat `pending` forever. It
+        does preserve it, verified here rather than argued: every other retry test
+        stubs `_spawn_processing`, so nothing else in the suite ever touches the
+        rebuilt object. Raised by review as unverifiable from a runner without beanie.
+        """
+        from app.models.batch_job import BatchJob
+
+        saved_ids: list[object] = []
+
+        async def _process(job):
+            saved_ids.append(job.id)
+            job.progress.current_chunk = 1
+            await job.save()
+
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_process_batch_job", _process
+        )
+        job_id = await self._failed_job()
+        original = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert original is not None
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+        assert response.status_code == 200, response.text
+
+        # Let the spawned task run to completion before counting.
+        for task in list(batch_prediction_routes.batch_service._background_tasks):
+            await task
+
+        assert saved_ids == [original.id], "the rebuilt job lost its _id"
+        assert await BatchJob.find(BatchJob.job_id == job_id).count() == 1, (
+            "the retry inserted a duplicate instead of updating the claimed job"
+        )
+
+    async def test_a_failed_retry_refunds_every_reserved_row(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """AC2, stated where it is actually observable.
+
+        A retry reserves twice — 1 at admission, then rows-1 — and `reserve` appends
+        rather than replaces. Asserting the *charge* after a successful retry does not
+        test that: both `consume()` calls land on the counter either way, so 40 comes
+        out right even if the second reservation overwrote the first on
+        `request.state`. The difference only shows on the **refund**, where a replaced
+        list hands back rows-1 and burns one unit on every failed retry, forever.
+
+        (The first version of this test asserted the charge and passed with
+        accumulation removed. The mutation check is the only reason that was caught.)
+        """
+        job_id = await self._failed_job()
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service,
+            "retry_job",
+            _returns_false,
+        )
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code >= 400, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
+
+    @pytest.mark.parametrize("rows", [0, 1])
+    async def test_a_tiny_job_charges_only_the_admission_unit(
+        self, async_authorized_client, setup_database, monkeypatch, rows
+    ):
+        """The `rows > 1` branch, which nothing else exercises — every other test in
+        this class uses 40.
+
+        Asserts the **behaviour**, not the guard: a 0- or 1-row job costs exactly the
+        admission unit. Removing the guard would not change that, because
+        `metering.consume` and `metering.refund` both return early on `amount <= 0` —
+        which is worth stating, since the first version of this docstring claimed the
+        guard prevented `consume()` treating -1 as a credit, and it does not. The
+        guard earns its place by making the call site legible, not by being the thing
+        that holds.
+        """
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        job_id = await self._failed_job(rows=rows)
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 200, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 1
+
+    @pytest.mark.parametrize(
+        ("status_name", "retry_count"),
+        [
+            ("FAILED", 0),
+            ("FAILED", 2),
+            ("FAILED", 3),
+            ("COMPLETED", 0),
+            ("PENDING", 0),
+            ("RUNNING", 0),
+            ("CANCELLED", 0),
+        ],
+    )
+    async def test_the_route_agrees_with_can_retry(
+        self, async_authorized_client, setup_database, monkeypatch, status_name, retry_count
+    ):
+        """The retry rule is written three times and nothing tied them together.
+
+        `BatchJob.can_retry()` states it; the route re-implements it as two checks so
+        it can say *which* precondition failed; and `retry_job` encodes it a third
+        time as a Mongo filter (`status` plus an `$expr` retry budget) so the claim is
+        atomic. Each of those exists for a reason, but a fourth condition — a cooldown,
+        say — added to the model method alone would leave the route's message and the
+        claim's filter quietly disagreeing with it.
+
+        So this asserts the agreement rather than the implementations: whatever
+        `can_retry()` says, the endpoint does.
+        """
+        from app.models.batch_job import BatchJob, JobStatus
+
+        monkeypatch.setattr(
+            batch_prediction_routes.batch_service, "_spawn_processing", _no_op
+        )
+        job_id = await self._failed_job(retry_count=retry_count)
+        job = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert job is not None
+        job.status = getattr(JobStatus, status_name)
+        await job.save()
+
+        expected = job.can_retry()
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert (response.status_code == 200) is expected, (
+            f"can_retry()={expected} but the route answered "
+            f"{response.status_code}: {response.text}"
+        )
+
+    async def test_a_denied_retry_leaves_usage_exactly_at_the_cap(
+        self, async_authorized_client, setup_database
+    ):
+        """The admission unit must come back. Otherwise a tenant who is already at
+        their cap is pushed *over* it by being refused."""
+        limit = PLAN_LIMITS[PlanTier.FREE].predictions
+        job_id = await self._failed_job()
+        await _fill(TEST_USER, "predictions", limit)
+
+        await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert await metering.usage_for(TEST_USER, "predictions") == limit
+
+    async def test_an_unknown_job_is_not_a_quota_denial(
+        self, async_authorized_client, setup_database
+    ):
+        """A caller with room must not be told they are out of quota because a job id
+        was wrong, and the admission unit must be refunded."""
+        response = await async_authorized_client.post("/api/v1/batch/jobs/nope/retry")
+
+        assert response.status_code == 404, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
+
+    async def test_a_job_that_is_not_failed_cannot_be_retried(
+        self, async_authorized_client, setup_database
+    ):
+        from app.models.batch_job import BatchJob, JobStatus
+
+        job_id = await self._failed_job()
+        job = await BatchJob.find_one(BatchJob.job_id == job_id)
+        assert job is not None
+        job.status = JobStatus.COMPLETED
+        await job.save()
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 409, response.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 0
+
+    async def test_an_exhausted_retry_budget_says_so(
+        self, async_authorized_client, setup_database
+    ):
+        """`can_retry()` also fails when retry_count has reached max_retries, and a
+        single 400 for all three refusal reasons tells the caller nothing."""
+        job_id = await self._failed_job(retry_count=3)
+
+        response = await async_authorized_client.post(f"/api/v1/batch/jobs/{job_id}/retry")
+
+        assert response.status_code == 409, response.text
+        assert "retr" in response.json()["detail"].lower()
 
 
 class TestBatchJobRowCount:
