@@ -220,9 +220,19 @@ def upload_file_to_s3(
 #: and temp-file readers, so an unbounded object cannot exhaust memory or /tmp.
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
-#: The two app-internal namespaces every stored object lives in, each exactly
-#: {prefix}/{user_id}/{filename}: bounded charset, two segments, no traversal.
-_NAMESPACED_KEY = re.compile(r"^(?:datasets|transformed)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$")
+#: The two app-internal namespaces every stored object lives in:
+#: ``{datasets|transformed}/{user_id}/{filename}``, plus the versioning layout
+#: ``datasets/{user_id}/{dataset_id}/versions/{version_id}/{filename}``. The
+#: user_id and ids are bounded-charset; the *filename* may be anything without a
+#: slash, because datasets.py stores the raw client filename (``my data.csv``,
+#: ``data (1).csv``) and refusing those made the app's own objects unreadable
+#: (#496). Traversal and absolute paths are refused before this is consulted, and
+#: a slash-free final segment cannot leave the tenant prefix.
+_NAMESPACED_KEY = re.compile(
+    r"^(?:datasets|transformed)/[a-zA-Z0-9_-]+/"
+    r"(?:[a-zA-Z0-9_-]+/versions/[a-zA-Z0-9_-]+/)?"
+    r"[^/]+$"
+)
 #: The pre-#581 shape still sitting at the production bucket root until the
 #: operator runs the reconciliation (#615): (masked_){uuid4}.{ext}, nothing else.
 _LEGACY_ROOT_KEY = re.compile(

@@ -440,6 +440,13 @@ class TestValidateObjectKey:
             "datasets/user1/file.csv",
             "transformed/user-1/out_2.parquet",
             "datasets%2Fuser1%2Ffile.csv",  # URL-encoded, decodes to a valid key
+            # datasets.py stores the raw client filename — spaces, parentheses,
+            # unicode — and refusing them made the app's own objects unreadable (#496).
+            "datasets/user1/ds1_my data.csv",
+            "datasets/user1/ds1_data (1).csv",
+            "datasets/user1/ds1_r\u00e9sum\u00e9.xlsx",
+            # The versioning layout.
+            "datasets/user1/ds1/versions/v1/data.csv",
         ],
     )
     def test_accepts_the_two_app_namespaces(self, key):
@@ -454,7 +461,10 @@ class TestValidateObjectKey:
             "//root/.ssh/id_rsa",
             "unauthorized/path/file.csv",
             "datasets/file.csv",
-            "datasets/user1/a/b.csv",
+            "datasets/user1/a/b.csv",  # arbitrary depth is not the versions layout
+            "datasets/user1/ds1/versions/v1/x/y.csv",
+            "datasets/user1/ds1/snapshots/v1/y.csv",
+            "datasets/user 1/file.csv",  # the user_id segment stays bounded
             "models/u/m/model.pkl",
             "file.csv",
             "",
