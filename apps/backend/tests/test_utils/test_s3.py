@@ -457,8 +457,10 @@ class TestValidateObjectKey:
             "exports/user1/file1/export.csv",
         ],
     )
-    def test_accepts_the_two_app_namespaces(self, key):
-        assert validate_object_key(key).startswith(("datasets/", "transformed/"))
+    def test_accepts_the_app_namespaces(self, key):
+        from urllib.parse import unquote
+
+        assert validate_object_key(key) == unquote(key)
 
     @pytest.mark.parametrize(
         "key",
@@ -474,7 +476,7 @@ class TestValidateObjectKey:
             "datasets/user 1/file.csv",  # the user_id segment stays bounded
             "datasets/user1/..",  # a ".." *segment* is traversal
             "datasets//file.csv",  # an empty segment is not a namespace
-            "models/u/m/model.pkl",
+            "models/model.pkl",  # a namespace without a tenant segment
             "file.csv",
             "",
         ],
