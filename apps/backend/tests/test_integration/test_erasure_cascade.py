@@ -111,12 +111,14 @@ async def _seed_string_space() -> None:
 
 
 async def _seed_userdata_space() -> UserData:
+    # Legacy *shape*, our bucket: a URL naming another bucket is the #616 case,
+    # tested on its own below, and is a recorded residual rather than a delete.
     """Legacy UserData parent + Link[UserData] children (viz cache, column stats)."""
     ud = await UserData(
         user_id=USER,
         filename="legacy.csv",
         original_filename="legacy.csv",
-        s3_url="s3://narrative-modeling-dev/uploads/legacy.csv",
+        s3_url=f"s3://{BUCKET}/uploads/legacy.csv",
         num_rows=5,
         num_columns=2,
         data_schema=[],
@@ -296,3 +298,25 @@ async def test_erasure_reaches_the_twin_after_a_transformation(setup_database):
     manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
     assert await UserData.find(UserData.id == twin.id).count() == 0, "PII twin orphaned after a transformation"
     assert manifest.documents_deleted.get("user_data") == 1
+
+
+async def test_foreign_bucket_url_is_recorded_but_does_not_block_the_parent(setup_database):
+    """#616: a stored URL naming another bucket must never delete that key from OUR
+    bucket — and, like every other S3 residual, must not make the dataset
+    un-erasable (the URL never changes between runs, so a blocking failure would
+    retain the tombstone forever)."""
+    foreign = f"s3://someone-elses-bucket/datasets/{USER}/{DATASET_ID}_d.csv"
+    await DatasetMetadata(
+        user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=foreign, s3_url=foreign, num_rows=10, num_columns=3,
+    ).insert()
+    with patch.object(dataset_erasure_service.s3_service, "delete_file") as delete_file:
+        manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+    delete_file.assert_not_called()
+    assert manifest.s3_objects_deleted == []
+    assert [f for f in manifest.failures if "someone-elses-bucket" in f and BUCKET in f]
+    assert manifest.status == "completed_with_residuals"
+    # Mongo is the source of truth for discoverability: the parent is gone.
+    assert await DatasetMetadata.find(DatasetMetadata.dataset_id == DATASET_ID).count() == 0
+    assert manifest.documents_deleted.get("dataset_metadata") == 1
+    assert not [n for n in manifest.notes if "tombstone" in n]

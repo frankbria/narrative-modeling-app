@@ -114,9 +114,13 @@ def _s3_key(
         return None
     if bucket is not None and bucket != bucket_name:
         if manifest is not None:
+            # "s3 delete" prefix on purpose: _delete_parent_if_clean treats S3
+            # failures as non-blocking (Mongo stays the source of truth), and the
+            # URL never changes between runs, so a blocking failure would make the
+            # dataset permanently un-erasable.
             manifest.failures.append(
-                f"s3 key {url_or_key}: URL names bucket {bucket!r} but erasure runs "
-                f"against {bucket_name!r}; not deleted"
+                f"s3 delete skipped {url_or_key}: URL names bucket {bucket!r} but "
+                f"erasure runs against {bucket_name!r}"
             )
         return None
     return key.split("#", 1)[0] or None
