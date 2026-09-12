@@ -12,6 +12,6 @@ Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate 
 3. Tests: unit table for the sanitiser; model round-trip (`../../etc/passwd.csv`, `a\r\nb.csv`, 300-char name) for both documents; chunked complete end-to-end stores the sanitised name.
 
 ## Steps
-- [ ] RED tests
-- [ ] sanitiser + validators
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] sanitiser + validators (+ validate_on_save, SafeFilename type, /datasets/upload key component after review)
+- [x] gate → PR #647 → demo → CI → merge; follow-up #648 (model_export Content-Disposition)
