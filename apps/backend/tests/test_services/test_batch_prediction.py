@@ -936,3 +936,26 @@ async def test_a_job_cancelled_while_queued_is_skipped(setup_database):
         assert ran is False
     finally:
         await BatchJob.find(BatchJob.job_id == "batch_cancelled_515").delete()
+
+
+@pytest.mark.asyncio
+async def test_retry_also_respects_the_per_tenant_cap(setup_database, monkeypatch):
+    """A retry re-enters the queue, so it is refused when the caller is at the cap (#515)."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 1)
+    svc = _service()
+    user = "retry_capped_515"
+    # One live job puts the tenant at the cap; a separate FAILED job is retry-eligible.
+    await _pending_job(user, 1)
+    failed = await BatchJob(
+        job_id="batch_failed_515", job_type=JobType.BATCH_PREDICTION, user_id=user,
+        config={"model_id": "m"}, status=JobStatus.FAILED, retry_count=0, max_retries=3,
+    ).create()
+    try:
+        with pytest.raises(BatchConcurrencyLimitError):
+            await svc.retry_job(failed.job_id, user)
+        # The failed job was not re-queued.
+        assert (await BatchJob.find_one(BatchJob.job_id == "batch_failed_515")).status == JobStatus.FAILED
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()

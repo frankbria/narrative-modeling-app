@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import tempfile
+import weakref
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from io import BytesIO, StringIO
@@ -60,16 +61,20 @@ MAX_CONCURRENT_BATCH_JOBS = int(os.getenv("MAX_CONCURRENT_BATCH_JOBS", "2"))
 MAX_CONCURRENT_BATCH_JOBS_PER_USER = int(
     os.getenv("MAX_CONCURRENT_BATCH_JOBS_PER_USER", "3")
 )
-_batch_semaphores: dict[int, asyncio.Semaphore] = {}
+# WeakKeyDictionary, not id(loop): a closed test loop is collected and its entry
+# with it, so the cache never grows and a reused id() cannot alias a dead loop.
+_batch_semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _batch_semaphore() -> asyncio.Semaphore:
     """The per-process execution semaphore for the CURRENT event loop (#515)."""
     loop = asyncio.get_running_loop()
-    sem = _batch_semaphores.get(id(loop))
+    sem = _batch_semaphores.get(loop)
     if sem is None:
         sem = asyncio.Semaphore(MAX_CONCURRENT_BATCH_JOBS)
-        _batch_semaphores[id(loop)] = sem
+        _batch_semaphores[loop] = sem
     return sem
 
 
@@ -241,6 +246,22 @@ class BatchPredictionService:
         if exc is not None:
             logger.error("Unhandled exception in batch job task", exc_info=exc)
 
+    async def _enforce_per_user_cap(self, user_id: str) -> None:
+        """Refuse when the caller already holds MAX_CONCURRENT_BATCH_JOBS_PER_USER
+        PENDING/RUNNING jobs (#515). Best-effort under a same-tenant burst — the
+        per-process semaphore is the hard execution bound; an atomic per-user
+        admission is #653.
+        """
+        active = await BatchJob.find(
+            {
+                "user_id": user_id,
+                "job_type": JobType.BATCH_PREDICTION.value,
+                "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},
+            }
+        ).count()
+        if active >= MAX_CONCURRENT_BATCH_JOBS_PER_USER:
+            raise BatchConcurrencyLimitError(active, MAX_CONCURRENT_BATCH_JOBS_PER_USER)
+
     async def create_batch_prediction_job(
         self,
         user_id: str,
@@ -272,17 +293,8 @@ class BatchPredictionService:
             raise ValueError("Model not found or not accessible")
 
         # Per-tenant cap (#515): count the caller's live jobs BEFORE uploading the
-        # input, so a refused job leaves no orphan S3 object. PENDING covers a job
-        # queued behind the semaphore; RUNNING covers one executing.
-        active = await BatchJob.find(
-            {
-                "user_id": user_id,
-                "job_type": JobType.BATCH_PREDICTION.value,
-                "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},
-            }
-        ).count()
-        if active >= MAX_CONCURRENT_BATCH_JOBS_PER_USER:
-            raise BatchConcurrencyLimitError(active, MAX_CONCURRENT_BATCH_JOBS_PER_USER)
+        # input, so a refused job leaves no orphan S3 object.
+        await self._enforce_per_user_cap(user_id)
 
         # Prepare input data and upload to S3 if needed
         input_path, total_records = await self._prepare_input_data(
@@ -1082,6 +1094,9 @@ class BatchPredictionService:
         the filter so the database decides the winner, and let the loser see `None`.
         `max_retries` is per-document, hence `$expr` rather than a literal bound.
         """
+        # A retry re-enters the queue, so it counts against the per-tenant cap too
+        # (#515) — otherwise a capped tenant could still flood it with retries.
+        await self._enforce_per_user_cap(user_id)
         claimed = await BatchJob.get_motor_collection().find_one_and_update(
             {
                 "job_id": job_id,

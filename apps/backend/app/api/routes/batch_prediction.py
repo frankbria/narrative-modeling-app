@@ -421,7 +421,12 @@ async def retry_batch_job(
     if rows > 1:
         await reserve(request, current_user_id, "predictions", rows - 1)
 
-    if not await batch_service.retry_job(job_id, current_user_id):
+    try:
+        retried = await batch_service.retry_job(job_id, current_user_id)
+    except BatchConcurrencyLimitError as e:
+        # A retry counts against the per-tenant cap too (#515): 429, units refunded.
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    if not retried:
         # The service claims the job with a single conditional update carrying the same
         # preconditions, so exactly one of two simultaneous retries wins and the loser
         # lands here. The checks above are for the *message* — they say which
