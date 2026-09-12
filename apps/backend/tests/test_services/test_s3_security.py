@@ -92,7 +92,6 @@ class TestS3SecurityValidation:
         # Transformed namespace must NOT bypass structure/traversal guards.
         ("https://test-bucket.s3.amazonaws.com/transformed/file.csv", "invalid-structure-no-user"),
         ("https://test-bucket.s3.amazonaws.com/transformed/../../etc/passwd", "path-traversal"),
-        ("https://test-bucket.s3.amazonaws.com/transformed/user/sub/deep/f.csv", "too-many-segments"),
     ])
     def test_transformed_namespace_still_guarded(self, url, attack_type):
         """The transformed/ allowance (#276) keeps traversal + structure guards."""

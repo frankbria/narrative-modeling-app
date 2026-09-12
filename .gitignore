@@ -96,3 +96,6 @@ memory/claude-flow-data.json
 !/tasks/lessons.md
 !/tasks/todo.md
 apps/backend/mypy_out.txt
+
+# Local scratch scripts (a broad `git add apps/backend` swept one into two PRs)
+apps/backend/_demo_*.py
