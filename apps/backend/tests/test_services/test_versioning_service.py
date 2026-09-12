@@ -213,7 +213,7 @@ class TestVersionCreation:
     ):
         """S3 key is keyed by version_id (UUID), not the racy version number (#276)."""
         parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
-                           num_rows=100, num_columns=5)
+                           num_rows=100, num_columns=5, user_id="user1")
         with patch('app.services.versioning_service.DatasetVersion') as MockDV:
             MockDV.find_one = AsyncMock(side_effect=[parent, None])  # parent, dedup-miss
             MockDV.compute_content_hash = Mock(return_value="hash")
@@ -242,7 +242,7 @@ class TestVersionCreation:
         from pymongo.errors import DuplicateKeyError
 
         parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
-                           num_rows=100, num_columns=5)
+                           num_rows=100, num_columns=5, user_id="user1")
         with patch('app.services.versioning_service.DatasetVersion') as MockDV:
             MockDV.find_one = AsyncMock(side_effect=[parent, None])
             MockDV.compute_content_hash = Mock(return_value="hash")
@@ -275,7 +275,7 @@ class TestVersionCreation:
         from app.services.versioning_service import _MAX_VERSION_INSERT_RETRIES
 
         parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
-                           num_rows=100, num_columns=5)
+                           num_rows=100, num_columns=5, user_id="user1")
         with patch('app.services.versioning_service.DatasetVersion') as MockDV:
             MockDV.find_one = AsyncMock(side_effect=[parent, None])
             MockDV.compute_content_hash = Mock(return_value="hash")
@@ -295,6 +295,59 @@ class TestVersionCreation:
 
             assert new_version.insert.await_count == _MAX_VERSION_INSERT_RETRIES
             versioning_service._create_lineage.assert_not_called()  # never reached on failure
+
+    @pytest.mark.asyncio
+    async def test_create_transformation_version_refuses_foreign_parent(
+        self, versioning_service, mock_dataset_metadata, caplog
+    ):
+        """A parent owned by another user is refused like a missing one (#559)."""
+        parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
+                           num_rows=100, num_columns=5, user_id="attacker-victim")
+        with patch('app.services.versioning_service.DatasetVersion') as MockDV:
+            MockDV.find_one = AsyncMock(return_value=parent)
+            MockDV.return_value = MagicMock(insert=AsyncMock())
+            versioning_service._create_lineage = AsyncMock()
+
+            with pytest.raises(NotFoundError) as exc_info, caplog.at_level("WARNING"):
+                await versioning_service.create_transformation_version(
+                    parent_version_id="v1", transformed_content=b"data",
+                    transformation_steps=[], dataset_metadata=mock_dataset_metadata,
+                    user_id="user1",
+                )
+
+        # identical to the not-found answer: no existence oracle
+        assert exc_info.value.message == NotFoundError(
+            resource_type="DatasetVersion", resource_id="v1").message
+        versioning_service.s3_client.put_object.assert_not_called()
+        MockDV.return_value.insert.assert_not_called()
+        versioning_service._create_lineage.assert_not_called()
+        assert "Ownership check failed" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_create_transformation_version_ownership_bypass_is_audited(
+        self, versioning_service, mock_dataset_metadata, caplog
+    ):
+        """Internal callers may opt out, and the bypass is logged (#559)."""
+        parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
+                           num_rows=100, num_columns=5, user_id="someone-else")
+        with patch('app.services.versioning_service.DatasetVersion') as MockDV:
+            MockDV.find_one = AsyncMock(side_effect=[parent, None])
+            MockDV.compute_content_hash = Mock(return_value="hash")
+            MockDV.compute_schema_hash = Mock(return_value="shash")
+            MockDV.return_value = MagicMock(version_id="new", transformation_lineage_id=None,
+                                            insert=AsyncMock(), save=AsyncMock())
+            versioning_service._get_next_version_number = AsyncMock(return_value=2)
+            versioning_service._create_lineage = AsyncMock(return_value=MagicMock(lineage_id="lg"))
+
+            with caplog.at_level("INFO"):
+                await versioning_service.create_transformation_version(
+                    parent_version_id="v1", transformed_content=b"data",
+                    transformation_steps=[], dataset_metadata=mock_dataset_metadata,
+                    user_id="user1", verify_parent_ownership=False,
+                )
+
+        assert "Ownership check bypassed for version v1" in caplog.text
+        versioning_service.s3_client.put_object.assert_called_once()
 
 
 @pytest.mark.unit
