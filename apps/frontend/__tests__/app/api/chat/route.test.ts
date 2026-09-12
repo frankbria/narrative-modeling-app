@@ -1,25 +1,20 @@
 /**
  * @jest-environment node
  *
- * Guards the security additions to the OpenAI chat proxy (issue #253):
- * an auth() gate and a per-user rate limit. OpenAI is mocked so no network
- * call or API key is needed.
+ * The chat proxy (issue #253, #461): an auth() gate, a per-user rate limit, hard
+ * bounds on every client-controlled dimension, and — since #461 — no OpenAI call of
+ * its own: it forwards to the backend's metered POST /ai/chat with the minted API JWT.
  */
 import { auth } from '@/auth'
 import { __resetRateLimits } from '@/lib/api-guards'
 
 jest.mock('@/auth', () => ({ auth: jest.fn() }))
 
-const mockCreate = jest.fn()
-jest.mock('openai', () => ({
-  OpenAI: jest.fn().mockImplementation(() => ({
-    chat: { completions: { create: mockCreate } },
-  })),
-}))
-
 import { POST } from '@/app/api/chat/route'
 
 const mockAuth = auth as jest.MockedFunction<typeof auth>
+const API_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyXzEifQ.sig'
+let fetchMock: jest.Mock
 
 function chatRequest(body: Record<string, unknown> = { message: 'hi', context: 'ctx', messageHistory: [] }): Request {
   return new Request('http://localhost/api/chat', {
@@ -34,17 +29,26 @@ const turn = (role: string, content: string) => ({ role, content })
 describe('POST /api/chat', () => {
   beforeEach(() => {
     __resetRateLimits()
-    mockCreate.mockClear()
-    mockAuth.mockResolvedValue({ user: { id: 'test-user' } } as never)
-    mockCreate.mockResolvedValue({ choices: [{ message: { content: 'reply' } }] })
+    mockAuth.mockResolvedValue({ user: { id: 'test-user' }, apiToken: API_TOKEN } as never)
+    // a fresh Response per call — a body can only be read once
+    fetchMock = jest.fn().mockImplementation(async () => new Response(JSON.stringify({ reply: 'reply' }), { status: 200 }))
+    global.fetch = fetchMock as unknown as typeof fetch
   })
 
-  it('returns 401 without a session and never calls OpenAI', async () => {
+  it('returns 401 without a session and never calls the backend', async () => {
     mockAuth.mockResolvedValue(null as never)
 
     const res = await POST(chatRequest())
     expect(res.status).toBe(401)
-    expect(mockCreate).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when the session has no API token — never a placeholder bearer', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'test-user' } } as never)
+
+    const res = await POST(chatRequest())
+    expect(res.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('returns 429 once the per-user limit is exceeded', async () => {
@@ -57,8 +61,31 @@ describe('POST /api/chat', () => {
     expect(blocked.headers.get('Retry-After')).toBeTruthy()
   })
 
+  it('forwards to the metered backend chat with the API JWT, history as role/content only', async () => {
+    const res = await POST(chatRequest({
+      message: 'hi', context: 'rows: 10',
+      messageHistory: [{ role: 'user', content: 'earlier', name: 'x', tool_calls: [{}] }],
+    }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ reply: 'reply' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toMatch(/\/api\/v1\/ai\/chat$/)
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: `Bearer ${API_TOKEN}` })
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      message: 'hi', context: 'rows: 10', history: [{ role: 'user', content: 'earlier' }],
+    })
+  })
+
+  it('passes the backend 402 through so the UI can name the plan limit', async () => {
+    fetchMock.mockResolvedValue(new Response('{"detail":{}}', { status: 402 }))
+
+    const res = await POST(chatRequest())
+    expect(res.status).toBe(402)
+    expect((await res.json()).error).toMatch(/limit/i)
+  })
+
   // #461: the proxy is a spend amplifier — every client-controlled dimension is capped
-  // and rejected *before* OpenAI is touched.
+  // and rejected *before* anything upstream is touched.
   describe('bounds (#461)', () => {
     it.each([
       ['message over 4000 chars', { message: 'x'.repeat(4001), context: 'ctx' }],
@@ -72,25 +99,10 @@ describe('POST /api/chat', () => {
       ['history that is not an array', { message: 'hi', context: 'ctx', messageHistory: 'nope' }],
       ['total payload over 24000 chars', { message: 'hi', context: 'x'.repeat(8000),
         messageHistory: Array.from({ length: 5 }, () => turn('user', 'y'.repeat(4000))) }],
-    ])('rejects %s with 400 and never calls OpenAI', async (_label, body) => {
+    ])('rejects %s with 400 and never calls the backend', async (_label, body) => {
       const res = await POST(chatRequest(body))
       expect(res.status).toBe(400)
-      expect(mockCreate).not.toHaveBeenCalled()
-    })
-
-    it('forwards only role/content of each history turn, keeps context out of the system prompt', async () => {
-      const res = await POST(chatRequest({
-        message: 'hi', context: 'rows: 10',
-        messageHistory: [{ role: 'user', content: 'earlier', name: 'x', tool_calls: [{}] }],
-      }))
-      expect(res.status).toBe(200)
-      const { messages } = mockCreate.mock.calls[0][0]
-      expect(messages[0].role).toBe('system')
-      expect(messages[0].content).not.toContain('rows: 10')
-      const ctx = messages.find((m: { role: string; content: string }) => m.content.includes('rows: 10'))
-      expect(ctx.role).toBe('user')
-      expect(messages).toContainEqual({ role: 'user', content: 'earlier' })
-      expect(messages.some((m: Record<string, unknown>) => 'name' in m || 'tool_calls' in m)).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('a maximal valid request goes through', async () => {
@@ -99,7 +111,7 @@ describe('POST /api/chat', () => {
         messageHistory: Array.from({ length: 3 }, (_, i) => turn(i % 2 ? 'assistant' : 'user', 'h'.repeat(4000))),
       }))
       expect(res.status).toBe(200)
-      expect(mockCreate).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
     })
   })
 })
