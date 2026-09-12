@@ -42,8 +42,13 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
     console.log('[authenticatedPage] Using pre-authenticated session from storage state');
 
-    // Navigate to the dashboard page (root redirects to first incomplete workflow stage)
-    await page.goto('/dashboard', { timeout: 30000 });
+    // Navigate to the dashboard page (root redirects to first incomplete workflow stage).
+    // ?skipOnboarding=true is the product's own "Skip for now" affordance (#152): since
+    // #470 the onboarding status call really works, so a fresh test user is a first-time
+    // user and the dashboard would push them to /onboarding a beat after load — which
+    // made every spec that reads the URL right after this fixture a race. The onboarding
+    // spec is the one place that wants the first-time path and it resets state itself.
+    await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 });
 
     // Verify we're authenticated (should not be on signin page)

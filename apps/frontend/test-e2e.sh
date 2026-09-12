@@ -26,11 +26,38 @@ echo "Backend port: ${BACKEND_PORT}"
 # Function to check if a port is in use
 check_port_in_use() {
     local port=$1
-    if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; then
+    # lsof missed a listening next-server here once (WSL), so the check let a stale
+    # dev server from an earlier run keep the port while the new one bound the
+    # next free port — and every spec then hit the old server's environment (#613).
+    if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1 \
+        || (command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -qE ":${port} "); then
         return 0  # Port is in use
     else
         return 1  # Port is free
     fi
+}
+
+# Stop a server we started, children included. `npm run dev` and `uv run` are
+# wrappers: killing only the wrapper orphaned `next-server` / `uvicorn`, which
+# kept the port with a frozen environment and answered the next run's specs (#613).
+stop_tree() {
+    local pid=$1
+    [ -n "$pid" ] || return 0
+    # Recurse first: `next dev` is itself a wrapper around `next-server`, so one
+    # level of children is not enough.
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        stop_tree "$child"
+    done
+    kill "$pid" 2>/dev/null || true
+    # TERM first, then a short grace, then KILL: a server that ignores TERM would
+    # otherwise outlive the script and hold the port for the next run.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.5
+    done
+    kill -9 "$pid" 2>/dev/null || true
 }
 
 # Function to kill processes on a port
@@ -80,6 +107,18 @@ kill_port_processes ${BACKEND_PORT}
 export NODE_ENV=development
 export TEST_USER_EMAIL=${TEST_USER_EMAIL:-test@narrativeml.com}
 export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
+# /admin guard (#477, #613): the ordinary test user is NOT an admin and the second
+# dev-credentials identity IS — deliberately, and unconditionally: an ambient
+# ADMIN_EMAILS from the caller's shell is overwritten, or the smoke spec's two
+# cases would depend on whatever happened to be exported.
+export TEST_ADMIN_EMAIL=${TEST_ADMIN_EMAIL:-admin-e2e@narrativeml.com}
+export TEST_ADMIN_PASSWORD=${TEST_ADMIN_PASSWORD:-admin-password-123}
+export ADMIN_EMAILS="$TEST_ADMIN_EMAIL"
+if [ "$TEST_ADMIN_EMAIL" = "$TEST_USER_EMAIL" ]; then
+  echo "TEST_ADMIN_EMAIL must differ from TEST_USER_EMAIL: the credentials provider" >&2
+  echo "checks the ordinary user first, so an equal admin identity would silently be a non-admin." >&2
+  exit 1
+fi
 export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
 export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
@@ -153,7 +192,7 @@ for i in {1..30}; do
     echo -e "${RED}ERROR: Backend failed to start within 30 seconds${NC}"
     echo -e "${YELLOW}Backend logs:${NC}"
     cat /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
-    kill $BACKEND_PID 2>/dev/null
+    stop_tree $BACKEND_PID
     exit 1
   fi
   sleep 1
@@ -167,7 +206,7 @@ SEED_EXIT_CODE=$?
 
 if [ $SEED_EXIT_CODE -ne 0 ]; then
   echo -e "${RED}ERROR: Failed to seed test data${NC}"
-  kill $BACKEND_PID 2>/dev/null
+  stop_tree $BACKEND_PID
   exit 1
 fi
 
@@ -186,8 +225,8 @@ for i in {1..60}; do
   fi
   if [ $i -eq 60 ]; then
     echo -e "${RED}ERROR: Frontend failed to start within 60 seconds${NC}"
-    kill $FRONTEND_PID 2>/dev/null
-    kill $BACKEND_PID 2>/dev/null
+    stop_tree $FRONTEND_PID
+    stop_tree $BACKEND_PID
     exit 1
   fi
   sleep 1
@@ -216,11 +255,11 @@ echo -e "${YELLOW}=== Cleaning up ===${NC}"
 # `|| true` keeps `set -e` from turning an already-exited process
 # (kill returns non-zero) into a spurious script failure on green runs
 if [ ! -z "$FRONTEND_PID" ]; then
-  kill $FRONTEND_PID 2>/dev/null || true
+  stop_tree $FRONTEND_PID
   echo "Stopped frontend server (PID: $FRONTEND_PID)"
 fi
 if [ ! -z "$BACKEND_PID" ]; then
-  kill $BACKEND_PID 2>/dev/null || true
+  stop_tree $BACKEND_PID
   echo "Stopped backend server (PID: $BACKEND_PID)"
 fi
 

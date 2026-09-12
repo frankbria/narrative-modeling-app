@@ -1,18 +1,19 @@
-# Issue #608 — [P3.25] [security] A column named 'ssn' is rated medium-risk, never high — the name match short-circuits the value check
+# Issue #613 — [P3.27] [testing] Smoke-test that an authenticated non-admin gets HTTP 404 on /admin
 
-Plan source: self-authored. Approved autonomously — AC2 asks for a deliberate boundary decision: name-only evidence stays medium (a label is a hint, values are proof); values decide high. No fork.
+Plan source: self-authored. Approved autonomously — the only design question is how one e2e run holds both a non-admin and an admin session; a second dev-credentials identity (test/dev only) is the smallest answer. No fork.
 
 ## Findings
-- `detect_pii_in_dataframe` `continue`s after a name match, so values are never examined for the honestly-named column; `_check_column_name` returns 0.8 and the report's high threshold is `> 0.8` — name-only lands exactly on the boundary and is always medium.
-- `/upload/secure` gates confirmation on `risk_level == "high"`, so a plainly-named SSN column skips the gate that a neutrally-named one triggers.
+- `middleware.ts` rewrites `/admin` to Next's internal `/_not-found` for emails not on `ADMIN_EMAILS`; the unit test can only see the rewrite header. Nothing in CI observes the final HTTP status.
+- The dev credentials provider (`auth.ts`, dev/test only) accepts exactly one identity (`TEST_USER_EMAIL`), so the same run cannot be both a non-admin and an admin unless a second identity exists.
+- `test-e2e.sh` does not export `ADMIN_EMAILS`; "nobody is admin" is incidental today.
 
 ## Design
-1. Always run the value check; when both signals exist, keep one detection per column carrying the stronger confidence (pattern match rate is the stronger evidence for real values).
-2. Named constants: `NAME_MATCH_CONFIDENCE = 0.8`, `HIGH_RISK_CONFIDENCE = 0.8` (strictly greater → high), with the decision written next to them.
-3. Tests: identical SSN values → same risk regardless of column name; `ssn` column of SSNs → `risk_level == "high"`; name-only (no matching values) stays medium; the `/upload/secure` gate returns `requires_confirmation` for an `ssn` column.
-4. Blast radius (AC4): uploads whose PII-named column actually holds PII-shaped values move from medium to high → the confirmation route (which charges an upload unit only when it stores). Stated in the PR.
+1. `auth.ts` credentials provider (already gated to development/test) also accepts `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` when both are set, returning a distinct user id. Unit-tested.
+2. `test-e2e.sh` exports `TEST_ADMIN_EMAIL` (default `admin-e2e@narrativeml.com`), `TEST_ADMIN_PASSWORD`, and `ADMIN_EMAILS=${ADMIN_EMAILS:-$TEST_ADMIN_EMAIL}` — deliberately, with the comment the issue asks for; the ordinary test user is therefore not an admin by construction.
+3. `e2e/workflows/admin-guard.spec.ts` (@smoke): (a) the default session (test user) → `page.request.get('/admin')` is 404 and the body has no "Admin Dashboard"; (b) a fresh context signs in through the real form as the admin identity → 200 and the heading is present.
+4. CLAUDE.md `/admin` bullet: the smoke spec now repeats the hand check.
 
 ## Steps
-- [x] RED tests
-- [x] detector change (+ best-pattern-wins, named floor, coupled constants after review)
-- [x] gate → PR #649 → demo → CI → merge
+- [ ] RED (spec fails: admin identity cannot sign in / no ADMIN_EMAILS)
+- [ ] provider + launcher + spec + docs
+- [ ] gate (jest, tsc, lint cap) → PR → CI e2e-smoke is the demo → merge
