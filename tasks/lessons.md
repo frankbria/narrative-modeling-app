@@ -685,3 +685,11 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Optional dependency groups outside `default-groups` are never exercised by CI.** The one test that ran the real ONNX conversion `importorskip`'d silently; the repo's lever pattern is group-in-default, `--no-group` in the Dockerfile.
 - **Gate every step of a chain on the previous one.** A `[ $rc = 0 ] && …; git commit …; git push …` pushed a red commit because the commit/push sat after a `;`. Either one `&&` chain or an explicit `exit` on failure — the same trap as `PIPESTATUS` (#531).
 - **"Verified by building the container once" means once *per Dockerfile change*.** Deriving the base image from `sys.version_info` after the first build required a second build to keep the claim true.
+
+## #470 — onboarding fetched the frontend origin (2026-09-12)
+- **"No base at all" is a different bug from "wrong base", and needs its own guard.** The #406 guard scanned `${base}/api…` templates; a bare `fetch('/api/v1/…')` has no template and sailed past it for the whole life of the page. Guard the *literal*, comments stripped, `app/api/**` excluded.
+- **A mock that matches on `url.includes()` cannot tell the right origin from the wrong one.** The e2e onboarding tests and the unit tests both intercepted `…/onboarding/status` wherever it went. The one assertion that catches this class is a real backend plus "no request answered ≥ 400".
+- **The first run of an unmocked e2e will teach you what the backend actually does.** The spec waited for a landing card that only renders when the backend reports no current step; after a reset it reports `"welcome"`. The internal reviewer predicted the failure from the service code before CI confirmed it — read the state machine on both sides before asserting a UI state.
+- **A jest `| grep` line is truthy even when tests fail** — same `PIPESTATUS` trap as pytest; the commit landed with two red tests. Capture the runner's exit code before piping.
+- **Sweep the flow, not the file.** The issue named the page; the component the page renders had the identical two calls.
+- **Clear the warnings in a file you touch and ratchet the cap** — two pre-existing eslint warnings sat in the test I edited; the cap went 232 → 230 for free.

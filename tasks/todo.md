@@ -21,8 +21,8 @@ Plan source: self-authored; approved autonomously (no architectural fork).
 4. [x] Docs: CLAUDE.md NEXT_PUBLIC_API_URL bullet
 
 ## Acceptance criteria
-- [ ] AC1 every onboarding fetch builds from NEXT_PUBLIC_API_URL + resource path
-- [ ] AC2 requests carry the API bearer
-- [ ] AC3 errors surfaced in the UI
-- [ ] AC4 paths pinned in apiUrlConstruction.test.ts (+ class guard)
-- [ ] AC5 e2e walks a new user to completion
+- [x] AC1 every onboarding fetch builds from NEXT_PUBLIC_API_URL + resource path
+- [x] AC2 requests carry the API bearer
+- [x] AC3 errors surfaced in the UI
+- [x] AC4 paths pinned in apiUrlConstruction.test.ts (+ class guard)
+- [x] AC5 e2e walks a new user to completion
