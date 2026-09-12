@@ -1658,12 +1658,12 @@ async def preview_bulk_transformation(
             column_previews=[],
             error=e.message
         )
-    except Exception as e:
-        logger.exception(f"Error previewing bulk transformation: {e}")
+    except Exception:
+        logger.exception("Bulk transformation preview failed")
         return BulkTransformationPreviewResponse(
             success=False,
             column_previews=[],
-            error=str(e)
+            error=internal_error_message("Bulk transformation preview"),
         )
 
 

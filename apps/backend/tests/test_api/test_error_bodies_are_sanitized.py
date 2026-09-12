@@ -136,6 +136,22 @@ class TestTransformations:
         assert data["success"] is False, data
         _assert_sanitized(r, data["error"])
 
+    async def test_bulk_preview(self, async_authorized_client, setup_database):
+        ds = self._dataset()
+        with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=ds), \
+             patch("app.models.user_data.UserData.find_one", new_callable=AsyncMock, return_value=ds), \
+             patch("app.services.s3_service.download_file_from_s3", side_effect=SECRET):
+            r = await async_authorized_client.post(
+                f"{self.BASE}/datasets/{ds.dataset_id}/bulk-preview",
+                json={"selected_columns": ["a"], "transformation_type": "trim_whitespace"},
+            )
+        data = r.json()
+        assert data["success"] is False, data
+        # The service wraps the failure in a fixed-message OperationError, so the
+        # domain branch answers here; no reference, but nothing leaks either.
+        assert r.status_code == 200
+        assert "secret-bucket" not in r.text and "boom" not in r.text
+
     async def test_validate_errors_list(self, async_authorized_client, setup_database):
         ds = self._dataset()
         with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=ds), \
