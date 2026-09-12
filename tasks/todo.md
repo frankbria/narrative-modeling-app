@@ -12,6 +12,6 @@ Plan source: self-authored. Approved autonomously — AC1 offers "require auth" 
 2. Test (AC3): unauthenticated → 401; authenticated → 200 with `mcp_available` bool (MCP health stubbed). Plus keep the #450 auth-sweep test green.
 
 ## Steps
-- [ ] RED tests
-- [ ] dependency on the route
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests
+- [x] dependency on the route
+- [x] gate → PR #644 → demo → CI → merge
