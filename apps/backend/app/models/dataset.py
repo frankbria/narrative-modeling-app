@@ -108,6 +108,11 @@ class DatasetMetadata(Document):
     file_type: str = Field(..., description="File type: csv, excel, json, parquet")
     file_path: str = Field(..., description="Storage path (e.g., S3 key)")
     s3_url: str = Field(..., description="S3 URL for file access")
+    source_s3_url: str | None = Field(
+        None,
+        description="The original upload, recorded the first time a transformation moves the "
+                    "dataset to a new file; retained deliberately (#467, lifecycle: #529)",
+    )
     file_size: int | None = Field(None, ge=0, description="File size in bytes")
 
     # Dataset dimensions

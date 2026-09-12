@@ -19,6 +19,7 @@ from app.models.transformation import (
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -537,14 +538,10 @@ class TransformationService(BaseService[TransformationConfig]):
                 file_path=new_file_path
             )
 
-            # Point BOTH file_path and s3_url at the transformed artifact (issue #276).
-            # upload_dataframe_to_s3 returns a full, downloadable URL; leaving s3_url
-            # stale made viz/preview endpoints (which read s3_url) serve pre-transform
-            # data while metadata described the transformed data.
-            dataset.file_path = new_file_path
-            dataset.s3_url = new_file_path
-            dataset.update_timestamp()
-            await dataset.save()
+            # Move the dataset AND its dual-written UserData twin to the transformed
+            # artifact (#276, #467): leaving s3_url stale served pre-transform data, and
+            # moving only this side severed the (user_id, s3_url) join the twin lives on.
+            await record_new_file(dataset, new_file_path)
 
             # Clear cached data
             await cache_service.delete_pattern(f"stats_{dataset_id}_*")
