@@ -659,6 +659,15 @@ jobs:
           # never exercised. Accepted + ignored rather than left to flip the job.
           uvx pip-audit -r requirements-audit.txt \
             --ignore-vuln PYSEC-2026-1325
+      - name: pip-audit (mcp)
+        working-directory: apps/mcp
+        # A second, independent lockfile. It pinned an advisory-affected
+        # cryptography (46.0.3, PYSEC-2026-3552) for as long as the backend did,
+        # and nothing looked: this job audited apps/backend only (#569).
+        run: |
+          uv export --frozen --no-emit-project --no-hashes \
+            --format requirements-txt -o requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
