@@ -23,6 +23,7 @@ from app.services.data_processing.quality_assessment import ActionableRecommenda
 from app.services.quality_gate_service import evaluate_gates, overall_score
 from app.services.s3_service import s3_service
 from app.utils.json_encoder import NumpyJSONEncoder, convert_numpy_types
+from app.utils.object_id import require_object_id
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ async def get_file_schema(
 ):
     """Get inferred schema for a processed file"""
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
     
@@ -193,7 +194,7 @@ async def get_file_statistics(
 ):
     """Get calculated statistics for a processed file"""
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
     
@@ -217,7 +218,7 @@ async def get_quality_report(
 ):
     """Get quality assessment report for a processed file"""
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
     
@@ -247,7 +248,7 @@ async def get_quality_report_consolidated(
     (GET /api/v1/datasets/{dataset_id}/quality-trend). Never 500s on stale caches.
     """
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
     if not user_data:
@@ -294,7 +295,7 @@ async def get_data_preview(
     import pandas as pd
     
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
     
@@ -337,7 +338,8 @@ async def get_data_preview(
             "file_id": str(user_data.id),
             "filename": user_data.original_filename,
             "columns": df.columns.tolist(),
-            "data": paginated_df.to_dict('records'),
+            # NaN is not JSON; a dataset with one missing value 500'd the preview (#465)
+            "data": paginated_df.astype(object).where(paginated_df.notna(), None).to_dict('records'),
             "total_rows": total_rows,
             "offset": offset,
             "rows": len(paginated_df)
@@ -420,7 +422,7 @@ async def export_processed_data(
     the artifact, and returns a working presigned download URL (valid 1 hour).
     """
     user_data = await UserData.find_one(
-        UserData.id == file_id,
+        UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
 

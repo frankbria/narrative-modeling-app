@@ -1,36 +1,26 @@
-# Issue #461 — [P0.18] [billing] Every OpenAI-backed endpoint is unmetered
+# Issue #465 — [P0.22] [bug] ~10 endpoints can never match a document (string vs ObjectId)
 
-Plan source: self-authored. Fork considered: call-based vs token-based metric → call-based (`ai_calls`).
-Token counts are only known after the response, so they cannot be reserved atomically; a per-call
-unit reuses `quota()` verbatim. No stop needed.
+Plan source: self-authored; approved autonomously (no architectural fork).
 
 ## Design
-- `ai_calls` joins `METERED_METRICS` + `PlanLimits`; ceilings FREE 50 / PRO 2 000 / ENTERPRISE 20 000 per period,
-  **finite for every tier** and read through `_env_positive_int`, so an env override cannot lift the ceiling (AC5 backstop).
-- `quota("ai_calls")` on all four `ai_analysis.py` routes. `/insights` and `/chat/{file_id}` are 501 stubs (#274) —
-  metered anyway so implementing them cannot reopen the hole; the refund middleware hands the unit back on 501.
-- Registry test for `/api/v1/ai` POSTs (walker in `test_dataset_routes_are_metered.py` gains a `prefixes` arg).
-- Route tests (real Mongo): user at the FREE `ai_calls` limit → 402 on analyze + summarize, service never called, no unit consumed.
-- `/api/chat` bounded independently: message ≤ 4 000 chars, context ≤ 8 000, history ≤ 20 turns of `{role: user|assistant, content ≤ 4 000}`,
-  total ≤ 24 000 chars → 400 before OpenAI; context goes in a fenced *untrusted data* message, not the system prompt. 20/min rate cap stays.
-- Billing page: `ai_calls: 'AI calls'` label (types are `Record<string, number>` already).
+- `app/utils/object_id.py::require_object_id(value, what="id") -> PydanticObjectId`, 400 on a malformed id (AC1).
+- data_processing.py: six `UserData.id == file_id` sites → `== require_object_id(file_id, "file_id")`.
+- transformations.py: four raw-dict `"_id": <str>` sites → `require_object_id(...)`; the four handlers also gain
+  `except HTTPException: raise` — today they swallow the 404 into a 200 `{success: false}` or a 500.
+- Sweep (AC2): `"_id": <var>` and `.id == <str>` across app/ — the ten sites are the whole class; `Document.get(str)`
+  is coerced by Beanie and is not affected; `data_issues.py`/`model_training.py`/`ai_analysis.py` already coerce.
+- Tests (AC3/AC4): `test_data_processing.py` rewritten on real seeded `UserData` docs (no `find_one` patch);
+  new `test_object_id_lookups.py` asserts 200 on every previously-404ing endpoint against a real document,
+  400 on a malformed id, 404 on unknown and foreign ids. `test_transformations_integration.py` stays mocked → #492.
 
 ## Steps
-1. [x] Backend RED: plans tests (finite, monotonic, override refused), registry, 402 route tests
-2. [x] Backend GREEN: plans.py, ai_analysis.py; `setup_database` on the AI route tests that now touch Subscription
-3. [x] Frontend RED/GREEN: route.test.ts caps + context handling; route.ts; billing label
-4. [x] Docs: CLAUDE.md plan-enforcement bullet (ai_calls, finite ceiling, /api/chat is bounded not metered)
+1. [ ] RED: real-document tests (10 endpoints × 200/400/404)
+2. [ ] GREEN: helper + ten sites + re-raise in the four transformation handlers
+3. [ ] Rewrite test_data_processing.py on real documents
+4. [ ] Docs: CLAUDE.md gotcha (`UserData.id` is an ObjectId; coerce with `require_object_id`; handlers must re-raise HTTPException)
 
 ## Acceptance criteria
-- [x] AC1 metric with per-tier ceilings
-- [x] AC2 four routes carry quota
-- [x] AC3 /api/chat history/size caps + rate cap
-- [x] AC4 context validated and constrained
-- [x] AC5 finite per-tenant ceiling that config cannot lift
-- [x] AC6 402 tests with no OpenAI call
-
-## Scope widened during the run (reviews)
-- codex: `/api/chat` proxy must not call OpenAI itself → backend `POST /ai/chat` under quota; frontend `openai` dep dropped.
-- codex: `/billing/status` limits derived from `METERED_METRICS`.
-- internal: 8 more model-calling routes (features suggest/lookups, ml evaluation/errors) → metered; registry scope derived from imports.
-- codex r2: aggregate 24k cap server-side; rule-based `suggest` releases its unit.
+- [ ] AC1 both call-site families coerce; malformed → 400
+- [ ] AC2 repo swept
+- [ ] AC3 data-processing tests use real documents
+- [ ] AC4 every previously-404ing endpoint has a 200-against-seeded-doc test

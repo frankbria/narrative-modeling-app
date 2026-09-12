@@ -711,7 +711,7 @@ class TestAuthenticationBypass:
             side_effect=Exception("forced endpoint failure"),
         ) as mock_find:
             response = await async_test_client.get(
-                "/api/v1/transformations/suggestions/test_dataset",
+                f"/api/v1/transformations/suggestions/{ObjectId()}",  # well-formed: a malformed id is 400 before the lookup (#465)
                 headers={"Authorization": "Bearer dev-custom-user"}
             )
 

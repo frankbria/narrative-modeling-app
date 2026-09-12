@@ -79,6 +79,7 @@ from app.services.transformation_engine.transformation_engine import (
     TransformationType as EngineTransformationType,
 )
 from app.services.transformation_engine.validators import TransformationValidator
+from app.utils.object_id import require_object_id
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -224,7 +225,7 @@ async def apply_transformation_pipeline(
         # Get dataset
         user_data = await UserData.find_one({
             "user_id": current_user_id,
-            "_id": request.dataset_id
+            "_id": require_object_id(request.dataset_id, "dataset_id"),  # (#465)
         })
         
         if not user_data:
@@ -312,6 +313,8 @@ async def apply_transformation_pipeline(
             execution_time_ms=execution_time_ms
         )
         
+    except HTTPException:
+        raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
     except Exception as e:
         logger.error(f"Apply pipeline failed: {str(e)}")
         return TransformationApplyResponse(
@@ -333,7 +336,7 @@ async def validate_transformations(
         # Get dataset
         user_data = await UserData.find_one({
             "user_id": current_user_id,
-            "_id": request.dataset_id
+            "_id": require_object_id(request.dataset_id, "dataset_id"),  # (#465)
         })
         
         if not user_data:
@@ -373,6 +376,8 @@ async def validate_transformations(
             suggestions=suggestions
         )
         
+    except HTTPException:
+        raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
     except Exception as e:
         logger.error(f"Validation failed: {str(e)}")
         return ValidationResponse(
@@ -391,7 +396,7 @@ async def auto_clean_dataset(
         # Get dataset
         user_data = await UserData.find_one({
             "user_id": current_user_id,
-            "_id": request.dataset_id
+            "_id": require_object_id(request.dataset_id, "dataset_id"),  # (#465)
         })
         
         if not user_data:
@@ -439,6 +444,8 @@ async def auto_clean_dataset(
         
         return await apply_transformation_pipeline(pipeline_request, current_user_id)
         
+    except HTTPException:
+        raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
     except Exception as e:
         logger.error(f"Auto-clean failed: {str(e)}")
         return TransformationApplyResponse(
@@ -460,7 +467,7 @@ async def get_transformation_suggestions(
         # Get dataset
         user_data = await UserData.find_one({
             "user_id": current_user_id,
-            "_id": dataset_id
+            "_id": require_object_id(dataset_id, "dataset_id"),  # (#465)
         })
         
         if not user_data:
@@ -491,6 +498,8 @@ async def get_transformation_suggestions(
             critical_issues=critical_issues
         )
         
+    except HTTPException:
+        raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
     except Exception as e:
         logger.error(f"Get suggestions failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
