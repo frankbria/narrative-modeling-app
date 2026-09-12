@@ -693,3 +693,11 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A jest `| grep` line is truthy even when tests fail** — same `PIPESTATUS` trap as pytest; the commit landed with two red tests. Capture the runner's exit code before piping.
 - **Sweep the flow, not the file.** The issue named the page; the component the page renders had the identical two calls.
 - **Clear the warnings in a file you touch and ratchet the cap** — two pre-existing eslint warnings sat in the test I edited; the cap went 232 → 230 for free.
+
+## #471 — the data-issues router lived on a dead aggregator (2026-09-12)
+- **A route that was never reachable has never been reviewed by production.** Mounting it is a feature launch (same as #582): its authz, metering and error paths all needed work — `/detect` was an unmetered OpenAI call the #461 registry could not see because the model access went through a service import.
+- **Registries must follow the shape the code actually has.** "Direct import of a model module" missed a route → service → analyzer chain; one import hop closes it, and the docstring now says how deep the walk goes.
+- **Reserve-in-handler when the paid branch is conditional.** A route dependency reserves before the body is read; for a request flag that turns AI on or off, that 402s the free branch. Same as `/features/apply`; the registry now has a `_CONDITIONALLY_METERED` class that checks the handler reserves and carries no dependency.
+- **Decide "was the paid call made" at the moment it is knowable, not at the end.** Three review rounds chased the same bug in three places: flag set from key presence before the call; flag read after a later step that could raise; flag lost when the service raised after the call. The count belongs on the object that sends (`calls_made`), read immediately after the call, and kept somewhere the failure path can still see.
+- **Targeted test runs miss the tests that call the thing you changed.** Changing a handler's signature broke two direct-handler tests from an earlier issue that were not in my run list — and the chain pushed anyway. Grep for callers of a changed symbol under `tests/` and add them to the run.
+- **The Bash tool's 600 s ceiling swallows long chains**: a run → commit → push → poll chain past 600 s gets backgrounded; keep the poll in its own call.

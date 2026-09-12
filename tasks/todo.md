@@ -24,8 +24,8 @@ Plan source: self-authored; approved autonomously (no architectural fork).
 4. [x] Docs: CLAUDE.md
 
 ## Acceptance criteria
-- [ ] AC1 mounted in main.py, route order fine
-- [ ] AC2 route tests, real documents
-- [ ] AC3 tenant scoping reviewed + tested
-- [ ] AC4 frontend calls verified
-- [ ] AC5 every router mounted test
+- [x] AC1 mounted in main.py, route order fine
+- [x] AC2 route tests, real documents
+- [x] AC3 tenant scoping reviewed + tested
+- [x] AC4 frontend calls verified
+- [x] AC5 every router mounted test
