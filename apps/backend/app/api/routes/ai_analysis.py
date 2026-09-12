@@ -207,9 +207,14 @@ async def generate_ai_summary(
 
 
 @router.get("/health")
-async def check_mcp_health():
+async def check_mcp_health(current_user_id: str = Depends(get_current_user_id)):
     """
-    Check if MCP server is available and healthy
+    Check if MCP server is available and healthy.
+
+    Authenticated like every other handler in this router (#563): the answer is a
+    readout of internal deployment state, and each call is an outbound request to
+    the MCP server — neither is for anonymous callers. It is not a readiness
+    dependency of the app, so it does not live beside the probes in health.py.
     """
     is_healthy = await mcp_service.check_health()
     
