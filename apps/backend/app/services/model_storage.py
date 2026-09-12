@@ -28,6 +28,7 @@ from app.services.model_versioning_service import (
 )
 from app.services.s3_service import S3Service
 from app.utils.artifact_signing import sign_bytes, verify_bytes
+from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,17 @@ def build_shap_payload(shap_global: Any) -> dict[str, Any] | None:
         "n_samples": int(shap_global.n_samples),
         "created_at": datetime.now(UTC).isoformat(),
     }
+
+
+def _key_of(stored_path: str) -> str:
+    """The object key behind a stored ``s3://bucket/key`` path, whatever bucket it
+    names (#622). Stripping ``f"s3://{bucket_name}/"`` only worked while the bucket
+    was frozen at construction; with a live bucket, a path written under another
+    name would have come back as the whole URL and every load/delete would miss.
+    """
+    if stored_path.startswith("s3://"):
+        return parse_s3_url(stored_path)[1]
+    return stored_path
 
 
 class ModelStorageService:
@@ -484,7 +496,7 @@ class ModelStorageService:
             raise ValueError(f"Model {model_id} not found for user {user_id}")
 
         # Extract S3 key from path
-        model_key = ml_model.model_path.replace(f"s3://{self.s3_service.bucket_name}/", "")
+        model_key = _key_of(ml_model.model_path)
 
         # Download model, verify its signature, then joblib.load off the loop.
         model_data = await self.s3_service.download_file_obj(model_key)
@@ -495,9 +507,7 @@ class ModelStorageService:
         # Load feature transformer if exists
         feature_engineer = None
         if ml_model.feature_transformer_path:
-            transformer_key = ml_model.feature_transformer_path.replace(
-                f"s3://{self.s3_service.bucket_name}/", ""
-            )
+            transformer_key = _key_of(ml_model.feature_transformer_path)
             transformer_data = await self.s3_service.download_file_obj(transformer_key)
             feature_engineer = await self._verify_and_load(
                 transformer_data,
@@ -540,21 +550,17 @@ class ModelStorageService:
         # Delete S3 files
         try:
             # Delete model file
-            model_key = ml_model.model_path.replace(f"s3://{self.s3_service.bucket_name}/", "")
+            model_key = _key_of(ml_model.model_path)
             await self.s3_service.delete_file(model_key)
             
             # Delete transformer file if exists
             if ml_model.feature_transformer_path:
-                transformer_key = ml_model.feature_transformer_path.replace(
-                    f"s3://{self.s3_service.bucket_name}/", ""
-                )
+                transformer_key = _key_of(ml_model.feature_transformer_path)
                 await self.s3_service.delete_file(transformer_key)
 
             # Delete evaluation artifacts if present (issue #79)
             if ml_model.evaluation_data_path:
-                evaluation_key = ml_model.evaluation_data_path.replace(
-                    f"s3://{self.s3_service.bucket_name}/", ""
-                )
+                evaluation_key = _key_of(ml_model.evaluation_data_path)
                 await self.s3_service.delete_file(evaluation_key)
 
             # Delete SHAP summary if present (issue #80)

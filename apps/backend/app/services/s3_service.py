@@ -185,7 +185,7 @@ class S3Service:
         # The same core as the URL readers (#531/#567): the bucket is the one
         # allowlisted bucket (fail closed when unconfigured), the key follows the
         # same rules (legacy root allowed until #615), and the size cap applies.
-        bucket = allowed_bucket()
+        bucket = self._live_bucket()  # same pin-or-live answer as the writers (#622)
         file_key = validate_object_key(file_key, allow_legacy_root=True)
 
         def _download() -> bytes:
@@ -208,7 +208,9 @@ class S3Service:
         explicit assignment pins this instance instead (tests pin a fixture
         bucket); production code never assigns. The literal is only for
         mock-mode runs with nothing configured, where nothing is read or written."""
-        return self._bucket_override or configured_bucket() or "narrative-modeling-dev"
+        # The two services keep their historical unconfigured defaults ("…-dev"
+        # here, "…-uploads" in versioning): mock-mode only, nothing is written.
+        return self._pin() or configured_bucket() or "narrative-modeling-dev"
 
     @bucket_name.setter
     def bucket_name(self, value: str) -> None:
@@ -224,12 +226,16 @@ class S3Service:
         """Get S3 URL for a file"""
         return f"s3://{self.bucket_name}/{file_key}"
 
+    def _pin(self) -> str | None:
+        # getattr: tests build instances with __new__ and never run __init__.
+        return getattr(self, "_bucket_override", None)
+
     def _live_bucket(self) -> str:
         """The bucket for THIS call (#622): the instance's explicit pin if one was
         assigned, else resolved like the readers — never a value captured at
         construction, so a process whose environment changed cannot download
         from one bucket and write to another."""
-        return self._bucket_override or allowed_bucket()
+        return self._pin() or allowed_bucket()
 
     @with_circuit_breaker(
         "s3",
@@ -260,7 +266,8 @@ class S3Service:
         Pass ``filename`` to force a clean download name via Content-Disposition.
         """
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        file_key = validate_object_key(file_key, allow_legacy_root=True)
+        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
         params: dict[str, str] = {"Bucket": self._live_bucket(), "Key": file_key}
@@ -283,7 +290,8 @@ class S3Service:
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        file_key = validate_object_key(file_key, allow_legacy_root=True)
+        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
 

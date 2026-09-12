@@ -125,7 +125,8 @@ async def test_download_file_bytes_validates_the_key(own_bucket):
     from app.services.s3_service import S3Service
 
     svc = S3Service.__new__(S3Service)
-    svc.bucket_name = "test-bucket"
+    # No pin: own_bucket's env is the bucket, and the fail-closed branch below
+    # needs the env to be the ONLY source (#622 made bucket_name pin-or-live).
     svc.is_mock_mode = False
     svc.s3_client = MagicMock()
     for key in ("datasets/../../admin/secrets.csv", "/etc/passwd", "unauthorized/x.csv"):
@@ -143,7 +144,6 @@ async def test_download_file_bytes_uses_the_allowlisted_bucket_and_the_size_cap(
     from app.utils.s3 import MAX_DOWNLOAD_BYTES
 
     svc = S3Service.__new__(S3Service)
-    svc.bucket_name = "test-bucket"
     svc.is_mock_mode = False
     svc.s3_client = MagicMock()
     svc.s3_client.head_object.return_value = {"ContentLength": MAX_DOWNLOAD_BYTES + 1}

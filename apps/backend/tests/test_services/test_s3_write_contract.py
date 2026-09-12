@@ -95,6 +95,16 @@ class TestWriteMethodsValidateTheirKey:
         client.delete_object.assert_called_once_with(Bucket="test-bucket", Key=LEGACY_ROOT)
 
     @pytest.mark.asyncio
+    async def test_a_new_write_may_not_use_the_legacy_root_shape(self, monkeypatch):
+        # Only delete/head admit the pre-#581 root shape; a NEW object must be namespaced.
+        svc, client = _live_service(monkeypatch, "test-bucket")
+        with pytest.raises(ValueError):
+            await svc.upload_file_obj(MagicMock(), LEGACY_ROOT)
+        with pytest.raises(ValueError):
+            svc.generate_presigned_url(LEGACY_ROOT)
+        client.upload_fileobj.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_every_namespace_a_writer_uses_is_admitted(self, monkeypatch):
         svc, client = _live_service(monkeypatch, "test-bucket")
         for key in (
@@ -131,3 +141,21 @@ class TestWriteMethodsResolveTheBucketLive:
         svc.generate_presigned_url("exports/u/f/report.csv")
         params = client.generate_presigned_url.call_args.kwargs["Params"]
         assert params["Bucket"] == "later-bucket"
+
+
+class TestConsumersOfTheLiveBucket:
+    def test_model_storage_derives_keys_from_the_stored_path_not_the_current_bucket(self, monkeypatch):
+        from app.services.model_storage import _key_of
+
+        # Written under one bucket name, read after the environment moved on.
+        assert _key_of("s3://old-bucket/models/u1/m1/model.pkl") == "models/u1/m1/model.pkl"
+        assert _key_of("models/u1/m1/model.pkl") == "models/u1/m1/model.pkl"
+
+    @pytest.mark.asyncio
+    async def test_download_honours_the_same_pin_as_the_writers(self, monkeypatch):
+        svc, client = _live_service(monkeypatch, "env-bucket")
+        svc.bucket_name = "pinned-bucket"
+        client.get_object.return_value = {"Body": MagicMock(read=lambda: b"x"), "ContentLength": 1}
+        client.head_object.return_value = {"ContentLength": 1}
+        await svc.download_file_bytes("datasets/u/file.csv")
+        assert client.head_object.call_args.kwargs["Bucket"] == "pinned-bucket"
