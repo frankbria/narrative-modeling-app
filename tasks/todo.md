@@ -1,23 +1,15 @@
-# Issue #500 — [P1.10] [security] Caller-supplied training and tuning config is passed through unbounded
+# Issue #550 — [P2.33] [security] Security Audit went red — npm advisories against existing frontend deps
 
-Plan source: self-authored (no plan on the issue). Approved autonomously — no architectural fork.
+Plan source: self-authored (issue has ACs, no plan). Approved autonomously — lockfile + one pinned patch bump, no fork.
 
-## Findings
-- `TrainModelRequest.training_config` / `feature_config` are `dict[str, Any]`; the task feeds them to `AutoMLEngine`, `TuningConfig(**raw)` and `FeatureEngineeringConfig(**raw)` unvalidated.
-- Caller-reachable cost knobs: `max_models`, `cv_folds`, `time_limit`, `test_size`, `early_stop_score`, `enable_tuning`, `tuning_strategy`, `tuning_config.{n_trials,time_budget,cv_folds,n_jobs,strategy,scoring,random_state}`, `feature_config.max_features` (+ bools/strings).
-- Estimator hyperparameters (`n_estimators`, `max_depth`) are NOT caller-reachable: the search space is server-defined in `hyperparameter_tuner.py` (ParamSpec ceilings 400 / 30, tightened further by dataset size).
-- The engine's `time_limit` is soft (checked between candidates, after the tuning phase). Nothing kills a run.
-- Frontend sends `training_mode`, `cv_folds` (3–10), `max_models` (1–10), `test_size` (0.1–0.4) — all must stay valid on FREE.
-
-## Design
-1. `app/billing/plans.py`: `TrainingCeilings` (frozen dataclass) + `TRAINING_CEILINGS[tier]` + `training_ceilings_for(tier)` — max_models, cv_folds, time_limit_seconds, wall_clock_seconds (hard kill), tuning_trials, tuning_time_budget_seconds, max_features. FREE ceilings ≥ the `comprehensive` preset so modes stay usable on every tier.
-2. `app/api/routes/model_training.py`: typed `TrainingConfigRequest` / `TuningConfigRequest` / `FeatureConfigRequest` (`extra="forbid"`, static lower bounds, strategy Literal) replace the dicts → unknown or malformed knobs 422 at parse time. Route resolves the tier (`metering.effective_tier_for`) and rejects anything over the tier ceiling with 422 whose detail names the knob, the value and the limit. No clamping.
-3. Task: `asyncio.wait_for(engine.run(...), timeout=wall_clock_seconds)`; on `TimeoutError` the job is marked FAILED with "exceeded the Ns wall-clock limit for your plan". Route passes the tier's wall clock; default (no arg) falls back to FREE's — fail closed, no DB lookup in the task.
-4. Tests: 422 for over-ceiling / unknown key / malformed; 200 within bounds; timeout marks FAILED; ceilings monotonic and presets fit FREE.
-5. Docs: CLAUDE.md training-config bullet; lessons post-merge.
+## Findings (2026-09-12, live advisory DB)
+- The audit has grown from the issue's 6 to 9: the original browserslist ×2 / js-yaml / nanoid / dompurify, plus brace-expansion (high), @humanfs/node, baseline-browser-mapping (moderate), and — new and real — **next 16.2.12: critical** (GHSA-p293-qw3h-jr36 Windows RCE; GHSA-2xp9-vwfh-vxw4 unauthenticated RCE in the Image Optimization API with AVIF) with sharp (high) riding along. Fix: next 16.3.5, same major.
+- CI's job runs `npm audit --audit-level=high`; the issue's AC1 asks for clean at `moderate`.
+- `next` and `eslint-config-next` are pinned exactly (16.2.12); `npm audit fix` cannot cross a pin, so the bump is explicit and both move together.
+- Dependabot #600 bumps next to 16.3.4 (still vulnerable) and is red; superseded once this merges.
 
 ## Steps
-- [ ] RED tests
-- [ ] plans.py ceilings
-- [ ] request models + route ceiling check + wall clock in task
-- [ ] gate (pytest/diff-cover/ruff/mypy/codex) → PR → demo → CI → merge
+- [x] `npm audit fix` (non-breaking): 8 of 9 gone, lockfile only
+- [x] `npm i --save-exact next@16.3.5 eslint-config-next@16.3.5`
+- [ ] audit = 0 at moderate; jest, tsc, lint cap 230, next build
+- [ ] PR → CI (Security Audit must be green this time) → merge; comment/close #600
