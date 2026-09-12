@@ -6,8 +6,10 @@ import tempfile
 
 from botocore.exceptions import ClientError
 
+from app.config import resolve_s3_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
 from app.utils.s3 import (
+    allowed_bucket,
     check_object_size,
     create_s3_client,
     resolve_validated_object,
@@ -142,7 +144,9 @@ class S3Service:
     """Service for S3 operations"""
 
     def __init__(self):
-        self.bucket_name = os.getenv("AWS_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME", "narrative-modeling-dev")
+        # The canonical resolver (#567 AC4); the literal is only for mock-mode
+        # runs with nothing configured, where no read or write ever happens.
+        self.bucket_name = resolve_s3_bucket() or "narrative-modeling-dev"
 
         # Check if we're using test/mock credentials
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -178,13 +182,16 @@ class S3Service:
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot download files")
 
-        # Callers hand in UserData.s3_url keys and DatasetMetadata.file_path, so
-        # the same key rules as the URL readers apply (legacy root allowed, #615).
+        # The same core as the URL readers (#531/#567): the bucket is the one
+        # allowlisted bucket (fail closed when unconfigured), the key follows the
+        # same rules (legacy root allowed until #615), and the size cap applies.
+        bucket = allowed_bucket()
         file_key = validate_object_key(file_key, allow_legacy_root=True)
 
         def _download() -> bytes:
             # boto3 is blocking; run the request + body read off the event loop.
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
+            check_object_size(self.s3_client, bucket, file_key)
+            response = self.s3_client.get_object(Bucket=bucket, Key=file_key)
             return response['Body'].read()
 
         try:

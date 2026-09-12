@@ -132,3 +132,28 @@ async def test_download_file_bytes_validates_the_key(own_bucket):
         with pytest.raises(ValueError):
             await svc.download_file_bytes(key)
     svc.s3_client.get_object.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_download_file_bytes_uses_the_allowlisted_bucket_and_the_size_cap(own_bucket, monkeypatch):
+    """The key-based reader must not sidestep the two checks the URL readers make
+    (internal review): it reads from the one allowlisted bucket — failing closed
+    when none is configured — and refuses an oversize object before reading it."""
+    from app.services.s3_service import S3Service
+    from app.utils.s3 import MAX_DOWNLOAD_BYTES
+
+    svc = S3Service.__new__(S3Service)
+    svc.bucket_name = "test-bucket"
+    svc.is_mock_mode = False
+    svc.s3_client = MagicMock()
+    svc.s3_client.head_object.return_value = {"ContentLength": MAX_DOWNLOAD_BYTES + 1}
+    with pytest.raises(ValueError, match="too large"):
+        await svc.download_file_bytes("datasets/u/f.csv")
+    svc.s3_client.get_object.assert_not_called()
+
+    for name in ("AWS_S3_BUCKET", "AWS_BUCKET_NAME", "S3_BUCKET_NAME", "S3_BUCKET"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(ValueError, match="not configured"):
+        await svc.download_file_bytes("datasets/u/f.csv")
+    svc.s3_client.get_object.assert_not_called()
+

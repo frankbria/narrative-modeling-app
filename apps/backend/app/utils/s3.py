@@ -9,7 +9,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 
-from app.config import resolve_aws_region
+from app.config import resolve_aws_region, resolve_s3_bucket
 
 # Suppress AWS logging
 logging.getLogger("boto3").setLevel(logging.WARNING)
@@ -105,13 +105,12 @@ def get_s3_client():
     """
     global s3_client
 
-    # Check for required environment variables
-    required_env_vars = [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_BUCKET_NAME",
-    ]
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    # Credentials are required by name; the bucket is resolved through the one
+    # canonical resolver (#257/#567) so a deployment that sets only AWS_S3_BUCKET or
+    # S3_BUCKET_NAME is not refused here while every other reader accepts it.
+    missing_vars = [v for v in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") if not os.getenv(v)]
+    if not resolve_s3_bucket():
+        missing_vars.append("AWS_BUCKET_NAME (or any S3 bucket variable)")
 
     if missing_vars:
         logger.warning(
@@ -174,10 +173,10 @@ def upload_file_to_s3(
     if client is None:
         return False, None
 
-    # Get the bucket name
-    bucket_name = os.getenv("AWS_BUCKET_NAME")
+    # The one canonical bucket resolver (#567 AC4).
+    bucket_name = resolve_s3_bucket()
     if not bucket_name:
-        logger.error("AWS_BUCKET_NAME environment variable not set")
+        logger.error("No S3 bucket configured (AWS_BUCKET_NAME or a sibling variable)")
         return False, None
 
     try:
@@ -268,7 +267,12 @@ def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     the root is ever accepted. Returns the decoded key.
     """
     decoded = unquote(key or "")
-    if not decoded or ".." in decoded or decoded.startswith("/"):
+    # Traversal is a *segment* that is "." or "..", or an absolute/empty segment
+    # ("/etc/passwd", "a//b"). A ".." inside a filename ("experiment..csv") is a
+    # legitimate name datasets.py will happily store, and cannot traverse
+    # because the segment contains no slash.
+    segments = decoded.split("/")
+    if not decoded or decoded.startswith("/") or any(seg in ("", ".", "..") for seg in segments):
         logger.error("Path traversal or absolute path in S3 key: %r", key)
         raise ValueError("Invalid S3 path: path traversal detected")
     if _NAMESPACED_KEY.match(decoded):
@@ -327,8 +331,6 @@ def _allowed_bucket() -> str | None:
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    from app.config import resolve_s3_bucket
-
     return os.getenv("AWS_S3_BUCKET") or resolve_s3_bucket()
 
 
@@ -382,26 +384,3 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
         logger.error(f"Error downloading file from S3: {e}")
         raise
 
-    # Parse the S3 URL to get bucket and key (all persisted URL shapes)
-    try:
-        bucket_name, key = parse_s3_url(s3_url)
-        if bucket_name is None:
-            # Legacy fallback: derive the bucket from the host's first label
-            # (e.g. "bucket.s3.amazonaws.com" variants parse_s3_url doesn't map)
-            netloc = urlparse(s3_url if "://" in s3_url else f"https://{s3_url}").netloc
-            bucket_name = netloc.split(".")[0]
-            if not bucket_name:
-                raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-        require_allowed_bucket(bucket_name)
-
-        # Download the file to a BytesIO object
-        file_obj = io.BytesIO()
-        client.download_fileobj(bucket_name, key, file_obj)
-        file_obj.seek(0)
-
-        logger.info(f"File downloaded successfully from {s3_url}")
-        return file_obj
-    except Exception as e:
-        logger.error(f"Error downloading file from S3: {e}")
-        raise

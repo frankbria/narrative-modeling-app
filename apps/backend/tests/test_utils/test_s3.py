@@ -447,6 +447,8 @@ class TestValidateObjectKey:
             "datasets/user1/ds1_r\u00e9sum\u00e9.xlsx",
             # The versioning layout.
             "datasets/user1/ds1/versions/v1/data.csv",
+            # ".." inside a filename is a name, not a traversal (codex review).
+            "datasets/user1/ds1_experiment..csv",
         ],
     )
     def test_accepts_the_two_app_namespaces(self, key):
@@ -465,6 +467,8 @@ class TestValidateObjectKey:
             "datasets/user1/ds1/versions/v1/x/y.csv",
             "datasets/user1/ds1/snapshots/v1/y.csv",
             "datasets/user 1/file.csv",  # the user_id segment stays bounded
+            "datasets/user1/..",  # a ".." *segment* is traversal
+            "datasets//file.csv",  # an empty segment is not a namespace
             "models/u/m/model.pkl",
             "file.csv",
             "",
@@ -546,4 +550,25 @@ class TestGetFileFromS3Validation:
             with pytest.raises(ValueError, match="too large"):
                 get_file_from_s3("https://test_bucket.s3.amazonaws.com/datasets/u/f.csv")
         mock_s3_client.download_fileobj.assert_not_called()
+
+
+class TestGetS3ClientBucketResolution:
+    def test_any_bucket_variable_name_is_enough(self, monkeypatch):
+        # Column stats broke on deployments that set only S3_BUCKET_NAME because
+        # this used to hard-require AWS_BUCKET_NAME (codex review).
+        for name in ("AWS_BUCKET_NAME", "AWS_S3_BUCKET", "S3_BUCKET"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+        monkeypatch.setenv("S3_BUCKET_NAME", "only-this-name")
+        with patch("app.utils.s3.create_s3_client", return_value=Mock()) as make:
+            assert get_s3_client() is not None
+        make.assert_called_once()
+
+    def test_no_bucket_at_all_still_yields_no_client(self, monkeypatch):
+        for name in ("AWS_BUCKET_NAME", "AWS_S3_BUCKET", "S3_BUCKET", "S3_BUCKET_NAME"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+        assert get_s3_client() is None
 
