@@ -34,6 +34,11 @@ def real_s3_env(monkeypatch, test_s3_bucket, s3_client):
 
     monkeypatch.setattr(versioning_service, "s3_client", s3_client)
     monkeypatch.setattr(versioning_service, "bucket_name", test_s3_bucket)
+    # Same for the S3Service singleton (training's download_file_bytes goes through it).
+    from app.services.s3_service import s3_service
+
+    monkeypatch.setattr(s3_service, "s3_client", s3_client)
+    monkeypatch.setattr(s3_service, "bucket_name", test_s3_bucket)
     return test_s3_bucket
 
 
@@ -96,3 +101,43 @@ async def test_first_transformation_on_a_fresh_upload_succeeds(client, s3_client
         "parameters": {"columns": ["name"]},
     })
     assert again.status_code == 200 and again.json()["success"] is True, again.text
+
+
+async def test_training_reads_the_transformed_file_after_an_apply(client, s3_client, real_s3_env):
+    """#467 AC2: /datasets/upload dual-writes a UserData twin; training reads the twin's
+    s3_url. After a real transformation the twin must point at the transformed object,
+    and the loader's own download call must return the transformed rows."""
+    from app.models.dataset import DatasetMetadata
+    from app.models.user_data import UserData
+    from app.services.s3_service import s3_service
+    from app.utils.s3 import downloadable_url, resolve_validated_object
+
+    upload = await client.post(
+        "/api/v1/datasets/upload", files={"file": ("d.csv", io.BytesIO(CSV), "text/csv")}
+    )
+    assert upload.status_code in (200, 201), upload.text
+    dataset_id = upload.json()["dataset_id"]
+    meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
+    twin = await UserData.find_one(UserData.user_id == USER, UserData.s3_url == meta.s3_url)
+    assert twin is not None, "precondition: the upload dual-writes a UserData twin on (user_id, s3_url)"
+
+    apply = await client.post("/api/v1/transformations/apply", json={
+        "dataset_id": dataset_id, "transformation_type": "trim_whitespace",
+        "parameters": {"columns": ["name"]},
+    })
+    assert apply.status_code == 200 and apply.json()["success"] is True, apply.text
+
+    twin = await UserData.get(twin.id)
+    meta = await DatasetMetadata.get(meta.id)
+    assert twin.s3_url == meta.s3_url, "the link must survive the transformation"
+    assert "/transformed/" in twin.s3_url
+    # the loader dispatches on file_type: it must now take the parquet branch (#524)
+    assert (twin.file_type, meta.file_type) == ("parquet", "parquet")
+
+    # exactly what train_model_task does with the twin
+    _, key = resolve_validated_object(downloadable_url(twin.file_path, twin.s3_url))
+    import pandas as pd
+
+    frame = pd.read_parquet(io.BytesIO(await s3_service.download_file_bytes(key)))
+    assert list(frame["name"]) == ["alice", "bob", "carol"], "training must see the trimmed names"
+    assert meta.source_s3_url is not None and "/datasets/" in meta.source_s3_url

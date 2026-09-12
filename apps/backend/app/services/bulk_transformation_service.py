@@ -26,6 +26,7 @@ from app.models.bulk_transformation import (
     PatternType,
 )
 from app.models.dataset import DatasetMetadata, SchemaField
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
 from app.services.redis_cache import cache_service
 from app.services.transformation_engine.data_utils import (
@@ -571,13 +572,14 @@ class BulkTransformationService:
                     f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
                 )
 
-                # Update dataset
-                dataset.file_path = new_file_path
+                # Update dataset — and its dual-written twin (#467, #627). No transaction spans
+                # the two documents: if this raises after one side moved, the job is marked
+                # failed below while the dataset is half-moved (logged at ERROR by the helper;
+                # scripts/inventory_dataset_links.py finds it). Accepted, see dataset_link.py.
                 dataset.num_rows = len(df)
                 dataset.num_columns = len(df.columns)
                 dataset.columns = df.columns.tolist()
-                dataset.update_timestamp()
-                await dataset.save()
+                await record_new_file(dataset, new_file_path)
 
                 # Clear cache
                 await cache_service.delete_pattern(f"stats_{job.dataset_id}_*")

@@ -39,6 +39,7 @@ from app.schemas.data_issue import (
     SuggestedFixResponse,
 )
 from app.services.data_issue_detection_service import DataIssueDetectionService
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import OperationError, ValidationError
 from app.services.fix_suggestion_engine import FixSuggestionEngine
 from app.services.transformation_engine.data_utils import (
@@ -461,11 +462,9 @@ async def apply_fix(
             f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
         )
 
-        # Update dataset record
-        user_data.file_path = new_file_path
-        user_data.updated_at = datetime.now(UTC)
+        # Update dataset record — and its dual-written twin (#467, #627)
         user_data.num_rows = len(transformed_df)
-        await user_data.save()
+        await record_new_file(user_data, new_file_path)
 
         # Update issue record
         record.add_applied_fix(applied_fix)
@@ -628,11 +627,9 @@ async def batch_apply_fixes(
                 f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
             )
 
-            # Update dataset
-            user_data.file_path = new_file_path
-            user_data.updated_at = datetime.now(UTC)
+            # Update dataset — and its dual-written twin (#467, #627)
             user_data.num_rows = len(transformed_df)
-            await user_data.save()
+            await record_new_file(user_data, new_file_path)
 
             # Update issue record
             for applied in applied_fixes:

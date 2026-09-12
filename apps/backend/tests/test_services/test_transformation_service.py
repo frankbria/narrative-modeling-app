@@ -25,6 +25,16 @@ def transformation_service():
     return TransformationService()
 
 
+@pytest.fixture(autouse=True)
+def move_twins():
+    """`record_new_file` moves the dataset AND its dual-written twin through the database
+    (#467); these tests mock the dataset entirely, so the helper is a seam here and is
+    asserted on in `test_apply_transformation_moves_both_twins`. Its own behaviour is
+    covered by tests/test_services/test_dataset_link.py against real documents."""
+    with patch("app.services.transformation_service.record_new_file", new_callable=AsyncMock) as moved:
+        yield moved
+
+
 @pytest.fixture
 def mock_dataset():
     """Create mock dataset metadata."""
@@ -157,7 +167,8 @@ class TestApplyTransformationVersioning:
         transformation_service,
         mock_dataset,
         sample_dataframe,
-        mock_parent_version
+        mock_parent_version,
+        move_twins,
     ):
         """s3_url is repointed to the transformed artifact alongside file_path (#276).
 
@@ -201,8 +212,12 @@ class TestApplyTransformationVersioning:
                 transformation_type="drop_missing", parameters={"column": "age"},
             )
 
-            assert mock_dataset.file_path == new_url
-            assert mock_dataset.s3_url == new_url  # the fix: both moved together
+        # #276 moved file_path and s3_url together; #467 moves them on BOTH twins,
+        # through record_new_file — the seam this suite mocks (see move_twins).
+        move_twins.assert_awaited_once()
+        moved_doc, moved_to = move_twins.await_args.args
+        assert moved_doc is mock_dataset
+        assert moved_to == new_url
 
     @pytest.mark.asyncio
     async def test_apply_transformation_updates_current_position(

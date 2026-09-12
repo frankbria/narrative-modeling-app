@@ -57,6 +57,7 @@ from app.schemas.transformation import (
     ValidationResponse,
 )
 from app.services.bulk_transformation_service import BulkTransformationService
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import (
     NotFoundError,
     OperationError,
@@ -283,10 +284,8 @@ async def apply_transformation_pipeline(
             f"transformed/{current_user_id}/{request.dataset_id}_{datetime.now(UTC).timestamp()}.parquet"
         )
         
-        # Update user data
-        user_data.file_path = new_file_path
-        user_data.updated_at = datetime.now(UTC)
-        await user_data.save()
+        # Update user data — and its dual-written DatasetMetadata twin (#467, #627)
+        await record_new_file(user_data, new_file_path)
         
         # Save as recipe if requested
         if request.save_as_recipe and request.recipe_name:

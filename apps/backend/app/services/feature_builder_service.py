@@ -21,6 +21,7 @@ from app.models.feature import (
     OutputType,
 )
 from app.services.base_service import BaseService
+from app.services.dataset_link import record_new_file
 from app.services.dataset_service import DatasetService
 from app.services.exceptions import ValidationError
 from app.services.expression_evaluator import (
@@ -723,8 +724,8 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                 # Update feature to point to new dataset
                 feature.dataset_id = new_dataset_id
             else:
-                # Update existing dataset
-                dataset.s3_url = new_s3_url
+                # Update existing dataset — and its dual-written UserData twin (#467): counts and
+                # schema are set here; record_new_file moves file_path + s3_url on both and saves.
                 dataset.columns = list(dataset.columns) + [column_name]
                 dataset.num_columns = len(dataset.columns)
                 # Add schema field for new column
@@ -736,7 +737,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                     unique_values=int(stats["unique_count"]),
                     missing_values=int(stats["null_count"]),
                 ))
-                await dataset.save()
+                await record_new_file(dataset, new_s3_url)
 
             # Update feature statistics
             feature.statistics = FeatureStatistics(

@@ -271,3 +271,28 @@ async def test_erase_user_sweeps_all_owned_datasets(setup_database):
         ErasureAuditLog.target_type == "user", ErasureAuditLog.subject_user_id == USER
     ).to_list()
     assert len(audit) == 1
+
+
+async def test_erasure_reaches_the_twin_after_a_transformation(setup_database):
+    """#467: a transformation used to rewrite only DatasetMetadata.s3_url, severing the
+    (user_id, s3_url) join; erasure then left the PII-carrying UserData twin behind."""
+    from app.services.dataset_link import record_new_file
+
+    shared_url = f"s3://{BUCKET}/datasets/{USER}/{DATASET_ID}_d.csv"
+    meta = await DatasetMetadata(
+        user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=f"datasets/{USER}/{DATASET_ID}_d.csv",
+        s3_url=shared_url, num_rows=10, num_columns=3,
+    ).insert()
+    twin = await UserData(
+        user_id=USER, filename="d.csv", original_filename="d.csv", s3_url=shared_url,
+        num_rows=10, num_columns=3, data_schema=[], contains_pii=True, pii_report={"emails": 2},
+    ).insert()
+
+    # the transformation moves the dataset to a new file ...
+    await record_new_file(meta, f"s3://{BUCKET}/transformed/{USER}/{DATASET_ID}_1.parquet")
+
+    # ... and erasure by the string id must still find the twin
+    manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+    assert await UserData.find(UserData.id == twin.id).count() == 0, "PII twin orphaned after a transformation"
+    assert manifest.documents_deleted.get("user_data") == 1
