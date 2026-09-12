@@ -25,7 +25,10 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, reserve
 from app.models.batch_job import BatchJob, JobStatus, JobType
-from app.services.batch_prediction import BatchPredictionService
+from app.services.batch_prediction import (
+    BatchConcurrencyLimitError,
+    BatchPredictionService,
+)
 from app.utils.upload_limits import read_upload_capped
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
@@ -232,6 +235,11 @@ async def create_batch_job(
     except HTTPException:
         # Preserve client errors (e.g. 413 too large) instead of masking as 500.
         raise
+    except BatchConcurrencyLimitError as e:
+        # Too many of the caller's own jobs in flight (#515): 429, not a fault.
+        # The admission dependency's reserved units are returned by the refund
+        # middleware (>= 400).
+        raise HTTPException(status_code=429, detail=str(e)) from e
     except ValueError as e:
         # Client-side problems (batch over the size cap #278, model not found,
         # unsupported input) are 400s, not server faults.
