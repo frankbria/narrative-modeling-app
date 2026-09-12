@@ -1,28 +1,31 @@
-# Issue #470 — [P0.27] [frontend] Onboarding fetches relative /api/v1 URLs that 404
+# Issue #471 — [P0.28] [bug] The entire data-issues feature 404s — its router is only mounted on a dead aggregator
 
 Plan source: self-authored; approved autonomously (no architectural fork).
 
 ## Design
-- `lib/services/onboarding.ts`: one tiny client — `${API_URL}` + resource path, `Authorization: Bearer <apiToken>` from
-  `getAuthToken()`, throws on `!ok` with the status. Functions for status/steps/achievements/complete/skip and the
-  sample-dataset list/load. Used by `app/onboarding/page.tsx` AND `components/SampleDatasetSelector.tsx` (same class,
-  same flow — found by the sweep).
-- Page: `useAsyncData`'s `error` rendered (Alert + Retry); complete/skip failures shown in an Alert instead of console.
-- Tests: page test asserts prefix + bearer, error state; selector test; `apiUrlConstruction.test.ts` pins the seven
-  onboarding paths against the backend route table and gains a repo-wide guard against bare relative `/api/v1` literals
-  (the existing guard only caught `${base}/api…` templates — this page had no base at all).
-- e2e `@smoke`: reset onboarding through the backend with the session's API token, walk /onboarding to the
-  Congratulations card, assert no onboarding request answered ≥ 400.
+- Mount `data_issues.router` in `main.py` at `{API_V1_STR}/data-issues` like its neighbours (the aggregator stays for P3.1).
+- Review as new code (AC3): every handler already scopes `UserData`/`DataIssueRecord` on `user_id`; route tests prove
+  404 for another tenant's dataset on all six endpoints.
+- `/detect` reaches OpenAI when `options.include_ai_analysis` (default true) → `quota("ai_calls")` (#461 rule), released
+  when the service reports the analyzer did not run (`summary.ai_analysis_used`). The registry now follows one hop
+  (route → service → model module) and the service imports the analyzer at module level, so the router is in scope.
+- AC2: route tests with `async_authorized_client` + real UserData/DataIssueRecord documents, S3 stubbed at
+  `get_dataframe_from_s3`: detect (issues found on a frame with missing values/duplicates), issues, preview-fix,
+  apply-fix, batch-fix, history; 404 matrix.
+- AC5: `test_every_router_is_mounted.py` — every module under `app/api/routes/` appears in the live route table,
+  with an explicit allow-list for the dead ones (`trained_model`, if confirmed dead; the aggregator).
+- AC4: the frontend's `lib/services/data-issues.ts` paths are pinned in `apiUrlConstruction.test.ts`; UI reachability
+  depends on where the components are mounted (checked).
 
 ## Steps
-1. [x] RED: page/selector/URL-pin/guard tests
-2. [x] GREEN: service + page + selector
-3. [x] e2e spec (run locally against the stack)
-4. [x] Docs: CLAUDE.md NEXT_PUBLIC_API_URL bullet
+1. [x] RED: mounted-routers test; route tests; registry hop
+2. [x] GREEN: mount, quota, ai_analysis_used
+3. [x] Frontend path pins (+ e2e if a page hosts the UI)
+4. [x] Docs: CLAUDE.md
 
 ## Acceptance criteria
-- [x] AC1 every onboarding fetch builds from NEXT_PUBLIC_API_URL + resource path
-- [x] AC2 requests carry the API bearer
-- [x] AC3 errors surfaced in the UI
-- [x] AC4 paths pinned in apiUrlConstruction.test.ts (+ class guard)
-- [x] AC5 e2e walks a new user to completion
+- [ ] AC1 mounted in main.py, route order fine
+- [ ] AC2 route tests, real documents
+- [ ] AC3 tenant scoping reviewed + tested
+- [ ] AC4 frontend calls verified
+- [ ] AC5 every router mounted test

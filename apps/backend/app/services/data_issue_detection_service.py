@@ -26,6 +26,9 @@ from app.services.data_processing.quality_assessment import (
     QualityDimension,
     QualityIssue,
 )
+from app.utils.ai_issue_analyzer import (
+    AIIssueAnalyzer,  # module-level on purpose (#471): the metering registry follows imports
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +102,11 @@ class DataIssueDetectionService:
             all_issues.extend(format_issues)
 
             # 4. AI-powered analysis (optional)
+            ai_analysis_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
             if include_ai_analysis and options.include_ai_analysis:
                 try:
-                    from app.utils.ai_issue_analyzer import AIIssueAnalyzer
                     ai_analyzer = AIIssueAnalyzer()
+                    ai_analysis_used = ai_analyzer.client is not None  # no key -> the analyzer is a no-op
                     ai_issues = await ai_analyzer.analyze_data_patterns(
                         sample_df, column_types, all_issues
                     )
@@ -124,7 +128,8 @@ class DataIssueDetectionService:
                 all_issues,
                 detection_time_ms,
                 len(df.columns),
-                len(sample_df)
+                len(sample_df),
+                ai_analysis_used=ai_analysis_used,
             )
 
             return all_issues, summary
@@ -663,9 +668,11 @@ class DataIssueDetectionService:
         detection_time_ms: int,
         columns_analyzed: int,
         rows_analyzed: int,
+        ai_analysis_used: bool = False,
     ) -> DetectionSummary:
         """Create detection summary from issues list."""
         summary = DetectionSummary(
+            ai_analysis_used=ai_analysis_used,
             total_issues=len(issues),
             critical_count=len([i for i in issues if i.severity == IssueSeverity.CRITICAL]),
             high_count=len([i for i in issues if i.severity == IssueSeverity.HIGH]),

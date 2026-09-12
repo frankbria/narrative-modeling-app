@@ -13,9 +13,11 @@ import time
 from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
+from app.billing.enforcement import quota
 from app.models.data_issue import (
     DataIssue,
     DataIssueRecord,
@@ -100,9 +102,14 @@ def _convert_issue_to_response(issue: DataIssue) -> DataIssueResponse:
     )
 
 
-@router.post("/detect", response_model=IssueDetectionResponse)
+@router.post(
+    "/detect",
+    response_model=IssueDetectionResponse,
+    dependencies=[Depends(quota("ai_calls"))],  # the analyzer is an OpenAI call when enabled (#461)
+)
 async def detect_issues(
     request: IssueDetectionRequest,
+    http_request: Request,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -165,6 +172,8 @@ async def detect_issues(
             summary=summary,
             options=request.options,
         )
+        if not summary.ai_analysis_used:
+            await enforcement.release(http_request)  # AI off or no key: no paid call, no charge (#461)
 
         detection_time_ms = int((time.time() - start_time) * 1000)
 
@@ -183,6 +192,7 @@ async def detect_issues(
                 detection_time_ms=detection_time_ms,
                 columns_analyzed=summary.columns_analyzed,
                 rows_analyzed=summary.rows_analyzed,
+                ai_analysis_used=summary.ai_analysis_used,
             ),
             record_id=str(record.id),
         )

@@ -117,6 +117,38 @@ describe('API URL construction (#406)', () => {
     expect(url).toBe(`${BASE}${expected.replace('/api/v1', '')}`)
   })
 
+  // #471: the data-issues router was mounted on a dead aggregator, so every one of these
+  // 404'd on the backend while the frontend built the right URLs. Pinned against the
+  // route table now that it is live: /api/v1/data-issues/{detect,{id}/issues,preview-fix,
+  // apply-fix,batch-fix,{id}/history}.
+  it('DataIssuesService templates every live data-issues route, once-prefixed', async () => {
+    const src = await import('fs').then((fs) =>
+      fs.readFileSync(require.resolve('@/lib/services/data-issues'), 'utf8')
+    )
+    const paths = templateUrlPaths(src)
+    for (const path of paths) expect(path).not.toMatch(/^\/api(\/|$)/)
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        '/data-issues/detect',
+        '/data-issues/${datasetId}/issues?${params}',
+        '/data-issues/preview-fix',
+        '/data-issues/apply-fix',
+        '/data-issues/batch-fix',
+        '/data-issues/${datasetId}/history?${params}',
+      ])
+    )
+  })
+
+  it.each([
+    ['detectIssues', (s: typeof import('@/lib/services/data-issues').DataIssuesService) => s.detectIssues('ds-1', {}, 'tok'), '/api/v1/data-issues/detect'],
+    ['getIssueHistory', (s: typeof import('@/lib/services/data-issues').DataIssuesService) => s.getIssueHistory('ds-1', 'tok'), '/api/v1/data-issues/ds-1/history'],
+  ])('DataIssuesService.%s requests the real route', async (_name, call, expected) => {
+    const { DataIssuesService } = await import('@/lib/services/data-issues')
+    await call(DataIssuesService).catch(() => {})
+    const url = requestedUrl(global.fetch as jest.Mock).split('?')[0]
+    expect(url).toBe(`${BASE}${expected.replace('/api/v1', '')}`)
+  })
+
   it('no client code fetches a relative /api/v1 path — that is the frontend origin, not the backend', async () => {
     // The guard below catches `${base}/api…` templates. The onboarding page (#470) had no
     // base: a bare '/api/v1/onboarding/status' literal, resolved against the Next.js origin,
