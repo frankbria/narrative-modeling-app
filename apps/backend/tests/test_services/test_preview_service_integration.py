@@ -65,6 +65,34 @@ class TestPreviewServiceIntegration:
                 )
 
     @pytest.mark.asyncio
+    async def test_the_download_uses_the_normalised_location(self):
+        """claude-review: the check normalised the caller's value but the download used the raw
+        input — a bare key passed as s3_file_path would have reached the URL-only downloader."""
+        from unittest.mock import AsyncMock, patch
+
+        dataset = self._create_mock_dataset()
+        dataset.file_path = "datasets/user123/dataset456_f.csv"
+        dataset.s3_url = "s3://test-bucket/datasets/user123/dataset456_f.csv"
+        seen: list[str] = []
+
+        async def stop(url, *args, **kwargs):
+            seen.append(url)
+            raise RuntimeError("past the check")
+
+        with patch("app.models.dataset.DatasetMetadata") as MockDataset, \
+             patch("app.services.data_processing.preview_service_integration.get_dataframe_from_s3",
+                   side_effect=stop), \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+            MockDataset.find_one = AsyncMock(return_value=dataset)
+            with pytest.raises(Exception, match="past the check"):
+                await self.service.generate_preview(
+                    user_id="user123", dataset_id="dataset456",
+                    s3_file_path="datasets/user123/dataset456_f.csv",  # a bare key, as stored
+                    operations=[TransformationStepRequest(transformation_type="drop_missing", column="age")],
+                )
+        assert seen == ["s3://test-bucket/datasets/user123/dataset456_f.csv"]
+
+    @pytest.mark.asyncio
     async def test_a_different_object_is_still_a_mismatch(self):
         from unittest.mock import AsyncMock, patch
 

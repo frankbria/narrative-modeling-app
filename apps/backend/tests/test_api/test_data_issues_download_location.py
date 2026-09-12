@@ -65,3 +65,17 @@ async def test_the_downloader_receives_a_url_not_a_raw_key(label, call):
             pass
 
     assert seen == [EXPECTED], f"{label}: downloader got {seen}"
+
+
+async def test_a_dataset_with_no_stored_location_is_a_400_not_a_swallowed_error():
+    """claude-review: the accessor raises ValueError for "nothing stored"; that must surface as
+    the handler's 400, not fall into the generic handler as a 200 {success: false}."""
+    from fastapi import HTTPException
+
+    empty = MagicMock(user_id=USER, file_path=None, s3_url=None)
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=empty), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock) as download:
+        with pytest.raises(HTTPException) as exc:
+            await routes.detect_issues(IssueDetectionRequest(dataset_id=DS), USER)
+    assert exc.value.status_code == 400
+    download.assert_not_called()

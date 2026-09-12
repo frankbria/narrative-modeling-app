@@ -108,7 +108,8 @@ class PreviewServiceIntegration:
         # (bucket, key): right after an upload `file_path` is a raw key while the caller
         # passes `s3_url`, so a string comparison failed every first preview (#466).
         expected = parse_s3_url(downloadable_url(dataset.file_path, dataset.s3_url))
-        if parse_s3_url(downloadable_url(s3_file_path)) != expected:
+        download_url = downloadable_url(s3_file_path)  # and download the normalised form, not the raw input
+        if parse_s3_url(download_url) != expected:
             logger.error(
                 f"S3 path mismatch for dataset {dataset_id}: "
                 f"expected {expected}, got {s3_file_path}"
@@ -123,7 +124,7 @@ class PreviewServiceIntegration:
             async with asyncio.timeout(30.0):
                 # Step 1: Load sample data from S3
                 logger.info(f"Loading {sample_size} rows from S3: {s3_file_path}")
-                original_df = await get_dataframe_from_s3(s3_file_path, nrows=sample_size)
+                original_df = await get_dataframe_from_s3(download_url, nrows=sample_size)
 
                 if original_df.empty:
                     raise ValueError("Dataset is empty or could not be loaded")

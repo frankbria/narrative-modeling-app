@@ -596,7 +596,6 @@ class TestGetS3ClientBucketResolution:
         assert get_s3_client() is None
 
 
-
 class TestDownloadableUrl:
     """`file_path` is a raw key on a fresh upload and a full URL after a transformation;
     the validated downloader takes only URLs (#466)."""

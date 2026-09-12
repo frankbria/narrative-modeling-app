@@ -120,9 +120,10 @@ async def detect_issues(
             raise HTTPException(status_code=404, detail="Dataset not found")
 
         # Load data from S3
-        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
-        if not file_path:
-            raise HTTPException(status_code=400, detail="Dataset has no associated file")
+        try:
+            file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
+        except ValueError:  # nothing stored at all
+            raise HTTPException(status_code=400, detail="Dataset has no associated file") from None
 
         df = await get_dataframe_from_s3(file_path)
 
