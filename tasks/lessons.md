@@ -868,3 +868,29 @@ checked, and the fix is always the same: the claim is a query, so run it.
   kept the optimization, documented the window.
 - **`git add -A` re-bit (the #497 lesson).** The repo has ~9 pre-existing untracked
   files; `git add -A` swept them into staging. Always `git add <explicit paths>`.
+
+## #501 — OpenAI off-loop + timeout
+- **`git checkout -- <file>` for mutation testing DESTROYS uncommitted work.** It
+  reverts to HEAD; on a not-yet-committed change that means back to `main`, silently
+  wiping the fix. For a mutation check, back up the file first (`cp` to scratch) and
+  restore from the copy — never `git checkout` an uncommitted file. Bit me on
+  ai_summary.py; had to reapply all three edits.
+- **A concurrency test that counts TOTAL ticks is vacuous.** "Loop not blocked"
+  must measure ticks that land *inside* the blocking call's wall-clock window — a
+  blocking call just delays the ticks, which still accumulate afterward and pass a
+  total-count assertion. Record the call's start/end (monotonic, thread-safe from
+  the worker thread) and count heartbeats within [start, end]. Mutation-check it
+  (revert the to_thread → must fail).
+- **Scripted import insertion has two traps:** inserting after the first
+  `from openai import` line lands *inside* a multi-line `from openai import (` and
+  breaks the parse; inserting `import asyncio` at line 1 demotes a module docstring
+  to a bare string. `py_compile` every touched file after a scripted edit; let
+  `ruff check --fix` reorder afterward.
+- **The OpenAI SDK's own `max_retries` stacks under the circuit breaker.** Worst
+  case = breaker_attempts × sdk_retries × timeout, which can blow past the gunicorn
+  worker timeout. Set `max_retries=0` (breaker owns retries) and clamp the timeout
+  env to a ceiling derived from worker_timeout / max_breaker_attempts. Both codex
+  and the internal reviewer flagged the un-clamped env as the residual risk.
+- **A factory + a registry test is the durable way to enforce "every construction
+  sets X".** One `build_*_client` + a test banning raw `OpenAI(` outside it stops a
+  new call site from silently regressing the timeout.
