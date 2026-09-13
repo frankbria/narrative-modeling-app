@@ -273,8 +273,10 @@ async def confirm_pii_upload(
     
     await user_data.insert()
     
-    # Use masked data for AI analysis
-    background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df_processed)
+    # Summarize a PII-masked frame regardless of the storage masking choice (#490).
+    background_tasks.add_task(
+        generate_ai_summary_safe, str(user_data.id), _summary_frame(df, pii_detections)
+    )
     
     return {
         "status": "success",
@@ -474,14 +476,10 @@ async def complete_chunked_upload(
 
         await user_data.insert()
 
-        # Background AI summary
-        if pii_report["has_pii"]:
-            masked_df = pii_detector.mask_pii(df, pii_detections)
-            background_tasks.add_task(
-                generate_ai_summary_safe, str(user_data.id), masked_df
-            )
-        else:
-            background_tasks.add_task(generate_ai_summary_safe, str(user_data.id), df)
+        # Background AI summary — always over a PII-masked frame (#490).
+        background_tasks.add_task(
+            generate_ai_summary_safe, str(user_data.id), _summary_frame(df, pii_detections)
+        )
 
         return {
             "status": "success",
@@ -505,6 +503,14 @@ async def abort_chunked_upload(
 
     rate_limiter.end_upload(current_user_id)
     return {"status": "aborted", "session_id": session_id}
+
+
+def _summary_frame(df: pd.DataFrame, pii_detections) -> pd.DataFrame:
+    """The frame to hand the AI summary task: PII-masked whenever any PII was
+    detected, so the summary never ships PII to OpenAI — regardless of whether the
+    caller chose to mask their *stored* copy (``mask_pii=False`` is a storage
+    choice, not consent to send PII to a third party) (#490)."""
+    return pii_detector.mask_pii(df, pii_detections) if pii_detections else df
 
 
 async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):

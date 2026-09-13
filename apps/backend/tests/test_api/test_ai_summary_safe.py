@@ -151,3 +151,27 @@ async def test_null_summary_is_logged_not_silent(setup_database, caplog):
     refetched = await UserData.get(doc.id)
     assert refetched.aiSummary is None
     assert any(str(doc.id) in r.message and r.levelno == logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_summary_frame_masks_when_pii_detected():
+    """The frame handed to the summary task is masked whenever PII is detected,
+    regardless of the caller's storage masking choice (#490 anti-leak)."""
+    from app.api.routes.secure_upload import _summary_frame, pii_detector
+
+    df = pd.DataFrame({"ssn": ["123-45-6789", "987-65-4321"]})
+    detections = pii_detector.detect_pii_in_dataframe(df)
+    assert detections, "test needs the detector to flag the SSN column"
+
+    safe = _summary_frame(df, detections)
+    joined = " ".join(safe["ssn"].astype(str).tolist())
+    assert "123-45-6789" not in joined  # raw PII value masked out
+    assert "987-65-4321" not in joined
+
+
+@pytest.mark.unit
+def test_summary_frame_passes_through_when_no_pii():
+    from app.api.routes.secure_upload import _summary_frame
+
+    df = pd.DataFrame({"amount": [1, 2, 3]})
+    assert _summary_frame(df, []) is df
