@@ -28,8 +28,16 @@ def real_s3_env(monkeypatch, test_s3_bucket):
 
     S3Service treats credentials starting with ``test-`` as mock mode; the
     LocalStack placeholders are ``test``/``test`` (no dash), so it goes live.
+
+    Point the app at the *same* endpoint the ``s3_client`` fixture seeds through
+    (``S3_ENDPOINT_URL``, default LocalStack), so the delete and the seeded
+    object never land on different services in a non-localhost CI layout.
     """
-    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+    import os
+
+    monkeypatch.setenv(
+        "AWS_ENDPOINT_URL", os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
+    )
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
