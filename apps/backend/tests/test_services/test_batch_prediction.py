@@ -400,6 +400,7 @@ async def test_upload_results_file_streams_from_disk_and_returns_key():
     config = BatchPredictionConfig(model_id="model_123", output_format="csv")
     job = MagicMock()
     job.user_id = "test_user_123"
+    job.job_id = "batch_upl_test"
 
     fd, out_path = tempfile.mkstemp(suffix=".csv")
     with os.fdopen(fd, "w") as fh:
@@ -412,11 +413,26 @@ async def test_upload_results_file_streams_from_disk_and_returns_key():
 
     assert key.startswith("batch-jobs/test_user_123/model_123/")
     assert key.endswith("results.csv")
+    # #487: the result key includes the unique job id, distinct per job.
+    assert "batch_upl_test" in key
     svc.s3_service.upload_file_obj.assert_awaited_once()
     # Uploaded a file handle (not an in-memory buffer of the whole result) to the key.
     args, _ = svc.s3_service.upload_file_obj.call_args
     assert args[1] == key
     assert hasattr(args[0], "read")
+
+
+@pytest.mark.asyncio
+async def test_input_keys_are_unique_per_job_even_in_the_same_second():
+    """#487: keys include the unique job id, so two jobs created back-to-back
+    (same second) never share an input key — no overwrite, no cross-tenant read."""
+    svc = _service()
+    df = pd.DataFrame([{"age": 1}])
+    k1, _ = await svc._prepare_input_data(df, "u1", "m1", "batch_A")
+    k2, _ = await svc._prepare_input_data(df, "u1", "m1", "batch_B")
+    assert k1 != k2
+    assert "batch_A" in k1 and "batch_B" in k2
+    assert k1.startswith("batch-jobs/u1/")  # AC2: tenant-prefixed
 
 
 def test_csv_header_is_deterministic_superset():
@@ -445,7 +461,7 @@ async def test_prepare_input_data_rejects_oversize_batch(monkeypatch):
     df = pd.DataFrame([{"age": i} for i in range(3)])
 
     with pytest.raises(ValueError, match="exceeds the maximum"):
-        await svc._prepare_input_data(df, "u1", "m1")
+        await svc._prepare_input_data(df, "u1", "m1", "batch_job1")
 
     svc.s3_service.upload_file_obj.assert_not_awaited()
 
@@ -630,10 +646,12 @@ async def test_prepare_input_data_uploads_dataframe():
     svc = _service()
     df = pd.DataFrame([{"age": 1}, {"age": 2}, {"age": 3}])
 
-    key, total = await svc._prepare_input_data(df, "test_user_123", "model_123")
+    key, total = await svc._prepare_input_data(df, "test_user_123", "model_123", "batch_jobX")
 
     assert total == 3
     assert key.endswith("input.csv")
+    # #487: the unique job id is in the key, so two same-second jobs never collide.
+    assert "batch_jobX" in key
     svc.s3_service.upload_file_obj.assert_awaited_once()
 
 

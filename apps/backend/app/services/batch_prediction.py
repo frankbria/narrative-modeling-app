@@ -307,9 +307,16 @@ class BatchPredictionService:
         # input, so a refused job leaves no orphan S3 object.
         await self._enforce_per_user_cap(user_id)
 
+        # Generate the job id up front so it can key the S3 objects (#487): keys
+        # derived from a second-granularity timestamp collide for two jobs created
+        # in the same second — one input overwrites the other, and a job can
+        # predict against another job's (possibly another tenant's) input. A
+        # server-generated unique id per job makes every key distinct.
+        job_id = f"batch_{PydanticObjectId()}"
+
         # Prepare input data and upload to S3 if needed
         input_path, total_records = await self._prepare_input_data(
-            input_data, user_id, model_id
+            input_data, user_id, model_id, job_id
         )
 
         # Create job configuration
@@ -326,7 +333,7 @@ class BatchPredictionService:
 
         # Create job
         job = BatchJob(
-            job_id=f"batch_{PydanticObjectId()}",
+            job_id=job_id,
             job_type=JobType.BATCH_PREDICTION,
             user_id=user_id,
             config=config,
@@ -347,7 +354,7 @@ class BatchPredictionService:
         return job
 
     async def _prepare_input_data(
-        self, input_data: Any, user_id: str, model_id: str
+        self, input_data: Any, user_id: str, model_id: str, job_id: str
     ) -> tuple[str, int]:
         """Prepare and upload input data to S3.
 
@@ -357,8 +364,9 @@ class BatchPredictionService:
         """
 
         # Generate unique S3 path
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        s3_key = f"batch-jobs/{user_id}/{model_id}/{timestamp}/input.csv"
+        # job_id makes this unique per job (#487): a timestamp alone collides
+        # for two jobs in the same second.
+        s3_key = f"batch-jobs/{user_id}/{model_id}/{job_id}/input.csv"
 
         if isinstance(input_data, str):
             if not os.path.exists(input_data):
@@ -1152,8 +1160,9 @@ class BatchPredictionService:
         Streams the file straight from disk via ``upload_fileobj`` (multipart
         under the hood), so a large results file is never loaded into memory.
         """
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        output_key = f"batch-jobs/{job.user_id}/{config.model_id}/{timestamp}/results.{config.output_format}"
+        # job_id-keyed for uniqueness (#487); a retry of the same job
+        # deterministically overwrites its own previous output, which is intended.
+        output_key = f"batch-jobs/{job.user_id}/{config.model_id}/{job.job_id}/results.{config.output_format}"
 
         with open(out_path, "rb") as fh:
             await self.s3_service.upload_file_obj(fh, output_key)
