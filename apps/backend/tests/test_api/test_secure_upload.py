@@ -64,11 +64,14 @@ class TestSecureUploadAPI:
         )
 
     def _summary_stub(self):
-        # The AI summary is a background task hitting OpenAI (tested in
-        # test_ai_summary_safe.py). Fake it here, autospec so a signature change
-        # is caught, to keep this route test off the network.
+        # /upload/secure schedules a background task that hits OpenAI. It does a
+        # LOCAL `from app.utils.ai_summary import generate_dataset_summary`, so the
+        # symbol resolved at call time is app.utils.ai_summary.generate_dataset_summary
+        # — patch THAT (autospec, so a signature change is caught) to keep this
+        # route test off the network. Starlette runs BackgroundTasks synchronously
+        # under ASGITransport, so an un-stubbed task really would call OpenAI here.
         return patch(
-            "app.api.routes.secure_upload.generate_ai_summary_safe", autospec=True
+            "app.utils.ai_summary.generate_dataset_summary", autospec=True
         )
 
     async def test_secure_upload_no_pii(self, setup_database, async_authorized_client):
