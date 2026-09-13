@@ -32,6 +32,7 @@ from app.services.interpretability_service import InterpretabilityService
 from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
+from app.utils.heartbeat import heartbeat_pump
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +394,12 @@ class BatchPredictionService:
     async def _process_batch_job(self, job: BatchJob) -> None:
         """Process a batch prediction job asynchronously"""
 
+        # Keep the heartbeat fresh through a slow chunk, so the stale-job reaper
+        # (#484) never reaps this live run between per-chunk progress writes.
+        async with heartbeat_pump(job):
+            await self._run_batch_job(job)
+
+    async def _run_batch_job(self, job: BatchJob) -> None:
         try:
             # Mark job as started
             job.mark_started()
@@ -1117,6 +1124,10 @@ class BatchPredictionService:
                     "started_at": None,
                     "completed_at": None,
                     "error_message": None,
+                    # Refresh the heartbeat, or the reaper (#484) would see the
+                    # original failed run's stale value and reap this retry before
+                    # it ever gets a semaphore slot to mark_started.
+                    "last_heartbeat": datetime.now(UTC),
                     "progress.processed_records": 0,
                     "progress.success_count": 0,
                     "progress.error_count": 0,

@@ -102,6 +102,7 @@ from app.services.training_admission import (
     enforce_training_per_user_cap,
     training_semaphore,
 )
+from app.utils.heartbeat import heartbeat_pump
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -637,6 +638,10 @@ async def train_model_task(
                 {
                     TrainingJob.progress: training_job.progress,
                     TrainingJob.updated_at: training_job.updated_at,
+                    # Persist the heartbeat, or the stale-job reaper (#484) would
+                    # see only the start value and reap this live run after the
+                    # timeout. update_progress() advanced it in memory.
+                    TrainingJob.last_heartbeat: training_job.last_heartbeat,
                 }
             )
 
@@ -653,9 +658,13 @@ async def train_model_task(
             else:
                 level = "info"
             entry = training_job.add_log(level, event.message, stage=event.stage)
+            # add_log bumped updated_at; treat every persisted event as a
+            # heartbeat too so a live run isn't reaped between algorithms (#484).
+            training_job.last_heartbeat = training_job.updated_at
             fields_to_set: dict[Any, Any] = {
                 TrainingJob.progress: training_job.progress,
                 TrainingJob.updated_at: training_job.updated_at,
+                TrainingJob.last_heartbeat: training_job.last_heartbeat,
             }
             if event.stage:
                 training_job.progress.current_stage = event.stage
@@ -718,17 +727,21 @@ async def train_model_task(
                         cancelled_while_queued = False
                     if cancelled_while_queued:
                         raise TrainingCancelledError("Training cancelled while queued")
-                result = await asyncio.wait_for(
-                    engine.run(
-                        df,
-                        request.target_column,
-                        feature_config,
-                        progress_callback=on_progress,
-                        event_callback=on_event,
-                        cancel_check=is_cancellation_requested,
-                    ),
-                    timeout=wall_clock_seconds,
-                )
+                # Keep the heartbeat fresh while a slow candidate fits, so the
+                # stale-job reaper (#484) never reaps this live run between the
+                # per-candidate progress events.
+                async with heartbeat_pump(training_job):
+                    result = await asyncio.wait_for(
+                        engine.run(
+                            df,
+                            request.target_column,
+                            feature_config,
+                            progress_callback=on_progress,
+                            event_callback=on_event,
+                            cancel_check=is_cancellation_requested,
+                        ),
+                        timeout=wall_clock_seconds,
+                    )
         except TimeoutError as exc:
             # Scoped to the engine run only: a socket timeout from the S3
             # download above is a TimeoutError too and must keep its own message.

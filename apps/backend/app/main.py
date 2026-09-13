@@ -127,7 +127,43 @@ async def lifespan(app: FastAPI):
     # on app.state so RateLimitMiddleware can resolve it per request (#151).
     app.state.rate_limit_store = build_rate_limit_store(settings.REDIS_URL)
 
+    # Stale-job recovery (#484): reap jobs orphaned by a prior restart/crash so
+    # they don't sit RUNNING forever holding quota. Heartbeat-based + atomically
+    # claimed, so it is safe across the 2 gunicorn workers and never reaps a live
+    # job. Sweep once on startup, then periodically. A reaper failure must never
+    # block startup or crash the loop.
+    import asyncio
+
+    from app.services.job_reaper import JOB_REAPER_INTERVAL_SECONDS, reap_stale_jobs
+
+    try:
+        startup_summary = await reap_stale_jobs()
+        logger.info(
+            "stale-job reaper (startup): recovered %d job(s)", startup_summary.total
+        )
+    except Exception:
+        logger.exception("stale-job reaper failed on startup")
+
+    async def _reaper_loop() -> None:
+        while True:
+            await asyncio.sleep(JOB_REAPER_INTERVAL_SECONDS)
+            try:
+                await reap_stale_jobs()
+            except Exception:
+                logger.exception("stale-job reaper loop iteration failed")
+
+    app.state.reaper_task = asyncio.create_task(_reaper_loop())
+
     yield
+
+    # Stop the background reaper first.
+    reaper_task = getattr(app.state, "reaper_task", None)
+    if reaper_task is not None:
+        reaper_task.cancel()
+        try:
+            await reaper_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
     # Cleanup
     # Drain any in-flight fire-and-forget API-key usage writes before the Mongo
