@@ -487,6 +487,7 @@ async def test_process_batch_job_streams_results_across_chunks(monkeypatch):
         yield chunk2
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
     monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
     monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
     monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
@@ -538,6 +539,7 @@ async def test_process_batch_job_streams_valid_json_across_chunks(monkeypatch):
         yield pd.DataFrame([{"age": 50}])
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
     monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
     monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
     monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
@@ -595,6 +597,7 @@ async def test_process_batch_job_isolates_a_failed_chunk(monkeypatch):
         yield pd.DataFrame([{"age": 30}])
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
     monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
     monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
     monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
@@ -1054,3 +1057,41 @@ async def test_finalize_does_not_overwrite_a_cancelled_job(setup_database):
 
     reloaded = await BatchJob.find_one(BatchJob.job_id == "finalize-cancelled")
     assert reloaded.status == JobStatus.CANCELLED
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cancel_before_start_does_not_run_and_refunds_full(setup_database, monkeypatch):
+    """Critical (#485, internal review): a cancel landing between admission and the
+    RUNNING claim must not be clobbered. The conditional claim fails, so the job
+    never runs, nothing is uploaded, and the FULL reservation is refunded."""
+    from app.billing import metering
+    from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
+
+    user = "cancel_before_start_user"
+    await metering.record(user, "predictions", 10)
+    before = await metering.usage_for(user, "predictions")
+
+    job = await BatchJob(
+        job_id="cancel-early",
+        job_type=JobType.BATCH_PREDICTION,
+        user_id=user,
+        config=BatchPredictionConfig(model_id="model_123", output_format="csv").dict(),
+        input_path="batch-jobs/u/model_123/ts/in.csv",
+        status=JobStatus.RUNNING,
+        progress=JobProgress(total_records=10),
+    ).insert()
+
+    svc = _service()
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=AssertionError("must not upload"))
+    svc.model_storage.load_model = AsyncMock(side_effect=AssertionError("must not load a cancelled job"))
+
+    # The cancel lands before this worker claims the job for RUNNING.
+    await svc.cancel_job("cancel-early", user)
+
+    # Run with the stale in-memory RUNNING copy — must not resurrect it.
+    await svc._process_batch_job(job)
+
+    final = await BatchJob.find_one(BatchJob.job_id == "cancel-early")
+    assert final.status == JobStatus.CANCELLED
+    assert await metering.usage_for(user, "predictions") == before - 10  # full refund

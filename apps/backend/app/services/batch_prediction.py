@@ -404,9 +404,14 @@ class BatchPredictionService:
 
     async def _run_batch_job(self, job: BatchJob) -> None:
         try:
-            # Mark job as started
-            job.mark_started()
-            await job.save()
+            # Claim the job for this worker with a conditional RUNNING transition
+            # (#485): a full save() here would re-assert RUNNING over a CANCELLED
+            # that a cancel landing between admission and now had set — the same
+            # lost write, just before the first chunk. If the claim fails the job
+            # was cancelled: refund the full reservation and do not run it.
+            if not await self._claim_running(job):
+                await self._refund_remainder(job, 0)
+                return
 
             # Load model
             config = BatchPredictionConfig(**job.config)
@@ -546,6 +551,25 @@ class BatchPredictionService:
         finally:
             # Best-effort async-completion webhook (issue #86). Never blocks/raises.
             await self._fire_webhook(job)
+
+    async def _claim_running(self, job: BatchJob) -> bool:
+        """Atomically transition an in-flight job to RUNNING for this worker (#485).
+        Returns False when it was cancelled between admission and now, so the
+        conditional claim matches nothing — the caller then refunds and stops."""
+        now = datetime.now(UTC)
+        claimed = await BatchJob.get_motor_collection().find_one_and_update(
+            {
+                "job_id": job.job_id,
+                "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},
+            },
+            {"$set": {"status": JobStatus.RUNNING.value, "started_at": now, "last_heartbeat": now}},
+        )
+        if claimed is None:
+            return False
+        job.status = JobStatus.RUNNING
+        job.started_at = now
+        job.last_heartbeat = now
+        return True
 
     async def _cancellation_requested(self, job_id: str) -> bool:
         """True if the job has been CANCELLED since it started (re-read from
