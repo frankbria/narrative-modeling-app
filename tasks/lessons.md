@@ -954,3 +954,22 @@ checked, and the fix is always the same: the claim is a query, so run it.
   (config.py Settings + a repo-wide `os.getenv`/`process.env` sweep), the compose
   deploy contract, and CI dummies. The old file drifted on all three (Clerk cruft
   that's read nowhere, wrong NEXT_PUBLIC_API_URL, and ~15 missing real vars).
+
+## #492 — un-mock the hidden tests
+- **Patch the symbol the code resolves at CALL TIME.** `/upload/secure` does a
+  local `from app.utils.ai_summary import generate_dataset_summary` inside the
+  handler, so it resolves `app.utils.ai_summary.generate_dataset_summary` each
+  call — patching `secure_upload.generate_ai_summary_safe` (a different, unused
+  symbol) was a silent no-op. A no-op patch doesn't error; the tell was the SLOW
+  test run (the real OpenAI-calling task ran). Both reviewers caught it. When a
+  stub seems ineffective, check where the name actually resolves.
+- **ASGITransport runs Starlette BackgroundTasks synchronously within the request**
+  — so an un-stubbed background task really executes (and hits real network
+  boundaries) during a route test. Stub the task's external boundary.
+- **Audit a stale issue's table against current main first.** 4 of #492's 7 listed
+  files were already un-mocked by their paired P0 PRs (#465/#468/#462). Only 2
+  needed work; 1 (MCP) was blocked by its still-open production bug (#506). Don't
+  rewrite what's already fixed.
+- **A tautological test defines a local copy of the logic and asserts on the copy**
+  (`def mock_is_valid(self): ...; assert mock_is_valid(key)`), never calling the
+  real method. Construct the real object and call the real method; mutation-check.
