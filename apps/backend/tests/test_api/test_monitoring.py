@@ -46,16 +46,9 @@ def _make_model(model_id: str = "model_123", user_id: str = TEST_USER) -> MLMode
 class TestMonitoringAPIIntegration:
     """Drive the real monitoring routes end to end with real MongoDB ownership."""
 
-    @pytest.fixture(autouse=True)
-    def _reset_prediction_log(self):
-        """The monitoring metrics read a process-global in-memory prediction log
-        that ``setup_database`` (Mongo-only) never touches — clear it so per-model
-        counts are deterministic regardless of what serving tests ran before."""
-        from app.services.prediction_monitoring import prediction_log
-
-        prediction_log.logs.clear()
-        yield
-        prediction_log.logs.clear()
+    # The prediction log is now the Mongo `prediction_events` collection (#488),
+    # which `setup_database` clears between tests like every other registered
+    # model — so the old in-memory `_reset_prediction_log` fixture is gone.
 
     @pytest.mark.asyncio
     async def test_get_model_metrics_for_owned_model(

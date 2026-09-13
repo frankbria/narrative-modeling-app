@@ -1,7 +1,6 @@
 """
 Prediction monitoring and analytics service
 """
-import asyncio
 import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -11,6 +10,8 @@ import numpy as np
 from beanie import PydanticObjectId
 
 from app.models.ml_model import MLModel
+from app.models.prediction_event import PredictionEvent
+from app.utils.datetime import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +39,14 @@ DRIFT_MIN_FEATURE_SAMPLES = 5
 
 
 class PredictionLog:
-    """In-memory prediction log.
+    """Durable, shared prediction log backed by Mongo (#488).
 
-    Process-local — metrics reset on restart. Beta relies on basic logging
-    (issue #85 header). Upgrade path: swap for a Beanie time-series collection
-    behind this same interface if cross-restart durability is needed.
+    Was process-local in-memory, so with 2 gunicorn workers each dashboard saw
+    only its worker's half of traffic and every restart wiped the history. Now
+    every worker reads/writes the same `PredictionEvent` collection, bounded by a
+    TTL index. The interface (``log_prediction`` / ``get_recent_predictions``) is
+    unchanged, so callers and the monitoring/drift computations are untouched.
     """
-    def __init__(self):
-        self.logs = defaultdict(list)
-        self.lock = asyncio.Lock()
 
     async def log_prediction(
         self,
@@ -58,32 +58,50 @@ class PredictionLog:
         latency_ms: float = 0,
         api_key_id: str | None = None,
         error: str | None = None,
-    ):
-        """Log a prediction (or, when ``error`` is set, a failed-request) event"""
-        async with self.lock:
-            self.logs[model_id].append({
-                "prediction_id": prediction_id,
-                "timestamp": datetime.now(UTC),
-                "input_data": input_data,
-                "prediction": prediction,
-                "probability": probability,
-                "latency_ms": latency_ms,
-                "api_key_id": api_key_id,
-                "error": error,
-            })
-            
-            # Keep only last 10000 predictions per model
-            if len(self.logs[model_id]) > 10000:
-                self.logs[model_id] = self.logs[model_id][-10000:]
-    
+    ) -> None:
+        """Log a prediction (or, when ``error`` is set, a failed-request) event."""
+        await PredictionEvent(
+            model_id=model_id,
+            prediction_id=prediction_id,
+            input_data=input_data if isinstance(input_data, dict) else {},
+            prediction=prediction,
+            probability=probability,
+            latency_ms=latency_ms,
+            api_key_id=api_key_id,
+            error=error,
+        ).insert()
+
     async def get_recent_predictions(
-        self,
-        model_id: str,
-        limit: int = 100
+        self, model_id: str, limit: int = 100
     ) -> list[dict[str, Any]]:
-        """Get recent predictions for a model"""
-        async with self.lock:
-            return self.logs[model_id][-limit:]
+        """The most recent ``limit`` events for a model, in CHRONOLOGICAL order.
+
+        Sorted newest-first by ``_id`` (a monotonic ObjectId — a stable tiebreaker
+        for same-millisecond events), capped, then reversed so the drift window
+        split (older half vs recent half) sees the same insertion order the old
+        in-memory list gave. Timestamps are returned UTC-aware (Mongo hands them
+        back naive) so the callers' ``> cutoff`` comparisons don't raise.
+        """
+        events = (
+            await PredictionEvent.find(PredictionEvent.model_id == model_id)
+            .sort("-_id")
+            .limit(limit)
+            .to_list()
+        )
+        events.reverse()
+        return [
+            {
+                "prediction_id": e.prediction_id,
+                "timestamp": as_utc(e.timestamp),
+                "input_data": e.input_data,
+                "prediction": e.prediction,
+                "probability": e.probability,
+                "latency_ms": e.latency_ms,
+                "api_key_id": e.api_key_id,
+                "error": e.error,
+            }
+            for e in events
+        ]
 
 
 # Global prediction log instance
