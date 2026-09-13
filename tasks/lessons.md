@@ -936,3 +936,21 @@ checked, and the fix is always the same: the claim is a query, so run it.
   pii_detections)` at the call site (mask when any PII detected) is the right
   layer — `mask_pii=false` is a storage choice, not consent to send PII to a
   third-party sub-processor.
+
+## #491 — rewrite .env.production.example
+- **GitGuardian scans the PR's whole commit HISTORY, not just the final diff.** A
+  credential-shaped placeholder (`mongodb+srv://user:pass@host`) introduced in one
+  commit and fixed in a later one still fails the PR check on the intermediate
+  commit. Squash-merge collapses it (main stays clean), but better: write
+  `.env.example` credential placeholders in unmistakable `<PLACEHOLDER>` form from
+  the start. GitGuardian is advisory here (CI Success is the only required check),
+  so it doesn't block, but a red scanner check is bad hygiene.
+- **When an AC conflicts with a documented convention, follow the code/contract and
+  document the deviation.** #491 AC3 asked for PLAN_* in the template, but #457 AC4
+  deliberately keeps per-tier limits ONLY in plans.py and passes no PLAN_* in
+  deployment. Followed the compose contract (AC1/AC5) and explained why in the file
+  + PR rather than adding 15 misleading vars.
+- **A .env.example must be verified against three sources:** actual code reads
+  (config.py Settings + a repo-wide `os.getenv`/`process.env` sweep), the compose
+  deploy contract, and CI dummies. The old file drifted on all three (Clerk cruft
+  that's read nowhere, wrong NEXT_PUBLIC_API_URL, and ~15 missing real vars).
