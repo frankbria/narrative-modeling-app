@@ -368,10 +368,32 @@ class DatasetErasureService:
             manifest.failures.append(f"redis evict {dataset_id}: {e}")
 
     async def _sweep_user_scoped(self, user_id: str, manifest: DeletionManifest) -> None:
-        """Delete leftover user-scoped docs (models/jobs/feedback) for a full-user erasure."""
+        """Delete leftover user-scoped docs for a full-user erasure.
+
+        Covers not just dataset children but every account-scoped record: models,
+        jobs, feedback, the API keys that authenticate the paid serving surface,
+        the feature store, saved recipes, quota counters, and the local billing
+        mirror (#480). An erased user's API keys must stop authenticating — the
+        auth path (production.py / rate_limit.py) does a live
+        ``find_one({key_hash})`` per request with no cross-request cache, so
+        deleting the ``APIKey`` document takes effect immediately.
+        """
         from app.models.ab_test import ABTest
+        from app.models.api_key import APIKey
         from app.models.batch_job import BatchJob
+        from app.models.feature_store import (
+            FeatureCollection,
+            FeatureVersion,
+            StoredFeature,
+        )
         from app.models.feedback import Feedback
+        from app.models.subscription import Subscription
+        from app.models.usage import UsageRecord
+        from app.services.transformation_engine.recipe_manager import (
+            RecipeExecutionHistory,
+            SharedRecipe,
+            TransformationRecipe,
+        )
 
         # Any MLModels not tied to a dataset we already swept.
         try:
@@ -384,11 +406,51 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"sweep ml_models: {e}")
 
-        # Only sweep collections that actually have a user_id field (some
-        # dataset-keyed children don't — querying them by user_id is a no-op).
-        for model_cls in [BatchJob, ABTest, Feedback, *_STRING_KEYED_MODELS]:
+        # feature_versions is keyed by its parent StoredFeature.feature_id, not
+        # user_id — resolve the owner's feature ids first, then delete the
+        # versions before the parents (order is safe since we captured the ids).
+        try:
+            feature_ids = [
+                f.feature_id
+                for f in await StoredFeature.find(StoredFeature.user_id == user_id).to_list()
+            ]
+            if feature_ids:
+                await self._delete_many(
+                    FeatureVersion, {"feature_id": {"$in": feature_ids}}, manifest
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"sweep feature_versions: {e}")
+
+        # Every account-scoped collection with a user_id field. Billing records
+        # (Subscription, UsageRecord) are deleted too, NOT retained: Stripe is
+        # the authoritative financial/tax record (the billing sub-processor;
+        # scripts/reconcile_subscriptions.py rebuilds local state from it), so
+        # the local mirror is not "required" under a retention basis and keeping
+        # it would leave the erased user's id in our store (#480 AC3).
+        for model_cls in [
+            BatchJob,
+            ABTest,
+            Feedback,
+            APIKey,
+            StoredFeature,
+            FeatureCollection,
+            TransformationRecipe,
+            RecipeExecutionHistory,
+            SharedRecipe,
+            UsageRecord,
+            Subscription,
+            *_STRING_KEYED_MODELS,
+        ]:
+            # Only sweep collections that actually have a user_id field (some
+            # dataset-keyed children don't — querying them by user_id is a no-op).
             if "user_id" in model_cls.model_fields:
                 await self._delete_many(model_cls, {"user_id": user_id}, manifest)
+
+        if manifest.documents_deleted.get(Subscription.Settings.name):
+            manifest.notes.append(
+                "deleted local Subscription/UsageRecord; Stripe remains the "
+                "authoritative billing record for tax/accounting"
+            )
 
     # ---- helpers --------------------------------------------------------
 
