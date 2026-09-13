@@ -906,7 +906,12 @@ async def test_execution_semaphore_bounds_concurrency(setup_database, monkeypatc
         await j.create()
     try:
         tasks = [_asyncio.create_task(svc._process_batch_job_admitted(j)) for j in jobs]
-        await _asyncio.sleep(0.05)  # let admissions settle
+        # Poll rather than sleep a fixed interval: admission includes a Mongo read,
+        # so a fixed wait would be timing-dependent under CI contention.
+        for _ in range(200):
+            if running >= 2:
+                break
+            await _asyncio.sleep(0.01)
         assert running == 2, f"{running} ran at once; ceiling is 2"
         gate.set()
         await _asyncio.gather(*tasks)

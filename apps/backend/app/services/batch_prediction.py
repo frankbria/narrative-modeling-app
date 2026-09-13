@@ -24,6 +24,7 @@ import pandas as pd
 from beanie import PydanticObjectId
 from pymongo import ReturnDocument
 
+from app.billing.plans import _env_positive_int
 from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
@@ -57,9 +58,11 @@ MAX_BATCH_PREDICT_RECORDS = int(os.getenv("MAX_BATCH_PREDICT_RECORDS", "1000000"
 #     suite creates a fresh loop per test and a semaphore is bound to one loop.
 #   * a PER-TENANT cap on PENDING/RUNNING jobs, enforced at admission (below), so
 #     one tenant cannot fill the queue either.
-MAX_CONCURRENT_BATCH_JOBS = int(os.getenv("MAX_CONCURRENT_BATCH_JOBS", "2"))
-MAX_CONCURRENT_BATCH_JOBS_PER_USER = int(
-    os.getenv("MAX_CONCURRENT_BATCH_JOBS_PER_USER", "3")
+# _env_positive_int, not int(getenv): a 0 or negative override must not silently
+# disable the control (the same guard plans.py uses for its ceilings).
+MAX_CONCURRENT_BATCH_JOBS = _env_positive_int("MAX_CONCURRENT_BATCH_JOBS", 2)
+MAX_CONCURRENT_BATCH_JOBS_PER_USER = _env_positive_int(
+    "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 3
 )
 # WeakKeyDictionary, not id(loop): a closed test loop is collected and its entry
 # with it, so the cache never grows and a reused id() cannot alias a dead loop.
