@@ -28,6 +28,13 @@ from app.models.training_job import TrainingJob
 _CPU = os.cpu_count() or 1
 
 #: Total trainings executing at once across all tenants, sized for the host.
+#: KNOWN RESIDUAL (#498): when a run hits its wall-clock limit, ``asyncio.wait_for``
+#: cancels the awaiting coroutine and the semaphore slot is released, but the
+#: sklearn ``fit`` already inside a ``to_thread`` worker cannot be killed and keeps
+#: using a core until it finishes on its own (its result is dropped). So a new job
+#: can start while a timed-out one is still computing — the cap can be briefly
+#: exceeded during an overrun. Not fixable without a process pool / signal kill;
+#: size this with a safety margin for the host rather than to its exact core count.
 MAX_CONCURRENT_TRAINING_JOBS = _env_positive_int("MAX_CONCURRENT_TRAINING_JOBS", 2)
 #: Trainings one tenant may have PENDING/RUNNING at once.
 MAX_CONCURRENT_TRAINING_JOBS_PER_USER = _env_positive_int(
