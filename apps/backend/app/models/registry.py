@@ -22,6 +22,7 @@ from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
 from app.models.plot import Plot
+from app.models.prediction_event import PredictionEvent
 from app.models.revised_data import RevisedData
 from app.models.subscription import Subscription
 from app.models.trained_model import TrainedModel
@@ -62,6 +63,7 @@ DOCUMENT_MODELS = [
     SharedRecipe,
     StoredFeature,
     Subscription,
+    PredictionEvent,
     TrainedModel,
     TrainingJob,
     TransformationConfig,

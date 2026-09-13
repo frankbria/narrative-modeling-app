@@ -17,10 +17,10 @@ class TestPredictionLog:
     """Test cases for PredictionLog class"""
     
     @pytest.mark.asyncio
-    async def test_log_prediction(self):
-        """Test logging a prediction"""
+    async def test_log_prediction(self, setup_database):
+        """Test logging a prediction (now persisted to Mongo, #488)."""
         log = PredictionLog()
-        
+
         await log.log_prediction(
             model_id="model_123",
             prediction_id="pred_123",
@@ -30,63 +30,48 @@ class TestPredictionLog:
             latency_ms=45.5,
             api_key_id="key_123"
         )
-        
-        # Check prediction was logged
-        assert "model_123" in log.logs
-        assert len(log.logs["model_123"]) == 1
-        
-        # Check logged data
-        logged = log.logs["model_123"][0]
+
+        recent = await log.get_recent_predictions("model_123", limit=100)
+        assert len(recent) == 1
+        logged = recent[0]
         assert logged["prediction_id"] == "pred_123"
         assert logged["prediction"] == "class_a"
         assert logged["probability"] == 0.85
         assert logged["latency_ms"] == 45.5
         assert logged["api_key_id"] == "key_123"
         assert isinstance(logged["timestamp"], datetime)
-    
+
     @pytest.mark.asyncio
-    async def test_log_multiple_predictions(self):
-        """Test logging multiple predictions"""
-        log = PredictionLog()
-        
-        # Log multiple predictions
+    async def test_log_is_shared_across_instances(self, setup_database):
+        """AC4: an event written by one PredictionLog instance (≈ one worker) is
+        visible to another — the whole point of moving off the process-local log."""
+        writer = PredictionLog()
+        reader = PredictionLog()
         for i in range(5):
-            await log.log_prediction(
-                model_id="model_123",
-                prediction_id=f"pred_{i}",
-                input_data={"value": i},
-                prediction=i,
-                latency_ms=10.0 + i
+            await writer.log_prediction(
+                model_id="model_123", prediction_id=f"pred_{i}",
+                input_data={"value": i}, prediction=i, latency_ms=10.0 + i,
             )
-        
-        assert len(log.logs["model_123"]) == 5
-    
+        assert len(await reader.get_recent_predictions("model_123", limit=100)) == 5
+
     @pytest.mark.asyncio
-    async def test_log_size_limit(self):
-        """Test that log size is limited to 10000 entries"""
+    async def test_read_limit_bounds_results_not_the_store(self, setup_database):
+        """AC5: the store is NOT capped (the old in-memory log trimmed to 10000
+        quadratically); only the read is bounded by the `limit` argument."""
         log = PredictionLog()
-        
-        # Log more than 10000 predictions
-        for i in range(10005):
+        for i in range(30):
             await log.log_prediction(
-                model_id="model_123",
-                prediction_id=f"pred_{i}",
-                input_data={"value": i},
-                prediction=i
+                model_id="model_123", prediction_id=f"pred_{i}",
+                input_data={"value": i}, prediction=i,
             )
-        
-        # Should only keep last 10000
-        assert len(log.logs["model_123"]) == 10000
-        
-        # First prediction should be pred_5
-        assert log.logs["model_123"][0]["prediction_id"] == "pred_5"
-    
+        assert len(await log.get_recent_predictions("model_123", limit=25)) == 25
+        assert len(await log.get_recent_predictions("model_123", limit=100)) == 30
+
     @pytest.mark.asyncio
-    async def test_get_recent_predictions(self):
-        """Test getting recent predictions"""
+    async def test_get_recent_predictions(self, setup_database):
+        """Recent predictions come back newest-window in chronological order."""
         log = PredictionLog()
-        
-        # Log 20 predictions
+
         for i in range(20):
             await log.log_prediction(
                 model_id="model_123",
@@ -94,20 +79,24 @@ class TestPredictionLog:
                 input_data={"value": i},
                 prediction=i
             )
-        
-        # Get last 10
+
         recent = await log.get_recent_predictions("model_123", limit=10)
         assert len(recent) == 10
         assert recent[0]["prediction_id"] == "pred_10"
         assert recent[-1]["prediction_id"] == "pred_19"
-        
-        # Get all
+
         all_preds = await log.get_recent_predictions("model_123", limit=100)
         assert len(all_preds) == 20
 
 
 class TestPredictionMonitoringService:
     """Test cases for PredictionMonitoringService"""
+
+    @pytest.fixture(autouse=True)
+    def _db(self, setup_database):
+        # The prediction log is now Mongo-backed (#488); every test needs Beanie
+        # initialised, and setup_database clears prediction_events between tests.
+        yield
     
     @pytest.mark.asyncio
     @patch('app.services.prediction_monitoring.MLModel')
@@ -139,8 +128,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_get_model_metrics_no_data(self):
         """Test getting metrics with no prediction data"""
-        # Clear any existing logs
-        prediction_log.logs.clear()
         
         metrics = await PredictionMonitoringService.get_model_metrics("model_999", 24)
         
@@ -153,8 +140,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_get_model_metrics_with_data(self):
         """Test getting metrics with prediction data"""
-        # Clear logs and add test data
-        prediction_log.logs.clear()
         
         # Add predictions from last hour
         for i in range(10):
@@ -179,19 +164,17 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_get_model_metrics_time_window(self):
         """Test metrics respect time window"""
-        prediction_log.logs.clear()
         
         # Add old prediction (25 hours ago). Aware, matching log_prediction's
         # own timezone-aware stamping (#284) — the in-memory log never holds
         # naive timestamps in production.
         old_time = datetime.now(UTC) - timedelta(hours=25)
-        prediction_log.logs["model_123"] = [{
-            "prediction_id": "old_pred",
-            "timestamp": old_time,
-            "input_data": {},
-            "prediction": "old",
-            "latency_ms": 100
-        }]
+        from app.models.prediction_event import PredictionEvent
+
+        await PredictionEvent(
+            model_id="model_123", prediction_id="old_pred", timestamp=old_time,
+            input_data={}, prediction="old", latency_ms=100,
+        ).insert()
         
         # Add recent prediction
         await prediction_log.log_prediction(
@@ -210,7 +193,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_get_prediction_distribution(self):
         """Test getting prediction distribution"""
-        prediction_log.logs.clear()
         
         # Add predictions with different values
         predictions = ["class_a"] * 5 + ["class_b"] * 3 + ["class_c"] * 2
@@ -233,7 +215,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_detect_drift_insufficient_data_is_honest(self):
         """Below the minimum sample count, drift is reported as NOT assessed (#274)."""
-        prediction_log.logs.clear()
         for i in range(5):  # < DRIFT_MIN_TOTAL
             await prediction_log.log_prediction(
                 model_id="drift_model",
@@ -253,7 +234,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_detect_drift_flags_shifted_feature(self):
         """A feature whose distribution shifts across the window is flagged (#274)."""
-        prediction_log.logs.clear()
         # Older half: x ~ 0; recent half: x ~ 100 → large standardized shift.
         for i in range(15):
             await prediction_log.log_prediction(
@@ -276,7 +256,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_detect_drift_stable_feature_not_flagged(self):
         """A stable feature distribution is not flagged as drift (#274)."""
-        prediction_log.logs.clear()
         for i in range(40):
             await prediction_log.log_prediction(
                 model_id="drift_model", prediction_id=f"pred_{i}",
@@ -294,7 +273,6 @@ class TestPredictionMonitoringService:
     async def test_detect_drift_tolerates_sparse_feature(self):
         """A feature with occasional None/non-numeric values is still scored —
         bad values are dropped individually, not the whole feature (review #328)."""
-        prediction_log.logs.clear()
         # Every 4th record has a missing/non-numeric x, but each window still has
         # well over DRIFT_MIN_FEATURE_SAMPLES numeric values, and x shifts.
         for i in range(16):
@@ -320,7 +298,6 @@ class TestPredictionMonitoringService:
     async def test_detect_drift_no_numeric_features_is_honest(self):
         """Enough history but only non-numeric inputs → honest 'not assessed',
         reason=no_numeric_features (never a fabricated 'no drift') (#274)."""
-        prediction_log.logs.clear()
         for i in range(30):
             await prediction_log.log_prediction(
                 model_id="drift_model", prediction_id=f"pred_{i}",
@@ -337,7 +314,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_get_usage_by_api_key(self):
         """Test getting usage grouped by API key"""
-        prediction_log.logs.clear()
         
         # Add predictions with different API keys
         api_keys = ["key_1", "key_1", "key_1", "key_2", "key_2", None]
@@ -359,7 +335,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_metrics_error_rate_and_percentiles(self):
         """error_rate counts errors / total; percentiles over successes (issue #85)"""
-        prediction_log.logs.clear()
 
         # 8 successes with latencies 10..80, 2 errors.
         for i in range(8):
@@ -392,7 +367,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_metrics_all_errors(self):
         """All-error window: error_rate 1.0, no successful latency stats"""
-        prediction_log.logs.clear()
         for i in range(3):
             await prediction_log.log_prediction(
                 model_id="model_ae",
@@ -411,7 +385,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_distribution_excludes_errors(self):
         """Failed-request markers are excluded from the value distribution"""
-        prediction_log.logs.clear()
         for i in range(4):
             await prediction_log.log_prediction(
                 model_id="model_d", prediction_id=f"ok_{i}",
@@ -430,7 +403,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_usage_timeline_buckets(self):
         """Timeline returns bucketed requests/errors/latency spanning the window"""
-        prediction_log.logs.clear()
         for i in range(5):
             await prediction_log.log_prediction(
                 model_id="model_t", prediction_id=f"ok_{i}",
@@ -457,7 +429,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_health_healthy(self):
         """Low error/latency → healthy, no alerts"""
-        prediction_log.logs.clear()
         for i in range(20):
             await prediction_log.log_prediction(
                 model_id="model_h", prediction_id=f"ok_{i}",
@@ -471,7 +442,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_health_unhealthy_error_alert(self):
         """High error rate → unhealthy with a critical error_rate alert"""
-        prediction_log.logs.clear()
         for i in range(5):
             await prediction_log.log_prediction(
                 model_id="model_u", prediction_id=f"ok_{i}",
@@ -490,7 +460,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_health_no_data_unknown(self):
         """No requests → unknown status, no alerts"""
-        prediction_log.logs.clear()
         health = await PredictionMonitoringService.get_health("model_none", 24)
         assert health["status"] == "unknown"
         assert health["requests"] == 0
@@ -499,7 +468,6 @@ class TestPredictionMonitoringService:
     @pytest.mark.asyncio
     async def test_concurrent_logging(self):
         """Test concurrent prediction logging"""
-        prediction_log.logs.clear()
         
         # Simulate concurrent logging
         import asyncio
@@ -516,4 +484,4 @@ class TestPredictionMonitoringService:
         await asyncio.gather(*[log_pred(i) for i in range(50)])
         
         # All should be logged
-        assert len(prediction_log.logs["model_123"]) == 50
+        assert len(await prediction_log.get_recent_predictions("model_123", limit=100)) == 50

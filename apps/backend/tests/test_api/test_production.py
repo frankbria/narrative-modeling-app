@@ -430,11 +430,10 @@ class TestServingMetricsLogging:
     """Tests for per-request monitoring logging from the serving path (issue #85)."""
 
     @pytest.mark.asyncio
-    async def test_logs_each_prediction(self):
+    async def test_logs_each_prediction(self, setup_database):
         from app.api.routes.production import _record_serving_metrics
         from app.services.prediction_monitoring import prediction_log
 
-        prediction_log.logs.clear()
         await _record_serving_metrics(
             model_id="m_serve",
             request_data=[{"a": 1}, {"a": 2}, {"a": 3}],
@@ -444,7 +443,7 @@ class TestServingMetricsLogging:
             api_key_id="key_1",
         )
 
-        logged = prediction_log.logs["m_serve"]
+        logged = await prediction_log.get_recent_predictions("m_serve", limit=100)
         assert len(logged) == 3
         assert [e["prediction"] for e in logged] == ["x", "y", "z"]
         # Batch latency is split per record.
@@ -453,11 +452,10 @@ class TestServingMetricsLogging:
         assert logged[2]["probability"] is None
 
     @pytest.mark.asyncio
-    async def test_logs_error_event(self):
+    async def test_logs_error_event(self, setup_database):
         from app.api.routes.production import _record_serving_metrics
         from app.services.prediction_monitoring import prediction_log
 
-        prediction_log.logs.clear()
         await _record_serving_metrics(
             model_id="m_err",
             request_data=[{"a": 1}],
@@ -468,13 +466,13 @@ class TestServingMetricsLogging:
             error="kaboom",
         )
 
-        logged = prediction_log.logs["m_err"]
+        logged = await prediction_log.get_recent_predictions("m_err", limit=100)
         assert len(logged) == 1
         assert logged[0]["error"] == "kaboom"
         assert logged[0]["prediction"] is None
 
     @pytest.mark.asyncio
-    async def test_batch_error_logged_per_record(self):
+    async def test_batch_error_logged_per_record(self, setup_database):
         """A failed N-record batch logs N error entries so error_rate stays
         per-record consistent with successes (codex review)."""
         from app.api.routes.production import _record_serving_metrics
@@ -483,7 +481,6 @@ class TestServingMetricsLogging:
             prediction_log,
         )
 
-        prediction_log.logs.clear()
         # One successful 3-record batch...
         await _record_serving_metrics(
             model_id="m_batch",
@@ -504,7 +501,7 @@ class TestServingMetricsLogging:
             error="boom",
         )
 
-        assert len(prediction_log.logs["m_batch"]) == 6
+        assert len(await prediction_log.get_recent_predictions("m_batch", limit=100)) == 6
         metrics = await PredictionMonitoringService.get_model_metrics("m_batch", 24)
         assert metrics["total_predictions"] == 3
         assert metrics["error_count"] == 3
