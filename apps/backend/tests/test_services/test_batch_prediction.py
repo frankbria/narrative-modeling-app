@@ -805,3 +805,162 @@ async def test_fire_webhook_blocks_ssrf_targets(monkeypatch, url):
     _patch_httpx(monkeypatch, post, safe=False)
     await _service()._fire_webhook(_completed_job(url))
     post.assert_not_awaited()
+
+
+# --- Concurrency bounds (#515) --------------------------------------------------
+
+import asyncio as _asyncio  # noqa: E402
+
+from app.models.batch_job import BatchJob, JobStatus, JobType  # noqa: E402
+from app.services.batch_prediction import (  # noqa: E402
+    BatchConcurrencyLimitError,
+    _batch_semaphores,
+)
+
+
+async def _pending_job(user_id: str, n: int) -> BatchJob:
+    return await BatchJob(
+        job_id=f"batch_pending_{user_id}_{n}",
+        job_type=JobType.BATCH_PREDICTION,
+        user_id=user_id,
+        config={"model_id": "model_123"},
+        input_path="datasets/u/in.csv",
+        status=JobStatus.PENDING,
+    ).create()
+
+
+@pytest.mark.asyncio
+async def test_per_tenant_cap_refuses_over_the_limit(setup_database, monkeypatch):
+    """A caller at their concurrent-job cap is refused BEFORE the input is uploaded."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 2)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc = _service()
+    svc._prepare_input_data = AsyncMock(  # must NOT be reached on refusal
+        side_effect=AssertionError("input uploaded despite the cap")
+    )
+    user = "capped_user_515"
+    await _pending_job(user, 1)
+    await _pending_job(user, 2)
+    try:
+        with pytest.raises(BatchConcurrencyLimitError) as exc:
+            await svc.create_batch_prediction_job(user, "model_123", pd.DataFrame({"age": [1]}))
+        assert exc.value.active == 2 and exc.value.limit == 2
+        svc._prepare_input_data.assert_not_awaited()
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_per_tenant_cap_admits_a_different_tenant(setup_database, monkeypatch):
+    """The cap is per user: another tenant with the same global load is admitted."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 1)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc = _service()
+    svc._prepare_input_data = AsyncMock(return_value=("datasets/u/in.csv", 1))
+    await _pending_job("busy_user_515", 1)
+    try:
+        job = await svc.create_batch_prediction_job(
+            "idle_user_515", "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+        assert job.user_id == "idle_user_515"
+    finally:
+        await BatchJob.find(BatchJob.user_id == "busy_user_515").delete()
+        await BatchJob.find(BatchJob.user_id == "idle_user_515").delete()
+
+
+@pytest.mark.asyncio
+async def test_execution_semaphore_bounds_concurrency(setup_database, monkeypatch):
+    """At most MAX_CONCURRENT_BATCH_JOBS run _process_batch_job at once; the rest queue."""
+    from app.services import batch_prediction as bp
+
+    _batch_semaphores.clear()  # a fresh semaphore for this test's ceiling
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS", 2)
+
+    running = 0
+    peak = 0
+    gate = _asyncio.Event()
+
+    async def _slow_process(job):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await gate.wait()
+        running -= 1
+
+    svc = _service()
+    svc._process_batch_job = _slow_process  # type: ignore[assignment]
+    jobs = [
+        BatchJob(job_id=f"b{n}", job_type=JobType.BATCH_PREDICTION, user_id="u",
+                 config={}, status=JobStatus.PENDING)
+        for n in range(5)
+    ]
+    for j in jobs:
+        await j.create()
+    try:
+        tasks = [_asyncio.create_task(svc._process_batch_job_admitted(j)) for j in jobs]
+        # Poll rather than sleep a fixed interval: admission includes a Mongo read,
+        # so a fixed wait would be timing-dependent under CI contention.
+        for _ in range(200):
+            if running >= 2:
+                break
+            await _asyncio.sleep(0.01)
+        assert running == 2, f"{running} ran at once; ceiling is 2"
+        gate.set()
+        await _asyncio.gather(*tasks)
+        assert peak == 2
+    finally:
+        _batch_semaphores.clear()
+        await BatchJob.find(BatchJob.user_id == "u").delete()
+
+
+@pytest.mark.asyncio
+async def test_a_job_cancelled_while_queued_is_skipped(setup_database):
+    """A job cancelled before it acquires the semaphore never runs (#515)."""
+    svc = _service()
+    ran = False
+
+    async def _should_not_run(job):
+        nonlocal ran
+        ran = True
+
+    svc._process_batch_job = _should_not_run  # type: ignore[assignment]
+    job = await BatchJob(
+        job_id="batch_cancelled_515", job_type=JobType.BATCH_PREDICTION, user_id="u",
+        config={}, status=JobStatus.CANCELLED,
+    ).create()
+    try:
+        await svc._process_batch_job_admitted(job)
+        assert ran is False
+    finally:
+        await BatchJob.find(BatchJob.job_id == "batch_cancelled_515").delete()
+
+
+@pytest.mark.asyncio
+async def test_retry_also_respects_the_per_tenant_cap(setup_database, monkeypatch):
+    """A retry re-enters the queue, so it is refused when the caller is at the cap (#515)."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 1)
+    svc = _service()
+    user = "retry_capped_515"
+    # One live job puts the tenant at the cap; a separate FAILED job is retry-eligible.
+    await _pending_job(user, 1)
+    failed = await BatchJob(
+        job_id="batch_failed_515", job_type=JobType.BATCH_PREDICTION, user_id=user,
+        config={"model_id": "m"}, status=JobStatus.FAILED, retry_count=0, max_retries=3,
+    ).create()
+    try:
+        with pytest.raises(BatchConcurrencyLimitError):
+            await svc.retry_job(failed.job_id, user)
+        # The failed job was not re-queued.
+        assert (await BatchJob.find_one(BatchJob.job_id == "batch_failed_515")).status == JobStatus.FAILED
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()

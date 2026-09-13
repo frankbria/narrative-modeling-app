@@ -131,7 +131,17 @@ class BatchJob(Document):
 
     class Settings:
         name = "batch_jobs"
-        indexes = ["job_id", "user_id", "status", "job_type", "created_at", "priority"]
+        indexes = [
+            "job_id",
+            "user_id",
+            "status",
+            "job_type",
+            "created_at",
+            "priority",
+            # The batch admission count (#515) filters (user_id, job_type, status)
+            # on every create and retry.
+            [("user_id", 1), ("job_type", 1), ("status", 1)],
+        ]
 
     @property
     def duration_seconds(self) -> float | None:

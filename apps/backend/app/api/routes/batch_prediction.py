@@ -25,7 +25,10 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, reserve
 from app.models.batch_job import BatchJob, JobStatus, JobType
-from app.services.batch_prediction import BatchPredictionService
+from app.services.batch_prediction import (
+    BatchConcurrencyLimitError,
+    BatchPredictionService,
+)
 from app.utils.upload_limits import read_upload_capped
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
@@ -232,6 +235,11 @@ async def create_batch_job(
     except HTTPException:
         # Preserve client errors (e.g. 413 too large) instead of masking as 500.
         raise
+    except BatchConcurrencyLimitError as e:
+        # Too many of the caller's own jobs in flight (#515): 429, not a fault.
+        # The admission dependency's reserved units are returned by the refund
+        # middleware (>= 400).
+        raise HTTPException(status_code=429, detail=str(e)) from e
     except ValueError as e:
         # Client-side problems (batch over the size cap #278, model not found,
         # unsupported input) are 400s, not server faults.
@@ -413,7 +421,12 @@ async def retry_batch_job(
     if rows > 1:
         await reserve(request, current_user_id, "predictions", rows - 1)
 
-    if not await batch_service.retry_job(job_id, current_user_id):
+    try:
+        retried = await batch_service.retry_job(job_id, current_user_id)
+    except BatchConcurrencyLimitError as e:
+        # A retry counts against the per-tenant cap too (#515): 429, units refunded.
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    if not retried:
         # The service claims the job with a single conditional update carrying the same
         # preconditions, so exactly one of two simultaneous retries wins and the loser
         # lands here. The checks above are for the *message* — they say which

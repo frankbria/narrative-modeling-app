@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import tempfile
+import weakref
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from io import BytesIO, StringIO
@@ -23,6 +24,7 @@ import pandas as pd
 from beanie import PydanticObjectId
 from pymongo import ReturnDocument
 
+from app.billing.plans import _env_positive_int
 from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
@@ -47,6 +49,50 @@ def _safe_unlink(path: str) -> None:
 # now O(chunk_size), so this is a resource/DoS guard (disk temp file + wall time),
 # not a memory bound. Generous vs the 1000-record sync path; env-tunable.
 MAX_BATCH_PREDICT_RECORDS = int(os.getenv("MAX_BATCH_PREDICT_RECORDS", "1000000"))
+
+# Concurrency bounds (#515). Batch jobs used to spawn as unbounded asyncio tasks,
+# so one tenant could saturate a worker's event loop and, with large inputs, its
+# memory. Two independent limits:
+#   * a PER-PROCESS ceiling on jobs actually executing at once (a semaphore);
+#     excess jobs queue instead of all running. Per running loop because the test
+#     suite creates a fresh loop per test and a semaphore is bound to one loop.
+#   * a PER-TENANT cap on PENDING/RUNNING jobs, enforced at admission (below), so
+#     one tenant cannot fill the queue either.
+# _env_positive_int, not int(getenv): a 0 or negative override must not silently
+# disable the control (the same guard plans.py uses for its ceilings).
+MAX_CONCURRENT_BATCH_JOBS = _env_positive_int("MAX_CONCURRENT_BATCH_JOBS", 2)
+MAX_CONCURRENT_BATCH_JOBS_PER_USER = _env_positive_int(
+    "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 3
+)
+# WeakKeyDictionary, not id(loop): a closed test loop is collected and its entry
+# with it, so the cache never grows and a reused id() cannot alias a dead loop.
+_batch_semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _batch_semaphore() -> asyncio.Semaphore:
+    """The per-process execution semaphore for the CURRENT event loop (#515)."""
+    loop = asyncio.get_running_loop()
+    sem = _batch_semaphores.get(loop)
+    if sem is None:
+        sem = asyncio.Semaphore(MAX_CONCURRENT_BATCH_JOBS)
+        _batch_semaphores[loop] = sem
+    return sem
+
+
+class BatchConcurrencyLimitError(Exception):
+    """A tenant is already at their concurrent-batch-job cap (#515). The route
+    maps this to 429; the refund middleware returns any reserved quota units."""
+
+    def __init__(self, active: int, limit: int) -> None:
+        self.active = active
+        self.limit = limit
+        super().__init__(
+            f"You already have {active} batch prediction job(s) running or queued "
+            f"(limit {limit}); wait for one to finish before starting another."
+        )
+
 
 # Every column `_results_to_dataframe` can emit that is NOT an input column, so
 # the deterministic streamed-CSV header (issue #278) can drop an input column
@@ -177,9 +223,27 @@ class BatchPredictionService:
     def _spawn_processing(self, job: BatchJob) -> None:
         """Schedule background processing, retaining a reference and observing
         the task's outcome so a failure can never be silently lost (#82)."""
-        task = asyncio.create_task(self._process_batch_job(job))
+        task = asyncio.create_task(self._process_batch_job_admitted(job))
         self._background_tasks.add(task)
         task.add_done_callback(self._on_task_done)
+
+    async def _process_batch_job_admitted(self, job: BatchJob) -> None:
+        """Run the job under the per-process execution semaphore (#515): while it
+        is held at the ceiling, further jobs wait here rather than all executing.
+        The direct ``_process_batch_job`` path (auto_start=False, tests) is not
+        gated, so unit tests stay deterministic."""
+        async with _batch_semaphore():
+            # A job cancelled while it waited its turn must not start (#515); the
+            # harder case of cancelling a job already running is #485.
+            fresh = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+            if fresh is None:
+                # Deleted between admission and acquiring the slot: nothing to run.
+                logger.info("Batch job %s no longer exists; skipping", job.job_id)
+                return
+            if fresh.status == JobStatus.CANCELLED:
+                logger.info("Batch job %s was cancelled while queued; skipping", job.job_id)
+                return
+            await self._process_batch_job(fresh)
 
     def _on_task_done(self, task: "asyncio.Task") -> None:
         self._background_tasks.discard(task)
@@ -188,6 +252,22 @@ class BatchPredictionService:
         exc = task.exception()
         if exc is not None:
             logger.error("Unhandled exception in batch job task", exc_info=exc)
+
+    async def _enforce_per_user_cap(self, user_id: str) -> None:
+        """Refuse when the caller already holds MAX_CONCURRENT_BATCH_JOBS_PER_USER
+        PENDING/RUNNING jobs (#515). Best-effort under a same-tenant burst — the
+        per-process semaphore is the hard execution bound; an atomic per-user
+        admission is #653.
+        """
+        active = await BatchJob.find(
+            {
+                "user_id": user_id,
+                "job_type": JobType.BATCH_PREDICTION.value,
+                "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},
+            }
+        ).count()
+        if active >= MAX_CONCURRENT_BATCH_JOBS_PER_USER:
+            raise BatchConcurrencyLimitError(active, MAX_CONCURRENT_BATCH_JOBS_PER_USER)
 
     async def create_batch_prediction_job(
         self,
@@ -218,6 +298,10 @@ class BatchPredictionService:
 
         if not model:
             raise ValueError("Model not found or not accessible")
+
+        # Per-tenant cap (#515): count the caller's live jobs BEFORE uploading the
+        # input, so a refused job leaves no orphan S3 object.
+        await self._enforce_per_user_cap(user_id)
 
         # Prepare input data and upload to S3 if needed
         input_path, total_records = await self._prepare_input_data(
@@ -1017,6 +1101,9 @@ class BatchPredictionService:
         the filter so the database decides the winner, and let the loser see `None`.
         `max_retries` is per-document, hence `$expr` rather than a literal bound.
         """
+        # A retry re-enters the queue, so it counts against the per-tenant cap too
+        # (#515) — otherwise a capped tenant could still flood it with retries.
+        await self._enforce_per_user_cap(user_id)
         claimed = await BatchJob.get_motor_collection().find_one_and_update(
             {
                 "job_id": job_id,
