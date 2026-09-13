@@ -34,8 +34,8 @@ class TestHealthEndpoints:
         assert response.json()["status"] == "alive"
 
     def test_versioned_alias_does_not_expose_readiness(self):
-        """Only liveness is versioned (#479); /health/ready stays root-only because
-        it does per-request outbound work (#503) that a poller must not amplify."""
+        """Only liveness is versioned (#479); readiness stays root-only for the LB
+        and is not re-exposed through the browser-facing /api/ proxy."""
         assert client.get("/api/v1/health/ready").status_code == 404
 
 
@@ -63,172 +63,130 @@ class TestMetricsUnshadowed:
 
 @pytest.mark.asyncio
 class TestReadinessChecks:
-    """Test readiness check with dependency validation"""
+    """Readiness is MongoDB-only and makes no outbound third-party call (#503)."""
 
-    async def test_all_services_healthy(self):
-        """Test readiness endpoint when all services are healthy"""
+    async def test_ready_when_mongodb_healthy(self):
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock all services as healthy
-                    mock_mongo.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 15.5,
-                        "database": "test_db"
-                    }
-                    mock_s3.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 25.3,
-                        "bucket": "test-bucket",
-                        "accessible": True
-                    }
-                    mock_openai.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 150.2,
-                        "api_version": "v1"
-                    }
-
-                    response = client.get("/health/ready")
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["status"] == "ready"
-                    assert data["checks"]["mongodb"]["status"] == "healthy"
-                    assert data["checks"]["s3"]["status"] == "healthy"
-                    assert data["checks"]["openai"]["status"] == "healthy"
+            mock_mongo.return_value = {"status": "healthy", "latency_ms": 15.5, "database": "test_db"}
+            response = client.get("/health/ready")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ready"
+            assert data["checks"]["mongodb"]["status"] == "healthy"
+            # Only MongoDB is reported — S3/OpenAI are not part of readiness.
+            assert set(data["checks"]) == {"mongodb"}
 
     async def test_mongodb_unhealthy_returns_not_ready(self):
-        """Test readiness endpoint when MongoDB is unhealthy (MongoDB is critical)"""
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock MongoDB as unhealthy (critical service)
-                    mock_mongo.return_value = {
-                        "status": "unhealthy",
-                        "latency_ms": 5000.0,
-                        "error": "Connection timeout"
-                    }
-                    mock_s3.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 25.3,
-                        "bucket": "test-bucket",
-                        "accessible": True
-                    }
-                    mock_openai.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 150.2,
-                        "api_version": "v1"
-                    }
-
-                    response = client.get("/health/ready")
-                    # MongoDB is critical, so unhealthy MongoDB = not ready (503)
-                    assert response.status_code == 503
-                    data = response.json()
-                    assert data["status"] == "not_ready"
-                    assert data["checks"]["mongodb"]["status"] == "unhealthy"
-                    assert "error" in data["checks"]["mongodb"]
+            mock_mongo.return_value = {"status": "unhealthy", "latency_ms": 5000.0, "error": "unavailable"}
+            response = client.get("/health/ready")
+            assert response.status_code == 503
+            data = response.json()
+            assert data["status"] == "not_ready"
+            assert data["checks"]["mongodb"]["status"] == "unhealthy"
 
     async def test_ready_does_not_leak_check_exception_text(self):
-        """A check that RAISES must not leak its exception text into the
-        unauthenticated /health/ready body (issue #269)."""
+        """A raising MongoDB check must not leak its text into the unauthenticated body (#269)."""
         with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    mock_mongo.side_effect = Exception("mongodb://user:pass@secret-host:27017 refused")
-                    mock_s3.return_value = {"status": "healthy", "latency_ms": 1.0}
-                    mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
+            mock_mongo.side_effect = Exception("mongodb://user:pass@secret-host:27017 refused")
+            response = client.get("/health/ready")
+            assert response.status_code == 503
+            assert "secret-host" not in response.text
+            assert "user:pass" not in response.text
+            assert response.json()["checks"]["mongodb"]["error"] == "unavailable"
 
-                    response = client.get("/health/ready")
-                    assert response.status_code == 503
-                    assert "secret-host" not in response.text
-                    assert "user:pass" not in response.text
-                    assert response.json()["checks"]["mongodb"]["error"] == "unavailable"
+    async def test_ready_makes_no_outbound_calls(self):
+        """AC5: a readiness probe must never touch S3 or OpenAI — the whole point
+        of #503. Patch both upstream checks and assert they are never invoked."""
+        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo, \
+             patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3, \
+             patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+            mock_mongo.return_value = {"status": "healthy", "latency_ms": 1.0, "database": "test_db"}
+            response = client.get("/health/ready")
+            assert response.status_code == 200
+            mock_s3.assert_not_awaited()
+            mock_openai.assert_not_awaited()
 
-    async def test_s3_unhealthy_still_ready(self):
-        """Test readiness endpoint when S3 is unhealthy (S3 is optional)"""
-        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock S3 as unhealthy (but MongoDB healthy, so should still be ready)
-                    mock_mongo.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 15.5,
-                        "database": "test_db"
-                    }
-                    mock_s3.return_value = {
-                        "status": "unhealthy",
-                        "latency_ms": 3000.0,
-                        "error": "Access denied"
-                    }
-                    mock_openai.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 150.2,
-                        "api_version": "v1"
-                    }
 
-                    response = client.get("/health/ready")
-                    # Backend is ready if MongoDB is healthy, regardless of S3/OpenAI
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["status"] == "ready"
-                    assert data["checks"]["s3"]["status"] == "unhealthy"
+class TestLiveness:
+    """Liveness stays trivial and dependency-free (#503 AC4)."""
 
-    async def test_s3_not_configured_still_ready(self):
-        """Test readiness endpoint when S3 is not configured (mock mode)"""
-        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock S3 as not_configured (test credentials / mock mode)
-                    mock_mongo.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 15.5,
-                        "database": "test_db"
-                    }
-                    mock_s3.return_value = {
-                        "status": "not_configured",
-                        "latency_ms": 0.5,
-                        "message": "S3 running in mock mode (test credentials or not configured)"
-                    }
-                    mock_openai.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 150.2,
-                        "api_version": "v1"
-                    }
+    def test_health_live_alias_is_trivial(self):
+        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo, \
+             patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3, \
+             patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+            response = client.get("/health/live")
+            assert response.status_code == 200
+            assert response.json()["status"] == "alive"
+            mock_mongo.assert_not_awaited()
+            mock_s3.assert_not_awaited()
+            mock_openai.assert_not_awaited()
 
-                    response = client.get("/health/ready")
-                    # Backend is ready if MongoDB is healthy, S3 can be not_configured
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["status"] == "ready"
-                    assert data["checks"]["s3"]["status"] == "not_configured"
 
-    async def test_openai_not_configured_still_ready(self):
-        """Test that app is still ready when OpenAI is not configured"""
-        with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo:
-            with patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3:
-                with patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
-                    # Mock critical services healthy, OpenAI not configured
-                    mock_mongo.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 15.5,
-                        "database": "test_db"
-                    }
-                    mock_s3.return_value = {
-                        "status": "healthy",
-                        "latency_ms": 25.3,
-                        "bucket": "test-bucket",
-                        "accessible": True
-                    }
-                    mock_openai.return_value = {
-                        "status": "not_configured",
-                        "latency_ms": 0,
-                        "message": "OpenAI API key not configured"
-                    }
+@pytest.mark.asyncio
+class TestDependenciesDiagnostic:
+    """The full upstream diagnostic is authenticated and lives off the readiness path (#503 AC3)."""
 
-                    response = client.get("/health/ready")
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["status"] == "ready"
-                    assert data["checks"]["openai"]["status"] == "not_configured"
+    def test_requires_authentication(self):
+        # No credentials -> the outbound-calling diagnostic must not be reachable.
+        assert client.get("/health/dependencies").status_code in (401, 403)
+
+    def _override_auth(self):
+        from app.auth.nextauth_auth import get_current_user_id
+        app.dependency_overrides[get_current_user_id] = lambda: "test_user"
+
+    def _clear_auth(self):
+        from app.auth.nextauth_auth import get_current_user_id
+        app.dependency_overrides.pop(get_current_user_id, None)
+
+    async def test_full_checks_when_authenticated(self):
+        self._override_auth()
+        try:
+            with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo, \
+                 patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3, \
+                 patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+                mock_mongo.return_value = {"status": "healthy", "latency_ms": 1.0, "database": "test_db"}
+                mock_s3.return_value = {"status": "unhealthy", "latency_ms": 3000.0, "error": "unavailable"}
+                mock_openai.return_value = {"status": "not_configured", "latency_ms": 0}
+                response = client.get("/health/dependencies")
+                assert response.status_code == 200  # MongoDB healthy => 200 despite S3/OpenAI
+                data = response.json()
+                assert set(data["checks"]) == {"mongodb", "s3", "openai"}
+                assert data["checks"]["s3"]["status"] == "unhealthy"
+                assert data["checks"]["openai"]["status"] == "not_configured"
+        finally:
+            self._clear_auth()
+
+    async def test_mongodb_unhealthy_returns_503(self):
+        self._override_auth()
+        try:
+            with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo, \
+                 patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3, \
+                 patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+                mock_mongo.return_value = {"status": "unhealthy", "latency_ms": 5000.0, "error": "unavailable"}
+                mock_s3.return_value = {"status": "healthy", "latency_ms": 1.0}
+                mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
+                response = client.get("/health/dependencies")
+                assert response.status_code == 503
+                assert response.json()["status"] == "unhealthy"
+        finally:
+            self._clear_auth()
+
+    async def test_does_not_leak_check_exception_text(self):
+        self._override_auth()
+        try:
+            with patch("app.api.routes.health.check_mongodb_connection", new_callable=AsyncMock) as mock_mongo, \
+                 patch("app.api.routes.health.check_s3_access", new_callable=AsyncMock) as mock_s3, \
+                 patch("app.api.routes.health.check_openai_api", new_callable=AsyncMock) as mock_openai:
+                mock_mongo.return_value = {"status": "healthy", "latency_ms": 1.0}
+                mock_s3.side_effect = Exception("s3://secret-bucket access denied for AKIASECRET")
+                mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
+                response = client.get("/health/dependencies")
+                assert "secret-bucket" not in response.text
+                assert "AKIASECRET" not in response.text
+                assert response.json()["checks"]["s3"]["error"] == "unavailable"
+        finally:
+            self._clear_auth()
 
 
 @pytest.mark.asyncio
@@ -366,34 +324,27 @@ class TestIndividualHealthChecks:
 
 @pytest.mark.asyncio
 class TestParallelExecution:
-    """Test that health checks execute in parallel"""
+    """The diagnostic endpoint runs its checks concurrently (#503 moved them here)."""
 
     async def test_parallel_execution_performance(self):
-        """Test that health checks run concurrently for better performance"""
         import time
 
-        # Mock functions with artificial delay
-        async def slow_mongo_check():
-            await asyncio.sleep(0.1)  # 100ms delay
+        from app.auth.nextauth_auth import get_current_user_id
+
+        async def slow(_=None):
+            await asyncio.sleep(0.1)
             return {"status": "healthy", "latency_ms": 100}
 
-        async def slow_s3_check():
-            await asyncio.sleep(0.1)  # 100ms delay
-            return {"status": "healthy", "latency_ms": 100}
-
-        async def slow_openai_check():
-            await asyncio.sleep(0.1)  # 100ms delay
-            return {"status": "healthy", "latency_ms": 100}
-
-        with patch("app.api.routes.health.check_mongodb_connection", side_effect=slow_mongo_check):
-            with patch("app.api.routes.health.check_s3_access", side_effect=slow_s3_check):
-                with patch("app.api.routes.health.check_openai_api", side_effect=slow_openai_check):
-                    start = time.time()
-                    response = client.get("/health/ready")
-                    duration = time.time() - start
-
-                    # If executed sequentially: ~300ms
-                    # If executed in parallel: ~100ms
-                    # Allow some overhead, but should be < 200ms if parallel
-                    assert duration < 0.2, f"Health checks took {duration}s, expected parallel execution"
-                    assert response.status_code == 200
+        app.dependency_overrides[get_current_user_id] = lambda: "test_user"
+        try:
+            with patch("app.api.routes.health.check_mongodb_connection", side_effect=slow), \
+                 patch("app.api.routes.health.check_s3_access", side_effect=slow), \
+                 patch("app.api.routes.health.check_openai_api", side_effect=slow):
+                start = time.time()
+                response = client.get("/health/dependencies")
+                duration = time.time() - start
+                # Sequential would be ~300ms; parallel ~100ms.
+                assert duration < 0.2, f"checks took {duration}s, expected parallel execution"
+                assert response.status_code == 200
+        finally:
+            app.dependency_overrides.pop(get_current_user_id, None)
