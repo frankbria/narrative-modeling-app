@@ -426,12 +426,9 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"sweep feature_versions: {e}")
 
-        # Every account-scoped collection with a user_id field. Billing records
-        # (Subscription, UsageRecord) are deleted too, NOT retained: Stripe is
-        # the authoritative financial/tax record (the billing sub-processor;
-        # scripts/reconcile_subscriptions.py rebuilds local state from it), so
-        # the local mirror is not "required" under a retention basis and keeping
-        # it would leave the erased user's id in our store (#480 AC3).
+        # Every account-scoped collection with a user_id field holding the user's
+        # own data. Billing state (Subscription, UsageRecord) is deliberately
+        # NOT in this list — see the retention note below (#480 AC3).
         for model_cls in [
             BatchJob,
             ABTest,
@@ -442,8 +439,6 @@ class DatasetErasureService:
             TransformationRecipe,
             RecipeExecutionHistory,
             SharedRecipe,
-            UsageRecord,
-            Subscription,
             *_STRING_KEYED_MODELS,
         ]:
             # Only sweep collections that actually have a user_id field (some
@@ -460,7 +455,16 @@ class DatasetErasureService:
         try:
             res = await SharedRecipe.find(
                 SharedRecipe.original_owner_id == user_id
-            ).update({"$set": {"original_owner_id": _ERASED_OWNER_TOMBSTONE}})
+            ).update(
+                {
+                    "$set": {
+                        # Both copies of the sharer's id: the field and the
+                        # duplicate in metadata (recipe_manager stores it twice).
+                        "original_owner_id": _ERASED_OWNER_TOMBSTONE,
+                        "metadata.shared_by": _ERASED_OWNER_TOMBSTONE,
+                    }
+                }
+            )
             anonymized = getattr(res, "modified_count", 0) or 0
             if anonymized:
                 manifest.notes.append(
@@ -470,11 +474,25 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"anonymize shared_recipes: {e}")
 
-        if manifest.documents_deleted.get(Subscription.Settings.name):
-            manifest.notes.append(
-                "deleted local Subscription/UsageRecord; Stripe remains the "
-                "authoritative billing record for tax/accounting"
-            )
+        # Billing state (Subscription, UsageRecord) is intentionally RETAINED,
+        # not deleted. erase_user backs the "erase my data, keep my account"
+        # endpoint (POST /users/me/erase), so the account stays active and
+        # billable: deleting the Subscription mirror would enforce an actively-
+        # paying customer as FREE until the next Stripe webhook, and deleting
+        # UsageRecord would reset their quota mid-period. Both are live account
+        # state, not orphaned personal data. Full billing teardown belongs to a
+        # true account-closure flow, which does not exist yet (#480 AC3).
+        try:
+            retained = await Subscription.find(
+                Subscription.user_id == user_id
+            ).count() + await UsageRecord.find(UsageRecord.user_id == user_id).count()
+            if retained:
+                manifest.notes.append(
+                    "retained Subscription/UsageRecord: erase_user keeps the account "
+                    "active, so billing/quota state is live, not orphaned data"
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"note billing retention: {e}")
 
     # ---- helpers --------------------------------------------------------
 

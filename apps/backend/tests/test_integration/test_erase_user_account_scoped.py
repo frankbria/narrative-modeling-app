@@ -7,8 +7,9 @@ behind. This seeds one of each for a user, erases the user, and asserts:
 
 - AC1: the API key no longer authenticates (the sharp one).
 - AC2: feature-store (features, versions, collections) and recipes are gone.
-- AC3: Subscription + UsageRecord are deleted, with a manifest note recording
-  that Stripe stays the authoritative billing record.
+- AC3: Subscription + UsageRecord are RETAINED — erase_user backs the
+  "erase my data, keep my account" endpoint, so billing/quota state is live
+  account state, not orphaned data; the manifest records that decision.
 - AC4: `verify_api_key` rejects the erased key.
 
 Requires real MongoDB (setup_database). S3 stays in mock mode — no datasets are
@@ -111,13 +112,14 @@ async def test_erase_user_removes_all_account_scoped_records(setup_database):
     assert await TransformationRecipe.find(TransformationRecipe.user_id == USER).count() == 0
     assert await RecipeExecutionHistory.find(RecipeExecutionHistory.user_id == USER).count() == 0
     assert await SharedRecipe.find(SharedRecipe.user_id == USER).count() == 0
-    assert await UsageRecord.find(UsageRecord.user_id == USER).count() == 0
-    assert await Subscription.find(Subscription.user_id == USER).count() == 0
 
-    # AC3: the billing-retention decision is recorded, not silent.
-    assert any("Stripe" in n for n in manifest.notes), manifest.notes
+    # AC3: billing/quota state is RETAINED — the account stays active — and the
+    # decision is recorded in the manifest, not silent.
+    assert await Subscription.find(Subscription.user_id == USER).count() == 1
+    assert await UsageRecord.find(UsageRecord.user_id == USER).count() == 1
+    assert any("retained Subscription" in n for n in manifest.notes), manifest.notes
     assert manifest.documents_deleted.get("api_keys") == 1
-    assert manifest.documents_deleted.get("subscriptions") == 1
+    assert "subscriptions" not in manifest.documents_deleted
 
     # AC4: the erased key no longer authenticates.
     with pytest.raises(HTTPException) as exc:
@@ -150,10 +152,11 @@ async def test_erase_user_anonymizes_shared_recipe_it_gave_others(setup_database
     from app.services.erasure_service import dataset_erasure_service
     from app.services.transformation_engine.recipe_manager import SharedRecipe
 
-    # OTHER received a recipe that USER originally created and shared.
+    # OTHER received a recipe that USER originally created and shared. recipe_manager
+    # stores the owner id twice: original_owner_id AND metadata["shared_by"].
     await SharedRecipe(
         name="shared-by-erased", user_id=OTHER, original_recipe_id=PydanticObjectId(),
-        original_owner_id=USER, steps=[],
+        original_owner_id=USER, steps=[], metadata={"shared_by": USER, "shared_from": "x"},
     ).insert()
 
     manifest = await dataset_erasure_service.erase_user(USER, actor_id=USER)
@@ -161,4 +164,5 @@ async def test_erase_user_anonymizes_shared_recipe_it_gave_others(setup_database
     survivors = await SharedRecipe.find(SharedRecipe.user_id == OTHER).to_list()
     assert len(survivors) == 1, "the recipient's copy must survive"
     assert survivors[0].original_owner_id != USER, "the erased user's id must be scrubbed"
+    assert survivors[0].metadata.get("shared_by") != USER, "the metadata copy must be scrubbed too"
     assert any("anonymized" in n for n in manifest.notes), manifest.notes
