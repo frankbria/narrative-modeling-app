@@ -111,26 +111,52 @@ def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
 
 # API Routes
 
+# Largest single CSV field the batch counter will accept (#486). The stdlib csv
+# default is 131072; we set our OWN bounded limit rather than raise it to a huge
+# value (which would convert a quota bypass into a memory-exhaustion vector) —
+# 1 MiB is generous for a real field and still bounded. env-tunable.
+MAX_CSV_FIELD_BYTES = int(os.getenv("MAX_CSV_FIELD_BYTES", str(1024 * 1024)))
+
+
+class CsvCountError(Exception):
+    """The batch input's row count could not be determined, so it cannot be
+    metered. Billing fails CLOSED — the route rejects the upload rather than
+    reserving 0, which would run the whole job unmetered (#486)."""
+
+
 def _count_csv_rows(content: bytes) -> int:
     """Data rows in an uploaded CSV, header excluded.
 
     `csv` from the stdlib rather than a newline count, because a quoted field may
-    contain newlines and counting those as rows overcharges the caller. Decoded
-    leniently: a file this cannot read is one the job will reject anyway, and
-    returning 0 here lets it do that with its own message.
+    contain newlines and counting those as rows overcharges the caller.
+
+    Fails CLOSED (#486): the old version returned 0 on ANY error, and a single
+    field over csv's 131072-byte default raised `_csv.Error` — so an oversized
+    field yielded a 0 reservation and the job ran entirely unmetered. Now a count
+    that cannot be determined raises `CsvCountError` and the caller rejects the
+    upload. A bounded `field_size_limit` is enforced (not raised to a huge value,
+    per AC1), so an oversized field is rejected rather than read into memory.
 
     This count and the service's own (pandas, in `_prepare_input_data`) are two
     parsers, so a file they disagree about is billed on this one's answer. They
     agree on well-formed CSV; the plausible divergences are exotic quoting and
     trailing blank lines, and the difference is a row or two either way — bounded
-    by the upload byte cap, not by the plan. If a real disagreement turns up,
-    charge from the service's count instead and reconcile the delta.
+    by the upload byte cap, not by the plan.
     """
+    text = content.decode("utf-8", errors="replace")
+    previous_limit = csv.field_size_limit()
     try:
-        text = content.decode("utf-8", errors="replace")
+        # Set/read/restore is atomic here: _count_csv_rows is a synchronous call
+        # with no await, so no other coroutine runs against this process-global.
+        csv.field_size_limit(MAX_CSV_FIELD_BYTES)
         return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
-    except Exception:
-        return 0
+    except csv.Error as e:
+        raise CsvCountError(
+            f"The CSV could not be counted for billing: a field exceeds the "
+            f"{MAX_CSV_FIELD_BYTES}-byte limit, or the file is malformed."
+        ) from e
+    finally:
+        csv.field_size_limit(previous_limit)
 
 
 @router.post(
@@ -181,7 +207,12 @@ async def create_batch_job(
         #
         # The admission dependency already reserved 1, so only the remainder is
         # charged here; a refusal leaves that 1 to the refund middleware.
-        rows = _count_csv_rows(content)
+        # Fail closed if the rows can't be counted (#486): reserving 0 for an
+        # uncountable file would run the whole job unmetered.
+        try:
+            rows = _count_csv_rows(content)
+        except CsvCountError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if rows > 1:
             await reserve(request, current_user_id, "predictions", rows - 1)
 
