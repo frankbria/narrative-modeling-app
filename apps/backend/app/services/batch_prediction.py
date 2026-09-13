@@ -236,10 +236,14 @@ class BatchPredictionService:
             # A job cancelled while it waited its turn must not start (#515); the
             # harder case of cancelling a job already running is #485.
             fresh = await BatchJob.find_one(BatchJob.job_id == job.job_id)
-            if fresh is not None and fresh.status == JobStatus.CANCELLED:
+            if fresh is None:
+                # Deleted between admission and acquiring the slot: nothing to run.
+                logger.info("Batch job %s no longer exists; skipping", job.job_id)
+                return
+            if fresh.status == JobStatus.CANCELLED:
                 logger.info("Batch job %s was cancelled while queued; skipping", job.job_id)
                 return
-            await self._process_batch_job(fresh or job)
+            await self._process_batch_job(fresh)
 
     def _on_task_done(self, task: "asyncio.Task") -> None:
         self._background_tasks.discard(task)
