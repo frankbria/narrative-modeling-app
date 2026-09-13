@@ -129,7 +129,7 @@ class TestDependenciesDiagnostic:
 
     def test_requires_authentication(self):
         # No credentials -> the outbound-calling diagnostic must not be reachable.
-        assert client.get("/health/dependencies").status_code in (401, 403)
+        assert client.get("/api/v1/health/dependencies").status_code in (401, 403)
 
     def _override_auth(self):
         from app.auth.nextauth_auth import get_current_user_id
@@ -148,7 +148,7 @@ class TestDependenciesDiagnostic:
                 mock_mongo.return_value = {"status": "healthy", "latency_ms": 1.0, "database": "test_db"}
                 mock_s3.return_value = {"status": "unhealthy", "latency_ms": 3000.0, "error": "unavailable"}
                 mock_openai.return_value = {"status": "not_configured", "latency_ms": 0}
-                response = client.get("/health/dependencies")
+                response = client.get("/api/v1/health/dependencies")
                 assert response.status_code == 200  # MongoDB healthy => 200 despite S3/OpenAI
                 data = response.json()
                 assert set(data["checks"]) == {"mongodb", "s3", "openai"}
@@ -166,7 +166,7 @@ class TestDependenciesDiagnostic:
                 mock_mongo.return_value = {"status": "unhealthy", "latency_ms": 5000.0, "error": "unavailable"}
                 mock_s3.return_value = {"status": "healthy", "latency_ms": 1.0}
                 mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
-                response = client.get("/health/dependencies")
+                response = client.get("/api/v1/health/dependencies")
                 assert response.status_code == 503
                 assert response.json()["status"] == "unhealthy"
         finally:
@@ -181,7 +181,7 @@ class TestDependenciesDiagnostic:
                 mock_mongo.return_value = {"status": "healthy", "latency_ms": 1.0}
                 mock_s3.side_effect = Exception("s3://secret-bucket access denied for AKIASECRET")
                 mock_openai.return_value = {"status": "healthy", "latency_ms": 1.0}
-                response = client.get("/health/dependencies")
+                response = client.get("/api/v1/health/dependencies")
                 assert "secret-bucket" not in response.text
                 assert "AKIASECRET" not in response.text
                 assert response.json()["checks"]["s3"]["error"] == "unavailable"
@@ -341,7 +341,7 @@ class TestParallelExecution:
                  patch("app.api.routes.health.check_s3_access", side_effect=slow), \
                  patch("app.api.routes.health.check_openai_api", side_effect=slow):
                 start = time.time()
-                response = client.get("/health/dependencies")
+                response = client.get("/api/v1/health/dependencies")
                 duration = time.time() - start
                 # Sequential would be ~300ms; parallel ~100ms.
                 assert duration < 0.2, f"checks took {duration}s, expected parallel execution"

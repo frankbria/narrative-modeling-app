@@ -14,9 +14,12 @@ from app.models.user_data import UserData  # To access beanie database
 from app.services.s3_service import s3_service
 
 router = APIRouter()
-# Liveness-ONLY router mounted under /api/v1 (#479): the admin health widget
-# reaches the backend through nginx's /api/ proxy, but /health/ready is expensive
-# (#503), so only the cheap liveness is re-exposed there — never readiness.
+# Router mounted under /api/v1 (#479): the admin health widget reaches the backend
+# through nginx's /api/ proxy. It carries the cheap liveness alias and the
+# authenticated upstream diagnostic — but NOT /health/ready, which stays root-only
+# for the LB. Being under /api/v1 also puts the diagnostic under the global
+# RateLimitMiddleware, so an authenticated caller can't loop its outbound calls
+# unthrottled (#503).
 liveness_router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -65,9 +68,11 @@ async def check_s3_access() -> dict[str, Any]:
         }
 
     try:
-        # Test bucket access by checking if our specific bucket exists
+        # Test bucket access by checking if our specific bucket exists. boto3 is
+        # synchronous, so run it off the event loop — a slow/hung head_bucket must
+        # not stall the worker (#503 AC2).
         bucket_name = os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("AWS_BUCKET_NAME", "unknown")
-        s3_service.s3_client.head_bucket(Bucket=bucket_name)
+        await asyncio.to_thread(s3_service.s3_client.head_bucket, Bucket=bucket_name)
         latency_ms = (time.time() - start_time) * 1000
 
         return {
@@ -195,15 +200,18 @@ async def readiness_check():
     )
 
 
-@router.get("/health/dependencies")
+@liveness_router.get("/health/dependencies")
 async def dependencies_check(_user_id: str = Depends(get_current_user_id)):
     """Full upstream diagnostic — MongoDB + S3 + OpenAI (#503 AC3).
 
-    This is the "is every upstream healthy" question that must NOT sit on the
-    anonymous readiness path: it makes outbound calls (OpenAI, S3), so it is
-    **authenticated** to remove the cost-amplification vector. Intended for the
-    admin HealthMonitor (P1.3); #479's admin ``/health/status`` can later wrap
-    this with the admin allowlist. Runs the checks in parallel.
+    Mounted under /api/v1 (via ``liveness_router``): it makes outbound calls
+    (OpenAI, S3), so it must sit off the anonymous readiness path AND under the
+    global rate limiter. It is **authenticated** (any signed-in user) and
+    **throttled** (RateLimitMiddleware covers /api/v1) so no caller can loop its
+    outbound calls unthrottled — the cost-amplification vector #503 closes.
+    Intended for the admin HealthMonitor (P1.3); #479's admin ``/health/status``
+    can later wrap this with the admin allowlist. Checks run in parallel and all
+    I/O is non-blocking (S3's boto3 probe is offloaded via ``asyncio.to_thread``).
     """
     results: list[Any] = await asyncio.gather(
         check_mongodb_connection(),
