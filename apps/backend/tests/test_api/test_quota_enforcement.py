@@ -1379,9 +1379,12 @@ def _fake_upload_ok(monkeypatch) -> None:
         upload_module, "upload_file_to_s3",
         lambda *a, **k: (True, "s3://b/datasets/test_user_123/d.csv"),
     )
-    # The AI-summary background task hits OpenAI; keep this off the network.
+    # The AI-summary background task hits OpenAI; keep this off the network. upload.py
+    # imports generate_dataset_summary at MODULE scope, so the BackgroundTasks call
+    # resolves app.api.routes.upload.generate_dataset_summary — patch THAT binding,
+    # not the source module (which the route no longer references) (#492 lesson).
     monkeypatch.setattr(
-        "app.utils.ai_summary.generate_dataset_summary", AsyncMock(return_value=None)
+        upload_module, "generate_dataset_summary", AsyncMock(return_value=None)
     )
 
 
