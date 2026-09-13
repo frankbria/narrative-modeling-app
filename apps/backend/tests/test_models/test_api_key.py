@@ -1,12 +1,15 @@
 """
 Tests for API Key model
 """
-from datetime import datetime, timedelta
-from unittest.mock import Mock
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from pymongo import IndexModel
 
 from app.models.api_key import APIKey
+
+# APIKey construction requires Beanie models registered (mongomock, no DB IO).
+pytestmark = pytest.mark.usefixtures("beanie_models_initialized")
 
 
 class TestAPIKeyIndexes:
@@ -71,92 +74,44 @@ class TestAPIKeyModel:
         assert len(api_key_data["model_ids"]) == 2
         assert api_key_data["rate_limit"] == 1000
     
+    def _key(self, **overrides) -> APIKey:
+        """A real APIKey instance (no DB needed) for exercising its real methods."""
+        data = dict(key_id="key_123", key_hash="hash123", name="Test Key", user_id="u1")
+        data.update(overrides)
+        return APIKey(**data)
+
     def test_is_valid_active_key(self):
-        """Test validation for active key"""
-        # Create a mock API key
-        api_key = Mock(spec=APIKey)
-        api_key.is_active = True
-        api_key.expires_at = None
-        
-        # Test the is_valid logic
-        def mock_is_valid(self):
-            if not self.is_active:
-                return False
-            if self.expires_at and datetime.utcnow() > self.expires_at:
-                return False
-            return True
-        
-        assert mock_is_valid(api_key) is True
-    
+        """The REAL is_valid() — active, no expiry → valid (#492)."""
+        assert self._key(is_active=True, expires_at=None).is_valid() is True
+
     def test_is_valid_inactive_key(self):
-        """Test validation for inactive key"""
-        api_key = Mock(spec=APIKey)
-        api_key.is_active = False
-        
-        def mock_is_valid(self):
-            if not self.is_active:
-                return False
-            return True
-        
-        assert mock_is_valid(api_key) is False
-    
+        assert self._key(is_active=False).is_valid() is False
+
     def test_is_valid_expired_key(self):
-        """Test validation for expired key"""
-        api_key = Mock(spec=APIKey)
-        api_key.is_active = True
-        api_key.expires_at = datetime.utcnow() - timedelta(days=1)
-        
-        def mock_is_valid(self):
-            if not self.is_active:
-                return False
-            if self.expires_at and datetime.utcnow() > self.expires_at:
-                return False
-            return True
-        
-        assert mock_is_valid(api_key) is False
-    
+        expired = datetime.now(UTC) - timedelta(days=1)
+        assert self._key(is_active=True, expires_at=expired).is_valid() is False
+
     def test_is_valid_not_expired_key(self):
-        """Test validation for non-expired key"""
-        api_key = Mock(spec=APIKey)
-        api_key.is_active = True
-        api_key.expires_at = datetime.utcnow() + timedelta(days=30)
-        
-        def mock_is_valid(self):
-            if not self.is_active:
-                return False
-            if self.expires_at and datetime.utcnow() > self.expires_at:
-                return False
-            return True
-        
-        assert mock_is_valid(api_key) is True
-    
+        future = datetime.now(UTC) + timedelta(days=30)
+        assert self._key(is_active=True, expires_at=future).is_valid() is True
+
+    def test_is_valid_naive_expiry_treated_as_utc(self):
+        """is_valid normalizes a naive expires_at to UTC (#492 exercises that path)."""
+        naive_future = datetime.utcnow() + timedelta(days=1)  # noqa: DTZ003 - deliberately naive
+        assert self._key(is_active=True, expires_at=naive_future).is_valid() is True
+
     def test_has_model_access_empty_list(self):
-        """Test model access with empty model_ids (access to all)"""
-        api_key = Mock(spec=APIKey)
-        api_key.model_ids = []
-        
-        def mock_has_model_access(self, model_id):
-            if not self.model_ids:
-                return True
-            return model_id in self.model_ids
-        
-        assert mock_has_model_access(api_key, "model_123") is True
-        assert mock_has_model_access(api_key, "model_456") is True
-    
+        """The REAL has_model_access() — empty model_ids grants all (#492)."""
+        key = self._key(model_ids=[])
+        assert key.has_model_access("model_123") is True
+        assert key.has_model_access("model_456") is True
+
     def test_has_model_access_specific_models(self):
-        """Test model access with specific model_ids"""
-        api_key = Mock(spec=APIKey)
-        api_key.model_ids = ["model_123", "model_456"]
-        
-        def mock_has_model_access(self, model_id):
-            if not self.model_ids:
-                return True
-            return model_id in self.model_ids
-        
-        assert mock_has_model_access(api_key, "model_123") is True
-        assert mock_has_model_access(api_key, "model_456") is True
-        assert mock_has_model_access(api_key, "model_789") is False
-    
+        key = self._key(model_ids=["model_123", "model_456"])
+        assert key.has_model_access("model_123") is True
+        assert key.has_model_access("model_456") is True
+        assert key.has_model_access("model_789") is False
+
     def test_default_values(self):
         """Test default values are set correctly"""
         # Test the default values defined in the model
