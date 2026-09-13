@@ -119,6 +119,10 @@ class BatchJob(Document):
     created_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    # Liveness signal for the stale-job reaper (#484): set at creation, bumped on
+    # every progress write. A batch has no wall-clock bound (unlike training), so
+    # this is the only way to tell a live long job from one whose worker died.
+    last_heartbeat: datetime = Field(default_factory=utcnow)
 
     # Results
     results: dict[str, Any] = Field(default_factory=dict)
@@ -184,6 +188,7 @@ class BatchJob(Document):
         """Mark job as started"""
         self.status = JobStatus.RUNNING
         self.started_at = utcnow()
+        self.last_heartbeat = self.started_at
 
     def mark_completed(self, results: dict[str, Any] | None = None) -> None:
         """Mark job as completed"""
@@ -215,3 +220,4 @@ class BatchJob(Document):
             self.progress.error_count = error_count
         if current_chunk is not None:
             self.progress.current_chunk = current_chunk
+        self.last_heartbeat = utcnow()

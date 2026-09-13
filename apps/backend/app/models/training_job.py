@@ -90,6 +90,11 @@ class TrainingJob(Document):
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
+    # Liveness signal for the stale-job reaper (#484): set at creation and bumped
+    # on every progress write, so an in-flight job whose worker died stops
+    # advancing it. A PENDING job that never started keeps its creation time here,
+    # so an orphaned queue entry is reaped once it ages past the timeout too.
+    last_heartbeat: datetime = Field(default_factory=utcnow)
     completed_at: datetime | None = None
 
     class Settings:
@@ -111,6 +116,7 @@ class TrainingJob(Document):
         self.status = JobStatus.RUNNING
         self.started_at = utcnow()
         self.updated_at = self.started_at
+        self.last_heartbeat = self.started_at
         self.progress.total_algorithms = total_algorithms
         self.progress.completed_algorithms = 0
 
@@ -132,6 +138,7 @@ class TrainingJob(Document):
         if current_algorithm is not None:
             self.progress.current_algorithm = current_algorithm
         self.updated_at = utcnow()
+        self.last_heartbeat = self.updated_at
 
     def mark_completed(
         self,
