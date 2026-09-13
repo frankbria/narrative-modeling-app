@@ -24,6 +24,8 @@ import pandas as pd
 from beanie import PydanticObjectId
 from pymongo import ReturnDocument
 
+from app.billing import metering
+from app.billing.metering import period_key_for
 from app.billing.plans import _env_positive_int
 from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
 from app.models.ml_model import MLModel
@@ -32,6 +34,7 @@ from app.services.interpretability_service import InterpretabilityService
 from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
+from app.utils.datetime import as_utc
 from app.utils.heartbeat import heartbeat_pump
 
 logger = logging.getLogger(__name__)
@@ -441,6 +444,7 @@ class BatchPredictionService:
             chunk_num = 0
             csv_header: list[str] | None = None
             json_first = True
+            cancelled = False
             try:
                 with os.fdopen(out_fd, "w", encoding="utf-8", newline="") as out:
                     if output_format == "json":
@@ -450,6 +454,12 @@ class BatchPredictionService:
                         job.input_path, config.chunk_size
                     ):
                         chunk_num += 1
+
+                        # AC1 (#485): honour a cancellation requested mid-run,
+                        # checked between chunks. Stop before doing more paid work.
+                        if await self._cancellation_requested(job.job_id):
+                            cancelled = True
+                            break
 
                         try:
                             chunk_predictions = await self._predict_chunk(
@@ -484,36 +494,102 @@ class BatchPredictionService:
                         for prediction in chunk_predictions:
                             summary_acc.add(prediction)
 
-                        # Update cumulative progress after each chunk
+                        # Update cumulative progress after each chunk via a
+                        # PARTIAL, status-guarded update (#485): a full save() here
+                        # writes the in-memory RUNNING status and would clobber a
+                        # concurrent CANCELLED — the lost write this issue is about.
                         job.update_progress(
                             processed_records=summary_acc.total,
                             success_count=summary_acc.success,
                             error_count=summary_acc.error_count,
                             current_chunk=chunk_num,
                         )
-                        await job.save()
+                        await self._persist_progress(job)
 
-                    if output_format == "json":
+                    if not cancelled and output_format == "json":
                         out.write("]")
 
-                # Stream the finished results file to S3 (bounded memory).
-                output_path = await self._upload_results_file(out_path, job, config)
-                job.output_path = output_path
+                if cancelled:
+                    # AC4: discard the partial output entirely (the temp file is
+                    # unlinked below; it is never uploaded, so no partial run is
+                    # ever presented as complete). AC3: refund the unprocessed
+                    # remainder of the reservation.
+                    await self._refund_remainder(job, summary_acc.total)
+                else:
+                    # Stream the finished results file to S3 (bounded memory).
+                    output_path = await self._upload_results_file(out_path, job, config)
+                    job.output_path = output_path
 
-                # Mark job as completed with summary statistics
-                summary = summary_acc.result()
-                summary["output_path"] = output_path
-                job.mark_completed(summary)
+                    # Mark job as completed with summary statistics
+                    summary = summary_acc.result()
+                    summary["output_path"] = output_path
+                    job.mark_completed(summary)
+                    await self._finalize_if_running(job)
             finally:
                 _safe_unlink(out_path)
 
         except Exception as e:
             job.mark_failed(str(e))
+            # AC2: only write FAILED if the job is still RUNNING — never over a
+            # CANCELLED a concurrent cancel set.
+            await self._finalize_if_running(job)
 
         finally:
-            await job.save()
             # Best-effort async-completion webhook (issue #86). Never blocks/raises.
             await self._fire_webhook(job)
+
+    async def _cancellation_requested(self, job_id: str) -> bool:
+        """True if the job has been CANCELLED since it started (re-read from
+        Mongo, since cancel_job writes the document directly, #485)."""
+        doc = await BatchJob.get_motor_collection().find_one(
+            {"job_id": job_id}, {"status": 1}
+        )
+        return doc is not None and doc.get("status") == JobStatus.CANCELLED.value
+
+    async def _persist_progress(self, job: BatchJob) -> None:
+        """Persist progress + heartbeat WITHOUT touching status (#485), guarded on
+        the job still being RUNNING — so a concurrent CANCELLED is never clobbered
+        (the full save() this replaces was the lost write)."""
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
+            {
+                "$set": {
+                    "progress": job.progress.model_dump(),
+                    "last_heartbeat": datetime.now(UTC),
+                }
+            },
+        )
+
+    async def _finalize_if_running(self, job: BatchJob) -> None:
+        """Write the terminal state ONLY if the job is still RUNNING (#485 AC2):
+        a cancel that already set CANCELLED wins. Atomic + conditional; explicit
+        BSON-safe fields (a raw motor $set can't encode the enum objects a whole
+        model_dump would produce)."""
+        set_fields: dict[str, Any] = {
+            "status": job.status.value,
+            "completed_at": job.completed_at,
+            "results": job.results,
+            "error_message": job.error_message,
+            "retry_count": job.retry_count,
+        }
+        if job.output_path is not None:
+            set_fields["output_path"] = job.output_path
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
+            {"$set": set_fields},
+        )
+
+    async def _refund_remainder(self, job: BatchJob, processed: int) -> None:
+        """Refund the predictions reserved for records a cancelled run never
+        processed (#485 AC3), against the period the reservation was taken from."""
+        remainder = max(0, job.progress.total_records - processed)
+        if remainder > 0:
+            await metering.refund(
+                job.user_id,
+                "predictions",
+                remainder,
+                period_key_for(as_utc(job.created_at)),
+            )
 
     @staticmethod
     async def _is_safe_webhook_url(url: str) -> bool:
@@ -1074,24 +1150,24 @@ class BatchPredictionService:
         return await BatchJob.find(query).sort("-created_at").limit(limit).to_list()
 
     async def cancel_job(self, job_id: str, user_id: str) -> bool:
-        """Cancel a pending or running job"""
+        """Cancel a pending or running job (#485).
 
-        job = await BatchJob.find_one(
+        Atomic conditional transition: only an in-flight job flips to CANCELLED,
+        and it is done with a targeted ``$set`` (not a full save) so it neither
+        clobbers the running task's progress nor races its terminal write — the
+        task's progress and finalize writes are themselves guarded on status still
+        being RUNNING, so once this lands, they become no-ops and the running task
+        stops honouring the cancel at its next between-chunks check.
+        """
+        result = await BatchJob.get_motor_collection().find_one_and_update(
             {
                 "job_id": job_id,
                 "user_id": user_id,
-                "status": {"$in": [JobStatus.PENDING, JobStatus.RUNNING]},
-            }
+                "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},
+            },
+            {"$set": {"status": JobStatus.CANCELLED.value, "completed_at": datetime.now(UTC)}},
         )
-
-        if not job:
-            return False
-
-        job.status = JobStatus.CANCELLED
-        job.completed_at = datetime.now(UTC)
-        await job.save()
-
-        return True
+        return result is not None
 
     async def retry_job(self, job_id: str, user_id: str) -> bool:
         """Claim a failed job for a retry and restart it. False if it cannot be.
