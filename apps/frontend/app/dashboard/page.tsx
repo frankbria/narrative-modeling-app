@@ -404,6 +404,12 @@ export default function DashboardPage() {
                         e.stopPropagation();
                         setDatasetToErase(dataset);
                       }}
+                      onKeyDown={(e) => {
+                        // Don't let Enter/Space bubble to the row's onKeyDown,
+                        // which navigates to /explore/{id}. The button's own
+                        // native activation still fires its onClick.
+                        e.stopPropagation();
+                      }}
                     >
                       <Trash2 size={16} />
                     </button>

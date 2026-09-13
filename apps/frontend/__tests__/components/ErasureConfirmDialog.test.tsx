@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ErasureConfirmDialog } from '@/components/settings/ErasureConfirmDialog';
 import type { EraseResponse } from '@/lib/types/erasure';
@@ -73,6 +74,33 @@ describe('ErasureConfirmDialog (#482)', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/incomplete/i));
     expect(screen.queryByText(/Removed 3 records/i)).not.toBeInTheDocument();
     expect(onErased).not.toHaveBeenCalled();
+  });
+
+  it('re-arms from scratch after Cancel — typed state is reset (AC3, codex)', () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>reopen</button>
+          <ErasureConfirmDialog
+            open={open}
+            onOpenChange={setOpen}
+            title="t"
+            body={<span>b</span>}
+            confirmWord="DELETE"
+            onConfirm={jest.fn()}
+          />
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText(/type/i), { target: { value: 'DELETE' } });
+    expect(screen.getByTestId('confirm-erasure')).toBeEnabled();
+
+    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getByText('reopen'));
+    // The destructive button must be disabled again — the prior "DELETE" is gone.
+    expect(screen.getByTestId('confirm-erasure')).toBeDisabled();
   });
 
   it('shows an error when the request throws', async () => {

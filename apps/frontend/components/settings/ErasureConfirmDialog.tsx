@@ -59,6 +59,15 @@ export function ErasureConfirmDialog({
     setResult(null);
   }
 
+  // Closing always clears the armed state, so a re-open re-arms from scratch —
+  // the parent may keep this dialog mounted (the settings page does), so Cancel
+  // must reset here and not rely on an unmount that only a successful erase +
+  // navigation triggers.
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
   async function handleConfirm() {
     setBusy(true);
     setError(null);
@@ -86,13 +95,7 @@ export function ErasureConfirmDialog({
   const cleanlyDone = result !== null && !hasResiduals(result);
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -138,10 +141,10 @@ export function ErasureConfirmDialog({
 
         <DialogFooter>
           {cleanlyDone ? (
-            <Button onClick={() => onOpenChange(false)}>Close</Button>
+            <Button onClick={() => handleOpenChange(false)}>Close</Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
                 Cancel
               </Button>
               <Button
