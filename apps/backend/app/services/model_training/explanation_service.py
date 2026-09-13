@@ -2,11 +2,14 @@
 AI-powered explanation service for model training decisions
 """
 
+import asyncio
 import logging
 import os
 from typing import Any
 
 from openai import OpenAI
+
+from app.utils.openai_client import build_openai_client
 
 from .algorithm_selector import AlgorithmRecommendation, DataProfile
 from .problem_detector import ProblemType
@@ -24,7 +27,7 @@ def initialize_openai_client():
     if not api_key:
         logger.warning("OPENAI_API_KEY not set - explanations will use fallback text")
         return
-    client = OpenAI(api_key=api_key)
+    client = build_openai_client(api_key)
     logger.info("OpenAI client initialized for explanations")
 
 
@@ -67,7 +70,7 @@ class ExplanationService:
             )
 
             # Call OpenAI
-            response = self._call_openai(prompt)
+            response = await asyncio.to_thread(self._call_openai, prompt)
             return response
 
         except Exception as e:
@@ -101,7 +104,7 @@ class ExplanationService:
             )
 
             # Call OpenAI
-            response = self._call_openai(prompt)
+            response = await asyncio.to_thread(self._call_openai, prompt)
             return response
 
         except Exception as e:
@@ -131,7 +134,7 @@ class ExplanationService:
             prompt = self._build_tradeoff_prompt(model_a, model_b)
 
             # Call OpenAI
-            response = self._call_openai(prompt)
+            response = await asyncio.to_thread(self._call_openai, prompt)
             return response
 
         except Exception as e:

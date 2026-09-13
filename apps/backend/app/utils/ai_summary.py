@@ -1,12 +1,14 @@
+import asyncio
 import json
 import logging
 import os
 from typing import Any
 
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.openai_client import build_openai_client
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -21,7 +23,7 @@ def initialize_openai_client():
     if not api_key:
         logging.error("OPENAI_API_KEY not set in environment variables")
         return
-    client = OpenAI(api_key=api_key)
+    client = build_openai_client(api_key)
     logging.info("OpenAI client initialized successfully")
 
 
@@ -166,8 +168,11 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         4. Providing recommendations for further analysis
         """
 
-        # Call the OpenAI API
-        response = client.chat.completions.create(
+        # Call the OpenAI API off the event loop: the client is synchronous and
+        # this runs in an async BackgroundTask after every upload, so calling it
+        # inline would block the worker for the whole round-trip (#501).
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},

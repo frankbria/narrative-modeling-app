@@ -5,6 +5,7 @@ Combines rule-based heuristics with GPT-4 intelligence to generate
 comprehensive feature suggestions for machine learning tasks.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -12,7 +13,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -37,6 +38,7 @@ from app.services.domain_detector import Domain, domain_detector
 from app.services.model_training.problem_detector import ProblemDetector, ProblemType
 from app.services.redis_cache import cache_service
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.openai_client import build_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ def get_openai_client() -> OpenAI | None:
     if _openai_client is None:
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            _openai_client = OpenAI(api_key=api_key)
+            _openai_client = build_openai_client(api_key)
     return _openai_client
 
 
@@ -861,7 +863,10 @@ Target column: {analysis.target_column or 'not specified'}
 Domain: {analysis.domain.value}"""
 
         try:
-            response = client.chat.completions.create(
+            # Off the event loop: the OpenAI client is synchronous and this is an
+            # async method, so an inline call would block the worker (#501).
+            response = await asyncio.to_thread(
+                cast(Any, client).chat.completions.create,
                 model=FEATURE_SUGGESTION_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},

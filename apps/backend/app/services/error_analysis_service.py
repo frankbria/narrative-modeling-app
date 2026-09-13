@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 import numpy as np
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 
 from app.schemas.error_analysis import (
     ConfusionPair,
@@ -35,6 +35,7 @@ from app.schemas.error_analysis import (
     ErrorSegment,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.openai_client import build_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ class ErrorAnalysisService:
         if not api_key:
             self.client = None
         else:
-            self.client = OpenAI(api_key=api_key)
+            self.client = build_openai_client(api_key)
         self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
 
     # ------------------------------------------------------------------ #

@@ -20,6 +20,7 @@ from app.models.data_issue import (
     SuggestedFix,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.openai_client import build_async_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class AIIssueAnalyzer:
         if not api_key:
             logger.warning("OPENAI_API_KEY not set, AI analysis will be disabled")
             return None
-        return AsyncOpenAI(api_key=api_key)
+        return build_async_openai_client(api_key)
 
     async def analyze_data_patterns(
         self,
