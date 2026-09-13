@@ -1347,3 +1347,127 @@ class TestAiQuota:
             )
         assert response.status_code == 200, response.text
         assert await metering.usage_for(TEST_USER, "ai_calls") == charged
+
+
+# --- The charge itself: it lands, on the right tenant, by the right amount, once ---
+# The rest of this file proves denial + refund. A regression that simply stopped
+# counting successful requests would pass all of that; these close that gap (#504).
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from sklearn.ensemble import RandomForestClassifier  # noqa: E402
+
+from app.models.ml_model import MLModel  # noqa: E402
+from app.models.user_data import SchemaField, UserData  # noqa: E402
+
+OTHER_USER = "other_tenant_999"  # never what async_authorized_client authenticates as
+_CSV = {"file": ("d.csv", b"a,b\n1,2\n3,4\n", "text/csv")}
+
+
+def _aws_env(monkeypatch) -> None:
+    # The plain /upload/ route skips the S3 write entirely when no AWS env is set
+    # (the CI branch), so set it and patch the write to succeed.
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
+        monkeypatch.setenv(var, "present-for-this-test")
+
+
+def _fake_upload_ok(monkeypatch) -> None:
+    import app.api.routes.upload as upload_module
+
+    _aws_env(monkeypatch)
+    monkeypatch.setattr(
+        upload_module, "upload_file_to_s3",
+        lambda *a, **k: (True, "s3://b/datasets/test_user_123/d.csv"),
+    )
+    # The AI-summary background task hits OpenAI; keep this off the network.
+    monkeypatch.setattr(
+        "app.utils.ai_summary.generate_dataset_summary", AsyncMock(return_value=None)
+    )
+
+
+def _ml_model(feature_names, model_id="charge_model", user_id=TEST_USER) -> MLModel:
+    return MLModel(
+        user_id=user_id, dataset_id="d1", model_id=model_id, name="M",
+        problem_type="binary_classification", algorithm="RF", target_column="y",
+        feature_names=feature_names, cv_score=0.9, test_score=0.9, training_time=1.0,
+        model_size=1, n_samples_train=10, n_features=len(feature_names),
+        model_path="s3://b/models/x.pkl", is_active=True,
+    )
+
+
+def _dataset(user_id=TEST_USER) -> UserData:
+    return UserData(
+        user_id=user_id, filename="d.csv", original_filename="d.csv",
+        s3_url="s3://b/datasets/x.csv", num_rows=2, num_columns=1,
+        data_schema=[SchemaField(
+            field_name="y", field_type="numeric", inferred_dtype="int64",
+            unique_values=2, missing_values=0, example_values=[0, 1],
+            is_constant=False, is_high_cardinality=False,
+        )],
+    )
+
+
+class TestSuccessfulChargesPersist:
+    async def test_a_successful_upload_charges_exactly_one(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """AC1/AC4: a successful upload increments uploads by exactly one — not zero
+        (counting stopped) and not two (the route also calling record())."""
+        _fake_upload_ok(monkeypatch)
+        resp = await async_authorized_client.post("/api/v1/upload/", files=_CSV)
+        assert resp.status_code == 200, resp.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1
+
+    async def test_the_charge_lands_on_the_authenticated_tenant(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """AC2: the request is made as A; B's usage must be untouched."""
+        _fake_upload_ok(monkeypatch)
+        await _fill(OTHER_USER, "uploads", 3)  # B already has some usage
+        resp = await async_authorized_client.post("/api/v1/upload/", files=_CSV)
+        assert resp.status_code == 200, resp.text
+        assert await metering.usage_for(TEST_USER, "uploads") == 1  # A charged
+        assert await metering.usage_for(OTHER_USER, "uploads") == 3  # B unchanged
+
+    async def test_a_successful_prediction_charges_per_record(
+        self, async_authorized_client, setup_database
+    ):
+        """AC1/AC3/AC4: three records charge exactly three predictions — not one
+        (per request) and not six (double count), and the charge PERSISTS (2xx, no
+        refund), which the denial-boundary tests can't show."""
+        features = ["f1", "f2", "f3"]
+        await _ml_model(features).insert()
+        rng = np.random.default_rng(0)
+        X = pd.DataFrame(rng.random((30, 3)), columns=features)
+        clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(
+            X, (X["f1"] > 0.5).astype(int)
+        )
+        records = [{"f1": 0.1 * i, "f2": 0.2, "f3": 0.3} for i in range(3)]
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock, return_value=(clf, None),
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/ml/charge_model/predict", json={"data": records}
+            )
+        assert resp.status_code == 200, resp.text
+        assert await metering.usage_for(TEST_USER, "predictions") == 3
+
+    async def test_a_successful_training_run_charges_one(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """AC1/AC2/AC4: a successful train reserves exactly one training_run for the
+        caller, and nothing for another tenant."""
+        import app.api.routes.model_training as mt
+
+        ds = await _dataset().insert()
+        # The real training background task loads data from S3 and is not what's
+        # under test here; stub it so the route returns 2xx and the charge persists.
+        monkeypatch.setattr(mt, "train_model_task", AsyncMock(return_value=None))
+        resp = await async_authorized_client.post(
+            "/api/v1/ml/train",
+            json={"dataset_id": str(ds.id), "target_column": "y"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert await metering.usage_for(TEST_USER, "training_runs") == 1
+        assert await metering.usage_for(OTHER_USER, "training_runs") == 0
