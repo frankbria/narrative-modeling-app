@@ -3,9 +3,12 @@ Tests for Secure Upload API endpoints
 """
 
 import io
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
+from app.models.user_data import UserData
 
 
 class TestCleanupEndpointAuth:
@@ -42,94 +45,104 @@ class TestCleanupEndpointAuth:
 
 
 class TestSecureUploadAPI:
-    """Test cases for secure upload endpoints
+    """Exercises the REAL /upload/secure path — real ``UserData`` insert, real PII
+    detection, real schema inference — faking ONLY the external S3 boundary and the
+    background AI-summary task, with ``autospec=True`` so a wrong call signature is
+    caught (#492). The previous version ran against a patched-out ``UserData`` model
+    (``mock_user_data``), so it asserted 200 over code that never touched the
+    database and could not have caught a validation/persistence failure.
 
-    `setup_database` is required, not incidental: the upload route is quota-metered
-    (#368) and the dependency reads the caller's subscription, so class-level Beanie
-    field access (`Subscription.user_id`) raises AttributeError without an
-    initialised Beanie. `mock_async_client` does not initialise one.
+    ``setup_database`` gives a real (test) Mongo: the route is quota-metered (#368)
+    and writes a document, both of which need a live database.
     """
-    
-    async def test_secure_upload_no_pii(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """Test secure upload with clean data"""
-        # Create test CSV data without PII
-        csv_data = "product_id,price,category\n1001,19.99,electronics\n1002,29.99,books"
-        csv_file = io.BytesIO(csv_data.encode('utf-8'))
-        
-        files = {"file": ("test.csv", csv_file, "text/csv")}
-        
-        response = await mock_async_client.post(
-            "/api/v1/upload/secure",
-            files=files
+
+    def _s3_ok(self):
+        return patch(
+            "app.api.routes.secure_upload.upload_file_to_s3",
+            autospec=True,
+            return_value=(True, "s3://test-bucket/datasets/test_user_123/f.csv"),
         )
-        
-        assert response.status_code == 200
+
+    def _summary_stub(self):
+        # The AI summary is a background task hitting OpenAI (tested in
+        # test_ai_summary_safe.py). Fake it here, autospec so a signature change
+        # is caught, to keep this route test off the network.
+        return patch(
+            "app.api.routes.secure_upload.generate_ai_summary_safe", autospec=True
+        )
+
+    async def test_secure_upload_no_pii(self, setup_database, async_authorized_client):
+        """Clean data → 200, and a REAL UserData document is persisted."""
+        csv_data = "product_id,price,category\n1001,19.99,electronics\n1002,29.99,books"
+        files = {"file": ("clean.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        with self._s3_ok(), self._summary_stub():
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+        assert response.status_code == 200, response.text
         data = response.json()
         assert data["status"] == "success"
         assert data["pii_report"]["has_pii"] is False
         assert "file_id" in data
-    
-    async def test_secure_upload_with_pii(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """A PII-named column that really holds PII values is high risk and needs
-        the caller's confirmation (#608). Before #608 the column *name* short-
-        circuited the value check and this exact file sailed through as medium."""
-        csv_data = "name,email,phone\nJohn Doe,john@example.com,555-1234"
-        csv_file = io.BytesIO(csv_data.encode('utf-8'))
-        files = {"file": ("test_pii.csv", csv_file, "text/csv")}
-        response = await mock_async_client.post(
-            "/api/v1/upload/secure",
-            files=files
+        doc = await UserData.find_one(
+            UserData.user_id == "test_user_123", UserData.filename == "clean.csv"
         )
-        assert response.status_code == 200
+        assert doc is not None
+        assert doc.num_rows == 2 and doc.num_columns == 3
+        assert doc.contains_pii is False
+
+    async def test_secure_upload_with_pii(self, setup_database, async_authorized_client):
+        """A PII-named column holding real PII values is high risk → the caller must
+        confirm; nothing is stored yet (#608). Exercises the real PIIDetector."""
+        csv_data = "name,email,phone\nJohn Doe,john@example.com,555-1234"
+        files = {"file": ("pii.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        with self._s3_ok(), self._summary_stub():
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+        assert response.status_code == 200, response.text
         data = response.json()
         assert data["status"] == "pii_detected"
         assert data["requires_confirmation"] is True
-        assert data["pii_report"]["has_pii"] is True
         assert data["pii_report"]["risk_level"] == "high"
+        # High-risk PII is gated: no document was created.
+        assert await UserData.find_one(UserData.filename == "pii.csv") is None
 
-    async def test_secure_upload_with_pii_named_columns_but_plain_values(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """A label alone is a hint, not proof: medium risk, stored without the gate."""
+    async def test_secure_upload_with_pii_named_columns_but_plain_values(
+        self, setup_database, async_authorized_client
+    ):
+        """A label alone is a hint, not proof: medium risk → stored without the gate,
+        and a real document is written (#608/#492)."""
         csv_data = "name,email,phone\nJohn Doe,not provided,unknown"
-        csv_file = io.BytesIO(csv_data.encode('utf-8'))
-        files = {"file": ("test_pii_names.csv", csv_file, "text/csv")}
-        response = await mock_async_client.post(
-            "/api/v1/upload/secure",
-            files=files
-        )
-        assert response.status_code == 200
+        files = {"file": ("names.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        with self._s3_ok(), self._summary_stub():
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+        assert response.status_code == 200, response.text
         data = response.json()
         assert data["status"] == "success"
         assert data["pii_report"]["has_pii"] is True
         assert data["pii_report"]["risk_level"] == "medium"
-        assert "file_id" in data
-
-    async def test_secure_upload_invalid_file(self, setup_database, mock_async_client: AsyncClient, mock_s3_upload, mock_user_data, mock_schema_inference, mock_ai_summary):
-        """Test secure upload with invalid file format"""
-        # Create non-CSV data
-        text_data = "This is not a CSV file"
-        text_file = io.BytesIO(text_data.encode('utf-8'))
-        
-        files = {"file": ("test.txt", text_file, "text/plain")}
-        
-        response = await mock_async_client.post(
-            "/api/v1/upload/secure",
-            files=files
+        doc = await UserData.find_one(
+            UserData.user_id == "test_user_123", UserData.filename == "names.csv"
         )
-        
-        assert response.status_code == 400
-        data = response.json()
-        assert "detail" in data or "error" in data
-    
-    # The chunked-upload route tests moved to tests/test_api/test_chunked_upload_flow.py
-    # (issues #454/#462/#463/#464). They ran against `mock_upload_handler` and
-    # `mock_user_data`, which patch out the handler and the UserData model — so
-    # test_chunked_upload_complete asserted 200 against a route that could not
-    # succeed against a real database, and test_chunked_upload_init posted its
-    # payload as query params, which is not what the browser client sends.
+        assert doc is not None and doc.contains_pii is True
 
-    # Removed test_upload_metrics_tracking (issue #273): it exercised the deleted
-    # in-memory ApplicationMonitor JSON-metrics tracking. Metrics are now Prometheus
-    # at GET /metrics (covered by tests/test_middleware/test_metrics.py).
+    async def test_secure_upload_invalid_file(self, setup_database, async_authorized_client):
+        """A non-CSV/Excel file is a 400 before any S3 or DB work."""
+        files = {"file": ("bad.txt", io.BytesIO(b"not a csv"), "text/plain")}
+        with self._s3_ok(), self._summary_stub():
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+        assert response.status_code == 400
+        assert "detail" in response.json()
+
+    # The chunked-upload route tests live in tests/test_api/test_chunked_upload_flow.py
+    # (issues #454/#462/#463/#464) and run against a real handler + database.
+    # Removed test_upload_metrics_tracking (issue #273): metrics are Prometheus at
+    # GET /metrics (tests/test_middleware/test_metrics.py).
 
 
 class TestChunkedCompletionSizeCap:
