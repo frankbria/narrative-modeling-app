@@ -6,11 +6,10 @@ import { test, expect } from '../fixtures';
  *
  * This seeds a uniquely-named dataset, then erases it from the dashboard end to
  * end — the real UI -> erasureApi -> POST /datasets/{id}/erase -> manifest path.
- * It targets the test's OWN dataset (unique filename), not the account: under
- * SKIP_AUTH the e2e backend collapses every identity to one user, so a full
- * account erase would wipe the shared fixture every other spec depends on. The
- * account-level flow shares the same ErasureConfirmDialog + erasureApi, covered
- * by the jest suite.
+ * It targets the test's OWN dataset (unique filename), not the account: the whole
+ * e2e suite shares one authenticated test user, so a full account erase would
+ * wipe the shared fixture every other spec depends on. The account-level flow
+ * shares the same ErasureConfirmDialog + erasureApi, covered by the jest suite.
  *
  * Seeding goes through POST /datasets/upload (which creates a DatasetMetadata,
  * the id-space the dashboard lists) rather than the /upload page, which posts to
@@ -23,9 +22,16 @@ test.describe('right-to-erasure UI (#482)', () => {
   test('erases a dataset end to end from the dashboard @smoke', async ({ authenticatedPage: page }) => {
     const filename = `erase-e2e-${Date.now()}.csv`;
 
-    // Seed a DatasetMetadata-backed dataset (SKIP_AUTH maps the request to the
-    // shared e2e user, so no token is needed).
+    // The backend verifies the minted API JWT, so seed with the logged-in
+    // session's token (session.apiToken, the only credential that may reach the
+    // backend — #527). Read it from the same-origin NextAuth session endpoint.
+    const session = await page.request.get('/api/auth/session').then((r) => r.json());
+    const token = session?.apiToken as string | undefined;
+    expect(token, 'authenticated session must carry an apiToken').toBeTruthy();
+
+    // Seed a DatasetMetadata-backed dataset (the id-space the dashboard lists).
     const seeded = await page.request.post(`${API_BASE}/datasets/upload`, {
+      headers: { Authorization: `Bearer ${token}` },
       multipart: {
         file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') },
       },
