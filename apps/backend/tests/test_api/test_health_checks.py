@@ -33,6 +33,11 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         assert response.json()["status"] == "alive"
 
+    def test_versioned_alias_does_not_expose_readiness(self):
+        """Only liveness is versioned (#479); /health/ready stays root-only because
+        it does per-request outbound work (#503) that a poller must not amplify."""
+        assert client.get("/api/v1/health/ready").status_code == 404
+
 
 class TestMetricsUnshadowed:
     """Regression guard (issue #273): /metrics must serve Prometheus text, not the
