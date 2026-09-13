@@ -24,8 +24,8 @@ describe('HealthMonitor (#479)', () => {
     });
     render(<HealthMonitor backendUrl={API} refreshInterval={999999} />);
     await waitFor(() => expect(screen.getByTestId('health-icon-alive')).toBeInTheDocument());
-    // Root /health, never /api/v1/health/status or /health/metrics.
-    expect(seen).toEqual(['http://localhost:8000/health']);
+    // The versioned /api/v1/health (nginx-proxied), never /health/status or /health/metrics.
+    expect(seen).toEqual(['http://localhost:8000/api/v1/health']);
     expect(screen.getByTestId('health-status-text')).toHaveTextContent('Backend reachable');
     expect(screen.getByText('Version: 9.9.9')).toBeInTheDocument();
   });

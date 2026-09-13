@@ -200,6 +200,12 @@ register_error_handlers(app)
 # ✅ Include routers
 # Health check routes at root level (no version prefix)
 app.include_router(health.router, tags=["health"])
+# Also under /api/v1 (#479): the health routes live at the server root for the
+# load balancer, but the browser reaches the backend only through nginx's /api/
+# proxy in the deployed setup, so the admin health widget needs a versioned path.
+app.include_router(
+    health.router, prefix=settings.API_V1_STR, tags=["health"]
+)
 
 app.include_router(
     upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]

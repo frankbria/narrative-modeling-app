@@ -13,7 +13,8 @@ import { useAsyncData } from '@/lib/hooks/useAsyncData'
  * exists, so every poll 404'd and the panel read "Unhealthy" forever — an
  * always-red light trains you to ignore the one signal that matters. The real
  * FastAPI table has `/health` (liveness) and `/health/ready` (dependency
- * readiness) mounted at the server ROOT, not under `/api/v1`; there is no
+ * readiness); this app also mounts them under `/api/v1` (#479) so the browser
+ * reaches liveness through the same nginx `/api/` proxy as every other call. No
  * metrics endpoint (real metrics are #488), so the fabricated grid is gone.
  *
  * We poll the cheap liveness probe. `/health/ready` would answer the richer
@@ -38,17 +39,6 @@ interface HealthResult {
   lastUpdate: Date
 }
 
-// The backend health routes live at the origin, not under /api/v1 — take the
-// origin off the configured API URL rather than string-stripping "/api/v1"
-// (CLAUDE.md warns against that strip; new URL(...).origin is exact).
-function healthOrigin(apiUrl: string): string {
-  try {
-    return new URL(apiUrl).origin
-  } catch {
-    return apiUrl
-  }
-}
-
 interface HealthMonitorProps {
   backendUrl?: string
   refreshInterval?: number
@@ -62,7 +52,9 @@ export function HealthMonitor({
     async (): Promise<HealthResult> => {
       // A thrown fetch (network/CORS) becomes useAsyncData's `error` → unreachable.
       // A non-2xx is a *reached* backend answering unwell → reachable:false but no throw.
-      const response = await fetch(`${healthOrigin(backendUrl)}/health`)
+      // NEXT_PUBLIC_API_URL already carries /api/v1, which nginx proxies to the
+      // backend; health is mounted there too (#479), so append only the path.
+      const response = await fetch(`${backendUrl}/health`)
       if (!response.ok) {
         return { reachable: true, liveness: null, lastUpdate: new Date() }
       }
