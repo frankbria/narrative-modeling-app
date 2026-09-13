@@ -704,6 +704,20 @@ async def train_model_task(
                 )
                 await training_job.save()
             async with _sem:
+                # A job cancelled while queued must not consume the slot it just
+                # acquired (#498, codex): the engine's own cancel_check only fires
+                # after preprocessing/tuning setup, so re-check here and skip the
+                # run entirely, handing the slot to the next job. Routes to the
+                # TrainingCancelledError handler below (marks CANCELLED). Guarded
+                # like the entry load — a failed status read must not block a
+                # valid run (and is a no-op when no job could be loaded at all).
+                if training_job is not None:
+                    try:
+                        cancelled_while_queued = await is_cancellation_requested()
+                    except Exception:  # noqa: BLE001
+                        cancelled_while_queued = False
+                    if cancelled_while_queued:
+                        raise TrainingCancelledError("Training cancelled while queued")
                 result = await asyncio.wait_for(
                     engine.run(
                         df,
