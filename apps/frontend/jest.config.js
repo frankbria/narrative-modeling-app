@@ -30,5 +30,23 @@ const customJestConfig = {
   ],
 }
 
-// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
-module.exports = createJestConfig(customJestConfig)
+// next/jest prepends its own `node_modules/(?!.pnpm)(?!(geist|next/...)/)`
+// ignore pattern, and jest skips transforming a file that matches ANY pattern —
+// so a package we add to our own entry above is still ignored by next's. Some
+// deps are ESM-only and MUST be transformed to load under jest, notably
+// @auth/core|jose|@panva/hkdf, needed to exercise the real next-auth `getToken`
+// cookie resolution (#469) instead of mocking it blind. Inject those into
+// next/jest's own negative lookahead after it resolves.
+const ESM_TO_TRANSFORM = 'next-auth|@auth/core|jose|@panva/hkdf'
+module.exports = async () => {
+  const config = await createJestConfig(customJestConfig)()
+  // A file is ignored (not transformed) if it matches ANY pattern, so the ESM
+  // packages must be allowed through EVERY node_modules negative-lookahead, both
+  // next/jest's (anchored on `geist`) and ours (anchored on `react-markdown`).
+  config.transformIgnorePatterns = config.transformIgnorePatterns.map((pattern) =>
+    pattern
+      .replace('(?!(geist|', `(?!(${ESM_TO_TRANSFORM}|geist|`)
+      .replace('(?!(react-markdown|', `(?!(${ESM_TO_TRANSFORM}|react-markdown|`),
+  )
+  return config
+}

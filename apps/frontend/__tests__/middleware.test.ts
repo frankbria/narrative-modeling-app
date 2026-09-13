@@ -19,7 +19,12 @@ function mockRequest(
     url,
     method,
     headers: {
-      get: (h: string) => (h === 'origin' ? origin : null),
+      // A bare session cookie so middleware's presence-guard consults the
+      // (mocked) getToken; whether a valid session exists is decided by the
+      // mock's return value, not by cookie presence. Secure-prefixed cookie
+      // resolution is covered by middlewareSecureCookie.test.ts (#469).
+      get: (h: string) =>
+        h === 'origin' ? origin : h === 'cookie' ? 'authjs.session-token=stub' : null,
     },
   } as unknown as NextRequest
 }
