@@ -38,6 +38,7 @@ from app.schemas.ai_orchestration import (
     WorkflowStageId,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.openai_client import build_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ class AIOrchestrationService:
             )
             self.client: OpenAI | None = None
         else:
-            self.client = OpenAI(api_key=api_key)
+            self.client = build_openai_client(api_key)
         self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
 
     # ------------------------------------------------------------------ profile

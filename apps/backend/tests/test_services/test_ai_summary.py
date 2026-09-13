@@ -221,18 +221,19 @@ def test_initialize_openai_client():
     # Patch the reference imported into the module under test, and restore the
     # module-level `client` global afterwards so other tests are unaffected
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"}), patch(
-        "app.utils.ai_summary.OpenAI"
-    ) as mock_openai, patch("app.utils.ai_summary.client", None):
+        "app.utils.ai_summary.build_openai_client"
+    ) as mock_build, patch("app.utils.ai_summary.client", None):
 
         initialize_openai_client()
-        mock_openai.assert_called_once_with(api_key="test_key")
+        # Constructed through the shared factory so the request timeout is set (#501)
+        mock_build.assert_called_once_with("test_key")
 
 
 def test_initialize_openai_client_no_key():
     """Test OpenAI client initialization without API key."""
     with patch.dict("os.environ", {}, clear=True), patch(
-        "app.utils.ai_summary.OpenAI"
-    ) as mock_openai, patch("app.utils.ai_summary.client", None):
+        "app.utils.ai_summary.build_openai_client"
+    ) as mock_build, patch("app.utils.ai_summary.client", None):
 
         initialize_openai_client()
-        mock_openai.assert_not_called()
+        mock_build.assert_not_called()

@@ -2,13 +2,14 @@
 Enhanced dataset summarization service using AI
 """
 
+import asyncio
 import json
 import logging
 import os
 from datetime import UTC, datetime
 from typing import Any
 
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 from pydantic import BaseModel, Field
 
 from app.models.user_data import AISummary
@@ -17,6 +18,7 @@ from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
 from app.utils.circuit_breaker import with_circuit_breaker
 from app.utils.datetime import utcnow
+from app.utils.openai_client import build_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ class DatasetSummarizationService:
             logger.warning("OPENAI_API_KEY not set - AI summaries will be limited")
             self.client = None
         else:
-            self.client = OpenAI(api_key=api_key)
+            self.client = build_openai_client(api_key)
             
         self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
         logger.info(f"Using OpenAI model: {self.model}")
@@ -214,7 +216,10 @@ class DatasetSummarizationService:
         user_prompt = self._create_user_prompt(context)
         
         try:
-            response = self.client.chat.completions.create(
+            # Off the event loop: the OpenAI client is synchronous and this is an
+            # async method, so an inline call would block the worker (#501).
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
