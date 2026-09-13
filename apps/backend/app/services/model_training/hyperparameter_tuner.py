@@ -43,6 +43,8 @@ from sklearn.model_selection import (
     cross_val_score,
 )
 
+from app.services.training_admission import bounded_n_jobs
+
 logger = logging.getLogger(__name__)
 
 VALID_STRATEGIES = ("grid", "random", "bayesian")
@@ -357,7 +359,7 @@ class HyperparameterTuner:
             param_grid,
             cv=config.cv_folds,
             scoring=scoring,
-            n_jobs=config.n_jobs,
+            n_jobs=bounded_n_jobs(config.n_jobs),
             error_score=np.nan,
         )
         search.fit(X, y)
@@ -378,7 +380,7 @@ class HyperparameterTuner:
             n_iter=config.n_trials,
             cv=config.cv_folds,
             scoring=scoring,
-            n_jobs=config.n_jobs,
+            n_jobs=bounded_n_jobs(config.n_jobs),
             random_state=config.random_state,
             error_score=np.nan,
         )
@@ -443,7 +445,7 @@ class HyperparameterTuner:
             callbacks=[_cancel_callback],
             n_trials=config.n_trials,
             timeout=config.time_budget,
-            n_jobs=config.n_jobs,
+            n_jobs=bounded_n_jobs(config.n_jobs),
             catch=(Exception,),
         )
 
