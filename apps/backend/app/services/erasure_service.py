@@ -79,6 +79,11 @@ _LINK_KEYED_MODELS = [
 
 _URL_SCHEMES = ("s3://", "http://", "https://")
 
+# Replaces an erased user's id where it survives in another tenant's row that we
+# must not delete (a recipe they shared onward) — scrubs the identifier without
+# destroying the recipient's data (#480).
+_ERASED_OWNER_TOMBSTONE = "erased-user"
+
 
 def _s3_key(
     url_or_key: str | None, bucket_name: str, manifest: DeletionManifest | None = None
@@ -368,10 +373,32 @@ class DatasetErasureService:
             manifest.failures.append(f"redis evict {dataset_id}: {e}")
 
     async def _sweep_user_scoped(self, user_id: str, manifest: DeletionManifest) -> None:
-        """Delete leftover user-scoped docs (models/jobs/feedback) for a full-user erasure."""
+        """Delete leftover user-scoped docs for a full-user erasure.
+
+        Covers not just dataset children but every account-scoped record: models,
+        jobs, feedback, the API keys that authenticate the paid serving surface,
+        the feature store, saved recipes, quota counters, and the local billing
+        mirror (#480). An erased user's API keys must stop authenticating — the
+        auth path (production.py / rate_limit.py) does a live
+        ``find_one({key_hash})`` per request with no cross-request cache, so
+        deleting the ``APIKey`` document takes effect immediately.
+        """
         from app.models.ab_test import ABTest
+        from app.models.api_key import APIKey
         from app.models.batch_job import BatchJob
+        from app.models.feature_store import (
+            FeatureCollection,
+            FeatureVersion,
+            StoredFeature,
+        )
         from app.models.feedback import Feedback
+        from app.models.subscription import Subscription
+        from app.models.usage import UsageRecord
+        from app.services.transformation_engine.recipe_manager import (
+            RecipeExecutionHistory,
+            SharedRecipe,
+            TransformationRecipe,
+        )
 
         # Any MLModels not tied to a dataset we already swept.
         try:
@@ -384,11 +411,88 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"sweep ml_models: {e}")
 
-        # Only sweep collections that actually have a user_id field (some
-        # dataset-keyed children don't — querying them by user_id is a no-op).
-        for model_cls in [BatchJob, ABTest, Feedback, *_STRING_KEYED_MODELS]:
+        # feature_versions is keyed by its parent StoredFeature.feature_id, not
+        # user_id — resolve the owner's feature ids first, then delete the
+        # versions before the parents (order is safe since we captured the ids).
+        try:
+            feature_ids = [
+                f.feature_id
+                for f in await StoredFeature.find(StoredFeature.user_id == user_id).to_list()
+            ]
+            if feature_ids:
+                await self._delete_many(
+                    FeatureVersion, {"feature_id": {"$in": feature_ids}}, manifest
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"sweep feature_versions: {e}")
+
+        # Every account-scoped collection with a user_id field holding the user's
+        # own data. Billing state (Subscription, UsageRecord) is deliberately
+        # NOT in this list — see the retention note below (#480 AC3).
+        for model_cls in [
+            BatchJob,
+            ABTest,
+            Feedback,
+            APIKey,
+            StoredFeature,
+            FeatureCollection,
+            TransformationRecipe,
+            RecipeExecutionHistory,
+            SharedRecipe,
+            *_STRING_KEYED_MODELS,
+        ]:
+            # Only sweep collections that actually have a user_id field (some
+            # dataset-keyed children don't — querying them by user_id is a no-op).
             if "user_id" in model_cls.model_fields:
                 await self._delete_many(model_cls, {"user_id": user_id}, manifest)
+
+        # A recipe this user shared to OTHERS lives in the recipient's row with
+        # `user_id` = recipient and `original_owner_id` = the erased user, so the
+        # user_id sweep above never matches it and the erased user's id stays
+        # visible in the recipient's /recipes/shared (#480). Don't delete the
+        # recipient's copy — it is their data — scrub the erased user's id to a
+        # tombstone so the row no longer identifies them.
+        try:
+            res = await SharedRecipe.find(
+                SharedRecipe.original_owner_id == user_id
+            ).update(
+                {
+                    "$set": {
+                        # Both copies of the sharer's id: the field and the
+                        # duplicate in metadata (recipe_manager stores it twice).
+                        "original_owner_id": _ERASED_OWNER_TOMBSTONE,
+                        "metadata.shared_by": _ERASED_OWNER_TOMBSTONE,
+                    }
+                }
+            )
+            anonymized = getattr(res, "modified_count", 0) or 0
+            if anonymized:
+                manifest.notes.append(
+                    f"anonymized original_owner_id on {anonymized} shared_recipes "
+                    "copies held by other tenants"
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"anonymize shared_recipes: {e}")
+
+        # Billing state (Subscription, UsageRecord) is intentionally RETAINED,
+        # not deleted. erase_user backs the "erase my data, keep my account"
+        # endpoint (POST /users/me/erase), so the account stays active and
+        # billable: deleting the Subscription mirror would enforce an actively-
+        # paying customer as FREE until the next Stripe webhook, and deleting
+        # UsageRecord would reset their quota mid-period. Both are live account
+        # state, not orphaned personal data. Full billing teardown belongs to a
+        # true account-closure flow, which does not exist yet (#480 AC3).
+        try:
+            retained = await Subscription.find(
+                Subscription.user_id == user_id
+            ).count() + await UsageRecord.find(UsageRecord.user_id == user_id).count()
+            if retained:
+                manifest.notes.append(
+                    "retained Subscription/UsageRecord: erase_user keeps the account "
+                    "active, so billing/quota state is live, not orphaned data"
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"note billing retention: {e}")
 
     # ---- helpers --------------------------------------------------------
 
