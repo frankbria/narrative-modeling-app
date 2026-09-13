@@ -369,8 +369,13 @@ async def production_predict(
     # load_model returns a (model, feature_engineer) tuple keyed by
     # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
     try:
-        # We already read the model doc fresh above, so pass its generation to
-        # skip load_model's freshness query on this hot paid path (#489).
+        # We already read the model doc fresh above (no await between that read
+        # and load_model's cache read, so it is authoritative for this process),
+        # so pass its generation to skip load_model's own freshness query on this
+        # hot paid path (#489). ponytail: a sibling worker bumping the generation
+        # in the microsecond after our read serves the just-current artifact for
+        # this one request and self-heals on the next — an irreducible TOCTOU that
+        # re-reading inside load_model would not close, only make cost 2 doc reads.
         trained_model, feature_engineer = await storage_service.load_model(
             model_id, api_key.user_id, expected_generation=model.cache_generation
         )
