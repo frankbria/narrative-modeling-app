@@ -95,6 +95,32 @@ async def test_sweeps_a_pre484_job_missing_the_heartbeat_field(setup_database):
     assert doc["status"] == JobStatus.FAILED.value
 
 
+async def test_a_persisted_progress_write_keeps_a_job_alive(setup_database):
+    """Regression (codex P1): a live training persists last_heartbeat via its
+    PARTIAL progress write; if that partial $set omits the field, the DB heartbeat
+    stays stale and the reaper kills a live run. This exercises that contract."""
+    job = TrainingJob(
+        model_id="reap-hb", user_id=USER, dataset_id="d", target_column="y",
+        status=JobStatus.RUNNING,
+    )
+    job.last_heartbeat = utcnow() - timedelta(hours=2)  # would be reaped as-is
+    await job.insert()
+
+    # A progress update like on_progress: bump the heartbeat and persist it with
+    # the same partial-$set shape the route uses.
+    job.update_progress(completed_algorithms=1, total_algorithms=3)
+    await job.set(
+        {
+            TrainingJob.progress: job.progress,
+            TrainingJob.updated_at: job.updated_at,
+            TrainingJob.last_heartbeat: job.last_heartbeat,
+        }
+    )
+
+    await reap_stale_jobs(timeout_seconds=60)
+    assert (await TrainingJob.get(job.id)).status == JobStatus.RUNNING
+
+
 async def test_reaping_is_idempotent(setup_database):
     """A second pass finds nothing (the job left the in-flight set) — no double refund."""
     await metering.record(USER, "training_runs", 1)

@@ -637,6 +637,10 @@ async def train_model_task(
                 {
                     TrainingJob.progress: training_job.progress,
                     TrainingJob.updated_at: training_job.updated_at,
+                    # Persist the heartbeat, or the stale-job reaper (#484) would
+                    # see only the start value and reap this live run after the
+                    # timeout. update_progress() advanced it in memory.
+                    TrainingJob.last_heartbeat: training_job.last_heartbeat,
                 }
             )
 
@@ -653,9 +657,13 @@ async def train_model_task(
             else:
                 level = "info"
             entry = training_job.add_log(level, event.message, stage=event.stage)
+            # add_log bumped updated_at; treat every persisted event as a
+            # heartbeat too so a live run isn't reaped between algorithms (#484).
+            training_job.last_heartbeat = training_job.updated_at
             fields_to_set: dict[Any, Any] = {
                 TrainingJob.progress: training_job.progress,
                 TrainingJob.updated_at: training_job.updated_at,
+                TrainingJob.last_heartbeat: training_job.last_heartbeat,
             }
             if event.stage:
                 training_job.progress.current_stage = event.stage
