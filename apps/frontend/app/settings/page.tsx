@@ -17,6 +17,11 @@ import { erasureApi } from '@/lib/services/erasure';
 export default function SettingsPage() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Whether the in-progress dialog has completed a clean erase. We navigate away
+  // only when the user CLOSES the dialog afterwards, so the "Done. Removed…"
+  // manifest summary is actually readable first (AC5) rather than being blown
+  // away by an immediate router.push from onErased.
+  const [erased, setErased] = useState(false);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
@@ -47,7 +52,10 @@ export default function SettingsPage() {
         <CardContent>
           <Button
             variant="destructive"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              setErased(false);
+              setOpen(true);
+            }}
             data-testid="delete-account"
           >
             Delete my account data
@@ -57,16 +65,20 @@ export default function SettingsPage() {
 
       <ErasureConfirmDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(next) => {
+          setOpen(next);
+          // Navigate only once the user closes the dialog after a clean erase,
+          // so the success summary is readable first. Their data is gone; the
+          // dashboard re-fetches its lists on mount, so it renders empty.
+          if (!next && erased) {
+            router.push('/dashboard');
+          }
+        }}
         title="Delete my account and data"
         confirmWord="DELETE"
         confirmLabel="Delete everything"
         onConfirm={erasureApi.eraseCurrentUser}
-        onErased={() => {
-          // Data is gone; send them to the dashboard, which will re-render empty.
-          router.push('/dashboard');
-          router.refresh();
-        }}
+        onErased={() => setErased(true)}
         body={
           <div className="space-y-2">
             <p>

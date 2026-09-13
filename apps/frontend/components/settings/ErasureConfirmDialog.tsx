@@ -62,8 +62,12 @@ export function ErasureConfirmDialog({
   // Closing always clears the armed state, so a re-open re-arms from scratch —
   // the parent may keep this dialog mounted (the settings page does), so Cancel
   // must reset here and not rely on an unmount that only a successful erase +
-  // navigation triggers.
+  // navigation triggers. While an erase is in flight, ignore every dismiss path
+  // (Cancel is disabled, but Esc / overlay click / the Radix X still route here):
+  // the request cannot be aborted, so closing would let onErased fire against a
+  // dialog the user believed they'd cancelled.
   function handleOpenChange(next: boolean) {
+    if (busy) return;
     if (!next) reset();
     onOpenChange(next);
   }
