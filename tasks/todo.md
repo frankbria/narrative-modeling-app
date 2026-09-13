@@ -13,6 +13,6 @@ Plan source: self-authored. Approved autonomously — the issue marks (a) bound 
 3. A queued job cancelled before it starts (semaphore held) is skipped after acquisition — small guard; full cancel is #485.
 
 ## Steps
-- [ ] RED tests (per-user 429, global semaphore bounds concurrency, cancelled-while-queued skipped)
-- [ ] semaphore + admission + route 429
-- [ ] gate → PR → demo → CI → merge
+- [x] RED tests + route 429 + retry + weakref + deleted-job skip
+- [x] semaphore + admission + route 429
+- [x] gate → PR #654 → demo → CI → merge; follow-up #653 (atomic admission + wall clock)
