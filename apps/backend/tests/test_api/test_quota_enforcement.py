@@ -1464,6 +1464,7 @@ class TestSuccessfulChargesPersist:
         import app.api.routes.model_training as mt
 
         ds = await _dataset().insert()
+        await _fill(OTHER_USER, "training_runs", 2)  # B already has usage; must not move
         # The real training background task loads data from S3 and is not what's
         # under test here; stub it so the route returns 2xx and the charge persists.
         monkeypatch.setattr(mt, "train_model_task", AsyncMock(return_value=None))
@@ -1473,4 +1474,5 @@ class TestSuccessfulChargesPersist:
         )
         assert resp.status_code == 200, resp.text
         assert await metering.usage_for(TEST_USER, "training_runs") == 1
-        assert await metering.usage_for(OTHER_USER, "training_runs") == 0
+        # Not "charge every tenant": B's pre-existing usage is unchanged.
+        assert await metering.usage_for(OTHER_USER, "training_runs") == 2
