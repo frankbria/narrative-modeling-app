@@ -195,7 +195,22 @@ class TestRetry:
         self, async_authorized_client, setup_database
     ):
         await _job("run", TEST_USER, status=JobStatus.COMPLETED, total_records=1)
-        assert (await async_authorized_client.post(f"{_BATCH}/jobs/run/retry")).status_code == 409
+        resp = await async_authorized_client.post(f"{_BATCH}/jobs/run/retry")
+        assert resp.status_code == 409
+        assert "failed job can be retried" in resp.json()["detail"]
+
+    async def test_retry_a_budget_exhausted_job_is_409(
+        self, async_authorized_client, setup_database
+    ):
+        """A distinct 409 from the not-FAILED one: a FAILED job that has already
+        used its retry budget (#460 bounds retries at max_retries)."""
+        await _job(
+            "spent", TEST_USER, status=JobStatus.FAILED, total_records=1,
+            retry_count=3, max_retries=3,
+        )
+        resp = await async_authorized_client.post(f"{_BATCH}/jobs/spent/retry")
+        assert resp.status_code == 409
+        assert "Retry limit reached" in resp.json()["detail"]
 
 
 class TestDownload:
