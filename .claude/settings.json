@@ -11,8 +11,5 @@
   },
   "commands": {
     "directory": ".claude/commands"
-  },
-  "enabledPlugins": {
-    "quartermaster@eigenwise-toolshed": true
   }
 }
