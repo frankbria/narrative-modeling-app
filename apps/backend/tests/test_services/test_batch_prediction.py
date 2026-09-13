@@ -487,6 +487,10 @@ async def test_process_batch_job_streams_results_across_chunks(monkeypatch):
         yield chunk2
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
+    monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
 
     job = MagicMock()
     job.user_id = "u1"
@@ -535,6 +539,10 @@ async def test_process_batch_job_streams_valid_json_across_chunks(monkeypatch):
         yield pd.DataFrame([{"age": 50}])
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
+    monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
 
     job = MagicMock()
     job.user_id = "u1"
@@ -589,6 +597,10 @@ async def test_process_batch_job_isolates_a_failed_chunk(monkeypatch):
         yield pd.DataFrame([{"age": 30}])
 
     monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(svc, "_persist_progress", AsyncMock())
+    monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
     # Force the whole chunk to fail so the outer per-chunk isolation kicks in.
     monkeypatch.setattr(
         svc, "_predict_chunk", AsyncMock(side_effect=RuntimeError("boom"))
@@ -964,3 +976,122 @@ async def test_retry_also_respects_the_per_tenant_cap(setup_database, monkeypatc
         assert (await BatchJob.find_one(BatchJob.job_id == "batch_failed_515")).status == JobStatus.FAILED
     finally:
         await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cancel_mid_flight_stops_processing_and_refunds_remainder(
+    setup_database, monkeypatch
+):
+    """AC1/AC2/AC3/AC4/AC5 (#485): a cancel mid-run stops processing at the next
+    chunk, the terminal write does not overwrite CANCELLED, no partial output is
+    uploaded, and the unprocessed remainder is refunded."""
+    from app.billing import metering
+    from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
+
+    user = "cancel_midflight_user"
+    await metering.record(user, "predictions", 10)  # reservation at creation
+    before = await metering.usage_for(user, "predictions")
+
+    job = await BatchJob(
+        job_id="cancel-mid",
+        job_type=JobType.BATCH_PREDICTION,
+        user_id=user,
+        config=BatchPredictionConfig(model_id="model_123", output_format="csv").dict(),
+        input_path="batch-jobs/u/model_123/ts/in.csv",
+        status=JobStatus.RUNNING,
+        progress=JobProgress(total_records=10),
+    ).insert()
+
+    svc = _service()
+    # AC4: a cancelled run must never upload its partial output.
+    svc.s3_service.upload_file_obj = AsyncMock(
+        side_effect=AssertionError("a cancelled run must not upload results")
+    )
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+
+    async def _chunks(path, size):
+        yield pd.DataFrame([{"age": 30}, {"age": 40}])  # chunk 1 (2 records) processed
+        await svc.cancel_job("cancel-mid", user)  # user cancels mid-run
+        yield pd.DataFrame([{"age": 50}])  # chunk 2 must be skipped
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _chunks)
+
+    await svc._process_batch_job(job)
+
+    final = await BatchJob.find_one(BatchJob.job_id == "cancel-mid")
+    assert final.status == JobStatus.CANCELLED  # AC1/AC2: not flipped back
+    # codex: the in-memory job reflects CANCELLED too, so the completion webhook
+    # reports the terminal state rather than a stale "running".
+    assert job.status == JobStatus.CANCELLED
+    assert final.output_path is None
+    # AC3: 2 of 10 processed -> the 8-record remainder is refunded.
+    assert await metering.usage_for(user, "predictions") == before - 8
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_finalize_does_not_overwrite_a_cancelled_job(setup_database):
+    """AC2 (#485): the terminal write is conditional on status==RUNNING, so a
+    concurrent cancel (CANCELLED already in the DB) is never clobbered."""
+    from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
+
+    job = await BatchJob(
+        job_id="finalize-cancelled",
+        job_type=JobType.BATCH_PREDICTION,
+        user_id="u1",
+        config={"model_id": "m1"},
+        input_path="batch-jobs/u/m1/ts/in.csv",
+        status=JobStatus.CANCELLED,  # cancelled concurrently
+        progress=JobProgress(total_records=1),
+    ).insert()
+
+    svc = _service()
+    job.mark_completed({"total_predictions": 1})  # the task's in-memory terminal state
+    await svc._finalize_if_running(job)
+
+    reloaded = await BatchJob.find_one(BatchJob.job_id == "finalize-cancelled")
+    assert reloaded.status == JobStatus.CANCELLED
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_cancel_before_start_does_not_run_and_refunds_full(setup_database, monkeypatch):
+    """Critical (#485, internal review): a cancel landing between admission and the
+    RUNNING claim must not be clobbered. The conditional claim fails, so the job
+    never runs, nothing is uploaded, and the FULL reservation is refunded."""
+    from app.billing import metering
+    from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
+
+    user = "cancel_before_start_user"
+    await metering.record(user, "predictions", 10)
+    before = await metering.usage_for(user, "predictions")
+
+    job = await BatchJob(
+        job_id="cancel-early",
+        job_type=JobType.BATCH_PREDICTION,
+        user_id=user,
+        config=BatchPredictionConfig(model_id="model_123", output_format="csv").dict(),
+        input_path="batch-jobs/u/model_123/ts/in.csv",
+        status=JobStatus.RUNNING,
+        progress=JobProgress(total_records=10),
+    ).insert()
+
+    svc = _service()
+    svc.s3_service.upload_file_obj = AsyncMock(side_effect=AssertionError("must not upload"))
+    svc.model_storage.load_model = AsyncMock(side_effect=AssertionError("must not load a cancelled job"))
+
+    # The cancel lands before this worker claims the job for RUNNING.
+    await svc.cancel_job("cancel-early", user)
+
+    # Run with the stale in-memory RUNNING copy — must not resurrect it.
+    await svc._process_batch_job(job)
+
+    final = await BatchJob.find_one(BatchJob.job_id == "cancel-early")
+    assert final.status == JobStatus.CANCELLED
+    assert await metering.usage_for(user, "predictions") == before - 10  # full refund
