@@ -4,27 +4,33 @@ import { test, expect } from '../fixtures';
  * Right-to-erasure is reachable from the UI and drives the real backend cascade
  * (#482). The backend has implemented erasure since #259 but nothing called it.
  *
- * This uploads a uniquely-named dataset and erases it from the dashboard end to
+ * This seeds a uniquely-named dataset, then erases it from the dashboard end to
  * end — the real UI -> erasureApi -> POST /datasets/{id}/erase -> manifest path.
- * It deliberately targets the test's OWN dataset (unique filename) rather than
- * the account: under SKIP_AUTH the e2e backend collapses every identity to one
- * user, so a full account erase would wipe the shared fixture every other spec
- * depends on. The account-level flow shares the same ErasureConfirmDialog +
- * erasureApi, covered by the jest suite.
+ * It targets the test's OWN dataset (unique filename), not the account: under
+ * SKIP_AUTH the e2e backend collapses every identity to one user, so a full
+ * account erase would wipe the shared fixture every other spec depends on. The
+ * account-level flow shares the same ErasureConfirmDialog + erasureApi, covered
+ * by the jest suite.
+ *
+ * Seeding goes through POST /datasets/upload (which creates a DatasetMetadata,
+ * the id-space the dashboard lists) rather than the /upload page, which posts to
+ * /upload/secure (the legacy UserData space that does NOT surface in the recent
+ * datasets list).
  */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
 test.describe('right-to-erasure UI (#482)', () => {
   test('erases a dataset end to end from the dashboard @smoke', async ({ authenticatedPage: page }) => {
     const filename = `erase-e2e-${Date.now()}.csv`;
 
-    // Upload a small, uniquely-named CSV (no PII, so no confirmation gate).
-    await page.goto('/upload');
-    await page
-      .locator('input[type="file"]')
-      .setInputFiles({ name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') });
-    const uploadButton = page.getByTestId('upload-button');
-    await uploadButton.waitFor({ state: 'visible', timeout: 10000 });
-    await uploadButton.click();
-    await page.getByTestId('file-id').waitFor({ state: 'visible', timeout: 20000 });
+    // Seed a DatasetMetadata-backed dataset (SKIP_AUTH maps the request to the
+    // shared e2e user, so no token is needed).
+    const seeded = await page.request.post(`${API_BASE}/datasets/upload`, {
+      multipart: {
+        file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') },
+      },
+    });
+    expect(seeded.ok(), `seed upload failed: ${seeded.status()}`).toBeTruthy();
 
     // It appears in the dashboard's recent datasets.
     await page.goto('/dashboard');
