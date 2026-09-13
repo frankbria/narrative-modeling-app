@@ -19,9 +19,9 @@ function mockRequest(
     url,
     method,
     headers: {
-      // A bare session cookie so middleware's presence-guard consults the
-      // (mocked) getToken; whether a valid session exists is decided by the
-      // mock's return value, not by cookie presence. Secure-prefixed cookie
+      // The cookie value is irrelevant here since getToken is mocked — whether a
+      // valid session exists is decided by the mock's return value, not by the
+      // header. Kept only for request-shape realism. Real secure/bare cookie
       // resolution is covered by middlewareSecureCookie.test.ts (#469).
       get: (h: string) =>
         h === 'origin' ? origin : h === 'cookie' ? 'authjs.session-token=stub' : null,
