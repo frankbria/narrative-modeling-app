@@ -973,3 +973,18 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A tautological test defines a local copy of the logic and asserts on the copy**
   (`def mock_is_valid(self): ...; assert mock_is_valid(key)`), never calling the
   real method. Construct the real object and call the real method; mutation-check.
+
+## #504 — assert metered requests actually charge
+- **"Denial + refund" coverage is not "charge" coverage.** Every quota test ended
+  refunded on a 4xx, so a regression that stopped counting successful requests,
+  charged per-request, double-counted, or charged the wrong tenant would pass. The
+  missing assertion: a SUCCESSFUL (2xx) request leaves the counter changed by
+  EXACTLY the expected amount (one assertion catches no-count, per-request, and
+  double-count) — and a second, pre-seeded tenant's counter is unchanged.
+- **Patch-target rule (reinforces #492), now with the discriminator:** a route that
+  does `from x import f` at MODULE scope is patched at `route_module.f`; a route
+  that does a LOCAL `from x import f` inside the handler is patched at the source
+  `x.f`. upload.py imports generate_dataset_summary at module scope (→ patch
+  upload_module.f) while secure_upload.py imports it locally (→ patch the source).
+  Both codex and the internal reviewer caught the upload stub patching the source.
+  A wrong-target patch is a silent no-op; the tell is a slow/network-touching run.
