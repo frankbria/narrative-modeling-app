@@ -2,13 +2,16 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai import OpenAIError
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
 from app.utils.openai_client import build_openai_client
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -109,6 +112,38 @@ def prepare_dataset_summary(user_data: UserData) -> dict[str, Any]:
         }
         summary["columns"].append(column_info)
 
+    return summary
+
+
+def prepare_dataset_summary_from_df(df: "pd.DataFrame", filename: str) -> dict[str, Any]:
+    """Prepare the OpenAI prompt input directly from an in-memory DataFrame.
+
+    Used by the secure / PII upload paths (#490): they hand the AI summary task
+    the **masked** frame so PII never reaches OpenAI, and the chunked path stores
+    a raw schema — so the summary must be built from the safe frame in hand, not
+    from the stored ``data_schema``. Mirrors ``prepare_dataset_summary``'s shape.
+    """
+    from app.utils.schema_inference import infer_schema
+
+    summary: dict[str, Any] = {
+        "filename": filename,
+        "num_rows": len(df),
+        "num_columns": len(df.columns),
+        "columns": [],
+    }
+    for field in infer_schema(df):
+        summary["columns"].append(
+            {
+                "name": field["field_name"],
+                "type": field["field_type"],
+                "data_type": field.get("data_type"),
+                "unique_values": field["unique_values"],
+                "missing_values": field["missing_values"],
+                "is_constant": field["is_constant"],
+                "is_high_cardinality": field["is_high_cardinality"],
+                "example_values": field["example_values"][:5],
+            }
+        )
     return summary
 
 

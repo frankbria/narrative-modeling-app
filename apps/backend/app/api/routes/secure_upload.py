@@ -508,21 +508,43 @@ async def abort_chunked_upload(
 
 
 async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
-    """Generate AI summary using safe (potentially masked) data"""
+    """Generate the AI summary from the safe (already-masked) DataFrame (#490).
+
+    The summary is built from ``df`` — the frame the caller masked — NOT from the
+    stored ``data_schema``: the chunked-upload path stores a raw schema, so
+    delegating to ``generate_dataset_summary(user_data_id)`` would ship raw PII
+    ``example_values`` to OpenAI. Degrades gracefully but never silently: a null
+    result or an error is logged at WARNING with the dataset id (the previous
+    version passed the DataFrame where a str id was expected, so every call
+    raised and was swallowed, leaving the summary permanently null).
+    """
     try:
-        from app.utils.ai_summary import generate_dataset_summary
-        
-        # Use the masked dataframe for AI analysis
-        summary = await generate_dataset_summary(df)
-        
-        # Update the user data record
+        from app.utils.ai_summary import (
+            call_openai_api,
+            prepare_dataset_summary_from_df,
+        )
+
         user_data = await UserData.get(user_data_id)
-        if user_data:
-            user_data.aiSummary = summary
-            await user_data.save()
-    
+        if not user_data:
+            logger.warning("AI summary skipped: dataset %s not found", user_data_id)
+            return
+
+        summary = await call_openai_api(
+            prepare_dataset_summary_from_df(df, user_data.filename)
+        )
+        if summary is None:
+            logger.warning(
+                "AI summary not generated for dataset %s (OpenAI unavailable or "
+                "no key); leaving it unset",
+                user_data_id,
+            )
+            return
+
+        user_data.aiSummary = summary
+        await user_data.save()
+        logger.info("AI summary generated for dataset %s", user_data_id)
     except Exception as e:
-        logger.error(f"Failed to generate AI summary for {user_data_id}: {e}")
+        logger.warning("Failed to generate AI summary for dataset %s: %s", user_data_id, e)
 
 
 @router.get("/cleanup")
