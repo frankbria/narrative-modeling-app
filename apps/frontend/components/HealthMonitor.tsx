@@ -34,7 +34,6 @@ interface Liveness {
 }
 
 interface HealthResult {
-  reachable: boolean
   liveness: Liveness | null
   lastUpdate: Date
 }
@@ -56,10 +55,10 @@ export function HealthMonitor({
       // backend; health is mounted there too (#479), so append only the path.
       const response = await fetch(`${backendUrl}/health`)
       if (!response.ok) {
-        return { reachable: true, liveness: null, lastUpdate: new Date() }
+        return { liveness: null, lastUpdate: new Date() }
       }
       const liveness: Liveness = await response.json()
-      return { reachable: true, liveness, lastUpdate: new Date() }
+      return { liveness, lastUpdate: new Date() }
     },
     [backendUrl],
     { errorMessage: 'Cannot reach the backend.' },
