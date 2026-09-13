@@ -915,3 +915,24 @@ checked, and the fix is always the same: the claim is a query, so run it.
   loop it. Mount cost-bearing endpoints under `/api/v1` so the global limiter
   applies. (Both codex and the internal reviewer flagged this from different angles
   — blocking S3 probe vs. missing throttle.)
+
+## #490 — AI summary null for PII/chunked uploads
+- **The "obvious one-liner" was a PII leak.** The issue implied the fix was "pass
+  user_data_id instead of df" to generate_dataset_summary. But that reads the
+  STORED data_schema, and the chunked complete path stores a RAW (unmasked)
+  schema — so the one-liner would ship raw PII example_values to OpenAI.
+  verify-before-fix (checking how each path builds data_schema) caught it; the
+  correct fix summarizes the masked frame the caller holds.
+- **Repairing a dead path is a feature launch (recurring).** generate_ai_summary_safe
+  was inert (it raised on every call and swallowed it), so no PII ever reached
+  OpenAI. Making it work activated a raw-PII→OpenAI path on /confirm-pii-upload
+  with mask_pii=false. Both codex and the internal reviewer flagged exactly this;
+  I'd already fixed it in the same pass by auditing every branch that reaches the
+  revived code. When a fix makes dead code live, audit each branch that reaches
+  it — security/privacy branches first.
+- **Masking knowledge lives at the call site, not in stored flags.** Whether the
+  in-hand frame is safe depends on the caller (mask_pii choice / has_pii branch),
+  and pii_masked isn't reliably set on every path. A shared `_summary_frame(df,
+  pii_detections)` at the call site (mask when any PII detected) is the right
+  layer — `mask_pii=false` is a storage choice, not consent to send PII to a
+  third-party sub-processor.
