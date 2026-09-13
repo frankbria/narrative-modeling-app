@@ -10,22 +10,22 @@ import { isAdminEmail } from "@/lib/admin-allowlist";
 // bare salt, so on the production/staging HTTPS URL it reads nothing and every
 // authenticated page redirects to sign-in (#469). Detecting HTTPS in edge
 // middleware behind a TLS-terminating proxy is unreliable, so instead read
-// whichever cookie the browser actually sent: try the secure name first, then the
-// bare one. `secureCookie` cascades to both `cookieName` and `salt` in
+// whichever cookie the browser actually sent: try the secure variant first, then
+// the bare one. `secureCookie` cascades to both `cookieName` and `salt` in
 // next-auth's getToken, so passing it alone selects the matching name+salt; a
 // forged or stale cookie still fails signature/expiry inside decode.
-const SESSION_COOKIE_VARIANTS = [
-  { name: '__Secure-authjs.session-token', secureCookie: true },
-  { name: 'authjs.session-token', secureCookie: false },
-] as const;
+const SECURE_COOKIE_VARIANTS = [true, false] as const;
 
 async function readSessionToken(request: NextRequest) {
   const secret = process.env.NEXTAUTH_SECRET;
-  const cookieHeader = request.headers.get('cookie') ?? '';
-  for (const { name, secureCookie } of SESSION_COOKIE_VARIANTS) {
-    // Only attempt a variant whose cookie is actually present, so the common
-    // case is a single decode.
-    if (!cookieHeader.includes(`${name}=`)) continue;
+  // No presence-guard on the raw Cookie header: Auth.js chunks an oversized JWT
+  // into `<name>.0`, `.1`, … (large OAuth sessions), which getToken reassembles
+  // internally but a `${name}=` substring check would miss — and the bare name
+  // is a substring of the secure one, so such a guard is both lossy and
+  // collision-prone. getToken returns null cheaply when its cookie is absent,
+  // so trying the secure variant then the bare one is correct in every
+  // environment for the cost of at most one extra decode.
+  for (const secureCookie of SECURE_COOKIE_VARIANTS) {
     const token = await getToken({ req: request, secret, secureCookie });
     if (token) return token;
   }
