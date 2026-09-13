@@ -57,6 +57,15 @@ class MLModel(Document):
     )
     is_active: bool = True
 
+    # Cross-worker artifact-cache generation (#489). Bumped in Mongo on every
+    # in-place invalidation (deploy / in-place retrain); each worker's local
+    # TTL-LRU stores the generation it cached and reloads when Mongo's is higher,
+    # so a sibling worker's invalidation propagates. Defaulted so pre-#489 docs
+    # read back as 0.
+    cache_generation: int = Field(
+        default=0, description="Monotonic artifact-cache invalidation counter (#489)"
+    )
+
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -1894,8 +1894,9 @@ async def deploy_model(
     model.updated_at = datetime.now(UTC)
     await model.save()
 
-    # Evict cached artifacts so serving picks up the deploy transition (#265).
-    invalidate_model_cache(model_id, current_user_id)
+    # Bump the shared cache generation so every worker picks up the deploy
+    # transition, not just the one that handled this request (#265, #489).
+    await invalidate_model_cache(model_id, current_user_id)
 
     return ModelDeployResponse(
         model_id=model_id,
