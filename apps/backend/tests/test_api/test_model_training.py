@@ -81,6 +81,8 @@ def sample_ml_model():
     mock_model.tuning_time = None
     mock_model.improvement_from_tuning = None
     mock_model.tuning_results = None
+    # Cross-worker cache generation (#489) — 0 for a freshly saved model.
+    mock_model.cache_generation = 0
     # Versioning & lineage metadata (issue #78) — defaults for a pre-#78 model.
     mock_model.parent_model_id = None
     mock_model.is_production = False

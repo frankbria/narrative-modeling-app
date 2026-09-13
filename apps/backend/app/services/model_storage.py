@@ -18,6 +18,7 @@ from typing import Any
 
 import joblib
 import numpy as np
+from beanie.odm.operators.update.general import Inc
 
 from app.models.ml_model import MLModel
 from app.services.model_training.automl_engine import ModelCandidate
@@ -98,8 +99,19 @@ _inference_locks: dict[tuple[str, str], threading.Lock] = {}
 _inference_locks_guard = threading.Lock()
 
 
-def invalidate_model_cache(model_id: str, user_id: str) -> None:
-    """Evict a model's cached artifacts (on retrain/delete/deploy — issue #265)."""
+async def invalidate_model_cache(model_id: str, user_id: str) -> None:
+    """Invalidate a model's cached artifacts across every worker (#265, #489).
+
+    The cache is process-local and the container runs 2 workers, so evicting only
+    the local entry left siblings serving the stale artifact until their TTL
+    expired (#489). Bump the shared ``cache_generation`` in Mongo atomically so
+    every worker's ``load_model`` sees a higher generation than it cached and
+    reloads on its next read; also drop the local entry so this worker doesn't
+    serve stale for even one request before its next read.
+    """
+    await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == user_id
+    ).update(Inc({MLModel.cache_generation: 1}))
     _model_cache.invalidate((model_id, user_id))
 
 
@@ -468,23 +480,54 @@ class ModelStorageService:
 
         return await asyncio.to_thread(_verify_then_load)
 
-    async def load_model(self, model_id: str, user_id: str) -> tuple[Any, FeatureEngineer | None]:
+    async def load_model(
+        self,
+        model_id: str,
+        user_id: str,
+        expected_generation: int | None = None,
+    ) -> tuple[Any, FeatureEngineer | None]:
         """
         Load a model and its feature transformer
-        
+
         Args:
             model_id: Model ID to load
             user_id: User ID for authorization
-            
+            expected_generation: The model's current ``cache_generation`` when the
+                caller has already read the doc this request (the production route
+                does). Passing it lets a cache hit skip the freshness query
+                entirely — the hot serving path. Omit it and a cache hit costs one
+                indexed Mongo read to check freshness (#489).
+
         Returns:
             Tuple of (model, feature_engineer)
         """
-        # Serve hot artifacts from the cache: the key encodes user_id, so a hit is
-        # already ownership-scoped and needs no S3/Mongo round trip (issue #265).
+        # Serve hot artifacts from the cache — but a cache hit is only valid if it
+        # matches the model's current generation in Mongo. The cache is
+        # process-local and the container runs 2 workers, so without this check a
+        # sibling worker's delete/deploy/retrain would go unseen until the local
+        # TTL expired, serving a stale (or deleted) model (#489). The key encodes
+        # user_id, so a validated hit is already ownership-scoped (issue #265).
         cache_key = (model_id, user_id)
         cached = _model_cache.get(cache_key)
         if cached is not None:
-            return cached
+            cached_generation, artifact = cached
+            current_generation = expected_generation
+            if current_generation is None:
+                # No caller-supplied generation: one indexed lookup (no S3) to
+                # learn the current generation and confirm the model still exists.
+                doc = await MLModel.find_one(
+                    MLModel.model_id == model_id, MLModel.user_id == user_id
+                )
+                if doc is None:
+                    _model_cache.invalidate(cache_key)
+                    raise ValueError(
+                        f"Model {model_id} not found for user {user_id}"
+                    )
+                current_generation = doc.cache_generation
+            if cached_generation == current_generation:
+                return artifact
+            # Stale: a sibling (or this) worker bumped the generation — reload.
+            _model_cache.invalidate(cache_key)
 
         # Get model metadata
         ml_model = await MLModel.find_one(
@@ -524,7 +567,9 @@ class ModelStorageService:
         await ml_model.set({MLModel.last_used_at: datetime.now(UTC)})
 
         result = (model, feature_engineer)
-        _model_cache.put(cache_key, result)
+        # Store the generation we loaded so a later hit can detect a sibling
+        # worker's invalidation (#489).
+        _model_cache.put(cache_key, (ml_model.cache_generation, result))
         return result
     
     async def delete_model(self, model_id: str, user_id: str) -> bool:

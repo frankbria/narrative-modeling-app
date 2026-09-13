@@ -369,8 +369,10 @@ async def production_predict(
     # load_model returns a (model, feature_engineer) tuple keyed by
     # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
     try:
+        # We already read the model doc fresh above, so pass its generation to
+        # skip load_model's freshness query on this hot paid path (#489).
         trained_model, feature_engineer = await storage_service.load_model(
-            model_id, api_key.user_id
+            model_id, api_key.user_id, expected_generation=model.cache_generation
         )
     except ValueError as e:
         # The model record was already found + ownership-verified above, so a
