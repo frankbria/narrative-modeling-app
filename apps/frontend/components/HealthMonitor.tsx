@@ -13,8 +13,9 @@ import { useAsyncData } from '@/lib/hooks/useAsyncData'
  * exists, so every poll 404'd and the panel read "Unhealthy" forever — an
  * always-red light trains you to ignore the one signal that matters. The real
  * FastAPI table has `/health` (liveness) and `/health/ready` (dependency
- * readiness); this app also mounts them under `/api/v1` (#479) so the browser
- * reaches liveness through the same nginx `/api/` proxy as every other call. No
+ * readiness); this app also mounts the *liveness* one under `/api/v1` (#479) so
+ * the browser reaches it through the same nginx `/api/` proxy as every other
+ * call — `/health/ready` stays root-only because it is expensive (#503). No
  * metrics endpoint (real metrics are #488), so the fabricated grid is gone.
  *
  * We poll the cheap liveness probe. `/health/ready` would answer the richer
