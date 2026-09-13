@@ -894,3 +894,24 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A factory + a registry test is the durable way to enforce "every construction
   sets X".** One `build_*_client` + a test banning raw `OpenAI(` outside it stops a
   new call site from silently regressing the timeout.
+
+## #503 — cheap readiness probe
+- **A guard/registry test from a PRIOR issue can fail on a NEW issue's prose.** My
+  #501 "no raw OpenAI( construction" test greps all of app/; my #503 docstring
+  "MongoDB + S3 + OpenAI (#503 AC3)" tripped it (and the #-comment strip split
+  mid-token, leaving "OpenAI ("). CI caught it, not my local run — because I ran
+  test_health_checks.py but not the registry test that scans the file I edited.
+  **When you edit a file, also run the registry/guard tests that scan its
+  directory tree, not just the file's own tests.** And a "construction" regex must
+  require no space before the paren (`OpenAI\(`, ruff E211 guarantees it) so it
+  never matches prose.
+- **Readiness = "can THIS instance serve traffic" (its hard deps only), not "is
+  every upstream healthy".** An anonymous, LB-polled readiness endpoint making
+  outbound OpenAI/S3 calls is a cost-amplification DoS + event-loop stall. Put the
+  upstream-health view behind auth on a separate endpoint.
+- **Authentication alone does not remove cost-amplification.** An
+  authenticated-but-unthrottled endpoint at the app ROOT is outside
+  `RateLimitMiddleware` (which only covers `/api/v1`) — a signed-in user can still
+  loop it. Mount cost-bearing endpoints under `/api/v1` so the global limiter
+  applies. (Both codex and the internal reviewer flagged this from different angles
+  — blocking S3 probe vs. missing throttle.)
