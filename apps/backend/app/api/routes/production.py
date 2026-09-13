@@ -48,8 +48,9 @@ async def _record_serving_metrics(
 ) -> None:
     """Best-effort per-request monitoring logging (issue #85).
 
-    Logged to the in-memory prediction log only — never touches the DB on the hot
-    path and never raises, so monitoring can't break or slow real predictions.
+    Persisted to the shared Mongo prediction log (#488) as a SINGLE batched write
+    (`insert_many`), so a full N-record batch adds one round-trip — not N — to the
+    hot path, and never raises, so monitoring can't break or slow real predictions.
 
     Note: batch wall-clock latency is split evenly across records
     (``latency_ms / n``), so a single slow batch produces N identical per-record
@@ -62,31 +63,39 @@ async def _record_serving_metrics(
             # consistent with successes — otherwise a failed N-record batch would
             # under-report error rate vs an N-record success (codex review).
             n = len(request_data) or 1
-            for i in range(n):
-                await prediction_log.log_prediction(
-                    model_id=model_id,
-                    prediction_id=f"pred_{PydanticObjectId()}",
-                    input_data=request_data[i] if i < len(request_data) else {},
-                    prediction=None,
-                    latency_ms=latency_ms / n,
-                    api_key_id=api_key_id,
-                    error=error,
-                )
+            await prediction_log.log_predictions(
+                [
+                    {
+                        "model_id": model_id,
+                        "prediction_id": f"pred_{PydanticObjectId()}",
+                        "input_data": request_data[i] if i < len(request_data) else {},
+                        "prediction": None,
+                        "latency_ms": latency_ms / n,
+                        "api_key_id": api_key_id,
+                        "error": error,
+                    }
+                    for i in range(n)
+                ]
+            )
             return
 
         per_record_latency = latency_ms / (len(predictions) or 1)
-        for i, pred in enumerate(predictions):
-            await prediction_log.log_prediction(
-                model_id=model_id,
-                prediction_id=f"pred_{PydanticObjectId()}",
-                input_data=request_data[i] if i < len(request_data) else {},
-                prediction=pred,
-                probability=(
-                    confidence[i] if confidence and i < len(confidence) else None
-                ),
-                latency_ms=per_record_latency,
-                api_key_id=api_key_id,
-            )
+        await prediction_log.log_predictions(
+            [
+                {
+                    "model_id": model_id,
+                    "prediction_id": f"pred_{PydanticObjectId()}",
+                    "input_data": request_data[i] if i < len(request_data) else {},
+                    "prediction": pred,
+                    "probability": (
+                        confidence[i] if confidence and i < len(confidence) else None
+                    ),
+                    "latency_ms": per_record_latency,
+                    "api_key_id": api_key_id,
+                }
+                for i, pred in enumerate(predictions)
+            ]
+        )
     except Exception:  # noqa: BLE001 - monitoring must never break serving
         logger.exception("Failed to record serving metrics for model %s", model_id)
 

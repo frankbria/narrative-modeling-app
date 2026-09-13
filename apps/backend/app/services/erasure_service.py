@@ -32,6 +32,7 @@ from app.models.dataset import DatasetMetadata
 from app.models.erasure_audit import ErasureAuditLog
 from app.models.feature import FeatureDefinition
 from app.models.ml_model import MLModel
+from app.models.prediction_event import PredictionEvent
 from app.models.model import ModelConfig
 from app.models.plot import Plot
 from app.models.revised_data import RevisedData
@@ -295,6 +296,11 @@ class DatasetErasureService:
             try:
                 await self.model_storage.delete_model(m.model_id, user_id)
                 manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
+                # The durable prediction log (#488) stores request inputs keyed by
+                # model_id — erase them with the model (GDPR, #488 codex).
+                await self._delete_many(
+                    PredictionEvent, {"model_id": m.model_id}, manifest
+                )
                 # Only record the artifact prefix when S3 is live — in mock mode
                 # delete_model issues no real S3 delete, so the audit log must not
                 # claim one happened.
@@ -406,6 +412,11 @@ class DatasetErasureService:
             for m in leftover:
                 await self.model_storage.delete_model(m.model_id, user_id)
                 manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
+                # Durable prediction log rows carry request inputs keyed by
+                # model_id — erase them with the model (#488 codex).
+                await self._delete_many(
+                    PredictionEvent, {"model_id": m.model_id}, manifest
+                )
                 if not self.model_storage.s3_service.is_mock_mode:
                     manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
         except Exception as e:  # noqa: BLE001

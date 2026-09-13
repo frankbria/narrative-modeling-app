@@ -166,3 +166,27 @@ async def test_erase_user_anonymizes_shared_recipe_it_gave_others(setup_database
     assert survivors[0].original_owner_id != USER, "the erased user's id must be scrubbed"
     assert survivors[0].metadata.get("shared_by") != USER, "the metadata copy must be scrubbed too"
     assert any("anonymized" in n for n in manifest.notes), manifest.notes
+
+
+async def test_erase_user_removes_durable_prediction_events(setup_database):
+    """#488 durable prediction log stores request inputs keyed by model_id; erasing
+    the user must delete them with the model (GDPR, #488 codex)."""
+    from app.models.ml_model import MLModel
+    from app.models.prediction_event import PredictionEvent
+    from app.services.erasure_service import dataset_erasure_service
+
+    await MLModel(
+        user_id=USER, dataset_id="ds-pe", model_id="model-pe", name="m",
+        problem_type="classification", algorithm="rf", target_column="y",
+        feature_names=["a"], cv_score=0.9, test_score=0.9, training_time=1.0,
+        model_size=1, n_samples_train=2, n_features=1, model_path="s3://b/models/x.pkl",
+    ).insert()
+    for i in range(3):
+        await PredictionEvent(
+            model_id="model-pe", prediction_id=f"pe-{i}", input_data={"a": i}, prediction=i,
+        ).insert()
+    assert await PredictionEvent.find(PredictionEvent.model_id == "model-pe").count() == 3
+
+    await dataset_erasure_service.erase_user(USER, actor_id=USER)
+
+    assert await PredictionEvent.find(PredictionEvent.model_id == "model-pe").count() == 0

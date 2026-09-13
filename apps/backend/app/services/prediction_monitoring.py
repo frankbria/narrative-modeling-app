@@ -71,6 +71,15 @@ class PredictionLog:
             error=error,
         ).insert()
 
+    async def log_predictions(self, events: list[dict[str, Any]]) -> None:
+        """Persist many events in ONE round-trip (#488). The serving hot path logs
+        a whole batch at once — up to MAX_PREDICT_RECORDS per request — so a
+        per-record insert would add that many sequential round-trips to a paid
+        prediction's latency; insert_many is a single write."""
+        if not events:
+            return
+        await PredictionEvent.insert_many([PredictionEvent(**e) for e in events])
+
     async def get_recent_predictions(
         self, model_id: str, limit: int = 100
     ) -> list[dict[str, Any]]:
