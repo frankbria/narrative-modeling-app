@@ -20,14 +20,45 @@ site cannot silently reintroduce a timeout-less client.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from openai import AsyncOpenAI, OpenAI
 
-# Per-request timeout for every OpenAI call, in seconds. Env-overridable but
-# always well under the gunicorn worker timeout (120s), even across breaker
-# retries (see module docstring).
-OPENAI_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "30"))
+logger = logging.getLogger(__name__)
+
+# The whole point of the timeout is that one logical call can never outlast the
+# gunicorn worker timeout. The circuit breaker retries up to 3 attempts with a
+# few seconds of exponential backoff between them, so worst case is
+# ``attempts × timeout + backoff``. Derive the largest per-request timeout that
+# keeps that under the worker timeout (with headroom) and clamp the configured
+# value to it — a too-generous env override must not silently reintroduce the
+# hung-worker failure this module exists to prevent (#501).
+_WORKER_TIMEOUT_SECONDS = 120.0
+_MAX_BREAKER_ATTEMPTS = 3
+_BREAKER_BACKOFF_BUDGET_SECONDS = 8.0
+_HEADROOM = 0.9
+OPENAI_TIMEOUT_CEILING = (
+    _WORKER_TIMEOUT_SECONDS * _HEADROOM - _BREAKER_BACKOFF_BUDGET_SECONDS
+) / _MAX_BREAKER_ATTEMPTS  # ≈ 33.3s
+
+_configured_timeout = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "30"))
+if _configured_timeout > OPENAI_TIMEOUT_CEILING:
+    logger.warning(
+        "OPENAI_REQUEST_TIMEOUT=%.1fs exceeds the safe ceiling %.1fs "
+        "(%d breaker attempts must stay under the %.0fs worker timeout); "
+        "clamping.",
+        _configured_timeout,
+        OPENAI_TIMEOUT_CEILING,
+        _MAX_BREAKER_ATTEMPTS,
+        _WORKER_TIMEOUT_SECONDS,
+    )
+    _configured_timeout = OPENAI_TIMEOUT_CEILING
+elif _configured_timeout <= 0:
+    _configured_timeout = 30.0
+
+# Per-request timeout for every OpenAI call, in seconds.
+OPENAI_REQUEST_TIMEOUT = _configured_timeout
 
 
 def build_openai_client(api_key: str) -> OpenAI:

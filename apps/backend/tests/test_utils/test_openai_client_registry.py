@@ -53,6 +53,34 @@ def test_factory_sets_timeout_and_disables_sdk_retries():
 
 
 @pytest.mark.unit
-def test_timeout_is_comfortably_below_gunicorn_worker_timeout():
-    # gunicorn runs with --timeout 120; leave headroom even across breaker retries.
-    assert 0 < OPENAI_REQUEST_TIMEOUT <= 60
+def test_timeout_worst_case_stays_under_the_worker_timeout():
+    # gunicorn runs with --timeout 120; the breaker retries up to 3 attempts with
+    # backoff. Even the worst case must finish before the worker is killed (#501).
+    from app.utils import openai_client as oc
+
+    assert OPENAI_REQUEST_TIMEOUT > 0
+    worst_case = (
+        oc._MAX_BREAKER_ATTEMPTS * OPENAI_REQUEST_TIMEOUT
+        + oc._BREAKER_BACKOFF_BUDGET_SECONDS
+    )
+    assert worst_case < oc._WORKER_TIMEOUT_SECONDS
+
+
+@pytest.mark.unit
+def test_too_large_env_timeout_is_clamped(monkeypatch):
+    import importlib
+
+    from app.utils import openai_client as oc
+
+    monkeypatch.setenv("OPENAI_REQUEST_TIMEOUT", "300")  # absurd; would kill workers
+    reloaded = importlib.reload(oc)
+    try:
+        assert reloaded.OPENAI_REQUEST_TIMEOUT == reloaded.OPENAI_TIMEOUT_CEILING
+        worst = (
+            reloaded._MAX_BREAKER_ATTEMPTS * reloaded.OPENAI_REQUEST_TIMEOUT
+            + reloaded._BREAKER_BACKOFF_BUDGET_SECONDS
+        )
+        assert worst < reloaded._WORKER_TIMEOUT_SECONDS
+    finally:
+        monkeypatch.delenv("OPENAI_REQUEST_TIMEOUT", raising=False)
+        importlib.reload(oc)  # restore module state for other tests
