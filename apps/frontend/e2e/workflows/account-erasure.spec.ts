@@ -55,8 +55,9 @@ test.describe('right-to-erasure UI (#482)', () => {
     // The manifest is surfaced as a success summary (not a bare redirect).
     await expect(page.getByText(/Done\. Removed/i)).toBeVisible({ timeout: 20000 });
 
-    // And the dataset is gone from the list once the dialog is closed.
-    await page.getByRole('button', { name: 'Close' }).click();
+    // And the dataset is gone from the list once the dialog is closed. (Use the
+    // testid: Radix's built-in dialog X also exposes an accessible name "Close".)
+    await page.getByTestId('erasure-close').click();
     await expect(datasets.getByText(filename)).toHaveCount(0, { timeout: 15000 });
   });
 });

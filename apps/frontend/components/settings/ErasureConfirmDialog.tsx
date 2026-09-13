@@ -141,7 +141,9 @@ export function ErasureConfirmDialog({
 
         <DialogFooter>
           {cleanlyDone ? (
-            <Button onClick={() => handleOpenChange(false)}>Close</Button>
+            <Button data-testid="erasure-close" onClick={() => handleOpenChange(false)}>
+              Close
+            </Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
