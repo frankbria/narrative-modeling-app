@@ -97,6 +97,11 @@ from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.s3_service import s3_service
 from app.services.sdk_generator import SUPPORTED_LANGUAGES, SDKGenerator
+from app.services.training_admission import (
+    TrainingConcurrencyLimitError,
+    enforce_training_per_user_cap,
+    training_semaphore,
+)
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -439,6 +444,16 @@ async def train_model(
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     model_id = f"model_{timestamp}_{uuid.uuid4().hex[:8]}"
 
+    # Per-tenant concurrency cap (#498): refuse when the caller already has too
+    # many trainings running or queued, before creating another. Checked after
+    # quota reservation, so the refund middleware returns the reserved unit on
+    # the 429. The per-process semaphore in train_model_task is the hard global
+    # bound; this stops one tenant filling the queue.
+    try:
+        await enforce_training_per_user_cap(current_user_id)
+    except TrainingConcurrencyLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+
     # Persist a pending TrainingJob synchronously so the status endpoint can be
     # polled immediately (before the background task has had a chance to run).
     training_job = TrainingJob(
@@ -674,17 +689,46 @@ async def train_model_task(
         if wall_clock_seconds is None:
             wall_clock_seconds = training_ceilings_for(PlanTier.FREE).wall_clock_seconds
         try:
-            result = await asyncio.wait_for(
-                engine.run(
-                    df,
-                    request.target_column,
-                    feature_config,
-                    progress_callback=on_progress,
-                    event_callback=on_event,
-                    cancel_check=is_cancellation_requested,
-                ),
-                timeout=wall_clock_seconds,
-            )
+            # Global concurrency cap (#498): gate the CPU-heavy engine run behind
+            # the per-process semaphore so at most MAX_CONCURRENT_TRAINING_JOBS
+            # trainings compute at once across all tenants — excess jobs wait here
+            # rather than all saturating the shared VPS. The wall clock only bounds
+            # the run itself: its timeout starts after the semaphore is acquired,
+            # so queue time is not counted against the plan's limit.
+            _sem = training_semaphore()
+            if _sem.locked() and training_job:
+                # Make the wait visible (AC4) — a slot-queued job must not look
+                # identical to a hung one. The UI streams these log lines.
+                training_job.add_log(
+                    "info", "Waiting for an available training slot (host at capacity)…"
+                )
+                await training_job.save()
+            async with _sem:
+                # A job cancelled while queued must not consume the slot it just
+                # acquired (#498, codex): the engine's own cancel_check only fires
+                # after preprocessing/tuning setup, so re-check here and skip the
+                # run entirely, handing the slot to the next job. Routes to the
+                # TrainingCancelledError handler below (marks CANCELLED). Guarded
+                # like the entry load — a failed status read must not block a
+                # valid run (and is a no-op when no job could be loaded at all).
+                if training_job is not None:
+                    try:
+                        cancelled_while_queued = await is_cancellation_requested()
+                    except Exception:  # noqa: BLE001
+                        cancelled_while_queued = False
+                    if cancelled_while_queued:
+                        raise TrainingCancelledError("Training cancelled while queued")
+                result = await asyncio.wait_for(
+                    engine.run(
+                        df,
+                        request.target_column,
+                        feature_config,
+                        progress_callback=on_progress,
+                        event_callback=on_event,
+                        cancel_check=is_cancellation_requested,
+                    ),
+                    timeout=wall_clock_seconds,
+                )
         except TimeoutError as exc:
             # Scoped to the engine run only: a socket timeout from the S3
             # download above is a TimeoutError too and must keep its own message.

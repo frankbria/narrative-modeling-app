@@ -43,6 +43,7 @@ from app.services.interpretability_service import (
     GlobalShapResult,
     InterpretabilityService,
 )
+from app.services.training_admission import bounded_n_jobs
 
 from .feature_engineer import FeatureEngineer, FeatureEngineeringConfig
 from .hyperparameter_tuner import HyperparameterTuner, TuningConfig, TuningResult
@@ -188,12 +189,16 @@ class AutoMLEngine:
         enable_tuning: bool = False,
         tuning_config: TuningConfig | None = None,
         early_stop_score: float | None = None,
+        n_jobs: int | None = None,
     ):
         self.max_models = max_models
         self.time_limit = time_limit
         self.cv_folds = cv_folds
         self.test_size = test_size
         self.random_state = random_state
+        # Bound estimator parallelism so one training cannot claim the whole
+        # shared VPS (#498); None/-1 resolve to the configured host cap.
+        self.n_jobs = bounded_n_jobs(n_jobs)
         # Training-mode controls (issue #101). ``time_limit`` (a wall-clock cap in
         # seconds) and ``early_stop_score`` (stop once a candidate's CV score
         # clears this bar) are enforced in the candidate loop. Both default to
@@ -1084,7 +1089,7 @@ class AutoMLEngine:
                     estimator=RandomForestClassifier(
                         n_estimators=100,
                         random_state=self.random_state,
-                        n_jobs=-1,
+                        n_jobs=self.n_jobs,
                         class_weight=class_weight,
                     ),
                     hyperparameters={
@@ -1102,7 +1107,7 @@ class AutoMLEngine:
                     estimator=xgb.XGBClassifier(
                         n_estimators=100,
                         random_state=self.random_state,
-                        n_jobs=-1,
+                        n_jobs=self.n_jobs,
                         eval_metric=(
                             "logloss"
                             if problem_type == ProblemType.BINARY_CLASSIFICATION
@@ -1120,7 +1125,7 @@ class AutoMLEngine:
                     estimator=lgb.LGBMClassifier(
                         n_estimators=100,
                         random_state=self.random_state,
-                        n_jobs=-1,
+                        n_jobs=self.n_jobs,
                         verbosity=-1,
                         class_weight=class_weight,
                     ),
@@ -1142,7 +1147,7 @@ class AutoMLEngine:
                     estimator=ExtraTreesClassifier(
                         n_estimators=100,
                         random_state=self.random_state,
-                        n_jobs=-1,
+                        n_jobs=self.n_jobs,
                         class_weight=class_weight,
                     ),
                     hyperparameters={"n_estimators": 100, "class_weight": class_weight},
@@ -1210,7 +1215,7 @@ class AutoMLEngine:
                 candidates.append(
                     ModelCandidate(
                         name="K-Nearest Neighbors",
-                        estimator=KNeighborsClassifier(n_neighbors=5, n_jobs=-1),
+                        estimator=KNeighborsClassifier(n_neighbors=5, n_jobs=self.n_jobs),
                         hyperparameters={"n_neighbors": 5},
                     )
                 )
@@ -1220,7 +1225,7 @@ class AutoMLEngine:
             candidates.append(
                 ModelCandidate(
                     name="Linear Regression",
-                    estimator=LinearRegression(n_jobs=-1),
+                    estimator=LinearRegression(n_jobs=self.n_jobs),
                     hyperparameters={},
                 )
             )
@@ -1239,7 +1244,7 @@ class AutoMLEngine:
                 ModelCandidate(
                     name="Random Forest Regressor",
                     estimator=RandomForestRegressor(
-                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                        n_estimators=100, random_state=self.random_state, n_jobs=self.n_jobs
                     ),
                     hyperparameters={"n_estimators": 100},
                 )
@@ -1250,7 +1255,7 @@ class AutoMLEngine:
                 ModelCandidate(
                     name="XGBoost Regressor",
                     estimator=xgb.XGBRegressor(
-                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                        n_estimators=100, random_state=self.random_state, n_jobs=self.n_jobs
                     ),
                     hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
                 )
@@ -1263,7 +1268,7 @@ class AutoMLEngine:
                     estimator=lgb.LGBMRegressor(
                         n_estimators=100,
                         random_state=self.random_state,
-                        n_jobs=-1,
+                        n_jobs=self.n_jobs,
                         verbosity=-1,
                     ),
                     hyperparameters={"n_estimators": 100, "learning_rate": 0.1},
@@ -1278,7 +1283,7 @@ class AutoMLEngine:
                 ModelCandidate(
                     name="Extra Trees Regressor",
                     estimator=ExtraTreesRegressor(
-                        n_estimators=100, random_state=self.random_state, n_jobs=-1
+                        n_estimators=100, random_state=self.random_state, n_jobs=self.n_jobs
                     ),
                     hyperparameters={"n_estimators": 100},
                 )

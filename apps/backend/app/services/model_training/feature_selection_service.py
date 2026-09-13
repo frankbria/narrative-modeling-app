@@ -38,6 +38,7 @@ from app.services.model_training.feature_engineer import (
 )
 from app.services.redis_cache import cache_service
 from app.services.s3_service import load_dataframe_from_s3
+from app.services.training_admission import bounded_n_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -548,14 +549,14 @@ class FeatureSelectionService:
                 n_estimators=n_estimators,
                 max_depth=max_depth,
                 random_state=42,
-                n_jobs=-1
+                n_jobs=bounded_n_jobs()
             )
         else:
             model = RandomForestRegressor(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
                 random_state=42,
-                n_jobs=-1
+                n_jobs=bounded_n_jobs()
             )
 
         model.fit(X_filled, y)
@@ -626,10 +627,10 @@ class FeatureSelectionService:
                 solver='saga',
                 random_state=42,
                 max_iter=1000,
-                n_jobs=-1
+                n_jobs=bounded_n_jobs()
             )
         else:
-            model = LassoCV(cv=5, random_state=42, n_jobs=-1)
+            model = LassoCV(cv=5, random_state=42, n_jobs=bounded_n_jobs())
 
         model.fit(X_scaled, y)
 
