@@ -137,7 +137,14 @@ async def _reap_batch(cutoff: datetime) -> int:
         )
         if doc is None:
             return reaped
-        # A batch reserves `predictions` = total_records at creation.
+        # A batch reserves `predictions` = total_records at creation. KNOWN
+        # LIMITATION (#484): a retry appends a *second* reservation against the
+        # retry-time period (#460), so a job created, then retried across a UTC
+        # month boundary, then reaped, refunds only the creation period here and
+        # leaves the retry period's units burned (an under-refund). The
+        # `units >= amount` clamp in metering.refund prevents the opposite
+        # (minting), so this never credits units a period never held. An exact
+        # split needs a per-reservation ledger — tracked as a follow-up.
         reserved = int((doc.get("progress") or {}).get("total_records") or 0)
         if reserved > 0:
             await metering.refund(

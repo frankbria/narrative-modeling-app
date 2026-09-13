@@ -1,5 +1,6 @@
 """Stale-job reaper: reap orphaned jobs, refund their quota, spare live ones (#484)."""
 
+import asyncio
 from datetime import timedelta
 
 import pytest
@@ -8,7 +9,8 @@ from app.billing import metering
 from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
 from app.models.training_job import TrainingJob
 from app.services.job_reaper import reap_stale_jobs
-from app.utils.datetime import utcnow
+from app.utils.datetime import as_utc, utcnow
+from app.utils.heartbeat import heartbeat_pump
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -138,3 +140,45 @@ async def test_reaping_is_idempotent(setup_database):
     assert second.training == 0
     # Refunded exactly once, not twice.
     assert await metering.usage_for(USER, "training_runs") == before - 1
+
+
+async def test_heartbeat_pump_keeps_the_db_heartbeat_fresh(setup_database):
+    """Critical (codex #1): a long candidate can outlast the timeout between
+    progress events, so a background pump must keep last_heartbeat advancing."""
+    job = TrainingJob(
+        model_id="pump-1", user_id=USER, dataset_id="d", target_column="y",
+        status=JobStatus.RUNNING,
+    )
+    job.last_heartbeat = utcnow() - timedelta(hours=1)  # would be reaped as-is
+    await job.insert()
+
+    async with heartbeat_pump(job, interval=0.05):
+        await asyncio.sleep(0.2)  # several ticks
+
+    refreshed = await TrainingJob.get(job.id)
+    age = (utcnow() - as_utc(refreshed.last_heartbeat)).total_seconds()
+    assert age < 30, "the pump should have refreshed the persisted heartbeat"
+
+
+async def test_retried_batch_job_refreshes_its_heartbeat(setup_database, monkeypatch):
+    """Critical (codex #2): a retry must refresh last_heartbeat, or the stale value
+    carried from the original failed run makes the retry immediately reapable."""
+    from app.services.batch_prediction import BatchPredictionService
+
+    svc = BatchPredictionService()
+    monkeypatch.setattr(svc, "_spawn_processing", lambda job: None)
+
+    job = BatchJob(
+        job_id="retry-hb", job_type=JobType.BATCH_PREDICTION, user_id=USER,
+        config={"model_id": "m1"}, input_path="batch-jobs/u/m1/ts/in.csv",
+        status=JobStatus.FAILED, retry_count=0, max_retries=3,
+        progress=JobProgress(total_records=1),
+    )
+    job.last_heartbeat = utcnow() - timedelta(hours=2)  # stale from the failed run
+    await job.insert()
+
+    assert await svc.retry_job("retry-hb", USER) is True
+
+    # Reheartbeated -> the reaper does not kill the retry before it starts.
+    await reap_stale_jobs(timeout_seconds=60)
+    assert (await BatchJob.get(job.id)).status == JobStatus.PENDING
