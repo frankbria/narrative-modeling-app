@@ -225,7 +225,7 @@ MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 #: segment is empty, "." or ".." (checked before this regex runs). Depth carries
 #: no security meaning once the tenant prefix holds — the app itself writes
 #: ``datasets/{user}/{dataset}/data_{ts}.parquet``, the versions layout,
-#: ``models/{user}/{model}/model.pkl`` and ``batch-jobs/{user}/{model}/{ts}/…`` —
+#: ``models/{user}/{model}/model.pkl`` and ``batch-jobs/{user}/{model}/{job_id}/…`` (#487) —
 #: and the filename is the raw client name for datasets.py (``my data.csv``), so
 #: it may be anything without a slash (#496).
 _APP_NAMESPACES = ("datasets", "transformed", "models", "batch-jobs", "exports")
