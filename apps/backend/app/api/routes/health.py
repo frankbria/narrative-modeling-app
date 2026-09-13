@@ -6,16 +6,20 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
+from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData  # To access beanie database
 from app.services.s3_service import s3_service
 
 router = APIRouter()
-# Liveness-ONLY router mounted under /api/v1 (#479): the admin health widget
-# reaches the backend through nginx's /api/ proxy, but /health/ready is expensive
-# (#503), so only the cheap liveness is re-exposed there — never readiness.
+# Router mounted under /api/v1 (#479): the admin health widget reaches the backend
+# through nginx's /api/ proxy. It carries the cheap liveness alias and the
+# authenticated upstream diagnostic — but NOT /health/ready, which stays root-only
+# for the LB. Being under /api/v1 also puts the diagnostic under the global
+# RateLimitMiddleware, so an authenticated caller can't loop its outbound calls
+# unthrottled (#503).
 liveness_router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -64,9 +68,11 @@ async def check_s3_access() -> dict[str, Any]:
         }
 
     try:
-        # Test bucket access by checking if our specific bucket exists
+        # Test bucket access by checking if our specific bucket exists. boto3 is
+        # synchronous, so run it off the event loop — a slow/hung head_bucket must
+        # not stall the worker (#503 AC2).
         bucket_name = os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("AWS_BUCKET_NAME", "unknown")
-        s3_service.s3_client.head_bucket(Bucket=bucket_name)
+        await asyncio.to_thread(s3_service.s3_client.head_bucket, Bucket=bucket_name)
         latency_ms = (time.time() - start_time) * 1000
 
         return {
@@ -148,53 +154,87 @@ async def liveness_v1() -> dict[str, str]:
     return await health_check()
 
 
+@router.get("/health/live")
+async def liveness_check():
+    """Liveness alias — trivial, dependency-free (#503 AC4). Same as /health."""
+    return await health_check()
+
+
+def _check_or_generic(name: str, result: Any) -> dict[str, Any]:
+    """A gathered check may be an Exception; log its text server-side but never
+    serialize it into a response body (issue #269)."""
+    if not isinstance(result, Exception):
+        return result
+    logger.error(f"{name} health check raised: {str(result)}")
+    return {"status": "unhealthy", "latency_ms": None, "error": "unavailable"}
+
+
 @router.get("/health/ready")
 async def readiness_check():
+    """Readiness — "can THIS instance serve traffic", nothing more (#503).
+
+    Only MongoDB is checked: it is the one dependency without which the app cannot
+    serve any request, and its ping is async (non-blocking). Deliberately makes
+    **no** outbound third-party call — this endpoint is unauthenticated and polled
+    constantly by load balancers and uptime monitors, so a per-request OpenAI call
+    or blocking S3 ``head_bucket`` here was a cost-amplification DoS and an
+    event-loop stall (#503). Whole-system upstream health lives behind auth at
+    ``GET /health/dependencies``. 200 if ready, 503 otherwise — the contract the
+    Docker/compose healthchecks depend on.
     """
-    Readiness check - validates all external dependencies are available
-    Returns 200 if ready, 503 if any dependency is unhealthy
-    Executes all health checks in parallel for performance
+    # return_exceptions so a raising check is sanitized by _check_or_generic
+    # rather than 500ing and leaking its text into this unauthenticated body (#269).
+    results: list[Any] = await asyncio.gather(
+        check_mongodb_connection(), return_exceptions=True
+    )
+    checks = {"mongodb": _check_or_generic("MongoDB", results[0])}
+    ready = checks["mongodb"]["status"] == "healthy"
+
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "checks": checks,
+        },
+    )
+
+
+@liveness_router.get("/health/dependencies")
+async def dependencies_check(_user_id: str = Depends(get_current_user_id)):
+    """Full upstream diagnostic — MongoDB + S3 + OpenAI (#503 AC3).
+
+    Mounted under /api/v1 (via ``liveness_router``): it makes outbound calls
+    (OpenAI, S3), so it must sit off the anonymous readiness path AND under the
+    global rate limiter. It is **authenticated** (any signed-in user) and
+    **throttled** (RateLimitMiddleware covers /api/v1) so no caller can loop its
+    outbound calls unthrottled — the cost-amplification vector #503 closes.
+    Intended for the admin HealthMonitor (P1.3); #479's admin ``/health/status``
+    can later wrap this with the admin allowlist. Checks run in parallel and all
+    I/O is non-blocking (S3's boto3 probe is offloaded via ``asyncio.to_thread``).
     """
-    # Run all health checks in parallel using asyncio.gather
-    mongodb_check, s3_check, openai_check = await asyncio.gather(
+    results: list[Any] = await asyncio.gather(
         check_mongodb_connection(),
         check_s3_access(),
         check_openai_api(),
-        return_exceptions=True
+        return_exceptions=True,
     )
-
-    # Gather may return an Exception per check; log its text server-side but never
-    # serialize it into this unauthenticated response body (issue #269).
-    def _check_or_generic(name: str, result: Any) -> dict[str, Any]:
-        if not isinstance(result, Exception):
-            return result
-        logger.error(f"{name} health check raised: {str(result)}")
-        # latency_ms: None keeps the shape consistent with the other checks.
-        return {"status": "unhealthy", "latency_ms": None, "error": "unavailable"}
-
+    mongo_result, s3_result, openai_result = results
     checks = {
-        "mongodb": _check_or_generic("MongoDB", mongodb_check),
-        "s3": _check_or_generic("S3", s3_check),
-        "openai": _check_or_generic("OpenAI", openai_check),
+        "mongodb": _check_or_generic("MongoDB", mongo_result),
+        "s3": _check_or_generic("S3", s3_result),
+        "openai": _check_or_generic("OpenAI", openai_result),
     }
-
-    # Determine overall health status
-    # Critical services: MongoDB (only)
-    # Optional services: S3, OpenAI (can be unhealthy/not_configured in dev/CI)
+    # MongoDB is the only serve-blocking dependency; S3/OpenAI are informational.
     critical_healthy = checks["mongodb"]["status"] == "healthy"
 
-    # Backend is ready if MongoDB is healthy, regardless of S3/OpenAI status
-    # S3 and OpenAI can be in any state (healthy, unhealthy, not_configured)
-    status_code = 200 if critical_healthy else 503
-    overall_status = "ready" if critical_healthy else "not_ready"
-
     return JSONResponse(
-        status_code=status_code,
+        status_code=200 if critical_healthy else 503,
         content={
-            "status": overall_status,
+            "status": "healthy" if critical_healthy else "unhealthy",
             "timestamp": datetime.now(UTC).isoformat(),
-            "checks": checks
-        }
+            "checks": checks,
+        },
     )
 
 # NOTE (issue #273): the old JSON `/metrics` and `/security` endpoints were

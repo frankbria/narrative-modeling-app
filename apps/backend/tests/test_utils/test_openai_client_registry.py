@@ -21,9 +21,12 @@ from app.utils.openai_client import (
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 FACTORY = APP_DIR / "utils" / "openai_client.py"
 
-# A client construction: `OpenAI(` or `AsyncOpenAI(` used as a call. Excludes
-# `OpenAIError`, type annotations like `OpenAI | None` (no paren), and imports.
-_CONSTRUCTION = re.compile(r"\b(?:Async)?OpenAI\s*\(")
+# A client construction call: `OpenAI(` / `AsyncOpenAI(` with NO space before the
+# paren — that is how a real call is written (ruff E211 forbids `OpenAI (…)`), so
+# this never matches prose like "MongoDB + S3 + OpenAI (#503)" or "OpenAI (can be
+# …)" in a comment/docstring. Also excludes `OpenAIError`, type annotations like
+# `OpenAI | None` (no paren), and imports.
+_CONSTRUCTION = re.compile(r"\b(?:Async)?OpenAI\(")
 
 
 @pytest.mark.unit
@@ -33,8 +36,7 @@ def test_no_raw_openai_construction_outside_factory():
         if path == FACTORY:
             continue
         for i, line in enumerate(path.read_text().splitlines(), 1):
-            code = line.split("#", 1)[0]  # ignore comment prose (e.g. "OpenAI (...)")
-            if _CONSTRUCTION.search(code):
+            if _CONSTRUCTION.search(line):
                 offenders.append(f"{path.relative_to(APP_DIR.parent)}:{i}: {line.strip()}")
     assert not offenders, (
         "OpenAI clients must be built via app.utils.openai_client so the request "

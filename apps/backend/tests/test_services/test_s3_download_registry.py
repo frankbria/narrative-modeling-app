@@ -62,9 +62,9 @@ class TestOnlyTheCoreDownloads:
             "config.py",
             "utils/s3.py",
             "services/s3_service.py",
-            # Not download sites: /health/ready reports which bucket is configured,
-            # and the upload route checks the variable is present before writing.
-            # Neither turns a stored URL into a read.
+            # Not download sites: the /health/dependencies diagnostic reports which
+            # bucket is configured, and the upload route checks the variable is
+            # present before writing. Neither turns a stored URL into a read.
             "api/routes/health.py",
             "api/routes/upload.py",
         }
