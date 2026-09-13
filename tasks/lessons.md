@@ -781,3 +781,9 @@ checked, and the fix is always the same: the claim is a query, so run it.
 ## #478 — fabricated status on a customer surface (2026-09-12)
 - **When measurement isn't worth building, delete the claim — don't leave the fake.** The /admin page asserted a security posture (PII Detection: Active, SHA-256) that measured nothing; the honest fix (the issue's own AC3) is removing the card, not wiring a plausible-looking stub. An empty-but-true surface beats a false one.
 - **Lock out the narrative with a parametrized "does-not-render" test.** `it.each` over every removed literal is what stops internal sprint language from creeping back onto a product surface.
+
+## #479 — an always-red health light (2026-09-12)
+- **A widget can only be honest if a browser-reachable endpoint exists.** The health routes live at the backend root; in the nginx deployment only `/api/` is proxied, so an origin `/health` fetch 404s in prod (codex caught it). Mounting *liveness only* under `/api/v1` — never the expensive `/health/ready` (#503) — lets the widget use the standard `NEXT_PUBLIC_API_URL` + path convention and work in dev and prod alike.
+- **Three states, not two: unreachable ≠ unwell.** A thrown fetch (network) and a non-2xx (the process answered unwell) are different facts; render them differently. The loader throws only for the first and returns a sentinel for the second, so `useAsyncData.error` cleanly means "unreachable".
+- **Re-exposing a whole router under a new prefix drags its expensive routes along.** Give the cheap route its own sub-router with a distinct operation name; test the negative (the expensive path is NOT aliased).
+- **`git checkout -- <file>` in a mutation check discards an uncommitted rewrite — again (#515's lesson).** Commit the implementation before mutation-testing in place.
