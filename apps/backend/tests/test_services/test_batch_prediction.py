@@ -1023,6 +1023,9 @@ async def test_cancel_mid_flight_stops_processing_and_refunds_remainder(
 
     final = await BatchJob.find_one(BatchJob.job_id == "cancel-mid")
     assert final.status == JobStatus.CANCELLED  # AC1/AC2: not flipped back
+    # codex: the in-memory job reflects CANCELLED too, so the completion webhook
+    # reports the terminal state rather than a stale "running".
+    assert job.status == JobStatus.CANCELLED
     assert final.output_path is None
     # AC3: 2 of 10 processed -> the 8-record remainder is refunded.
     assert await metering.usage_for(user, "predictions") == before - 8

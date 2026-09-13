@@ -509,12 +509,21 @@ class BatchPredictionService:
                     if not cancelled and output_format == "json":
                         out.write("]")
 
+                # Final cancellation re-check (#485, codex): a cancel that lands
+                # after the last between-chunks check but before the upload must
+                # not publish an S3 result for a job that is already CANCELLED.
+                if not cancelled and await self._cancellation_requested(job.job_id):
+                    cancelled = True
+
                 if cancelled:
                     # AC4: discard the partial output entirely (the temp file is
                     # unlinked below; it is never uploaded, so no partial run is
                     # ever presented as complete). AC3: refund the unprocessed
-                    # remainder of the reservation.
+                    # remainder of the reservation. Reflect CANCELLED in memory so
+                    # the completion webhook reports the terminal state, not RUNNING.
                     await self._refund_remainder(job, summary_acc.total)
+                    job.status = JobStatus.CANCELLED
+                    job.completed_at = datetime.now(UTC)
                 else:
                     # Stream the finished results file to S3 (bounded memory).
                     output_path = await self._upload_results_file(out_path, job, config)
