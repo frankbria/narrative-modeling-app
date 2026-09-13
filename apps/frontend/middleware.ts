@@ -4,6 +4,34 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isAdminEmail } from "@/lib/admin-allowlist";
 
+// Over HTTPS Auth.js writes the session cookie as `__Secure-authjs.session-token`
+// (salt === cookie name); over http (dev/e2e) as the bare `authjs.session-token`.
+// `getToken({ req, secret })` with no `secureCookie` defaults to the bare name and
+// bare salt, so on the production/staging HTTPS URL it reads nothing and every
+// authenticated page redirects to sign-in (#469). Detecting HTTPS in edge
+// middleware behind a TLS-terminating proxy is unreliable, so instead read
+// whichever cookie the browser actually sent: try the secure variant first, then
+// the bare one. `secureCookie` cascades to both `cookieName` and `salt` in
+// next-auth's getToken, so passing it alone selects the matching name+salt; a
+// forged or stale cookie still fails signature/expiry inside decode.
+const SECURE_COOKIE_VARIANTS = [true, false] as const;
+
+async function readSessionToken(request: NextRequest) {
+  const secret = process.env.NEXTAUTH_SECRET;
+  // No presence-guard on the raw Cookie header: Auth.js chunks an oversized JWT
+  // into `<name>.0`, `.1`, … (large OAuth sessions), which getToken reassembles
+  // internally but a `${name}=` substring check would miss — and the bare name
+  // is a substring of the secure one, so such a guard is both lossy and
+  // collision-prone. getToken returns null cheaply when its cookie is absent,
+  // so trying the secure variant then the bare one is correct in every
+  // environment for the cost of at most one extra decode.
+  for (const secureCookie of SECURE_COOKIE_VARIANTS) {
+    const token = await getToken({ req: request, secret, secureCookie });
+    if (token) return token;
+  }
+  return null;
+}
+
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -32,7 +60,7 @@ export default async function middleware(request: NextRequest) {
   // exposed under the old opt-in allowlist. Verify the Auth.js JWT (signature +
   // expiry), not just cookie presence, so a stale or forged session-token cookie
   // cannot serve a protected page.
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  const token = await readSessionToken(request);
 
   if (!token) {
     const signInUrl = new URL('/auth/signin', request.url);
