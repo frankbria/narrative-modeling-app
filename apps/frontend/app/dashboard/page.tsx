@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
@@ -12,6 +12,8 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { ErasureConfirmDialog } from '@/components/settings/ErasureConfirmDialog';
+import { erasureApi } from '@/lib/services/erasure';
 import {
   Upload,
   BarChart3,
@@ -25,7 +27,8 @@ import {
   Database,
   CheckCircle,
   AlertCircle,
-  Lock
+  Lock,
+  Trash2
 } from 'lucide-react';
 
 // Icon mapping for workflow stages
@@ -158,6 +161,8 @@ export default function DashboardPage() {
     { errorMessage: 'Unable to load datasets' },
   );
   const recentDatasets = datasetList ?? [];
+  // Per-dataset right-to-erasure (#482): the row targeted for permanent deletion.
+  const [datasetToErase, setDatasetToErase] = useState<DatasetItem | null>(null);
 
   const { data: modelList, loading: isLoadingModels, error: modelsError, reload: fetchRecentModels } = useAsyncData(
     () => fetchList<ModelItem>('models', 'models', 'models'),
@@ -390,6 +395,18 @@ export default function DashboardPage() {
                     <span className="text-xs text-gray-400">
                       {formatRelativeTime(dataset.created_at)}
                     </span>
+                    <button
+                      type="button"
+                      aria-label={`Delete dataset ${dataset.filename}`}
+                      data-testid="erase-dataset"
+                      className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDatasetToErase(dataset);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 ))}
                 <Button
@@ -543,6 +560,30 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {datasetToErase && (
+        <ErasureConfirmDialog
+          open={datasetToErase !== null}
+          onOpenChange={(next) => {
+            if (!next) setDatasetToErase(null);
+          }}
+          title={`Delete "${datasetToErase.filename}"`}
+          confirmWord={datasetToErase.filename}
+          onConfirm={() => erasureApi.eraseDataset(datasetToErase.dataset_id)}
+          onErased={() => {
+            // Keep the dialog open so its success summary shows; refresh the list
+            // behind it. Closing (the Close button) clears datasetToErase.
+            fetchRecentDatasets();
+          }}
+          body={
+            <p>
+              This permanently deletes this dataset and everything derived from it —
+              transformations, versions, trained models and their stored files. This cannot be
+              undone.
+            </p>
+          }
+        />
+      )}
     </div>
   );
 }
