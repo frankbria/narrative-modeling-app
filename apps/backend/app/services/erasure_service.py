@@ -79,6 +79,11 @@ _LINK_KEYED_MODELS = [
 
 _URL_SCHEMES = ("s3://", "http://", "https://")
 
+# Replaces an erased user's id where it survives in another tenant's row that we
+# must not delete (a recipe they shared onward) — scrubs the identifier without
+# destroying the recipient's data (#480).
+_ERASED_OWNER_TOMBSTONE = "erased-user"
+
 
 def _s3_key(
     url_or_key: str | None, bucket_name: str, manifest: DeletionManifest | None = None
@@ -445,6 +450,25 @@ class DatasetErasureService:
             # dataset-keyed children don't — querying them by user_id is a no-op).
             if "user_id" in model_cls.model_fields:
                 await self._delete_many(model_cls, {"user_id": user_id}, manifest)
+
+        # A recipe this user shared to OTHERS lives in the recipient's row with
+        # `user_id` = recipient and `original_owner_id` = the erased user, so the
+        # user_id sweep above never matches it and the erased user's id stays
+        # visible in the recipient's /recipes/shared (#480). Don't delete the
+        # recipient's copy — it is their data — scrub the erased user's id to a
+        # tombstone so the row no longer identifies them.
+        try:
+            res = await SharedRecipe.find(
+                SharedRecipe.original_owner_id == user_id
+            ).update({"$set": {"original_owner_id": _ERASED_OWNER_TOMBSTONE}})
+            anonymized = getattr(res, "modified_count", 0) or 0
+            if anonymized:
+                manifest.notes.append(
+                    f"anonymized original_owner_id on {anonymized} shared_recipes "
+                    "copies held by other tenants"
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"anonymize shared_recipes: {e}")
 
         if manifest.documents_deleted.get(Subscription.Settings.name):
             manifest.notes.append(

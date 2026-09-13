@@ -140,3 +140,25 @@ async def test_erase_user_does_not_touch_another_tenants_records(setup_database)
     await dataset_erasure_service.erase_user(USER, actor_id=USER)
 
     assert await APIKey.find(APIKey.user_id == OTHER).count() == 1
+
+
+async def test_erase_user_anonymizes_shared_recipe_it_gave_others(setup_database):
+    """A recipe the erased user shared onward keeps the recipient's copy, but the
+    erased user's id is scrubbed from original_owner_id (#480, codex)."""
+    from beanie import PydanticObjectId
+
+    from app.services.erasure_service import dataset_erasure_service
+    from app.services.transformation_engine.recipe_manager import SharedRecipe
+
+    # OTHER received a recipe that USER originally created and shared.
+    await SharedRecipe(
+        name="shared-by-erased", user_id=OTHER, original_recipe_id=PydanticObjectId(),
+        original_owner_id=USER, steps=[],
+    ).insert()
+
+    manifest = await dataset_erasure_service.erase_user(USER, actor_id=USER)
+
+    survivors = await SharedRecipe.find(SharedRecipe.user_id == OTHER).to_list()
+    assert len(survivors) == 1, "the recipient's copy must survive"
+    assert survivors[0].original_owner_id != USER, "the erased user's id must be scrubbed"
+    assert any("anonymized" in n for n in manifest.notes), manifest.notes
