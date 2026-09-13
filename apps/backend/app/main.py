@@ -200,6 +200,12 @@ register_error_handlers(app)
 # ✅ Include routers
 # Health check routes at root level (no version prefix)
 app.include_router(health.router, tags=["health"])
+# Liveness ONLY under /api/v1 (#479): the browser reaches the backend through
+# nginx's /api/ proxy, so the admin widget needs a versioned liveness path — but
+# NOT /health/ready, which does per-request outbound work (#503).
+app.include_router(
+    health.liveness_router, prefix=settings.API_V1_STR, tags=["health"]
+)
 
 app.include_router(
     upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]

@@ -26,6 +26,18 @@ class TestHealthEndpoints:
         assert "environment" in data
         assert "version" in data
 
+    def test_versioned_health_alias_is_reachable(self):
+        """#479: the admin widget reaches liveness through nginx's /api/ proxy, so
+        /health is mounted under /api/v1 too; the root path stays for the LB."""
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+        assert response.json()["status"] == "alive"
+
+    def test_versioned_alias_does_not_expose_readiness(self):
+        """Only liveness is versioned (#479); /health/ready stays root-only because
+        it does per-request outbound work (#503) that a poller must not amplify."""
+        assert client.get("/api/v1/health/ready").status_code == 404
+
 
 class TestMetricsUnshadowed:
     """Regression guard (issue #273): /metrics must serve Prometheus text, not the

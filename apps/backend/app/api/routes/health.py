@@ -13,6 +13,10 @@ from app.models.user_data import UserData  # To access beanie database
 from app.services.s3_service import s3_service
 
 router = APIRouter()
+# Liveness-ONLY router mounted under /api/v1 (#479): the admin health widget
+# reaches the backend through nginx's /api/ proxy, but /health/ready is expensive
+# (#503), so only the cheap liveness is re-exposed there — never readiness.
+liveness_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 async def check_mongodb_connection() -> dict[str, Any]:
@@ -137,6 +141,12 @@ async def health_check():
         "environment": os.getenv("ENVIRONMENT", "development"),
         "version": os.getenv("APP_VERSION", "1.0.0")
     }
+
+@liveness_router.get("/health", name="liveness_v1")
+async def liveness_v1() -> dict[str, str]:
+    """Liveness under /api/v1 for the browser-facing admin widget (#479)."""
+    return await health_check()
+
 
 @router.get("/health/ready")
 async def readiness_check():
