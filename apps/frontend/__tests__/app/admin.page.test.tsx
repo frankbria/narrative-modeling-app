@@ -22,8 +22,10 @@ describe('AdminPage (#478)', () => {
   it.each([
     'Sprint 1',
     'fully operational',
+    'Security Overview',
     'PII Detection',
     'Upload Security',
+    'Data Encryption',
     'SHA-256',
     'Achievement Summary',
     '41/41 tests passing',
