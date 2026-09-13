@@ -787,3 +787,84 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Three states, not two: unreachable ≠ unwell.** A thrown fetch (network) and a non-2xx (the process answered unwell) are different facts; render them differently. The loader throws only for the first and returns a sentinel for the second, so `useAsyncData.error` cleanly means "unreachable".
 - **Re-exposing a whole router under a new prefix drags its expensive routes along.** Give the cheap route its own sub-router with a distinct operation name; test the negative (the expensive path is NOT aliased).
 - **`git checkout -- <file>` in a mutation check discards an uncommitted rewrite — again (#515's lesson).** Commit the implementation before mutation-testing in place.
+
+## #497 [P1.4] GDPR erasure of trained-model S3 artifacts (2026-09-12)
+- **`git commit -am` sweeps in unrelated tracked edits.** The `-a` in an endpoint-fix commit staged a pre-existing uncommitted `.claude/settings.json` change (enabling a plugin), leaking it into the PR — claude-review caught it. In a session that starts with `M` on tracked files unrelated to the task, `git add <specific paths>` per commit, never `-a`. Fix: restore the file to main's version on the branch, re-create the local edit as an uncommitted change so the user's local state survives.
+- **AC "add a test" issues are often already-fixed-by-later-work.** #497's cascade (AC1-AC3) was fully delivered by the #259→#616 erasure line; only AC4 (a live-S3 proof) was a real gap. Verify each AC against current code before assuming the whole issue is open.
+- **A hermetic (mock-S3) erasure test cannot prove a live delete.** `model_storage.delete_model` swallows S3 errors into a log line and never surfaces them to the manifest, so `manifest.failures == []` can coexist with a surviving object. The load-bearing assertion must be a direct bucket listing (`list_objects_v2` empty), independent of the manifest. Mutation-check it by skipping the real delete — the manifest still lies, the bucket listing catches it.
+- **codex/claude-review both flagged real items on a one-file test PR** (endpoint hardcoding; the settings.json leak) — small diffs still earn a full triage pass, don't skip review because "it's just a test".
+
+## #469 [P0.26] middleware secure-cookie over HTTPS (2026-09-12)
+- **next/jest overrides `transformIgnorePatterns`.** It prepends its own `node_modules/(?!.pnpm)(?!(geist|next/...)/)` pattern, and jest skips transforming a file that matches ANY pattern — so a package you *add* in your own entry is still ignored by next's. To transform an ESM-only dep (e.g. @auth/core/jose/@panva/hkdf, needed to run the real next-auth `getToken` under jest), inject it into next/jest's own negative-lookahead after `createJestConfig` resolves (async export, `.replace('(?!(geist|', ...)`), and into every other node_modules lookahead too.
+- **next-auth v5 `getToken({req, secret})` defaults to the BARE cookie name + bare salt.** Over HTTPS Auth.js writes `__Secure-authjs.session-token` (salt = that name), so middleware read nothing and redirected every page — invisible to CI (http localhost). Read whichever cookie is present (secure first, then bare); `secureCookie` cascades to cookieName+salt. Never presence-guard on `${name}=` (misses chunked `<name>.0/.1` cookies; bare name is a substring of secure).
+- **Foreground CI polls: pass an explicit `timeout` param (up to 555000ms).** Without it, Bash backgrounds a >120s loop, and background waits get culled on low memory (WSL free-vs-available heuristic). A foreground loop with an explicit long timeout stays foreground and survives.
+
+## #480 [P1.5] erase_user account-scoped records (2026-09-12)
+- **Check who actually CALLS the function before deciding retention/deletion semantics.** #480's issue framed it as "account erasure," but erase_user's only caller is POST /users/me/erase, which KEEPS the account. Deleting the Subscription mirror would enforce an actively-paying customer as FREE. Retention/deletion of billing state depends entirely on whether the account survives — read the endpoint's contract, don't trust the issue's framing.
+- **An id can be stored twice.** SharedRecipe holds the owner id in both original_owner_id and metadata.shared_by; scrubbing one leaves the other. Grep the model/creator for every copy of a PII field before claiming it's anonymized.
+- **A child collection may not carry user_id.** FeatureVersion is keyed by its parent StoredFeature.feature_id; sweep it by resolving the owner's parent ids first, before deleting the parents.
+- **Both reviewers earn their keep on a data-integrity sweep:** codex caught the shared-recipe owner residual; the internal reviewer caught the paying-customer downgrade and the BatchJob S3 orphaning. Run both, and file the out-of-scope-but-real residuals (#661/#662) rather than expanding the PR.
+
+## #482 [P1.7] erasure UI + e2e id-space traps (2026-09-12)
+- **The dashboard lists DatasetMetadata (string id-space), but /upload posts to /upload/secure (legacy UserData/ObjectId space).** An uploaded dataset does NOT appear in the dashboard's recent-datasets. To seed a dataset that shows there, use POST /datasets/upload (DatasetService.create_dataset → DatasetMetadata + UserData twin). Know which id-space a list endpoint reads before asserting a seeded row appears.
+- **SKIP_AUTH is NOT in effect for the e2e backend** — a tokenless request to the backend 401s. Seed via the backend by reading session.apiToken from the same-origin /api/auth/session and sending it as Bearer. (Corollary: e2e identities are NOT collapsed to dev-user-default; they're the authenticated test user — but all specs still share that one user, so a full account erase is still unsafe.)
+- **Radix DialogContent's built-in X close carries an sr-only 'Close' label**, so getByRole('button',{name:'Close'}) is ambiguous with a footer 'Close'. Target dialog controls by data-testid.
+- **A dialog kept mounted by its parent must reset() on EVERY close path** (Cancel, Esc, overlay, the X — all route through onOpenChange), and should ignore closes while a request is in flight; and navigate on close, not in onErased, or the success summary never shows. jest-cover the page-level wiring (onErased→navigation), not just the dialog in isolation.
+
+## #498 [P1.9] training concurrency + n_jobs bounds (2026-09-12)
+- **Mirror the existing pattern for a sibling problem.** #515 already built batch admission (per-loop semaphore + per-user cap + 429 + refund); training reused it verbatim (training_admission.py). Don't invent a new shape when a merged, reviewed one exists.
+- **asyncio.wait_for on a to_thread fit can't kill the thread.** When the wall clock fires, the semaphore slot releases but the sklearn fit keeps burning a core — the concurrency cap is briefly exceeded during an overrun. Document it and size the cap with margin; not fixable without a process pool.
+- **A queued job must re-check cancellation after acquiring the slot** (codex): the engine's own cancel_check fires late (after preprocessing), so a cancelled-while-queued job would burn the slot first.
+- **A service-layer test isn't the HTTP contract.** The internal reviewer wanted a route test proving 429 + quota refund end-to-end (like #515's), not just that the enforce fn raises. Add the route test for the user-facing status/refund behavior.
+- **`git checkout` can fail on a stale `.git/index.lock`** from an earlier interrupted git process ("remove the file manually"). `rm -f .git/index.lock` (no git running), then retry — the merge had already landed remotely.
+
+## #484 [P1.12] stale-job reaper (2026-09-12)
+- **Multiple workers change the design.** The Dockerfile runs gunicorn --workers 2, so "reap all in-flight on startup" would let a starting worker kill a sibling's LIVE jobs. Use heartbeat-based staleness (never reap a job with a recent heartbeat) + an atomic find_one_and_update claim (so concurrent reapers refund exactly once). Always check the run command's worker count before writing startup/reconciliation logic.
+- **A partial $set does not persist a new field.** on_progress/on_event persist the training job with a partial $set of specific fields; the in-memory last_heartbeat bump never reached Mongo until it was added to those $set dicts. When you add a field that a hot path must persist, update every partial-write site, not just the model method (codex + internal both caught variants).
+- **Progress-driven heartbeats can gap longer than the timeout.** A single training candidate's tuning+fit (tier budget up to 1800s) or a big batch chunk runs with no progress event, so a background heartbeat pump (app/utils/heartbeat.py, bump every 60s around the CPU work) is needed to decouple liveness from progress cadence.
+- **Retry/requeue paths must refresh the heartbeat**, or the requeued job inherits the old run's stale value and is reaped before it restarts.
+- **A field defaulted at creation makes the reaper query simple** (last_heartbeat < cutoff), but pre-existing docs lack it — a missing field never matches $lt, so add an $or created_at fallback for the one-time sweep of old rows.
+
+## #485 [P1.13] batch cancel state machine (2026-09-12)
+- **When you make writes conditional to avoid a lost write, convert EVERY write in the path.** I guarded the per-chunk + terminal writes but left the opening `mark_started(); save()` as an unconditional full save — the internal reviewer caught that a cancel landing before the first chunk gets clobbered back to RUNNING (the same bug, relocated). Grep the whole task for `.save()`/writes and make each conditional or status-guarded.
+- **Conditional transitions = atomic find_one_and_update on status.** cancel_job, _claim_running, _finalize_if_running all use `{status in [...]}` filters so exactly one transition wins and no stale in-memory full-doc save clobbers a concurrent change.
+- **A cancel re-check is needed before the S3 upload too** (codex), not just between chunks — else a late cancel orphans an uploaded result. And set the terminal status in memory before firing the completion webhook, or it reports the stale RUNNING.
+- **claude-review can go red on a larger diff** (max_turns placeholder, #626). It is advisory, not the required CI Success — filter it out when polling for merge-readiness.
+
+## #486 [P1.14] batch CSV field limit (2026-09-13)
+- **A billing/quota count must fail CLOSED, never `return 0` on error.** `_count_csv_rows` swallowed every exception and returned 0; csv's 131072-byte field limit made one oversized field reserve 0 → the whole batch ran unmetered. Raise + reject 4xx. And bound `csv.field_size_limit` to a sane value rather than raising it huge (that trades a quota bypass for a memory-exhaustion vector).
+- **codex review reads the working tree, not just the committed diff** — it flagged the uncommitted `.claude/settings.json` local edit as "in the PR" when `git diff main...HEAD` had only the intended files. Verify against the branch diff before acting; keep committing explicit paths.
+
+## #487 [P1.15] batch S3 key collision (2026-09-13)
+- **Timestamps at second granularity are not unique keys.** Two jobs in the same second collided (input overwrite + cross-tenant result leak). Key S3 objects by a unique server-generated id (job_id), generated up front and threaded to every key builder; keep the tenant prefix. A retry reusing the same id deterministically overwrites its own output (intended).
+
+## #488 [P1.16] shared prediction log (2026-09-13)
+- **A new persisted collection that stores request data MUST be wired into the erasure cascade** (codex P1). PredictionEvent stored input_data but wasn't erased — a GDPR erase left it until TTL. Delete it wherever its owning model is deleted.
+- **Don't turn an in-memory append into N synchronous DB inserts on a hot path.** The serving endpoint logged one insert per record (up to 1000/request). Batch with insert_many (one round-trip) or fire off-request; fix the stale "never touches the DB" docstring.
+- **Run `uv run ruff check .` from apps/backend before pushing backend changes, not per-file.** CI runs `ruff check .` and caught an import-order (I) error my per-file check missed — a python-inserted import bypassed ruff's isort. (Reinforces [[backend-lint-scope-and-pytest-summary]].)
+- **Keep the interface, swap the storage.** Reimplementing PredictionLog's 2 methods on Mongo left every caller + drift/metrics untouched — the docstring even predicted this upgrade path.
+
+## #489 — Cross-worker model-cache invalidation (process-local cache, 2 workers)
+- **Verify-before-fix reframed the bug.** The issue's "a deleted model still answers"
+  is FALSE for the production route (it reads the doc fresh via `find_one` before
+  `load_model`, so it 404s), but TRUE for the internal `POST /{model_id}/predict`
+  (calls `load_model` before its existence check). The durable fix is to make
+  `load_model` itself authoritative (validate the cache hit against a shared
+  generation) rather than reorder each caller — one change covers production,
+  internal, batch, export, and features uniformly.
+- **A generation counter turns a local evict into a cross-worker signal.** The cache
+  is process-local; the only shared state between the 2 workers is Mongo. Persist a
+  monotonic `cache_generation`, `$inc` it atomically on invalidate, and check it on
+  every cache hit. `delete_model`/save keep a bare local evict on purpose: delete
+  removes the doc (the freshness read hits not-found), and save always mints a fresh
+  `model_id` (no prior generation to bump).
+- **Resolve a reviewer disagreement by checking await boundaries.** codex flagged the
+  production `expected_generation` optimization as serving stale; the internal
+  reviewer said it can't. The tie-breaker: there is no `await` between the route's
+  `find_one` and the cache read inside `load_model`, so the generation is
+  authoritative for that process as of a just-completed read. Re-reading inside
+  `load_model` cannot close the irreducible TOCTOU (a concurrent write after EITHER
+  read serves the just-read value) and would cost a second doc read per prediction —
+  kept the optimization, documented the window.
+- **`git add -A` re-bit (the #497 lesson).** The repo has ~9 pre-existing untracked
+  files; `git add -A` swept them into staging. Always `git add <explicit paths>`.
