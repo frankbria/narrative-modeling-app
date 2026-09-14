@@ -1134,3 +1134,21 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **When you close a residual, update the doc that tracked it as open.** CLAUDE.md's
   erase_user note listed #661/#662 as "still-open residuals"; both reviewers flagged it.
   Closing a tracked residual includes striking it from the convention doc in the same PR.
+
+## #443 — raise Node runtime floor 20 -> 22
+- **`engines` is a warning, not a gate.** A dependency requiring Node >=22 installs, builds,
+  and passes CI green on Node 20; it only fails at request time in the node:20-alpine
+  runtime in prod. Raise the floor across ALL surfaces at once: CI workflows, the Dockerfile
+  base (digest-pinned, all stages), and package.json engines — and the guard test that
+  pins "Dockerfile major == CI major".
+- **A version bump leaves comment drift.** The reviewer found stale "Node 20" comments in
+  the Dockerfile and dependabot ignore blocks after the functional bump was done. Grep the
+  repo for the old version string in comments too, not just the executable pins.
+- **Get the digest from the registry, verify the runtime.** `docker pull node:22-alpine` +
+  `docker inspect --format '{{index .RepoDigests 0}}'` for the sha256; `docker run --rm
+  node:22-alpine node --version` (22.23.2) to confirm it satisfies the engines floor. Then
+  actually `docker build` the image (AC5) — CI never builds it, so a base-major can pass CI
+  and still break the image (the #216/#217 lesson).
+- **codex can hang for tens of minutes (outage, not slowness).** ~40 min with zero output on
+  a tiny diff = the stall signature; `pkill -f "codex review"` and fall back to the internal
+  reviewer (advisory), disclosing it on the PR. Don't wait on it. [[opencode-stall-signature-and-codex-fallback]]
