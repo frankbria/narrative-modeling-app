@@ -144,6 +144,31 @@ describe('DeployPage', () => {
     });
   });
 
+  describe('idle state does not present fabricated infrastructure or pricing (#511)', () => {
+    it('shows no invented cost/auto-scaling/instance/global-availability claims', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(notDeployedModel),
+      });
+
+      render(<DeployPage />);
+
+      // The idle "Deploy Your Model" screen renders.
+      expect(await screen.findByText('Deploy Your Model')).toBeInTheDocument();
+
+      // Fabricated figures must be gone (AC1/AC2/AC3).
+      expect(screen.queryByText(/\$0\.10/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Estimated Cost/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Auto-scaling/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/1-5 instances/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Low latency endpoints worldwide/i)).not.toBeInTheDocument();
+
+      // The claims that remain are true of a deployed model.
+      expect(screen.getByText('Secure API')).toBeInTheDocument();
+      expect(screen.getByText('API key authentication and rate limiting')).toBeInTheDocument();
+    });
+  });
+
   describe('deploy action', () => {
     beforeEach(() => {
       // First call = mount status check (not deployed), second = the PUT deploy.
