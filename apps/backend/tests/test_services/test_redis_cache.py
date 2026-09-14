@@ -164,17 +164,56 @@ class TestRedisCacheService:
         
     @pytest.mark.asyncio
     async def test_delete_pattern(self):
-        """Test pattern-based deletion"""
+        """Pattern deletion scans incrementally (SCAN), never the blocking KEYS (#570)."""
         mock_redis = AsyncMock()
-        mock_redis.keys = AsyncMock(return_value=[b"key1", b"key2", b"key3"])
+        mock_redis.scan = AsyncMock(return_value=(0, [b"key1", b"key2", b"key3"]))
         mock_redis.delete = AsyncMock(return_value=3)
-        
+
         self.cache_service.redis_client = mock_redis
-        
+
         result = await self.cache_service.delete_pattern("test_*")
+
         assert result == 3
-        mock_redis.keys.assert_called_once_with("test_*")
-        mock_redis.delete.assert_called_once()
+        # SCAN, not KEYS — the whole point of #570 (KEYS blocks the shared instance).
+        assert not mock_redis.keys.called
+        mock_redis.scan.assert_awaited_once()
+        assert mock_redis.scan.call_args.kwargs["match"] == "test_*"
+        mock_redis.delete.assert_awaited_once_with(b"key1", b"key2", b"key3")
+
+    @pytest.mark.asyncio
+    async def test_delete_pattern_paginates_and_dedupes(self):
+        """SCAN can return a key on more than one page; it must be deleted once (#570 AC3)."""
+        mock_redis = AsyncMock()
+        # page 1 -> cursor 5, page 2 -> cursor 0; key2 appears on both pages.
+        mock_redis.scan = AsyncMock(
+            side_effect=[(5, [b"key1", b"key2"]), (0, [b"key2", b"key3"])]
+        )
+        mock_redis.delete = AsyncMock(side_effect=lambda *keys: len(keys))
+
+        self.cache_service.redis_client = mock_redis
+
+        result = await self.cache_service.delete_pattern("test_*")
+
+        assert mock_redis.scan.await_count == 2
+        # key2 deleted exactly once (deduped) -> 3 unique keys total.
+        assert result == 3
+        deleted = [k for call in mock_redis.delete.call_args_list for k in call.args]
+        assert deleted.count(b"key2") == 1
+        assert sorted(deleted) == [b"key1", b"key2", b"key3"]
+
+    @pytest.mark.asyncio
+    async def test_delete_pattern_key_removed_mid_scan(self):
+        """A key SCAN returned but already gone at DELETE time: no error, not miscounted (#570 AC3)."""
+        mock_redis = AsyncMock()
+        mock_redis.scan = AsyncMock(return_value=(0, [b"key1", b"gone"]))
+        # Only key1 still existed when DELETE ran -> DELETE reports 1.
+        mock_redis.delete = AsyncMock(return_value=1)
+
+        self.cache_service.redis_client = mock_redis
+
+        result = await self.cache_service.delete_pattern("test_*")
+
+        assert result == 1  # reflects keys actually removed; no exception raised
         
     @pytest.mark.asyncio
     async def test_exists_operation(self):

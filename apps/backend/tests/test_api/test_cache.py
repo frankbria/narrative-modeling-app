@@ -44,13 +44,21 @@ class FakeRedis:
     def __init__(self, store: dict[str, bytes]):
         self.store = dict(store)
 
-    async def keys(self, pattern):
+    def _match(self, pattern):
         namespace = pattern.split(":", 1)[0]
         assert namespace and not set(namespace) & set("*?["), (
             f"cache purge issued an unanchored Redis glob: {pattern!r}"
         )
         matcher = _glob_to_regex(pattern)
         return [key.encode() for key in self.store if matcher.match(key)]
+
+    async def keys(self, pattern):
+        return self._match(pattern)
+
+    async def scan(self, cursor=0, match=None, count=None):
+        # delete_pattern scans rather than KEYS since #570; keep the #452
+        # anchored-glob guard on this path. The store is small, so one page.
+        return (0, self._match(match))
 
     async def delete(self, *names):
         keys = [n.decode() if isinstance(n, bytes) else n for n in names]
