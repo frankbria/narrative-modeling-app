@@ -52,6 +52,20 @@ def test_every_advertised_type_carries_display_metadata():
         assert isinstance(m["requires_columns"], bool)
 
 
+def test_no_engine_optional_param_is_advertised_as_required():
+    """The config UI (TransformationConfigDialog) treats a schema field as REQUIRED
+    unless it carries `required: false` or a `default` — so an optional engine param
+    left unmarked blocks default-behavior flows (e.g. Remove Duplicates with defaults,
+    Fill Missing by method only). Every advertised param is optional at the engine
+    level, so every field must be explicitly optional (#499, codex review)."""
+    for m in available_transformations():
+        for field, schema in m["parameters_schema"].items():
+            assert schema.get("required") is False or "default" in schema, (
+                f"{m['type']}.{field} would be treated as required by the config UI; "
+                "mark it `required: False` (all these params are optional in the engine)"
+            )
+
+
 def test_params_cover_every_advertised_type():
     # Guards the test itself: if a new executable type is added, this list must grow.
     assert set(_PARAMS) == {m["type"] for m in available_transformations()}

@@ -81,9 +81,13 @@ class RemoveDuplicatesTransformation(BaseTransformation):
     CATEGORY = "Data Cleaning"
     LABEL = "Remove Duplicates"
     DESCRIPTION = "Remove duplicate rows from the dataset"
+    # Every field is optional at the engine level (keep defaults to 'first', subset to
+    # all columns). The config UI treats a field as REQUIRED unless it carries
+    # `required: false` or a `default` (#499), so mark optionals explicitly or common
+    # flows (e.g. "remove duplicates with defaults") become unconfigurable.
     PARAMETERS_SCHEMA = {  # noqa: RUF012
-        "subset": {"type": "array", "items": {"type": "string"}},
-        "keep": {"type": "string", "enum": ["first", "last"]},
+        "subset": {"type": "array", "items": {"type": "string"}, "required": False},
+        "keep": {"type": "string", "enum": ["first", "last"], "required": False},
     }
     REQUIRES_COLUMNS = False
 
@@ -115,7 +119,8 @@ class TrimWhitespaceTransformation(BaseTransformation):
         "(all text columns if none are specified)"
     )
     PARAMETERS_SCHEMA = {  # noqa: RUF012
-        "columns": {"type": "array", "items": {"type": "string"}},
+        # Optional: applies to all text columns when omitted.
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
     }
     REQUIRES_COLUMNS = False
 
@@ -156,9 +161,10 @@ class DropMissingTransformation(BaseTransformation):
     LABEL = "Drop Missing"
     DESCRIPTION = "Remove rows with missing values"
     PARAMETERS_SCHEMA = {  # noqa: RUF012
-        "columns": {"type": "array", "items": {"type": "string"}},
-        "how": {"type": "string", "enum": ["any", "all"]},
-        "threshold": {"type": "number", "minimum": 0, "maximum": 100},
+        # All optional: defaults are all columns / how='any' / no threshold.
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
+        "how": {"type": "string", "enum": ["any", "all"], "required": False},
+        "threshold": {"type": "number", "minimum": 0, "maximum": 100, "required": False},
     }
     REQUIRES_COLUMNS = False
 
@@ -239,12 +245,16 @@ class FillMissingTransformation(BaseTransformation):
         "Fill missing values with a constant value, or impute with a strategy: "
         "mean, median, mode, forward-fill or backward-fill"
     )
+    # value XOR method: exactly one is needed, a cross-field rule the flat config UI
+    # can't express, so both are marked optional and the engine validates one-of at
+    # apply time (a graceful success=False, not a 500). columns is optional (all columns).
     PARAMETERS_SCHEMA = {  # noqa: RUF012
-        "columns": {"type": "array", "items": {"type": "string"}},
-        "value": {"type": "string"},
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
+        "value": {"type": "string", "required": False},
         "method": {
             "type": "string",
             "enum": ["mean", "median", "mode", "ffill", "bfill"],
+            "required": False,
         },
     }
     REQUIRES_COLUMNS = False
