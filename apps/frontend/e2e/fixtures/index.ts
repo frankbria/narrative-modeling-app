@@ -36,29 +36,50 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   },
 
   authenticatedPage: async ({ page }, use) => {
-    // The session is already loaded from storage state (configured in playwright.config.ts)
-    // The global-setup.ts script handles authentication and saves the session state
-    // This fixture just uses that saved state
+    // Land the pre-authenticated test user (storage state from global-setup) on the
+    // dashboard, deterministically.
+    //
+    // Failure mode this removes (#578): a fresh/reset test user is a first-time user,
+    // so the dashboard redirects to /onboarding (#152). ?skipOnboarding=true (#470) is
+    // the product's "Skip for now" affordance, but the dashboard keys the skip flag on
+    // the loaded user id and writes it under "anonymous" until useCurrentUser resolves
+    // (app/dashboard/page.tsx). So if the run's timing loses the query param before the
+    // id loads — or a concurrent onboarding-state reset (#550) has the shared test user
+    // mid first-time — the redirect wins and we land on /onboarding, not /dashboard.
+    // That state is established once per RUN, so Playwright's in-run retries re-enter it
+    // and all fail; a bare `toMatch(/dashboard/)` then reads as an undiagnosable flake.
+    //
+    // Navigate, and if it bounced to onboarding, skip once more now that the session and
+    // id are warm (the second skip writes the flag under the real id). Then assert the
+    // outcome with a message that NAMES what went wrong instead of a URL mismatch.
+    const gotoDashboard = async (): Promise<string> => {
+      await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
+      await page.waitForLoadState('networkidle', { timeout: 15000 });
+      return page.url();
+    };
 
-    console.log('[authenticatedPage] Using pre-authenticated session from storage state');
-
-    // Navigate to the dashboard page (root redirects to first incomplete workflow stage).
-    // ?skipOnboarding=true is the product's own "Skip for now" affordance (#152): since
-    // #470 the onboarding status call really works, so a fresh test user is a first-time
-    // user and the dashboard would push them to /onboarding a beat after load — which
-    // made every spec that reads the URL right after this fixture a race. The onboarding
-    // spec is the one place that wants the first-time path and it resets state itself.
-    await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
-    await page.waitForLoadState('networkidle', { timeout: 10000 });
-
-    // Verify we're authenticated (should not be on signin page)
-    const currentUrl = page.url();
-    if (currentUrl.includes('/auth/signin')) {
-      throw new Error('Authentication failed - redirected to signin page despite having storage state');
+    let url = await gotoDashboard();
+    if (url.includes('/onboarding')) {
+      console.log('[authenticatedPage] bounced to /onboarding; retrying the skip once');
+      url = await gotoDashboard();
     }
 
-    console.log('[authenticatedPage] Successfully navigated to dashboard page with authenticated session');
+    if (url.includes('/auth/signin')) {
+      throw new Error(
+        '[authenticatedPage] not authenticated — landed on the sign-in page. The stored ' +
+        `session (e2e/.auth/user.json from global-setup) is missing or expired. url=${url}`,
+      );
+    }
+    if (!url.includes('/dashboard')) {
+      throw new Error(
+        `[authenticatedPage] could not settle on /dashboard — still at ${url} after a ` +
+        'skip-onboarding retry. The shared test user is likely mid onboarding reset (#550), ' +
+        'not a product regression. This is the per-run state #578 describes: re-running ' +
+        "clears it, but first check whether this run's own retries all failed.",
+      );
+    }
 
+    console.log('[authenticatedPage] settled on the dashboard with the authenticated session');
     await use(page);
   },
 
