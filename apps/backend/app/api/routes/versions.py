@@ -24,7 +24,10 @@ from app.schemas.version import (
     VersionPinRequest,
 )
 from app.services.exceptions import NotFoundError, ValidationError
-from app.services.versioning_service import versioning_service
+from app.services.versioning_service import (
+    VersionArtifactDeletionError,
+    versioning_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,8 +426,11 @@ async def delete_version(
                 detail="Cannot delete pinned version. Unpin first."
             )
 
-        # Delete version
-        await version.delete()
+        # Delete the S3 object first, then the row (#561). If the S3 delete
+        # fails the row is kept (the only record of the key) and this raises,
+        # so the "Version deleted successfully" below is never returned over a
+        # surviving object.
+        await versioning_service.delete_version(version)
 
         logger.info(f"Deleted version {version_id}")
 
@@ -432,6 +438,13 @@ async def delete_version(
 
     except HTTPException:
         raise
+    except VersionArtifactDeletionError as e:
+        # Retryable: the object is still there and the row still points at it.
+        logger.error(f"Version {version_id} artifact delete failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not delete the version's stored file; please retry.",
+        )
     except Exception as e:
         logger.error(f"Error deleting version {version_id}: {e}")
         raise HTTPException(

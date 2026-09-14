@@ -32,7 +32,7 @@ from app.services.exceptions import (
     OperationError,
     ValidationError,
 )
-from app.utils.s3 import configured_bucket, create_s3_client
+from app.utils.s3 import configured_bucket, create_s3_client, parse_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 # version_number (issue #276). Contention is bounded by concurrent transforms
 # on one dataset, so a small ceiling is plenty.
 _MAX_VERSION_INSERT_RETRIES = 5
+
+
+class VersionArtifactDeletionError(Exception):
+    """The version's S3 object could not be deleted, so the Mongo row was kept
+    (#561). The row is the only record of the object's key, so deleting it anyway
+    would orphan the object — unreachable from any dataset, lineage row or erasure
+    sweep. Keeping it makes the delete retryable and the object still findable, the
+    same resolution #521 chose for model artifacts."""
 
 
 class VersioningService(BaseService[DatasetVersion]):
@@ -792,6 +800,41 @@ class VersioningService(BaseService[DatasetVersion]):
         await version.save()
         logger.info(f"Unpinned version {version_id}")
         return version
+
+    async def delete_version(self, version: DatasetVersion) -> None:
+        """Permanently delete a version's S3 object and then its Mongo row (#561).
+
+        The user-facing ``DELETE /versions/{id}`` route previously dropped only the
+        Mongo document, orphaning the S3 object it pointed at — and destroying the
+        only record of that object's key in the same request, so nothing (dataset,
+        lineage, erasure sweep) could ever find it again.
+
+        Ordering (AC2 of #561, made consistent with #521's ``delete_model``): delete
+        the S3 object **first**, and if that fails **raise** — keeping the row so the
+        object stays discoverable and the delete is retryable — rather than
+        swallowing the error and deleting the row anyway (the orphan-producing
+        pattern ``cleanup_old_versions`` uses for the retention path). The caller
+        (route) maps the raise to a retryable 502.
+
+        The key is resolved through ``parse_s3_url`` so a ``file_path`` stored as a
+        full ``s3://`` URL under another bucket still deletes by key (#622).
+        """
+        location = version.file_path or version.s3_url
+        key = parse_s3_url(location)[1] if location.startswith("s3://") else location
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+        except Exception as e:
+            logger.error(
+                "Failed to delete S3 object %s for version %s: %s",
+                key, getattr(version, "version_id", "?"), e,
+            )
+            raise VersionArtifactDeletionError(
+                f"could not delete the S3 object for version "
+                f"{getattr(version, 'version_id', '?')}; the version record is "
+                f"retained so the object stays findable for retry"
+            ) from e
+
+        await version.delete()
 
     async def cleanup_old_versions(
         self,
