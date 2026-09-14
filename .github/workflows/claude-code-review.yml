@@ -40,7 +40,7 @@ jobs:
         # the comment. Must exceed the --max-turns budget (60 turns ~= 8.6 min) so it
         # is the backstop, not the primary limit.
         timeout-minutes: 9
-        uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1
+        uses: anthropics/claude-code-action@833fb0f8c9f6686b33d963a8bae0a94f4936ab2a # v1
         with:
           # Auth for Claude itself (OAuth token from https://console.anthropic.com)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
