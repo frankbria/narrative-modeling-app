@@ -100,6 +100,30 @@ async def test_suggest_then_apply(setup_database, async_authorized_client, herme
 
 
 @pytest.mark.asyncio
+async def test_feedback_does_not_download_the_dataset(
+    setup_database, async_authorized_client, monkeypatch
+):
+    """#523: recording feedback must not load the dataset from S3 — it reads the
+    suggestion from the cache /suggest wrote. The dataset loader is called once
+    (by /suggest) and never again by feedback."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(fe_service, "cache_service", _FakeCache())
+    loader = AsyncMock(return_value=_df())
+    monkeypatch.setattr(fe_routes, "_load_dataset_dataframe", loader)
+
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    assert loader.call_count == 1  # only /suggest loaded the dataset
+
+    resp = await async_authorized_client.post(
+        f"/api/v1/features/suggestions/{sid}/feedback?dataset_id={DATASET}",
+        json={"accepted": True},
+    )
+    assert resp.status_code == 200, resp.text
+    assert loader.call_count == 1  # feedback did NOT download the dataset
+
+
+@pytest.mark.asyncio
 async def test_suggest_more_keeps_the_original_batch_resolvable(
     setup_database, async_authorized_client, hermetic
 ):
