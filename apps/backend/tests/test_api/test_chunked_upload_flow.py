@@ -430,28 +430,28 @@ class TestUppercaseExtensionsAreAccepted:
 
 
 class TestConcurrencySlotAccounting:
-    """One start_upload per session must be matched by exactly one release."""
+    """The chunked slot is the live session itself (#526); complete frees it and
+    leaves no leaked finalization slot on the transient counter."""
 
-    async def test_completing_an_upload_releases_exactly_one_slot(
+    async def test_completing_an_upload_frees_its_slot(
         self, client_as, fresh_handler, s3_calls
     ):
         from app.api.routes.secure_upload import rate_limiter
 
         rate_limiter.active_uploads.pop(TENANT_A, None)
-
         client = client_as(TENANT_A)
         session_id = (await _init(client)).json()["session_id"]
-        assert rate_limiter.active_uploads[TENANT_A] == 1
+        assert fresh_handler.count_active_sessions(TENANT_A) == 1  # the live session is the slot
 
         await _upload_all(client, session_id)
-        # The chunk route used to release here too, which drove the count to 0
-        # and left the 10-concurrent cap permanently unbindable.
-        assert rate_limiter.active_uploads[TENANT_A] == 1
+        assert fresh_handler.count_active_sessions(TENANT_A) == 1  # still live through the last chunk
 
         assert (
             await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
         ).status_code == 200
-        assert rate_limiter.active_uploads[TENANT_A] == 0
+        # complete pops the session; its finalization slot is released in finally.
+        assert fresh_handler.count_active_sessions(TENANT_A) == 0
+        assert rate_limiter.active_uploads.get(TENANT_A, 0) == 0
 
 
 class TestFailureStillReleasesTheConcurrencySlot:
@@ -478,7 +478,9 @@ class TestFailureStillReleasesTheConcurrencySlot:
             )
             assert response.status_code == 400, response.text
 
-        assert rate_limiter.active_uploads[TENANT_A] == 0
+        # Each failed complete popped its session AND released its finalization slot.
+        assert fresh_handler.count_active_sessions(TENANT_A) == 0
+        assert rate_limiter.active_uploads.get(TENANT_A, 0) == 0
 
     async def test_a_failed_complete_leaves_no_temp_file(
         self, client_as, fresh_handler, s3_calls
@@ -502,19 +504,16 @@ class TestAbandonedSessionsGiveTheirSlotBack:
     nothing to give it back (issue #526).
     """
 
-    async def test_expired_sessions_release_their_owner_s_slots_on_init(
+    async def test_expired_sessions_do_not_block_a_new_upload(
         self, client_as, fresh_handler
     ):
         from datetime import UTC, datetime, timedelta
 
-        from app.api.routes.secure_upload import rate_limiter
-
-        rate_limiter.active_uploads.pop(TENANT_A, None)
         client = client_as(TENANT_A)
 
         for _ in range(3):
             assert (await _init(client)).status_code == 200
-        assert rate_limiter.active_uploads[TENANT_A] == 3
+        assert fresh_handler.count_active_sessions(TENANT_A) == 3
 
         # Abandon them: nothing completes, nothing aborts, the window passes.
         past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
@@ -523,8 +522,9 @@ class TestAbandonedSessionsGiveTheirSlotBack:
 
         assert (await _init(client)).status_code == 200
 
-        # The three abandoned slots came back; only the new session holds one.
-        assert rate_limiter.active_uploads[TENANT_A] == 1
+        # The abandoned sessions stopped counting (and were reaped); only the new
+        # live one remains — no permanent lockout.
+        assert fresh_handler.count_active_sessions(TENANT_A) == 1
 
     async def test_the_cap_still_binds_for_live_sessions(
         self, client_as, fresh_handler
