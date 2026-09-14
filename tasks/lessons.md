@@ -1041,3 +1041,18 @@ checked, and the fix is always the same: the claim is a query, so run it.
   update the contract to the new invariant (client filename GONE from the key), not
   merely re-sanitised. CI (not local) caught it — run the directory's contract
   tests, not just the file's own.
+
+## #509 — atomic webhook persistence
+- **An ordering guard on a read-modify-write is not atomic.** `_apply` compared
+  event_at before save(), but Subscription has no Beanie revision, so two
+  concurrent handlers both read the old row and the later save() wins — the guard
+  only helped the sequential case (second write re-reads). Move the ordering INTO
+  the write: a conditional `update_one` whose filter requires `last_event_at <=
+  event.created`, upsert to a unique key so a stale event's insert collides and is
+  dropped. Retry once on DuplicateKeyError to tell the new-tenant insert-race
+  (apply) from a genuinely stale event (drop).
+- **Coarse timestamps limit ordering.** Stripe's `created` is second-granularity, so
+  same-second different events can't be semantically ordered by it — documented as a
+  Known Limitation + follow-up, not silently ignored.
+- **Bypassing the ORM loses its hooks.** A raw motor `update_one` skips Beanie's
+  `before_event` `_touch` (updated_at) — set updated_at in `$set` yourself.
