@@ -19,7 +19,6 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from beanie.exceptions import RevisionIdWasChanged
 from fastapi import APIRouter, Header, Request, status
 from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
@@ -35,7 +34,6 @@ from app.models.subscription import (
     Subscription,
     SubscriptionStatus,
 )
-from app.utils.datetime import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -98,51 +96,18 @@ async def _upsert(
     cancel_at_period_end: bool | None = None,
     event_at: datetime | None = None,
 ) -> None:
-    """Create or update this tenant's subscription, idempotently.
-
-    Only fields actually present on the event are written, so a later event that
-    omits something cannot blank what an earlier one established.
-
-    find-then-insert is not atomic and `user_id` is uniquely indexed, so two events
-    for a brand-new tenant arriving together — which is the NORMAL flow here,
-    `checkout.session.completed` immediately followed by
-    `customer.subscription.created` — can both see nothing and both try to insert.
-    The loser is retried once against the row the winner created, rather than 500ing
-    and relying on Stripe's redelivery to paper over it.
-    """
-    try:
-        await _apply(
-            user_id,
-            status_=status_,
-            tier=tier,
-            customer_id=customer_id,
-            subscription_id=subscription_id,
-            price_id=price_id,
-            period_end=period_end,
-            cancel_at_period_end=cancel_at_period_end,
-            event_at=event_at,
-        )
-    except (DuplicateKeyError, RevisionIdWasChanged):
-        # BOTH, and RevisionIdWasChanged is the one that actually fires here:
-        # `_apply` persists via `save()`, and Beanie surfaces a unique-index
-        # violation on save() as RevisionIdWasChanged, not DuplicateKeyError.
-        # CLAUDE.md records this and `workflow_service.py:96` already catches the
-        # pair for the same reason — an earlier version of this handler caught only
-        # DuplicateKeyError, so the retry could never fire for the very race it was
-        # written for. Verified against a real collection, not assumed.
-        #
-        # The row exists now; the second attempt takes the update path.
-        await _apply(
-            user_id,
-            status_=status_,
-            tier=tier,
-            customer_id=customer_id,
-            subscription_id=subscription_id,
-            price_id=price_id,
-            period_end=period_end,
-            cancel_at_period_end=cancel_at_period_end,
-            event_at=event_at,
-        )
+    """Create or update this tenant's subscription atomically and idempotently."""
+    await _apply(
+        user_id,
+        status_=status_,
+        tier=tier,
+        customer_id=customer_id,
+        subscription_id=subscription_id,
+        price_id=price_id,
+        period_end=period_end,
+        cancel_at_period_end=cancel_at_period_end,
+        event_at=event_at,
+    )
 
 
 async def _apply(
@@ -157,46 +122,85 @@ async def _apply(
     cancel_at_period_end: bool | None = None,
     event_at: datetime | None = None,
 ) -> None:
-    """One find-then-write attempt. Raises DuplicateKeyError if it loses a race."""
-    sub = await Subscription.find_one(Subscription.user_id == user_id)
-    if sub is None:
-        sub = Subscription(user_id=user_id)
+    """Persist one event with a single conditional upsert (#367, #509).
 
-    # Stripe does not guarantee ordering between different events. A late
-    # `subscription.updated` arriving after `subscription.deleted` would otherwise
-    # resurrect a cancelled subscription. Mongo reads datetimes back naive, so the
-    # stored value is coerced before comparing (CLAUDE.md).
-    if event_at is not None and sub.last_event_at is not None:
-        if event_at < as_utc(sub.last_event_at):
-            logger.info(
-                "ignoring out-of-order stripe event",
-                extra={"user_id": user_id},
-            )
-            return
-    if event_at is not None:
-        sub.last_event_at = event_at
+    Not a read-modify-write: ``Subscription`` has no revision, so two concurrent
+    events would both read the old row and the later ``save()`` would silently
+    discard the earlier — a ``subscription.updated`` racing a
+    ``subscription.deleted`` could leave a cancelled tenant entitled indefinitely.
 
+    Ordering (Stripe does not guarantee it) lives in the filter: the write applies
+    only to a row whose ``last_event_at`` is ``<=`` this event's (or unset), so a
+    strictly-older event matches nothing; the upsert then tries to INSERT and the
+    unique ``user_id`` index rejects it, dropping the stale event. A *first*
+    ``DuplicateKeyError`` instead means a concurrent event just created the row
+    (the normal ``checkout.completed`` + ``subscription.created`` burst for a new
+    tenant); retry once, where the same ordering filter now decides apply-or-reject.
+    Only fields present on the event are written, so a later event that omits one
+    cannot blank what an earlier one set. Delivering the same event twice converges
+    on the same row (idempotent in effect).
+    """
+    now = datetime.now(UTC)
+    set_fields: dict[str, Any] = {"updated_at": now}
     if status_ is not None:
-        sub.status = status_
+        set_fields["status"] = status_.value
     if tier is not None:
-        sub.plan_tier = tier
+        set_fields["plan_tier"] = tier.value
     if customer_id:
-        sub.stripe_customer_id = customer_id
+        set_fields["stripe_customer_id"] = customer_id
     if subscription_id:
-        sub.stripe_subscription_id = subscription_id
+        set_fields["stripe_subscription_id"] = subscription_id
     if price_id:
-        sub.stripe_price_id = price_id
+        set_fields["stripe_price_id"] = price_id
     if period_end is not None:
-        sub.current_period_end = period_end
+        set_fields["current_period_end"] = period_end
     if cancel_at_period_end is not None:
-        sub.cancel_at_period_end = cancel_at_period_end
+        set_fields["cancel_at_period_end"] = cancel_at_period_end
+    if event_at is not None:
+        set_fields["last_event_at"] = event_at
 
-    await sub.save()
+    # Defaults only for a brand-new row, and never for a key the event itself set
+    # (Mongo rejects a field appearing in both $set and $setOnInsert).
+    insert_defaults = {
+        "user_id": user_id,
+        "created_at": now,
+        "plan_tier": PlanTier.FREE.value,
+        "status": SubscriptionStatus.INCOMPLETE.value,
+        "cancel_at_period_end": False,
+    }
+    set_on_insert = {k: v for k, v in insert_defaults.items() if k not in set_fields}
 
-    # A plan change can *lower* what a key may do. The limiter never reads a
-    # subscription on the serving path, so nothing else would ever revisit a key
-    # minted under a richer tier (#455).
-    await clamp_user_api_keys(user_id, sub.effective_tier)
+    flt: dict[str, Any] = {"user_id": user_id}
+    if event_at is not None:
+        # Apply only if this event is not older than the newest already applied.
+        # null/missing (never applied) counts as older, so the first event applies.
+        flt["$or"] = [
+            {"last_event_at": {"$lte": event_at}},
+            {"last_event_at": None},
+            {"last_event_at": {"$exists": False}},
+        ]
+
+    coll = Subscription.get_motor_collection()
+    update = {"$set": set_fields, "$setOnInsert": set_on_insert}
+    for attempt in (1, 2):
+        try:
+            await coll.update_one(flt, update, upsert=True)
+            break
+        except DuplicateKeyError:
+            if attempt == 2:
+                logger.info(
+                    "ignoring out-of-order stripe event", extra={"user_id": user_id}
+                )
+                return
+            # A concurrent event just created the row; retry — the ordering filter
+            # above now decides whether to apply this event or reject it as stale.
+
+    # A plan change can *lower* what a key may do; the limiter never re-reads a
+    # subscription on the serving path, so nothing else revisits a key minted under
+    # a richer tier (#455).
+    sub = await Subscription.find_one(Subscription.user_id == user_id)
+    if sub is not None:
+        await clamp_user_api_keys(user_id, sub.effective_tier)
 
 
 def _period_end(obj: dict[str, Any]):
