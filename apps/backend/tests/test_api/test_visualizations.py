@@ -576,3 +576,18 @@ async def test_line_and_timeseries_are_bounded(
     assert line.json()["sampled"] is True
     assert ts.status_code == 200 and len(ts.json()["values"]) <= MAX_CHART_POINTS
     assert ts.json()["sampled"] is True
+
+
+def test_chart_cache_key_is_erasure_purgeable_and_file_versioned():
+    """#513/#514 (codex): keys must lead with viz:{dataset_id}: so erasure's
+    viz:{dataset_id}:* sweep purges them, and must change when the dataset file
+    (s3_url) changes so a transformation doesn't serve stale chart data."""
+    from app.api.routes.visualizations import _chart_cache_key
+
+    k1 = _chart_cache_key("scatter", "ds1", "s3://b/v1.csv", "x", "y", None)
+    assert k1.startswith("viz:ds1:")  # erasure evicts viz:{dataset_id}:*
+    # A new file version under the same dataset id yields a different key.
+    k2 = _chart_cache_key("scatter", "ds1", "s3://b/v2.csv", "x", "y", None)
+    assert k1 != k2
+    # Different chart kinds / columns don't collide.
+    assert _chart_cache_key("line", "ds1", "s3://b/v1.csv", "x", "y", None) != k1

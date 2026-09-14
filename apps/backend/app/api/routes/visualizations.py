@@ -70,9 +70,15 @@ def _downsample(df: pd.DataFrame, *, ordered: bool) -> tuple[pd.DataFrame, bool,
     return df.sample(n=MAX_CHART_POINTS, random_state=0), True, MAX_CHART_POINTS / n
 
 
-def _chart_cache_key(kind: str, dataset_id: str, *parts: Any) -> str:
-    raw = "|".join([kind, dataset_id, *[str(p) for p in parts]])
-    return f"viz:{kind}:{dataset_id}:{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
+def _chart_cache_key(kind: str, dataset_id: str, s3_url: str | None, *parts: Any) -> str:
+    """Cache key that (a) leads with ``dataset_id`` so erasure's ``viz:{dataset_id}:*``
+    sweep purges it (#452/#513 — else cached points survive erasure until TTL), and
+    (b) folds in ``s3_url`` so a transformation that rewrites the dataset file (which
+    changes ``UserData.s3_url`` via ``record_new_file``) invalidates the key instead of
+    serving stale data for the TTL window."""
+    raw = "|".join([kind, s3_url or "", *[str(p) for p in parts]])
+    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return f"viz:{dataset_id}:{kind}:{digest}"
 
 
 @router.get("/histogram/{dataset_id}/{column_name}")
@@ -163,7 +169,7 @@ async def get_scatter_plot(
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
-        cache_key = _chart_cache_key("scatter", dataset_id, x_column, y_column, filters)
+        cache_key = _chart_cache_key("scatter", dataset_id, dataset.s3_url, x_column, y_column, filters)
         cached = await cache_service.get(cache_key)
         if cached is not None:
             return cached
@@ -220,7 +226,7 @@ async def get_line_chart(
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
-        cache_key = _chart_cache_key("line", dataset_id, x_column, y_columns, filters)
+        cache_key = _chart_cache_key("line", dataset_id, dataset.s3_url, x_column, y_columns, filters)
         cached = await cache_service.get(cache_key)
         if cached is not None:
             return cached
@@ -292,7 +298,7 @@ async def get_time_series(
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
-        cache_key = _chart_cache_key("timeseries", dataset_id, time_column, value_column, filters)
+        cache_key = _chart_cache_key("timeseries", dataset_id, dataset.s3_url, time_column, value_column, filters)
         cached = await cache_service.get(cache_key)
         if cached is not None:
             return cached
