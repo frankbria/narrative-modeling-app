@@ -231,7 +231,7 @@ class MCPIntegrationService:
 
             if eda_response.error:
                 logger.error(f"EDA summary tool call failed: {eda_response.error}")
-                return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics)
+                return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics, quality_report)
 
             # The tool returns {"success": bool, "data"|"message": ...} — never fabricate
             # analysis from a failed/empty result (#506/#539); fall back honestly.
@@ -239,7 +239,7 @@ class MCPIntegrationService:
             if not isinstance(payload, dict) or not payload.get("success"):
                 message = payload.get("message") if isinstance(payload, dict) else None
                 logger.error(f"EDA summary tool reported failure: {message}")
-                return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics)
+                return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics, quality_report)
 
             eda_data = payload.get("data", {})
             insights = self._parse_eda_insights(eda_data)
@@ -262,7 +262,7 @@ class MCPIntegrationService:
 
         except Exception as e:
             logger.error(f"MCP analysis failed: {e}")
-            return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics)
+            return self._create_fallback_analysis(dataset_id, analysis_type, schema, statistics, quality_report)
     
     def _parse_eda_insights(self, eda_result: Any) -> list[dict[str, Any]]:
         """Parse insights from EDA tool response"""
@@ -332,23 +332,54 @@ class MCPIntegrationService:
         file_id: str,
         analysis_type: str,
         schema: dict[str, Any],
-        statistics: dict[str, Any]
+        statistics: dict[str, Any],
+        quality_report: dict[str, Any] | None = None,
     ) -> MCPAnalysisResponse:
-        """Create a fallback analysis when MCP is unavailable"""
+        """Deterministic, rule-based analysis when the MCP AI tool is unavailable (#539).
+
+        This computes real facts from the data the caller already has (schema,
+        statistics, quality report) — it never invents insights — and labels itself
+        clearly as a non-AI fallback via ``metadata.fallback_mode`` and the summary, so
+        the client can display it as such rather than mistake it for AI analysis. This
+        is the same "a fallback computes something real" contract the OpenAI paths use.
+        """
+        quality_report = quality_report or {}
+        row_count = schema.get("row_count", 0)
+        column_count = schema.get("column_count", 0)
+
+        insights: list[dict[str, Any]] = [
+            {
+                "type": "data_overview",
+                "title": "Dataset Overview",
+                "description": f"Dataset has {row_count:,} rows and {column_count} columns.",
+                "details": {"row_count": row_count, "column_count": column_count},
+            }
+        ]
+        # Real, computed quality signal when a quality report is available.
+        quality_score = quality_report.get("overall_quality_score")
+        if quality_score is not None:
+            insights.append(
+                {
+                    "type": "data_quality",
+                    "title": "Data Quality",
+                    "description": f"Overall data quality score is {quality_score:.2f} (0-1 scale).",
+                    "details": {"overall_quality_score": quality_score},
+                }
+            )
+
+        recommendations = self._generate_recommendations(insights, quality_report)
+
         return MCPAnalysisResponse(
             file_id=file_id,
             analysis_type=analysis_type,
-            summary="Basic analysis completed without MCP tools.",
-            insights=[
-                {
-                    "type": "fallback",
-                    "title": "Basic Data Overview",
-                    "description": f"Dataset has {schema.get('row_count', 0)} rows and {schema.get('column_count', 0)} columns"
-                }
-            ],
-            recommendations=["MCP server unavailable - using basic analysis"],
+            summary=(
+                "AI analysis is unavailable; this is a rule-based summary computed "
+                f"directly from the dataset ({row_count:,} rows, {column_count} columns)."
+            ),
+            insights=insights,
+            recommendations=recommendations,
             visualizations=None,
-            metadata={"mcp_available": False, "fallback_mode": True}
+            metadata={"mcp_available": False, "fallback_mode": True},
         )
 
 
