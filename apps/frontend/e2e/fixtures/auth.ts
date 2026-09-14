@@ -28,14 +28,14 @@ export const test = base.extend<AuthFixtures>({
   },
 
   /**
-   * Authenticated page fixture - uses pre-authenticated session
-   * The global-setup.ts script handles authentication and saves the session state
-   * This fixture just uses that saved state
+   * @deprecated Not used — specs import the fixtures from `../fixtures` (index.ts),
+   * and only this module's `AuthFixtures` TYPE is re-exported there. This bare
+   * `goto('/dashboard')` has no skip-onboarding handling and would land a first-time
+   * user on /onboarding: exactly the #578 flake. Use the hardened `authenticatedPage`
+   * in `e2e/fixtures/index.ts`; do not revive this one.
    */
   authenticatedPage: async ({ page }, use) => {
-    // The session is already loaded from storage state (configured in playwright.config.ts)
-    // Just navigate to the dashboard
-    await page.goto('/dashboard');
+    await page.goto('/dashboard?skipOnboarding=true');
     await page.waitForLoadState('networkidle');
 
     await use(page);

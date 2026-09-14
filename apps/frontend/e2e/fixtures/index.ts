@@ -36,29 +36,58 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   },
 
   authenticatedPage: async ({ page }, use) => {
-    // The session is already loaded from storage state (configured in playwright.config.ts)
-    // The global-setup.ts script handles authentication and saves the session state
-    // This fixture just uses that saved state
+    // Land the pre-authenticated test user (storage state from global-setup) on the
+    // dashboard, deterministically — and when that can't happen, fail with a message
+    // that names the actual landing URL instead of a bare toMatch(/dashboard/) miss.
+    //
+    // #578 was a per-RUN flake (it reproduced across Playwright's in-run retries, then
+    // passed next run), so something in the run's setup — not the individual test — put
+    // the whole run into a state this fixture couldn't escape. The two states that do
+    // that here:
+    //   - Auth: global-setup's saved session (e2e/.auth/user.json) didn't take for the
+    //     run, so every navigation bounces to /auth/signin.
+    //   - Onboarding: the shared single e2e user is mid first-time — its server-side
+    //     /onboarding/status is reset by a concurrent spec (#550) — and lands on
+    //     /onboarding. (Note the dashboard's redirect effect short-circuits on
+    //     ?skipOnboarding=true while that param is in the URL — app/dashboard/page.tsx —
+    //     so a bounce means the param was dropped by a navigation before the effect ran,
+    //     or the redirect came from that shared-state path; the exact trigger isn't
+    //     pinned statically, which is why the diagnostic below reports the real URL.)
+    // Both persist across the run, so a retry inside one test re-enters them — the fix
+    // has to be at the fixture level, per the issue.
+    //
+    // Navigate; if it bounced to /onboarding, skip once more (a fresh ?skipOnboarding with
+    // the session warm), then report the outcome by naming the landing URL.
+    const gotoDashboard = async (): Promise<string> => {
+      await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
+      await page.waitForLoadState('networkidle', { timeout: 15000 });
+      return page.url();
+    };
 
-    console.log('[authenticatedPage] Using pre-authenticated session from storage state');
-
-    // Navigate to the dashboard page (root redirects to first incomplete workflow stage).
-    // ?skipOnboarding=true is the product's own "Skip for now" affordance (#152): since
-    // #470 the onboarding status call really works, so a fresh test user is a first-time
-    // user and the dashboard would push them to /onboarding a beat after load — which
-    // made every spec that reads the URL right after this fixture a race. The onboarding
-    // spec is the one place that wants the first-time path and it resets state itself.
-    await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
-    await page.waitForLoadState('networkidle', { timeout: 10000 });
-
-    // Verify we're authenticated (should not be on signin page)
-    const currentUrl = page.url();
-    if (currentUrl.includes('/auth/signin')) {
-      throw new Error('Authentication failed - redirected to signin page despite having storage state');
+    let url = await gotoDashboard();
+    if (url.includes('/onboarding')) {
+      console.log('[authenticatedPage] bounced to /onboarding; retrying the skip once');
+      url = await gotoDashboard();
     }
 
-    console.log('[authenticatedPage] Successfully navigated to dashboard page with authenticated session');
+    if (url.includes('/auth/signin')) {
+      throw new Error(
+        '[authenticatedPage] not authenticated — landed on the sign-in page. The stored ' +
+        `session (e2e/.auth/user.json from global-setup) is missing or expired. url=${url}`,
+      );
+    }
+    if (!url.includes('/dashboard')) {
+      throw new Error(
+        `[authenticatedPage] could not settle on /dashboard — landed on ${url} after a ` +
+        'skip-onboarding retry. If that is /onboarding, the shared e2e user is mid ' +
+        'first-time (a concurrent onboarding-state reset, #550), not a product regression; ' +
+        'any other route is an unexpected redirect worth investigating from this URL. This ' +
+        "is the per-run state #578 describes — check whether this run's own retries all " +
+        'failed before dismissing it as flaky.',
+      );
+    }
 
+    console.log('[authenticatedPage] settled on the dashboard with the authenticated session');
     await use(page);
   },
 
