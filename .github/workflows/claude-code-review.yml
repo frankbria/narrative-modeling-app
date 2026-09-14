@@ -96,13 +96,24 @@ jobs:
           claude_args: '--max-turns 60 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
 
       # #626 AC2: an absent verdict must not read as "no findings". When the review
-      # step genuinely fails (e.g. error_max_turns) the action leaves only its
-      # placeholder, and the red job conclusion is invisible on the PR thread. Post
-      # a visible comment so a reader can't mistake silence for a clean review.
-      # Gated on outcome == 'failure' so a concurrency-cancel (a newer push
-      # superseding this run) does NOT post it — only a real failure does.
+      # step fails (error_max_turns exits 1) OR times out (its own timeout-minutes: 9
+      # above), the action leaves only its placeholder and the red conclusion is
+      # invisible on the PR thread. Post a visible comment so a reader can't mistake
+      # silence for a clean review.
+      #
+      # Condition: `!cancelled() && outcome in (failure, cancelled)`, NOT `failure()`.
+      # A GitHub gotcha — a *step-level* timeout does not cancel the JOB, so the job
+      # keeps running here whether the timed-out step's outcome is reported as
+      # 'failure' or 'cancelled'; both are covered, and `!cancelled()` is still true.
+      # A concurrency-cancel (a newer push) OR the *job*-level timeout cancels the
+      # whole job, making `cancelled()` true — so we correctly stay quiet there (and
+      # the step's own 9-min timeout, below the job's 10, means we hit the step
+      # timeout, not the job one, so this path stays reachable). `failure()` alone
+      # would miss the timeout case entirely (a timeout reports 'cancelled', not
+      # 'failure'); listing the two ran-but-unfinished outcomes explicitly also skips
+      # the 'skipped' case (e.g. a checkout failure), which isn't the review's fault.
       - name: Report incomplete review
-        if: ${{ failure() && steps.claude-review.outcome == 'failure' }}
+        if: ${{ !cancelled() && (steps.claude-review.outcome == 'failure' || steps.claude-review.outcome == 'cancelled') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
