@@ -71,6 +71,7 @@ from app.services.exceptions import NotFoundError
 from app.services.interpretability_service import InterpretabilityService
 from app.services.metrics_service import MetricsService
 from app.services.model_storage import (
+    ModelArtifactDeletionError,
     ModelStorageService,
     build_evaluation_payload,
     build_shap_payload,
@@ -2171,7 +2172,16 @@ async def delete_model(
     Delete a model
     """
     storage_service = ModelStorageService()
-    deleted = await storage_service.delete_model(model_id, current_user_id)
+    try:
+        deleted = await storage_service.delete_model(model_id, current_user_id)
+    except ModelArtifactDeletionError as e:
+        # S3 was reachable-but-failed; the model was intentionally NOT deleted so
+        # its artifacts aren't orphaned (#521). Retryable, not a client error.
+        raise HTTPException(
+            status_code=502,
+            detail="Could not delete the model's stored files; the model was not "
+                   "deleted. Please retry.",
+        ) from e
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Model not found")

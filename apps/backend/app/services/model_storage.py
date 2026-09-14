@@ -232,6 +232,14 @@ def build_shap_payload(shap_global: Any) -> dict[str, Any] | None:
     }
 
 
+class ModelArtifactDeletionError(Exception):
+    """An S3 artifact could not be deleted, so the MLModel record was NOT deleted
+    (#521). Deleting the Mongo row anyway would orphan the object — unreferenced,
+    unbillable-to-anyone, and unreachable by GDPR erasure. Keeping the row leaves a
+    findable reference for a retry or the reconcile sweeper. The DELETE route maps
+    this to a retryable error; the erasure cascade records it as a residual."""
+
+
 def _key_of(stored_path: str) -> str:
     """The object key behind a stored ``s3://bucket/key`` path, whatever bucket it
     names (#622). Stripping ``f"s3://{bucket_name}/"`` only worked while the bucket
@@ -591,34 +599,45 @@ class ModelStorageService:
         
         if not ml_model:
             return False
-        
-        # Delete S3 files
-        try:
-            # Delete model file
-            model_key = _key_of(ml_model.model_path)
-            await self.s3_service.delete_file(model_key)
-            
-            # Delete transformer file if exists
-            if ml_model.feature_transformer_path:
-                transformer_key = _key_of(ml_model.feature_transformer_path)
-                await self.s3_service.delete_file(transformer_key)
 
-            # Delete evaluation artifacts if present (issue #79)
-            if ml_model.evaluation_data_path:
-                evaluation_key = _key_of(ml_model.evaluation_data_path)
-                await self.s3_service.delete_file(evaluation_key)
+        # Every S3 artifact this model owns. The SHAP path historically used a
+        # bucket-prefix strip rather than _key_of; route it through the same parser
+        # so a path written under another bucket still resolves (#622).
+        artifact_keys = [_key_of(ml_model.model_path)]
+        if ml_model.feature_transformer_path:
+            artifact_keys.append(_key_of(ml_model.feature_transformer_path))
+        if ml_model.evaluation_data_path:  # issue #79
+            artifact_keys.append(_key_of(ml_model.evaluation_data_path))
+        shap_values_path = getattr(ml_model, "shap_values_path", None)
+        if shap_values_path:  # issue #80
+            artifact_keys.append(_key_of(shap_values_path))
 
-            # Delete SHAP summary if present (issue #80)
-            shap_values_path = getattr(ml_model, "shap_values_path", None)
-            if shap_values_path:
-                shap_key = shap_values_path.replace(
-                    f"s3://{self.s3_service.bucket_name}/", ""
+        # Delete S3 FIRST, Mongo second, and NEVER delete the Mongo row while any
+        # artifact remains (#521). Swallowing an S3 failure and deleting the row
+        # anyway orphaned the object — unreferenced storage cost, and a GDPR
+        # erasure that reported success over surviving customer-derived data (a
+        # model artifact encodes its training data). Each key is attempted so one
+        # failure doesn't skip the rest; any failure keeps the row (the only
+        # findable reference) and raises.
+        failed_keys: list[str] = []
+        for key in artifact_keys:
+            try:
+                await self.s3_service.delete_file(key)
+            except Exception as e:
+                logger.error(
+                    "Failed to delete model artifact %s for model %s (user %s): %s",
+                    key, model_id, user_id, e,
                 )
-                await self.s3_service.delete_file(shap_key)
-        except Exception as e:
-            logger.error(f"Error deleting model files: {str(e)}")
-        
-        # Delete from database
+                failed_keys.append(key)
+
+        if failed_keys:
+            raise ModelArtifactDeletionError(
+                f"could not delete {len(failed_keys)} of {len(artifact_keys)} S3 "
+                f"artifact(s) for model {model_id}; the MLModel record is retained "
+                f"so the object(s) stay findable for retry/reconcile"
+            )
+
+        # All artifacts gone — now safe to drop the reference.
         await ml_model.delete()
 
         # Drop cached artifacts so a re-created id can't serve the old model (#265).
