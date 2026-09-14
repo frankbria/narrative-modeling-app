@@ -73,6 +73,9 @@ class UserData(Document):
     
     # Transformation tracking
     file_path: str | None = None  # Current file path (S3 key)
+    # Every previous s3_url this dataset moved through as transformations rewrote its
+    # current file — tracked so erasure can delete these now-unreferenced objects (#525).
+    superseded_s3_urls: list[str] = Field(default_factory=list)
     transformation_history: list[dict[str, Any]] = Field(default_factory=list)  # History of transformations applied
 
     class Settings:

@@ -246,7 +246,11 @@ class DatasetErasureService:
         if parent_meta is not None:
             # 1. MLModel children first (delete_model sweeps their S3 artifacts + doc).
             await self._erase_models(dataset_id, user_id, manifest)
-            # 2. Remaining string-keyed children.
+            # 2. DatasetVersion S3 objects (the tracked transformation intermediates,
+            #    #525) BEFORE their docs are deleted below — the docs are the only
+            #    reference to those objects.
+            await self._erase_version_artifacts({"dataset_id": dataset_id}, manifest)
+            # 3. Remaining string-keyed children (incl. the DatasetVersion docs).
             for model_cls in _STRING_KEYED_MODELS:
                 await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
             # 3. S3 source + redis, then parent LAST.
@@ -258,6 +262,15 @@ class DatasetErasureService:
                 ),
                 manifest,
             )
+            # The original upload + every superseded current-file this dataset moved
+            # through as transformations rewrote it (#525): each is referenced by
+            # nothing once s3_url moved off it, so a GDPR erasure would otherwise
+            # leave the customer's intermediate data in the bucket.
+            for old in [parent_meta.source_s3_url, *(parent_meta.superseded_s3_urls or [])]:
+                if old:
+                    await self._delete_s3(
+                        _s3_key(old, self.s3_service.bucket_name, manifest), manifest
+                    )
             await self._evict_redis(dataset_id, manifest)
 
         # --- legacy UserData id-space (dual-write twin or a legacy-only upload) ---
@@ -272,6 +285,10 @@ class DatasetErasureService:
                 ),
                 manifest,
             )
+            for old in parent_ud.superseded_s3_urls or []:  # superseded current-files (#525)
+                await self._delete_s3(
+                    _s3_key(old, self.s3_service.bucket_name, manifest), manifest
+                )
             await self._evict_redis(str(parent_ud.id), manifest)
 
         # Parents LAST — retained as re-discoverable tombstones if THIS dataset's
@@ -347,6 +364,29 @@ class DatasetErasureService:
                     _s3_key(path, self.s3_service.bucket_name, manifest), manifest
                 )
             await self._delete_doc(job, "batch_jobs", manifest)
+
+    async def _erase_version_artifacts(self, query: dict, manifest: DeletionManifest) -> None:
+        """Delete the S3 object each matching DatasetVersion points at (#525).
+
+        Every transformation writes a new object and a DatasetVersion row pointing
+        at it — the intermediate outputs are tracked ONLY by these rows, so once
+        the rows are deleted the objects are unreachable to any code path. Delete
+        the objects BEFORE the version docs (the ``_STRING_KEYED_MODELS`` sweep
+        removes the docs) so a GDPR erasure doesn't leave the customer's
+        intermediate data in the bucket. Guarded like every other S3 residual
+        (#616): a failure is recorded, never raised.
+        """
+        try:
+            versions = await DatasetVersion.find(query).to_list()
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"query dataset_versions: {e}")
+            return
+        for v in versions:
+            location = getattr(v, "file_path", None) or getattr(v, "s3_url", None)
+            if location:
+                await self._delete_s3(
+                    _s3_key(location, self.s3_service.bucket_name, manifest), manifest
+                )
 
     # ---- primitives (each guarded; records failures, never raises) ------
 
@@ -506,6 +546,10 @@ class DatasetErasureService:
             SharedRecipe,
             *_STRING_KEYED_MODELS,
         ]:
+            # DatasetVersion S3 objects (transformation intermediates, #525) must be
+            # deleted before its docs — the docs are their only reference.
+            if model_cls is DatasetVersion:
+                await self._erase_version_artifacts({"user_id": user_id}, manifest)
             # Only sweep collections that actually have a user_id field (some
             # dataset-keyed children don't — querying them by user_id is a no-op).
             if "user_id" in model_cls.model_fields:
