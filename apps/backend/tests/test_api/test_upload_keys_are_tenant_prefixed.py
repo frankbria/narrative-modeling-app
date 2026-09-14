@@ -147,16 +147,20 @@ class TestEveryDatasetWriterUsesTheOwnerPrefix:
 
 
 DATASETS_KEY_RE = re.compile(
-    r"^datasets/" + re.escape(TENANT) + r"/dataset_[0-9a-f]{16}_passwd\.csv$"
+    # Server-derived uuid key (#496): datasets/{tenant}/{uuid4}.{ext} — the client
+    # filename never appears in the key at all.
+    r"^datasets/" + re.escape(TENANT)
+    + r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.csv$"
 )
 
 
 class TestDatasetsUploadKey:
-    """/datasets/upload keys by dataset_id + the client filename; the filename
-    component is normalised (#585), so a traversal name cannot shape the key."""
+    """/datasets/upload uses a server-derived uuid key (#496): the client filename
+    never reaches the key at all, so a traversal/space/non-ASCII name cannot shape
+    or break it — the same guarantee the other upload routes have (#581)."""
 
     @pytest.mark.asyncio
-    async def test_client_filename_component_is_sanitised(self, client, s3_keys):
+    async def test_client_filename_never_reaches_the_datasets_key(self, client, s3_keys):
         response = await client.post(
             "/api/v1/datasets/upload", files=_file(b"id,name\n1,a\n2,b\n", name="../../etc/passwd.csv")
         )
@@ -164,3 +168,4 @@ class TestDatasetsUploadKey:
         assert len(s3_keys) == 1, s3_keys
         assert DATASETS_KEY_RE.match(s3_keys[0]), s3_keys[0]
         assert ".." not in s3_keys[0]
+        assert "passwd" not in s3_keys[0]  # the client name is gone entirely (#496)
