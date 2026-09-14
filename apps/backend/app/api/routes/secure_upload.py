@@ -56,12 +56,15 @@ async def secure_upload(
             detail="Rate limit exceeded. Please wait before uploading again."
         )
     
-    if not rate_limiter.check_concurrent_limit(current_user_id):
+    # One shared budget across /secure and chunked (#526): reap stale chunked
+    # sessions first so they don't count, then check the combined total.
+    _release_expired_slots()
+    if _active_upload_count(current_user_id) >= rate_limiter.max_concurrent_uploads:
         raise HTTPException(
             status_code=429,
             detail="Too many concurrent uploads. Please wait for current uploads to complete."
         )
-    
+
     rate_limiter.record_request(current_user_id)
     rate_limiter.start_upload(current_user_id)
     
@@ -300,6 +303,17 @@ async def confirm_pii_upload(
     }
 
 
+def _active_upload_count(user_id: str) -> int:
+    """One per-user concurrency budget across BOTH upload surfaces (#526):
+    live chunked sessions (init→last chunk) PLUS in-flight transient work counted
+    on `RateLimiter.active_uploads` — every `/upload/secure` request and every
+    chunked `complete` finalization (parse + S3 + insert). Chunked sessions are
+    self-healing (an abandoned one stops counting at expiry, no counter to leak);
+    the transient counter is always `finally`-balanced, so it can't leak either.
+    Counting both keeps the cap a single shared limit, not two separate pools."""
+    return upload_handler.count_active_sessions(user_id) + rate_limiter.active_uploads.get(user_id, 0)
+
+
 def _release_expired_slots() -> list[str]:
     """Reap expired chunked sessions (removes them from the store and deletes their
     partial temp files). The chunked concurrency limit is now derived from the live
@@ -334,7 +348,7 @@ async def init_chunked_upload(
     # bound for real, ten abandoned sessions 429'd the user forever.)
     _release_expired_slots()
 
-    if upload_handler.count_active_sessions(current_user_id) >= rate_limiter.max_concurrent_uploads:
+    if _active_upload_count(current_user_id) >= rate_limiter.max_concurrent_uploads:
         raise HTTPException(
             status_code=429,
             detail="Too many concurrent uploads"
@@ -404,6 +418,13 @@ async def complete_chunked_upload(
 
     temp_path = Path(session["temp_path"])
     filename = session["filename"]
+
+    # Claiming popped the session, so it no longer counts via count_active_sessions.
+    # The finalization below (parse + S3 upload + insert) is real, resource-heavy
+    # work, so keep it counted toward the shared cap via a transient slot (#526) —
+    # released on EVERY exit by the finally, so it can never leak. Without this a
+    # user could spam completes and start fresh uploads while finalizations run.
+    rate_limiter.start_upload(current_user_id)
 
     # The concurrency slot and the assembled temp file are released on *every*
     # exit, not just the successful one. Releasing only on success meant a
@@ -500,8 +521,7 @@ async def complete_chunked_upload(
         }
     finally:
         temp_path.unlink(missing_ok=True)
-        # No rate_limiter.end_upload: complete() already popped the session from the
-        # store, so it no longer counts toward the caller's chunked limit (#526).
+        rate_limiter.end_upload(current_user_id)  # release the finalization slot (#526)
 
 
 @router.delete("/chunked/{session_id}")
