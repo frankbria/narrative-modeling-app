@@ -1078,3 +1078,29 @@ checked, and the fix is always the same: the claim is a query, so run it.
   required always; the issue's AC3 explicitly keeps the URI-path-only shape working.
   Rebut on the record, and file the bot's valid underlying point (backend ignores
   the URI path) as a prioritized follow-up (#694 P3.41) rather than folding it in.
+
+## #632 — export standalone preprocessing (Docker/Python model export)
+- **Pickling a platform class as a delivered artifact is a trap.** pickle stores the
+  fully-qualified module path, so the export's `feature_engineer.pkl` (the platform's
+  `FeatureEngineer`) raised `ModuleNotFoundError` in the container (no `app` package) —
+  every model trained WITH feature engineering failed to serve. Ship a plain STATE DICT
+  of stock objects (sklearn transformers + lists/strings, no `app` class ref) + inline a
+  reconstruction class into the generated code. Keep the standalone transform bug-for-bug
+  identical to the platform's (assert_frame_equal parity test) or predictions diverge.
+- **Fix ALL variants of the surface, not just the one in the ticket.** The first commit
+  fixed the Docker ZIP but left `GET /export/python` (a single .py) importing a companion
+  module only shipped in the ZIP → ModuleNotFound for the plain python export. codex AND
+  the internal reviewer both caught it. INLINING the class beats a companion file: it makes
+  every export path self-contained at once.
+- **Verify a container fix with a real docker build+run+POST, not just unit tests.** AC4:
+  `docker build` the produced ZIP, `docker run`, `POST /predict` → real predictions. Docker
+  is available locally (29.8.0). Unit/clean-env-subprocess tests prove loadability; only the
+  real container proves the image.
+- **A pre-existing "simplified" test fixture can encode the wrong contract.** The #468 suite
+  used a bare `StandardScaler` as the "feature engineer" stand-in and asserted the pkl IS a
+  StandardScaler — updating to a real `FeatureEngineer` + state-dict contract was required,
+  not optional.
+- **Session gotcha (not #632-specific):** full-app pytest (`async_authorized_client`) hits
+  the real Atlas cluster (`bad auth : AtlasError`) because `.env` MONGODB_URI is Atlas and
+  `app/main` reads os.getenv at lifespan; prefix `MONGODB_URI=mongodb://localhost:27017/
+  MONGODB_DB=narrative-modeling_test` for those runs. Isolated service/unit tests don't need it.
