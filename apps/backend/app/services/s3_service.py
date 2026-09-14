@@ -104,9 +104,18 @@ class FormatMismatchError(ValueError):
 
 
 def _looks_like_parquet(local_path: str) -> bool:
-    """Parquet files begin with the 4-byte magic ``PAR1`` (and end with it too)."""
+    """A Parquet file begins AND ends with the 4-byte magic ``PAR1``. Requiring
+    BOTH avoids a false positive on a non-Parquet file that merely starts with
+    those bytes (e.g. a CSV whose first column is named ``PAR1...``) — a valid CSV
+    would be wrongly rejected on the header alone (#524, codex)."""
     try:
         with open(local_path, "rb") as fh:
+            if fh.read(4) != b"PAR1":
+                return False
+            fh.seek(0, os.SEEK_END)
+            if fh.tell() < 8:  # too small to hold both the header and footer magic
+                return False
+            fh.seek(-4, os.SEEK_END)
             return fh.read(4) == b"PAR1"
     except OSError:
         return False

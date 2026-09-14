@@ -62,6 +62,20 @@ def test_matching_csv_loads():
 
 
 @pytest.mark.unit
+def test_csv_starting_with_par1_is_not_rejected():
+    """A valid CSV whose first bytes are 'PAR1' (e.g. a column named PAR1) must load
+    as csv — the footer check prevents a header-only false positive (#524, codex)."""
+    import os
+    fd, path = tempfile.mkstemp(suffix=".csv")
+    os.close(fd)
+    pd.DataFrame({"PAR1col": [1, 2], "b": [3, 4]}).to_csv(path, index=False)
+    with open(path, "rb") as fh:
+        assert fh.read(4) == b"PAR1"  # precondition: header really starts with PAR1
+    out = _read_dataframe(path, "csv", None)
+    assert list(out.columns) == ["PAR1col", "b"] and len(out) == 2
+
+
+@pytest.mark.unit
 def test_infer_path_still_works_without_declared_type():
     """file_type=None keeps the csv-then-parquet inference (no declared type to check)."""
     csv_path = _write_csv(_DF)
