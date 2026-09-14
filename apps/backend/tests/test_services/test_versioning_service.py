@@ -726,14 +726,42 @@ class TestDeleteVersionRemovesS3Object:
         v.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_s3_url_file_path_is_resolved_to_the_key(self, versioning_service):
-        # file_path can be a full URL under another bucket (#622) — delete by key.
-        v = self._version(file_path="s3://other-bucket/datasets/u/ds/versions/v1/f.csv")
+    @pytest.mark.parametrize("shape", ["s3", "https"])
+    async def test_url_file_path_in_configured_bucket_is_resolved_to_the_key(
+        self, versioning_service, shape
+    ):
+        # file_path can be a full URL, in either shape (#622) — delete by key.
+        bucket = versioning_service.bucket_name
+        key = "datasets/u/ds/versions/v1/f.csv"
+        location = (
+            f"s3://{bucket}/{key}" if shape == "s3"
+            else f"https://{bucket}.s3.amazonaws.com/{key}"
+        )
+        v = self._version(file_path=location)
 
         await versioning_service.delete_version(v)
 
-        key = versioning_service.s3_client.delete_object.call_args.kwargs["Key"]
-        assert key == "datasets/u/ds/versions/v1/f.csv"
+        call = versioning_service.s3_client.delete_object.call_args.kwargs
+        assert call["Key"] == key
+        assert call["Bucket"] == bucket
+        v.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_foreign_bucket_url_is_refused_and_keeps_row(self, versioning_service):
+        """#616: a URL naming a different bucket must NOT delete a same-named key
+        from our bucket — refuse and keep the row so the object stays findable."""
+        from app.services.versioning_service import VersionArtifactDeletionError
+
+        assert versioning_service.bucket_name != "some-other-bucket"
+        v = self._version(
+            file_path="s3://some-other-bucket/datasets/u/ds/versions/v1/f.csv"
+        )
+
+        with pytest.raises(VersionArtifactDeletionError):
+            await versioning_service.delete_version(v)
+
+        versioning_service.s3_client.delete_object.assert_not_called()
+        v.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_s3_failure_keeps_the_row_and_raises(self, versioning_service):

@@ -816,11 +816,32 @@ class VersioningService(BaseService[DatasetVersion]):
         pattern ``cleanup_old_versions`` uses for the retention path). The caller
         (route) maps the raise to a retryable 502.
 
-        The key is resolved through ``parse_s3_url`` so a ``file_path`` stored as a
-        full ``s3://`` URL under another bucket still deletes by key (#622).
+        The key is resolved through ``parse_s3_url`` for ANY URL-shaped location —
+        ``s3://``, an endpoint URL, or an ``https://{bucket}.s3…`` form the app has
+        stored after a dataset move (#622). Matching only ``s3://`` would hand the
+        whole https URL to S3 as the key; a delete of a nonexistent key *succeeds*,
+        so the row would be dropped over a surviving object — re-introducing the
+        very orphan this fixes. A raw key never contains ``://`` and passes through.
+
+        If the URL names a bucket that is not the one this deployment is configured
+        for, the delete is refused and the row kept (#616): deleting that key from
+        our bucket would either no-op (S3 doesn't error on a missing key) and orphan
+        the real object in the other bucket, or remove a different, same-named object
+        here. The configured bucket can differ from the stored one after a bucket
+        rename/migration, so this is the same guard ``erasure_service._s3_key`` uses.
         """
         location = version.file_path or version.s3_url
-        key = parse_s3_url(location)[1] if location.startswith("s3://") else location
+        if "://" in location:
+            parsed_bucket, key = parse_s3_url(location)
+            if parsed_bucket is not None and parsed_bucket != self.bucket_name:
+                raise VersionArtifactDeletionError(
+                    f"version {getattr(version, 'version_id', '?')} object is stored "
+                    f"in bucket {parsed_bucket!r}, not the configured "
+                    f"{self.bucket_name!r}; refusing to delete a same-named key from "
+                    f"the wrong bucket — the record is retained so it stays findable"
+                )
+        else:
+            key = location
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
         except Exception as e:
