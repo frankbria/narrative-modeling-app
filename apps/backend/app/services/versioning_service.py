@@ -10,6 +10,7 @@ Security:
 - All bypassed operations are logged for security auditing
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -843,7 +844,12 @@ class VersioningService(BaseService[DatasetVersion]):
         else:
             key = location
         try:
-            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+            # boto3 is synchronous; offload so a slow/retrying S3 endpoint (bounded
+            # to ~80s by the #519 Config) can't block the event loop for the whole
+            # worker on this user-facing request path (#501/#503 convention).
+            await asyncio.to_thread(
+                self.s3_client.delete_object, Bucket=self.bucket_name, Key=key
+            )
         except Exception as e:
             logger.error(
                 "Failed to delete S3 object %s for version %s: %s",
