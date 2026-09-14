@@ -109,7 +109,8 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
     6. Return ranked suggestions
 
     **Performance Notes:**
-    - Suggestions are cached for 1 hour per dataset/target combination
+    - Suggestions are cached ~1 hour per (user, dataset); each /suggest overwrites
+      the set and /suggest-more appends to it, so apply/feedback/explain resolve by id
     - AI suggestion generation may take 2-5 seconds
     - Large datasets are sampled for importance estimation
     """
@@ -139,7 +140,9 @@ async def suggest_features(
             problem_type=request.problem_type,
             max_suggestions=request.max_suggestions,
             include_ai=request.include_ai_suggestions,
-            feature_types=request.feature_types
+            feature_types=request.feature_types,
+            user_id=current_user_id,
+            read_cache=False,  # generator: write through so consumers resolve this set (#522)
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
@@ -178,7 +181,9 @@ async def get_suggestion_explanation(
         # Generate suggestions (should hit cache)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Find the specific suggestion
@@ -231,7 +236,9 @@ async def record_suggestion_feedback(
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Find the suggestion to get its feature_type
@@ -309,25 +316,44 @@ async def suggest_more_features(
         excluded_ids = request.excluded_suggestion_ids or []
         prefer_types = request.prefer_feature_types or []
 
-        # Generate more suggestions with higher AI temperature for creativity
+        # The set already shown to the user (from the prior /suggest). The UI
+        # APPENDS this endpoint's result to that list, so both batches must stay
+        # resolvable by apply/feedback/explain — we merge, not replace (#522).
+        existing = await feature_engineering_service.get_cached_suggestions(
+            current_user_id, dataset_id
+        )
+        existing_suggestions = existing.suggestions if existing else []
+        existing_ids = {s.id for s in existing_suggestions}
+
+        # Compute a fresh batch WITHOUT clobbering the cached set (write_cache=False).
         response = await feature_engineering_service.suggest_features(
             df=df,
             dataset_id=dataset_id,
             target_column=request.target_column,
             problem_type=request.problem_type,
-            max_suggestions=request.count + len(excluded_ids),
+            max_suggestions=request.count + len(excluded_ids) + len(existing_ids),
             include_ai=True,
-            feature_types=prefer_types if prefer_types else None
+            feature_types=prefer_types if prefer_types else None,
+            user_id=current_user_id,
+            read_cache=False,
+            write_cache=False,
         )
 
-        # Filter out excluded suggestions
-        filtered_suggestions = [
+        # New ones: not excluded by the client, not already shown.
+        new_suggestions = [
             s for s in response.suggestions
-            if s.id not in excluded_ids
+            if s.id not in excluded_ids and s.id not in existing_ids
         ][:request.count]
 
-        response.suggestions = filtered_suggestions
-        response.total_suggestions = len(filtered_suggestions)
+        # Persist the UNION so the original batch's ids keep resolving alongside
+        # the new ones; return only the new batch (the UI appends it).
+        response.suggestions = existing_suggestions + new_suggestions
+        await feature_engineering_service.cache_suggestions(
+            current_user_id, dataset_id, response
+        )
+
+        response.suggestions = new_suggestions
+        response.total_suggestions = len(new_suggestions)
 
         return response
 
@@ -365,7 +391,9 @@ async def apply_feature(
         # Get the suggestion
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         suggestion = None
@@ -450,7 +478,9 @@ async def apply_multiple_features(
         # Get suggestions (fetched once, cached by service via Redis)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Build lookup map for O(1) access per suggestion
