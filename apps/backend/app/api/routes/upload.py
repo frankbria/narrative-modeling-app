@@ -18,7 +18,13 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
 from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
-from app.utils.s3 import create_s3_client, dataset_s3_key, upload_file_to_s3
+from app.utils.s3 import (
+    allowed_bucket,
+    configured_bucket,
+    create_s3_client,
+    dataset_s3_key,
+    upload_file_to_s3,
+)
 from app.utils.schema_inference import infer_schema
 from app.utils.upload_limits import read_upload_capped
 
@@ -91,9 +97,13 @@ async def upload_file(
         required_env_vars = [
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
-            "AWS_BUCKET_NAME",
         ]
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+        # The bucket goes through the ONE resolver, not a hardcoded env name (#507):
+        # a deploy configured with only AWS_S3_BUCKET would otherwise fail this gate
+        # while the writer resolved the bucket fine.
+        if not configured_bucket():
+            missing_vars.append("a configured S3 bucket")
 
         if missing_vars:
             # Was: `s3_url = "s3_not_configured"`, then carry on and return 200. Same
@@ -153,7 +163,9 @@ async def upload_file(
                     signed_url = s3_client.generate_presigned_url(
                         "get_object",
                         Params={
-                            "Bucket": os.getenv("AWS_BUCKET_NAME"),
+                            # Same resolver the writer used, so the signed URL
+                            # points at the bucket the object was written to (#507).
+                            "Bucket": allowed_bucket(),
                             "Key": s3_filename,
                         },
                         ExpiresIn=3600,  # 1 hour

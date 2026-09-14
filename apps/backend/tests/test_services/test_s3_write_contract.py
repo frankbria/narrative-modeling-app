@@ -159,3 +159,35 @@ class TestConsumersOfTheLiveBucket:
         client.head_object.return_value = {"ContentLength": 1}
         await svc.download_file_bytes("datasets/u/file.csv")
         assert client.head_object.call_args.kwargs["Bucket"] == "pinned-bucket"
+
+
+@pytest.mark.unit
+def test_no_call_site_resolves_the_bucket_independently():
+    """AC3 of #507: only the shared resolver may read the bucket env vars. Any
+    other module reading AWS_S3_BUCKET / AWS_BUCKET_NAME / S3_BUCKET(_NAME) itself
+    can drift onto a different bucket than the readers/writers use — the exact
+    data-integrity risk #495/#507 close. `app/config.py` is the resolver's home."""
+    import re
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[2] / "app"
+    allowed = {app_dir / "config.py"}
+    names = r"(AWS_S3_BUCKET|AWS_S3_BUCKET_NAME|AWS_BUCKET_NAME|S3_BUCKET|S3_BUCKET_NAME)"
+    # (a) a direct env read, or (b) a bare quoted bucket-name list element (the
+    # `required_env_vars = [..., "AWS_BUCKET_NAME"]` + `os.getenv(var)` pattern) —
+    # not a bucket name embedded in a user-facing message, which is fine.
+    direct = re.compile(r"""os\.(getenv|environ)\s*[\(\[]\s*['"]""" + names + r"""['"]""")
+    list_element = re.compile(r"""^\s*['"]""" + names + r"""['"]\s*,?\s*$""")
+    offenders = []
+    for path in app_dir.rglob("*.py"):
+        if path in allowed:
+            continue
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            code = line.split('#', 1)[0]
+            if direct.search(code) or list_element.match(code):
+                offenders.append(f"{path.relative_to(app_dir.parent)}:{i}: {line.strip()}")
+    assert not offenders, (
+        "Resolve the S3 bucket only through app.config.resolve_configured_bucket() "
+        "(via configured_bucket()/allowed_bucket()), not by reading the env vars "
+        "directly (#507). Offending call sites:\n" + "\n".join(offenders)
+    )
