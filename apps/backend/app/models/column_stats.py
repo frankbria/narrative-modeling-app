@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
+import pymongo
 from beanie import Document, Indexed, Link
 from pydantic import BaseModel, Field
+from pymongo import IndexModel
 
 from app.models.user_data import UserData
 
@@ -80,7 +82,17 @@ class ColumnStats(Document):
         indexes = [
             "dataset_id",
             "column_name",
-            ("dataset_id", "column_name"),  # Compound index for faster lookups
+            # One stats row per (dataset, column) — before #543 the broken cache query
+            # re-inserted a full set on every GET, growing the collection without bound.
+            # A NEW index name (not the old non-unique compound) because Mongo refuses to
+            # rebuild an existing name with different options (#565). Run
+            # scripts/dedupe_column_stats.py BEFORE deploying: a unique index cannot build
+            # while duplicates exist (startup would fail).
+            IndexModel(
+                [("dataset_id", pymongo.ASCENDING), ("column_name", pymongo.ASCENDING)],
+                name="dataset_column_unique",
+                unique=True,
+            ),
         ]
 
     model_config = {

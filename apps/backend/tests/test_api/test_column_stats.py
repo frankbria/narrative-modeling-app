@@ -43,26 +43,23 @@ async def seed_cached_stats(
 ) -> None:
     """Insert a ColumnStats row the route's cache query actually matches.
 
-    The route queries `ColumnStats.dataset_id == PydanticObjectId(...)`, while
-    Beanie's `Link` write path stores a DBRef — so a normally-created row never
-    matches (that mismatch is #543). Writing the bare ObjectId directly is what
-    makes the cache genuinely hit, which is the only way to exercise the bypass
-    this issue is about, and it is the shape #543 will produce once fixed.
+    #543 keeps ``dataset_id`` a Beanie ``Link`` (stored as a DBRef) and fixes the query
+    to match the DBRef's ``$id`` (consistent with how the erasure cascade already deletes
+    Link-keyed children). So seed via the real model — which writes the true DBRef — rather
+    than a bare ObjectId, or the fixed query (and production reads) wouldn't match it.
     """
-    await ColumnStats.get_motor_collection().insert_one(
-        {
-            "dataset_id": dataset.id,
-            "user_id": owner_id,
-            "column_name": column_name,
-            "data_type": "numeric",
-            "count": 100,
-            "missing": 0,
-            "unique": 97,
-            "min_value": 31000.0,
-            "max_value": 480000.0,
-            "mean": 118000.0,
-        }
-    )
+    await ColumnStats(
+        dataset_id=dataset,
+        user_id=owner_id,
+        column_name=column_name,
+        data_type="numeric",
+        count=100,
+        missing=0,
+        unique=97,
+        min_value=31000.0,
+        max_value=480000.0,
+        mean=118000.0,
+    ).insert()
 
 
 class TestColumnStatsTenantIsolation:
@@ -187,9 +184,9 @@ class TestColumnStatsTenantIsolation:
 
         # ASSERT
         assert response.status_code == 404
-        # and the victim's cached row is untouched
+        # and the victim's cached row is untouched (DBRef-keyed, #543)
         assert await ColumnStats.get_motor_collection().count_documents(
-            {"dataset_id": PydanticObjectId(str(victim_dataset.id))}
+            {"dataset_id.$id": PydanticObjectId(str(victim_dataset.id))}
         ) == 1
 
     @pytest.mark.asyncio
@@ -264,7 +261,7 @@ class TestColumnStatsTenantIsolation:
         # ASSERT — the request fails, but the caller's cached stats survive
         assert response.status_code == 500
         assert await ColumnStats.get_motor_collection().count_documents(
-            {"dataset_id": mine.id}
+            {"dataset_id.$id": mine.id}
         ) == 1
 
     @pytest.mark.asyncio
@@ -279,19 +276,18 @@ class TestColumnStatsTenantIsolation:
         every recompute. Unreachable via the real write path until #543 lands,
         which is precisely why it is worth pinning now.
         """
-        # ARRANGE: a legacy row with no owner, and no scoped row to serve
+        # ARRANGE: a legacy row with no owner (a real pre-#449 row is a DBRef with
+        # user_id unset, so seed via the model), and no scoped row to serve.
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
-        await ColumnStats.get_motor_collection().insert_one(
-            {
-                "dataset_id": mine.id,
-                "column_name": "legacy",
-                "data_type": "numeric",
-                "count": 1,
-                "missing": 0,
-                "unique": 1,
-            }
-        )
+        await ColumnStats(
+            dataset_id=mine,
+            column_name="legacy",
+            data_type="numeric",
+            count=1,
+            missing=0,
+            unique=1,
+        ).insert()
         # The route reads through the one validated reader (#531).
         fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
 
@@ -308,5 +304,66 @@ class TestColumnStatsTenantIsolation:
         assert response.status_code == 200
         assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
         assert await ColumnStats.get_motor_collection().count_documents(
-            {"dataset_id": mine.id, "user_id": None}
+            {"dataset_id.$id": mine.id, "user_id": None}
         ) == 0
+
+
+    @pytest.mark.asyncio
+    async def test_second_get_hits_cache_no_redownload_no_duplicate_insert(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#543 AC5: once stats are computed, a second GET must serve from the cache —
+        no re-download from S3, no duplicate rows (the DBRef query now actually matches)."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+
+        spy = MagicMock(side_effect=lambda *_a, **_k: io.BytesIO(b"salary,dept\n100,a\n200,b\n"))
+        with patch("app.api.routes.column_stats.get_file_from_s3", spy):
+            first = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
+            second = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
+
+        assert first.status_code == 200 and second.status_code == 200
+        # Only the first (cache-miss) GET downloaded; the second hit the cache.
+        assert spy.call_count == 1
+        # Exactly one row per column — no duplicate re-insert on the second GET.
+        assert await ColumnStats.get_motor_collection().count_documents(
+            {"dataset_id.$id": mine.id}
+        ) == 2  # salary, dept
+        assert sorted(c["column_name"] for c in second.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_recompute_loser_serves_winner_rows_not_500(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#543: with the dataset_column_unique index, a request that loses a
+        concurrent cache-miss recompute race hits a duplicate-key error on its
+        insert. It must serve the winner's rows, not 500."""
+        from pymongo.errors import BulkWriteError
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+
+        async def winner_writes_then_this_insert_collides(df, dataset_id, user_id):
+            # Stand in for another request winning the race: its rows now exist,
+            # so this (losing) insert would violate the unique index.
+            await seed_cached_stats(mine, mock_user_id, "salary")
+            await seed_cached_stats(mine, mock_user_id, "dept")
+            raise BulkWriteError({})
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), patch(
+            "app.api.routes.column_stats.calculate_and_store_column_stats",
+            side_effect=winner_writes_then_this_insert_collides,
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
