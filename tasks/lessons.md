@@ -1017,3 +1017,15 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A startup write-probe must use a unique key.** A fixed probe key overwrites +
   deletes any pre-existing object of that name on every boot (codex caught it). Use
   a per-boot `uuid` key under a reserved prefix.
+
+## #507 — adopt the shared bucket resolver everywhere
+- **"Unified resolver" ≠ "every path uses it."** #567/#621/#622 built the resolver
+  but two paths still read the bucket env vars directly (upload presign →
+  bucket=None when only AWS_S3_BUCKET is set; health readout on a third precedence).
+  When an issue says "the fix is inert because the real paths never adopted it,"
+  grep for the OLD pattern, don't trust "we added a resolver."
+- **A grep-guard must catch INDIRECT reads.** My first guard matched only literal
+  `os.getenv("AWS_BUCKET_NAME")`; codex caught `required_env_vars = [...,
+  "AWS_BUCKET_NAME"]` + `os.getenv(var)`. Add a list-element pattern too — but scope
+  it (bare quoted token, comment-stripped) so it doesn't false-positive on bucket
+  names inside helpful user-facing error messages.
