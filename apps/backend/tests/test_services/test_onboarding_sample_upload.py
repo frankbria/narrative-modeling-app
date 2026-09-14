@@ -71,6 +71,59 @@ async def test_progress_persists_for_a_user_with_no_dataset(setup_database, monk
     assert loaded.user_id == new_user
 
 
+async def test_legacy_progress_on_user_data_is_migrated_read_through(setup_database, monkeypatch):
+    """#541 (codex): a user onboarded before this change has progress on
+    UserData.onboarding_progress — preserve it (read-through) instead of resetting to
+    step zero when the new collection is empty and the cache is cold."""
+    from app.models.user_data import UserData
+    from app.services import redis_cache
+
+    monkeypatch.setattr(redis_cache.cache_service, "get_user_progress", _async_none)
+    monkeypatch.setattr(redis_cache.cache_service, "cache_user_progress", _async_noop)
+
+    from datetime import UTC, datetime
+
+    from app.schemas.onboarding import OnboardingUserProgress
+
+    legacy_user = "onboarding_legacy_user"
+    # A realistic legacy dump: the old code stored progress.dict() (all fields present).
+    legacy_progress = OnboardingUserProgress(
+        user_id=legacy_user, started_at=datetime.now(UTC), last_activity_at=datetime.now(UTC)
+    )
+    legacy_progress.completed_steps = ["welcome", "upload_data"]
+    await UserData(
+        user_id=legacy_user, filename="d.csv", original_filename="d.csv", s3_url="s3://b/d.csv",
+        num_rows=1, num_columns=1, data_schema=[], contains_pii=False,
+        onboarding_progress=legacy_progress.dict(),
+    ).insert()
+
+    svc = OnboardingService()
+    progress = await svc._get_or_create_user_progress(legacy_user)
+    assert "welcome" in progress.completed_steps and "upload_data" in progress.completed_steps
+
+    # Saving migrates it into the dedicated collection.
+    await svc._save_user_progress(legacy_user, progress)
+    record = await OnboardingProgress.find_one(OnboardingProgress.user_id == legacy_user)
+    assert record is not None
+    assert set(record.progress["completed_steps"]) >= {"welcome", "upload_data"}
+
+
+async def test_save_progress_is_idempotent_upsert(setup_database, monkeypatch):
+    """The save path is an upsert: repeated saves for the same user never raise on the
+    unique user_id index (the concurrent-first-save race, codex)."""
+    from app.services import redis_cache
+
+    monkeypatch.setattr(redis_cache.cache_service, "get_user_progress", _async_none)
+    monkeypatch.setattr(redis_cache.cache_service, "cache_user_progress", _async_noop)
+
+    svc = OnboardingService()
+    user = "onboarding_upsert_user"
+    p = await svc._get_or_create_user_progress(user)
+    await svc._save_user_progress(user, p)
+    await svc._save_user_progress(user, p)  # second save must update, not DuplicateKeyError
+    assert await OnboardingProgress.find(OnboardingProgress.user_id == user).count() == 1
+
+
 async def _async_none(*args, **kwargs):
     return None
 

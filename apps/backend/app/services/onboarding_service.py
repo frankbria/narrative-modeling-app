@@ -818,12 +818,21 @@ class OnboardingService:
         if record and record.progress:
             progress = OnboardingUserProgress(**record.progress)
         else:
-            # Create new progress
-            progress = OnboardingUserProgress(
-                user_id=user_id,
-                started_at=datetime.now(UTC),
-                last_activity_at=datetime.now(UTC)
+            # Read-through migration: users onboarded before #541 have their state on
+            # UserData.onboarding_progress. Preserve it (it gets written to the new
+            # collection on the next save) instead of resetting them to step zero.
+            legacy = await UserData.find_one(
+                {"user_id": user_id, "onboarding_progress": {"$ne": None}}
             )
+            if legacy and legacy.onboarding_progress:
+                progress = OnboardingUserProgress(**legacy.onboarding_progress)
+            else:
+                # Create new progress
+                progress = OnboardingUserProgress(
+                    user_id=user_id,
+                    started_at=datetime.now(UTC),
+                    last_activity_at=datetime.now(UTC)
+                )
         
         # Cache the progress
         await cache_service.cache_user_progress(user_id, progress.dict())
@@ -842,11 +851,15 @@ class OnboardingService:
         # Persist to the dedicated onboarding_progress collection, keyed by user (#541).
         # Previously this smuggled progress onto an arbitrary UserData and, for a user
         # with no dataset, constructed a UserData with no filename/s3_url — which fails
-        # validation and raised at the first onboarding step.
-        record = await OnboardingProgress.find_one(OnboardingProgress.user_id == user_id)
-        if record:
-            record.progress = progress_dict
-            record.updated_at = datetime.now(UTC)
-            await record.save()
-        else:
-            await OnboardingProgress(user_id=user_id, progress=progress_dict).insert()
+        # validation and raised at the first onboarding step. One atomic upsert (not
+        # read-then-insert) so two concurrent first saves converge on the unique user_id
+        # index instead of one failing with a DuplicateKeyError.
+        await OnboardingProgress.get_motor_collection().update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "user_id": user_id,
+                "progress": progress_dict,
+                "updated_at": datetime.now(UTC),
+            }},
+            upsert=True,
+        )
