@@ -43,6 +43,15 @@ async def run_eda_summary(params: EdaInput) -> dict:
     """
     try:
         user_data = await get_user_data_by_id(params.dataset_id)
+        # Distinguish not-found from not-authorized IN THE LOGS (#540 AC3) — the caller
+        # still gets one generic message (never leak which datasets exist), but an
+        # operator can tell a config/data problem from a real permission denial.
+        if user_data is None:
+            logger.info("EDA summary denied: dataset %s not found", params.dataset_id)
+        elif user_data.user_id != params.user_id:
+            logger.info(
+                "EDA summary denied: dataset %s not owned by requester", params.dataset_id
+            )
         s3_url = authorize_dataset(user_data, params.user_id)
     except PermissionError as e:
         return {"success": False, "message": str(e)}

@@ -20,6 +20,27 @@ _initialized = False
 _init_lock = asyncio.Lock()
 
 
+def require_db_name() -> str:
+    """The Mongo database name, read explicitly from MONGODB_DB (#540).
+
+    The backend selects its database with ``client[MONGODB_DB]`` and MONGODB_URI is
+    bare (no default database — the normal Atlas SRV shape). The MCP server used
+    ``get_default_database()``, which on such a URI resolves to a DIFFERENT database
+    (the driver's ``test`` fallback), so it looked up owner records in a database
+    that never contains them and answered "access denied" for legitimate requests —
+    a config error wearing an authorization error's clothes. Fail fast with a clear
+    message instead of silently falling back.
+    """
+    db_name = (os.getenv("MONGODB_DB") or "").strip()
+    if not db_name:
+        raise RuntimeError(
+            "MONGODB_DB is not set. The MCP server selects its Mongo database "
+            "explicitly (like the backend); set MONGODB_DB to the same value the "
+            "backend uses, or owner lookups will hit the wrong database (#540)."
+        )
+    return db_name
+
+
 async def _ensure_initialized() -> None:
     global _initialized
     if _initialized:
@@ -29,10 +50,9 @@ async def _ensure_initialized() -> None:
     async with _init_lock:
         if _initialized:
             return
+        db_name = require_db_name()
         client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
-        await init_beanie(
-            database=client.get_default_database(), document_models=[UserData]
-        )
+        await init_beanie(database=client[db_name], document_models=[UserData])
         _initialized = True
 
 
