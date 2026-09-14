@@ -420,6 +420,87 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.status == SubscriptionStatus.CANCELED
 
+    async def test_concurrent_update_and_delete_end_cancelled(
+        self, async_authorized_client, setup_database
+    ):
+        """AC4 (#509): a `subscription.updated` and a newer `subscription.deleted`
+        delivered CONCURRENTLY must end cancelled regardless of which the atomic
+        conditional upsert applies first — the read-modify-write race that could
+        leave a cancelled tenant entitled is gone."""
+        import asyncio
+
+        now = int(time.time())
+        updated = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+            created=now,
+        )
+        deleted = event(  # strictly newer than the update
+            "customer.subscription.deleted",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now + 5,
+        )
+        await asyncio.gather(
+            async_authorized_client.post(
+                WEBHOOK_PATH, content=updated, headers={"Stripe-Signature": sign(updated)}
+            ),
+            async_authorized_client.post(
+                WEBHOOK_PATH, content=deleted, headers={"Stripe-Signature": sign(deleted)}
+            ),
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.CANCELED
+        assert not sub.is_entitled
+
+    async def test_a_newer_delete_after_an_update_cancels(
+        self, async_authorized_client, setup_database
+    ):
+        """The other arrival order, deterministically: update first, then the newer
+        delete — still cancelled (AC4)."""
+        now = int(time.time())
+        updated = event(
+            "customer.subscription.updated",
+            {"metadata": {"user_id": TEST_USER}, "status": "active", "id": "sub_1"},
+            created=now,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=updated, headers={"Stripe-Signature": sign(updated)}
+        )
+        deleted = event(
+            "customer.subscription.deleted",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now + 5,
+        )
+        await async_authorized_client.post(
+            WEBHOOK_PATH, content=deleted, headers={"Stripe-Signature": sign(deleted)}
+        )
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None and sub.status == SubscriptionStatus.CANCELED
+
+    async def test_the_same_event_twice_has_a_single_effect(
+        self, async_authorized_client, setup_database
+    ):
+        """AC5 (#509): a duplicate delivery (Stripe retries) converges on the same
+        row — idempotent in effect."""
+        now = int(time.time())
+        deleted = event(
+            "customer.subscription.deleted",
+            {"metadata": {"user_id": TEST_USER}},
+            created=now,
+        )
+        for _ in range(2):
+            resp = await async_authorized_client.post(
+                WEBHOOK_PATH, content=deleted, headers={"Stripe-Signature": sign(deleted)}
+            )
+            assert resp.status_code == 200
+
+        assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 1
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None and sub.status == SubscriptionStatus.CANCELED
+        assert as_utc(sub.last_event_at) == datetime.fromtimestamp(now, tz=UTC)
+
     async def test_an_update_without_a_price_keeps_the_existing_tier(
         self, async_authorized_client, setup_database
     ):
@@ -859,24 +940,26 @@ class TestWebhookEndpoint:
         The loser must be retried against the row the winner created, not 500 and
         rely on Stripe's redelivery to paper over it.
         """
+        from pymongo.errors import DuplicateKeyError
+
         from app.api.routes import billing_webhook
 
-        real_apply = billing_webhook._apply
+        coll = billing_webhook.Subscription.get_motor_collection()
+        real_update = coll.update_one
         calls = {"n": 0}
 
-        # Deliberately NOT a synthetic exception. An earlier version of this test
-        # raised DuplicateKeyError, which is what the handler caught — so it was
-        # calibrated to the bug rather than to reality. `save()` on an unpersisted
-        # duplicate actually raises RevisionIdWasChanged (CLAUDE.md), so the race is
-        # produced by really losing it.
-        async def _lose_the_first_race(*args, **kwargs):
+        # The conditional upsert loses the INSERT race: a concurrent event creates
+        # the row first, so the first update_one's upsert-insert hits the unique
+        # user_id index (#509). _apply must retry — where the row now exists and the
+        # ordering filter turns it into an update — not 500.
+        async def _lose_the_first_race(flt, update, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
                 await Subscription(user_id=TEST_USER).insert()  # the winner
-                await Subscription(user_id=TEST_USER).save()  # raises for real
-            return await real_apply(*args, **kwargs)
+                raise DuplicateKeyError("E11000 duplicate key: user_id")
+            return await real_update(flt, update, **kwargs)
 
-        monkeypatch.setattr(billing_webhook, "_apply", _lose_the_first_race)
+        monkeypatch.setattr(coll, "update_one", _lose_the_first_race)
 
         payload = event(
             "invoice.payment_failed", {"metadata": {"user_id": TEST_USER}}
