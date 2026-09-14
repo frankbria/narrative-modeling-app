@@ -1104,3 +1104,20 @@ checked, and the fix is always the same: the claim is a query, so run it.
   the real Atlas cluster (`bad auth : AtlasError`) because `.env` MONGODB_URI is Atlas and
   `app/main` reads os.getenv at lifespan; prefix `MONGODB_URI=mongodb://localhost:27017/
   MONGODB_DB=narrative-modeling_test` for those runs. Isolated service/unit tests don't need it.
+
+## #661 — erasure orphaned batch-job S3 objects
+- **"Deletes the doc" ≠ "deletes the data" for any model owning S3 objects.** BatchJob's
+  input_path/output_path are real S3 objects; the generic Mongo-only `_delete_many` left
+  them while the manifest reported success (the #481/#616 anti-pattern). Give such a model
+  a dedicated sweep that deletes its S3 objects through the one core (`_s3_key`/`_delete_s3`)
+  before the doc, in BOTH the user sweep and the dataset/model cascade.
+- **A foreign key can live inside a config/JSON dict, not a top-level field.** BatchJob's
+  model_id is in `config` (BatchPredictionConfig), so the dataset-cascade query is the
+  dot-path `{"config.model_id": ...}`, not `{"model_id": ...}` — the latter silently matches
+  nothing and the cleanup no-ops. Grep the model, don't assume the field is top-level.
+- **Manual DELETE cleanup is best-effort; GDPR erasure is manifest-tracked.** The route's
+  `delete_job_files` logs S3 failures and never blocks the doc delete; the erasure path
+  records residuals on the manifest. Same "cleanup can't block deletion" convention as
+  datasets/models.
+- **Cover every branch of a shared helper.** Reviewer flagged that only the user_id sweep was
+  tested, not the config.model_id cascade path — added a hermetic test spying on `_delete_s3`.
