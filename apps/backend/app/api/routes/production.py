@@ -116,7 +116,12 @@ class CreateAPIKeyRequest(BaseModel):
     # (#455). The value is additionally clamped to the tenant's plan ceiling at
     # creation — this is a ceiling, not an override, so a tenant may still ask
     # for less to shrink a key's blast radius.
-    rate_limit: int = Field(default=1000, ge=1, description="Requests per hour")
+    # Upper bound (#588): the requested value is now persisted raw on the APIKey
+    # (so a plan recovery can restore to it), and BSON stores only 64-bit ints — an
+    # unbounded request like 10**100 would 500 on insert instead of being rejected.
+    # 1e9/hr is far above any tier ceiling yet safely within int64, so a garbage
+    # value is a clean 422. `min(requested, ceiling)` still governs the effective limit.
+    rate_limit: int = Field(default=1000, ge=1, le=1_000_000_000, description="Requests per hour")
     expires_in_days: int | None = Field(None, description="Days until expiration")
 
 
@@ -266,6 +271,9 @@ async def create_api_key(
         user_id=current_user_id,
         model_ids=request.model_ids or [],
         rate_limit=await clamped_rate_limit(current_user_id, request.rate_limit),
+        # Preserve what the tenant asked for so a later plan change can reconcile the
+        # effective rate_limit back up after a transient dip clamped it (#588).
+        requested_rate_limit=request.rate_limit,
         expires_at=expires_at,
     )
 

@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
 
 from app.billing import stripe_client
-from app.billing.api_keys import clamp_user_api_keys
+from app.billing.api_keys import reconcile_user_api_keys
 from app.billing.stripe_signature import (
     SignatureVerificationError,
     verify_signature,
@@ -200,7 +200,7 @@ async def _apply(
     # a richer tier (#455).
     sub = await Subscription.find_one(Subscription.user_id == user_id)
     if sub is not None:
-        await clamp_user_api_keys(user_id, sub.effective_tier)
+        await reconcile_user_api_keys(user_id, sub.effective_tier)
 
 
 def _period_end(obj: dict[str, Any]):

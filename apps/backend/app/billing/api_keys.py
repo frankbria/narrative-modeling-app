@@ -31,34 +31,56 @@ async def clamped_rate_limit(user_id: str, requested: int) -> int:
     return min(requested, ceiling)
 
 
-async def clamp_user_api_keys(user_id: str, tier: PlanTier) -> int:
-    """Lower any of `user_id`'s keys that sit above `tier`'s ceiling. Returns the count.
+async def reconcile_user_api_keys(user_id: str, tier: PlanTier) -> int:
+    """Reconcile `user_id`'s keys' effective `rate_limit` to their `tier`. Returns
+    the count changed.
 
-    Called after a subscription change: without it, a tenant who held ENTERPRISE
-    long enough to mint a 60k/hr key would keep that throughput forever on FREE,
-    since nothing else revisits a key once created.
+    Called after a subscription change. It moves each key **both directions** to
+    ``min(requested_rate_limit, ceiling)``:
+    - **down** when the ceiling drops (the #455 control: a tenant who held ENTERPRISE
+      long enough to mint a 60k/hr key must not keep that throughput on FREE, since
+      the limiter never reads a subscription on the serving path); and
+    - **back up** when the ceiling recovers, so a transient payment blip that clamped
+      a paying tenant to FREE doesn't ratchet their keys down permanently (#588).
 
-    A no-op filter (`rate_limit > ceiling` matching nothing) is the normal case, so
-    this costs one indexed-by-user update per subscription event. Never raises —
-    a webhook must still record the subscription change even if this write fails.
+    The requested value is the pivot that keeps "restore" safe: a key **we** clamped
+    has ``requested_rate_limit`` above its clamped value, so it rises again; a key the
+    tenant **set low on purpose** has ``requested_rate_limit`` == that low value, so
+    ``min`` leaves it there. The result never exceeds the tenant's request or their
+    tier ceiling.
+
+    Legacy rows written before #588 have no ``requested_rate_limit``; ``$ifNull``
+    falls back to their current ``rate_limit`` — conservative, so they are only ever
+    lowered, never surprise-raised (``fix_api_key_rate_limits.py`` / a new key is the
+    path for those). Never raises — a webhook must still record the subscription
+    change even if this write fails.
     """
     ceiling = api_key_rate_limit_ceiling(tier)
     try:
-        # `$gt` is type-bracketed, so a corrupted non-numeric `rate_limit` never
-        # matches here. That shape cannot come from this app (the field is written
-        # as an int), and it is already limited — the middleware floor sends it down
-        # the exception path to the default budget. `fix_api_key_rate_limits.py` is
-        # the backstop that actually repairs it.
+        # Aggregation-pipeline update so the target depends on each row's own
+        # requested value. `$ifNull` covers pre-#588 rows and any corrupted/missing
+        # field (the middleware still floors the stored value at 1).
         result = await APIKey.get_motor_collection().update_many(
-            {"user_id": user_id, "rate_limit": {"$gt": ceiling}},
-            {"$set": {"rate_limit": ceiling}},
+            {"user_id": user_id},
+            [
+                {
+                    "$set": {
+                        "rate_limit": {
+                            "$min": [
+                                {"$ifNull": ["$requested_rate_limit", "$rate_limit"]},
+                                ceiling,
+                            ]
+                        }
+                    }
+                }
+            ],
         )
     except Exception:
-        logger.warning("Failed to re-clamp API keys after a plan change", exc_info=True)
+        logger.warning("Failed to reconcile API keys after a plan change", exc_info=True)
         return 0
     if result.modified_count:
         logger.info(
-            "clamped api keys after plan change",
+            "reconciled api keys after plan change",
             extra={
                 "user_id": user_id,
                 "tier": tier.value,
