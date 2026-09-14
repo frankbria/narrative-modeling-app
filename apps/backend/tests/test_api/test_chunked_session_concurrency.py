@@ -86,3 +86,29 @@ async def test_cap_of_live_sessions_is_rejected(
 
     resp = await _init(async_authorized_client)
     assert resp.status_code == 429, resp.text
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_chunk_cannot_falsely_complete_a_holed_upload(tmp_path):
+    """#580: two racing POSTs of the SAME not-yet-uploaded chunk must not each append
+    it — a duplicate makes len(uploaded_chunks) == total_chunks fire while another
+    chunk is still missing, flipping a holed session to 'complete'."""
+    import asyncio
+
+    h = ChunkedUploadHandler(temp_dir=str(tmp_path), chunk_size=10)
+    user = "u580"
+    init = await h.init_upload(user_id=user, filename="f.bin", file_size=30)  # 3 chunks
+    sid = init["session_id"]
+    assert init["total_chunks"] == 3
+
+    # Chunk 0 lands; chunk 2 will stay missing. Race two POSTs of chunk 1.
+    await h.upload_chunk(sid, user, 0, b"0123456789")
+    await asyncio.gather(
+        h.upload_chunk(sid, user, 1, b"aaaaaaaaaa"),
+        h.upload_chunk(sid, user, 1, b"aaaaaaaaaa"),
+    )
+
+    session = h.sessions[sid]
+    # Chunk 1 recorded once, not twice; chunk 2 is still missing, so NOT complete.
+    assert session["uploaded_chunks"] == [0, 1], session["uploaded_chunks"]
+    assert session["status"] != "complete", session["status"]

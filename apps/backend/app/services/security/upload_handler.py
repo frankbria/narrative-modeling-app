@@ -3,6 +3,7 @@ Resilient Upload Handler
 Handles network interruptions, large files, and security checks
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -43,7 +44,20 @@ class ChunkedUploadHandler:
         self.max_file_size = max_file_size
         self.session_timeout = session_timeout
         self.sessions: dict[str, dict[str, Any]] = {}  # In production, use Redis
-    
+        # One lock per session serializes the read-modify-write in upload_chunk
+        # (#580). Per-process, like `sessions` — see the multi-worker note there.
+        self._chunk_locks: dict[str, asyncio.Lock] = {}
+
+    def _chunk_lock(self, session_id: str) -> asyncio.Lock:
+        """The per-session lock, created on first use. Safe without a meta-lock:
+        there is no ``await`` between the get and the insert, so on the single
+        event loop two coroutines can't both create one."""
+        lock = self._chunk_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._chunk_locks[session_id] = lock
+        return lock
+
     async def init_upload(self,
                           user_id: str,
                           filename: str,
@@ -130,63 +144,76 @@ class ChunkedUploadHandler:
                 detail=f"Chunk exceeds the declared chunk size of {self.chunk_size} bytes",
             )
         
-        # Check if chunk already uploaded
-        if chunk_number in session["uploaded_chunks"]:
-            return {
-                "chunk_number": chunk_number,
-                "status": "already_uploaded",
-                "progress": self._calculate_progress(session)
-            }
-        
-        # Verify chunk hash if provided
-        if chunk_hash:
-            actual_hash = hashlib.md5(chunk_data).hexdigest()
-            if actual_hash != chunk_hash:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Chunk hash mismatch. Expected: {chunk_hash}, Got: {actual_hash}"
-                )
-        
-        # Write chunk to temp file
-        temp_path = Path(session["temp_path"])
-        offset = chunk_number * self.chunk_size
-        
-        async with aiofiles.open(temp_path, 'r+b' if temp_path.exists() else 'wb') as f:
-            await f.seek(offset)
-            await f.write(chunk_data)
-        
-        # Update session
-        session["uploaded_chunks"].append(chunk_number)
-        session["uploaded_chunks"].sort()
-        session["last_activity"] = datetime.now(UTC).isoformat()
-        
-        # Check if upload is complete
-        if len(session["uploaded_chunks"]) == session["total_chunks"]:
-            session["status"] = "complete"
-            
-            # Verify complete file if hash provided
-            if session.get("file_hash"):
-                file_valid = await self._verify_file_integrity(
-                    temp_path, 
-                    session["file_hash"]
-                )
-                if not file_valid:
-                    session["status"] = "failed"
+        # Everything that reads-then-writes the session's chunk set runs under the
+        # per-session lock (#580). Without it, two concurrent POSTs of the same
+        # not-yet-uploaded chunk both pass the `already_uploaded` check and both
+        # append, and that duplicate can make len(uploaded_chunks) == total_chunks
+        # fire while a *different* chunk is still missing — flipping a holed session
+        # to "complete". The membership check must therefore be atomic with the
+        # append, so the file write sits inside the hold too; concurrent *different*
+        # chunks of one session serialize, which is an acceptable cost for a single
+        # upload. NOTE: the lock is per-process (sessions live in a per-worker dict),
+        # so two gunicorn workers racing the same chunk are still unguarded — the
+        # durable fix is a Redis-backed session store + distributed lock (see the
+        # "In production, use Redis" note above).
+        async with self._chunk_lock(session_id):
+            # Check if chunk already uploaded
+            if chunk_number in session["uploaded_chunks"]:
+                return {
+                    "chunk_number": chunk_number,
+                    "status": "already_uploaded",
+                    "progress": self._calculate_progress(session)
+                }
+
+            # Verify chunk hash if provided
+            if chunk_hash:
+                actual_hash = hashlib.md5(chunk_data).hexdigest()
+                if actual_hash != chunk_hash:
                     raise HTTPException(
                         status_code=400,
-                        detail="File integrity check failed"
+                        detail=f"Chunk hash mismatch. Expected: {chunk_hash}, Got: {actual_hash}"
                     )
-        
-        # Save session state
-        self.sessions[session_id] = session
-        self._save_session_metadata(session_id, session)
-        
-        return {
-            "chunk_number": chunk_number,
-            "status": "uploaded",
-            "progress": self._calculate_progress(session),
-            "complete": session["status"] == "complete"
-        }
+
+            # Write chunk to temp file
+            temp_path = Path(session["temp_path"])
+            offset = chunk_number * self.chunk_size
+
+            async with aiofiles.open(temp_path, 'r+b' if temp_path.exists() else 'wb') as f:
+                await f.seek(offset)
+                await f.write(chunk_data)
+
+            # Update session
+            session["uploaded_chunks"].append(chunk_number)
+            session["uploaded_chunks"].sort()
+            session["last_activity"] = datetime.now(UTC).isoformat()
+
+            # Check if upload is complete
+            if len(session["uploaded_chunks"]) == session["total_chunks"]:
+                session["status"] = "complete"
+
+                # Verify complete file if hash provided
+                if session.get("file_hash"):
+                    file_valid = await self._verify_file_integrity(
+                        temp_path,
+                        session["file_hash"]
+                    )
+                    if not file_valid:
+                        session["status"] = "failed"
+                        raise HTTPException(
+                            status_code=400,
+                            detail="File integrity check failed"
+                        )
+
+            # Save session state
+            self.sessions[session_id] = session
+            self._save_session_metadata(session_id, session)
+
+            return {
+                "chunk_number": chunk_number,
+                "status": "uploaded",
+                "progress": self._calculate_progress(session),
+                "complete": session["status"] == "complete"
+            }
     
     async def resume_upload(self, session_id: str, user_id: str) -> dict[str, Any]:
         """Get resume information for interrupted upload"""
@@ -306,6 +333,12 @@ class ChunkedUploadHandler:
             metadata_path = self.temp_dir / f"{session_id}.json"
             if metadata_path.exists():
                 metadata_path.unlink()
+
+        # Drop per-session locks whose session is gone (#580) — covers expiry here
+        # plus complete/abort, which pop the session but not the lock. Bounded: the
+        # dict can only hold a lock per live session between sweeps.
+        for orphan in [sid for sid in self._chunk_locks if sid not in self.sessions]:
+            del self._chunk_locks[orphan]
 
         return expired_owners
     
