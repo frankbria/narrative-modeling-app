@@ -124,7 +124,14 @@ class TestSecureUploadAPI:
         and a real document is written (#608/#492)."""
         csv_data = "name,email,phone\nJohn Doe,not provided,unknown"
         files = {"file": ("names.csv", io.BytesIO(csv_data.encode()), "text/csv")}
-        with self._s3_ok(), self._summary_stub():
+        # A flagged upload now runs generate_ai_summary_safe -> call_openai_api,
+        # NOT generate_dataset_summary (#679), so patch the boundary this path
+        # actually reaches — _summary_stub would be a no-op here and the task
+        # would only avoid a network call incidentally (client is None).
+        with self._s3_ok(), patch(
+            "app.utils.ai_summary.call_openai_api",
+            AsyncMock(return_value=_fake_ai_summary()),
+        ):
             response = await async_authorized_client.post(
                 "/api/v1/upload/secure", files=files
             )
