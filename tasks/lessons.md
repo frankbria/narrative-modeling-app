@@ -1152,3 +1152,17 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **codex can hang for tens of minutes (outage, not slowness).** ~40 min with zero output on
   a tiny diff = the stall signature; `pkill -f "codex review"` and fall back to the internal
   reviewer (advisory), disclosing it on the PR. Don't wait on it. [[opencode-stall-signature-and-codex-fallback]]
+
+## #441 / #442 — re-measure a stale issue against current main first
+- **Issues written against a Dependabot group PR go stale as parts of that group land
+  piecemeal.** #441/#442 were blockers on group PR #439; by the time I picked them up,
+  next/eslint-config-next had already reached 16.3.5 (carrying the security fix that was the
+  whole urgency) and all 5 window.location sites were already migrated. #441 needed no code —
+  just re-measure (`npm run lint` = 230/230 green, rule silent) and close with evidence.
+- **Check installed versions, not the issue's version numbers.** react-dropzone was still
+  19.1.1 (`require('react-dropzone/package.json').version`) while next had moved on — the lock
+  is the truth, the issue body is a snapshot.
+- **An e2e-gated AC can still be advanced: let CI be the harness.** #442 AC4 (upload @smoke
+  green under 19.3.0) can't run locally, but bumping + a hermetic accept-map test + opening a
+  PR lets CI's real-stack e2e-smoke give the definitive answer. Don't defer an e2e-verifiable
+  dep bump as "needs the operator" — CI runs the full stack.
