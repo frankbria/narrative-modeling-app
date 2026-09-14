@@ -21,6 +21,7 @@ from app.models.feature_store import FeatureCollection, FeatureVersion, StoredFe
 from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
+from app.models.onboarding import OnboardingProgress
 from app.models.plot import Plot
 from app.models.prediction_event import PredictionEvent
 from app.models.revised_data import RevisedData
@@ -57,6 +58,7 @@ DOCUMENT_MODELS = [
     Feedback,
     MLModel,
     ModelConfig,
+    OnboardingProgress,
     Plot,
     RecipeExecutionHistory,
     RevisedData,

@@ -4,6 +4,7 @@ Onboarding service for managing user tutorial and guidance experience
 from datetime import UTC, datetime
 from typing import Any
 
+from app.models.onboarding import OnboardingProgress
 from app.models.user_data import UserData
 from app.schemas.onboarding import (
     OnboardingStepStatus,
@@ -361,13 +362,18 @@ class OnboardingService:
         # Create a unique filename for this user
         filename = f"sample_{dataset_id}_{user_id}_{int(datetime.now(UTC).timestamp())}.csv"
         
-        # Save DataFrame to temporary file and upload to S3
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file:
-            df.to_csv(temp_file.name, index=False)
-        
-        # For now, create a mock S3 URL (in production this would upload to actual S3)
-        s3_url = f"https://sample-bucket.s3.amazonaws.com/{filename}"
+        # Upload the sample to S3 under the user's prefix with a server-derived key, and
+        # store the URL of the REAL object (#541). Previously this wrote the CSV to a temp
+        # file it never cleaned up and persisted a fabricated URL to a nonexistent object,
+        # so every downstream load (preview/transform/train) 404'd. No temp file is needed:
+        # serialize straight to bytes.
+        from app.utils.s3 import dataset_s3_key, upload_file_to_s3
+
+        s3_key = dataset_s3_key(user_id, f"{dataset_id}.csv")
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        success, s3_url = upload_file_to_s3(csv_bytes, s3_key, content_type="text/csv")
+        if not success:
+            raise ValueError("Failed to upload sample dataset to storage")
         
         # Infer schema
         schema_fields = []
@@ -806,20 +812,27 @@ class OnboardingService:
         if cached_progress:
             return OnboardingUserProgress(**cached_progress)
         
-        # Try to load from database (user_data collection)
-        user_data = await UserData.find_one({"user_id": user_id})
-        
-        if user_data and hasattr(user_data, 'onboarding_progress') and user_data.onboarding_progress:
-            # Convert stored data to OnboardingUserProgress
-            progress_data = user_data.onboarding_progress
-            progress = OnboardingUserProgress(**progress_data)
+        # Load from the dedicated onboarding_progress collection, keyed by user (#541).
+        record = await OnboardingProgress.find_one(OnboardingProgress.user_id == user_id)
+
+        if record and record.progress:
+            progress = OnboardingUserProgress(**record.progress)
         else:
-            # Create new progress
-            progress = OnboardingUserProgress(
-                user_id=user_id,
-                started_at=datetime.now(UTC),
-                last_activity_at=datetime.now(UTC)
+            # Read-through migration: users onboarded before #541 have their state on
+            # UserData.onboarding_progress. Preserve it (it gets written to the new
+            # collection on the next save) instead of resetting them to step zero.
+            legacy = await UserData.find_one(
+                {"user_id": user_id, "onboarding_progress": {"$ne": None}}
             )
+            if legacy and legacy.onboarding_progress:
+                progress = OnboardingUserProgress(**legacy.onboarding_progress)
+            else:
+                # Create new progress
+                progress = OnboardingUserProgress(
+                    user_id=user_id,
+                    started_at=datetime.now(UTC),
+                    last_activity_at=datetime.now(UTC)
+                )
         
         # Cache the progress
         await cache_service.cache_user_progress(user_id, progress.dict())
@@ -834,17 +847,19 @@ class OnboardingService:
         
         # Update cache first for fast access
         await cache_service.cache_user_progress(user_id, progress_dict)
-        
-        # Update or create user_data document
-        user_data = await UserData.find_one({"user_id": user_id})
-        
-        if user_data:
-            user_data.onboarding_progress = progress_dict
-            await user_data.save()
-        else:
-            # Create new user_data document
-            user_data = UserData(
-                user_id=user_id,
-                onboarding_progress=progress_dict
-            )
-            await user_data.insert()
+
+        # Persist to the dedicated onboarding_progress collection, keyed by user (#541).
+        # Previously this smuggled progress onto an arbitrary UserData and, for a user
+        # with no dataset, constructed a UserData with no filename/s3_url — which fails
+        # validation and raised at the first onboarding step. One atomic upsert (not
+        # read-then-insert) so two concurrent first saves converge on the unique user_id
+        # index instead of one failing with a DuplicateKeyError.
+        await OnboardingProgress.get_motor_collection().update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "user_id": user_id,
+                "progress": progress_dict,
+                "updated_at": datetime.now(UTC),
+            }},
+            upsert=True,
+        )
