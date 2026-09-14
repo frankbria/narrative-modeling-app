@@ -308,6 +308,38 @@ class DatasetErasureService:
                     manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
             except Exception as e:  # noqa: BLE001
                 manifest.failures.append(f"delete_model {m.model_id}: {e}")
+        # A model's batch prediction jobs own S3 input/output objects (#661) — sweep
+        # them here so the dataset cascade (erase_dataset) reaches them too. The
+        # model id lives inside the job's ``config`` dict (BatchPredictionConfig),
+        # not as a top-level field, so query the dot-path.
+        for m in models:
+            await self._erase_batch_jobs(
+                {"config.model_id": m.model_id, "user_id": user_id}, manifest
+            )
+
+    async def _erase_batch_jobs(self, query: dict, manifest: DeletionManifest) -> None:
+        """Delete BatchJobs matching ``query`` AND their S3 input/output objects (#661).
+
+        A BatchJob owns two real, potentially-sensitive S3 objects — the uploaded
+        prediction input (``input_path``) and the prediction output (``output_path``,
+        keys under ``batch-jobs/{user_id}/…``). The generic Mongo-only delete left
+        them orphaned while the manifest reported success — the same #481/#616
+        anti-pattern fixed for datasets and models. Delete the objects (through the
+        one S3 core, via ``_s3_key``/``_delete_s3``) before the document.
+        """
+        from app.models.batch_job import BatchJob
+
+        try:
+            jobs = await BatchJob.find(query).to_list()
+        except Exception as e:  # noqa: BLE001 - best-effort sweep
+            manifest.failures.append(f"query batch_jobs: {e}")
+            return
+        for job in jobs:
+            for path in (job.input_path, job.output_path):
+                await self._delete_s3(
+                    _s3_key(path, self.s3_service.bucket_name, manifest), manifest
+                )
+            await self._delete_doc(job, "batch_jobs", manifest)
 
     # ---- primitives (each guarded; records failures, never raises) ------
 
@@ -391,7 +423,6 @@ class DatasetErasureService:
         """
         from app.models.ab_test import ABTest
         from app.models.api_key import APIKey
-        from app.models.batch_job import BatchJob
         from app.models.feature_store import (
             FeatureCollection,
             FeatureVersion,
@@ -440,8 +471,11 @@ class DatasetErasureService:
         # Every account-scoped collection with a user_id field holding the user's
         # own data. Billing state (Subscription, UsageRecord) is deliberately
         # NOT in this list — see the retention note below (#480 AC3).
+        # BatchJob owns S3 input/output objects — sweep those with the docs (#661),
+        # not via the generic Mongo-only delete below.
+        await self._erase_batch_jobs({"user_id": user_id}, manifest)
+
         for model_cls in [
-            BatchJob,
             ABTest,
             Feedback,
             APIKey,
