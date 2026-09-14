@@ -9,7 +9,7 @@ import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { Rocket, Cloud, Shield, Globe, CheckCircle, Copy, BookOpen } from 'lucide-react';
+import { Rocket, Cloud, Shield, CheckCircle, Copy, BookOpen } from 'lucide-react';
 import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
@@ -149,12 +149,17 @@ export default function DeployPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Only claims that are actually true of a deployed model are shown here.
+              Fabricated infrastructure ("auto-provisioned", "global/low-latency",
+              "auto-scaling", "1-5 instances") and an invented "$0.10/1000 requests"
+              price were removed (#511) — pricing must come from the single pricing
+              source (P0.31/P0.32), not a made-up figure on this page. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="text-center p-4">
               <Cloud className="w-12 h-12 text-blue-500 mx-auto mb-2" />
-              <h3 className="font-semibold mb-1">Cloud Infrastructure</h3>
+              <h3 className="font-semibold mb-1">REST API Endpoint</h3>
               <p className="text-sm text-muted-foreground">
-                Automatically provisioned and managed
+                A secured POST /predict endpoint for your model
               </p>
             </div>
             <div className="text-center p-4">
@@ -162,13 +167,6 @@ export default function DeployPage() {
               <h3 className="font-semibold mb-1">Secure API</h3>
               <p className="text-sm text-muted-foreground">
                 API key authentication and rate limiting
-              </p>
-            </div>
-            <div className="text-center p-4">
-              <Globe className="w-12 h-12 text-purple-500 mx-auto mb-2" />
-              <h3 className="font-semibold mb-1">Global Availability</h3>
-              <p className="text-sm text-muted-foreground">
-                Low latency endpoints worldwide
               </p>
             </div>
           </div>
@@ -181,16 +179,8 @@ export default function DeployPage() {
                 <span className="font-medium">REST API</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-foreground">Auto-scaling</span>
-                <span className="font-medium text-green-600">Enabled</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-foreground">Instance Range</span>
-                <span className="font-medium">1-5 instances</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-foreground">Estimated Cost</span>
-                <span className="font-medium">$0.10/1000 requests</span>
+                <span className="text-foreground">Authentication</span>
+                <span className="font-medium">API key (Bearer)</span>
               </div>
             </div>
           </div>
