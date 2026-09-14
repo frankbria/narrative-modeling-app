@@ -1193,3 +1193,10 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Keep data-driven component test fixtures carrying legacy keys** — they double as
   backward-compat coverage (the card must render pre-#536 cached reports that still contain
   accuracy/timeliness without crashing); don't "tidy" them to match the new backend output.
+
+## #537 — filter recommendations to the executable registry
+- **Same registry, second consumer.** After #499 made /available derive from
+  TransformationEngine.TRANSFORMATION_CLASSES, the quality report's "Recommended Fixes" had
+  to filter against the SAME registry. Split candidate-mapping from the executability filter
+  so new engine transforms auto-enable both surfaces. Suppress (return None), never grey-out —
+  a shown-but-dead fix is a broken promise the user acts on.
