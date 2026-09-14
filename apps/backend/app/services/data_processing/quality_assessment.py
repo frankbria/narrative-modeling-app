@@ -37,12 +37,10 @@ SCORE_DIMENSIONS = (
 )
 
 
-def _recommended_transformation(issue: "QualityIssue") -> TransformationType | None:
-    """Map a quality issue to the transformation that fixes it (issue #102, AC2).
-
-    Returns the canonical TransformationType so recommendations stay tied to the
-    real transformation tooling. None when no automated fix applies.
-    """
+def _candidate_transformation(issue: "QualityIssue") -> TransformationType | None:
+    """Map a quality issue to the transformation that would fix it, ignoring whether
+    the engine can actually execute it (see ``_recommended_transformation`` for the
+    executability filter)."""
     desc = issue.description.lower()
     if issue.dimension == QualityDimension.COMPLETENESS:
         return TransformationType.FILL_MISSING
@@ -61,6 +59,26 @@ def _recommended_transformation(issue: "QualityIssue") -> TransformationType | N
             return TransformationType.TO_DATETIME
         return TransformationType.STANDARDIZE_FORMAT
     return None
+
+
+def _recommended_transformation(issue: "QualityIssue") -> TransformationType | None:
+    """Map a quality issue to a transformation the engine can actually EXECUTE (#102, #537).
+
+    Filters the candidate against the engine registry (the same source #499 made
+    ``/transformations/available`` read from). A recommendation the engine cannot run
+    is **suppressed** entirely, not shown as unavailable — "Recommended Fixes" must
+    never direct a user into a fix that silently does nothing (a greyed-out suggestion
+    is still a promise). When more transformation types are implemented, they become
+    recommendable automatically. Returns None when no executable fix applies.
+    """
+    from app.services.transformation_engine.transformation_engine import (
+        TransformationEngine,
+    )
+
+    candidate = _candidate_transformation(issue)
+    if candidate is None or candidate not in TransformationEngine.TRANSFORMATION_CLASSES:
+        return None
+    return candidate
 
 
 class ActionableRecommendation(BaseModel):

@@ -305,9 +305,17 @@ class TestQualityAssessment:
         report = await quality_service.assess_quality(problematic_dataframe, column_types)
 
         assert len(report.actionable_recommendations) > 0
-        valid_types = {t.value for t in TransformationType}
+        # #537: every recommended fix must be one the engine can actually EXECUTE, not
+        # merely a valid enum value — a recommendation that does nothing is the worst
+        # version of the #499 gap. Assert against the engine registry, not the enum.
+        from app.services.transformation_engine.transformation_engine import (
+            TransformationEngine,
+        )
+        executable = {t.value for t in TransformationEngine.TRANSFORMATION_CLASSES}
         for rec in report.actionable_recommendations:
-            assert rec.transformation_type in valid_types
+            assert rec.transformation_type in executable, (
+                f"recommended '{rec.transformation_type}' is not executable by the engine (#537)"
+            )
             assert rec.severity in {"low", "medium", "high"}
 
         # Missing values -> fill_missing; duplicate IDs -> remove_duplicates
@@ -339,3 +347,70 @@ class TestQualityAssessment:
         
         # Should have specific recommendations
         assert len(report.recommendations) >= 2
+
+class TestRecommendationsAreExecutable:
+    """#537: 'Recommended Fixes' must only suggest transformations the engine can run."""
+
+    def test_recommended_transformation_is_always_executable_or_none(self):
+        """For a synthetic issue in every dimension (and every keyword branch), the
+        recommended transformation is either executable or suppressed (None) — never a
+        type the engine cannot run."""
+        from app.services.data_processing.quality_assessment import (
+            QualityDimension,
+            QualityIssue,
+            _candidate_transformation,
+            _recommended_transformation,
+        )
+        from app.services.transformation_engine.transformation_engine import (
+            TransformationEngine,
+        )
+
+        executable = set(TransformationEngine.TRANSFORMATION_CLASSES)
+        descriptions = ["generic issue", "outlier detected", "casing inconsistent",
+                        "non-numeric values", "date format varies"]
+        suppressed_any = False
+        for dim in QualityDimension:
+            for desc in descriptions:
+                issue = QualityIssue(
+                    dimension=dim, column="c", severity="high", description=desc,
+                    affected_rows=1, affected_percentage=1.0, recommendation="fix it",
+                )
+                rec = _recommended_transformation(issue)
+                if rec is None:
+                    # It's only None legitimately when there's no executable fix for the
+                    # candidate (or no candidate at all).
+                    cand = _candidate_transformation(issue)
+                    assert cand is None or cand not in executable
+                    if cand is not None:
+                        suppressed_any = True
+                else:
+                    assert rec in executable, f"{dim}/{desc!r} -> non-executable {rec}"
+
+        # The whole point of #537: at least one candidate fix is suppressed because the
+        # engine can't run it (e.g. outlier removal, standardize format).
+        assert suppressed_any
+
+    def test_every_produced_recommendation_type_is_in_the_registry(self):
+        """Whatever transformation types _recommended_transformation can emit are a
+        subset of the executable registry (AC2)."""
+        from app.services.data_processing.quality_assessment import (
+            QualityDimension,
+            QualityIssue,
+            _recommended_transformation,
+        )
+        from app.services.transformation_engine.transformation_engine import (
+            TransformationEngine,
+        )
+
+        produced = set()
+        for dim in QualityDimension:
+            for desc in ["x", "outlier", "casing", "non-numeric", "date"]:
+                rec = _recommended_transformation(
+                    QualityIssue(dimension=dim, column="c", severity="low",
+                                 description=desc, affected_rows=1,
+                                 affected_percentage=1.0, recommendation="r")
+                )
+                if rec is not None:
+                    produced.add(rec)
+        assert produced
+        assert produced <= set(TransformationEngine.TRANSFORMATION_CLASSES)
