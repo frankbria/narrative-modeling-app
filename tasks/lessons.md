@@ -1234,3 +1234,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
   analyze_dataset to raise (→ generic 500), never exercising the fallback. AC4 needs the
   transport patched to fail (_call_tool raises) so the real analyze_dataset falls back, then
   assert the route returns a labeled 200, not a fabricated one.
+
+## #540 — MCP must read MONGODB_DB explicitly (config error as authz error)
+- **get_default_database() on a bare URI silently picks the wrong DB.** Same trap as the
+  frontend #545/#551: MONGODB_URI is bare, so the DB name must come from MONGODB_DB
+  (client[db_name]). get_default_database() → driver 'test' fallback → owner lookups miss →
+  "access denied" for legitimate requests (a config bug wearing an authz bug's clothes).
+- **A new mandatory startup env var is a doc/deploy change too.** codex: adding a required
+  MONGODB_DB startup check without listing it in the README's required-env / deploy config
+  would break existing deploys at startup. Update the documented env list in the same PR;
+  don't add a silent fallback (that's the original bug).
+- **Distinguish not-found from not-authorized in LOGS, not the response.** Keep one generic
+  caller message (don't leak existence), but log which it was so an operator isn't debugging
+  a config problem as a permissions problem for hours.
