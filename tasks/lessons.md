@@ -1247,3 +1247,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Distinguish not-found from not-authorized in LOGS, not the response.** Keep one generic
   caller message (don't leak existence), but log which it was so an operator isn't debugging
   a config problem as a permissions problem for hours.
+
+## #541 — onboarding sample loader: real upload + dedicated progress doc
+- **A "for now, mock URL" placeholder ships and rots.** load_sample_dataset persisted a
+  fabricated S3 URL for a file it never uploaded (and leaked a temp file), so the first
+  thing a new user does was broken end-to-end. Upload for real via dataset_s3_key +
+  upload_file_to_s3 (serialize to bytes, no temp file).
+- **Account-scoped state doesn't belong on a dataset row.** Progress was smuggled onto an
+  arbitrary UserData.find_one({user_id}), and for a user with no dataset the save built a
+  UserData with no filename/s3_url → validation error at step one. Give it its own Document
+  keyed by user_id; register it; wire it into the erasure sweep (#480).
+- **Changing a persistence store needs a migration/read-through + an atomic upsert** (codex):
+  read through to the old field so existing users don't reset; use one update_one(upsert=True)
+  so concurrent first saves converge on the unique index instead of 500ing on DuplicateKey.
