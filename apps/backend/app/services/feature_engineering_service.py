@@ -113,7 +113,7 @@ class FeatureEngineeringService:
         include_ai: bool = True,
         feature_types: list[FeatureType] | None = None,
         user_id: str | None = None,
-        read_cache: bool = True,
+        read_cache: bool = False,
     ) -> FeatureSuggestionResponse:
         """
         Generate feature suggestions for a dataset.
@@ -132,10 +132,15 @@ class FeatureEngineeringService:
         """
         start_time = datetime.now(UTC)
 
-        # One tenant+dataset-scoped key every endpoint can reproduce (#522).
+        # One tenant+dataset-scoped key every endpoint can reproduce (#522). The
+        # key deliberately ignores target/problem/feature_types/max/include_ai, so
+        # a cache READ only makes sense for the param-less lookup endpoints
+        # (apply/feedback/explain) that just want /suggest's current set — they opt
+        # in with read_cache=True. Every other caller (the generators, and any
+        # direct service caller varying params) uses the default read_cache=False
+        # and computes fresh, so a differing target/filter never returns a stale
+        # set. Either way the fresh result is written through for the consumers.
         cache_key = self._get_cache_key(user_id, dataset_id)
-        # Generators (/suggest, /suggest-more) pass read_cache=False to write
-        # through — the latest generation defines the set the consumers resolve.
         if read_cache:
             cached = await self._get_cached_suggestions(cache_key)
             if cached:

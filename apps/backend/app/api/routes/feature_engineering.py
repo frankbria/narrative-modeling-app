@@ -182,6 +182,7 @@ async def get_suggestion_explanation(
             df=df,
             dataset_id=dataset_id,
             user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Find the specific suggestion
@@ -236,6 +237,7 @@ async def record_suggestion_feedback(
             df=df,
             dataset_id=dataset_id,
             user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Find the suggestion to get its feature_type
@@ -373,6 +375,7 @@ async def apply_feature(
             df=df,
             dataset_id=dataset_id,
             user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         suggestion = None
@@ -459,6 +462,7 @@ async def apply_multiple_features(
             df=df,
             dataset_id=dataset_id,
             user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
+            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
         )
 
         # Build lookup map for O(1) access per suggestion
