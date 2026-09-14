@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 from beanie import PydanticObjectId
+from beanie.operators import Set
 
 from app.models.ml_model import MLModel
 from app.models.prediction_event import PredictionEvent
@@ -145,12 +146,20 @@ class PredictionMonitoringService:
             error=error,
         )
         
-        # Update model last used timestamp
+        # Update the model's last-used timestamp with a targeted atomic $set, never
+        # a full-document save (#520). A read-modify-save wrote back EVERY field
+        # from an in-memory snapshot, so a caller concurrent with a deploy,
+        # retrain, metadata edit — or a cache_generation $inc from
+        # invalidate_model_cache (#489) — would silently revert the other write.
+        # find_one(...).update() is a single-doc $set touching only last_used_at,
+        # so nothing else can be clobbered; a missing model_id is a harmless no-op.
+        # NOTE: this monitoring logger is not on the current serving path (see the
+        # #520 sweep) — the fix is defensive so the pattern is safe if it is ever
+        # wired in; the live paths already avoid full-document MLModel saves.
         try:
-            model = await MLModel.find_one({"model_id": model_id})
-            if model:
-                model.last_used_at = datetime.now(UTC)
-                await model.save()
+            await MLModel.find_one(MLModel.model_id == model_id).update(
+                Set({MLModel.last_used_at: datetime.now(UTC)})
+            )
         except Exception as e:
             logger.error(f"Failed to update model last_used_at: {e}")
         
