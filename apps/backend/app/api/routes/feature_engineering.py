@@ -217,7 +217,10 @@ async def get_suggestion_explanation(
 
 @router.post(
     "/features/suggestions/{suggestion_id}/feedback",
-    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
+    # No quota: since #523 this reads the suggestion from the cache only and never
+    # reaches a model, so metering it would burn a finite ai_calls unit on every
+    # thumbs-up and could 402 legitimate /suggest calls (exempt in
+    # test_ai_routes_are_metered.py).
     response_model=FeatureFeedbackResponse,
     summary="Record feedback on a suggestion",
     description="Record whether a user accepted or rejected a feature suggestion. This feedback is used to improve future suggestions."
@@ -232,21 +235,21 @@ async def record_suggestion_feedback(
     try:
         logger.info(f"Recording feedback for suggestion {suggestion_id}: accepted={request.accepted}")
 
-        # Load the dataset to look up the suggestion and get its feature_type
-        df = await _load_dataset_dataframe(dataset_id, current_user_id)
-        suggestions_response = await feature_engineering_service.suggest_features(
-            df=df,
-            dataset_id=dataset_id,
-            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
-            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
+        # Recording feedback must NOT download the whole dataset just to read one
+        # field (#523) — that made a thumbs-up among the most expensive operations
+        # and a trivial S3-egress amplifier. The suggestion (and its feature_type)
+        # is already in the tenant+dataset cache /suggest wrote (#522); read it
+        # directly. An expired set means feedback on a stale suggestion, which is
+        # meaningless — answer 404 rather than reload the dataset.
+        suggestions_response = await feature_engineering_service.get_cached_suggestions(
+            current_user_id, dataset_id
         )
-
-        # Find the suggestion to get its feature_type
         suggestion = None
-        for s in suggestions_response.suggestions:
-            if s.id == suggestion_id:
-                suggestion = s
-                break
+        if suggestions_response:
+            suggestion = next(
+                (s for s in suggestions_response.suggestions if s.id == suggestion_id),
+                None,
+            )
 
         if not suggestion:
             raise HTTPException(
