@@ -829,3 +829,56 @@ class TestBlankAndPaddedSettingsAtTheConsumers:
             "read these through stripe_client.setting() so a blank or padded env "
             f"value cannot mean different things in different places: {offenders}"
         )
+
+
+@pytest.mark.asyncio
+class TestRefundWindowInStatus:
+    """#602 AC3: /billing/status exposes refund eligibility without opening Stripe."""
+
+    async def test_recent_first_charge_is_eligible(
+        self, async_authorized_client, setup_database
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from app.billing.refunds import REFUND_WINDOW_DAYS
+
+        first_paid = datetime.now(UTC) - timedelta(days=REFUND_WINDOW_DAYS - 2)
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+            first_paid_at=first_paid,
+        ).insert()
+
+        body = (await async_authorized_client.get(STATUS)).json()
+
+        assert body["refund_eligible"] is True
+        assert body["refund_window_ends_at"] is not None
+
+    async def test_old_first_charge_is_not_eligible(
+        self, async_authorized_client, setup_database
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from app.billing.refunds import REFUND_WINDOW_DAYS
+
+        await Subscription(
+            user_id=TEST_USER,
+            plan_tier=PlanTier.PRO,
+            status=SubscriptionStatus.ACTIVE,
+            first_paid_at=datetime.now(UTC) - timedelta(days=REFUND_WINDOW_DAYS + 5),
+        ).insert()
+
+        body = (await async_authorized_client.get(STATUS)).json()
+
+        assert body["refund_eligible"] is False
+        assert body["refund_window_ends_at"] is not None  # window is known, just closed
+
+    async def test_never_paid_reports_no_window(
+        self, async_authorized_client, setup_database
+    ):
+        # No subscription at all -> FREE tenant, never paid.
+        body = (await async_authorized_client.get(STATUS)).json()
+
+        assert body["refund_eligible"] is False
+        assert body["refund_window_ends_at"] is None

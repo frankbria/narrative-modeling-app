@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import metering, stripe_client
 from app.billing.plans import METERED_METRICS, limits_for
+from app.billing.refunds import is_in_refund_window, refund_window_ends_at
 from app.config import settings
 from app.models.subscription import PlanTier, Subscription
 
@@ -99,6 +100,14 @@ class BillingStatus(BaseModel):
     current_period_end: str | None = None
     usage: dict[str, int] = Field(default_factory=dict)
     limits: dict[str, int] = Field(default_factory=dict)
+    # Refund window (#602): eligibility without opening Stripe. Computed from the
+    # first paid charge against the same window the Terms page publishes.
+    refund_eligible: bool = Field(
+        default=False, description="Inside the published refund window (from first paid charge)"
+    )
+    refund_window_ends_at: str | None = Field(
+        default=None, description="When the refund window closes (ISO 8601), or null if never paid"
+    )
 
 
 def _price_for(tier: PlanTier) -> str | None:
@@ -142,6 +151,12 @@ async def billing_status(current_user_id: str = Depends(get_current_user_id)):
             metric: limits.limit_for(metric)
             for metric in METERED_METRICS  # every metered metric, or the page hides one (#461)
         },
+        refund_eligible=is_in_refund_window(sub.first_paid_at if sub else None),
+        refund_window_ends_at=(
+            _window_end.isoformat()
+            if sub and (_window_end := refund_window_ends_at(sub.first_paid_at))
+            else None
+        ),
     )
 
 

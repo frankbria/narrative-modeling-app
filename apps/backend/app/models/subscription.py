@@ -161,6 +161,14 @@ class Subscription(Document):
     current_period_end: datetime | None = Field(
         None, description="When the paid period lapses; drives metering rollover"
     )
+    # The tenant's FIRST settled paid charge, set once by the Stripe webhook and never
+    # moved by a later charge (#602). Refund-window eligibility is computed from this
+    # rather than read from Stripe at request time. Optional/defaulted so subscriptions
+    # written before it existed still validate — those tenants show as not-in-window
+    # (unknown first charge) until they pay again, which is the safe default.
+    first_paid_at: datetime | None = Field(
+        None, description="Timestamp of the first successful paid charge (set once)"
+    )
     cancel_at_period_end: bool = Field(
         default=False,
         description="Stripe's 'cancel when the period ends' flag — still entitled until then",

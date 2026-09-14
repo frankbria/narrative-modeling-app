@@ -84,6 +84,27 @@ def _user_id_from(obj: dict[str, Any]) -> str | None:
     return obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
 
 
+async def _record_first_paid(user_id: str, paid_at: datetime | None) -> None:
+    """Stamp the tenant's first settled paid charge, once (#602).
+
+    First-write-wins: the filter matches only a row whose ``first_paid_at`` is still
+    unset (``None`` also matches a missing field in Mongo), so a later charge never
+    moves it. Called from the settled-payment branch after the upsert has created the
+    row. Never raises — a webhook must still record the subscription even if this
+    bookkeeping write fails; the field simply stays unset (not-in-window) until the
+    next settled charge.
+    """
+    if paid_at is None:
+        return
+    try:
+        await Subscription.get_motor_collection().update_one(
+            {"user_id": user_id, "first_paid_at": None},
+            {"$set": {"first_paid_at": paid_at}},
+        )
+    except Exception:
+        logger.warning("Failed to record first_paid_at for the refund window", exc_info=True)
+
+
 async def _upsert(
     user_id: str,
     *,
@@ -312,6 +333,15 @@ async def _handle(
         settled = event_type == "checkout.session.async_payment_succeeded" or (
             payment_status in ("paid", "no_payment_required")
         )
+        # `settled` grants entitlement (ACTIVE), which a trial or 100%-discounted
+        # checkout earns too — `no_payment_required`. But the refund window opens on
+        # the first *paid* charge (#602), so it must exclude that case: an actual
+        # payment is `paid`, or a delayed debit clearing (async_payment_succeeded).
+        # Otherwise the window would start (and could expire) before any money moved,
+        # and first-write-wins would stop the real charge from correcting it.
+        paid = event_type == "checkout.session.async_payment_succeeded" or (
+            payment_status == "paid"
+        )
 
         # Tier is deliberately NOT set here. A checkout session does not carry the
         # price without an `expand`, and calling tier_for_price(None) would grant
@@ -328,6 +358,10 @@ async def _handle(
             subscription_id=obj.get("subscription"),
             event_at=event_at,
         )
+        # The first PAID charge opens the refund window (#602) — not a free trial.
+        # Record it once, after the upsert created the row; a later charge won't move it.
+        if paid:
+            await _record_first_paid(user_id, event_at)
         return True
 
     if event_type == "checkout.session.async_payment_failed":
