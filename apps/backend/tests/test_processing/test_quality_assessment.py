@@ -108,8 +108,9 @@ class TestQualityAssessment:
         all_issues = report.critical_issues + report.warnings
         assert len(all_issues) > 0
 
-    async def test_accuracy_dimension(self, quality_service):
-        """Test accuracy scoring with outliers"""
+    async def test_outliers_raise_issues(self, quality_service):
+        """Outliers surface as issues. (There is no 'accuracy' dimension — #536 removed
+        it: accuracy needs ground truth and was previously copied from validity.)"""
         df = pd.DataFrame({
             'normal_ages': np.random.randint(18, 65, 100),
             'ages_with_outliers': list(np.random.randint(18, 65, 90)) + [200, 250, -10, -20, 300, 0, 999, 1000, -100, 150]
@@ -118,12 +119,13 @@ class TestQualityAssessment:
             'normal_ages': 'integer',
             'ages_with_outliers': 'integer'
         }
-        
+
         report = await quality_service.assess_quality(df, column_types)
-        
-        # Accuracy should be lower due to outliers
-        assert report.dimension_scores[QualityDimension.ACCURACY] < 1.0
-        
+
+        # No fabricated accuracy dimension in the report anymore (#536)
+        assert QualityDimension.__members__.get("ACCURACY") is None
+        assert "accuracy" not in {k.value for k in report.dimension_scores}
+
         # Should have outlier-related issues
         all_issues = report.critical_issues + report.warnings
         assert any('outlier' in issue.description.lower() for issue in all_issues)
@@ -184,26 +186,15 @@ class TestQualityAssessment:
         duplicate_issues = [issue for issue in all_issues if issue.column in ['duplicate_id', 'duplicate_email']]
         assert len(duplicate_issues) > 0
 
-    async def test_timeliness_dimension(self, quality_service):
-        """Test timeliness scoring for data freshness"""
-        old_dates = pd.date_range(start='2020-01-01', periods=50, freq='D')
-        recent_dates = pd.date_range(start=datetime.now() - timedelta(days=30), periods=50, freq='D')
-        
+    async def test_timeliness_dimension_is_gone(self, quality_service):
+        """#536: timeliness was hardcoded to 1.0 ('assume fresh data') and reported as
+        measured — removed rather than faked."""
         df = pd.DataFrame({
-            'old_data': old_dates.tolist() + recent_dates.tolist(),
-            'recent_data': pd.date_range(start=datetime.now() - timedelta(days=10), periods=100, freq='h')
+            'recent_data': pd.date_range(start=datetime.now() - timedelta(days=10), periods=10, freq='D')
         })
-        column_types = {
-            'old_data': 'datetime',
-            'recent_data': 'datetime'
-        }
-        
-        report = await quality_service.assess_quality(df, column_types)
-        
-        # Timeliness should reflect data freshness (may be 1.0 if no issues detected)
-        assert report.dimension_scores[QualityDimension.TIMELINESS] <= 1.0
-        # Should have some assessment of timeliness
-        assert QualityDimension.TIMELINESS in report.dimension_scores
+        report = await quality_service.assess_quality(df, {'recent_data': 'datetime'})
+        assert QualityDimension.__members__.get("TIMELINESS") is None
+        assert "timeliness" not in {k.value for k in report.dimension_scores}
 
     async def test_recommendations(self, quality_service, problematic_dataframe):
         """Test quality improvement recommendations"""
@@ -289,11 +280,13 @@ class TestQualityAssessment:
         assert 0.0 <= report.score_0_100 <= 100.0
         assert report.score_0_100 > 90.0  # perfect data
 
-        # Component scores cover exactly the 5 AC dimensions, each 0-100.
+        # Component scores cover exactly the 4 measured dimensions, each 0-100 (#536
+        # removed the fabricated accuracy/timeliness).
         from app.services.data_processing.quality_assessment import SCORE_DIMENSIONS
         assert set(report.component_scores.keys()) == set(SCORE_DIMENSIONS)
         assert all(0.0 <= v <= 100.0 for v in report.component_scores.values())
-        assert QualityDimension.TIMELINESS not in report.component_scores
+        assert "timeliness" not in {k.value for k in report.component_scores}
+        assert "accuracy" not in {k.value for k in report.component_scores}
 
     async def test_score_0_100_empty_dataframe(self, quality_service):
         """Empty dataframe yields a 0 score, not an error (issue #102)."""
@@ -335,8 +328,9 @@ class TestQualityAssessment:
         
         report = await quality_service.assess_quality(problematic_dataframe, column_types)
         
-        # Check that all dimensions are scored
-        assert len(report.dimension_scores) == 6
+        # Check that all measured dimensions are scored (4 since #536 removed the two
+        # fabricated ones: accuracy, timeliness)
+        assert len(report.dimension_scores) == 4
         dimension_names = set(report.dimension_scores.keys())
         assert dimension_names == {dim for dim in QualityDimension}
         
