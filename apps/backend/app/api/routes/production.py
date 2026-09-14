@@ -266,6 +266,9 @@ async def create_api_key(
         user_id=current_user_id,
         model_ids=request.model_ids or [],
         rate_limit=await clamped_rate_limit(current_user_id, request.rate_limit),
+        # Preserve what the tenant asked for so a later plan change can reconcile the
+        # effective rate_limit back up after a transient dip clamped it (#588).
+        requested_rate_limit=request.rate_limit,
         expires_at=expires_at,
     )
 

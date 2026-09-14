@@ -25,7 +25,12 @@ class APIKey(Document):
 
     # Permissions
     model_ids: list[str] = Field(default_factory=list, description="Allowed model IDs")
-    rate_limit: int = Field(default=1000, description="Requests per hour")
+    rate_limit: int = Field(default=1000, description="Requests per hour (effective — the requested value clamped to the tenant's tier ceiling)")
+    # What the tenant asked for at creation (#588). rate_limit is this clamped to the
+    # current tier ceiling; keeping the request lets a plan change reconcile the
+    # effective value back UP after a transient dip clamped it down, without ever
+    # exceeding what the tenant asked for or their tier allows.
+    requested_rate_limit: int = Field(default=1000, description="Rate limit the tenant requested; rate_limit is this clamped to the tier ceiling")
 
     # Usage tracking
     total_requests: int = Field(default=0, description="Total requests made")
