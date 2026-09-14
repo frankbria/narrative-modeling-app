@@ -519,6 +519,27 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"anonymize shared_recipes: {e}")
 
+        # The erased user's id can also sit in ANOTHER tenant's feature-store ACL —
+        # StoredFeature/FeatureCollection.shared_with — either a feature shared TO
+        # them or one they granted others access to (#662). The user_id sweep above
+        # only removes docs they OWN, so pull their id from every other tenant's
+        # shared_with (don't delete the co-tenant's feature — it is their data).
+        for acl_cls in (StoredFeature, FeatureCollection):
+            try:
+                res = await acl_cls.find({"shared_with": user_id}).update(
+                    {"$pull": {"shared_with": user_id}}
+                )
+                pulled = getattr(res, "modified_count", 0) or 0
+                if pulled:
+                    manifest.notes.append(
+                        f"pulled erased id from shared_with on {pulled} "
+                        f"{acl_cls.Settings.name} held by other tenants"
+                    )
+            except Exception as e:  # noqa: BLE001
+                manifest.failures.append(
+                    f"scrub shared_with {getattr(acl_cls, '__name__', '?')}: {e}"
+                )
+
         # Billing state (Subscription, UsageRecord) is intentionally RETAINED,
         # not deleted. erase_user backs the "erase my data, keep my account"
         # endpoint (POST /users/me/erase), so the account stays active and
