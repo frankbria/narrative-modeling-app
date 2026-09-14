@@ -1260,3 +1260,10 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Changing a persistence store needs a migration/read-through + an atomic upsert** (codex):
   read through to the old field so existing users don't reset; use one update_one(upsert=True)
   so concurrent first saves converge on the unique index instead of 500ing on DuplicateKey.
+
+## #511 — remove fabricated figures from the deploy page
+- **Displayed numbers are factual claims.** Invented infra (auto-scaling, instance range,
+  global/low-latency) and a made-up "$0.10/1000 requests" price were shown as fact. Remove
+  what has no source (don't invent); show only what's true of the real deployment (REST
+  predict endpoint, API-key auth + rate limiting). Pricing shown anywhere must come from the
+  single pricing source, never a hardcoded page literal.
