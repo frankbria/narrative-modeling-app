@@ -176,6 +176,51 @@ class TestDatasetRoutes:
         assert data["file_id"] == data["dataset_id"]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            "Q3 sales data.csv",          # spaces — the ordinary #496 case
+            "café données.csv",           # non-ASCII
+            "../../etc/passwd.csv",        # path traversal
+            ("x" * 400) + ".csv",         # very long
+        ],
+    )
+    async def test_upload_dataset_builds_a_safe_server_derived_key(
+        self, async_authorized_client, setup_database, filename
+    ):
+        """#496: the S3 key is a server-derived uuid (datasets/{user}/{uuid}.ext),
+        never the client filename — so a space, a '..', a non-ASCII char, or a long
+        name can't break the S3 URL round-trip or escape the owner prefix. The
+        original filename is still preserved for the user (AC4)."""
+        captured: dict[str, str] = {}
+
+        def _capture(file_content, s3_filename, content_type):
+            captured["key"] = s3_filename
+            return (True, f"s3://bucket/{s3_filename}")
+
+        csv = b"id,value\n1,10\n2,20"
+        with patch("app.api.routes.datasets.upload_file_to_s3", side_effect=_capture):
+            response = await async_authorized_client.post(
+                "/api/v1/datasets/upload",
+                files={"file": (filename, io.BytesIO(csv), "text/csv")},
+            )
+
+        assert response.status_code == 200, response.text
+        key = captured["key"]
+        assert key.startswith("datasets/test_user_123/")
+        # The dangerous shapes never reach the key (the #496 fix).
+        assert " " not in key
+        assert ".." not in key
+        # No path segments beyond the owner prefix (datasets/<user>/<object>).
+        assert key.count("/") == 2
+        assert key.endswith(".csv")
+        assert len(key) < 200
+        # The name still reaches the user (AC4), as its display-safe rendering
+        # (SafeFilename basenames a traversal name and truncates a long one).
+        shown = response.json()["filename"]
+        assert shown and "/" not in shown and ".." not in shown and len(shown) <= 255
+
+    @pytest.mark.asyncio
     async def test_upload_dataset_invalid_file_type(self, async_authorized_client, setup_database):
         """
         🔴 RED: Test upload with invalid file type.
