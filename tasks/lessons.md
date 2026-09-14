@@ -1291,3 +1291,25 @@ checked, and the fix is always the same: the claim is a query, so run it.
   rebuilt the df, so none actually wanted the records.
 - **A pure refactor's proof is the untouched existing suite passing** (AC4) + a test that the
   new path doesn't serialize (result.transformed_data is None) and behavior/dtype is preserved.
+
+## #543 — DBRef cache query + adding a unique index to a self-healing path
+- **A Beanie `Link` field is stored as a DBRef, so a bare-id query matches NOTHING.**
+  `ColumnStats.dataset_id == ObjectId` (and `{"dataset_id": ObjectId}`) never matched — so the
+  cache never hit, every GET recomputed and re-inserted a full set (unbounded growth), and
+  recalculate's delete cleared nothing. Query `{"dataset_id.$id": PydanticObjectId(...)}`, the
+  same key erasure_service._LINK_KEYED_MODELS deletes by. Grep for the erasure cascade's pattern
+  before hand-rolling a Link query.
+- **Adding a unique index to a collection with a self-healing recompute has three consequences,
+  all in the write path — audit every insert when you add the index:**
+  1. Pre-deploy dedupe is mandatory (#565 pattern): a unique index can't build over existing
+     duplicates → startup fails. Ship the dry-run-default script + `--drop-legacy-index`.
+  2. If the index omits a scoping field (here `user_id`), a delete-after-insert cleanup of
+     legacy/scoped rows now DuplicateKeyErrors the insert. Reorder to delete-before-insert — but
+     keep it after the failure-prone load (S3 download+parse) so a failed load can't wipe cache.
+  3. A concurrent cache-miss recompute race that used to silently double-insert now hard-fails
+     the loser (`BulkWriteError`/`DuplicateKeyError` from `insert_many`). Catch it and serve the
+     winner's rows / report success, don't 500. (Residual: the loser can read the winner's
+     insert_many mid-flight and serve a truncated set — filed #715, low/self-healing.)
+- **Verify-before-fix paid off twice:** codex caught the delete-ordering + stale-dedupe; the
+  internal reviewer caught the new race-500; the advisory bot caught the partial-read window.
+  Each was a real, distinct correctness edge introduced by the index, not noise.
