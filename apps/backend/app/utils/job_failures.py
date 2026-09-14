@@ -48,9 +48,10 @@ def user_safe_failure_reason(exc: BaseException) -> str:
             "delimiter and formatting, then re-upload."
         )
 
-    # Target column has a single class / value — nothing to predict.
+    # Target column has a single class / value — nothing to predict. NOTE: "least
+    # populated class ... only N member" is NOT this — that is a multi-class target
+    # where one class is too rare for stratified CV (handled in the next bucket).
     if has(
-        "least populated class",
         "number of classes",
         "at least 2 classes",
         "only one class",
@@ -63,16 +64,19 @@ def user_safe_failure_reason(exc: BaseException) -> str:
             "to predict. Choose a target column with at least two different outcomes."
         )
 
-    # Too few rows / examples for cross-validation.
+    # Too few rows overall, or too few examples of some target value, for
+    # cross-validation (incl. sklearn's "least populated class ... only N member").
     if has(
         "n_splits",
+        "least populated class",
         "greater than the number of members",
         "cannot have number of splits",
         "too few",
     ) or (has("minimum", "not enough") and has("row", "sample")):
         return (
-            "The dataset has too few rows to train reliably (cross-validation "
-            "needs more examples). Add more rows and try again."
+            "The dataset has too few examples to train reliably — either too few "
+            "rows overall, or too few examples of some target value (cross-"
+            "validation needs several of each). Add more rows and try again."
         )
 
     # No usable rows after cleaning.
