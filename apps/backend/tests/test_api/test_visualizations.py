@@ -506,3 +506,73 @@ async def test_get_line_chart_uses_s3_url(
         assert len(data["data"]) == 5
         assert data["lines"] == [{"dataKey": "col2", "label": "col2"}]
         mock_get_file.assert_called_once_with(mock_dataset.s3_url)
+
+
+# --- #513/#514: bounded, sampled chart payloads -----------------------------------
+
+_BIG_N = 50_000
+
+
+@pytest.fixture
+def _big_dataframe():
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.RandomState(0)
+    return pd.DataFrame({
+        "x": rng.rand(_BIG_N),
+        "y": rng.rand(_BIG_N),
+        "t": pd.date_range("2020-01-01", periods=_BIG_N, freq="min"),
+    })
+
+
+@pytest.mark.asyncio
+async def test_scatter_caps_and_labels_sampling(
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset, _big_dataframe
+):
+    """#513: a large dataset returns a bounded, honestly-labeled scatter payload."""
+    from unittest.mock import AsyncMock
+
+    from app.api.routes.visualizations import MAX_CHART_POINTS
+
+    with patch("app.api.routes.visualizations.UserData.get", return_value=mock_dataset), patch(
+        "app.api.routes.visualizations._load_dataframe",
+        new=AsyncMock(return_value=_big_dataframe),
+    ), patch("app.api.routes.visualizations.cache_service.get", new=AsyncMock(return_value=None)), \
+         patch("app.api.routes.visualizations.cache_service.set", new=AsyncMock(return_value=True)):
+        resp = await async_authorized_client.get(
+            f"/api/v1/visualizations/scatter/{mock_dataset_id}/x/y",
+            headers={"Authorization": "Bearer t"},
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["data"]) <= MAX_CHART_POINTS
+    assert body["sampled"] is True and 0 < body["sample_rate"] < 1
+    assert body["total_rows"] == _BIG_N
+
+
+@pytest.mark.asyncio
+async def test_line_and_timeseries_are_bounded(
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset, _big_dataframe
+):
+    from unittest.mock import AsyncMock
+
+    from app.api.routes.visualizations import MAX_CHART_POINTS
+
+    with patch("app.api.routes.visualizations.UserData.get", return_value=mock_dataset), patch(
+        "app.api.routes.visualizations._load_dataframe",
+        new=AsyncMock(return_value=_big_dataframe),
+    ), patch("app.api.routes.visualizations.cache_service.get", new=AsyncMock(return_value=None)), \
+         patch("app.api.routes.visualizations.cache_service.set", new=AsyncMock(return_value=True)):
+        line = await async_authorized_client.get(
+            f"/api/v1/visualizations/line/{mock_dataset_id}/x?y_columns=y",
+            headers={"Authorization": "Bearer t"},
+        )
+        ts = await async_authorized_client.get(
+            f"/api/v1/visualizations/timeseries/{mock_dataset_id}/t/y",
+            headers={"Authorization": "Bearer t"},
+        )
+    assert line.status_code == 200 and len(line.json()["data"]) <= MAX_CHART_POINTS
+    assert line.json()["sampled"] is True
+    assert ts.status_code == 200 and len(ts.json()["values"]) <= MAX_CHART_POINTS
+    assert ts.json()["sampled"] is True

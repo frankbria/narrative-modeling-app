@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -143,7 +144,8 @@ async def generate_and_cache_histogram(
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+    # Offload the blocking download + parse off the event loop (#514).
+    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
 
     # Calculate histogram
     counts, bin_edges = np.histogram(df[column_name].dropna(), bins=num_bins)
@@ -175,7 +177,8 @@ async def generate_and_cache_boxplot(
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+    # Offload the blocking download + parse off the event loop (#514).
+    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
 
     # Calculate boxplot statistics
     q1 = df[column_name].quantile(0.25)
@@ -217,7 +220,8 @@ async def generate_and_cache_correlation_matrix(dataset_id: str) -> dict[str, An
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    df = pd.read_csv(get_file_from_s3(dataset.s3_url))
+    # Offload the blocking download + parse off the event loop (#514).
+    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
 
     # Select numeric columns
     numeric_df = df.select_dtypes(include=[np.number])
