@@ -37,21 +37,27 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
 
   authenticatedPage: async ({ page }, use) => {
     // Land the pre-authenticated test user (storage state from global-setup) on the
-    // dashboard, deterministically.
+    // dashboard, deterministically — and when that can't happen, fail with a message
+    // that names the actual landing URL instead of a bare toMatch(/dashboard/) miss.
     //
-    // Failure mode this removes (#578): a fresh/reset test user is a first-time user,
-    // so the dashboard redirects to /onboarding (#152). ?skipOnboarding=true (#470) is
-    // the product's "Skip for now" affordance, but the dashboard keys the skip flag on
-    // the loaded user id and writes it under "anonymous" until useCurrentUser resolves
-    // (app/dashboard/page.tsx). So if the run's timing loses the query param before the
-    // id loads — or a concurrent onboarding-state reset (#550) has the shared test user
-    // mid first-time — the redirect wins and we land on /onboarding, not /dashboard.
-    // That state is established once per RUN, so Playwright's in-run retries re-enter it
-    // and all fail; a bare `toMatch(/dashboard/)` then reads as an undiagnosable flake.
+    // #578 was a per-RUN flake (it reproduced across Playwright's in-run retries, then
+    // passed next run), so something in the run's setup — not the individual test — put
+    // the whole run into a state this fixture couldn't escape. The two states that do
+    // that here:
+    //   - Auth: global-setup's saved session (e2e/.auth/user.json) didn't take for the
+    //     run, so every navigation bounces to /auth/signin.
+    //   - Onboarding: the shared single e2e user is mid first-time — its server-side
+    //     /onboarding/status is reset by a concurrent spec (#550) — and lands on
+    //     /onboarding. (Note the dashboard's redirect effect short-circuits on
+    //     ?skipOnboarding=true while that param is in the URL — app/dashboard/page.tsx —
+    //     so a bounce means the param was dropped by a navigation before the effect ran,
+    //     or the redirect came from that shared-state path; the exact trigger isn't
+    //     pinned statically, which is why the diagnostic below reports the real URL.)
+    // Both persist across the run, so a retry inside one test re-enters them — the fix
+    // has to be at the fixture level, per the issue.
     //
-    // Navigate, and if it bounced to onboarding, skip once more now that the session and
-    // id are warm (the second skip writes the flag under the real id). Then assert the
-    // outcome with a message that NAMES what went wrong instead of a URL mismatch.
+    // Navigate; if it bounced to /onboarding, skip once more (a fresh ?skipOnboarding with
+    // the session warm), then report the outcome by naming the landing URL.
     const gotoDashboard = async (): Promise<string> => {
       await page.goto('/dashboard?skipOnboarding=true', { timeout: 30000 });
       await page.waitForLoadState('networkidle', { timeout: 15000 });
@@ -72,10 +78,12 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     }
     if (!url.includes('/dashboard')) {
       throw new Error(
-        `[authenticatedPage] could not settle on /dashboard — still at ${url} after a ` +
-        'skip-onboarding retry. The shared test user is likely mid onboarding reset (#550), ' +
-        'not a product regression. This is the per-run state #578 describes: re-running ' +
-        "clears it, but first check whether this run's own retries all failed.",
+        `[authenticatedPage] could not settle on /dashboard — landed on ${url} after a ` +
+        'skip-onboarding retry. If that is /onboarding, the shared e2e user is mid ' +
+        'first-time (a concurrent onboarding-state reset, #550), not a product regression; ' +
+        'any other route is an unexpected redirect worth investigating from this URL. This ' +
+        "is the per-run state #578 describes — check whether this run's own retries all " +
+        'failed before dismissing it as flaky.',
       );
     }
 
