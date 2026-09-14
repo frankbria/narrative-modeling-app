@@ -104,7 +104,8 @@ class TestHistoryServiceUndo:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -123,8 +124,8 @@ class TestHistoryServiceUndo:
             assert mock_transformation_config.current_position == 1
             mock_transformation_config.save.assert_called_once()
 
-            # Verify dataset file_path was updated
-            assert mock_dataset.save.called
+            # Verify the twin-aware move helper was called with the version's URL (#629)
+            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
 
     @pytest.mark.asyncio
     async def test_undo_when_cannot_undo(
@@ -193,7 +194,8 @@ class TestHistoryServiceRedo:
         mock_transformation_config.can_redo.return_value = True
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock):
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -258,7 +260,8 @@ class TestHistoryServiceJumpToPosition:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock):
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -463,7 +466,8 @@ class TestHistoryServiceBranching:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock):
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -476,3 +480,53 @@ class TestHistoryServiceBranching:
             # At this point, if a new transformation is applied, it should
             # truncate the history (tested in transformation_service tests)
             # The history service just navigates existing history
+
+
+@pytest.mark.asyncio
+async def test_undo_moves_the_userdata_twin(setup_database):
+    """#629 AC2: undo must move the dual-written UserData twin (and s3_url), not just
+    file_path — training reads the twin by ObjectId, so a twin left at the pre-undo
+    file trains on the state the user just undid. Real documents; a mocked twin
+    couldn't see this."""
+    from app.models.dataset import DatasetMetadata
+    from app.models.user_data import UserData
+
+    user = "u629"
+    current = "s3://test-bucket/transformed/u629/ds629_2.parquet"
+    restored = "s3://test-bucket/datasets/u629/versions/v1/ds629.parquet"
+
+    await DatasetMetadata(
+        user_id=user, dataset_id="ds629", filename="d.csv", original_filename="d.csv",
+        file_type="parquet", file_path=current, s3_url=current, num_rows=1, num_columns=1,
+    ).insert()
+    twin = await UserData(
+        user_id=user, filename="d.csv", original_filename="d.csv", s3_url=current,
+        file_path=current, num_rows=1, num_columns=1, data_schema=[],
+    ).insert()
+
+    # get_version returns the version to restore to (its s3_url is the target).
+    version = MagicMock()
+    version.s3_url = restored
+
+    config = MagicMock()
+    config.user_id = user
+    config.current_position = 1
+    config.can_undo = MagicMock(return_value=True)
+    config.transformation_steps = [MagicMock(version_id="v1"), MagicMock(version_id="v2")]
+    config.save = AsyncMock()
+
+    ts = MagicMock()
+    ts.get_transformation_config = AsyncMock(return_value=config)
+    vs = MagicMock()
+    vs.get_version = AsyncMock(return_value=version)
+    hs = HistoryService(versioning_service=vs, transformation_service=ts)
+
+    await hs.undo("ds629", user)
+
+    # The twin followed to the restored version's url (the #629 bug: it didn't).
+    moved_twin = await UserData.get(twin.id)
+    assert moved_twin.s3_url == restored, "UserData twin did not follow the undo"
+    assert moved_twin.file_path == restored
+    # And the metadata side moved too (both twins agree on the RESTORED file).
+    meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds629")
+    assert meta.s3_url == restored and meta.file_path == restored

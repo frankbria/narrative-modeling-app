@@ -82,12 +82,20 @@ async def record_new_file(doc: DatasetMetadata | UserData, new_url: str) -> None
         if d is None:
             continue
         # Record the object we're moving OFF so erasure can still find it (#525) —
-        # once s3_url points at new_url, old_url is referenced by nothing else.
-        if old_url and old_url != new_url:
-            superseded = list(getattr(d, "superseded_s3_urls", None) or [])
-            if old_url not in superseded:
-                superseded.append(old_url)
-                d.superseded_s3_urls = superseded
+        # once s3_url points at new_url, old_url is referenced by nothing else. And
+        # keep the invariant "the current file is never in superseded": history
+        # undo/redo revisit URLs (#629), so new_url can be one a prior navigation
+        # superseded — leaving it there would have erasure delete the live file.
+        superseded = list(getattr(d, "superseded_s3_urls", None) or [])
+        changed = False
+        if old_url and old_url != new_url and old_url not in superseded:
+            superseded.append(old_url)
+            changed = True
+        if new_url in superseded:
+            superseded = [u for u in superseded if u != new_url]
+            changed = True
+        if changed:
+            d.superseded_s3_urls = superseded
         if isinstance(d, DatasetMetadata):
             if not d.source_s3_url:
                 # a stale in-memory doc must not overwrite a source the DB already knows

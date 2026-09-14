@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from app.models.dataset import DatasetMetadata
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import (
     NotFoundError,
     PermissionDeniedError,
@@ -95,9 +96,13 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
-                    dataset.file_path = version.file_path
-                    await dataset.save()
-                    logger.info(f"Updated dataset {dataset_id} file_path to {version.file_path}")
+                    # Move file_path, s3_url AND the dual-written UserData twin
+                    # together (#629) — setting file_path alone left the twin (which
+                    # training reads by ObjectId) and s3_url at the pre-undo file, so
+                    # training silently used the state the user just navigated away
+                    # from, the same twin-drift #467 fixed for forward writers.
+                    await record_new_file(dataset, version.s3_url)
+                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
 
         # Save config
         await config.save()
@@ -166,9 +171,13 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
-                    dataset.file_path = version.file_path
-                    await dataset.save()
-                    logger.info(f"Updated dataset {dataset_id} file_path to {version.file_path}")
+                    # Move file_path, s3_url AND the dual-written UserData twin
+                    # together (#629) — setting file_path alone left the twin (which
+                    # training reads by ObjectId) and s3_url at the pre-undo file, so
+                    # training silently used the state the user just navigated away
+                    # from, the same twin-drift #467 fixed for forward writers.
+                    await record_new_file(dataset, version.s3_url)
+                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
 
         # Save config
         await config.save()
@@ -241,9 +250,13 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
-                    dataset.file_path = version.file_path
-                    await dataset.save()
-                    logger.info(f"Updated dataset {dataset_id} file_path to {version.file_path}")
+                    # Move file_path, s3_url AND the dual-written UserData twin
+                    # together (#629) — setting file_path alone left the twin (which
+                    # training reads by ObjectId) and s3_url at the pre-undo file, so
+                    # training silently used the state the user just navigated away
+                    # from, the same twin-drift #467 fixed for forward writers.
+                    await record_new_file(dataset, version.s3_url)
+                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
 
         # Save config
         await config.save()
