@@ -18,7 +18,7 @@ _WallClock.__name__ = "TrainingWallClockExceeded"
     "exc, needle",
     [
         (_WallClock("Training exceeded the 300s limit for the FREE plan."), "300s limit"),
-        (TimeoutError("operation timed out"), "longer than the allowed time"),
+        (TimeoutError("operation timed out"), "timed out while the job"),
         (ValueError("This solver needs samples of at least 2 classes but the data has 1"), "only one distinct value"),
         (ValueError("The least populated class in y has only 1 member"), "too few examples"),
         (ValueError("n_splits=5 cannot be greater than the number of members in each class"), "too few examples"),

@@ -236,7 +236,7 @@ class TestWallClock:
         finally:
             await job.delete()
 
-    async def test_an_unrelated_timeout_keeps_its_own_message(self, setup_database):
+    async def test_an_unrelated_timeout_is_not_reported_as_wall_clock(self, setup_database):
         """A socket timeout during the S3 download is a TimeoutError too; it must
         not be reported as the plan's wall clock."""
         from app.api.routes.model_training import TrainModelRequest, train_model_task
@@ -267,8 +267,11 @@ class TestWallClock:
                 )
             refreshed = await TrainingJob.find_one(TrainingJob.model_id == "model_s3_timeout")
             assert refreshed.status == JobStatus.FAILED
+            # Still not conflated with the plan wall-clock limit (the original
+            # intent), and #518 gives a safe transient-timeout message rather than
+            # echoing the raw "read timed out".
             assert "wall-clock" not in refreshed.error
-            assert "read timed out" in refreshed.error
+            assert "timed out" in refreshed.error and "try again" in refreshed.error
         finally:
             await job.delete()
 

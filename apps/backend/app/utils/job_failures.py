@@ -33,10 +33,13 @@ def user_safe_failure_reason(exc: BaseException) -> str:
     if name == "TrainingWallClockExceeded":
         return str(exc)
 
+    # A generic timeout (e.g. a slow S3 read) — a transient infra hiccup, NOT the
+    # plan's wall-clock limit (that is TrainingWallClockExceeded, handled above).
+    # Keep the two distinct: never say "wall-clock" here.
     if isinstance(exc, TimeoutError) or has("timed out", "timeout"):
         return (
-            "The job ran longer than the allowed time and was stopped. Try a "
-            "smaller dataset or a simpler configuration."
+            "A storage or network operation timed out while the job was running. "
+            "This is usually temporary — please try again."
         )
 
     # Empty / unreadable input.
