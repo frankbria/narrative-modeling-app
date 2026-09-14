@@ -92,16 +92,61 @@ def download_file_from_s3(s3_url: str) -> str:
         raise
 
 
+class FormatMismatchError(ValueError):
+    """The object's bytes don't match its declared file_type (#524).
+
+    A transformation once rewrote s3_url to a .parquet object while file_type
+    stayed 'csv', so every reader parsed parquet bytes as CSV and failed with an
+    opaque pandas error. Raising this instead names the real problem — the stored
+    file_type and the object disagree — so the failure is diagnosable, not a
+    mystery parse exception.
+    """
+
+
+def _looks_like_parquet(local_path: str) -> bool:
+    """A Parquet file begins AND ends with the 4-byte magic ``PAR1``. Requiring
+    BOTH avoids a false positive on a non-Parquet file that merely starts with
+    those bytes (e.g. a CSV whose first column is named ``PAR1...``) — a valid CSV
+    would be wrongly rejected on the header alone (#524, codex)."""
+    try:
+        with open(local_path, "rb") as fh:
+            if fh.read(4) != b"PAR1":
+                return False
+            fh.seek(0, os.SEEK_END)
+            if fh.tell() < 8:  # too small to hold both the header and footer magic
+                return False
+            fh.seek(-4, os.SEEK_END)
+            return fh.read(4) == b"PAR1"
+    except OSError:
+        return False
+
+
 def _read_dataframe(local_path: str, file_type: str | None, nrows: int | None):
     """Parse a local file into a DataFrame by file_type, inferring when None.
 
     download_file_from_s3 temp files have no suffix, so extension sniffing is
     useless — callers pass the dataset's file_type; None falls back to csv-then-
     parquet inference (the historical get_dataframe_from_s3 behavior).
+
+    Before parsing a KNOWN file_type, the object's magic bytes are checked against
+    it (#524): a Parquet object declared as csv/excel/json (or the reverse) fails
+    with a clear FormatMismatchError rather than an opaque parse error.
     """
     import pandas as pd
 
     ft = (file_type or "").lower()
+    if ft:
+        is_parquet = _looks_like_parquet(local_path)
+        if ft == "parquet" and not is_parquet:
+            raise FormatMismatchError(
+                "declared file_type 'parquet' but the object is not Parquet — the "
+                "stored file_type and s3_url disagree (#524); recheck the dataset record"
+            )
+        if ft in ("csv", "xls", "xlsx", "json") and is_parquet:
+            raise FormatMismatchError(
+                f"declared file_type '{file_type}' but the object is Parquet — the "
+                f"stored file_type and s3_url disagree (#524); recheck the dataset record"
+            )
     if ft == "csv":
         return pd.read_csv(local_path, nrows=nrows)
     if ft in ("xlsx", "xls"):
