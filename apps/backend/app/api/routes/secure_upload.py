@@ -301,12 +301,11 @@ async def confirm_pii_upload(
 
 
 def _release_expired_slots() -> list[str]:
-    """Reap expired sessions and hand their concurrency slots back."""
-    owners = upload_handler.cleanup_expired_sessions()
-    for owner in owners:
-        if owner:
-            rate_limiter.end_upload(owner)
-    return owners
+    """Reap expired chunked sessions (removes them from the store and deletes their
+    partial temp files). The chunked concurrency limit is now derived from the live
+    sessions themselves (#526), so there is no separate counter to hand a slot back
+    to — reaping is what makes an abandoned session stop counting."""
+    return upload_handler.cleanup_expired_sessions()
 
 
 @router.post("/chunked/init")
@@ -326,26 +325,26 @@ async def init_chunked_upload(
     a hash, and it keeps them out of URLs and access logs.
     """
 
-    # Reap first. A session is only released explicitly by complete or abort, so
-    # an abandoned one — closed tab, dropped connection — holds its slot with
-    # nothing to give it back. That was invisible while the chunk route
-    # double-released and pinned the count at 0; now that the cap binds for
-    # real, ten abandoned sessions would 429 a user forever. This bounds the
-    # leak to the session lifetime instead (issue #526).
+    # Reap expired sessions first (cleans their partial temp files), then derive the
+    # concurrency limit from the caller's LIVE sessions rather than a separate
+    # counter (#526). An abandoned session — closed tab, dropped connection — stops
+    # counting the moment it expires, so it can never permanently lock the user out;
+    # there is no counter to leak when complete/abort don't run. (The old counter
+    # pinned at 0 while the chunk route double-released, hiding the cap; once the cap
+    # bound for real, ten abandoned sessions 429'd the user forever.)
     _release_expired_slots()
 
-    if not rate_limiter.check_concurrent_limit(current_user_id):
+    if upload_handler.count_active_sessions(current_user_id) >= rate_limiter.max_concurrent_uploads:
         raise HTTPException(
             status_code=429,
             detail="Too many concurrent uploads"
         )
 
-    session_info = await upload_handler.init_upload(
+    # No rate_limiter.start_upload: the new session itself is the count (see above),
+    # so complete/abort/expiry need no matching decrement.
+    return await upload_handler.init_upload(
         current_user_id, filename, file_size, file_hash
     )
-    rate_limiter.start_upload(current_user_id)
-
-    return session_info
 
 
 @router.post("/chunked/{session_id}/chunk/{chunk_number}")
@@ -501,7 +500,8 @@ async def complete_chunked_upload(
         }
     finally:
         temp_path.unlink(missing_ok=True)
-        rate_limiter.end_upload(current_user_id)
+        # No rate_limiter.end_upload: complete() already popped the session from the
+        # store, so it no longer counts toward the caller's chunked limit (#526).
 
 
 @router.delete("/chunked/{session_id}")
@@ -509,11 +509,12 @@ async def abort_chunked_upload(
     session_id: str,
     current_user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
-    """Abandon an in-flight chunked upload and drop its partial file."""
+    """Abandon an in-flight chunked upload and drop its partial file (AC3 — the UI
+    calls this to release an upload the user no longer wants)."""
     if not upload_handler.abort_upload(session_id, current_user_id):
         raise HTTPException(status_code=404, detail="Upload session not found")
 
-    rate_limiter.end_upload(current_user_id)
+    # No rate_limiter.end_upload: abort popped the session, so it no longer counts (#526).
     return {"status": "aborted", "session_id": session_id}
 
 

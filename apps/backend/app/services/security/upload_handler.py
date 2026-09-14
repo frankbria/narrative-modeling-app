@@ -254,13 +254,36 @@ class ChunkedUploadHandler:
         self.sessions.pop(session_id, None)
         return True
 
-    def cleanup_expired_sessions(self) -> list[str]:
-        """Reap expired sessions; return the owner id of each one reaped.
+    def count_active_sessions(self, user_id: str) -> int:
+        """Live (non-expired) sessions owned by ``user_id`` (#526).
 
-        Callers use the owner ids to hand back the concurrency slots those
-        sessions were holding. A session that is abandoned rather than completed
-        or aborted — a closed tab, a dropped connection — is released nowhere
-        else, and `RateLimiter.active_uploads` has no decay of its own.
+        The chunked concurrency limit is derived from the session store itself, not
+        a separate counter: an abandoned session (closed tab, dropped connection)
+        stops counting the moment it expires, so it can never permanently lock the
+        user out, and there is no counter to leak on a missing exit path — the
+        class of bug that produced the lockout and the double-release that hid it.
+        """
+        now = datetime.now(UTC)
+        count = 0
+        for session in self.sessions.values():
+            if session.get("user_id") != user_id:
+                continue
+            try:
+                if datetime.fromisoformat(session["expires_at"]) >= now:
+                    count += 1
+            except (KeyError, ValueError):
+                count += 1  # a malformed expiry is treated as live (fail safe)
+        return count
+
+    def cleanup_expired_sessions(self) -> list[str]:
+        """Reap expired sessions (drop them from the store and delete their partial
+        temp files); return the owner id of each one reaped.
+
+        Since #526 the chunked concurrency limit is derived from live sessions
+        (``count_active_sessions``), so an expired session stops counting the moment
+        it lapses — reaping is no longer needed to "hand back a slot", only to free
+        disk. The returned owner ids are still used by the ``/cleanup`` route to
+        report what it swept.
         """
         now = datetime.now(UTC)
         expired_sessions = []
