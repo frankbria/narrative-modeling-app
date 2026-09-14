@@ -7,22 +7,23 @@
 
 # ── deps: install node_modules from the lockfile ────────────────────────────
 # Base image digest-pinned (issue #176) for reproducible builds, matching the
-# backend image. Node major MUST track CI (ci.yml builds/tests on Node 20) so
+# backend image. Node major MUST track CI (ci.yml builds/tests on Node 22) so
 # the deployed artifact isn't an untested major (issue #277). Refresh all three
 # stage pins together when bumping Node, and keep this comment honest.
-# Pinned 2026-07-12 (node:20-alpine → Node 20.20.2); digest-refresh on #176.
-# node:20-alpine, digest-pinned (#176). This digest is Node 20.20.2, which
-# satisfies the `engines` floor package.json gained with eslint 10
-# (^20.19.0 || ^22.13.0 || >=24). `engine-strict` is not set, so a digest bump to
-# an older 20.x would NOT fail npm ci — it would fail somewhere less obvious.
-# Check `docker run --rm <digest> node -v` against that floor when bumping.
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
+# Pinned 2026-09-13 (node:22-alpine → Node 22.23.2); raised from Node 20 in #443
+# so the runtime matches openai@7's `>=22` engines floor (Node 20 everywhere was
+# blocking every openai major). This digest is Node 22.23.2, which satisfies the
+# `engines` floor in package.json (^22.13.0 || >=24). `engine-strict` is not set,
+# so a digest bump to an older 22.x would NOT fail npm ci — it would fail somewhere
+# less obvious. Check `docker run --rm <digest> node -v` against that floor when
+# bumping, and keep it on the same major CI runs (test_staging_ports guards this).
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ── builder: produce the standalone server bundle ───────────────────────────
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -45,7 +46,7 @@ RUN CI=true \
     npm run build
 
 # ── runner: minimal runtime image ──────────────────────────────────────────
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS runner
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

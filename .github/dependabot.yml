@@ -1,6 +1,6 @@
 # Dependabot — keep pinned Docker base/tool digests and GitHub Actions SHAs current
 # (issue #176). The deployed image bases (python:3.13-slim, ghcr.io/astral-sh/uv,
-# node:20-alpine) and every workflow `uses:` are pinned by digest/SHA for
+# node:22-alpine) and every workflow `uses:` are pinned by digest/SHA for
 # reproducibility + supply-chain hardening; those pins do not refresh themselves, so
 # Dependabot opens weekly PRs to bump them (and pick up upstream security patches).
 version: 2
@@ -27,7 +27,7 @@ updates:
       - dependency-name: "python"
         update-types: ["version-update:semver-major"]
 
-  # Frontend production image — refreshes the `node:20-alpine@sha256:…` base digest.
+  # Frontend production image — refreshes the `node:22-alpine@sha256:…` base digest.
   - package-ecosystem: "docker"
     cooldown:
       default-days: 14
@@ -40,10 +40,10 @@ updates:
       - "dependencies"
       - "docker"
     ignore:
-      # Node major bumps are pinned to 20 to match CI (issue #277), enforced by
+      # Node major bumps are pinned to 22 to match CI (issue #277), enforced by
       # `test_frontend_dockerfile_node_major_matches_ci`. A Node-major PR fails
       # `CI Success` by design (PR #337 was closed for this). Re-enable by
-      # removing this once CI itself moves off Node 20. Digest + minor/patch
+      # removing this once CI itself moves off Node 22. Digest + minor/patch
       # refreshes still flow.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
@@ -99,10 +99,10 @@ updates:
       - "dependencies"
       - "security"
     ignore:
-      # @types/node tracks the runtime major, which is pinned to Node 20 (CI +
+      # @types/node tracks the runtime major, which is pinned to Node 22 (CI +
       # deployed image, issue #277). Node 26 type defs would type-check code
       # against APIs absent at runtime (PR #343 was closed for this). Re-enable
-      # by removing this once the runtime moves off Node 20.
+      # by removing this once the runtime moves off Node 22.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:

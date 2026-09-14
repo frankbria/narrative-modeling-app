@@ -93,12 +93,13 @@ def test_redis_healthcheck_authenticated():
 
 def test_frontend_dockerfile_node_major_matches_ci():
     """Issue #277 (P1.14): the frontend production image must run the same Node
-    major CI builds/tests on (Node 20), not an untested major. Guards the FROM
-    tag *and* the pin comment against drifting back to node:26."""
+    major CI builds/tests on (Node 22 since #443), not an untested major. Guards
+    the FROM tag against drifting off that major."""
     dockerfile = (REPO_ROOT / "apps" / "frontend" / "Dockerfile").read_text()
     from_lines = [ln for ln in dockerfile.splitlines() if ln.startswith("FROM node:")]
     assert from_lines, "expected FROM node: lines in the frontend Dockerfile"
-    assert all("node:20-alpine" in ln for ln in from_lines), (
-        f"frontend image must use node:20-alpine (CI runs Node 20), got: {from_lines}"
+    assert all("node:22-alpine" in ln for ln in from_lines), (
+        f"frontend image must use node:22-alpine (CI runs Node 22), got: {from_lines}"
     )
+    assert "node:20" not in dockerfile, "stale node:20 reference in frontend Dockerfile"
     assert "node:26" not in dockerfile, "stale node:26 reference in frontend Dockerfile"
