@@ -61,8 +61,12 @@ async def seeded(setup_database, real_s3_env, s3_client):
     model_key = f"models/{USER}/{MODEL_ID}/model.pkl"
     dataset_url = f"s3://{bucket}/{dataset_key}"
 
-    # Real objects in S3: the dataset source and the model artifact.
+    version_key = f"transformed/{USER}/{DATASET_ID}_v1.parquet"
+    version_url = f"s3://{bucket}/{version_key}"
+
+    # Real objects in S3: the dataset source, a transformation output, the model artifact.
     s3_client.put_object(Bucket=bucket, Key=dataset_key, Body=b"id,y\n1,0\n2,1\n")
+    s3_client.put_object(Bucket=bucket, Key=version_key, Body=b"transformed-bytes")
     s3_client.put_object(Bucket=bucket, Key=model_key, Body=b"\x80\x04pickled-bytes")
 
     # String id-space parent + its dual-written UserData twin (shared s3_url).
@@ -77,7 +81,7 @@ async def seeded(setup_database, real_s3_env, s3_client):
     # A transformation applied to the dataset.
     await DatasetVersion(
         version_id="v1", dataset_id=DATASET_ID, version_number=1, user_id=USER,
-        content_hash="h", file_size=1, file_path="p", s3_url="s3://b/p", num_rows=2,
+        content_hash="h", file_size=1, file_path=version_key, s3_url=version_url, num_rows=2,
         num_columns=2, schema_hash="sh", created_by=USER,
     ).insert()
     # A trained model + its training job, artifact at model_key.
@@ -91,7 +95,8 @@ async def seeded(setup_database, real_s3_env, s3_client):
     await TrainingJob(
         model_id=MODEL_ID, user_id=USER, dataset_id=DATASET_ID, target_column="y",
     ).insert()
-    return {"bucket": bucket, "dataset_key": dataset_key, "model_key": model_key}
+    return {"bucket": bucket, "dataset_key": dataset_key, "model_key": model_key,
+            "version_key": version_key}
 
 
 def _keys(s3_client, bucket) -> set[str]:
@@ -108,7 +113,9 @@ async def test_erasure_deletes_trained_model_artifact_from_s3(seeded, s3_client)
     from app.utils.circuit_breaker import get_circuit_breaker
 
     bucket = seeded["bucket"]
-    assert _keys(s3_client, bucket) == {seeded["dataset_key"], seeded["model_key"]}
+    assert _keys(s3_client, bucket) == {
+        seeded["dataset_key"], seeded["model_key"], seeded["version_key"]
+    }
 
     # A fresh service instance picks up the LocalStack env; it must be live, or
     # the S3 assertions below are vacuous (mock mode issues no DeleteObject).
