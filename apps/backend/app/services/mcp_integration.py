@@ -126,11 +126,17 @@ class MCPIntegrationService:
         return {}
 
     async def _open_session(self, stack: AsyncExitStack) -> ClientSession:
+        # Bound BOTH the connect timeout and the SSE *read* timeout by MCP_TIMEOUT.
+        # call_tool/list_tools results arrive over the SSE stream, and the SDK's
+        # sse_read_timeout defaults to 300s — so without this a stalled server would
+        # hang an AI-analysis request for 5 minutes regardless of MCP_TIMEOUT (#506).
+        timeout = float(self.config.timeout or 30)
         read, write = await stack.enter_async_context(
             sse_client(
                 self._sse_url,
                 headers=self._headers(),
-                timeout=float(self.config.timeout or 30),
+                timeout=timeout,
+                sse_read_timeout=timeout,
             )
         )
         session = await stack.enter_async_context(ClientSession(read, write))
