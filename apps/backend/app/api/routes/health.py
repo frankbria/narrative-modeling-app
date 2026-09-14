@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData  # To access beanie database
 from app.services.s3_service import s3_service
+from app.utils.s3 import configured_bucket
 
 router = APIRouter()
 # Router mounted under /api/v1 (#479): the admin health widget reaches the backend
@@ -71,7 +72,7 @@ async def check_s3_access() -> dict[str, Any]:
         # Test bucket access by checking if our specific bucket exists. boto3 is
         # synchronous, so run it off the event loop — a slow/hung head_bucket must
         # not stall the worker (#503 AC2).
-        bucket_name = os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("AWS_BUCKET_NAME", "unknown")
+        bucket_name = configured_bucket() or "unknown"  # the one shared resolver (#507)
         await asyncio.to_thread(s3_service.s3_client.head_bucket, Bucket=bucket_name)
         latency_ms = (time.time() - start_time) * 1000
 
