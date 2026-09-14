@@ -200,3 +200,19 @@ class TestRestoreAfterTransientDip:
         await reconcile_user_api_keys("legacy-user", PlanTier.ENTERPRISE)  # upgrade
         doc = await APIKey.get_motor_collection().find_one({"key_id": "legacy-1"})
         assert doc["rate_limit"] == pro  # NOT surprise-raised — no requested recorded
+
+
+def test_create_request_rejects_an_unstorable_rate_limit():
+    """#588: requested_rate_limit is persisted raw, and BSON is 64-bit — an
+    unbounded request must be a 422 at validation, not a 500 on insert."""
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    from app.api.routes.production import CreateAPIKeyRequest
+
+    # A sane large value is accepted.
+    assert CreateAPIKeyRequest(name="k", rate_limit=1_000_000_000).rate_limit == 1_000_000_000
+    # Absurd values (BSON-unstorable, or just nonsense) are rejected.
+    for bad in (1_000_000_001, 10 ** 100):
+        with _pytest.raises(ValidationError):
+            CreateAPIKeyRequest(name="k", rate_limit=bad)
