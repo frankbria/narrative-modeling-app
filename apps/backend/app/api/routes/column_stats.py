@@ -17,6 +17,29 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _ref_filter(dataset_id: str) -> dict:
+    """Match ColumnStats rows by their stored DBRef ``dataset_id`` (#543).
+
+    ``dataset_id`` is a Beanie ``Link``, persisted as a DBRef (``{$ref, $id}``); a bare
+    ``dataset_id == ObjectId`` equality never matched it — so the cache never hit, stats
+    were re-inserted on every GET, and ``recalculate``'s delete cleared nothing. Query the
+    DBRef's ``$id`` (exactly how the erasure cascade deletes Link-keyed children).
+    """
+    return {"dataset_id.$id": PydanticObjectId(dataset_id)}
+
+
+def _dedupe_by_column(rows: list[ColumnStats]) -> list[ColumnStats]:
+    """Return one row per column_name (defensive against pre-#543 accumulated dupes,
+    until the operator runs scripts/dedupe_column_stats.py and the unique index binds)."""
+    seen: set[str] = set()
+    out: list[ColumnStats] = []
+    for r in rows:
+        if r.column_name not in seen:
+            seen.add(r.column_name)
+            out.append(r)
+    return out
+
+
 async def _require_owned_dataset(dataset_id: str, user_id: str) -> UserData:
     """Resolve the caller's dataset, or 404 (issue #449).
 
@@ -65,10 +88,12 @@ async def get_column_stats(
     # Get column stats from database, scoped to the caller. The owner predicate
     # is deliberately redundant with the check above (AC2): a stray foreign row
     # under this dataset_id must not be served even if that check is refactored.
-    column_stats = await ColumnStats.find(
-        ColumnStats.dataset_id == PydanticObjectId(dataset_id),
-        ColumnStats.user_id == user_id,
-    ).to_list()
+    column_stats = _dedupe_by_column(
+        await ColumnStats.find(
+            _ref_filter(dataset_id),
+            ColumnStats.user_id == user_id,
+        ).to_list()
+    )
 
     # If no stats exist, calculate them
     if not column_stats:
@@ -108,15 +133,13 @@ async def get_column_stats(
             # deleting first would destroy them for good if the S3 download or
             # parse failed, and every later request would recompute from nothing.
             # Scoped to a dataset whose ownership is already established and to
-            # null-owner rows only, so a real row is never touched. Note this is
-            # a no-op against production data until #543 lands: `dataset_id` is
-            # persisted as a DBRef, which this bare-ObjectId query does not match.
-            # Best-effort: the stats are already written and correct at this
+            # null-owner rows only, so a real row is never touched. Matches the
+            # DBRef via _ref_filter (#543). Best-effort: the stats are already written and correct at this
             # point, so a hiccup while tidying legacy rows must not turn a
             # successful recompute into a 500 the caller has to retry.
             try:
                 await ColumnStats.find(
-                    ColumnStats.dataset_id == PydanticObjectId(dataset_id),
+                    _ref_filter(dataset_id),
                     ColumnStats.user_id == None,  # noqa: E711 — Beanie needs ==, not `is`
                 ).delete()
             except Exception:
@@ -181,11 +204,8 @@ async def recalculate_column_stats(
         # Intentionally NOT scoped by user_id, unlike the read in
         # get_column_stats: ownership of this dataset is already established
         # above, and a recalculate should also clear stray or legacy rows under
-        # it. (A no-op against production data until #543 — see the note in
-        # get_column_stats.)
-        await ColumnStats.find(
-            ColumnStats.dataset_id == PydanticObjectId(dataset_id)
-        ).delete()
+        # it. Matches the stored DBRef via _ref_filter (#543).
+        await ColumnStats.find(_ref_filter(dataset_id)).delete()
 
         # Calculate and store column stats
         await calculate_and_store_column_stats(df, dataset_id, user_id)
