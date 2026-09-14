@@ -1281,3 +1281,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
   and .toFixed()s them; a scatter point needs both coords — drop incomplete rows.
 - **Offload the whole async-signature/sync-body family, not just the flagged handler** — the
   cached generate_and_cache_* generators had the same inline blocking read on first miss.
+
+## #542 — keep the DataFrame across transformation steps
+- **Serialize once at the boundary, not per step.** apply_transformation returned
+  to_dict('records') every step and every caller rebuilt the DataFrame — a double
+  round-trip that scaled memory rows×cols×steps and lost dtypes. Add a df-in/df-out method
+  (apply_transformation_frame) and keep the record-returning one as a thin wrapper for
+  genuine record callers. Migrate ALL callers (grep the call sites) — here all 4 immediately
+  rebuilt the df, so none actually wanted the records.
+- **A pure refactor's proof is the untouched existing suite passing** (AC4) + a test that the
+  new path doesn't serialize (result.transformed_data is None) and behavior/dtype is preserved.
