@@ -1029,3 +1029,15 @@ checked, and the fix is always the same: the claim is a query, so run it.
   "AWS_BUCKET_NAME"]` + `os.getenv(var)`. Add a list-element pattern too — but scope
   it (bare quoted token, comment-stripped) so it doesn't false-positive on bucket
   names inside helpful user-facing error messages.
+
+## #496 — server-derive the /datasets/upload S3 key
+- **sanitize_filename is DISPLAY-safe, not KEY-safe.** It deliberately preserves
+  spaces/parens/accents ("odd-but-honest names survive unchanged"), so building an
+  S3 key from it leaves spaces that break the URL round-trip — the exact #496 bug.
+  Never build an S3 key from a client filename (even sanitised); use the
+  server-derived dataset_s3_key ({user}/{uuid}.{ext}), store the name as metadata.
+- **A pre-existing test can pin the OLD (worse) shape.** test_upload_keys_...
+  asserted the old dataset_id_{filename} key; the uuid key is strictly better, so
+  update the contract to the new invariant (client filename GONE from the key), not
+  merely re-sanitised. CI (not local) caught it — run the directory's contract
+  tests, not just the file's own.
