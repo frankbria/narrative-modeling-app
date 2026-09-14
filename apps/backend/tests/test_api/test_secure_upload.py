@@ -3,12 +3,18 @@ Tests for Secure Upload API endpoints
 """
 
 import io
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.models.user_data import UserData
+from app.models.user_data import AISummary, UserData
+
+
+def _fake_ai_summary() -> AISummary:
+    return AISummary(
+        overview="ok", issues=[], relationships=[], suggestions=[], rawMarkdown="ok"
+    )
 
 
 class TestCleanupEndpointAuth:
@@ -118,7 +124,14 @@ class TestSecureUploadAPI:
         and a real document is written (#608/#492)."""
         csv_data = "name,email,phone\nJohn Doe,not provided,unknown"
         files = {"file": ("names.csv", io.BytesIO(csv_data.encode()), "text/csv")}
-        with self._s3_ok(), self._summary_stub():
+        # A flagged upload now runs generate_ai_summary_safe -> call_openai_api,
+        # NOT generate_dataset_summary (#679), so patch the boundary this path
+        # actually reaches — _summary_stub would be a no-op here and the task
+        # would only avoid a network call incidentally (client is None).
+        with self._s3_ok(), patch(
+            "app.utils.ai_summary.call_openai_api",
+            AsyncMock(return_value=_fake_ai_summary()),
+        ):
             response = await async_authorized_client.post(
                 "/api/v1/upload/secure", files=files
             )
@@ -131,6 +144,69 @@ class TestSecureUploadAPI:
             UserData.user_id == "test_user_123", UserData.filename == "names.csv"
         )
         assert doc is not None and doc.contains_pii is True
+
+    async def test_secure_upload_medium_pii_summary_masks_values_before_openai(
+        self, setup_database, async_authorized_client
+    ):
+        """#679: a medium-risk (name-only) PII upload must NOT ship the flagged
+        columns' raw sample values to OpenAI. The background summary has to run
+        through the same masked-frame path as the sibling secure routes (#490),
+        not the stored-schema summary that carries raw ``example_values``.
+
+        The single OpenAI boundary (``call_openai_api``) is shared by both the
+        leaky stored-schema path and the safe masked-frame path, so patching it
+        catches the leak regardless of which the route chooses — and Starlette
+        runs the BackgroundTask synchronously under ASGITransport, so it has run
+        by the time the response returns.
+        """
+        csv_data = "name,email,phone\nJohn Doe,not provided,unknown"
+        files = {"file": ("names.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        openai_spy = AsyncMock(return_value=_fake_ai_summary())
+        with self._s3_ok(), patch(
+            "app.utils.ai_summary.call_openai_api", openai_spy
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["pii_report"]["risk_level"] == "medium"
+        # The summary task ran and reached OpenAI exactly once.
+        openai_spy.assert_awaited_once()
+        # Whatever payload it sent must not carry the raw PII sample value from
+        # the flagged 'name' column — mask_pii replaces it before the summary.
+        payload = str(openai_spy.await_args.args)
+        assert "John Doe" not in payload
+
+    async def test_secure_upload_low_confidence_pattern_column_is_masked_before_openai(
+        self, setup_database, async_authorized_client
+    ):
+        """#679: a column flagged only by a WEAK value-pattern match (confidence in
+        (PATTERN_MATCH_FLOOR, 0.5], so has_pii=True but risk_level='low') must also
+        be masked before the summary. mask_pii's default >0.5 threshold would have
+        skipped it, leaking raw pattern-matched values (e.g. 9-digit SSN-shaped
+        numbers) to OpenAI despite the route taking the 'safe' summary path."""
+        # 'ref_code' is not a PII-named column; 3 of 10 values are 9-digit
+        # (SSN pattern) → confidence 0.3 → detection present, risk_level 'low'.
+        rows = [
+            "123456789", "AB12", "XY99", "123456789", "CD34",
+            "EF56", "123456789", "GH78", "IJ90", "KL11",
+        ]
+        csv_data = "ref_code,qty\n" + "\n".join(f"{v},{i}" for i, v in enumerate(rows))
+        files = {"file": ("codes.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        openai_spy = AsyncMock(return_value=_fake_ai_summary())
+        with self._s3_ok(), patch(
+            "app.utils.ai_summary.call_openai_api", openai_spy
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["pii_report"]["has_pii"] is True
+        openai_spy.assert_awaited_once()
+        payload = str(openai_spy.await_args.args)
+        assert "123456789" not in payload
 
     async def test_secure_upload_invalid_file(self, setup_database, async_authorized_client):
         """A non-CSV/Excel file is a 400 before any S3 or DB work."""

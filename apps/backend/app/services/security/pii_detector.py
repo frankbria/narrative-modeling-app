@@ -161,23 +161,32 @@ class PIIDetector:
         else:
             return f"Possible {pii_type.value} detected. Review data and apply appropriate protection."
     
-    def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection], 
-                 mask_char: str = '*') -> pd.DataFrame:
+    def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection],
+                 mask_char: str = '*',
+                 min_confidence: float = MEDIUM_RISK_CONFIDENCE) -> pd.DataFrame:
         """
         Mask detected PII in DataFrame
-        
+
         Args:
             df: DataFrame with PII
             detections: List of PII detections
             mask_char: Character to use for masking
-            
+            min_confidence: Mask a detection only when its confidence is strictly
+                above this. Defaults to MEDIUM_RISK_CONFIDENCE (masking medium and
+                above) — the storage-masking caller's contract. Pass ``0.0`` to
+                mask **every** flagged column regardless of confidence, which is
+                what a summary bound for a third party (OpenAI) needs: a weak
+                value-pattern match (confidence in (PATTERN_MATCH_FLOOR, 0.5]) is
+                still a column the detector flagged, and its raw values must not
+                leave (#679).
+
         Returns:
             DataFrame with masked PII
         """
         df_masked = df.copy()
-        
+
         for detection in detections:
-            if detection.confidence > MEDIUM_RISK_CONFIDENCE:  # mask medium and above
+            if detection.confidence > min_confidence:
                 column = detection.column_name
                 
                 if detection.pii_type == PIIType.EMAIL:
