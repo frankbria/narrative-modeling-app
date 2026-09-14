@@ -714,7 +714,10 @@ class TestCompletionAgainstRealS3:
         monkeypatch.setenv(
             "AWS_ENDPOINT_URL", os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
         )
-        monkeypatch.setattr(s3_module, "s3_client", None)
+        # Force a fresh client for the LocalStack endpoint (#519 replaced the
+        # module-global s3_client with a signature-keyed cache; the endpoint
+        # change alone already invalidates it, but reset to be explicit).
+        s3_module.reset_s3_client()
 
         client = client_as(TENANT_A)
         session_id = (await _init(client)).json()["session_id"]

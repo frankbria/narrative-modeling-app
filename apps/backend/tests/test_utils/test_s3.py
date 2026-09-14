@@ -13,10 +13,20 @@ from app.utils.s3 import (
     get_file_from_s3,
     get_s3_client,
     parse_s3_url,
+    reset_s3_client,
     resolve_validated_object,
     upload_file_to_s3,
     validate_object_key,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_s3_client_cache():
+    """get_s3_client caches the client (#519); clear it around each test so one
+    test's build never satisfies another's assert_called_once / boto3 patch."""
+    reset_s3_client()
+    yield
+    reset_s3_client()
 
 
 def test_create_s3_client_falls_back_to_aws_default_region(monkeypatch):
@@ -73,18 +83,63 @@ def mock_s3_client():
 
 
 def test_get_s3_client_success(mock_env_vars):
-    """Test successful S3 client creation."""
+    """Test successful S3 client creation (now always carries a bounded Config, #519)."""
     with patch("boto3.client") as mock_boto3_client:
         mock_boto3_client.return_value = Mock()
         client = get_s3_client()
 
         assert client is not None
-        mock_boto3_client.assert_called_once_with(
-            "s3",
-            aws_access_key_id="test_access_key",
-            aws_secret_access_key="test_secret_key",
-            region_name="us-east-1",
-        )
+        args, kwargs = mock_boto3_client.call_args
+        assert args == ("s3",)
+        assert kwargs["aws_access_key_id"] == "test_access_key"
+        assert kwargs["aws_secret_access_key"] == "test_secret_key"
+        assert kwargs["region_name"] == "us-east-1"
+        # Every client is built with the bounded-timeout/retry/pool Config (#519).
+        cfg = kwargs["config"]
+        assert cfg.connect_timeout is not None and cfg.read_timeout is not None
+        assert cfg.retries["max_attempts"] >= 1
+        assert cfg.max_pool_connections >= 1
+
+
+def test_create_s3_client_config_timeouts_are_below_worker_timeout():
+    """#519 AC2/AC3: explicit connect/read timeouts, a retry policy and pool
+    sizing, with a worst case comfortably under the 120s gunicorn worker timeout."""
+    with patch.dict(
+        os.environ,
+        {"AWS_ACCESS_KEY_ID": "k", "AWS_SECRET_ACCESS_KEY": "s", "AWS_REGION": "us-east-1"},
+    ), patch("boto3.client") as mock_boto3_client:
+        mock_boto3_client.return_value = Mock()
+        create_s3_client()
+        cfg = mock_boto3_client.call_args.kwargs["config"]
+
+    assert cfg.connect_timeout and cfg.read_timeout
+    assert cfg.retries["mode"] == "standard"
+    attempts = cfg.retries["max_attempts"]
+    # Worst-case blocking (all attempts hit the read timeout) must stay well under
+    # the 120s worker timeout so a hung endpoint can't kill the worker.
+    assert attempts * (cfg.connect_timeout + cfg.read_timeout) < 120
+    assert cfg.max_pool_connections >= 1
+
+
+def test_get_s3_client_is_cached_and_reused(mock_env_vars):
+    """#519 AC1: the client is built once and reused across calls."""
+    with patch("boto3.client") as mock_boto3_client:
+        mock_boto3_client.return_value = Mock()
+        first = get_s3_client()
+        second = get_s3_client()
+
+        assert first is second
+        mock_boto3_client.assert_called_once()  # not rebuilt on the second call
+
+
+def test_get_s3_client_rebuilds_when_endpoint_changes(mock_env_vars):
+    """A changed endpoint (or rotated credential) supersedes the cached client."""
+    with patch("boto3.client") as mock_boto3_client:
+        mock_boto3_client.side_effect = [Mock(), Mock()]
+        get_s3_client()
+        with patch.dict(os.environ, {"AWS_ENDPOINT_URL": "http://localhost:9000"}):
+            get_s3_client()
+        assert mock_boto3_client.call_count == 2
 
 
 def test_get_s3_client_with_endpoint_url(mock_env_vars_with_endpoint):
