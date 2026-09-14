@@ -217,7 +217,10 @@ async def get_suggestion_explanation(
 
 @router.post(
     "/features/suggestions/{suggestion_id}/feedback",
-    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
+    # No quota: since #523 this reads the suggestion from the cache only and never
+    # reaches a model, so metering it would burn a finite ai_calls unit on every
+    # thumbs-up and could 402 legitimate /suggest calls (exempt in
+    # test_ai_routes_are_metered.py).
     response_model=FeatureFeedbackResponse,
     summary="Record feedback on a suggestion",
     description="Record whether a user accepted or rejected a feature suggestion. This feedback is used to improve future suggestions."

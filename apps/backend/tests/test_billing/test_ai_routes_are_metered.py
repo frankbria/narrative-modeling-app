@@ -108,7 +108,6 @@ _MUST_BE_METERED = {
     "/api/v1/datasets/{dataset_id}/features/suggest",
     "/api/v1/datasets/{dataset_id}/features/suggest-more",
     "/api/v1/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
-    "/api/v1/features/suggestions/{suggestion_id}/feedback",
     "/api/v1/datasets/{dataset_id}/features/apply",
     "/api/v1/datasets/{dataset_id}/features/apply-multiple",
     # model_training.py — report card / improvement suggestions; both release the
@@ -133,6 +132,8 @@ _UPLOAD_SUMMARY = (
 _EXEMPT = {
     "/api/v1/ai/health": "MCP liveness probe; calls no model.",
     "/api/v1/ai/feedback": "Persists a recommendation rating; calls no model.",
+    "/api/v1/features/suggestions/{suggestion_id}/feedback":
+        "#523: reads the cached suggestion only, never reaches the model.",
     "/api/v1/ai/optimize-parameters": "Rule-based only; never touches the OpenAI client.",
     **{p: "Reads or applies stored detection results; the model ran at /detect." for p in (
         "/api/v1/data-issues/{dataset_id}/issues", "/api/v1/data-issues/{dataset_id}/history",
