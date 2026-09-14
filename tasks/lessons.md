@@ -1056,3 +1056,25 @@ checked, and the fix is always the same: the claim is a query, so run it.
   Known Limitation + follow-up, not silently ignored.
 - **Bypassing the ORM loses its hooks.** A raw motor `update_one` skips Beanie's
   `before_event` `_touch` (updated_at) — set updated_at in `$set` yourself.
+
+## #551 — frontend fail-fast DB-name guard (assertDatabaseConfig)
+- **`next build` runs with NODE_ENV=production and no runtime env.** A module-load
+  guard keyed only on `nodeEnv === 'production'` fires during the CI/Docker build,
+  which imports route modules (auth.ts) — so "Frontend Type Check & Build" and
+  "Frontend Docker Build" failed while tsc/jest were green. Add a no-URI escape
+  (`if (!env.MONGODB_URI?.trim()) return;`): there's nothing to validate without a
+  URI, and a real runtime that reaches the adapter without one already fails in
+  lib/db.ts. TDD add a "production, no URI → no throw" case.
+- **Run `next build` locally, not just `tsc`/`jest`.** The build-time module-load
+  path is invisible to type-check and unit tests; only an actual `next build`
+  (exit 0) proves the guard doesn't break the image. Same class as the earlier
+  "Frontend Docker build needs dummy env" lesson.
+- **A shipped .env.*.example is a config the new guard judges.** The internal
+  reviewer caught `.env.staging.example` carrying a URI-path DB that disagreed with
+  MONGODB_DB — exactly what AC2 now rejects — so the example itself would fail the
+  guard. Fix the example (bare URI) in the same PR; an example is documentation the
+  code now validates.
+- **Rebut a bot [P1] that contradicts an explicit AC.** codex wanted MONGODB_DB
+  required always; the issue's AC3 explicitly keeps the URI-path-only shape working.
+  Rebut on the record, and file the bot's valid underlying point (backend ignores
+  the URI path) as a prioritized follow-up (#694 P3.41) rather than folding it in.
