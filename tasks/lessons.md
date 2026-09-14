@@ -1200,3 +1200,26 @@ checked, and the fix is always the same: the claim is a query, so run it.
   to filter against the SAME registry. Split candidate-mapping from the executability filter
   so new engine transforms auto-enable both surfaces. Suppress (return None), never grey-out —
   a shown-but-dead fix is a broken promise the user acts on.
+
+## #506 — backend MCP client: real MCP-over-SSE + a monorepo name-collision trap
+- **A sibling app package can shadow a PyPI SDK of the same name in tests.** `apps/mcp`
+  (package `mcp`) shadowed the installed `mcp` SDK during backend pytest because
+  `apps/backend/__init__.py` made pytest put the repo `apps/` dir on sys.path[0]. Symptom:
+  `from mcp import ClientSession` → `ImportError from apps/mcp/__init__.py`. Fix: remove the
+  vestigial `apps/backend/__init__.py` (pythonpath=. already handles `app.*`). Check for this
+  whenever adding a dependency whose top-level name matches a sibling dir.
+- **`require_service` FAILS under CI_REQUIRE_SERVICES; `pytest.skip` skips.** An
+  integration-marked test that can't run in a given CI job (here: the sibling app isn't
+  synced in backend-integration) must `pytest.skip`, or CI_REQUIRE_SERVICES=true turns the
+  skip into a gate failure. Reserve `require_service` for the provisioned services
+  (Mongo/Redis/LocalStack) that job actually stands up.
+- **Bound EVERY timeout on a streaming transport.** `sse_client(timeout=...)` only bounds
+  connect; results arrive over the SSE stream governed by `sse_read_timeout` (default 300s).
+  Pass the configured timeout to both, or a stalled server hangs the request for minutes
+  (same class as #501's OpenAI request-timeout).
+- **A dict-returning FastMCP tool lands in `structuredContent` as-is** (wrap_output=False);
+  a non-dict return is wrapped `{"result": ...}`. Parse defensively: prefer structuredContent,
+  unwrap a lone `result` key, else JSON-parse the first text block.
+- **Verify a real transport with a real server subprocess** (AC5): start apps/mcp, connect,
+  list_tools, call the tool — an unknown-dataset call returning `{success: False}` proves
+  transport+name+args+parsing without needing a fully seeded S3 dataset.
