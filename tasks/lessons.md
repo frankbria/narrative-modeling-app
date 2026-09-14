@@ -1004,3 +1004,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Reuse the existing user-facing field when the UI already reads it.** Both job
   UIs already surfaced `error`/`error_message`; storing a classified value there
   satisfied "surface in the UI" (AC3) with zero frontend change.
+
+## #495 — S3 bucket startup check
+- **Gate a fail-fast startup check on `is_production_like()`, not on mock-mode
+  alone.** `async_authorized_client` runs the real lifespan via LifespanManager,
+  and the integration CI job's creds `test`/`test` make `is_mock_mode` False — so a
+  head_bucket/write probe gated only on mock-mode would break integration tests
+  hitting an unreachable bucket. The production-env gate skips every CI/test job
+  (they never set ENVIRONMENT=prod) while still firing on staging/production. Add a
+  test asserting `is_production_like()` is False in the test env so the guard can't
+  silently start tripping CI.
+- **A startup write-probe must use a unique key.** A fixed probe key overwrites +
+  deletes any pre-existing object of that name on every boot (codex caught it). Use
+  a per-boot `uuid` key under a reserved prefix.
