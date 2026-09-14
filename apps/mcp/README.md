@@ -69,8 +69,12 @@ enforces the following — **all must hold before any deploy**:
   scoped to the app bucket/prefix only — the allowlist is defense-in-depth, not
   a substitute for least-privilege credentials.
 
-**Required env:** `MCP_API_KEY`, `MONGODB_URI`, `AWS_S3_BUCKET` (or
+**Required env:** `MCP_API_KEY`, `MONGODB_URI`, `MONGODB_DB`, `AWS_S3_BUCKET` (or
 `AWS_BUCKET_NAME`), `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`.
+`MONGODB_DB` selects the database explicitly and **must match the backend's**
+`MONGODB_DB` — `MONGODB_URI` is bare (no default database), so without it the owner
+lookup would hit the wrong database and deny legitimate requests (#540). The server
+fails fast at startup if it is unset.
 
 **Trust boundary (beta):** the bearer token is a single shared secret, so the
 MCP trusts the (localhost, authenticated) backend to assert the correct
