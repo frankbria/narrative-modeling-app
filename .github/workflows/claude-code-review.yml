@@ -32,6 +32,14 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
+        # STEP-level timeout, deliberately shorter than the job's `timeout-minutes: 10`
+        # (#626). A JOB timeout kills the whole job immediately and the "Report
+        # incomplete review" step below never runs — so a large diff that ran long
+        # would stay silent, the exact failure AC2 closes. A STEP timeout instead
+        # FAILS this step (outcome == 'failure') while the job keeps ~1 min to post
+        # the comment. Must exceed the --max-turns budget (60 turns ~= 8.6 min) so it
+        # is the backstop, not the primary limit.
+        timeout-minutes: 9
         uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1
         with:
           # Auth for Claude itself (OAuth token from https://console.anthropic.com)
@@ -67,14 +75,49 @@ jobs:
               transient error is fine — but never retry with experimental content.
             - Compose the complete review BEFORE posting and post it in one
               `gh pr comment` call — never post a placeholder and edit it later.
+            - Fetch the diff ONCE with `gh pr diff` and review from that single
+              result. Do NOT re-fetch or page it repeatedly — on a large PR that
+              burns turns on the diff and can exhaust the budget before you post
+              (issue #626).
             Be constructive and helpful in your feedback.
 
           # Tooling Claude is allowed to run.
           # --max-turns caps agent iterations (the action has no max_turns input;
           # CLI flags are passed via claude_args) — second runaway safeguard.
-          # 40 (was 20): large mechanical diffs (e.g. a repo-wide import-sort)
-          # exhausted 20 turns just paging the diff and died before posting
-          # ("error_max_turns", no comment). At ~7 turns/min, 40 turns still
-          # completes inside the 10-min timeout above, which remains the hard
-          # cost ceiling (issue #176 / #188).
-          claude_args: '--max-turns 40 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          # 60 (was 40, was 20): larger diffs (#624/#625: ~16 metered routes / two
+          # rewritten test files) exhausted 40 turns and died before posting
+          # ("error_max_turns", no comment). `timeout-minutes: 10` remains the hard
+          # cost ceiling (#176/#188); at the observed ~7 turns/min that caps the
+          # useful budget near 70 turns before the timeout would kill the run
+          # instead of it finishing, so 60 (~8.6 min) is the ceiling with margin.
+          # Beyond that, review economy is the lever (the single-fetch prompt rule
+          # above) — and the "Report incomplete review" step below makes any
+          # remaining exhaustion visible rather than silent (#626 AC2).
+          claude_args: '--max-turns 60 --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      # #626 AC2: an absent verdict must not read as "no findings". When the review
+      # step fails (error_max_turns exits 1) OR times out (its own timeout-minutes: 9
+      # above), the action leaves only its placeholder and the red conclusion is
+      # invisible on the PR thread. Post a visible comment so a reader can't mistake
+      # silence for a clean review.
+      #
+      # Condition: `!cancelled() && outcome in (failure, cancelled)`, NOT `failure()`.
+      # A GitHub gotcha — a *step-level* timeout does not cancel the JOB, so the job
+      # keeps running here whether the timed-out step's outcome is reported as
+      # 'failure' or 'cancelled'; both are covered, and `!cancelled()` is still true.
+      # A concurrency-cancel (a newer push) OR the *job*-level timeout cancels the
+      # whole job, making `cancelled()` true — so we correctly stay quiet there (and
+      # the step's own 9-min timeout, below the job's 10, means we hit the step
+      # timeout, not the job one, so this path stays reachable). `failure()` alone
+      # would miss the timeout case entirely (a timeout reports 'cancelled', not
+      # 'failure'); listing the two ran-but-unfinished outcomes explicitly also skips
+      # the 'skipped' case (e.g. a checkout failure), which isn't the review's fault.
+      - name: Report incomplete review
+        if: ${{ !cancelled() && (steps.claude-review.outcome == 'failure' || steps.claude-review.outcome == 'cancelled') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PR" --repo "${{ github.repository }}" --body \
+          "⚠️ **Claude Code review did not complete.** The review job failed before posting findings — commonly \`error_max_turns\` on a large diff. See the [job log]($RUN_URL). **This is not a clean review: an absent verdict is not a pass.** Re-run the job, or review the larger changes manually."
