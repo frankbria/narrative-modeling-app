@@ -1223,3 +1223,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Verify a real transport with a real server subprocess** (AC5): start apps/mcp, connect,
   list_tools, call the tool — an unknown-dataset call returning `{success: False}` proves
   transport+name+args+parsing without needing a fully seeded S3 dataset.
+
+## #539 — honest computed fallback, not fabricated success
+- **A fallback is legitimate only if it computes something real AND says it's a fallback.**
+  The rule (from the OpenAI paths): a rule-based fallback stands in for the model with real
+  computed content, clearly labeled (metadata.fallback_mode / a summary that says AI is
+  unavailable) — never invented content returned as a plain 200. Build the fallback from data
+  the caller already has (schema/statistics/quality_report), don't hardcode placeholders.
+- **Test the REAL failure path, not a mocked-out one.** The pre-existing test patched
+  analyze_dataset to raise (→ generic 500), never exercising the fallback. AC4 needs the
+  transport patched to fail (_call_tool raises) so the real analyze_dataset falls back, then
+  assert the route returns a labeled 200, not a fabricated one.
