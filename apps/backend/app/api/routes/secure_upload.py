@@ -179,9 +179,21 @@ async def secure_upload(
         
         await user_data.insert()
         
-        # Schedule background AI summary
-        from app.utils.ai_summary import generate_dataset_summary
-        background_tasks.add_task(generate_dataset_summary, str(user_data.id))
+        # Schedule the background AI summary. For a dataset the detector flagged
+        # (medium risk here — high risk returned above), summarize a PII-masked
+        # frame so the flagged columns' sample values never reach OpenAI, exactly
+        # like the sibling secure paths (#490, #679). The stored-schema summary
+        # (generate_dataset_summary) ships raw example_values, so it is only for a
+        # clean dataset with nothing to mask.
+        if pii_report["has_pii"]:
+            background_tasks.add_task(
+                generate_ai_summary_safe,
+                str(user_data.id),
+                _summary_frame(df, pii_detections),
+            )
+        else:
+            from app.utils.ai_summary import generate_dataset_summary
+            background_tasks.add_task(generate_dataset_summary, str(user_data.id))
         
         return {
             "status": "success",
