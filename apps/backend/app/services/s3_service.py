@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+import uuid
 
 from botocore.exceptions import ClientError
 
@@ -261,7 +262,7 @@ class S3Service:
                 "S3 is in mock mode (test or missing AWS credentials) in a "
                 "production-like environment; refusing to start (#495)."
             )
-        probe_key = "_startup/write-probe"
+        probe_key = f"_startup/write-probe-{uuid.uuid4().hex}"
         try:
             self.s3_client.put_object(Bucket=bucket, Key=probe_key, Body=b"ok")
             self.s3_client.delete_object(Bucket=bucket, Key=probe_key)
