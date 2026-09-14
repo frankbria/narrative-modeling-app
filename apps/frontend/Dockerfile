@@ -7,7 +7,7 @@
 
 # ── deps: install node_modules from the lockfile ────────────────────────────
 # Base image digest-pinned (issue #176) for reproducible builds, matching the
-# backend image. Node major MUST track CI (ci.yml builds/tests on Node 20) so
+# backend image. Node major MUST track CI (ci.yml builds/tests on Node 22) so
 # the deployed artifact isn't an untested major (issue #277). Refresh all three
 # stage pins together when bumping Node, and keep this comment honest.
 # Pinned 2026-09-13 (node:22-alpine → Node 22.23.2); raised from Node 20 in #443

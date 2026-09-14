@@ -40,10 +40,10 @@ updates:
       - "dependencies"
       - "docker"
     ignore:
-      # Node major bumps are pinned to 20 to match CI (issue #277), enforced by
+      # Node major bumps are pinned to 22 to match CI (issue #277), enforced by
       # `test_frontend_dockerfile_node_major_matches_ci`. A Node-major PR fails
       # `CI Success` by design (PR #337 was closed for this). Re-enable by
-      # removing this once CI itself moves off Node 20. Digest + minor/patch
+      # removing this once CI itself moves off Node 22. Digest + minor/patch
       # refreshes still flow.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
@@ -99,10 +99,10 @@ updates:
       - "dependencies"
       - "security"
     ignore:
-      # @types/node tracks the runtime major, which is pinned to Node 20 (CI +
+      # @types/node tracks the runtime major, which is pinned to Node 22 (CI +
       # deployed image, issue #277). Node 26 type defs would type-check code
       # against APIs absent at runtime (PR #343 was closed for this). Re-enable
-      # by removing this once the runtime moves off Node 20.
+      # by removing this once the runtime moves off Node 22.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
