@@ -1,10 +1,19 @@
-"""
-Tests for MCP integration service
+"""Tests for the MCP integration service (#506).
+
+The previous suite mocked an httpx ``AsyncClient`` and an ``AsyncMock`` response so the
+broken ``await response.json()`` (httpx's ``.json()`` is sync) succeeded and the wrong
+REST transport / tool name / arg shape went unnoticed. This suite pins the real MCP
+contract: the client calls the tool named ``eda_summary_tool`` with a single ``params``
+object ``{dataset_id, user_id}`` over the MCP session, and maps the tool's
+``{"success": ..., "data"|"message": ...}`` result honestly (no fabrication on failure).
+
+Transport is covered end-to-end by ``test_mcp_integration_sse_localstack.py`` (AC5).
 """
 
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 
 from app.services.mcp_integration import (
@@ -12,314 +21,108 @@ from app.services.mcp_integration import (
     MCPConfig,
     MCPIntegrationService,
     MCPToolRequest,
-    MCPToolResponse,
 )
+
+pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def mcp_config():
-    """Create test MCP configuration"""
-    return MCPConfig(
-        host="localhost",
-        port=10000,
-        timeout=5,
-        api_key="test_api_key"
+def mcp_service():
+    return MCPIntegrationService(
+        config=MCPConfig(host="localhost", port=10000, timeout=5, api_key="test_api_key")
     )
 
 
-@pytest.fixture
-def mcp_service(mcp_config):
-    """Create MCP integration service instance"""
-    return MCPIntegrationService(config=mcp_config)
+def test_sse_url_and_bearer_header():
+    svc = MCPIntegrationService(config=MCPConfig(host="h", port=1234, api_key="k"))
+    assert svc._sse_url == "http://h:1234/sse"  # FastMCP serves the stream at /sse
+    assert svc._headers() == {"Authorization": "Bearer k"}
+    # No key -> no header (server will 401; we don't send a placeholder)
+    assert MCPIntegrationService(config=MCPConfig(host="h", port=1, api_key=None))._headers() == {}
 
 
-@pytest.fixture
-def sample_schema():
-    """Sample schema for testing"""
-    return {
-        "column_count": 5,
-        "row_count": 100,
-        "columns": [
-            {"name": "id", "data_type": "integer"},
-            {"name": "value", "data_type": "float"},
-            {"name": "category", "data_type": "categorical"}
-        ]
-    }
-
-
-@pytest.fixture
-def sample_statistics():
-    """Sample statistics for testing"""
-    return {
-        "quality_score": 0.85,
-        "column_statistics": [
-            {"column_name": "id", "mean": 50.5},
-            {"column_name": "value", "mean": 100.0}
-        ]
-    }
-
-
-@pytest.fixture
-def sample_quality_report():
-    """Sample quality report for testing"""
-    return {
-        "overall_quality_score": 0.85,
-        "recommendations": ["Address missing values", "Remove duplicates"],
-        "dimension_scores": {
-            "completeness": 0.9,
-            "validity": 0.8
-        }
-    }
-
-
-class TestMCPIntegrationService:
-    """Test MCP integration functionality"""
-
-    async def test_health_check_success(self, mcp_service):
-        """Test successful health check"""
-        with patch.object(mcp_service.client, 'get') as mock_get:
-            mock_response = AsyncMock()
-            mock_response.status_code = 200
-            mock_get.return_value = mock_response
-            
-            result = await mcp_service.check_health()
-            
-            assert result is True
-            mock_get.assert_called_once_with("http://localhost:10000/health")
-
-    async def test_health_check_failure(self, mcp_service):
-        """Test failed health check"""
-        with patch.object(mcp_service.client, 'get') as mock_get:
-            mock_get.side_effect = httpx.ConnectError("Connection refused")
-            
-            result = await mcp_service.check_health()
-            
-            assert result is False
-
-    async def test_execute_tool_success(self, mcp_service):
-        """Test successful tool execution"""
-        request = MCPToolRequest(
-            tool_name="test_tool",
-            parameters={"param1": "value1"},
-            context={"file_id": "123"}
+async def test_execute_tool_calls_the_named_tool_with_arguments(mcp_service):
+    with patch.object(mcp_service, "_call_tool", new=AsyncMock(return_value={"ok": 1})) as call:
+        resp = await mcp_service.execute_tool(
+            MCPToolRequest(tool_name="eda_summary_tool", parameters={"params": {"a": 1}})
         )
-        
-        with patch.object(mcp_service.client, 'post') as mock_post:
-            mock_response = AsyncMock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {
-                "tool_name": "test_tool",
-                "result": {"output": "success"},
-                "error": None,
-                "execution_time": 1.5
-            }
-            mock_post.return_value = mock_response
-            
-            result = await mcp_service.execute_tool(request)
-            
-            assert isinstance(result, MCPToolResponse)
-            assert result.tool_name == "test_tool"
-            assert result.result == {"output": "success"}
-            assert result.error is None
-            assert result.execution_time == 1.5
+    call.assert_awaited_once_with("eda_summary_tool", {"params": {"a": 1}})
+    assert resp.error is None and resp.result == {"ok": 1}
+    assert resp.execution_time >= 0
 
-    async def test_execute_tool_failure(self, mcp_service):
-        """Test failed tool execution"""
-        request = MCPToolRequest(
-            tool_name="failing_tool",
-            parameters={}
+
+async def test_execute_tool_reports_transport_error(mcp_service):
+    with patch.object(mcp_service, "_call_tool", new=AsyncMock(side_effect=RuntimeError("boom"))):
+        resp = await mcp_service.execute_tool(
+            MCPToolRequest(tool_name="eda_summary_tool", parameters={})
         )
-        
-        with patch.object(mcp_service.client, 'post') as mock_post:
-            mock_response = AsyncMock()
-            mock_response.status_code = 500
-            mock_response.text = "Internal server error"
-            mock_post.return_value = mock_response
-            
-            result = await mcp_service.execute_tool(request)
-            
-            assert result.tool_name == "failing_tool"
-            assert result.result is None
-            assert "Tool execution failed" in result.error
-            assert result.execution_time == 0.0
+    assert resp.result is None and "boom" in resp.error
 
-    async def test_analyze_dataset_success(
-        self, 
-        mcp_service, 
-        sample_schema, 
-        sample_statistics, 
-        sample_quality_report
+
+async def test_analyze_dataset_calls_eda_summary_tool_with_owner_scoped_params(mcp_service):
+    """The core #506 fix: correct tool NAME and ARG SHAPE — the client sends only
+    (dataset_id, user_id) wrapped in `params`, never the dataset contents."""
+    captured = {}
+
+    async def fake_call_tool(name, arguments):
+        captured["name"] = name
+        captured["arguments"] = arguments
+        return {"success": True, "data": {"insights": [{"type": "overview", "title": "T"}]}}
+
+    with patch.object(mcp_service, "_call_tool", new=fake_call_tool):
+        result = await mcp_service.analyze_dataset(
+            dataset_id="ds-1", user_id="u-1",
+            schema={"row_count": 3, "column_count": 2}, statistics={"quality_score": 0.9},
+        )
+    assert captured["name"] == "eda_summary_tool"
+    assert captured["arguments"] == {"params": {"dataset_id": "ds-1", "user_id": "u-1"}}
+    assert isinstance(result, MCPAnalysisResponse)
+    assert result.metadata["mcp_available"] is True
+    assert result.metadata["tools_used"] == ["eda_summary_tool"]
+    assert result.insights and result.insights[0]["title"] == "T"
+
+
+async def test_analyze_dataset_falls_back_on_tool_failure_not_fabricate(mcp_service):
+    """A {"success": False} tool result must NOT be turned into fabricated analysis —
+    fall back honestly (#506/#539)."""
+    with patch.object(
+        mcp_service, "_call_tool",
+        new=AsyncMock(return_value={"success": False, "message": "Access denied"}),
     ):
-        """Test successful dataset analysis"""
-        with patch.object(mcp_service, 'execute_tool') as mock_execute:
-            # Mock EDA tool response
-            eda_response = MCPToolResponse(
-                tool_name="eda_summary",
-                result={
-                    "insights": [
-                        {
-                            "type": "data_overview",
-                            "title": "Dataset Overview",
-                            "description": "100 rows with 5 columns"
-                        },
-                        {
-                            "type": "missing_data",
-                            "title": "Missing Data Found",
-                            "severity": "low",
-                            "count": 5
-                        }
-                    ]
-                },
-                error=None,
-                execution_time=2.0
-            )
-            
-            # Mock visualization tool response
-            viz_response = MCPToolResponse(
-                tool_name="generate_visualizations",
-                result=[
-                    {"type": "histogram", "column": "value", "data": {}},
-                    {"type": "scatter", "columns": ["id", "value"], "data": {}}
-                ],
-                error=None,
-                execution_time=1.0
-            )
-            
-            mock_execute.side_effect = [eda_response, viz_response]
-            
-            result = await mcp_service.analyze_dataset(
-                file_id="test_file_123",
-                schema=sample_schema,
-                statistics=sample_statistics,
-                quality_report=sample_quality_report,
-                sample_data=[{"id": 1, "value": 10.5}],
-                analysis_type="comprehensive"
-            )
-            
-            assert isinstance(result, MCPAnalysisResponse)
-            assert result.file_id == "test_file_123"
-            assert result.analysis_type == "comprehensive"
-            assert len(result.insights) == 2
-            assert len(result.recommendations) > 0
-            assert result.visualizations is not None
-            assert len(result.visualizations) == 2
-            assert "mcp_version" in result.metadata
-            assert result.metadata["tools_used"] == ["eda_summary", "generate_visualizations"]
+        result = await mcp_service.analyze_dataset(dataset_id="ds", user_id="u")
+    assert result.metadata.get("mcp_available") is False
+    assert result.metadata.get("fallback_mode") is True
 
-    async def test_analyze_dataset_with_eda_failure(
-        self, 
-        mcp_service, 
-        sample_schema, 
-        sample_statistics, 
-        sample_quality_report
-    ):
-        """Test dataset analysis with EDA tool failure"""
-        with patch.object(mcp_service, 'execute_tool') as mock_execute:
-            # Mock failed EDA response
-            eda_response = MCPToolResponse(
-                tool_name="eda_summary",
-                result=None,
-                error="EDA tool unavailable",
-                execution_time=0.0
-            )
-            
-            mock_execute.return_value = eda_response
-            
-            result = await mcp_service.analyze_dataset(
-                file_id="test_file_123",
-                schema=sample_schema,
-                statistics=sample_statistics,
-                quality_report=sample_quality_report,
-                sample_data=[],
-                analysis_type="summary"
-            )
-            
-            # Should return fallback analysis
-            assert result.file_id == "test_file_123"
-            assert result.metadata["fallback_mode"] is True
-            assert result.metadata["mcp_available"] is False
-            assert "MCP server unavailable" in result.recommendations[0]
 
-    async def test_parse_eda_insights(self, mcp_service):
-        """Test parsing EDA insights"""
-        # Test with proper insights structure
-        eda_result = {
-            "insights": [
-                {"type": "test", "title": "Test Insight"}
-            ]
-        }
-        insights = mcp_service._parse_eda_insights(eda_result)
-        assert len(insights) == 1
-        assert insights[0]["type"] == "test"
-        
-        # Test with non-standard structure
-        eda_result = {"data": "some data"}
-        insights = mcp_service._parse_eda_insights(eda_result)
-        assert len(insights) == 1
-        assert insights[0]["type"] == "data_overview"
-        assert insights[0]["details"]["data"] == "some data"
+async def test_analyze_dataset_falls_back_on_transport_error(mcp_service):
+    with patch.object(mcp_service, "_call_tool", new=AsyncMock(side_effect=RuntimeError("no server"))):
+        result = await mcp_service.analyze_dataset(dataset_id="ds", user_id="u")
+    assert result.metadata.get("mcp_available") is False
 
-    async def test_generate_recommendations(self, mcp_service, sample_quality_report):
-        """Test recommendation generation"""
-        insights = [
-            {
-                "type": "missing_data",
-                "severity": "high"
-            },
-            {
-                "type": "outliers",
-                "count": 20
-            }
-        ]
-        
-        recommendations = mcp_service._generate_recommendations(
-            insights, 
-            sample_quality_report
+
+async def test_check_health_true_when_tool_registered(mcp_service):
+    fake_session = SimpleNamespace(
+        list_tools=AsyncMock(
+            return_value=SimpleNamespace(tools=[SimpleNamespace(name="eda_summary_tool")])
         )
-        
-        assert len(recommendations) > 0
-        assert any("missing data" in rec.lower() for rec in recommendations)
-        assert any("outlier" in rec.lower() for rec in recommendations)
+    )
 
-    async def test_create_analysis_summary(self, mcp_service, sample_schema, sample_statistics):
-        """Test analysis summary creation"""
-        insights = [
-            {
-                "type": "test",
-                "title": "Important Finding"
-            }
-        ]
-        
-        summary = mcp_service._create_analysis_summary(
-            insights,
-            sample_schema,
-            sample_statistics
-        )
-        
-        assert "100 rows and 5 columns" in summary
-        assert "Key finding: Important Finding" in summary
-        assert "1 key insights" in summary
+    @asynccontextmanager
+    async def fake_stack_session(_stack):  # not used; we patch _open_session directly
+        yield fake_session
 
-    async def test_config_from_environment(self):
-        """Test configuration from environment variables"""
-        with patch.dict('os.environ', {
-            'MCP_HOST': 'test-host',
-            'MCP_PORT': '8080',
-            'MCP_TIMEOUT': '60',
-            'MCP_API_KEY': 'secret-key'
-        }):
-            config = MCPConfig()
-            
-            assert config.host == 'test-host'
-            assert config.port == 8080
-            assert config.timeout == 60
-            assert config.api_key == 'secret-key'
-            assert config.base_url == 'http://test-host:8080'
+    with patch.object(mcp_service, "_open_session", new=AsyncMock(return_value=fake_session)):
+        assert await mcp_service.check_health() is True
 
-    async def test_context_manager(self, mcp_config):
-        """Test async context manager functionality"""
-        async with MCPIntegrationService(config=mcp_config) as service:
-            assert service is not None
-            assert service.client is not None
-        
-        # Client should be closed after exiting context
+
+async def test_check_health_false_when_tool_absent(mcp_service):
+    fake_session = SimpleNamespace(
+        list_tools=AsyncMock(return_value=SimpleNamespace(tools=[SimpleNamespace(name="other")]))
+    )
+    with patch.object(mcp_service, "_open_session", new=AsyncMock(return_value=fake_session)):
+        assert await mcp_service.check_health() is False
+
+
+async def test_check_health_false_on_connection_error(mcp_service):
+    with patch.object(mcp_service, "_open_session", new=AsyncMock(side_effect=OSError("refused"))):
+        assert await mcp_service.check_health() is False

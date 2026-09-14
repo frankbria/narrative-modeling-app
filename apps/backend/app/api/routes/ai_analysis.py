@@ -78,9 +78,12 @@ async def analyze_with_ai(
         # Prepare data for MCP analysis
         sample_data = user_data.data_preview[:50] if user_data.data_preview else []
         
-        # Perform AI analysis
+        # Perform AI analysis. The MCP tool reads the dataset server-side from
+        # (dataset_id, user_id) and authorizes ownership itself (#506); the local
+        # schema/statistics enrich the summary + fallback only.
         analysis_result = await mcp_service.analyze_dataset(
-            file_id=str(user_data.id),
+            dataset_id=str(user_data.id),
+            user_id=current_user_id,
             schema=user_data.schema or {},
             statistics=user_data.statistics or {},
             quality_report=user_data.quality_report or {},
