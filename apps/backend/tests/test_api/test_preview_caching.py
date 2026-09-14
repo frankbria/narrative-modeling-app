@@ -41,6 +41,19 @@ async def _seed_processed_csv(user_id: str = TEST_USER, rows: int = 10) -> UserD
     return doc
 
 
+def test_cache_is_keyed_by_user_and_file():
+    """Unit: the cache key includes user_id, so one tenant's cached frame can
+    never be reached with another tenant's key even for the same s3_url."""
+    from app.api.routes.data_processing import _preview_cache
+
+    _preview_cache.clear()
+    frame = object()  # sentinel; get/put don't inspect the value
+    _preview_cache.put(("user_a", "s3://b/shared.csv"), frame)
+    assert _preview_cache.get(("user_a", "s3://b/shared.csv")) is frame
+    assert _preview_cache.get(("user_b", "s3://b/shared.csv")) is None
+    _preview_cache.clear()
+
+
 @pytest.fixture(autouse=True)
 def _clear_preview_cache():
     """The parsed-frame cache is process-global; clear it around each test."""
@@ -102,6 +115,23 @@ async def test_large_file_is_range_read_not_cached(
     assert r1.json()["approximate_total_rows"] is True
     # Not cached, so the second identical request re-downloads.
     assert spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_foreign_dataset_404s_before_the_cache_is_touched(
+    setup_database, async_authorized_client
+):
+    """The ownership `find_one` runs before the cache read, so a dataset owned by
+    another tenant answers 404 and its S3 object is never downloaded — the cache
+    can't become a cross-tenant read path."""
+    other = await _seed_processed_csv(user_id="someone_else_517")
+    spy = AsyncMock(return_value=_csv_bytes(10))
+    with patch("app.services.s3_service.s3_service.download_file_bytes", spy):
+        r = await async_authorized_client.get(
+            f"/api/v1/data/{other.id}/preview?rows=3&offset=0"
+        )
+    assert r.status_code == 404, r.text
+    assert spy.call_count == 0  # never reached the download/cache path
 
 
 @pytest.mark.asyncio
