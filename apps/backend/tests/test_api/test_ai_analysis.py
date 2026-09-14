@@ -216,7 +216,35 @@ class TestAIAnalysisAPI:
                 assert body["detail"] == "Internal server error"
                 assert body.get("request_id")
                 assert "MCP service unavailable" not in response.text
-    
+
+    async def test_analyze_returns_honest_fallback_when_mcp_unreachable(
+        self, authorized_client, mock_user_data_with_analysis
+    ):
+        """#539 AC4: with the real client and the MCP server unreachable, the endpoint
+        must NOT present fabricated analysis as a plain success — it returns a rule-based
+        fallback clearly labeled as such (fallback_mode), computed from the data."""
+        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
+            mock_find.return_value = mock_user_data_with_analysis
+            # Simulate the MCP server being down at the transport layer (real analyze_dataset
+            # runs and must fall back, not raise, not fabricate).
+            with patch(
+                'app.services.mcp_integration.mcp_service._call_tool',
+                new_callable=AsyncMock,
+            ) as mock_call:
+                mock_call.side_effect = ConnectionError("connection refused")
+                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        # Honestly labeled as a non-AI fallback (AC1/AC2)
+        assert body["metadata"]["fallback_mode"] is True
+        assert body["metadata"]["mcp_available"] is False
+        assert "unavailable" in body["summary"].lower()
+        # Real computed content, not invented AI insights
+        assert any(i["type"] == "data_overview" for i in body["insights"])
+        assert not any(i.get("type") == "fabricated" for i in body["insights"])
+
+
     @pytest.mark.asyncio
     async def test_summarize_with_cache(self, authorized_client, mock_user_data_with_analysis, mock_ai_summary):
         """Test that summarization uses cache when available"""
