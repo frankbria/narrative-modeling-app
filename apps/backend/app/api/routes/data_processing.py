@@ -8,6 +8,9 @@ import json
 import logging
 import os
 import re
+import threading
+import time
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -30,6 +33,133 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 data_processor = DataProcessor()
+
+
+# --- Preview parsed-frame cache (#517) --------------------------------------
+# The preview endpoint used to download the whole S3 object and parse it in full
+# on EVERY page request. Cache the parsed frame per (user_id, s3_url) with a
+# bounded TTL so paging is free after the first page; a file too large to hold is
+# range-read instead (only the requested rows are parsed) and never cached.
+_PREVIEW_CACHE_TTL_SECONDS = float(os.getenv("PREVIEW_CACHE_TTL_SECONDS", "300"))
+_PREVIEW_CACHE_MAX_ENTRIES = int(os.getenv("PREVIEW_CACHE_MAX_ENTRIES", "16"))
+#: A frame parsed from more than this many source bytes is not cached (it would
+#: dominate the per-process memory the cache is meant to bound); those files are
+#: range-read per page instead. 25 MB covers the overwhelming majority of preview
+#: datasets while the download size cap is 1 GB.
+_PREVIEW_CACHE_MAX_BYTES = int(os.getenv("PREVIEW_CACHE_MAX_BYTES", str(25 * 1024 * 1024)))
+
+
+class _PreviewFrameCache:
+    """Bounded TTL-LRU of parsed preview DataFrames by ``(user_id, s3_url)``.
+
+    Same shape as ``model_storage._ModelArtifactCache`` (#265): one lock over an
+    ``OrderedDict``, ample for beta request rates on one process. Process-local
+    and the container runs 2 workers, so a page can miss on the sibling worker —
+    harmless for a perf cache: a miss just re-parses, correctness is unaffected.
+    The key is tenant-scoped (``user_id``) and version-scoped (``s3_url`` changes
+    when a transformation rewrites the file), so it can never serve another
+    tenant's rows or a stale file. Disabled when max/ttl is non-positive.
+    """
+
+    def __init__(self, max_size: int, ttl: float):
+        self._max = max_size
+        self._ttl = ttl
+        self._data: OrderedDict[tuple[str, str], tuple[float, Any]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[str, str]) -> Any | None:
+        if self._max <= 0 or self._ttl <= 0:
+            return None
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            expires_at, value = entry
+            if time.monotonic() >= expires_at:
+                del self._data[key]
+                return None
+            self._data.move_to_end(key)
+            return value
+
+    def put(self, key: tuple[str, str], value: Any) -> None:
+        if self._max <= 0 or self._ttl <= 0:
+            return
+        with self._lock:
+            self._data[key] = (time.monotonic() + self._ttl, value)
+            self._data.move_to_end(key)
+            while len(self._data) > self._max:
+                self._data.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+
+
+_preview_cache = _PreviewFrameCache(_PREVIEW_CACHE_MAX_ENTRIES, _PREVIEW_CACHE_TTL_SECONDS)
+
+
+def _preview_format(user_data: UserData) -> str | None:
+    """The pandas reader to use for this dataset's preview, or None if unknown."""
+    name = user_data.original_filename or ""
+    if user_data.file_type == "csv" or name.endswith(".csv"):
+        return "csv"
+    if user_data.file_type == "excel" or name.endswith((".xlsx", ".xls")):
+        return "excel"
+    return None
+
+
+def _parse_full(file_bytes: bytes, fmt: str):
+    """Parse the whole file (runs off the event loop via asyncio.to_thread)."""
+    import pandas as pd
+
+    if fmt == "csv":
+        return pd.read_csv(io.BytesIO(file_bytes))
+    return pd.read_excel(io.BytesIO(file_bytes))
+
+
+def _range_read(file_bytes: bytes, fmt: str, offset: int, rows: int):
+    """Read only the requested row range for a file too large to cache (#517 AC2).
+
+    Returns ``(page_df, total_rows)``. Runs off the event loop. For CSV only the
+    needed rows are parsed (``skiprows``/``nrows``); Excel has no cheap row-range
+    read, so it is parsed whole and sliced (still off-loop, and such files are
+    rare at preview sizes).
+    """
+    import pandas as pd
+
+    if fmt == "csv":
+        skip = range(1, offset + 1) if offset else None
+        page_df = pd.read_csv(io.BytesIO(file_bytes), skiprows=skip, nrows=rows)
+        # total_rows for display: newline count minus the header. ponytail:
+        # approximate for CSVs with quoted embedded newlines — a correct count
+        # would re-parse the whole file, defeating the range read; the exact
+        # value only matters for a >25 MB preview's row total.
+        total_rows = max(file_bytes.count(b"\n") - 1, 0)
+        return page_df, total_rows
+    page_df = pd.read_excel(io.BytesIO(file_bytes))
+    return page_df.iloc[offset:offset + rows], len(page_df)
+
+
+def _records(df) -> list[dict[str, Any]]:
+    # NaN is not JSON; a dataset with one missing value 500'd the preview (#465).
+    return df.astype(object).where(df.notna(), None).to_dict("records")
+
+
+def _preview_payload(
+    user_data: UserData, columns, data, total_rows: int, offset: int, extra=None
+) -> dict[str, Any]:
+    payload = {
+        "file_id": str(user_data.id),
+        "filename": user_data.original_filename,
+        "columns": columns,
+        "data": data,
+        "total_rows": total_rows,
+        "offset": offset,
+        "rows": len(data),
+    }
+    if extra:
+        payload.update(extra)
+    return payload
 
 
 class ProcessingRequest(BaseModel):
@@ -289,78 +419,80 @@ async def get_data_preview(
     offset: int = Query(0, description="Row offset", ge=0),
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Get preview of processed data"""
-    import io
+    """Get preview of processed data.
 
-    import pandas as pd
-    
+    Paging no longer re-downloads and re-parses the whole S3 object every request
+    (#517): the parsed frame is cached per (user, dataset) with a bounded TTL, and
+    a file too large to cache is range-read (only the requested rows parsed). The
+    download and parse both run off the event loop.
+    """
     user_data = await UserData.find_one(
         UserData.id == require_object_id(file_id, "file_id"),  # str never matches an ObjectId (#465)
         UserData.user_id == current_user_id
     )
-    
+
     if not user_data:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     if not user_data.is_processed:
         raise HTTPException(status_code=400, detail="File not processed yet")
-    
+
     try:
-        # Download file from S3 to get actual data
-        # (parse_s3_url handles all persisted URL shapes)
-        _, file_key = parse_s3_url(user_data.s3_url)
-        file_bytes = await s3_service.download_file_bytes(file_key)
-        
-        # Read the file based on type
-        if user_data.file_type == "csv" or user_data.original_filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(file_bytes))
-        elif user_data.file_type == "excel" or user_data.original_filename.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(io.BytesIO(file_bytes))
-        else:
-            # Fall back to cached preview if file type unknown
+        cache_key = (current_user_id, user_data.s3_url or "")
+
+        # Cache hit: slice the already-parsed frame — no S3 download, no parse.
+        cached_df = _preview_cache.get(cache_key)
+        if cached_df is not None:
+            page = cached_df.iloc[offset:offset + rows]
+            return _preview_payload(
+                user_data, cached_df.columns.tolist(), _records(page),
+                len(cached_df), offset,
+            )
+
+        fmt = _preview_format(user_data)
+        if fmt is None:
+            # Unknown file type: paginate the stored preview, no S3 read.
             preview_data = user_data.data_preview or []
-            paginated_data = preview_data[offset:offset + rows]
-            return {
-                "file_id": str(user_data.id),
-                "filename": user_data.original_filename,
-                "columns": user_data.columns or [],
-                "data": paginated_data,
-                "total_rows": user_data.row_count or len(preview_data),
-                "offset": offset,
-                "rows": len(paginated_data)
-            }
-        
-        # Apply pagination to the actual data
-        total_rows = len(df)
-        paginated_df = df.iloc[offset:offset + rows]
-        
-        return {
-            "file_id": str(user_data.id),
-            "filename": user_data.original_filename,
-            "columns": df.columns.tolist(),
-            # NaN is not JSON; a dataset with one missing value 500'd the preview (#465)
-            "data": paginated_df.astype(object).where(paginated_df.notna(), None).to_dict('records'),
-            "total_rows": total_rows,
-            "offset": offset,
-            "rows": len(paginated_df)
-        }
-        
+            page = preview_data[offset:offset + rows]
+            return _preview_payload(
+                user_data, user_data.columns or [], page,
+                user_data.row_count or len(preview_data), offset,
+            )
+
+        # Miss: download once (already off the event loop, #517 AC3).
+        _, file_key = parse_s3_url(user_data.s3_url)  # handles all persisted URL shapes
+        file_bytes = await s3_service.download_file_bytes(file_key)
+
+        if len(file_bytes) <= _PREVIEW_CACHE_MAX_BYTES:
+            # Small enough to cache: parse whole (off-loop), cache, then paging is free.
+            df = await asyncio.to_thread(_parse_full, file_bytes, fmt)
+            _preview_cache.put(cache_key, df)
+            page = df.iloc[offset:offset + rows]
+            return _preview_payload(
+                user_data, df.columns.tolist(), _records(page), len(df), offset,
+            )
+
+        # Too large to cache: read only the requested range (off-loop), don't cache.
+        page_df, total_rows = await asyncio.to_thread(
+            _range_read, file_bytes, fmt, offset, rows
+        )
+        return _preview_payload(
+            user_data, page_df.columns.tolist(), _records(page_df), total_rows, offset,
+            {"warning": "File too large to cache; only the requested rows were read."},
+        )
+
+    except HTTPException:
+        raise
     except Exception:
-        # If S3 read fails, fall back to cached preview
+        # If S3 read/parse fails, fall back to the stored preview.
         logger.warning("Error reading from S3; falling back to cached preview", exc_info=True)
         preview_data = user_data.data_preview or []
-        paginated_data = preview_data[offset:offset + rows]
-        
-        return {
-            "file_id": str(user_data.id),
-            "filename": user_data.original_filename,
-            "columns": user_data.columns or [],
-            "data": paginated_data,
-            "total_rows": user_data.row_count or len(preview_data),
-            "offset": offset,
-            "rows": len(paginated_data),
-            "warning": "Using cached preview data"
-        }
+        page = preview_data[offset:offset + rows]
+        return _preview_payload(
+            user_data, user_data.columns or [], page,
+            user_data.row_count or len(preview_data), offset,
+            {"warning": "Using cached preview data"},
+        )
 
 
 # Cap the source size for export: it is read + reserialized wholly in memory
