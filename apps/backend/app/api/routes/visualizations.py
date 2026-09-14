@@ -180,13 +180,18 @@ async def get_scatter_plot(
         # Correlation is computed over the FULL (filtered) data, before downsampling.
         correlation = df[x_column].corr(df[y_column])
 
-        # Cap the returned points (#513) and build them vectorized (no iterrows, #513).
-        sample, sampled, sample_rate = _downsample(df, ordered=False)
-        xs = pd.to_numeric(sample[x_column], errors="coerce")
-        ys = pd.to_numeric(sample[y_column], errors="coerce")
+        # Coerce to numeric and DROP rows where either coordinate is missing/non-numeric,
+        # rather than emitting {x|y: null} — a scatter point needs both coords, and the
+        # frontend ScatterPlotData types x/y as non-nullable numbers and calls .toFixed()
+        # on them unguarded. Drop first, then cap the returned points (#513).
+        numeric = pd.DataFrame({
+            "x": pd.to_numeric(df[x_column], errors="coerce"),
+            "y": pd.to_numeric(df[y_column], errors="coerce"),
+        }).dropna()
+        sample, sampled, sample_rate = _downsample(numeric, ordered=False)
         data_points = [
-            {"x": None if pd.isna(x) else float(x), "y": None if pd.isna(y) else float(y)}
-            for x, y in zip(xs.to_numpy(), ys.to_numpy(), strict=True)
+            {"x": float(x), "y": float(y)}
+            for x, y in zip(sample["x"].to_numpy(), sample["y"].to_numpy(), strict=True)
         ]
 
         payload = {

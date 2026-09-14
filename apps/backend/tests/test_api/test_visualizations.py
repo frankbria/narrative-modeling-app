@@ -591,3 +591,29 @@ def test_chart_cache_key_is_erasure_purgeable_and_file_versioned():
     assert k1 != k2
     # Different chart kinds / columns don't collide.
     assert _chart_cache_key("line", "ds1", "s3://b/v1.csv", "x", "y", None) != k1
+
+
+@pytest.mark.asyncio
+async def test_scatter_drops_missing_coordinates_no_nulls(
+    async_authorized_client, setup_database, mock_auth, mock_dataset_id, mock_dataset
+):
+    """#513 (internal review): scatter must not emit {x|y: null} — rows with a missing
+    coordinate are dropped, so the payload matches the non-nullable frontend contract."""
+    from unittest.mock import AsyncMock
+
+    import numpy as np
+    import pandas as pd
+
+    df = pd.DataFrame({"x": [1.0, np.nan, 3.0, 4.0], "y": [1.0, 2.0, np.nan, 4.0]})
+    with patch("app.api.routes.visualizations.UserData.get", return_value=mock_dataset), patch(
+        "app.api.routes.visualizations._load_dataframe", new=AsyncMock(return_value=df)
+    ), patch("app.api.routes.visualizations.cache_service.get", new=AsyncMock(return_value=None)), \
+         patch("app.api.routes.visualizations.cache_service.set", new=AsyncMock(return_value=True)):
+        resp = await async_authorized_client.get(
+            f"/api/v1/visualizations/scatter/{mock_dataset_id}/x/y",
+            headers={"Authorization": "Bearer t"},
+        )
+    assert resp.status_code == 200, resp.text
+    pts = resp.json()["data"]
+    assert len(pts) == 2  # only (1,1) and (4,4) have both coords
+    assert all(p["x"] is not None and p["y"] is not None for p in pts)
