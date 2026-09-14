@@ -1166,3 +1166,17 @@ checked, and the fix is always the same: the claim is a query, so run it.
   green under 19.3.0) can't run locally, but bumping + a hermetic accept-map test + opening a
   PR lets CI's real-stack e2e-smoke give the definitive answer. Don't defer an e2e-verifiable
   dep bump as "needs the operator" — CI runs the full stack.
+
+## #499 — advertise only executable transformation types
+- **Derive an advertised capability list from the executable registry, never a hand-list.**
+  /transformations/available hand-listed ~22 while the engine ran 4; put display metadata ON
+  each transformation class and build the list from TRANSFORMATION_CLASSES so it can't drift.
+- **A JSON-schema param map has an implicit "required" contract the consumer defines.** The
+  config UI (TransformationConfigDialog.tsx:147) treats a field as required unless it has
+  `required: false` or a `default`. Newly advertised optional params without the flag silently
+  block default-behavior flows. Check the CONSUMER's required-logic before emitting a schema;
+  add a guard test. (codex caught this; internal reviewer + I missed it — the frontend
+  interpretation isn't visible from the backend diff.)
+- **Reducing a menu is the fix, not a regression, when the removed entries never worked** —
+  but verify the non-executable path is graceful (validate_transformation catches the
+  create_transformation ValueError → success=False, no 500) so old saved recipes don't crash.
