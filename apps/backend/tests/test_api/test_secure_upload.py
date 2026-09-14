@@ -171,6 +171,36 @@ class TestSecureUploadAPI:
         payload = str(openai_spy.await_args.args)
         assert "John Doe" not in payload
 
+    async def test_secure_upload_low_confidence_pattern_column_is_masked_before_openai(
+        self, setup_database, async_authorized_client
+    ):
+        """#679: a column flagged only by a WEAK value-pattern match (confidence in
+        (PATTERN_MATCH_FLOOR, 0.5], so has_pii=True but risk_level='low') must also
+        be masked before the summary. mask_pii's default >0.5 threshold would have
+        skipped it, leaking raw pattern-matched values (e.g. 9-digit SSN-shaped
+        numbers) to OpenAI despite the route taking the 'safe' summary path."""
+        # 'ref_code' is not a PII-named column; 3 of 10 values are 9-digit
+        # (SSN pattern) → confidence 0.3 → detection present, risk_level 'low'.
+        rows = [
+            "123456789", "AB12", "XY99", "123456789", "CD34",
+            "EF56", "123456789", "GH78", "IJ90", "KL11",
+        ]
+        csv_data = "ref_code,qty\n" + "\n".join(f"{v},{i}" for i, v in enumerate(rows))
+        files = {"file": ("codes.csv", io.BytesIO(csv_data.encode()), "text/csv")}
+        openai_spy = AsyncMock(return_value=_fake_ai_summary())
+        with self._s3_ok(), patch(
+            "app.utils.ai_summary.call_openai_api", openai_spy
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files=files
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["pii_report"]["has_pii"] is True
+        openai_spy.assert_awaited_once()
+        payload = str(openai_spy.await_args.args)
+        assert "123456789" not in payload
+
     async def test_secure_upload_invalid_file(self, setup_database, async_authorized_client):
         """A non-CSV/Excel file is a 400 before any S3 or DB work."""
         files = {"file": ("bad.txt", io.BytesIO(b"not a csv"), "text/plain")}

@@ -518,11 +518,22 @@ async def abort_chunked_upload(
 
 
 def _summary_frame(df: pd.DataFrame, pii_detections) -> pd.DataFrame:
-    """The frame to hand the AI summary task: PII-masked whenever any PII was
-    detected, so the summary never ships PII to OpenAI — regardless of whether the
-    caller chose to mask their *stored* copy (``mask_pii=False`` is a storage
-    choice, not consent to send PII to a third party) (#490)."""
-    return pii_detector.mask_pii(df, pii_detections) if pii_detections else df
+    """The frame to hand the AI summary task: EVERY flagged column masked, so the
+    summary never ships PII to OpenAI — regardless of whether the caller chose to
+    mask their *stored* copy (``mask_pii=False`` is a storage choice, not consent
+    to send PII to a third party) (#490).
+
+    ``min_confidence=0.0`` masks every column that produced a detection, not just
+    those above the storage/report threshold (#679): a weak value-pattern match
+    (e.g. a minority of 9-digit values scoring confidence in
+    (PATTERN_MATCH_FLOOR, 0.5]) sets ``has_pii`` and routes here, but the default
+    ``mask_pii`` threshold (>0.5) would have left that column's raw values to
+    flow on to OpenAI."""
+    return (
+        pii_detector.mask_pii(df, pii_detections, min_confidence=0.0)
+        if pii_detections
+        else df
+    )
 
 
 async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
