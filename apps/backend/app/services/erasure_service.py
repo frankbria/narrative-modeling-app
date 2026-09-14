@@ -440,7 +440,15 @@ class DatasetErasureService:
         # Any MLModels not tied to a dataset we already swept.
         try:
             leftover = await MLModel.find(MLModel.user_id == user_id).to_list()
-            for m in leftover:
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"query ml_models: {e}")
+            leftover = []
+        # Per-model try/except, mirroring _erase_models: delete_model can now raise
+        # (ModelArtifactDeletionError, #521), and wrapping the whole loop would let
+        # one model's S3 failure abort every OTHER leftover model — leaving their
+        # rows/artifacts/PredictionEvents untouched behind a single generic failure.
+        for m in leftover:
+            try:
                 await self.model_storage.delete_model(m.model_id, user_id)
                 manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
                 # Durable prediction log rows carry request inputs keyed by
@@ -450,8 +458,8 @@ class DatasetErasureService:
                 )
                 if not self.model_storage.s3_service.is_mock_mode:
                     manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
-        except Exception as e:  # noqa: BLE001
-            manifest.failures.append(f"sweep ml_models: {e}")
+            except Exception as e:  # noqa: BLE001
+                manifest.failures.append(f"delete_model {m.model_id}: {e}")
 
         # feature_versions is keyed by its parent StoredFeature.feature_id, not
         # user_id — resolve the owner's feature ids first, then delete the

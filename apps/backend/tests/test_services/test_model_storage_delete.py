@@ -73,6 +73,30 @@ async def test_successful_s3_delete_removes_the_mongo_row(setup_database):
 
 
 @pytest.mark.asyncio
+async def test_partial_s3_failure_still_keeps_the_row(setup_database):
+    """One artifact deleting fine and another failing must still keep the row — a
+    partial delete is exactly the orphan case (some objects gone, some not)."""
+    model = await _seed_model(model_id="partial")
+    model.feature_transformer_path = "s3://bucket/models/u1/partial/transformer.pkl"
+    await model.save()
+
+    svc = ModelStorageService()
+    _live_s3(svc)
+
+    async def delete_file(key):
+        if key.endswith("transformer.pkl"):
+            raise RuntimeError("S3 down for this key")
+        return True
+
+    svc.s3_service.delete_file = AsyncMock(side_effect=delete_file)
+
+    with pytest.raises(ModelArtifactDeletionError):
+        await svc.delete_model("partial", "u1")
+
+    assert await MLModel.find_one(MLModel.model_id == "partial") is not None
+
+
+@pytest.mark.asyncio
 async def test_mock_mode_deletes_row_without_calling_s3(setup_database):
     """In mock mode (no real AWS) delete_file() raises unconditionally, so S3 is
     skipped entirely and the row is still deleted — the old code only worked here

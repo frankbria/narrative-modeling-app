@@ -72,19 +72,27 @@ async def _all_referenced_keys() -> set[str]:
     return referenced
 
 
-def _list_model_objects(s3: S3Service, bucket: str) -> list[str]:
-    keys: list[str] = []
+def _list_model_objects(s3: S3Service, bucket: str) -> list[tuple[str, object]]:
+    """(key, LastModified) for every object under the models/ prefix."""
+    objs: list[tuple[str, object]] = []
     paginator = s3.s3_client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=MODELS_PREFIX):
         for obj in page.get("Contents", []):
-            keys.append(obj["Key"])
-    return keys
+            objs.append((obj["Key"], obj.get("LastModified")))
+    return objs
 
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--dump", metavar="PATH", help="write orphan keys to this file for operator review")
+    parser.add_argument(
+        "--min-age-seconds", type=int, default=3600,
+        help="an unreferenced object younger than this is 'recent' not 'orphan' — "
+             "save_model writes artifacts BEFORE inserting the MLModel doc, so a "
+             "just-written artifact of an in-flight training job has no reference yet "
+             "(default 3600, ~ the training wall-clock ceiling)",
+    )
     args = parser.parse_args()
 
     uri, db_name = os.getenv("MONGODB_URI"), os.getenv("MONGODB_DB")
@@ -111,7 +119,15 @@ async def main() -> int:
     finally:
         client.close()
 
-    orphans = [k for k in objects if k not in referenced]
+    from datetime import UTC, datetime, timedelta
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=args.min_age_seconds)
+    unreferenced = [(k, lm) for (k, lm) in objects if k not in referenced]
+    # A just-written artifact of an in-flight training job has no MLModel row yet
+    # (save_model uploads before insert), so don't call it an orphan — flag it as
+    # recent and exclude it from the cleanup candidates.
+    recent = [k for (k, lm) in unreferenced if lm is not None and lm > cutoff]
+    orphans = [k for (k, lm) in unreferenced if not (lm is not None and lm > cutoff)]
     if args.dump and orphans:
         with open(args.dump, "w") as fh:
             fh.write("\n".join(orphans) + "\n")
@@ -120,6 +136,8 @@ async def main() -> int:
         "models_prefix_objects": len(objects),
         "referenced_keys": len(referenced),
         "orphans": len(orphans),
+        "recent_unreferenced_excluded": len(recent),
+        "min_age_seconds": args.min_age_seconds,
         "dumped_to": args.dump if (args.dump and orphans) else None,
     }
     if args.json:
@@ -128,8 +146,10 @@ async def main() -> int:
         print(
             f"objects under {MODELS_PREFIX}: {result['models_prefix_objects']}, "
             f"referenced by an MLModel: {result['referenced_keys']}, "
-            f"orphans: {result['orphans']}"
-            + (f" (keys written to {args.dump})" if result["dumped_to"] else "")
+            f"orphans: {result['orphans']}, "
+            f"recent-unreferenced excluded (< {args.min_age_seconds}s, likely in-flight): "
+            f"{result['recent_unreferenced_excluded']}"
+            + (f" (orphan keys written to {args.dump})" if result["dumped_to"] else "")
         )
     return 1 if orphans else 0
 
