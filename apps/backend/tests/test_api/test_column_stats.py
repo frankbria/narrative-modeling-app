@@ -333,3 +333,37 @@ class TestColumnStatsTenantIsolation:
             {"dataset_id.$id": mine.id}
         ) == 2  # salary, dept
         assert sorted(c["column_name"] for c in second.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_recompute_loser_serves_winner_rows_not_500(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#543: with the dataset_column_unique index, a request that loses a
+        concurrent cache-miss recompute race hits a duplicate-key error on its
+        insert. It must serve the winner's rows, not 500."""
+        from pymongo.errors import BulkWriteError
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+
+        async def winner_writes_then_this_insert_collides(df, dataset_id, user_id):
+            # Stand in for another request winning the race: its rows now exist,
+            # so this (losing) insert would violate the unique index.
+            await seed_cached_stats(mine, mock_user_id, "salary")
+            await seed_cached_stats(mine, mock_user_id, "dept")
+            raise BulkWriteError({})
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), patch(
+            "app.api.routes.column_stats.calculate_and_store_column_stats",
+            side_effect=winner_writes_then_this_insert_collides,
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
