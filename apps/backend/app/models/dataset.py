@@ -116,6 +116,12 @@ class DatasetMetadata(Document):
         description="The original upload, recorded the first time a transformation moves the "
                     "dataset to a new file; retained deliberately (#467, lifecycle: #529)",
     )
+    superseded_s3_urls: list[str] = Field(
+        default_factory=list,
+        description="Every previous s3_url this dataset has moved through as transformations "
+                    "rewrote its current file (#525). Tracked so erasure can delete these "
+                    "intermediate objects — they are referenced by nothing else once superseded.",
+    )
     file_size: int | None = Field(None, ge=0, description="File size in bytes")
 
     # Dataset dimensions

@@ -262,6 +262,15 @@ class DatasetErasureService:
                 ),
                 manifest,
             )
+            # The original upload + every superseded current-file this dataset moved
+            # through as transformations rewrote it (#525): each is referenced by
+            # nothing once s3_url moved off it, so a GDPR erasure would otherwise
+            # leave the customer's intermediate data in the bucket.
+            for old in [parent_meta.source_s3_url, *(parent_meta.superseded_s3_urls or [])]:
+                if old:
+                    await self._delete_s3(
+                        _s3_key(old, self.s3_service.bucket_name, manifest), manifest
+                    )
             await self._evict_redis(dataset_id, manifest)
 
         # --- legacy UserData id-space (dual-write twin or a legacy-only upload) ---
@@ -276,6 +285,10 @@ class DatasetErasureService:
                 ),
                 manifest,
             )
+            for old in parent_ud.superseded_s3_urls or []:  # superseded current-files (#525)
+                await self._delete_s3(
+                    _s3_key(old, self.s3_service.bucket_name, manifest), manifest
+                )
             await self._evict_redis(str(parent_ud.id), manifest)
 
         # Parents LAST — retained as re-discoverable tombstones if THIS dataset's

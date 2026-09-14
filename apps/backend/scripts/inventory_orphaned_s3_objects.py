@@ -71,9 +71,11 @@ async def _referenced_keys(bucket: str) -> set[str]:
     keys: set[str] = set()
     async for d in UserData.find_all():
         keys |= {k for k in (_key(d.s3_url, bucket), _key(getattr(d, "file_path", None), bucket)) if k}
+        keys |= {k for u in (getattr(d, "superseded_s3_urls", None) or []) if (k := _key(u, bucket))}
     async for d in DatasetMetadata.find_all():
         keys |= {k for k in (_key(d.s3_url, bucket), _key(getattr(d, "file_path", None), bucket),
                              _key(getattr(d, "source_s3_url", None), bucket)) if k}
+        keys |= {k for u in (getattr(d, "superseded_s3_urls", None) or []) if (k := _key(u, bucket))}
     async for d in DatasetVersion.find_all():
         keys |= {k for k in (_key(getattr(d, "s3_url", None), bucket),
                              _key(getattr(d, "file_path", None), bucket)) if k}
