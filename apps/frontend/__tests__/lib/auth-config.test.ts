@@ -122,6 +122,13 @@ describe('assertDatabaseConfig', () => {
     ).not.toThrow();
   });
 
+  it('does not fire during next build (production, no MONGODB_URI set) (AC4)', () => {
+    // `next build` runs with NODE_ENV=production but no database env; importing
+    // auth.ts must not throw.
+    expect(() => assertDatabaseConfig({}, 'production')).not.toThrow();
+    expect(() => assertDatabaseConfig({ MONGODB_URI: '' }, 'production')).not.toThrow();
+  });
+
   it('is a no-op outside production (AC4)', () => {
     // The worst case (bare URI, no db) must NOT throw in dev/test/next build.
     for (const env of ['development', 'test', undefined]) {

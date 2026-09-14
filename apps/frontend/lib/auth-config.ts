@@ -92,6 +92,11 @@ export function assertDatabaseConfig(
   nodeEnv: string | undefined = process.env.NODE_ENV,
 ): void {
   if (nodeEnv !== 'production') return;
+  // `next build` runs with NODE_ENV=production but no database env, and importing
+  // auth.ts at build time must not fail. With no MONGODB_URI there is nothing to
+  // validate anyway — a real runtime that reaches the adapter without one already
+  // fails in lib/db.ts (outside CI). So the guard only engages once a URI is set.
+  if (!env.MONGODB_URI?.trim()) return;
   const fromDb = env.MONGODB_DB?.trim() || null;
   const fromUri = databaseNameFromUri(env.MONGODB_URI);
   if (!fromDb && !fromUri) {
