@@ -333,6 +333,15 @@ async def _handle(
         settled = event_type == "checkout.session.async_payment_succeeded" or (
             payment_status in ("paid", "no_payment_required")
         )
+        # `settled` grants entitlement (ACTIVE), which a trial or 100%-discounted
+        # checkout earns too — `no_payment_required`. But the refund window opens on
+        # the first *paid* charge (#602), so it must exclude that case: an actual
+        # payment is `paid`, or a delayed debit clearing (async_payment_succeeded).
+        # Otherwise the window would start (and could expire) before any money moved,
+        # and first-write-wins would stop the real charge from correcting it.
+        paid = event_type == "checkout.session.async_payment_succeeded" or (
+            payment_status == "paid"
+        )
 
         # Tier is deliberately NOT set here. A checkout session does not carry the
         # price without an `expand`, and calling tier_for_price(None) would grant
@@ -349,9 +358,9 @@ async def _handle(
             subscription_id=obj.get("subscription"),
             event_at=event_at,
         )
-        # The first settled charge opens the refund window (#602). Record it once,
-        # after the upsert created the row; a later charge won't move it.
-        if settled:
+        # The first PAID charge opens the refund window (#602) — not a free trial.
+        # Record it once, after the upsert created the row; a later charge won't move it.
+        if paid:
             await _record_first_paid(user_id, event_at)
         return True
 

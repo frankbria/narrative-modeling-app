@@ -113,3 +113,37 @@ class TestFirstPaidCaptureFromWebhook:
         )
         sub = await Subscription.find_one(Subscription.user_id == user)
         assert sub is not None and sub.first_paid_at is None
+
+    @pytest.mark.asyncio
+    async def test_no_payment_required_checkout_does_not_open_the_window(self, setup_database):
+        """A trial / 100%-discounted checkout is entitled (ACTIVE) but is NOT a paid
+        charge — it must not start the refund window, and the later real first charge
+        must be the one that does (codex, #602)."""
+        from app.api.routes.billing_webhook import _handle
+        from app.models.subscription import Subscription, SubscriptionStatus
+        from app.utils.datetime import as_utc
+
+        user = "refund-user-3"
+        t_trial = datetime.now(UTC) - timedelta(days=30)  # long ago; would be "expired" if stamped
+        await _handle(
+            "checkout.session.completed",
+            {"client_reference_id": user, "payment_status": "no_payment_required"},
+            event_at=t_trial,
+        )
+        sub = await Subscription.find_one(Subscription.user_id == user)
+        # Entitled, but no paid charge recorded.
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert sub.first_paid_at is None
+
+        # The first real charge (days later) opens the window from THEN, not the trial.
+        t_paid = datetime.now(UTC) - timedelta(days=1)
+        await _handle(
+            "checkout.session.completed",
+            {"client_reference_id": user, "payment_status": "paid"},
+            event_at=t_paid,
+        )
+        sub = await Subscription.find_one(Subscription.user_id == user)
+        assert sub.first_paid_at is not None
+        assert is_in_refund_window(sub.first_paid_at) is True  # within 14 days of the real charge
+        assert as_utc(sub.first_paid_at).date() == t_paid.date()
