@@ -80,7 +80,7 @@ from app.api.routes import (
 )
 from app.services.api_documentation import APIDocumentationService
 from app.auth.nextauth_auth import SKIP_AUTH
-from app.config import get_environment, settings
+from app.config import get_environment, settings, is_production_like
 from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -116,6 +116,15 @@ async def lifespan(app: FastAPI):
         database=client[db_name],
         document_models=DOCUMENT_MODELS,
     )
+
+    # Fail fast on a missing/unwritable S3 bucket — but only in a production-like
+    # environment, so dev/test (mock S3) and CI stay unaffected (#495). A refused
+    # boot beats writing to a guessed or wrong bucket, and it catches a broken
+    # credential rotation (P1.33).
+    if is_production_like():
+        from app.services.s3_service import s3_service
+
+        s3_service.verify_bucket_writable()
 
     # Initialize OpenAI client
     initialize_openai_client()

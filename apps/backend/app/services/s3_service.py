@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+import uuid
 
 from botocore.exceptions import ClientError
 
@@ -236,6 +237,40 @@ class S3Service:
         construction, so a process whose environment changed cannot download
         from one bucket and write to another."""
         return self._pin() or allowed_bucket()
+
+    def verify_bucket_writable(self) -> None:
+        """Fail fast if the configured S3 bucket is missing or not writable (#495).
+
+        Called from the app lifespan **only in a production-like environment**
+        (see main.py): a refused boot is far better than a running deployment that
+        writes to a guessed or wrong bucket (the #495 data-integrity risk), and it
+        catches a credential rotation that silently broke S3 access (P1.33). In
+        dev/test this never runs, so mock-mode and no-bucket stay fine there.
+
+        A missing bucket, mock-mode credentials in production, or a failed
+        put/delete probe each raise ``RuntimeError``. The probe writes and removes
+        one tiny object so "writable" is actually verified, not assumed.
+        """
+        bucket = configured_bucket()
+        if not bucket:
+            raise RuntimeError(
+                "No S3 bucket is configured (set AWS_S3_BUCKET); refusing to "
+                "start rather than write to a guessed bucket (#495)."
+            )
+        if self.is_mock_mode or self.s3_client is None:
+            raise RuntimeError(
+                "S3 is in mock mode (test or missing AWS credentials) in a "
+                "production-like environment; refusing to start (#495)."
+            )
+        probe_key = f"_startup/write-probe-{uuid.uuid4().hex}"
+        try:
+            self.s3_client.put_object(Bucket=bucket, Key=probe_key, Body=b"ok")
+            self.s3_client.delete_object(Bucket=bucket, Key=probe_key)
+        except Exception as exc:  # noqa: BLE001 - any failure means "not writable"
+            raise RuntimeError(
+                f"Configured S3 bucket {bucket!r} is not writable "
+                f"({type(exc).__name__}); refusing to start (#495)."
+            ) from exc
 
     @with_circuit_breaker(
         "s3",
