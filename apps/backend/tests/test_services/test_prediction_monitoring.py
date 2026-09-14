@@ -1,16 +1,40 @@
 """
 Tests for prediction monitoring service
 """
+import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.ml_model import MLModel
 from app.services.prediction_monitoring import (
     PredictionLog,
     PredictionMonitoringService,
     prediction_log,
 )
+
+
+async def _seed_model(model_id: str) -> MLModel:
+    """A minimal persisted MLModel for the last_used_at / concurrency tests (#520)."""
+    model = MLModel(
+        user_id="u1",
+        dataset_id="ds1",
+        model_id=model_id,
+        name="m",
+        problem_type="binary_classification",
+        algorithm="Random Forest",
+        target_column="target",
+        feature_names=["f1", "f2"],
+        cv_score=0.8,
+        test_score=0.78,
+        training_time=1.0,
+        model_size=10,
+        n_samples_train=100,
+        n_features=2,
+        model_path="s3://bucket/model.pkl",
+    )
+    await model.insert()
+    return model
 
 
 class TestPredictionLog:
@@ -99,31 +123,61 @@ class TestPredictionMonitoringService:
         yield
     
     @pytest.mark.asyncio
-    @patch('app.services.prediction_monitoring.MLModel')
-    async def test_log_prediction_updates_model(self, mock_model_class):
-        """Test that logging prediction updates model last_used_at"""
-        # Mock model
-        mock_model = AsyncMock()
-        mock_model.save = AsyncMock()
-        mock_model_class.find_one = AsyncMock(return_value=mock_model)
-        
-        # Log prediction
+    async def test_log_prediction_updates_model(self, setup_database):
+        """Logging a prediction stamps the model's last_used_at (real Mongo, #520)."""
+        model = await _seed_model("model_123")
+        assert model.last_used_at is None
+
         pred_id = await PredictionMonitoringService.log_prediction(
             model_id="model_123",
             input_data={"test": 1},
             prediction="result",
             probability=0.9,
             latency_ms=50.0,
-            api_key_id="key_123"
+            api_key_id="key_123",
         )
-        
-        # Check prediction ID format
+
         assert pred_id.startswith("pred_")
-        
-        # Check model was updated
-        mock_model_class.find_one.assert_called_once()
-        assert mock_model.last_used_at is not None
-        mock_model.save.assert_called_once()
+        refreshed = await MLModel.find_one(MLModel.model_id == "model_123")
+        assert refreshed.last_used_at is not None
+
+    @pytest.mark.asyncio
+    async def test_log_prediction_does_not_clobber_concurrent_model_writes(
+        self, setup_database
+    ):
+        """#520 AC3: a prediction's last_used_at update must not revert a concurrent
+        write to another field. The old read-modify-full-save wrote back a stale
+        snapshot, silently dropping a concurrent deploy/retrain/cache_generation
+        bump. With a targeted atomic $set, concurrent updates all survive.
+
+        cache_generation is the field that matters most: invalidate_model_cache
+        (#489) $inc's it so every worker reloads; a clobber there would resurrect a
+        deleted/stale model. Run several concurrent (prediction, $inc) pairs and
+        assert the counter is exact, not lossy."""
+        from beanie.operators import Inc
+
+        model = await _seed_model("model_race")
+        start = model.cache_generation
+        rounds = 8
+
+        async def bump():
+            await MLModel.find(MLModel.model_id == "model_race").update(
+                Inc({MLModel.cache_generation: 1})
+            )
+
+        async def predict():
+            await PredictionMonitoringService.log_prediction(
+                model_id="model_race", input_data={"x": 1}, prediction="y"
+            )
+
+        # Interleave a cache_generation bump with a prediction, many times.
+        await asyncio.gather(*(c() for _ in range(rounds) for c in (bump, predict)))
+
+        refreshed = await MLModel.find_one(MLModel.model_id == "model_race")
+        # Every bump must have stuck — a full-document save from log_prediction
+        # would have reverted at least one.
+        assert refreshed.cache_generation == start + rounds
+        assert refreshed.last_used_at is not None
     
     @pytest.mark.asyncio
     async def test_get_model_metrics_no_data(self):
