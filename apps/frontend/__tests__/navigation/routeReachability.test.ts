@@ -87,21 +87,44 @@ function collectNavigableLiterals(src: string): string[] {
   return out;
 }
 
-/** Workflow-stage routes from `lib/types/workflow.ts`. `buildStageUrl` may append
- *  `/${datasetId}`, so each stage route `R` is navigable as both `R` and `R/:seg`. */
+/** Workflow-stage routes from `lib/types/workflow.ts`. Every stage route `R` is
+ *  navigable; the dataset-scoped stages are also reached as `R/:seg` because
+ *  dashboard's `handleNavigateToStage` and `buildStageUrl` append `/${datasetId}`
+ *  for every stage except `/upload` (which it guards explicitly), so `/upload/:seg`
+ *  — a variant no navigation produces — is deliberately NOT registered. */
 function collectWorkflowStageRoutes(): string[] {
   const src = fs.readFileSync(path.join(FRONTEND, 'lib', 'types', 'workflow.ts'), 'utf8');
   const out: string[] = [];
   for (const m of src.matchAll(/route:\s*['"](\/[^'"]*)['"]/g)) {
     const r = normalizeRoute(m[1]);
-    out.push(r, normalizeRoute(`${r}/:seg`));
+    out.push(r);
+    if (r !== '/upload') out.push(normalizeRoute(`${r}/:seg`));
   }
   return out;
 }
 
-/** Framework roots that legitimately take no inbound app link. */
+/** The NextAuth pages, read from `auth.ts`'s `pages:` config — the only routes
+ *  reached purely by provider redirect with no inbound app link. Derived from the
+ *  config (like the workflow routes) rather than a `/auth/` prefix match, so a NEW
+ *  page added under `app/auth/` is NOT auto-exempted: it must be linked or
+ *  allowlisted, the same guarantee the guard gives every other route. */
+function collectAuthPages(): string[] {
+  const src = fs.readFileSync(path.join(FRONTEND, 'auth.ts'), 'utf8');
+  const out: string[] = [];
+  for (const m of src.matchAll(
+    /(?:signIn|signOut|verifyRequest|newUser|error)\s*:\s*['"](\/[^'"]*)['"]/g,
+  )) {
+    out.push(normalizeRoute(m[1]));
+  }
+  return out;
+}
+
+const FRAMEWORK_ROOTS = new Set<string>(['/', ...collectAuthPages()]);
+
+/** Routes that legitimately take no inbound app link: the landing page and the
+ *  NextAuth pages (reached by provider redirect). */
 function isFrameworkRoot(route: string): boolean {
-  return route === '/' || route === '/auth' || route.startsWith('/auth/');
+  return FRAMEWORK_ROOTS.has(route);
 }
 
 /**
