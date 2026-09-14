@@ -1278,3 +1278,27 @@ class BatchPredictionService:
             return None
 
         return await self.s3_service.download_file_obj(job.output_path)
+
+    async def delete_job_files(self, job: BatchJob) -> None:
+        """Best-effort delete of a job's S3 input/output objects (#661).
+
+        A batch job owns the uploaded prediction input and the prediction output
+        (keys under ``batch-jobs/{user_id}/…``). Deleting only the Mongo document
+        (the old ``DELETE /jobs/{job_id}`` TODO) orphaned both. Failures are logged,
+        not raised — cleanup must not block the job's deletion; the GDPR erasure
+        path (``erasure_service``) records residuals on its manifest instead.
+        """
+        if self.s3_service.is_mock_mode or self.s3_service.s3_client is None:
+            return
+        for path in (job.input_path, job.output_path):
+            if not path:
+                continue
+            try:
+                await self.s3_service.delete_file(path)
+            except Exception as e:  # noqa: BLE001 - cleanup must not block deletion
+                logger.warning(
+                    "batch job %s: failed to delete S3 object %s: %s",
+                    job.job_id,
+                    path,
+                    e,
+                )

@@ -526,10 +526,9 @@ async def delete_batch_job(
     if job.status in [JobStatus.PENDING, JobStatus.RUNNING]:
         raise HTTPException(status_code=400, detail="Cannot delete active job")
 
-    # Delete job document
+    # Clean up the job's S3 input/output objects, then the document (#661).
+    await batch_service.delete_job_files(job)
     await job.delete()
-
-    # TODO: Clean up S3 files in background
 
     return {"message": "Job deleted successfully"}
 
