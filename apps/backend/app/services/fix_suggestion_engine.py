@@ -530,14 +530,14 @@ class FixSuggestionEngine:
                     f"Transformation type '{fix.transformation_type}' not supported"
                 )
 
-            # Apply the transformation
-            result = self.transformation_engine.apply_transformation(
+            # Apply the transformation (keep the DataFrame, no dict round-trip #542)
+            transformed_df, result = self.transformation_engine.apply_transformation_frame(
                 df=df,
                 transformation_type=trans_type,
                 parameters=fix.parameters,
             )
 
-            if not result.success:
+            if not result.success or transformed_df is None:
                 applied_fix = AppliedFix(
                     fix_id=fix.fix_id,
                     issue_id=issue.issue_id,
@@ -553,8 +553,7 @@ class FixSuggestionEngine:
                     operation="apply_fix"
                 )
 
-            # Create transformed DataFrame
-            transformed_df = pd.DataFrame(result.transformed_data)
+            # transformed_df is already the transformed DataFrame (#542)
 
             # Create applied fix record
             applied_fix = AppliedFix(

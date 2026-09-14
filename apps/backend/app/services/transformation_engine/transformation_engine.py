@@ -487,17 +487,25 @@ class TransformationEngine:
                 error=internal_error_message("Transformation preview"),  # never str(e) (#637)
             )
     
-    def apply_transformation(
+    def apply_transformation_frame(
         self,
         df: pd.DataFrame,
         transformation_type: TransformationType,
         parameters: dict[str, Any]
-    ) -> TransformationResult:
-        """Apply transformation to full dataset"""
+    ) -> tuple[pd.DataFrame | None, TransformationResult]:
+        """Apply a transformation and return the transformed **DataFrame** + metadata (#542).
+
+        The DataFrame stays a DataFrame — no list-of-dicts serialization. Multi-step
+        pipelines chain the returned frame directly instead of round-tripping
+        DataFrame → list[dict] → DataFrame on every step (memory was rows×cols×steps and
+        each conversion discarded dtypes/vectorization). Serialize once at the boundary
+        (or use ``apply_transformation`` when a caller genuinely needs the records).
+        Returns ``(None, failure_result)`` on any failure.
+        """
         try:
             # Edge case: Empty dataset
             if df.empty:
-                return TransformationResult(
+                return None, TransformationResult(
                     success=False,
                     error="Cannot apply transformation to empty dataset"
                 )
@@ -509,7 +517,7 @@ class TransformationEngine:
             # Validate transformation configuration first
             validation_result = self.validate_transformation(df, transformation_type, parameters)
             if not validation_result.success:
-                return validation_result
+                return None, validation_result
 
             # Create transformation
             transformation = self.create_transformation(transformation_type, parameters)
@@ -517,7 +525,7 @@ class TransformationEngine:
             # Validate data
             is_valid, error = transformation.validate_data(df)
             if not is_valid:
-                return TransformationResult(
+                return None, TransformationResult(
                     success=False,
                     error=error
                 )
@@ -530,7 +538,7 @@ class TransformationEngine:
 
             # Edge case: Check if transformation resulted in empty dataset
             if transformed_df.empty and not df.empty:
-                return TransformationResult(
+                return None, TransformationResult(
                     success=False,
                     error="Transformation removed all rows from dataset. Operation aborted."
                 )
@@ -551,9 +559,8 @@ class TransformationEngine:
                 'affected_columns': affected_columns
             })
 
-            return TransformationResult(
+            return transformed_df, TransformationResult(
                 success=True,
-                transformed_data=transformed_df.to_dict('records'),
                 affected_rows=affected_rows,
                 affected_columns=affected_columns,
                 warnings=warnings
@@ -563,11 +570,28 @@ class TransformationEngine:
             # ``error`` travels into 200 bodies via the fix engine's OperationError
             # and the transformation routes; never str(e) here (#637).
             logger.exception("Apply transformation failed")
-            return TransformationResult(
+            return None, TransformationResult(
                 success=False,
                 error=internal_error_message("Transformation"),
             )
-    
+
+    def apply_transformation(
+        self,
+        df: pd.DataFrame,
+        transformation_type: TransformationType,
+        parameters: dict[str, Any]
+    ) -> TransformationResult:
+        """Apply a transformation and return the records (list-of-dicts) form.
+
+        Backward-compatible wrapper over ``apply_transformation_frame`` for callers that
+        genuinely need the serialized rows. Prefer ``apply_transformation_frame`` in
+        multi-step pipelines to avoid per-step serialization (#542).
+        """
+        frame, result = self.apply_transformation_frame(df, transformation_type, parameters)
+        if frame is not None and result.success:
+            result.transformed_data = frame.to_dict('records')
+        return result
+
     def _calculate_stats(self, df: pd.DataFrame) -> dict[str, Any]:
         """
         Calculate basic statistics for dataframe with caching.

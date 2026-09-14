@@ -7,7 +7,6 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
@@ -260,13 +259,14 @@ async def apply_transformation_pipeline(
                     error=f"Invalid transformation type '{step.type}'. Allowed types: {', '.join(valid_types)}"
                 )
 
-            result = engine.apply_transformation(
+            # Keep the DataFrame across steps — no per-step list-of-dicts round-trip (#542).
+            transformed_df, result = engine.apply_transformation_frame(
                 df=df,
                 transformation_type=transformation_type,
                 parameters=step.parameters
             )
-            
-            if not result.success:
+
+            if not result.success or transformed_df is None:
                 return TransformationApplyResponse(
                     success=False,
                     dataset_id=request.dataset_id,
@@ -274,8 +274,8 @@ async def apply_transformation_pipeline(
                     execution_time_ms=int((time.time() - start_time) * 1000),
                     error=f"Transformation '{step.type}' failed: {result.error}"
                 )
-            
-            df = pd.DataFrame(result.transformed_data)
+
+            df = transformed_df
             total_affected_rows += result.affected_rows
             all_affected_columns.update(result.affected_columns)
         
