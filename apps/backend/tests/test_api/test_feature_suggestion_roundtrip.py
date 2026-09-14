@@ -100,6 +100,36 @@ async def test_suggest_then_apply(setup_database, async_authorized_client, herme
 
 
 @pytest.mark.asyncio
+async def test_suggest_more_keeps_the_original_batch_resolvable(
+    setup_database, async_authorized_client, hermetic
+):
+    """#522 (review): /suggest-more must MERGE into the cached set, not replace it —
+    the UI appends the new batch, so the original suggestions stay on screen and
+    must still resolve for apply/feedback/explain."""
+    original = await _suggest_with_target(async_authorized_client)
+    orig_id = original[0]["id"]
+
+    more = await async_authorized_client.post(
+        f"/api/v1/datasets/{DATASET}/features/suggest-more",
+        json={"count": 3, "excluded_suggestion_ids": [s["id"] for s in original]},
+    )
+    assert more.status_code == 200, more.text
+    new_ids = [s["id"] for s in more.json()["suggestions"]]
+
+    # The original id is STILL resolvable after suggest-more (was clobbered before).
+    r_old = await async_authorized_client.get(
+        f"/api/v1/datasets/{DATASET}/features/suggestions/{orig_id}"
+    )
+    assert r_old.status_code == 200, r_old.text
+    # ...and so is a newly-added one.
+    if new_ids:
+        r_new = await async_authorized_client.get(
+            f"/api/v1/datasets/{DATASET}/features/suggestions/{new_ids[0]}"
+        )
+        assert r_new.status_code == 200, r_new.text
+
+
+@pytest.mark.asyncio
 async def test_unknown_suggestion_id_is_404_not_500(
     setup_database, async_authorized_client, hermetic
 ):

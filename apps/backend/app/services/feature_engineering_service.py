@@ -114,6 +114,7 @@ class FeatureEngineeringService:
         feature_types: list[FeatureType] | None = None,
         user_id: str | None = None,
         read_cache: bool = False,
+        write_cache: bool = True,
     ) -> FeatureSuggestionResponse:
         """
         Generate feature suggestions for a dataset.
@@ -212,8 +213,10 @@ class FeatureEngineeringService:
             generated_at=datetime.now(UTC)
         )
 
-        # Cache response
-        await self._cache_suggestions(cache_key, response)
+        # Cache response (write_cache=False lets /suggest-more compute a batch
+        # without clobbering /suggest's cached set — it merges + writes itself).
+        if write_cache:
+            await self._cache_suggestions(cache_key, response)
 
         return response
 
@@ -1090,6 +1093,20 @@ Domain: {analysis.domain.value}"""
         """
         raw = f"{user_id or 'shared'}:{dataset_id}"
         return f"feature_suggestions:{hashlib.md5(raw.encode()).hexdigest()}"
+
+    async def get_cached_suggestions(
+        self, user_id: str | None, dataset_id: str
+    ) -> FeatureSuggestionResponse | None:
+        """The currently-cached suggestion set for a tenant+dataset, or None."""
+        return await self._get_cached_suggestions(self._get_cache_key(user_id, dataset_id))
+
+    async def cache_suggestions(
+        self, user_id: str | None, dataset_id: str, response: FeatureSuggestionResponse
+    ) -> None:
+        """Write a suggestion set so apply/feedback/explain can resolve its ids.
+        Used by /suggest-more to store the UNION of the existing set and the new
+        batch (the UI appends the new batch, so both must stay resolvable)."""
+        await self._cache_suggestions(self._get_cache_key(user_id, dataset_id), response)
 
     async def _get_cached_suggestions(
         self,
