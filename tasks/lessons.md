@@ -1121,3 +1121,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
   datasets/models.
 - **Cover every branch of a shared helper.** Reviewer flagged that only the user_id sweep was
   tested, not the config.model_id cascade path — added a hermetic test spying on `_delete_s3`.
+
+## #662 — erased id lingered in other tenants' shared_with ACLs
+- **GDPR erasure must reach the user's id where it sits in OTHERS' rows, not just their
+  own docs.** The user_id sweep only deletes docs the erased user owns; their id can also
+  be an ACL entry in a co-tenant's StoredFeature/FeatureCollection.shared_with (shared to
+  them, or granted by them). Scrub with `$pull` (remove the one array element), never delete
+  the co-tenant's document — same rule as the #480 SharedRecipe tombstone.
+- **`find({"arr": val}).update({"$pull": {"arr": val}})`** is the array-contains-then-remove
+  idiom; `modified_count` on the Beanie update result is the count to record on the manifest
+  (as a note, not documents_deleted — the doc was mutated, not deleted).
+- **When you close a residual, update the doc that tracked it as open.** CLAUDE.md's
+  erase_user note listed #661/#662 as "still-open residuals"; both reviewers flagged it.
+  Closing a tracked residual includes striking it from the convention doc in the same PR.
