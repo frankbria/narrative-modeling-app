@@ -634,8 +634,8 @@ class BulkTransformationService:
                 n_rows=10,
             )
 
-            # Then apply the actual transformation
-            apply_result = self.engine.apply_transformation(
+            # Then apply the actual transformation (keep the DataFrame, no dict round-trip #542)
+            new_df, apply_result = self.engine.apply_transformation_frame(
                 df=df,
                 transformation_type=TransformationType(transformation_type),
                 parameters=params,
@@ -643,8 +643,7 @@ class BulkTransformationService:
 
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            if apply_result.success and apply_result.transformed_data:
-                new_df = pd.DataFrame(apply_result.transformed_data)
+            if apply_result.success and new_df is not None:
                 return new_df, ColumnResult(
                     column_name=column,
                     success=True,

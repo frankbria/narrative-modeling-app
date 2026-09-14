@@ -425,14 +425,14 @@ class TransformationService(BaseService[TransformationConfig]):
             file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(file_path)
 
-            # Apply transformation using engine
-            result = self.engine.apply_transformation(
+            # Apply transformation using engine (keep the DataFrame, no dict round-trip #542)
+            transformed_df, result = self.engine.apply_transformation_frame(
                 df=df,
                 transformation_type=TransformationType(transformation_type),
                 parameters=parameters
             )
 
-            if not result.success:
+            if not result.success or transformed_df is None:
                 return {
                     "success": False,
                     "dataset_id": dataset_id,
@@ -442,7 +442,6 @@ class TransformationService(BaseService[TransformationConfig]):
                 }
 
             # Save transformed data to S3
-            transformed_df = pd.DataFrame(result.transformed_data)
             timestamp = datetime.now(UTC).timestamp()
             new_file_path = await upload_dataframe_to_s3(
                 transformed_df,
