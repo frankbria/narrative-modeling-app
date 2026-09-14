@@ -450,8 +450,7 @@ class DatasetErasureService:
 
     async def _evict_redis(self, dataset_id: str, manifest: DeletionManifest) -> None:
         try:
-            # delete_pattern uses Redis KEYS (O(N), blocking) — fine at beta scale;
-            # swap for a SCAN-based sweep if the viz-cache keyspace grows large.
+            # delete_pattern sweeps incrementally with SCAN since #570.
             evicted = await cache_service.delete_pattern(f"viz:{dataset_id}:*")
             manifest.redis_keys_evicted += evicted or 0
         except Exception as e:  # noqa: BLE001

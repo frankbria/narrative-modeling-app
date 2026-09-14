@@ -36,6 +36,11 @@ _USER_SCOPED_PATTERNS = ("feature_selection:*:{user_id}:*",)
 # Redis glob metacharacters, escaped with a backslash.
 _GLOB_ESCAPES = str.maketrans({char: "\\" + char for char in "*?[]\\"})
 
+# SCAN COUNT hint (#570): how many keys Redis examines per cursor step. A larger
+# value means fewer round-trips but more work per step; 500 keeps each step cheap
+# while still draining these small, scoped key families in one or two pages.
+_SCAN_COUNT = 500
+
 
 class RedisCacheService:
     """Service for Redis caching operations"""
@@ -152,15 +157,36 @@ class RedisCacheService:
             return False
             
     async def delete_pattern(self, pattern: str) -> int:
-        """Delete all keys matching pattern"""
+        """Delete every key matching ``pattern``, scanning incrementally.
+
+        Uses ``SCAN`` (cursor-based, non-blocking) instead of ``KEYS`` (#570):
+        ``KEYS`` scans the whole keyspace in one call and blocks the Redis event
+        loop while it does — and this shared instance also holds the rate-limit
+        buckets, so a slow ``KEYS`` stalls the limiter for every tenant. ``SCAN``
+        may return the same key on more than one cursor page, so deletions are
+        deduplicated (``seen``); a key removed between the scan and the delete just
+        isn't recounted, because ``DELETE`` reports only the keys it actually
+        removed. ``MATCH`` uses the same glob grammar as ``KEYS`` (backslash escapes
+        included), so every caller's pattern — and the returned count — is unchanged.
+        """
         if not self.redis_client:
             return 0
-            
+
         try:
-            keys = await self.redis_client.keys(pattern)
-            if keys:
-                return await self.redis_client.delete(*keys)
-            return 0
+            deleted = 0
+            seen: set = set()
+            cursor = 0
+            while True:
+                cursor, keys = await self.redis_client.scan(
+                    cursor=cursor, match=pattern, count=_SCAN_COUNT
+                )
+                batch = [k for k in keys if k not in seen]
+                if batch:
+                    seen.update(batch)
+                    deleted += await self.redis_client.delete(*batch)
+                if cursor == 0:
+                    break
+            return deleted
         except Exception as e:
             logger.error(f"Failed to delete pattern {pattern}: {e}")
             return 0
