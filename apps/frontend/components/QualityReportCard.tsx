@@ -11,7 +11,6 @@ import {
   XCircle, 
   BarChart3,
   Shield,
-  Clock,
   Database,
   GitBranch,
   Zap
@@ -37,13 +36,13 @@ interface QualityReportProps {
   }
 }
 
+// Only the four measured dimensions the backend reports (#536 removed the fabricated
+// accuracy and timeliness). The card renders whatever dimension_scores contains.
 const dimensionIcons: Record<string, React.ReactNode> = {
   completeness: <Database className="h-4 w-4" />,
   consistency: <GitBranch className="h-4 w-4" />,
-  accuracy: <BarChart3 className="h-4 w-4" />,
   validity: <Shield className="h-4 w-4" />,
   uniqueness: <Zap className="h-4 w-4" />,
-  timeliness: <Clock className="h-4 w-4" />,
 }
 
 const getScoreColor = (score: number): string => {

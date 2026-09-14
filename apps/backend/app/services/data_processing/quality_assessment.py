@@ -15,23 +15,25 @@ from app.utils.datetime import utcnow
 
 
 class QualityDimension(str, Enum):
-    """Data quality dimensions"""
+    """Data quality dimensions that are actually measured per column.
+
+    Accuracy and timeliness were removed (#536): accuracy needs ground truth we do
+    not have (it was silently copied from validity) and timeliness needs a trusted
+    freshness signal (it was hardcoded to 1.0). Both were reported as if measured.
+    """
     COMPLETENESS = "completeness"
     CONSISTENCY = "consistency"
-    ACCURACY = "accuracy"
     VALIDITY = "validity"
     UNIQUENESS = "uniqueness"
-    TIMELINESS = "timeliness"
 
 
-# The five ML-readiness dimensions combined into the headline 0-100 score (issue #102).
-# Timeliness is excluded — it is a hardcoded placeholder, not a measured signal.
+# The four measured dimensions combined into the headline 0-100 score (issue #102,
+# #536). Every entry is computed from the data — no placeholders.
 SCORE_DIMENSIONS = (
     QualityDimension.COMPLETENESS,
     QualityDimension.VALIDITY,
     QualityDimension.CONSISTENCY,
     QualityDimension.UNIQUENESS,
-    QualityDimension.ACCURACY,
 )
 
 
@@ -469,17 +471,19 @@ class QualityAssessmentService:
             # Return zeros for empty dataframe
             return {dim: 0.0 for dim in QualityDimension}
         
+        # Only the four dimensions we actually measure per column. Accuracy (needs
+        # ground truth we don't have) and timeliness (needs a trusted freshness signal)
+        # were previously fabricated here — accuracy copied from validity, timeliness
+        # hardcoded to 1.0 — and reported as if measured, so a customer could accept or
+        # reject a dataset on a number that meant nothing (#536). Removed rather than
+        # approximated: a made-up quality score is worse than an absent one.
         dimension_scores: dict[QualityDimension, float] = {
             QualityDimension.COMPLETENESS: float(np.mean([cs.completeness_score for cs in column_scores])),
             QualityDimension.CONSISTENCY: float(np.mean([cs.consistency_score for cs in column_scores])),
             QualityDimension.VALIDITY: float(np.mean([cs.validity_score for cs in column_scores])),
             QualityDimension.UNIQUENESS: float(np.mean([cs.uniqueness_score for cs in column_scores]))
         }
-        
-        # Add accuracy and timeliness as placeholders (would need domain knowledge)
-        dimension_scores[QualityDimension.ACCURACY] = dimension_scores[QualityDimension.VALIDITY]
-        dimension_scores[QualityDimension.TIMELINESS] = 1.0  # Assume fresh data
-        
+
         return {k: float(v) for k, v in dimension_scores.items()}
 
     def _generate_recommendations(self, issues: list[QualityIssue], column_types: dict[str, str]) -> list[str]:

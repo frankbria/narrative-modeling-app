@@ -188,9 +188,10 @@ class TestDataProcessor:
         # Should have high quality score for clean data
         assert result.quality_report.overall_quality_score > 0.8
         
-        # Check dimension scores
+        # Check dimension scores: 4 measured dimensions since #536 removed the two
+        # fabricated ones (accuracy, timeliness)
         assert result.quality_report.dimension_scores is not None
-        assert len(result.quality_report.dimension_scores) == 6
+        assert len(result.quality_report.dimension_scores) == 4
 
     async def test_get_preview(self, data_processor, csv_data):
         """Test data preview functionality"""
