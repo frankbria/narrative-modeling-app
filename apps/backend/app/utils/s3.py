@@ -21,8 +21,35 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Initialize S3 client as None initially
-s3_client = None
 S3_BUCKET = None
+
+# A hung S3 endpoint must never outlive the gunicorn worker timeout (120s) — an
+# unbounded boto3 socket read blocks the worker until it is killed (#519, same
+# class as the OpenAI-client timeout, #501). Bound connect + read and cap the
+# worst case: max_attempts x read_timeout + backoff stays well under 120s
+# (default 3 x 20s + ~standard backoff ≈ 80s). All env-overridable, but the
+# defaults are the contract. read_timeout is the per-socket-read idle timeout, not
+# a total-transfer cap, so it does not truncate a large object that keeps streaming.
+_S3_CONNECT_TIMEOUT = float(os.getenv("S3_CONNECT_TIMEOUT", "5"))
+_S3_READ_TIMEOUT = float(os.getenv("S3_READ_TIMEOUT", "20"))
+_S3_MAX_ATTEMPTS = int(os.getenv("S3_MAX_ATTEMPTS", "3"))
+_S3_MAX_POOL_CONNECTIONS = int(os.getenv("S3_MAX_POOL_CONNECTIONS", "20"))
+
+
+def _s3_client_config(endpoint_url: str | None) -> Config:
+    """The botocore Config every S3 client is built with (#519): bounded timeouts,
+    a retry policy, and a connection pool. Path-style addressing is added only for
+    an S3-compatible endpoint (MinIO/LocalStack) so bucket names never become
+    unresolvable host prefixes; real AWS keeps virtual-hosted addressing."""
+    config = Config(
+        connect_timeout=_S3_CONNECT_TIMEOUT,
+        read_timeout=_S3_READ_TIMEOUT,
+        retries={"max_attempts": _S3_MAX_ATTEMPTS, "mode": "standard"},
+        max_pool_connections=_S3_MAX_POOL_CONNECTIONS,
+    )
+    if endpoint_url:
+        config = config.merge(Config(s3={"addressing_style": "path"}))
+    return config
 
 
 def create_s3_client():
@@ -34,21 +61,19 @@ def create_s3_client():
     AWS_ENDPOINT_URL is unset, boto3 targets the default AWS endpoint.
 
     This is the single factory all backend S3 clients should be created
-    through. Raises on failure (callers decide how to handle).
+    through, so the bounded-timeout Config (#519) applies to every client —
+    ``get_s3_client``, ``S3Service`` and ``VersioningService`` alike. Raises on
+    failure (callers decide how to handle).
     """
+    endpoint_url = os.getenv("AWS_ENDPOINT_URL")
     client_kwargs = {
         "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID"),
         "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
         "region_name": resolve_aws_region(),
+        "config": _s3_client_config(endpoint_url),
     }
-    endpoint_url = os.getenv("AWS_ENDPOINT_URL")
     if endpoint_url:
         client_kwargs["endpoint_url"] = endpoint_url
-        # Pin path-style addressing for S3-compatible endpoints so bucket
-        # names never become unresolvable host prefixes (e.g.
-        # http://test-bucket.localhost:9000) regardless of boto3 version.
-        # Real AWS keeps the default (virtual-hosted) addressing.
-        client_kwargs["config"] = Config(s3={"addressing_style": "path"})
     return boto3.client("s3", **client_kwargs)
 
 
@@ -98,13 +123,39 @@ def parse_s3_url(s3_url: str) -> tuple[str | None, str]:
     return bucket, key
 
 
+# Cached S3 client, keyed by the env values that determine its identity (#519).
+# boto3 client construction is expensive (credential + endpoint resolution) and
+# was previously redone on every call; the boto3 *client* is thread-safe (its
+# session is not — we cache the client), so a shared instance is safe under the
+# gunicorn worker threads. Keyed on the env signature so a credential rotation or
+# an endpoint change rebuilds on its own; a single slot bounds it. Still lazy —
+# nothing is built at import, so a secret-less Docker build stays green.
+_s3_client_cache: dict[tuple, object] = {}
+
+
+def _s3_client_signature() -> tuple:
+    return (
+        os.getenv("AWS_ACCESS_KEY_ID"),
+        os.getenv("AWS_SECRET_ACCESS_KEY"),
+        os.getenv("AWS_ENDPOINT_URL"),
+        resolve_aws_region(),
+    )
+
+
+def reset_s3_client() -> None:
+    """Drop the cached S3 client. For tests, and safe after a credential rotation
+    (the signature check also rebuilds automatically when the env changes)."""
+    _s3_client_cache.clear()
+
+
 def get_s3_client():
     """
-    Get or create an S3 client with the current environment variables.
-    This ensures we're using the most up-to-date environment variables.
-    """
-    global s3_client
+    Get the shared S3 client, building it once and reusing it (#519).
 
+    Rebuilds only when the credential/endpoint/region env changes. Returns None
+    (never raises) when required env is absent, so a secret-less build/deploy
+    degrades rather than crashes.
+    """
     # Credentials are required by name; the bucket is resolved through the one
     # canonical resolver (#257/#567) so a deployment that sets only AWS_S3_BUCKET or
     # S3_BUCKET_NAME is not refused here while every other reader accepts it.
@@ -118,14 +169,23 @@ def get_s3_client():
         )
         return None
 
+    signature = _s3_client_signature()
+    cached = _s3_client_cache.get(signature)
+    if cached is not None:
+        return cached
+
     try:
-        # Create a new client with current environment variables
-        s3_client = create_s3_client()
-        logger.info("S3 client initialized successfully")
-        return s3_client
+        client = create_s3_client()
     except Exception as e:
         logger.error(f"Failed to initialize S3 client: {e}")
         return None
+
+    # One slot: a changed signature supersedes the old client rather than
+    # accumulating entries as the env churns.
+    _s3_client_cache.clear()
+    _s3_client_cache[signature] = client
+    logger.info("S3 client initialized successfully")
+    return client
 
 
 def dataset_s3_key(user_id: str, original_filename: str, *, masked: bool = False) -> str:
