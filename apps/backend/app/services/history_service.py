@@ -96,6 +96,14 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
+                    # Bring the restored version's shape with the move so BOTH twins
+                    # describe the restored file — record_new_file copies these onto the
+                    # UserData twin, and a stale count silently mis-drives the training
+                    # mode recommendation (model_training reads num_rows/num_columns off
+                    # the twin). #629, same twin-drift class as #467/#524.
+                    dataset.num_rows = version.num_rows
+                    dataset.num_columns = version.num_columns
+                    dataset.columns = version.columns
                     # Move file_path, s3_url AND the dual-written UserData twin
                     # together (#629) — setting file_path alone left the twin (which
                     # training reads by ObjectId) and s3_url at the pre-undo file, so
@@ -171,6 +179,14 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
+                    # Bring the restored version's shape with the move so BOTH twins
+                    # describe the restored file — record_new_file copies these onto the
+                    # UserData twin, and a stale count silently mis-drives the training
+                    # mode recommendation (model_training reads num_rows/num_columns off
+                    # the twin). #629, same twin-drift class as #467/#524.
+                    dataset.num_rows = version.num_rows
+                    dataset.num_columns = version.num_columns
+                    dataset.columns = version.columns
                     # Move file_path, s3_url AND the dual-written UserData twin
                     # together (#629) — setting file_path alone left the twin (which
                     # training reads by ObjectId) and s3_url at the pre-undo file, so
@@ -250,6 +266,14 @@ class HistoryService:
                 # Get version metadata to update file_path (no need to fetch content)
                 version = await self.versioning_service.get_version(version_id, mark_accessed=False)
                 if version:
+                    # Bring the restored version's shape with the move so BOTH twins
+                    # describe the restored file — record_new_file copies these onto the
+                    # UserData twin, and a stale count silently mis-drives the training
+                    # mode recommendation (model_training reads num_rows/num_columns off
+                    # the twin). #629, same twin-drift class as #467/#524.
+                    dataset.num_rows = version.num_rows
+                    dataset.num_columns = version.num_columns
+                    dataset.columns = version.columns
                     # Move file_path, s3_url AND the dual-written UserData twin
                     # together (#629) — setting file_path alone left the twin (which
                     # training reads by ObjectId) and s3_url at the pre-undo file, so

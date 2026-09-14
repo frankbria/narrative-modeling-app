@@ -507,6 +507,9 @@ async def test_undo_moves_the_userdata_twin(setup_database):
     # get_version returns the version to restore to (its s3_url is the target).
     version = MagicMock()
     version.s3_url = restored
+    version.num_rows = 7
+    version.num_columns = 4
+    version.columns = ["a", "b", "c", "d"]
 
     config = MagicMock()
     config.user_id = user
@@ -527,6 +530,9 @@ async def test_undo_moves_the_userdata_twin(setup_database):
     moved_twin = await UserData.get(twin.id)
     assert moved_twin.s3_url == restored, "UserData twin did not follow the undo"
     assert moved_twin.file_path == restored
+    # The restored version's shape came with it (#629) — a stale count here
+    # mis-drives the training mode recommendation off the twin.
+    assert (moved_twin.num_rows, moved_twin.num_columns) == (7, 4)
     # And the metadata side moved too (both twins agree on the RESTORED file).
     meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds629")
     assert meta.s3_url == restored and meta.file_path == restored
