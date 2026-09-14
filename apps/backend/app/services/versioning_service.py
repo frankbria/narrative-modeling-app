@@ -10,6 +10,7 @@ Security:
 - All bypassed operations are logged for security auditing
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -32,7 +33,7 @@ from app.services.exceptions import (
     OperationError,
     ValidationError,
 )
-from app.utils.s3 import configured_bucket, create_s3_client
+from app.utils.s3 import configured_bucket, create_s3_client, parse_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,14 @@ logger = logging.getLogger(__name__)
 # version_number (issue #276). Contention is bounded by concurrent transforms
 # on one dataset, so a small ceiling is plenty.
 _MAX_VERSION_INSERT_RETRIES = 5
+
+
+class VersionArtifactDeletionError(Exception):
+    """The version's S3 object could not be deleted, so the Mongo row was kept
+    (#561). The row is the only record of the object's key, so deleting it anyway
+    would orphan the object — unreachable from any dataset, lineage row or erasure
+    sweep. Keeping it makes the delete retryable and the object still findable, the
+    same resolution #521 chose for model artifacts."""
 
 
 class VersioningService(BaseService[DatasetVersion]):
@@ -792,6 +801,67 @@ class VersioningService(BaseService[DatasetVersion]):
         await version.save()
         logger.info(f"Unpinned version {version_id}")
         return version
+
+    async def delete_version(self, version: DatasetVersion) -> None:
+        """Permanently delete a version's S3 object and then its Mongo row (#561).
+
+        The user-facing ``DELETE /versions/{id}`` route previously dropped only the
+        Mongo document, orphaning the S3 object it pointed at — and destroying the
+        only record of that object's key in the same request, so nothing (dataset,
+        lineage, erasure sweep) could ever find it again.
+
+        Ordering (AC2 of #561, made consistent with #521's ``delete_model``): delete
+        the S3 object **first**, and if that fails **raise** — keeping the row so the
+        object stays discoverable and the delete is retryable — rather than
+        swallowing the error and deleting the row anyway (the orphan-producing
+        pattern ``cleanup_old_versions`` uses for the retention path). The caller
+        (route) maps the raise to a retryable 502.
+
+        The key is resolved through ``parse_s3_url`` for ANY URL-shaped location —
+        ``s3://``, an endpoint URL, or an ``https://{bucket}.s3…`` form the app has
+        stored after a dataset move (#622). Matching only ``s3://`` would hand the
+        whole https URL to S3 as the key; a delete of a nonexistent key *succeeds*,
+        so the row would be dropped over a surviving object — re-introducing the
+        very orphan this fixes. A raw key never contains ``://`` and passes through.
+
+        If the URL names a bucket that is not the one this deployment is configured
+        for, the delete is refused and the row kept (#616): deleting that key from
+        our bucket would either no-op (S3 doesn't error on a missing key) and orphan
+        the real object in the other bucket, or remove a different, same-named object
+        here. The configured bucket can differ from the stored one after a bucket
+        rename/migration, so this is the same guard ``erasure_service._s3_key`` uses.
+        """
+        location = version.file_path or version.s3_url
+        if "://" in location:
+            parsed_bucket, key = parse_s3_url(location)
+            if parsed_bucket is not None and parsed_bucket != self.bucket_name:
+                raise VersionArtifactDeletionError(
+                    f"version {getattr(version, 'version_id', '?')} object is stored "
+                    f"in bucket {parsed_bucket!r}, not the configured "
+                    f"{self.bucket_name!r}; refusing to delete a same-named key from "
+                    f"the wrong bucket — the record is retained so it stays findable"
+                )
+        else:
+            key = location
+        try:
+            # boto3 is synchronous; offload so a slow/retrying S3 endpoint (bounded
+            # to ~80s by the #519 Config) can't block the event loop for the whole
+            # worker on this user-facing request path (#501/#503 convention).
+            await asyncio.to_thread(
+                self.s3_client.delete_object, Bucket=self.bucket_name, Key=key
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to delete S3 object %s for version %s: %s",
+                key, getattr(version, "version_id", "?"), e,
+            )
+            raise VersionArtifactDeletionError(
+                f"could not delete the S3 object for version "
+                f"{getattr(version, 'version_id', '?')}; the version record is "
+                f"retained so the object stays findable for retry"
+            ) from e
+
+        await version.delete()
 
     async def cleanup_old_versions(
         self,

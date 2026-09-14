@@ -624,6 +624,31 @@ class TestVersionsAPI:
         assert verify_response.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_delete_version_s3_failure_returns_502_and_keeps_the_row(
+        self,
+        async_authorized_client: AsyncClient,
+        child_version: DatasetVersion,
+        mock_s3_client,
+    ):
+        """#561: if the S3 delete fails, the route answers a retryable 502 and the
+        version doc is kept — never a 200 'deleted' over a surviving object."""
+        from botocore.exceptions import ClientError
+
+        mock_s3_client.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "nope"}}, "DeleteObject"
+        )
+
+        response = await async_authorized_client.delete(
+            f"/api/v1/versions/{child_version.version_id}"
+        )
+
+        assert response.status_code == 502, response.text
+        # The row is the only record of the object's key — it must survive.
+        assert await DatasetVersion.find_one(
+            DatasetVersion.version_id == child_version.version_id
+        ) is not None
+
+    @pytest.mark.asyncio
     async def test_delete_base_version_fails(
         self,
         async_authorized_client: AsyncClient,
@@ -1048,6 +1073,7 @@ class TestVersionsAPI:
         async_authorized_client: AsyncClient,
         sample_dataset_metadata: DatasetMetadata,
         mock_user_id: str,
+        mock_s3_client,  # the owner path now deletes the S3 object too (#561)
     ):
         """Regression guard on the owner path."""
         # ARRANGE

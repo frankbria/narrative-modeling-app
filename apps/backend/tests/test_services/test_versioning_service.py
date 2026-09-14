@@ -697,3 +697,85 @@ class TestVersionManagement:
             assert deleted_count == 1
             versions[3].delete.assert_called_once()
             versioning_service.s3_client.delete_object.assert_called_once()
+
+
+class TestDeleteVersionRemovesS3Object:
+    """#561: user-initiated version deletion must remove the S3 object too, and —
+    like #521's delete_model — delete S3 FIRST and keep the Mongo row (the only
+    record of the key) if that fails, rather than swallowing the error and
+    orphaning the object the way cleanup_old_versions does."""
+
+    def _version(self, *, file_path: str, s3_url: str = "s3://bucket/x") -> MagicMock:
+        v = MagicMock()
+        v.version_id = "v1"
+        v.file_path = file_path
+        v.s3_url = s3_url
+        v.delete = AsyncMock()
+        return v
+
+    @pytest.mark.asyncio
+    async def test_deletes_s3_object_then_the_row(self, versioning_service):
+        v = self._version(file_path="datasets/u/ds/versions/v1/f.csv")
+
+        await versioning_service.delete_version(v)
+
+        versioning_service.s3_client.delete_object.assert_called_once_with(
+            Bucket=versioning_service.bucket_name,
+            Key="datasets/u/ds/versions/v1/f.csv",
+        )
+        v.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("shape", ["s3", "https"])
+    async def test_url_file_path_in_configured_bucket_is_resolved_to_the_key(
+        self, versioning_service, shape
+    ):
+        # file_path can be a full URL, in either shape (#622) — delete by key.
+        bucket = versioning_service.bucket_name
+        key = "datasets/u/ds/versions/v1/f.csv"
+        location = (
+            f"s3://{bucket}/{key}" if shape == "s3"
+            else f"https://{bucket}.s3.amazonaws.com/{key}"
+        )
+        v = self._version(file_path=location)
+
+        await versioning_service.delete_version(v)
+
+        call = versioning_service.s3_client.delete_object.call_args.kwargs
+        assert call["Key"] == key
+        assert call["Bucket"] == bucket
+        v.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_foreign_bucket_url_is_refused_and_keeps_row(self, versioning_service):
+        """#616: a URL naming a different bucket must NOT delete a same-named key
+        from our bucket — refuse and keep the row so the object stays findable."""
+        from app.services.versioning_service import VersionArtifactDeletionError
+
+        assert versioning_service.bucket_name != "some-other-bucket"
+        v = self._version(
+            file_path="s3://some-other-bucket/datasets/u/ds/versions/v1/f.csv"
+        )
+
+        with pytest.raises(VersionArtifactDeletionError):
+            await versioning_service.delete_version(v)
+
+        versioning_service.s3_client.delete_object.assert_not_called()
+        v.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_s3_failure_keeps_the_row_and_raises(self, versioning_service):
+        from botocore.exceptions import ClientError
+
+        from app.services.versioning_service import VersionArtifactDeletionError
+
+        v = self._version(file_path="datasets/u/ds/versions/v1/f.csv")
+        versioning_service.s3_client.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "nope"}}, "DeleteObject"
+        )
+
+        with pytest.raises(VersionArtifactDeletionError):
+            await versioning_service.delete_version(v)
+
+        # The row is the only record of the key — it must NOT be deleted on failure.
+        v.delete.assert_not_awaited()
