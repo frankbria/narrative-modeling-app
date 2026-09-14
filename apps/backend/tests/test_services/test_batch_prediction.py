@@ -1113,3 +1113,43 @@ async def test_cancel_before_start_does_not_run_and_refunds_full(setup_database,
     final = await BatchJob.find_one(BatchJob.job_id == "cancel-early")
     assert final.status == JobStatus.CANCELLED
     assert await metering.usage_for(user, "predictions") == before - 10  # full refund
+
+
+@pytest.mark.asyncio
+async def test_failed_batch_records_a_user_safe_reason(monkeypatch):
+    """The outer failure path stores a classified, non-sensitive reason — not the
+    raw exception (which may carry S3 keys / internals) (#518)."""
+    svc = _service()
+    monkeypatch.setattr(svc, "_claim_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(svc, "_cancellation_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(svc, "_finalize_if_running", AsyncMock())
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(return_value=_model()),
+    )
+    svc.model_storage.load_model = AsyncMock(
+        return_value=(_FakeClassifier(), _FakeFeatureEngineer())
+    )
+
+    async def _boom(path, size):
+        raise ValueError(
+            "s3://secret-bucket/u/x.csv: This solver needs samples of at least "
+            "2 classes but the data has 1"
+        )
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(svc, "_read_data_chunks", _boom)
+
+    job = MagicMock()
+    job.job_id = "batch_fail_518"
+    job.user_id = "u1"
+    job.input_path = "in.csv"
+    job.config = BatchPredictionConfig(model_id="model_123", output_format="csv").dict()
+    job.save = AsyncMock()
+
+    await svc._process_batch_job(job)
+
+    job.mark_failed.assert_called_once()
+    reason = job.mark_failed.call_args[0][0]
+    assert "only one distinct value" in reason  # classified, actionable
+    assert "secret-bucket" not in reason  # raw internal never surfaced

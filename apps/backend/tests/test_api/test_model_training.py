@@ -873,6 +873,49 @@ class TestTrainingStatusEndpoint:
         finally:
             await job.delete()
 
+    async def test_train_model_task_records_a_user_safe_reason(
+        self, sample_dataset, setup_database
+    ):
+        """The failed TrainingJob stores a classified, non-sensitive reason — not
+        the raw exception (which may carry S3 keys / internals) (#518)."""
+        from app.api.routes.model_training import TrainModelRequest, train_model_task
+        from app.models.batch_job import JobStatus
+        from app.models.training_job import TrainingJob
+
+        job = TrainingJob(
+            model_id="model_task_safe",
+            user_id="test_user",
+            dataset_id="dataset_123",
+            target_column="target",
+        )
+        await job.insert()
+        try:
+            with patch(
+                "app.services.s3_service.S3Service.download_file_bytes",
+                new_callable=AsyncMock,
+                side_effect=ValueError(
+                    "s3://secret-bucket/u/x.csv: The least populated class in y "
+                    "has only 1 member"
+                ),
+            ):
+                request = TrainModelRequest(
+                    dataset_id="dataset_123", target_column="target"
+                )
+                await train_model_task(
+                    sample_dataset, request, "test_user", "model_task_safe"
+                )
+
+            refreshed = await TrainingJob.find_one(
+                TrainingJob.model_id == "model_task_safe"
+            )
+            assert refreshed.status == JobStatus.FAILED
+            assert "too few examples" in refreshed.error  # classified, actionable
+            assert "secret-bucket" not in refreshed.error  # raw internal not leaked
+            # The log entry carries the safe reason too, not the raw exception.
+            assert all("secret-bucket" not in e.message for e in refreshed.logs)
+        finally:
+            await job.delete()
+
     @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_train_model_task_cancellation(

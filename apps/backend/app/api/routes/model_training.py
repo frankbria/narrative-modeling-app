@@ -103,6 +103,7 @@ from app.services.training_admission import (
     training_semaphore,
 )
 from app.utils.heartbeat import heartbeat_pump
+from app.utils.job_failures import user_safe_failure_reason
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -896,14 +897,17 @@ async def train_model_task(
                 )
 
     except Exception as e:
-        logger.error(f"Error training model: {str(e)}")
+        # Full traceback stays server-side, correlated by model_id; the user gets
+        # a safe, actionable reason instead of raw str(e) (#518, #269).
+        logger.exception("Error training model %s", model_id)
+        reason = user_safe_failure_reason(e)
         if training_job:
             # Guard the failure-recording itself: a secondary error here (e.g. a
             # transient DB outage during save) must not escape the background task.
             try:
                 training_job = await _refreshed_job(training_job)
-                training_job.mark_failed(str(e))
-                training_job.add_log("error", f"Training failed: {e}")
+                training_job.mark_failed(reason)
+                training_job.add_log("error", reason)
                 await training_job.save()
             except Exception as save_exc:
                 logger.error(

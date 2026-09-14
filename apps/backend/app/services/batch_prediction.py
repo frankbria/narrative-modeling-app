@@ -36,6 +36,7 @@ from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
 from app.utils.datetime import as_utc
 from app.utils.heartbeat import heartbeat_pump
+from app.utils.job_failures import user_safe_failure_reason
 
 logger = logging.getLogger(__name__)
 
@@ -551,7 +552,10 @@ class BatchPredictionService:
                 _safe_unlink(out_path)
 
         except Exception as e:
-            job.mark_failed(str(e))
+            # Full traceback stays server-side, correlated by job_id; the user
+            # gets a safe, actionable reason instead of raw str(e) (#518, #269).
+            logger.exception("Batch job %s failed", job.job_id)
+            job.mark_failed(user_safe_failure_reason(e))
             # AC2: only write FAILED if the job is still RUNNING — never over a
             # CANCELLED a concurrent cancel set.
             await self._finalize_if_running(job)
