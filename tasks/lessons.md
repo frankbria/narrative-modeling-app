@@ -1267,3 +1267,17 @@ checked, and the fix is always the same: the claim is a query, so run it.
   what has no source (don't invent); show only what's true of the real deployment (REST
   predict endpoint, API-key auth + rate limiting). Pricing shown anywhere must come from the
   single pricing source, never a hardcoded page literal.
+
+## #513/#514 — bounded, off-loop, cached viz endpoints
+- **Cap + downsample before serializing; never iterrows a full dataset.** Random sample for
+  unordered (scatter), evenly-spaced stride for ordered (line/timeseries) to preserve the
+  curve; label the response (sampled/sample_rate/total_rows). Build vectorized (to_dict).
+- **A new redis cache key must match the erasure eviction pattern AND the data version.**
+  codex: keys had to lead with viz:{dataset_id}: (erasure evicts viz:{dataset_id}:*, else
+  cached PII survives erasure until TTL), and fold in the file version (s3_url) or a
+  transformation that rewrites the file serves stale data for the TTL. Check _evict_redis's
+  pattern before inventing a key family.
+- **Coerce+dropna for scatter, don't emit null coords.** The frontend types x/y non-nullable
+  and .toFixed()s them; a scatter point needs both coords — drop incomplete rows.
+- **Offload the whole async-signature/sync-body family, not just the flagged handler** — the
+  cached generate_and_cache_* generators had the same inline blocking read on first miss.
