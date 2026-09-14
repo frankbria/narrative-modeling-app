@@ -619,23 +619,30 @@ class ModelStorageService:
         # model artifact encodes its training data). Each key is attempted so one
         # failure doesn't skip the rest; any failure keeps the row (the only
         # findable reference) and raises.
-        failed_keys: list[str] = []
-        for key in artifact_keys:
-            try:
-                await self.s3_service.delete_file(key)
-            except Exception as e:
-                logger.error(
-                    "Failed to delete model artifact %s for model %s (user %s): %s",
-                    key, model_id, user_id, e,
-                )
-                failed_keys.append(key)
+        #
+        # Mock mode (tests / local without real AWS) has no bucket and
+        # delete_file() raises unconditionally, so skip S3 entirely — there is
+        # nothing to orphan — and go straight to the Mongo delete, exactly as
+        # DatasetErasureService._delete_s3 does. (The old code only "worked" in
+        # mock mode because it swallowed that RuntimeError.)
+        if not self.s3_service.is_mock_mode and self.s3_service.s3_client is not None:
+            failed_keys: list[str] = []
+            for key in artifact_keys:
+                try:
+                    await self.s3_service.delete_file(key)
+                except Exception as e:
+                    logger.error(
+                        "Failed to delete model artifact %s for model %s (user %s): %s",
+                        key, model_id, user_id, e,
+                    )
+                    failed_keys.append(key)
 
-        if failed_keys:
-            raise ModelArtifactDeletionError(
-                f"could not delete {len(failed_keys)} of {len(artifact_keys)} S3 "
-                f"artifact(s) for model {model_id}; the MLModel record is retained "
-                f"so the object(s) stay findable for retry/reconcile"
-            )
+            if failed_keys:
+                raise ModelArtifactDeletionError(
+                    f"could not delete {len(failed_keys)} of {len(artifact_keys)} S3 "
+                    f"artifact(s) for model {model_id}; the MLModel record is retained "
+                    f"so the object(s) stay findable for retry/reconcile"
+                )
 
         # All artifacts gone — now safe to drop the reference.
         await ml_model.delete()
