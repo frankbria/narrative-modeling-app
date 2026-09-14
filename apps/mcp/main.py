@@ -25,9 +25,14 @@ try:
         host = os.environ.get("MCP_HOST", "127.0.0.1")
         port = int(os.environ.get("PORT", 10000))
 
-        # Fail closed: never expose the tool (S3-reading) surface without a token.
+        # Fail closed: never expose the tool (S3-reading) surface without a token,
+        # and never start pointed at the wrong database (#540 — the owner lookup silently
+        # used get_default_database()). Both are clear startup errors, not runtime surprises.
         try:
+            from utils.user_data import require_db_name
+
             api_key = require_api_key(os.environ.get("MCP_API_KEY"))
+            require_db_name()
         except RuntimeError as e:
             print(str(e))
             sys.exit(1)
