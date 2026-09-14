@@ -475,10 +475,13 @@ class DatasetErasureService:
         # not via the generic Mongo-only delete below.
         await self._erase_batch_jobs({"user_id": user_id}, manifest)
 
+        from app.models.onboarding import OnboardingProgress
+
         for model_cls in [
             ABTest,
             Feedback,
             APIKey,
+            OnboardingProgress,  # account-scoped onboarding state (#541)
             StoredFeature,
             FeatureCollection,
             TransformationRecipe,
