@@ -47,25 +47,36 @@ from app.utils.s3 import configured_bucket, parse_s3_url
 PREFIXES = ("datasets/", "transformed/")
 
 
-def _key(location: str | None) -> str | None:
+def _key(location: str | None, bucket: str) -> str | None:
+    """The object key a stored location references IN the configured bucket, or None.
+
+    A URL naming a DIFFERENT bucket returns None even if its key matches an object
+    in ours — otherwise a stale cross-bucket row would mask a real local orphan
+    (a false negative in the inventory, #525 codex). A bucket-less URL or a bare
+    key is taken as the configured bucket.
+    """
     if not location:
         return None
     try:
-        return parse_s3_url(location)[1]
+        parsed_bucket, key = parse_s3_url(location)
     except Exception:
+        # No parseable URL: a bare key is in the configured bucket by convention.
         return location if not location.startswith(("s3://", "http")) else None
+    if parsed_bucket is not None and parsed_bucket != bucket:
+        return None
+    return key
 
 
-async def _referenced_keys() -> set[str]:
+async def _referenced_keys(bucket: str) -> set[str]:
     keys: set[str] = set()
     async for d in UserData.find_all():
-        keys |= {k for k in (_key(d.s3_url), _key(getattr(d, "file_path", None))) if k}
+        keys |= {k for k in (_key(d.s3_url, bucket), _key(getattr(d, "file_path", None), bucket)) if k}
     async for d in DatasetMetadata.find_all():
-        keys |= {k for k in (_key(d.s3_url), _key(getattr(d, "file_path", None)),
-                             _key(getattr(d, "source_s3_url", None))) if k}
+        keys |= {k for k in (_key(d.s3_url, bucket), _key(getattr(d, "file_path", None), bucket),
+                             _key(getattr(d, "source_s3_url", None), bucket)) if k}
     async for d in DatasetVersion.find_all():
-        keys |= {k for k in (_key(getattr(d, "s3_url", None)),
-                             _key(getattr(d, "file_path", None))) if k}
+        keys |= {k for k in (_key(getattr(d, "s3_url", None), bucket),
+                             _key(getattr(d, "file_path", None), bucket)) if k}
     return keys
 
 
@@ -106,7 +117,7 @@ async def main() -> int:
     client: AsyncIOMotorClient = AsyncIOMotorClient(uri)
     try:
         await init_beanie(database=client[db_name], document_models=DOCUMENT_MODELS)
-        referenced = await _referenced_keys()
+        referenced = await _referenced_keys(bucket)
         objects = await asyncio.to_thread(_list_objects, s3, bucket)
     finally:
         client.close()
