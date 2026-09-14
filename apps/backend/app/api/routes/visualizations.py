@@ -1,4 +1,7 @@
+import asyncio
+import hashlib
 import json
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -6,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
+from app.services.redis_cache import cache_service
 from app.services.visualization_cache import (
     generate_and_cache_boxplot,
     generate_and_cache_correlation_matrix,
@@ -14,6 +18,67 @@ from app.services.visualization_cache import (
 from app.utils.s3 import get_file_from_s3
 
 router = APIRouter()
+
+# A chart can't draw (and a browser can't hold) a million points; cap what we return so
+# the payload and its serialization stay bounded (#513). The point count a line/scatter
+# actually renders is a few thousand.
+MAX_CHART_POINTS = 5000
+# TTL for cached chart payloads (#514): repeated views of the same chart must not
+# re-download and re-parse the whole dataset.
+_CHART_CACHE_TTL = 300
+
+
+async def _load_dataframe(s3_url: str) -> pd.DataFrame:
+    """Download + parse the dataset OFF the event loop (#514).
+
+    The handlers are ``async`` but this is blocking I/O + a full pandas parse; running it
+    inline stalled the worker for every other request for the whole download+parse.
+    """
+    return await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(s3_url)))
+
+
+def _apply_filters(df: pd.DataFrame, filters: str | None) -> pd.DataFrame:
+    """Apply the optional JSON filter list (raises json.JSONDecodeError on bad JSON,
+    which the handlers map to 400)."""
+    if not filters:
+        return df
+    for f in json.loads(filters):
+        col, op, val = f["column"], f["operator"], f["value"]
+        if op == "equals":
+            df = df[df[col] == val]
+        elif op == "greater_than":
+            df = df[df[col] > val]
+        elif op == "less_than":
+            df = df[df[col] < val]
+        elif op == "contains":
+            df = df[df[col].str.contains(str(val), na=False)]
+        elif op == "between" and isinstance(val, list):
+            df = df[(df[col] >= val[0]) & (df[col] <= val[1])]
+    return df
+
+
+def _downsample(df: pd.DataFrame, *, ordered: bool) -> tuple[pd.DataFrame, bool, float]:
+    """Cap the frame at MAX_CHART_POINTS (#513). ``ordered`` (line/timeseries) takes an
+    evenly-spaced stride to preserve the curve's shape; otherwise a deterministic random
+    sample. Returns (frame, sampled, sample_rate)."""
+    n = len(df)
+    if n <= MAX_CHART_POINTS:
+        return df, False, 1.0
+    if ordered:
+        idx = np.linspace(0, n - 1, MAX_CHART_POINTS, dtype=int)
+        return df.iloc[idx], True, MAX_CHART_POINTS / n
+    return df.sample(n=MAX_CHART_POINTS, random_state=0), True, MAX_CHART_POINTS / n
+
+
+def _chart_cache_key(kind: str, dataset_id: str, s3_url: str | None, *parts: Any) -> str:
+    """Cache key that (a) leads with ``dataset_id`` so erasure's ``viz:{dataset_id}:*``
+    sweep purges it (#452/#513 — else cached points survive erasure until TTL), and
+    (b) folds in ``s3_url`` so a transformation that rewrites the dataset file (which
+    changes ``UserData.s3_url`` via ``record_new_file``) invalidates the key instead of
+    serving stale data for the TTL window."""
+    raw = "|".join([kind, s3_url or "", *[str(p) for p in parts]])
+    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return f"viz:{dataset_id}:{kind}:{digest}"
 
 
 @router.get("/histogram/{dataset_id}/{column_name}")
@@ -103,47 +168,44 @@ async def get_scatter_plot(
         dataset = await UserData.get(dataset_id)
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
-        
-        # Apply filters if provided
-        if filters:
-            filter_list = json.loads(filters)
-            for f in filter_list:
-                col = f['column']
-                op = f['operator']
-                val = f['value']
-                
-                if op == 'equals':
-                    df = df[df[col] == val]
-                elif op == 'greater_than':
-                    df = df[df[col] > val]
-                elif op == 'less_than':
-                    df = df[df[col] < val]
-                elif op == 'contains':
-                    df = df[df[col].str.contains(str(val), na=False)]
-                elif op == 'between' and isinstance(val, list):
-                    df = df[(df[col] >= val[0]) & (df[col] <= val[1])]
-        
-        # Prepare scatter data
-        data_points = []
-        for _, row in df.iterrows():
-            data_points.append({
-                'x': float(row[x_column]) if pd.notna(row[x_column]) else None,
-                'y': float(row[y_column]) if pd.notna(row[y_column]) else None
-            })
-        
-        # Calculate correlation
+
+        cache_key = _chart_cache_key("scatter", dataset_id, dataset.s3_url, x_column, y_column, filters)
+        cached = await cache_service.get(cache_key)
+        if cached is not None:
+            return cached
+
+        df = await _load_dataframe(dataset.s3_url)
+        df = _apply_filters(df, filters)
+
+        # Correlation is computed over the FULL (filtered) data, before downsampling.
         correlation = df[x_column].corr(df[y_column])
-        
-        return {
-            'data': data_points,
-            'xLabel': x_column,
-            'yLabel': y_column,
-            'correlation': float(correlation) if not np.isnan(correlation) else None
+
+        # Coerce to numeric and DROP rows where either coordinate is missing/non-numeric,
+        # rather than emitting {x|y: null} — a scatter point needs both coords, and the
+        # frontend ScatterPlotData types x/y as non-nullable numbers and calls .toFixed()
+        # on them unguarded. Drop first, then cap the returned points (#513).
+        numeric = pd.DataFrame({
+            "x": pd.to_numeric(df[x_column], errors="coerce"),
+            "y": pd.to_numeric(df[y_column], errors="coerce"),
+        }).dropna()
+        sample, sampled, sample_rate = _downsample(numeric, ordered=False)
+        data_points = [
+            {"x": float(x), "y": float(y)}
+            for x, y in zip(sample["x"].to_numpy(), sample["y"].to_numpy(), strict=True)
+        ]
+
+        payload = {
+            "data": data_points,
+            "xLabel": x_column,
+            "yLabel": y_column,
+            "correlation": float(correlation) if not np.isnan(correlation) else None,
+            "sampled": sampled,
+            "sample_rate": sample_rate,
+            "total_rows": int(len(df)),
         }
-        
+        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
+        return payload
+
     except HTTPException:
         raise
     except json.JSONDecodeError:
@@ -168,34 +230,22 @@ async def get_line_chart(
         dataset = await UserData.get(dataset_id)
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
-        
-        # Apply filters if provided
-        if filters:
-            filter_list = json.loads(filters)
-            for f in filter_list:
-                col = f['column']
-                op = f['operator']
-                val = f['value']
-                
-                if op == 'equals':
-                    df = df[df[col] == val]
-                elif op == 'greater_than':
-                    df = df[df[col] > val]
-                elif op == 'less_than':
-                    df = df[df[col] < val]
-                elif op == 'contains':
-                    df = df[df[col].str.contains(str(val), na=False)]
-                elif op == 'between' and isinstance(val, list):
-                    df = df[(df[col] >= val[0]) & (df[col] <= val[1])]
-        
+
+        cache_key = _chart_cache_key("line", dataset_id, dataset.s3_url, x_column, y_columns, filters)
+        cached = await cache_service.get(cache_key)
+        if cached is not None:
+            return cached
+
+        df = await _load_dataframe(dataset.s3_url)
+        df = _apply_filters(df, filters)
+
         # Parse y_columns
-        y_cols = y_columns.split(',')
-        
-        # Prepare line chart data. The x value must be JSON-serializable: numpy
-        # scalars (from a numeric x column) are not, so coerce to native types.
+        y_cols = [c for c in y_columns.split(",") if c in df.columns]
+
+        # Cap the returned points, preserving the line's shape (#513), then build
+        # vectorized from records (no iterrows).
+        sample, sampled, sample_rate = _downsample(df, ordered=True)
+
         def _native_x(value):
             if pd.isna(value):
                 return None
@@ -205,23 +255,28 @@ async def get_line_chart(
                 return float(value)
             return str(value)
 
+        records = sample[[x_column, *y_cols]].to_dict("records")
         data = []
-        for _, row in df.iterrows():
-            point = {'x': _native_x(row[x_column])}
+        for rec in records:
+            point = {"x": _native_x(rec[x_column])}
             for y_col in y_cols:
-                if y_col in df.columns:
-                    point[y_col] = float(row[y_col]) if pd.notna(row[y_col]) else None
+                v = rec[y_col]
+                point[y_col] = None if pd.isna(v) else float(v)
             data.append(point)
-        
-        # Prepare lines info
-        lines = [{'dataKey': col, 'label': col} for col in y_cols]
-        
-        return {
-            'data': data,
-            'lines': lines,
-            'xLabel': x_column,
-            'yLabel': 'Value'
+
+        lines = [{"dataKey": col, "label": col} for col in y_cols]
+
+        payload = {
+            "data": data,
+            "lines": lines,
+            "xLabel": x_column,
+            "yLabel": "Value",
+            "sampled": sampled,
+            "sample_rate": sample_rate,
+            "total_rows": int(len(df)),
         }
+        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
+        return payload
 
     except HTTPException:
         raise
@@ -247,44 +302,35 @@ async def get_time_series(
         dataset = await UserData.get(dataset_id)
         if not dataset or dataset.user_id != current_user_id:
             raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data
-        df = pd.read_csv(get_file_from_s3(dataset.s3_url))
-        
-        # Apply filters if provided
-        if filters:
-            filter_list = json.loads(filters)
-            for f in filter_list:
-                col = f['column']
-                op = f['operator']
-                val = f['value']
-                
-                if op == 'equals':
-                    df = df[df[col] == val]
-                elif op == 'greater_than':
-                    df = df[df[col] > val]
-                elif op == 'less_than':
-                    df = df[df[col] < val]
-                elif op == 'contains':
-                    df = df[df[col].str.contains(str(val), na=False)]
-                elif op == 'between' and isinstance(val, list):
-                    df = df[(df[col] >= val[0]) & (df[col] <= val[1])]
-        
-        # Convert time column to datetime
+
+        cache_key = _chart_cache_key("timeseries", dataset_id, dataset.s3_url, time_column, value_column, filters)
+        cached = await cache_service.get(cache_key)
+        if cached is not None:
+            return cached
+
+        df = await _load_dataframe(dataset.s3_url)
+        df = _apply_filters(df, filters)
+
+        # Convert time column to datetime and sort
         df[time_column] = pd.to_datetime(df[time_column])
-        
-        # Sort by time
         df = df.sort_values(time_column)
-        
-        # Prepare time series data
-        timestamps = df[time_column].dt.strftime('%Y-%m-%d %H:%M:%S').tolist()
-        values = df[value_column].fillna(0).tolist()
-        
-        return {
-            'timestamps': timestamps,
-            'values': values,
-            'label': value_column
+
+        # Cap the returned points with an evenly-spaced stride to preserve the curve (#513).
+        sample, sampled, sample_rate = _downsample(df, ordered=True)
+
+        timestamps = sample[time_column].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+        values = sample[value_column].fillna(0).tolist()
+
+        payload = {
+            "timestamps": timestamps,
+            "values": values,
+            "label": value_column,
+            "sampled": sampled,
+            "sample_rate": sample_rate,
+            "total_rows": int(len(df)),
         }
+        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
+        return payload
 
     except HTTPException:
         raise
