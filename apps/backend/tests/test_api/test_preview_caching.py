@@ -99,5 +99,61 @@ async def test_large_file_is_range_read_not_cached(
     # Correct slice even though only the range was parsed.
     assert [row["id"] for row in r1.json()["data"]] == [8, 9, 10, 11]
     assert r1.json()["total_rows"] == 20
+    assert r1.json()["approximate_total_rows"] is True
     # Not cached, so the second identical request re-downloads.
     assert spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_frame_larger_than_memory_budget_is_not_cached(
+    setup_database, async_authorized_client, monkeypatch
+):
+    """A file small enough to parse whole but whose PARSED frame exceeds the memory
+    budget is served but not retained — bounding resident memory on the shared VPS
+    (internal review #517). It re-downloads on the next page rather than holding a
+    multi-x-source-size frame for the TTL."""
+    import app.api.routes.data_processing as dp
+
+    monkeypatch.setattr(dp, "_PREVIEW_CACHE_MAX_FRAME_BYTES", 1)  # nothing fits
+    doc = await _seed_processed_csv(rows=10)
+    spy = AsyncMock(return_value=_csv_bytes(10))
+    with patch("app.services.s3_service.s3_service.download_file_bytes", spy):
+        r1 = await async_authorized_client.get(
+            f"/api/v1/data/{doc.id}/preview?rows=3&offset=0"
+        )
+        r2 = await async_authorized_client.get(
+            f"/api/v1/data/{doc.id}/preview?rows=3&offset=3"
+        )
+
+    assert r1.status_code == 200, r1.text
+    assert r2.status_code == 200, r2.text
+    # Correct data still returned (parsed whole, just not cached).
+    assert [row["id"] for row in r1.json()["data"]] == [0, 1, 2]
+    assert [row["id"] for row in r2.json()["data"]] == [3, 4, 5]
+    assert r1.json()["total_rows"] == 10
+    # Over the frame budget -> not cached -> second page re-downloads.
+    assert spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_range_read_total_rows_counts_a_missing_trailing_newline(
+    setup_database, async_authorized_client, monkeypatch
+):
+    """The over-cap range-read reports total_rows from a line count; a CSV whose
+    last row has no trailing newline (many writers omit it) must still count that
+    row, not drop it (codex #517)."""
+    import app.api.routes.data_processing as dp
+
+    monkeypatch.setattr(dp, "_PREVIEW_CACHE_MAX_BYTES", 1)  # force the range-read path
+    doc = await _seed_processed_csv(rows=3)
+    no_trailing_nl = b"id,label\n0,a\n1,b\n2,c"  # 3 data rows, no final newline
+    with patch(
+        "app.services.s3_service.s3_service.download_file_bytes",
+        AsyncMock(return_value=no_trailing_nl),
+    ):
+        r = await async_authorized_client.get(
+            f"/api/v1/data/{doc.id}/preview?rows=10&offset=0"
+        )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["total_rows"] == 3  # not 2

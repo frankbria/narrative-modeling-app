@@ -41,12 +41,21 @@ data_processor = DataProcessor()
 # bounded TTL so paging is free after the first page; a file too large to hold is
 # range-read instead (only the requested rows are parsed) and never cached.
 _PREVIEW_CACHE_TTL_SECONDS = float(os.getenv("PREVIEW_CACHE_TTL_SECONDS", "300"))
-_PREVIEW_CACHE_MAX_ENTRIES = int(os.getenv("PREVIEW_CACHE_MAX_ENTRIES", "16"))
-#: A frame parsed from more than this many source bytes is not cached (it would
-#: dominate the per-process memory the cache is meant to bound); those files are
-#: range-read per page instead. 25 MB covers the overwhelming majority of preview
-#: datasets while the download size cap is 1 GB.
+_PREVIEW_CACHE_MAX_ENTRIES = int(os.getenv("PREVIEW_CACHE_MAX_ENTRIES", "8"))
+#: A file larger than this is never parsed whole — it is range-read per page (only
+#: the requested rows are parsed), so the whole-file parse can't blow transient
+#: memory. 25 MB covers the overwhelming majority of preview datasets; the
+#: download size cap is 1 GB.
 _PREVIEW_CACHE_MAX_BYTES = int(os.getenv("PREVIEW_CACHE_MAX_BYTES", str(25 * 1024 * 1024)))
+#: A parsed frame retained in the cache is bounded by its ACTUAL in-memory size
+#: (`memory_usage(deep=True)`), not the source bytes: an object/string-heavy CSV
+#: commonly parses to several times its source size (the same ~3x noted for
+#: MAX_EXPORT_SOURCE_BYTES), so gating on source bytes alone could hold GBs across
+#: MAX_ENTRIES on the shared VPS. A frame over this is served but not cached.
+#: Worst-case resident: MAX_ENTRIES x this (8 x 32 MB = 256 MB).
+_PREVIEW_CACHE_MAX_FRAME_BYTES = int(
+    os.getenv("PREVIEW_CACHE_MAX_FRAME_BYTES", str(32 * 1024 * 1024))
+)
 
 
 class _PreviewFrameCache:
@@ -117,6 +126,18 @@ def _parse_full(file_bytes: bytes, fmt: str):
     return pd.read_excel(io.BytesIO(file_bytes))
 
 
+def _parse_and_size(file_bytes: bytes, fmt: str):
+    """Parse the whole file and measure the parsed frame's real memory footprint.
+
+    Both run off the event loop (one asyncio.to_thread) so the caller can decide
+    whether the frame is small enough to retain in the cache without a second
+    thread hop. ``memory_usage(deep=True)`` walks object columns, so it is done
+    here rather than on the loop.
+    """
+    df = _parse_full(file_bytes, fmt)
+    return df, int(df.memory_usage(deep=True).sum())
+
+
 def _range_read(file_bytes: bytes, fmt: str, offset: int, rows: int):
     """Read only the requested row range for a file too large to cache (#517 AC2).
 
@@ -130,11 +151,16 @@ def _range_read(file_bytes: bytes, fmt: str, offset: int, rows: int):
     if fmt == "csv":
         skip = range(1, offset + 1) if offset else None
         page_df = pd.read_csv(io.BytesIO(file_bytes), skiprows=skip, nrows=rows)
-        # total_rows for display: newline count minus the header. ponytail:
-        # approximate for CSVs with quoted embedded newlines — a correct count
-        # would re-parse the whole file, defeating the range read; the exact
-        # value only matters for a >25 MB preview's row total.
-        total_rows = max(file_bytes.count(b"\n") - 1, 0)
+        # total_rows for display: line count minus the header. Count a final row
+        # with no trailing newline (many CSV writers omit it), so `header\nrow1`
+        # reports 1, not 0. ponytail: still approximate for CSVs with quoted
+        # embedded newlines — a correct count would re-parse the whole file,
+        # defeating the range read; the exact value only matters for the row
+        # total shown on a >25 MB preview.
+        line_count = file_bytes.count(b"\n")
+        if file_bytes and not file_bytes.endswith(b"\n"):
+            line_count += 1
+        total_rows = max(line_count - 1, 0)
         return page_df, total_rows
     page_df = pd.read_excel(io.BytesIO(file_bytes))
     return page_df.iloc[offset:offset + rows], len(page_df)
@@ -464,9 +490,14 @@ async def get_data_preview(
         file_bytes = await s3_service.download_file_bytes(file_key)
 
         if len(file_bytes) <= _PREVIEW_CACHE_MAX_BYTES:
-            # Small enough to cache: parse whole (off-loop), cache, then paging is free.
-            df = await asyncio.to_thread(_parse_full, file_bytes, fmt)
-            _preview_cache.put(cache_key, df)
+            # Small enough to parse whole (off-loop). Cache it only if the PARSED
+            # frame's real footprint is within budget — a small CSV can widen to a
+            # multiple of its source size, so gating on source bytes alone would
+            # let the cache hold GBs. Over budget: serve from the just-parsed frame
+            # without retaining it.
+            df, frame_bytes = await asyncio.to_thread(_parse_and_size, file_bytes, fmt)
+            if frame_bytes <= _PREVIEW_CACHE_MAX_FRAME_BYTES:
+                _preview_cache.put(cache_key, df)
             page = df.iloc[offset:offset + rows]
             return _preview_payload(
                 user_data, df.columns.tolist(), _records(page), len(df), offset,
@@ -478,7 +509,14 @@ async def get_data_preview(
         )
         return _preview_payload(
             user_data, page_df.columns.tolist(), _records(page_df), total_rows, offset,
-            {"warning": "File too large to cache; only the requested rows were read."},
+            {
+                "warning": "File too large to cache; only the requested rows were read.",
+                # total_rows is a line count here (never a full parse), so it can
+                # over-report for CSVs with quoted embedded newlines. It never
+                # UNDER-reports (so no row is unreachable via paging); the flag
+                # tells the caller not to treat it as exact.
+                "approximate_total_rows": True,
+            },
         )
 
     except HTTPException:
