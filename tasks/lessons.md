@@ -1180,3 +1180,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Reducing a menu is the fix, not a regression, when the removed entries never worked** —
   but verify the non-executable path is graceful (validate_transformation catches the
   create_transformation ValueError → success=False, no 500) so old saved recipes don't crash.
+
+## #536 — remove fabricated quality dimensions (accuracy/timeliness)
+- **A fabricated metric is worse than an absent one.** accuracy was silently copied from
+  validity, timeliness hardcoded to 1.0, both reported as measured (and accuracy was in the
+  headline score). Remove unmeasurable dimensions rather than approximate; state why in code.
+- **Grepping for the removed name misses bare COUNT assertions.** I found every
+  `accuracy`/`timeliness`/`QualityDimension.X` reference, but a separate test asserted
+  `len(dimension_scores) == 6` with no dimension name in the line — CI Backend Tests caught it,
+  not my targeted subset. When changing the cardinality of a shared structure, run the FULL
+  suite (or grep for `== <oldcount>` / `len(` on that structure), not just name-based greps.
+- **Keep data-driven component test fixtures carrying legacy keys** — they double as
+  backward-compat coverage (the card must render pre-#536 cached reports that still contain
+  accuracy/timeliness without crashing); don't "tidy" them to match the new backend output.
