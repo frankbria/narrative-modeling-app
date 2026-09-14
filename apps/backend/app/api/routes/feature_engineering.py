@@ -139,7 +139,9 @@ async def suggest_features(
             problem_type=request.problem_type,
             max_suggestions=request.max_suggestions,
             include_ai=request.include_ai_suggestions,
-            feature_types=request.feature_types
+            feature_types=request.feature_types,
+            user_id=current_user_id,
+            read_cache=False,  # generator: write through so consumers resolve this set (#522)
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
@@ -178,7 +180,8 @@ async def get_suggestion_explanation(
         # Generate suggestions (should hit cache)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
         )
 
         # Find the specific suggestion
@@ -231,7 +234,8 @@ async def record_suggestion_feedback(
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
         )
 
         # Find the suggestion to get its feature_type
@@ -317,7 +321,9 @@ async def suggest_more_features(
             problem_type=request.problem_type,
             max_suggestions=request.count + len(excluded_ids),
             include_ai=True,
-            feature_types=prefer_types if prefer_types else None
+            feature_types=prefer_types if prefer_types else None,
+            user_id=current_user_id,
+            read_cache=False,  # generator: write through so consumers resolve this set (#522)
         )
 
         # Filter out excluded suggestions
@@ -365,7 +371,8 @@ async def apply_feature(
         # Get the suggestion
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
         )
 
         suggestion = None
@@ -450,7 +457,8 @@ async def apply_multiple_features(
         # Get suggestions (fetched once, cached by service via Redis)
         suggestions_response = await feature_engineering_service.suggest_features(
             df=df,
-            dataset_id=dataset_id
+            dataset_id=dataset_id,
+            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
         )
 
         # Build lookup map for O(1) access per suggestion

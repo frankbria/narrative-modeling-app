@@ -111,7 +111,9 @@ class FeatureEngineeringService:
         problem_type: str | None = None,
         max_suggestions: int = 20,
         include_ai: bool = True,
-        feature_types: list[FeatureType] | None = None
+        feature_types: list[FeatureType] | None = None,
+        user_id: str | None = None,
+        read_cache: bool = True,
     ) -> FeatureSuggestionResponse:
         """
         Generate feature suggestions for a dataset.
@@ -130,12 +132,15 @@ class FeatureEngineeringService:
         """
         start_time = datetime.now(UTC)
 
-        # Check cache first
-        cache_key = self._get_cache_key(dataset_id, target_column, problem_type)
-        cached = await self._get_cached_suggestions(cache_key)
-        if cached:
-            logger.info(f"Returning cached suggestions for dataset {dataset_id}")
-            return cached
+        # One tenant+dataset-scoped key every endpoint can reproduce (#522).
+        cache_key = self._get_cache_key(user_id, dataset_id)
+        # Generators (/suggest, /suggest-more) pass read_cache=False to write
+        # through — the latest generation defines the set the consumers resolve.
+        if read_cache:
+            cached = await self._get_cached_suggestions(cache_key)
+            if cached:
+                logger.info(f"Returning cached suggestions for dataset {dataset_id}")
+                return cached
 
         # Analyze dataset
         analysis = await self._analyze_dataset(df, target_column, problem_type)
@@ -1064,15 +1069,22 @@ Domain: {analysis.domain.value}"""
         self._suggestion_counter += 1
         return f"feat_{prefix}_{self._suggestion_counter:04d}_{uuid.uuid4().hex[:6]}"
 
-    def _get_cache_key(
-        self,
-        dataset_id: str,
-        target_column: str | None,
-        problem_type: str | None
-    ) -> str:
-        """Generate cache key for suggestions"""
-        key_parts = [dataset_id, target_column or "auto", problem_type or "auto"]
-        return f"feature_suggestions:{hashlib.md5(':'.join(key_parts).encode()).hexdigest()}"
+    def _get_cache_key(self, user_id: str | None, dataset_id: str) -> str:
+        """Suggestion cache key — tenant- and dataset-scoped ONLY (#522).
+
+        The apply/feedback/explain lookups only know ``user_id`` + ``dataset_id``
+        (never the ``target_column``/``problem_type`` the user passed to
+        ``/suggest``), so keying on those made every lookup miss `/suggest`'s
+        entry and 404 the suggestion ids it had just handed out. Keying on
+        ``(user_id, dataset_id)`` is what all four endpoints can reproduce
+        identically. Excluding target/problem is safe because the generators
+        (`/suggest`, `/suggest-more`) write through (``read_cache=False``), so the
+        latest generation defines the current set the consumers resolve against.
+        ``user_id`` scopes it per tenant (a shared key leaked one tenant's
+        suggestions to another — the recurring class in CLAUDE.md).
+        """
+        raw = f"{user_id or 'shared'}:{dataset_id}"
+        return f"feature_suggestions:{hashlib.md5(raw.encode()).hexdigest()}"
 
     async def _get_cached_suggestions(
         self,
