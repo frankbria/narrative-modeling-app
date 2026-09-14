@@ -1,7 +1,6 @@
 """#468 AC5: a model saved for real is exported as a Docker ZIP whose artifacts load and
 predict. Real S3 (LocalStack), real `load_model` (HMAC-verified), the real route."""
 import os
-import pickle
 import zipfile
 from io import BytesIO
 
@@ -59,27 +58,38 @@ async def test_docker_export_of_a_real_model_ships_working_artifacts(
     response = await async_authorized_client.get(f"/api/v1/models/{ml_model.model_id}/export/docker")
     assert response.status_code == 200, response.text  # was: 500 on every format
 
+    import subprocess
     import sys
     import tempfile
+    import textwrap
 
     with tempfile.TemporaryDirectory() as tmp:
         with zipfile.ZipFile(BytesIO(response.content)) as zf:
             names = set(zf.namelist())
             copied = {line.split()[1] for line in zf.read("Dockerfile").decode().splitlines() if line.startswith("COPY ")}
             assert copied <= names, f"Dockerfile COPYs {copied - names} the ZIP lacks"
-            assert "feature_engineer.py" in names  # the standalone module (#632)
             zf.extractall(tmp)
-            model = pickle.loads(zf.read("model.pkl"))
-        # #632: load preprocessing through the SHIPPED standalone module (no `app` code),
-        # then transform + predict — the container's exact inference path, synchronous.
-        sys.path.insert(0, tmp)
-        try:
-            import importlib
-
-            standalone = importlib.import_module("feature_engineer")
-            engineer = standalone.load_feature_engineer(f"{tmp}/feature_engineer.pkl")
-        finally:
-            sys.path.remove(tmp)
-            sys.modules.pop("feature_engineer", None)
-        transformed = engineer.transform(X.head(3)) if engineer is not None else X.head(3)
-        assert len(model.predict(transformed)) == 3
+        # #632 AC3: run the SHIPPED inference.py in a subprocess whose sys.path has no repo
+        # root, so `import app.services...` fails — proving the exported container loads and
+        # predicts without any platform code. The standalone preprocessing is inlined.
+        sample = X.head(3).to_dict(orient="records")
+        script = textwrap.dedent(
+            f"""
+            import sys
+            try:
+                import app.services.model_training.feature_engineer  # noqa: F401
+                print("APP_LEAKED"); sys.exit(2)
+            except ModuleNotFoundError:
+                pass
+            from inference import ModelInference
+            inf = ModelInference("model.pkl", "feature_engineer.pkl")
+            print(len(inf.predict({sample!r})["predictions"]))
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmp,
+            env={"PATH": "/usr/bin:/bin", "PYTHONPATH": ""},
+            capture_output=True, text=True, timeout=120,
+        )
+        assert proc.returncode == 0, f"stdout={proc.stdout}\nstderr={proc.stderr}"
+        assert proc.stdout.strip().splitlines()[-1] == "3"

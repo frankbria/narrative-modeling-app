@@ -82,7 +82,7 @@ async def test_empty_engineer_ships_none():
     assert feature_engineer_state(None) is None
 
 
-async def test_docker_zip_carries_the_standalone_module_and_state(monkeypatch):
+async def test_docker_zip_is_self_contained_with_inlined_preprocessing(monkeypatch):
     model, clf, fe, _ = await _trained_model_with_fe()
     svc = ModelExportService()
 
@@ -93,7 +93,7 @@ async def test_docker_zip_carries_the_standalone_module_and_state(monkeypatch):
     zip_bytes, filename = await svc.export_docker_container("m-632", "u1")
     with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
         names = set(zf.namelist())
-        assert {"feature_engineer.py", "feature_engineer.pkl", "inference.py"} <= names
+        assert {"feature_engineer.pkl", "inference.py"} <= names
         # every COPY in the Dockerfile is present in the ZIP
         copied = {
             line.split()[1]
@@ -101,10 +101,13 @@ async def test_docker_zip_carries_the_standalone_module_and_state(monkeypatch):
             if line.startswith("COPY ")
         }
         assert copied <= names, f"Dockerfile COPYs {copied - names} the ZIP lacks"
-        # the generated inference is synchronous — no asyncio.run of transform (AC2)
         inference_src = zf.read("inference.py").decode()
+        # the preprocessing class is INLINED (no companion module to import), and
+        # the inference path is synchronous — no asyncio.run of transform (AC2)
         assert "asyncio" not in inference_src
-        assert "from feature_engineer import load_feature_engineer" in inference_src
+        assert "class StandaloneFeatureEngineer" in inference_src
+        assert "load_feature_engineer" in inference_src
+        assert "from feature_engineer import" not in inference_src
 
 
 async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
@@ -152,32 +155,22 @@ async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
     assert proc.stdout.strip().splitlines()[-1] == "3"
 
 
-async def test_standalone_transform_matches_the_platform(monkeypatch, tmp_path):
+async def test_standalone_transform_matches_the_platform():
     """The container's preprocessing must produce the SAME matrix the platform's
-    FeatureEngineer.transform does, or predictions silently diverge."""
-    model, clf, fe, X = await _trained_model_with_fe()
-    svc = ModelExportService()
+    FeatureEngineer.transform does, or predictions silently diverge. Compares the
+    source-of-truth StandaloneFeatureEngineer (inlined into every export) against
+    the platform, driven by the shipped state dict."""
+    import pickle
 
-    async def fake_load(model_id, user_id):
-        return model, clf, fe
+    from app.services.model_export_assets._standalone_fe import (
+        StandaloneFeatureEngineer,
+    )
 
-    monkeypatch.setattr(svc, "_load_owned", fake_load)
-    zip_bytes, _ = await svc.export_docker_container("m-632", "u1")
-    with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
-        zf.extractall(tmp_path)
-
-    sys.path.insert(0, str(tmp_path))
-    try:
-        # import the SHIPPED standalone module, not the platform one
-        import importlib
-
-        standalone = importlib.import_module("feature_engineer")
-        importlib.reload(standalone)
-        engineer = standalone.load_feature_engineer(str(tmp_path / "feature_engineer.pkl"))
-        got = engineer.transform(X.head(5))
-    finally:
-        sys.path.remove(str(tmp_path))
-        sys.modules.pop("feature_engineer", None)
+    _, _, fe, X = await _trained_model_with_fe()
+    state = feature_engineer_state(fe)
+    # round-trip the state exactly as the export does (pickle → unpickle)
+    engineer = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(state)))
+    got = engineer.transform(X.head(5))
 
     expected = await fe.transform(X.head(5))
     pd.testing.assert_frame_equal(

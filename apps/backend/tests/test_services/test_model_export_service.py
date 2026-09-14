@@ -120,8 +120,8 @@ class TestPythonExport:
             code, filename = await export_service.export_python_code(MODEL_ID, USER, include_preprocessing=True)
         assert "class ModelInference:" in code
         assert "LogisticRegression" in code
-        # #632: preprocessing loads via the standalone shipped module, not the platform class
-        assert "from feature_engineer import load_feature_engineer" in code
+        # #632: preprocessing is inlined as StandaloneFeatureEngineer, not the platform class
+        assert "class StandaloneFeatureEngineer" in code
         assert "app.services.model_training" not in code
         for feature in mock_model.feature_names:
             assert feature in code
@@ -161,8 +161,10 @@ class TestDockerExport:
             dockerfile = zf.read("Dockerfile").decode()
             copied = {line.split()[1] for line in dockerfile.splitlines() if line.startswith("COPY ")}
             assert copied <= names, f"Dockerfile COPYs {copied - names} that the ZIP does not contain"
-            assert {"model.pkl", "feature_engineer.pkl", "feature_engineer.py", "inference.py",
+            assert {"model.pkl", "feature_engineer.pkl", "inference.py",
                     "app.py", "requirements.txt", "README.md"} <= names
+            # inference.py is self-contained: the standalone class is inlined (#632)
+            assert "class StandaloneFeatureEngineer" in zf.read("inference.py").decode()
 
             restored = pickle.loads(zf.read("model.pkl"))
             assert restored.predict(np.zeros((1, 3))).shape == (1,)
@@ -299,7 +301,7 @@ class TestGeneratedCode:
             model=mock_model, trained_model=trained_model, feature_engineer=feature_engineer,
             include_preprocessing=True,
         )
-        # #632: the code imports the standalone loader and applies transform synchronously
-        assert "from feature_engineer import load_feature_engineer" in code
+        # #632: the standalone class is inlined and transform is applied synchronously
+        assert "class StandaloneFeatureEngineer" in code
         assert "self.feature_engineer.transform" in code
         assert "asyncio" not in code

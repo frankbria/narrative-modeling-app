@@ -8,14 +8,16 @@ feature engineering. Instead we ship:
   - a plain **state dict** (``feature_engineer_state``) — only fitted stock
     scikit-learn transformers plus lists/strings, no ``app`` class references, so
     it unpickles anywhere scikit-learn is installed; and
-  - a self-contained ``feature_engineer.py`` (``standalone_module_source``) that
-    reconstructs the transform from that dict, synchronously.
+  - the ``StandaloneFeatureEngineer`` source (``standalone_class_source``), which
+    ``inference.py`` **inlines** so both exports (the Docker ZIP and the single-file
+    Python download) are self-contained — no companion module to ship.
 """
 
 from pathlib import Path
 from typing import Any
 
 _STANDALONE_MODULE = Path(__file__).parent / "model_export_assets" / "_standalone_fe.py"
+_CLASS_MARKER = "class StandaloneFeatureEngineer"
 
 
 def feature_engineer_state(feature_engineer: Any) -> dict[str, Any] | None:
@@ -42,6 +44,14 @@ def feature_engineer_state(feature_engineer: Any) -> dict[str, Any] | None:
     }
 
 
-def standalone_module_source() -> str:
-    """The source of the standalone ``feature_engineer.py`` to ship in the export."""
-    return _STANDALONE_MODULE.read_text()
+def standalone_class_source() -> str:
+    """The ``StandaloneFeatureEngineer`` class + ``load_feature_engineer`` source, to be
+    inlined into the generated ``inference.py``.
+
+    Returns everything from the class definition onward — the module's own ``import
+    pickle`` / ``import pandas as pd`` are dropped because ``inference.py`` already
+    imports both, so inlining introduces no duplicate imports.
+    """
+    text = _STANDALONE_MODULE.read_text()
+    idx = text.index(_CLASS_MARKER)
+    return text[idx:].rstrip() + "\n"
