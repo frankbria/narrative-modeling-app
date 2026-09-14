@@ -3,7 +3,6 @@ Core transformation engine for data pipeline
 """
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -34,8 +33,20 @@ class TransformationResult(BaseModel):
 
 
 class BaseTransformation(ABC):
-    """Base class for all transformations"""
-    
+    """Base class for all transformations.
+
+    Display metadata (#499) lives on the class so the advertised ``/available`` list
+    is derived from what the engine can actually execute (see
+    ``available_transformations``), and cannot drift into offering types that fail
+    or silently do nothing. Every registered transformation overrides these.
+    """
+
+    CATEGORY: str = "Other"
+    LABEL: str = ""
+    DESCRIPTION: str = ""
+    PARAMETERS_SCHEMA: dict[str, Any] = {}  # noqa: RUF012 - shared read-only schema
+    REQUIRES_COLUMNS: bool = False
+
     def __init__(self, parameters: dict[str, Any]):
         self.parameters = parameters
         self.validate_parameters()
@@ -66,7 +77,20 @@ class BaseTransformation(ABC):
 
 class RemoveDuplicatesTransformation(BaseTransformation):
     """Remove duplicate rows from dataset"""
-    
+
+    CATEGORY = "Data Cleaning"
+    LABEL = "Remove Duplicates"
+    DESCRIPTION = "Remove duplicate rows from the dataset"
+    # Every field is optional at the engine level (keep defaults to 'first', subset to
+    # all columns). The config UI treats a field as REQUIRED unless it carries
+    # `required: false` or a `default` (#499), so mark optionals explicitly or common
+    # flows (e.g. "remove duplicates with defaults") become unconfigurable.
+    PARAMETERS_SCHEMA = {  # noqa: RUF012
+        "subset": {"type": "array", "items": {"type": "string"}, "required": False},
+        "keep": {"type": "string", "enum": ["first", "last"], "required": False},
+    }
+    REQUIRES_COLUMNS = False
+
     def validate_parameters(self) -> None:
         self.subset = self.parameters.get('subset', None)
         self.keep = self.parameters.get('keep', 'first')
@@ -87,6 +111,18 @@ class RemoveDuplicatesTransformation(BaseTransformation):
 
 class TrimWhitespaceTransformation(BaseTransformation):
     """Trim whitespace from string columns"""
+
+    CATEGORY = "Data Cleaning"
+    LABEL = "Trim Whitespace"
+    DESCRIPTION = (
+        "Remove leading and trailing whitespace from text columns "
+        "(all text columns if none are specified)"
+    )
+    PARAMETERS_SCHEMA = {  # noqa: RUF012
+        # Optional: applies to all text columns when omitted.
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
+    }
+    REQUIRES_COLUMNS = False
 
     def validate_parameters(self) -> None:
         self.columns = self.parameters.get('columns', [])
@@ -120,6 +156,17 @@ class TrimWhitespaceTransformation(BaseTransformation):
 
 class DropMissingTransformation(BaseTransformation):
     """Drop rows with missing values"""
+
+    CATEGORY = "Missing Values"
+    LABEL = "Drop Missing"
+    DESCRIPTION = "Remove rows with missing values"
+    PARAMETERS_SCHEMA = {  # noqa: RUF012
+        # All optional: defaults are all columns / how='any' / no threshold.
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
+        "how": {"type": "string", "enum": ["any", "all"], "required": False},
+        "threshold": {"type": "number", "minimum": 0, "maximum": 100, "required": False},
+    }
+    REQUIRES_COLUMNS = False
 
     def validate_parameters(self) -> None:
         self.columns = self.parameters.get('columns', None)
@@ -192,6 +239,26 @@ class DropMissingTransformation(BaseTransformation):
 class FillMissingTransformation(BaseTransformation):
     """Fill missing values with specified value or strategy"""
 
+    CATEGORY = "Missing Values"
+    LABEL = "Fill Missing"
+    DESCRIPTION = (
+        "Fill missing values with a constant value, or impute with a strategy: "
+        "mean, median, mode, forward-fill or backward-fill"
+    )
+    # value XOR method: exactly one is needed, a cross-field rule the flat config UI
+    # can't express, so both are marked optional and the engine validates one-of at
+    # apply time (a graceful success=False, not a 500). columns is optional (all columns).
+    PARAMETERS_SCHEMA = {  # noqa: RUF012
+        "columns": {"type": "array", "items": {"type": "string"}, "required": False},
+        "value": {"type": "string", "required": False},
+        "method": {
+            "type": "string",
+            "enum": ["mean", "median", "mode", "ffill", "bfill"],
+            "required": False,
+        },
+    }
+    REQUIRES_COLUMNS = False
+
     def validate_parameters(self) -> None:
         self.columns = self.parameters.get('columns', [])
         self.value = self.parameters.get('value', None)
@@ -255,7 +322,7 @@ class FillMissingTransformation(BaseTransformation):
 class TransformationEngine:
     """Main engine for executing transformations"""
 
-    TRANSFORMATION_CLASSES: dict[TransformationType, Callable[[dict[str, Any]], BaseTransformation]] = {
+    TRANSFORMATION_CLASSES: dict[TransformationType, type[BaseTransformation]] = {
         TransformationType.REMOVE_DUPLICATES: RemoveDuplicatesTransformation,
         TransformationType.TRIM_WHITESPACE: TrimWhitespaceTransformation,
         TransformationType.DROP_MISSING: DropMissingTransformation,
@@ -630,3 +697,24 @@ class TransformationEngine:
                     changed_cells.append((int(row_idx), str(col)))
 
         return transformed_df, changed_cells
+
+def available_transformations() -> list[dict[str, Any]]:
+    """The transformation types the engine can actually execute, with UI metadata (#499).
+
+    Derived from ``TransformationEngine.TRANSFORMATION_CLASSES`` and each class's own
+    display metadata, so the advertised ``GET /transformations/available`` list can never
+    drift from what executes — the previous hand-maintained list offered ~22 types while
+    the engine implemented 4, so ~18 menu entries failed or silently did nothing. Adding
+    or removing a transformation class here updates the advertised list automatically.
+    """
+    return [
+        {
+            "type": ttype.value,
+            "category": cls.CATEGORY,
+            "label": cls.LABEL,
+            "description": cls.DESCRIPTION,
+            "parameters_schema": cls.PARAMETERS_SCHEMA,
+            "requires_columns": cls.REQUIRES_COLUMNS,
+        }
+        for ttype, cls in TransformationEngine.TRANSFORMATION_CLASSES.items()
+    ]
