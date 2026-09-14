@@ -32,6 +32,14 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
+        # STEP-level timeout, deliberately shorter than the job's `timeout-minutes: 10`
+        # (#626). A JOB timeout kills the whole job immediately and the "Report
+        # incomplete review" step below never runs — so a large diff that ran long
+        # would stay silent, the exact failure AC2 closes. A STEP timeout instead
+        # FAILS this step (outcome == 'failure') while the job keeps ~1 min to post
+        # the comment. Must exceed the --max-turns budget (60 turns ~= 8.6 min) so it
+        # is the backstop, not the primary limit.
+        timeout-minutes: 9
         uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1
         with:
           # Auth for Claude itself (OAuth token from https://console.anthropic.com)
