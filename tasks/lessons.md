@@ -988,3 +988,19 @@ checked, and the fix is always the same: the claim is a query, so run it.
   upload_module.f) while secure_upload.py imports it locally (→ patch the source).
   Both codex and the internal reviewer caught the upload stub patching the source.
   A wrong-target patch is a silent no-op; the tell is a slow/network-touching run.
+
+## #518 — user-safe job failure reasons
+- **Don't collapse semantically distinct failures into one classified message.** My
+  first TimeoutError mapping said "the job ran longer than the allowed time" — which
+  conflates a transient S3 read-timeout with the plan wall-clock limit. A
+  pre-existing test (`test_an_unrelated_timeout_keeps_its_own_message`) encoded that
+  distinction and CI caught it. Give distinct causes distinct messages; and run the
+  FULL suite before assuming a classifier change is safe — a pre-existing test may
+  encode a distinction your new mapping breaks.
+- **When a change touches N call sites, test the property at EACH.** The batch path
+  had a mutation-checked no-leak test but the training path only asserted
+  `.error is not None`, so a revert to `str(e)` there would pass. The internal
+  reviewer flagged the asymmetry; added a mirroring leak-proof training test.
+- **Reuse the existing user-facing field when the UI already reads it.** Both job
+  UIs already surfaced `error`/`error_message`; storing a classified value there
+  satisfied "surface in the UI" (AC3) with zero frontend change.
