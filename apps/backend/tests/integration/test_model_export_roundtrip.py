@@ -59,16 +59,27 @@ async def test_docker_export_of_a_real_model_ships_working_artifacts(
     response = await async_authorized_client.get(f"/api/v1/models/{ml_model.model_id}/export/docker")
     assert response.status_code == 200, response.text  # was: 500 on every format
 
-    with zipfile.ZipFile(BytesIO(response.content)) as zf:
-        names = set(zf.namelist())
-        copied = {line.split()[1] for line in zf.read("Dockerfile").decode().splitlines() if line.startswith("COPY ")}
-        assert copied <= names, f"Dockerfile COPYs {copied - names} the ZIP lacks"
-        model = pickle.loads(zf.read("model.pkl"))
-        engineer = pickle.loads(zf.read("feature_engineer.pkl"))
-    # the container's inference path: transform with the shipped engineer, predict with the shipped model
-    import inspect
+    import sys
+    import tempfile
 
-    transformed = engineer.transform(X.head(3)) if engineer is not None else X.head(3)
-    if inspect.isawaitable(transformed):  # the app's FeatureEngineer.transform is async
-        transformed = await transformed
-    assert len(model.predict(transformed)) == 3
+    with tempfile.TemporaryDirectory() as tmp:
+        with zipfile.ZipFile(BytesIO(response.content)) as zf:
+            names = set(zf.namelist())
+            copied = {line.split()[1] for line in zf.read("Dockerfile").decode().splitlines() if line.startswith("COPY ")}
+            assert copied <= names, f"Dockerfile COPYs {copied - names} the ZIP lacks"
+            assert "feature_engineer.py" in names  # the standalone module (#632)
+            zf.extractall(tmp)
+            model = pickle.loads(zf.read("model.pkl"))
+        # #632: load preprocessing through the SHIPPED standalone module (no `app` code),
+        # then transform + predict — the container's exact inference path, synchronous.
+        sys.path.insert(0, tmp)
+        try:
+            import importlib
+
+            standalone = importlib.import_module("feature_engineer")
+            engineer = standalone.load_feature_engineer(f"{tmp}/feature_engineer.pkl")
+        finally:
+            sys.path.remove(tmp)
+            sys.modules.pop("feature_engineer", None)
+        transformed = engineer.transform(X.head(3)) if engineer is not None else X.head(3)
+        assert len(model.predict(transformed)) == 3

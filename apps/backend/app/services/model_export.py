@@ -22,6 +22,10 @@ except ImportError:
 
 from app.models.ml_model import MLModel
 from app.services.exceptions import NotFoundError
+from app.services.model_export_runtime import (
+    feature_engineer_state,
+    standalone_module_source,
+)
 from app.services.model_storage import ModelStorageService
 from app.services.s3_service import S3Service
 
@@ -171,18 +175,26 @@ class ModelExportService:
         imports = [
             "import pandas as pd",
             "import numpy as np",
-            "import asyncio",
-            "import inspect",
             "import pickle",
             "from typing import List, Dict, Any, Union",
             f"from {model_module} import {model_class}"
         ]
-        
-        if feature_engineer and include_preprocessing:  # the flag was accepted but inert before (#468)
-            fe_class = feature_engineer.__class__.__name__
-            fe_module = feature_engineer.__class__.__module__
-            imports.append(f"from {fe_module} import {fe_class}")
-        
+
+        # Preprocessing ships only when it exists AND the caller asked for it (#468's flag
+        # is honoured here). It loads through the standalone feature_engineer.py in the ZIP —
+        # the platform's own FeatureEngineer class is not importable in the container (#632).
+        use_preprocessing = (
+            include_preprocessing and feature_engineer_state(feature_engineer) is not None
+        )
+        if use_preprocessing:
+            imports.append("from feature_engineer import load_feature_engineer")
+            fe_load_line = (
+                "self.feature_engineer = "
+                "load_feature_engineer(feature_engineer_path) if feature_engineer_path else None"
+            )
+        else:
+            fe_load_line = "self.feature_engineer = None  # exported without preprocessing"
+
         # Model metadata
         metadata = {
             "model_id": model.model_id,
@@ -236,11 +248,9 @@ class ModelInference:
         with open(model_path, 'rb') as f:
             self.model = pickle.load(f)
         
-        # Load feature engineer if provided
-        self.feature_engineer = None
-        if feature_engineer_path:
-            with open(feature_engineer_path, 'rb') as f:
-                self.feature_engineer = pickle.load(f)
+        # Load feature engineer if this export includes preprocessing (standalone;
+        # returns None when the model shipped no preprocessing state).
+        {fe_load_line}
     
     def predict(self, data: Union[Dict[str, Any], List[Dict[str, Any]], pd.DataFrame]) -> Dict[str, Any]:
         """
@@ -267,11 +277,9 @@ class ModelInference:
         if missing_features:
             raise ValueError(f"Missing required features: {{missing_features}}")
         
-        # Apply feature engineering if available
+        # Apply feature engineering if available (standalone transform is synchronous, #632)
         if self.feature_engineer:
             X = self.feature_engineer.transform(df)
-            if inspect.isawaitable(X):  # the platform's FeatureEngineer.transform is async
-                X = asyncio.run(X)
         else:
             X = df[self.feature_names]
         
@@ -412,6 +420,7 @@ RUN pip install pandas numpy scikit-learn
 # Copy model files
 COPY model.pkl /app/
 COPY feature_engineer.pkl /app/
+COPY feature_engineer.py /app/
 COPY inference.py /app/
 
 WORKDIR /app
@@ -453,8 +462,7 @@ class PredictionResponse(BaseModel):
     timestamp: str
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(request: PredictionRequest):  # sync on purpose: FastAPI runs it off the event loop, so
-    # inference.py may asyncio.run() an awaitable transform without a loop already running
+def predict(request: PredictionRequest):
     try:
         result = model_inference.predict(request.data)
         return PredictionResponse(**result)
@@ -495,11 +503,17 @@ if __name__ == "__main__":
             zip_file.writestr("inference.py", python_code)
             zip_file.writestr("app.py", api_code)
             zip_file.writestr("requirements.txt", requirements)
-            # The artifacts the Dockerfile COPYs and inference.py unpickles (#468). A model
-            # without a feature engineer ships `None`, which inference.py treats as "no
-            # preprocessing".
+            # The artifacts the Dockerfile COPYs and inference.py loads. model.pkl is the
+            # stock estimator (sklearn in the container unpickles it). Preprocessing ships as
+            # a plain STATE DICT (stock sklearn transformers + lists) plus the standalone
+            # feature_engineer.py that reconstructs the transform — the platform's own
+            # FeatureEngineer class is not importable in the container (#632). A model without
+            # preprocessing ships state `None`, which load_feature_engineer treats as "none".
             zip_file.writestr("model.pkl", pickle.dumps(trained_model))
-            zip_file.writestr("feature_engineer.pkl", pickle.dumps(feature_engineer))
+            zip_file.writestr(
+                "feature_engineer.pkl", pickle.dumps(feature_engineer_state(feature_engineer))
+            )
+            zip_file.writestr("feature_engineer.py", standalone_module_source())
             
             # Add README
             readme = f'''# {model.name} Docker Container

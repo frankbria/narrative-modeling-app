@@ -7,6 +7,7 @@ on every export format stayed green — and one test patched the very method und
 The trained model and feature engineer here are real scikit-learn objects, because the
 Docker export pickles them into the ZIP.
 """
+import asyncio
 import pickle
 import re
 import zipfile
@@ -14,13 +15,17 @@ from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 
 from app.services.exceptions import NotFoundError
 from app.services.model_export import ExportFormatUnavailable, ModelExportService
 from app.services.model_storage import ModelStorageService
+from app.services.model_training.feature_engineer import (
+    FeatureEngineer,
+    FeatureEngineeringConfig,
+)
 
 USER = "user123"
 MODEL_ID = "test_model_123"
@@ -53,7 +58,17 @@ def trained_model():
 
 @pytest.fixture
 def feature_engineer():
-    return StandardScaler().fit(np.random.RandomState(1).randn(20, 3))
+    # A real, fitted platform FeatureEngineer (#632): the export ships its STATE
+    # (stock sklearn transformers), not the platform class. Numeric-only, three
+    # columns matching mock_model.feature_names, so it fits an imputer + scaler.
+    rng = np.random.RandomState(1)
+    X = pd.DataFrame(rng.randn(20, 3), columns=["feature1", "feature2", "feature3"])
+    y = pd.Series(rng.choice([0, 1], 20))
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(select_features=False, create_interactions=False)
+    )
+    asyncio.run(fe.fit_transform(X, y, "binary_classification"))
+    return fe
 
 
 @pytest.fixture
@@ -105,7 +120,9 @@ class TestPythonExport:
             code, filename = await export_service.export_python_code(MODEL_ID, USER, include_preprocessing=True)
         assert "class ModelInference:" in code
         assert "LogisticRegression" in code
-        assert "StandardScaler" in code
+        # #632: preprocessing loads via the standalone shipped module, not the platform class
+        assert "from feature_engineer import load_feature_engineer" in code
+        assert "app.services.model_training" not in code
         for feature in mock_model.feature_names:
             assert feature in code
         assert filename == "Test Model_v1.0_inference.py"
@@ -115,9 +132,9 @@ class TestPythonExport:
         """claude-review: the flag was accepted and ignored."""
         with _found(mock_model):
             code, _ = await export_service.export_python_code(MODEL_ID, USER, include_preprocessing=False)
-        # the engineer's class is not imported; the runtime path that loads an optional
-        # feature_engineer.pkl stays in the template (it is a no-op when the file holds None)
-        assert "import StandardScaler" not in code
+        # include_preprocessing=False leaves the loader out entirely (#468 flag honoured, #632)
+        assert "load_feature_engineer" not in code
+        assert "self.feature_engineer = None" in code
 
     @pytest.mark.asyncio
     async def test_without_a_feature_engineer(self, export_service, mock_model, trained_model):
@@ -125,7 +142,7 @@ class TestPythonExport:
         with _found(mock_model):
             code, _ = await export_service.export_python_code(MODEL_ID, USER, include_preprocessing=False)
         assert "class ModelInference:" in code
-        assert "StandardScaler" not in code
+        assert "load_feature_engineer" not in code
 
 
 class TestDockerExport:
@@ -144,11 +161,16 @@ class TestDockerExport:
             dockerfile = zf.read("Dockerfile").decode()
             copied = {line.split()[1] for line in dockerfile.splitlines() if line.startswith("COPY ")}
             assert copied <= names, f"Dockerfile COPYs {copied - names} that the ZIP does not contain"
-            assert {"model.pkl", "feature_engineer.pkl", "inference.py", "app.py", "requirements.txt", "README.md"} <= names
+            assert {"model.pkl", "feature_engineer.pkl", "feature_engineer.py", "inference.py",
+                    "app.py", "requirements.txt", "README.md"} <= names
 
             restored = pickle.loads(zf.read("model.pkl"))
             assert restored.predict(np.zeros((1, 3))).shape == (1,)
-            assert isinstance(pickle.loads(zf.read("feature_engineer.pkl")), StandardScaler)
+            # #632: feature_engineer.pkl is now a plain STATE DICT (stock sklearn objects),
+            # carrying no reference to the platform's FeatureEngineer class.
+            state = pickle.loads(zf.read("feature_engineer.pkl"))
+            assert isinstance(state, dict) and "transformers" in state
+            assert b"app.services.model_training" not in zf.read("feature_engineer.pkl")
 
             requirements = zf.read("requirements.txt").decode()
             import sklearn
@@ -163,8 +185,8 @@ class TestDockerExport:
 
     @pytest.mark.asyncio
     async def test_generated_api_predicts_off_the_event_loop(self, export_service, mock_model):
-        """codex: inference.py may asyncio.run() an awaitable transform; the generated FastAPI
-        handler must therefore be a plain `def` (run in FastAPI's threadpool), not `async def`."""
+        """The generated FastAPI handler is a plain `def` (run in FastAPI's threadpool),
+        not `async def` — the inference path is synchronous CPU work (#632)."""
         with _found(mock_model):
             zip_bytes, _ = await export_service.export_docker_container(MODEL_ID, USER)
         with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
@@ -277,5 +299,7 @@ class TestGeneratedCode:
             model=mock_model, trained_model=trained_model, feature_engineer=feature_engineer,
             include_preprocessing=True,
         )
-        assert re.search(r"from sklearn\.preprocessing[\w.]* import StandardScaler", code)
-        assert "feature_engineer.transform" in code
+        # #632: the code imports the standalone loader and applies transform synchronously
+        assert "from feature_engineer import load_feature_engineer" in code
+        assert "self.feature_engineer.transform" in code
+        assert "asyncio" not in code
