@@ -57,3 +57,59 @@ export function assertAuthConfig(
     );
   }
 }
+
+/**
+ * The database named in a MongoDB connection string's path, or null when it
+ * carries none. Handles `mongodb://` and `mongodb+srv://`, credentials in the
+ * authority, multiple comma-separated hosts, and a trailing `?options` string.
+ * The path is the segment after the first `/` following the host list.
+ */
+export function databaseNameFromUri(uri: string | undefined): string | null {
+  if (!uri) return null;
+  const afterScheme = uri.replace(/^mongodb(\+srv)?:\/\//i, '');
+  const noQuery = afterScheme.split('?')[0];
+  const slash = noQuery.indexOf('/');
+  if (slash === -1) return null;
+  const db = noQuery.slice(slash + 1).trim();
+  return db || null;
+}
+
+/**
+ * Fail fast (production only) when the database is not named exactly once (#551).
+ *
+ * The real invariant is "the database is named exactly once and both halves
+ * agree", NOT "MONGODB_DB is set": a deploy may carry the database in the
+ * MONGODB_URI path instead (see `.env.staging.example`). So:
+ *   - bare URI (no path) AND no MONGODB_DB → error, because the adapter would
+ *     silently fall back to `client.db(undefined)` → the `test` database (#545);
+ *   - URI path AND MONGODB_DB set to a DIFFERENT name → error (the exact split
+ *     #545 found: URI `narrative_staging` vs MONGODB_DB `narrative_modeling-staging`);
+ *   - URI path with no MONGODB_DB, or the two agreeing → fine.
+ * No-op outside production, matching `missingAuthEnv`.
+ */
+export function assertDatabaseConfig(
+  env: Record<string, string | undefined> = process.env,
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): void {
+  if (nodeEnv !== 'production') return;
+  // `next build` runs with NODE_ENV=production but no database env, and importing
+  // auth.ts at build time must not fail. With no MONGODB_URI there is nothing to
+  // validate anyway — a real runtime that reaches the adapter without one already
+  // fails in lib/db.ts (outside CI). So the guard only engages once a URI is set.
+  if (!env.MONGODB_URI?.trim()) return;
+  const fromDb = env.MONGODB_DB?.trim() || null;
+  const fromUri = databaseNameFromUri(env.MONGODB_URI);
+  if (!fromDb && !fromUri) {
+    throw new Error(
+      '[auth] Refusing to start: no database name is configured. Set MONGODB_DB ' +
+        '(the MONGODB_URI has no path), or the adapter falls back to the "test" ' +
+        'database while the backend reads another (#545/#551).',
+    );
+  }
+  if (fromDb && fromUri && fromDb !== fromUri) {
+    throw new Error(
+      `[auth] Refusing to start: MONGODB_DB (${fromDb}) and the MONGODB_URI path ` +
+        `database (${fromUri}) name different databases; they must agree (#551).`,
+    );
+  }
+}

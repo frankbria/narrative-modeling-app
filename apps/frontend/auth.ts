@@ -9,13 +9,14 @@ import client from "./lib/db"
 import { mintApiToken } from "./lib/api-token"
 import { isSignInAllowed } from "./lib/invite-allowlist"
 import { isAdminEmail } from "./lib/admin-allowlist"
-import { assertAuthConfig } from "./lib/auth-config"
+import { assertAuthConfig, assertDatabaseConfig } from "./lib/auth-config"
 import { resolveTestAdmin } from "./lib/test-credentials"
 
 // Fail fast (issue #271): in production, refuse to start when OAuth creds or
 // NEXTAUTH_SECRET are missing instead of silently running with dummy/weak auth.
 // No-op in development/test, where the dummy fallbacks below are intentional.
 assertAuthConfig()
+assertDatabaseConfig()
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
