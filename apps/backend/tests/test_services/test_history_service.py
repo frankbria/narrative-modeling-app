@@ -104,7 +104,8 @@ class TestHistoryServiceUndo:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -123,8 +124,8 @@ class TestHistoryServiceUndo:
             assert mock_transformation_config.current_position == 1
             mock_transformation_config.save.assert_called_once()
 
-            # Verify dataset file_path was updated
-            assert mock_dataset.save.called
+            # Verify the twin-aware move helper was called with the version's URL (#629)
+            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
 
     @pytest.mark.asyncio
     async def test_undo_when_cannot_undo(
@@ -193,7 +194,8 @@ class TestHistoryServiceRedo:
         mock_transformation_config.can_redo.return_value = True
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -207,6 +209,9 @@ class TestHistoryServiceRedo:
             assert result["current_position"] == 2  # Incremented from 1 to 2
             assert result["version_id"] == "v3"  # Version at position 2
             assert "Redone to" in result["message"]
+
+            # Verify the twin-aware move helper was called with the version's URL (#629)
+            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
 
     @pytest.mark.asyncio
     async def test_redo_when_cannot_redo(
@@ -258,7 +263,8 @@ class TestHistoryServiceJumpToPosition:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -272,6 +278,9 @@ class TestHistoryServiceJumpToPosition:
             assert result["current_position"] == 0
             assert result["version_id"] == "v1"  # Version at position 0
             assert "Jumped to position 0" in result["message"]
+
+            # Verify the twin-aware move helper was called with the version's URL (#629)
+            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
 
     @pytest.mark.asyncio
     async def test_jump_to_invalid_position(
@@ -463,7 +472,8 @@ class TestHistoryServiceBranching:
         # Setup
         mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset:
+        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
             MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
@@ -473,6 +483,75 @@ class TestHistoryServiceBranching:
             result1 = await history_service.undo("ds1", "user1")
             assert result1["current_position"] == 1
 
+            # Verify the twin-aware move helper was called with the version's URL (#629)
+            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
+
             # At this point, if a new transformation is applied, it should
             # truncate the history (tested in transformation_service tests)
             # The history service just navigates existing history
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "start_position, navigate",
+    [
+        pytest.param(1, lambda hs, ds, user: hs.undo(ds, user), id="undo"),
+        pytest.param(0, lambda hs, ds, user: hs.redo(ds, user), id="redo"),
+        pytest.param(1, lambda hs, ds, user: hs.jump_to_position(ds, 0, user), id="jump_to_position"),
+    ],
+)
+async def test_history_navigation_moves_the_userdata_twin(setup_database, start_position, navigate):
+    """#629 AC2: undo/redo/jump must move the dual-written UserData twin (and s3_url),
+    not just file_path — training reads the twin by ObjectId, so a twin left at the
+    pre-navigation file trains on the state the user just navigated away from. Real
+    documents; a mocked twin couldn't see this. All three methods share the block, so
+    all three run against the same body."""
+    from app.models.dataset import DatasetMetadata
+    from app.models.user_data import UserData
+
+    user = "u629"
+    current = "s3://test-bucket/transformed/u629/ds629_2.parquet"
+    restored = "s3://test-bucket/datasets/u629/versions/v1/ds629.parquet"
+
+    await DatasetMetadata(
+        user_id=user, dataset_id="ds629", filename="d.csv", original_filename="d.csv",
+        file_type="parquet", file_path=current, s3_url=current, num_rows=1, num_columns=1,
+    ).insert()
+    twin = await UserData(
+        user_id=user, filename="d.csv", original_filename="d.csv", s3_url=current,
+        file_path=current, num_rows=1, num_columns=1, data_schema=[],
+    ).insert()
+
+    # get_version returns the version to restore to (its s3_url is the target).
+    version = MagicMock()
+    version.s3_url = restored
+    version.num_rows = 7
+    version.num_columns = 4
+    version.columns = ["a", "b", "c", "d"]
+
+    config = MagicMock()
+    config.user_id = user
+    config.current_position = start_position
+    config.can_undo = MagicMock(return_value=True)
+    config.can_redo = MagicMock(return_value=True)
+    config.transformation_steps = [MagicMock(version_id="v1"), MagicMock(version_id="v2")]
+    config.save = AsyncMock()
+
+    ts = MagicMock()
+    ts.get_transformation_config = AsyncMock(return_value=config)
+    vs = MagicMock()
+    vs.get_version = AsyncMock(return_value=version)
+    hs = HistoryService(versioning_service=vs, transformation_service=ts)
+
+    await navigate(hs, "ds629", user)
+
+    # The twin followed to the restored version's url (the #629 bug: it didn't).
+    moved_twin = await UserData.get(twin.id)
+    assert moved_twin.s3_url == restored, "UserData twin did not follow the navigation"
+    assert moved_twin.file_path == restored
+    # The restored version's shape came with it (#629) — a stale count here
+    # mis-drives the training mode recommendation off the twin.
+    assert (moved_twin.num_rows, moved_twin.num_columns) == (7, 4)
+    # And the metadata side moved too (both twins agree on the RESTORED file).
+    meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds629")
+    assert meta.s3_url == restored and meta.file_path == restored

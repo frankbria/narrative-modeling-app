@@ -158,3 +158,24 @@ class TestRecordNewFile:
         await record_new_file(unsaved, NEW)
         assert unsaved.s3_url == NEW and unsaved.id is not None  # save() inserted it
         assert (await UserData.get(ud.id)).s3_url == NEW
+
+
+class TestRevisitedUrlLeavesSuperseded:
+    """#629: history undo/redo revisit URLs, so a move BACK to a previously-superseded
+    url must not leave the now-current file in `superseded_s3_urls` — erasure sweeps
+    that list and would delete the live file."""
+
+    async def test_moving_back_removes_the_current_url_from_superseded(self, setup_database):
+        meta, ud = await _twins(OLD)
+        await record_new_file(meta, NEW)  # move off OLD -> OLD superseded, current NEW
+        meta2 = await DatasetMetadata.get(meta.id)
+        assert OLD in (meta2.superseded_s3_urls or [])
+
+        await record_new_file(meta2, OLD)  # revisit OLD (an undo)
+        meta3 = await DatasetMetadata.get(meta.id)
+        ud3 = await UserData.get(ud.id)
+
+        assert (meta3.file_path, meta3.s3_url) == (OLD, OLD)
+        assert OLD not in (meta3.superseded_s3_urls or []), "the current file must not be in superseded"
+        assert NEW in (meta3.superseded_s3_urls or []), "the file moved off should be superseded"
+        assert ud3.s3_url == OLD, "the twin must follow back too"
