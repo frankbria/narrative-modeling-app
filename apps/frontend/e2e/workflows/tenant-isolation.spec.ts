@@ -37,37 +37,42 @@ test.describe('tenant isolation (#493)', () => {
     const a = await apiAuthHeaders(request);
     const filename = `isolation-e2e-${Date.now()}.csv`;
 
-    // --- Tenant A owns: a DatasetMetadata (+ its base DatasetVersion) ...
-    const seeded = await request.post(`${API_BASE}/datasets/upload`, {
-      headers: a,
-      multipart: {
-        file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') },
-      },
-    });
-    expect(seeded.ok(), `seed upload failed: ${seeded.status()}`).toBeTruthy();
-    const datasetId = (await seeded.json()).dataset_id as string;
-    expect(datasetId).toBeTruthy();
-
-    const versions = await request.get(`${API_BASE}/datasets/${datasetId}/versions`, { headers: a });
-    expect(versions.status(), 'A lists its own versions').toBe(200);
-    const versionId = (await versions.json()).versions?.[0]?.version_id as string | undefined;
-    expect(versionId, 'the upload creates a base version').toBeTruthy();
-
-    // ... a UserData-space dataset (the /upload page), its workflow, and a model.
-    const fileId = await uploadTestDataset('ai-test-datasets/binary-classification-small.csv');
-    const modelId = await trainModel(fileId, 'churned');
-    await seedEvaluationWorkflow(page, request, fileId, modelId);
-
-    const owned: Array<[string, string]> = [
-      ['dataset', `/datasets/${datasetId}`],
-      ['version list', `/datasets/${datasetId}/versions`],
-      ['version', `/versions/${versionId}`],
-      ['user_data', `/user_data/${fileId}`],
-      ['workflow', `/workflows/${fileId}`],
-      ['model', `/ml/${modelId}`],
-    ];
-
+    // Created inside the try so a failure mid-setup (training can time out)
+    // still reaches the cleanup in `finally` instead of orphaning A's objects.
+    let datasetId: string | undefined;
+    let fileId: string | undefined;
+    let modelId: string | undefined;
     try {
+      // --- Tenant A owns: a DatasetMetadata (+ its base DatasetVersion) ...
+      const seeded = await request.post(`${API_BASE}/datasets/upload`, {
+        headers: a,
+        multipart: {
+          file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') },
+        },
+      });
+      expect(seeded.ok(), `seed upload failed: ${seeded.status()}`).toBeTruthy();
+      datasetId = (await seeded.json()).dataset_id as string;
+      expect(datasetId).toBeTruthy();
+
+      const versions = await request.get(`${API_BASE}/datasets/${datasetId}/versions`, { headers: a });
+      expect(versions.status(), 'A lists its own versions').toBe(200);
+      const versionId = (await versions.json()).versions?.[0]?.version_id as string | undefined;
+      expect(versionId, 'the upload creates a base version').toBeTruthy();
+
+      // ... a UserData-space dataset (the /upload page), its workflow, and a model.
+      fileId = await uploadTestDataset('ai-test-datasets/binary-classification-small.csv');
+      modelId = await trainModel(fileId, 'churned');
+      await seedEvaluationWorkflow(page, request, fileId, modelId);
+
+      const owned: Array<[string, string]> = [
+        ['dataset', `/datasets/${datasetId}`],
+        ['version list', `/datasets/${datasetId}/versions`],
+        ['version', `/versions/${versionId}`],
+        ['user_data', `/user_data/${fileId}`],
+        ['workflow', `/workflows/${fileId}`],
+        ['model', `/ml/${modelId}`],
+      ];
+
       // --- A can read every surface (a dead token would fail here, not below).
       for (const [name, path] of owned) {
         const mine = await request.get(`${API_BASE}${path}`, { headers: a });
@@ -110,9 +115,9 @@ test.describe('tenant isolation (#493)', () => {
         await bContext.close();
       }
     } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: a }).catch(() => {});
-      await request.delete(`${API_BASE}/datasets/${datasetId}`, { headers: a }).catch(() => {});
-      await cleanupDataset(fileId);
+      if (modelId) await request.delete(`${API_BASE}/ml/${modelId}`, { headers: a }).catch(() => {});
+      if (datasetId) await request.delete(`${API_BASE}/datasets/${datasetId}`, { headers: a }).catch(() => {});
+      if (fileId) await cleanupDataset(fileId);
     }
   });
 });
