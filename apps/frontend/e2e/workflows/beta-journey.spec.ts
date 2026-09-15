@@ -20,6 +20,7 @@
  */
 
 import { test, expect } from '../fixtures';
+import { apiAuthHeaders } from '../helpers/apiAuth';
 import type { Page, Route } from '@playwright/test';
 import { PerformanceMonitor } from '../helpers/PerformanceMonitor';
 
@@ -389,11 +390,10 @@ test.describe('Beta launch readiness — feedback widget (#152)', () => {
 
 test.describe('Beta launch readiness — API performance (#152)', () => {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  const headers = { Authorization: 'Bearer dev-user-default' };
-
   test('p95 latency on journey endpoints is under 500ms @beta-acceptance', async ({
     request,
   }) => {
+    const headers = await apiAuthHeaders(request);
     // Hits the LIVE backend; skip if the lightweight status endpoint is down.
     let reachable = true;
     try {

@@ -27,7 +27,7 @@ import {
   BINARY_CLASS_TARGET,
 } from '../helpers/binaryClassificationData';
 import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
-import { API_BASE, ML_AUTH } from '../helpers/mlApi';
+import { API_BASE, mlAuth } from '../helpers/mlApi';
 
 test.describe('Model Config Workflow', () => {
   let datasetId: string;
@@ -694,7 +694,7 @@ test.describe('Model Config API Integration', () => {
     try {
       // Metrics live on the model document at GET /api/v1/ml/{id} (there is no
       // /models/{id} or training_metrics field — that was the stale contract).
-      const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH });
+      const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: await mlAuth(request) });
       expect(response.ok()).toBeTruthy();
 
       const model = await response.json();
@@ -713,7 +713,7 @@ test.describe('Model Config API Integration', () => {
         }
       }
     } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: await mlAuth(request) }).catch(() => {});
     }
   });
 });

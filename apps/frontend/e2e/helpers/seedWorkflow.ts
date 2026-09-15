@@ -1,4 +1,5 @@
 import type { Page, APIRequestContext } from '@playwright/test';
+import { apiAuthHeaders } from './apiAuth';
 
 /**
  * Seed the backend workflow (the source of truth since #87) for a model trained
@@ -18,12 +19,10 @@ async function seedWorkflow(
   completedStages: string[]
 ): Promise<void> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  // The `dev-user-default` token differs from the fixtures' `e2e-test-token`,
-  // but under SKIP_AUTH both resolve to the same default user — so the seeded
-  // workflow is owned by the user the page loads as. (Same equivalence noted in
-  // data-preparation.spec.ts.)
+  // The session's minted JWT (#493): the seeded workflow is owned by the user
+  // the page loads as, because it is the same token the page's own calls carry.
   const headers = {
-    Authorization: 'Bearer dev-user-default',
+    ...(await apiAuthHeaders(request)),
     'Content-Type': 'application/json',
   };
   const workflow = {

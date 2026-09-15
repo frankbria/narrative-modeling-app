@@ -122,9 +122,15 @@ fi
 export MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
 export MONGODB_DB=${MONGODB_DB:-narrative-modeling-test}
 export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-production}
-export SKIP_AUTH=true
-# Disable global rate limiting for E2E (#151): SKIP_AUTH makes every request share
-# one dev-user bucket, so parallel Playwright workers + polling dashboards would
+# The backend runs with REAL auth (#493): it verifies the HS256 apiToken the
+# frontend mints with the same NEXTAUTH_SECRET (exported above, before either
+# process starts), so requests are attributed to the signed-in dev-credentials
+# identity (test-user-12345, or test-admin-12345 for the second tenant). Never
+# re-add SKIP_AUTH here — it collapses every identity to one backend user and the
+# tenant-isolation smoke spec can no longer see a cross-tenant read.
+unset SKIP_AUTH
+# Disable global rate limiting for E2E (#151): every spec still shares the one
+# ordinary test user, so parallel Playwright workers + polling dashboards would
 # trip the per-user limit and flake. Rate limiting has its own unit/integration
 # coverage; the E2E suite must not be subject to it.
 export RATE_LIMIT_ENABLED=false
@@ -212,7 +218,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}=== Starting Frontend Dev Server ===${NC}"
-# Start frontend in background (without SKIP_AUTH - tests need real auth flow)
+# Start frontend in background (real NextAuth; the dev credentials provider signs the test identities in)
 PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
 FRONTEND_PID=$!
 

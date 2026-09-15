@@ -14,89 +14,11 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { test, expect } from '../fixtures';
-import type { Page, APIRequestContext } from '@playwright/test';
 import { PredictPage } from '../pages/PredictPage';
+import { seedPredictionWorkflow } from '../helpers/seedWorkflow';
 
 const TRAINABLE_DATASET = 'ai-test-datasets/binary-classification-small.csv';
 const TARGET_COLUMN = 'churned';
-
-/**
- * Seed the backend workflow (source of truth since #87) up to a completed
- * MODEL_EVALUATION with the trained model id, so the MODEL_EVALUATION-gated
- * /predict page is reachable instead of redirecting to /upload. Mirrors the
- * seed helper proven for the prepare page (data-preparation.spec.ts).
- */
-async function seedPredictionWorkflow(
-  page: Page,
-  request: APIRequestContext,
-  datasetId: string,
-  modelId: string
-): Promise<void> {
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  const headers = {
-    Authorization: 'Bearer dev-user-default',
-    'Content-Type': 'application/json',
-  };
-  const completed = [
-    'data_loading',
-    'data_profiling',
-    'data_preparation',
-    'feature_engineering',
-    'model_training',
-    'model_evaluation',
-  ];
-  const workflow = {
-    current_stage: 'prediction',
-    completed_stages: completed,
-    stage_data: {},
-    model_id: modelId,
-  };
-
-  const put = await request.put(`${apiBase}/workflows/${datasetId}`, {
-    headers,
-    data: workflow,
-  });
-  if (put.status() === 404) {
-    const post = await request.post(`${apiBase}/workflows/${datasetId}`, {
-      headers,
-      data: workflow,
-    });
-    if (!post.ok()) {
-      throw new Error(
-        `seedPredictionWorkflow POST failed (${post.status()}): ${await post.text()}`
-      );
-    }
-  } else if (!put.ok()) {
-    throw new Error(
-      `seedPredictionWorkflow PUT failed (${put.status()}): ${await put.text()}`
-    );
-  }
-
-  await page.addInitScript(
-    ({ id, model }) => {
-      localStorage.setItem(
-        'workflowState',
-        JSON.stringify({
-          currentStage: 'prediction',
-          completedStages: [
-            'data_loading',
-            'data_profiling',
-            'data_preparation',
-            'feature_engineering',
-            'model_training',
-            'model_evaluation',
-          ],
-          stageData: {},
-          datasetId: id,
-          modelId: model,
-          lastUpdated: new Date().toISOString(),
-        })
-      );
-    },
-    { id: datasetId, model: modelId }
-  );
-}
 
 /** Build a batch CSV (feature columns only — the target is dropped so the
  *  fitted pipeline gets exactly the columns it was trained on) from the first

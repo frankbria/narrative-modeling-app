@@ -13,6 +13,7 @@
 
 import { test, expect } from '../fixtures';
 import type { Page, APIRequestContext } from '@playwright/test';
+import { apiAuthHeaders } from '../helpers/apiAuth';
 
 /**
  * Seed the workflow state a real user would have after completing profiling,
@@ -21,10 +22,10 @@ import type { Page, APIRequestContext } from '@playwright/test';
  * Since #87 the backend is the source of truth during hydration: the upload
  * flow persists a backend workflow at the data_loading stage, which would
  * override a localStorage-only seed and re-gate the page. So seed the real
- * backend workflow (no mocking — E2E uses the live API). With SKIP_AUTH the
- * backend maps `Bearer dev-user-default` to the same user the frontend session
- * resolves to, which owns the just-uploaded dataset. The localStorage seed is
- * kept as the offline fallback layer the app reads when the backend is down.
+ * backend workflow (no mocking — E2E uses the live API) with the session's own
+ * minted JWT (#493), so the seed is owned by the user that just uploaded the
+ * dataset. The localStorage seed is kept as the offline fallback layer the app
+ * reads when the backend is down.
  */
 async function seedPreparationWorkflow(
   page: Page,
@@ -34,7 +35,7 @@ async function seedPreparationWorkflow(
   const apiBase =
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const headers = {
-    Authorization: 'Bearer dev-user-default',
+    ...(await apiAuthHeaders(request)),
     'Content-Type': 'application/json',
   };
   const workflow = {
