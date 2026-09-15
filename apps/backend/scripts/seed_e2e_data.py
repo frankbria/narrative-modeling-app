@@ -266,7 +266,7 @@ def main():
         ensure_s3_bucket()
 
         # Seed test user
-        user_id = seed_nextauth_user(db)
+        seed_nextauth_user(db)
 
         # Seed sample dataset, owned by the credentials id (not the Mongo _id)
         if '--with-data' in sys.argv:
