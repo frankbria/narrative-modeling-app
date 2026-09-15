@@ -126,9 +126,12 @@ export NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-test-secret-for-e2e-only-not-for-produ
 # frontend mints with the same NEXTAUTH_SECRET (exported above, before either
 # process starts), so requests are attributed to the signed-in dev-credentials
 # identity (test-user-12345, or test-admin-12345 for the second tenant). Never
-# re-add SKIP_AUTH here — it collapses every identity to one backend user and the
-# tenant-isolation smoke spec can no longer see a cross-tenant read.
-unset SKIP_AUTH
+# set SKIP_AUTH=true here — it collapses every identity to one backend user and the
+# tenant-isolation smoke spec can no longer see a cross-tenant read. Exported as an
+# explicit "false" rather than unset: the backend's load_dotenv() fills UNSET
+# variables from apps/backend/.env, and .env.example ships SKIP_AUTH=true, so an
+# unset value would silently re-enable the bypass on any box that copied it.
+export SKIP_AUTH=false
 # Disable global rate limiting for E2E (#151): every spec still shares the one
 # ordinary test user, so parallel Playwright workers + polling dashboards would
 # trip the per-user limit and flake. Rate limiting has its own unit/integration

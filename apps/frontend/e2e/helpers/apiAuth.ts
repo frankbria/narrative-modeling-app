@@ -8,6 +8,11 @@ import type { APIRequestContext, Browser, BrowserContext } from '@playwright/tes
  * 401. The only credential the backend accepts is the HS256 JWT the NextAuth
  * session callback mints (`session.apiToken`, #527), so read it from the
  * same-origin session endpoint of whichever context is signed in.
+ *
+ * Playwright's bare `request` fixture qualifies: the test runner merges the
+ * project's `storageState` and `baseURL` into every `playwright.request.newContext()`
+ * (`runBeforeCreateRequestContext` in playwright/lib/index.js), so it carries the
+ * pre-authenticated session from global-setup exactly like `page.request` does.
  */
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
