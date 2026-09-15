@@ -258,8 +258,14 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     const cleanup = async (datasetId: string) => {
       try {
         // Target the backend directly (Next.js does not proxy /api/v1);
-        // a relative URL hits the dev server and burns a 15s timeout per test
-        await request.delete(`${API_BASE}/datasets/${datasetId}`, {
+        // a relative URL hits the dev server and burns a 15s timeout per test.
+        // Two id-spaces: the /upload page (uploadTestDataset) creates a UserData
+        // row keyed by a 24-hex ObjectId, deleted via /user_data/{id}; a
+        // DatasetMetadata id (`dataset_…`, from POST /datasets/upload) goes to
+        // /datasets/{id}. Sending an ObjectId to /datasets always 404'd, so every
+        // uploaded fixture used to leak (swallowed below) — see #493 review.
+        const path = /^[0-9a-f]{24}$/i.test(datasetId) ? 'user_data' : 'datasets';
+        await request.delete(`${API_BASE}/${path}/${datasetId}`, {
           headers: await apiAuthHeaders(request),
           timeout: 5000,
         });

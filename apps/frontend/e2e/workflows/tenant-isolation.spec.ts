@@ -22,6 +22,7 @@ test.describe('tenant isolation (#493)', () => {
     request,
     uploadTestDataset,
     trainModel,
+    cleanupDataset,
     browser,
     baseURL,
   }) => {
@@ -91,12 +92,27 @@ test.describe('tenant isolation (#493)', () => {
         const listing = await bContext.request.get(`${API_BASE}/datasets?page=1&limit=100`, { headers: b });
         expect(listing.status()).toBe(200);
         expect(await listing.text()).not.toContain(filename);
+
+        // Write paths too: B can neither delete A's model nor rewrite A's workflow,
+        // and A's objects are untouched afterwards.
+        const del = await bContext.request.delete(`${API_BASE}/ml/${modelId}`, { headers: b });
+        expect([403, 404], "B must not delete A's model").toContain(del.status());
+        const put = await bContext.request.put(`${API_BASE}/workflows/${fileId}`, {
+          headers: { ...b, 'Content-Type': 'application/json' },
+          data: { current_stage: 'data_loading', completed_stages: [], stage_data: {} },
+        });
+        expect([403, 404], "B must not rewrite A's workflow").toContain(put.status());
+        expect((await request.get(`${API_BASE}/ml/${modelId}`, { headers: a })).status(), "A's model survives B's delete").toBe(200);
+        const workflow = await request.get(`${API_BASE}/workflows/${fileId}`, { headers: a });
+        expect(workflow.status()).toBe(200);
+        expect((await workflow.json()).current_stage, "A's workflow survives B's put").toBe('model_evaluation');
       } finally {
         await bContext.close();
       }
     } finally {
       await request.delete(`${API_BASE}/ml/${modelId}`, { headers: a }).catch(() => {});
       await request.delete(`${API_BASE}/datasets/${datasetId}`, { headers: a }).catch(() => {});
+      await cleanupDataset(fileId);
     }
   });
 });

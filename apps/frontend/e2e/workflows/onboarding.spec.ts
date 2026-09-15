@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures';
-import type { Page } from '@playwright/test';
+import { apiAuthHeaders } from '../helpers/apiAuth';
 
 /**
  * #470 — the onboarding flow every first-time user is forced into must talk to the
@@ -11,21 +11,13 @@ import type { Page } from '@playwright/test';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-async function apiToken(page: Page): Promise<string> {
-  const session = await page.request.get('/api/auth/session');
-  const body = await session.json();
-  expect(body?.apiToken, 'the session must expose the minted API JWT').toBeTruthy();
-  return body.apiToken as string;
-}
-
 test.describe('Onboarding talks to the backend (#470)', () => {
   test('a brand-new user walks onboarding to completion with no failed request @smoke', async ({
     authenticatedPage: page,
   }) => {
     // A brand-new user: reset this account's progress through the backend itself.
-    const token = await apiToken(page);
     const reset = await page.request.post(`${API}/onboarding/reset`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: await apiAuthHeaders(page.request),
     });
     expect(reset.ok(), `reset: ${reset.status()}`).toBeTruthy();
 

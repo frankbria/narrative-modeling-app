@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { apiAuthHeaders } from '../helpers/apiAuth';
 
 /**
  * Right-to-erasure is reachable from the UI and drives the real backend cascade
@@ -24,14 +25,10 @@ test.describe('right-to-erasure UI (#482)', () => {
 
     // The backend verifies the minted API JWT, so seed with the logged-in
     // session's token (session.apiToken, the only credential that may reach the
-    // backend — #527). Read it from the same-origin NextAuth session endpoint.
-    const session = await page.request.get('/api/auth/session').then((r) => r.json());
-    const token = session?.apiToken as string | undefined;
-    expect(token, 'authenticated session must carry an apiToken').toBeTruthy();
-
+    // backend — #527).
     // Seed a DatasetMetadata-backed dataset (the id-space the dashboard lists).
     const seeded = await page.request.post(`${API_BASE}/datasets/upload`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: await apiAuthHeaders(page.request),
       multipart: {
         file: { name: filename, mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n3,4\n') },
       },
