@@ -23,7 +23,7 @@ import {
   BINARY_CLASS_ROW,
   makeBinaryClassRows,
 } from '../helpers/binaryClassificationData';
-import { API_BASE, ML_AUTH } from '../helpers/mlApi';
+import { API_BASE, mlAuth } from '../helpers/mlApi';
 import { join } from 'path';
 
 let perfMonitor: PerformanceMonitor;
@@ -164,6 +164,9 @@ test.describe('Performance - API Response Times', () => {
     request,
     uploadTestDataset,
   }) => {
+    // Fetched once, outside the timed callbacks, so the session round-trip is
+    // never billed against the endpoint budget (claude-review).
+    const auth = await mlAuth(request);
     const datasetId = await uploadTestDataset();
 
     // #274: legacy /models/train is removed. Real training is POST /ml/train,
@@ -174,7 +177,7 @@ test.describe('Performance - API Response Times', () => {
       'Model Training Submit API',
       async () => {
         const response = await request.post(`${apiBase}/ml/train`, {
-          headers: { Authorization: 'Bearer e2e-test-token' },
+          headers: auth,
           data: {
             dataset_id: datasetId,
             target_column: 'purchased',
@@ -203,6 +206,9 @@ test.describe('Performance - API Response Times', () => {
     uploadTestDataset,
     trainModel,
   }) => {
+    // Fetched once, outside the timed callbacks, so the session round-trip is
+    // never billed against the endpoint budget (claude-review).
+    const auth = await mlAuth(request);
     // Real AutoML training + a poll for the saved artifact can exceed the
     // default 30s test timeout; the prediction itself is the measured part.
     test.setTimeout(120000);
@@ -215,8 +221,8 @@ test.describe('Performance - API Response Times', () => {
     const datasetId = await uploadTestDataset('ai-test-datasets/binary-classification-small.csv');
     const modelId = await trainModel(datasetId, 'churned');
 
-    // Direct backend call (Next.js does not proxy /api/v1); SKIP_AUTH backend
-    // still requires an Authorization header for HTTPBearer.
+    // Direct backend call (Next.js does not proxy /api/v1) with the session's
+    // minted JWT (#493).
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
     const SINGLE_PREDICTION_BUDGET_MS = 1000;
@@ -229,7 +235,7 @@ test.describe('Performance - API Response Times', () => {
         // mirror the non-target columns of binary-classification-small.csv — if
         // that dataset's header changes, update this payload to match.
         const response = await request.post(`${apiBase}/ml/${modelId}/predict`, {
-          headers: { Authorization: 'Bearer e2e-test-token' },
+          headers: auth,
           data: {
             data: [
               {
@@ -267,6 +273,9 @@ test.describe('Performance - API Response Times', () => {
     uploadTestDataset,
     trainModel,
   }) => {
+    // Fetched once, outside the timed callbacks, so the session round-trip is
+    // never billed against the endpoint budget (claude-review).
+    const auth = await mlAuth(request);
     test.setTimeout(120000); // real AutoML training runs well past the 30s default
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
@@ -284,7 +293,7 @@ test.describe('Performance - API Response Times', () => {
           // recorded metric below, so a slow call yields a clean budget failure
           // (test.setTimeout is the hard backstop).
           const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
-            headers: ML_AUTH,
+            headers: auth,
             data: { data: batchData },
           });
           expect(response.ok()).toBeTruthy();
@@ -298,7 +307,7 @@ test.describe('Performance - API Response Times', () => {
 
       expect(metric.value).toBeLessThanOrEqual(5000);
     } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: auth }).catch(() => {});
     }
   });
 
@@ -378,6 +387,9 @@ test.describe('Performance - Database Query Performance', () => {
     uploadTestDataset,
     trainModel,
   }) => {
+    // Fetched once, outside the timed callbacks, so the session round-trip is
+    // never billed against the endpoint budget (claude-review).
+    const auth = await mlAuth(request);
     test.setTimeout(120000); // real AutoML training runs well past the 30s default
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
@@ -386,7 +398,7 @@ test.describe('Performance - Database Query Performance', () => {
       const metric = await perfMonitor.measureApiCall(
         'Model Metrics Query',
         async () => {
-          const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH });
+          const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: auth });
           expect(response.ok()).toBeTruthy();
           const body = await response.json();
           expect(body).toHaveProperty('metrics');
@@ -397,7 +409,7 @@ test.describe('Performance - Database Query Performance', () => {
 
       expect(metric.value).toBeLessThanOrEqual(500);
     } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: auth }).catch(() => {});
     }
   });
 
@@ -593,6 +605,9 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
     uploadTestDataset,
     trainModel,
   }) => {
+    // Fetched once, outside the timed callbacks, so the session round-trip is
+    // never billed against the endpoint budget (claude-review).
+    const auth = await mlAuth(request);
     test.setTimeout(120000); // real AutoML training runs well past the 30s default
     const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
@@ -600,7 +615,7 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
     try {
       const predictionOperations = Array.from({ length: 10 }, () => async () => {
         const response = await request.post(`${API_BASE}/ml/${modelId}/predict`, {
-          headers: ML_AUTH,
+          headers: auth,
           data: { data: [BINARY_CLASS_ROW] },
         });
         expect(response.ok()).toBeTruthy();
@@ -617,7 +632,7 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
 
       expect(metric.value).toBeLessThanOrEqual(1000);
     } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: ML_AUTH }).catch(() => {});
+      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: auth }).catch(() => {});
     }
   });
 });

@@ -11,6 +11,7 @@ import type { DataFixtures } from './data';
 import { readFileSync } from 'fs';
 import { join, basename } from 'path';
 import { AIMockProvider } from './ai-mock';
+import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
 
 // AI Mock fixture type
 export interface AIMockFixtures {
@@ -257,10 +258,15 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     const cleanup = async (datasetId: string) => {
       try {
         // Target the backend directly (Next.js does not proxy /api/v1);
-        // a relative URL hits the dev server and burns a 15s timeout per test
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-        await request.delete(`${apiBase}/datasets/${datasetId}`, {
-          headers: { Authorization: 'Bearer e2e-test-token' },
+        // a relative URL hits the dev server and burns a 15s timeout per test.
+        // Two id-spaces: the /upload page (uploadTestDataset) creates a UserData
+        // row keyed by a 24-hex ObjectId, deleted via /user_data/{id}; a
+        // DatasetMetadata id (`dataset_…`, from POST /datasets/upload) goes to
+        // /datasets/{id}. Sending an ObjectId to /datasets always 404'd, so every
+        // uploaded fixture used to leak (swallowed below) — see #493 review.
+        const path = /^[0-9a-f]{24}$/i.test(datasetId) ? 'user_data' : 'datasets';
+        await request.delete(`${API_BASE}/${path}/${datasetId}`, {
+          headers: await apiAuthHeaders(request),
           timeout: 5000,
         });
       } catch (error) {
@@ -274,10 +280,10 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   trainModel: async ({ request }, use) => {
     const train = async (datasetId: string, targetColumn: string): Promise<string> => {
       // API calls must target the backend directly — Next.js does not proxy
-      // /api/v1/* to the FastAPI server. Backend runs with SKIP_AUTH=true in
-      // E2E, but HTTPBearer still requires some Authorization header.
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-      const headers = { Authorization: 'Bearer e2e-test-token' };
+      // /api/v1/* to the FastAPI server. The backend verifies the session's
+      // minted JWT (#493), so the model is owned by the user the page loads as.
+      const apiBase = API_BASE;
+      const headers = await apiAuthHeaders(request);
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -353,7 +359,12 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   cleanupModel: async ({ request }, use) => {
     const cleanup = async (modelId: string) => {
       try {
-        await request.delete(`/api/v1/models/${modelId}`);
+        // Trained models live under the backend's /ml surface (a relative
+        // /api/v1 URL hits the Next dev server, which does not proxy it).
+        await request.delete(`${API_BASE}/ml/${modelId}`, {
+          headers: await apiAuthHeaders(request),
+          timeout: 5000,
+        });
       } catch (error) {
         console.warn(`Failed to cleanup model ${modelId}:`, error);
       }

@@ -14,7 +14,10 @@ Environment Variables:
     MONGODB_URI: MongoDB connection string (default: mongodb://localhost:27017)
     MONGODB_DB: MongoDB database name (default: narrative-modeling-test)
     TEST_USER_EMAIL: Test user email (default: test@narrativeml.com)
-    TEST_USER_ID: Test user ID (default: test-user-12345)
+    TEST_USER_ID: Test user ID (default: test-user-12345) — the id the dev
+        credentials provider returns and the minted apiToken carries as `sub`,
+        i.e. the owner the backend attributes the user's data to (#493). It is
+        NOT the NextAuth `users` Mongo _id.
 """
 
 import os
@@ -111,7 +114,9 @@ def seed_nextauth_user(db):
 def seed_sample_dataset(db, user_id):
     """
     Seed a sample dataset for testing data workflows.
-    Uses the UserData/DatasetMetadata schema from the backend.
+    Uses the UserData/DatasetMetadata schema from the backend. Owned by
+    TEST_USER_ID (the token `sub` the backend verifies), so the signed-in test
+    user can actually see it under real auth (#493).
     """
     print("\n📊 Seeding sample test dataset...")
 
@@ -192,8 +197,8 @@ def verify_seed(db):
         print("   ❌ User not found!")
         return False
 
-    # Verify dataset
-    dataset = db['user_data'].find_one({'user_id': str(user['_id'])})
+    # Verify dataset (owned by the credentials id the backend attributes to)
+    dataset = db['user_data'].find_one({'user_id': TEST_USER_ID})
     if dataset:
         print(f"   ✅ Dataset verified: {dataset['filename']}")
     else:
@@ -261,11 +266,11 @@ def main():
         ensure_s3_bucket()
 
         # Seed test user
-        user_id = seed_nextauth_user(db)
+        seed_nextauth_user(db)
 
-        # Seed sample dataset
+        # Seed sample dataset, owned by the credentials id (not the Mongo _id)
         if '--with-data' in sys.argv:
-            seed_sample_dataset(db, user_id)
+            seed_sample_dataset(db, TEST_USER_ID)
 
         # Verify seeded data
         if verify_seed(db):

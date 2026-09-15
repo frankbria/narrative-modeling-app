@@ -12,6 +12,7 @@
  */
 
 import { test, expect } from '../fixtures';
+import { apiAuthHeaders } from '../helpers/apiAuth';
 import { UploadPage } from '../pages/UploadPage';
 import { join } from 'path';
 
@@ -527,7 +528,7 @@ test.describe('AI Recommendations - Validation and Application', () => {
       // request is accepted rather than a synchronous accuracy score.
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       const trainResponse = await request.post(`${apiBase}/ml/train`, {
-        headers: { Authorization: 'Bearer e2e-test-token' },
+        headers: await apiAuthHeaders(request),
         data: {
           dataset_id: datasetId,
           target_column: 'purchased',

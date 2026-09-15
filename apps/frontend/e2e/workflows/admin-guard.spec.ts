@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { signInAs } from '../helpers/apiAuth';
 
 /**
  * /admin is authorised, not just authenticated (#477) — observed end to end (#613).
@@ -31,27 +32,9 @@ test.describe('/admin guard (#477, #613)', () => {
     const adminSecret = process.env.TEST_ADMIN_PASSWORD;
     expect(adminEmail, 'TEST_ADMIN_EMAIL must be exported (test-e2e.sh does)').toBeTruthy();
     expect(adminSecret, 'TEST_ADMIN_PASSWORD must be exported (test-e2e.sh does)').toBeTruthy();
-    // A genuinely fresh context: browser.newContext() inherits the project's
-    // storageState (the pre-authenticated test user) unless told otherwise, and
-    // the sign-in page redirects an authenticated visitor straight back into the app.
-    const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
-    const page = await context.newPage();
+    const context = await signInAs(browser, baseURL as string, adminEmail as string, adminSecret as string);
     try {
-      await page.goto('/auth/signin');
-      await page.locator('input[id="email"]').fill(adminEmail as string);
-      await page.locator('input[id="password"]').fill(adminSecret as string);
-      await Promise.all([
-        page.waitForResponse(
-          (r) => r.url().includes('/api/auth/callback/credentials') && r.status() === 200,
-          { timeout: 20000 }
-        ),
-        page.locator('button:has-text("Sign In with Test User")').click(),
-      ]);
-      // The callback response above set the session cookie on this context; the
-      // post-login redirect target (NEXTAUTH_URL) is irrelevant to a document
-      // request made with the context's cookies, so do not wait for it.
-
-      const response = await page.request.get('/admin', {
+      const response = await context.request.get('/admin', {
         headers: { Accept: 'text/html' },
         maxRedirects: 0,
       });

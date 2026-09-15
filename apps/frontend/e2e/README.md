@@ -142,6 +142,27 @@ test('my test', async ({ authenticatedPage }) => {
 });
 ```
 
+The backend runs with **real authentication** during e2e (#493): it verifies the
+HS256 `session.apiToken` the frontend mints with the shared `NEXTAUTH_SECRET`, so
+requests are attributed to the signed-in dev-credentials identity
+(`test-user-12345`, or `test-admin-12345` for the second tenant). A spec that
+calls the backend directly (Next.js does not proxy `/api/v1`) must send that
+token — read it with the helper; a made-up bearer is a 401:
+
+```typescript
+import { API_BASE, apiAuthHeaders, signInAs } from '../helpers/apiAuth';
+
+const headers = await apiAuthHeaders(request);                 // the signed-in user
+const res = await request.get(`${API_BASE}/ml/${modelId}`, { headers });
+
+// a second tenant, for cross-tenant assertions
+const other = await signInAs(browser, baseURL!, process.env.TEST_ADMIN_EMAIL!, process.env.TEST_ADMIN_PASSWORD!);
+const theirs = await apiAuthHeaders(other.request);
+```
+
+`workflows/tenant-isolation.spec.ts` (`@smoke`) is the guard that the two users
+really are isolated on the backend. Never re-add `SKIP_AUTH` to `test-e2e.sh`.
+
 ### Test User Fixture
 Provides test user credentials:
 
@@ -226,6 +247,7 @@ test('upload workflow', async ({
 - `BASE_URL`: Base URL for tests (default: http://localhost:3010)
 - `TEST_USER_EMAIL`: Test user email for E2E authentication (default: test@narrativeml.com)
 - `TEST_USER_PASSWORD`: Test user password for E2E authentication (default: test-password-123)
+- `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD`: the second dev-credentials identity (admin, #613; the other tenant in the isolation spec). Exported by `test-e2e.sh`, no default in the app.
 
 ## CI/CD Integration
 
