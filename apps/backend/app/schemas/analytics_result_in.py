@@ -1,7 +1,7 @@
 # app/schemas/analytics_result_in.py
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AnalyticsResultIn(BaseModel):
@@ -12,8 +12,8 @@ class AnalyticsResultIn(BaseModel):
     plotRefs: list[str] | None = None
     summaryText: str | None = None
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "datasetId": "67fdb854cef0d907308298aa",
                 "analysisType": "EDA",
@@ -23,3 +23,4 @@ class AnalyticsResultIn(BaseModel):
                 "summaryText": "Test summary",
             }
         }
+    )

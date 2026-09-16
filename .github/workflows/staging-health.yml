@@ -40,6 +40,9 @@ jobs:
     environment: Development
     timeout-minutes: 10
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Check deploy secrets are configured
         id: preflight
         env:
@@ -91,23 +94,43 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          # The probe's exit code is the verdict; its output is the summary. Capture
-          # via a redirect (not a pipe) so the status is read the same way whether or
-          # not the shell runs with pipefail, and `|| status=$?` keeps `-e` from
-          # aborting before the summary is written on the one path that matters.
+          # The probe's exit code is the verdict; stdout is the summary. Capture via
+          # redirects (not a pipe) so the status is read the same way whether or not
+          # the shell runs with pipefail, and `|| status=$?` keeps `-e` from aborting
+          # before the summary is written. stderr goes to its own file: the pydantic
+          # field-shadow warnings printed on import used to be the whole issue body
+          # (#757) while the verdict — often nothing at all — sat underneath them.
           status=0
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "cd '$DEPLOY_PATH' && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe" \
-            > /tmp/probe.txt 2>&1 || status=$?
+            > /tmp/probe.txt 2> /tmp/probe.err || status=$?
+          echo "$status" > /tmp/probe.status
+          echo "probe exit status: $status"
           cat /tmp/probe.txt
           {
-            echo "## Staging dependency probe"
+            echo "## Staging dependency probe (exit $status)"
             echo
             echo '```'
             cat /tmp/probe.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+      - name: Backend container state
+        # The operator's first move on every alert was to ssh in and look at the
+        # container; the run can do that. Status fields and exception CLASS names
+        # only — this lands in a public issue (see the script header).
+        if: failure() && steps.preflight.outputs.configured == 'true'
+        env:
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/backend_state.sh \
+            > /tmp/state.txt 2>&1 || echo "(state dump failed: exit $?)" >> /tmp/state.txt
+          cat /tmp/state.txt
+          { echo "## Backend container state"; echo; echo '```'; cat /tmp/state.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report the failure on an issue
         # `failure()` alone, on purpose: a Tailscale or SSH step that fails first
@@ -121,12 +144,26 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
-          if [ -f /tmp/probe.txt ]; then detail=$(cat /tmp/probe.txt); else detail='probe did not run — an earlier step (tailnet or ssh) failed; see the run log'; fi
-          # shellcheck disable=SC2016 # the backticks are a literal markdown fence
-          body=$(printf 'Run: %s\n\n```\n%s\n```\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' "$RUN_URL" "$detail")
+          # Search on the stable phrase, never the full title: the operator retitles
+          # every issue with a PX.Y prefix, which made `[P1] [ops] …` miss the open
+          # alert and file a duplicate beside it (#755 → #757).
+          search='"Staging health probe is failing" in:title'
+          status=$(cat /tmp/probe.status 2>/dev/null || echo "not run")
+          case "$status" in
+            137) verdict="Probe exit status 137 — the probe process was SIGKILLed: the backend container is restarting (or being OOM-killed) under it. See the container state below.";;
+            "not run") verdict="The probe did not run — an earlier step (tailnet or ssh) failed; see the run log.";;
+            *) verdict="Probe exit status $status.";;
+          esac
+          probe=$(cat /tmp/probe.txt 2>/dev/null); [ -n "$probe" ] || probe='(the probe printed nothing)'
+          state=$(cat /tmp/state.txt 2>/dev/null); [ -n "$state" ] || state='(not collected)'
+          stderr=$(tail -n 20 /tmp/probe.err 2>/dev/null); [ -n "$stderr" ] || stderr='(empty)'
+          # shellcheck disable=SC2016 # the backticks are literal markdown fences
+          body=$(printf 'Run: %s\n\n%s\n\n## Probe\n```\n%s\n```\n\n## Backend container state\n```\n%s\n```\n\n<details><summary>probe stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' \
+            "$RUN_URL" "$verdict" "$probe" "$state" "$stderr")
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.
-          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          # Comment on the OLDEST open alert so a duplicate never becomes the thread of record.
+          existing=$(gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
@@ -140,9 +177,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title='[P1] [ops] Staging health probe is failing'
-          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
-          [ -z "$existing" ] || gh issue close "$existing" --comment "Recovered: every subsystem healthy in $RUN_URL"
+          search='"Staging health probe is failing" in:title'
+          # Every open match, not only the first: two alerts were open at once (#755, #757).
+          for n in $(gh issue list --state open --search "$search" --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Recovered: every subsystem healthy in $RUN_URL"
+          done
 
       - name: Remove SSH key
         if: always()

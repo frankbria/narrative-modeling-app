@@ -167,6 +167,19 @@ jobs:
              cd '$DEPLOY_PATH'
              docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe"
 
+      - name: Backend container state
+        # Status fields and exception CLASS names only (public run log) — see the
+        # script header. Mirrors staging-health.yml's step (#757).
+        if: failure() && steps.preflight.outputs.configured == 'true'
+        env:
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/backend_state.sh \
+            | tee -a "$GITHUB_STEP_SUMMARY" || true
+
       - name: Remove SSH key
         if: always()
         run: rm -f ~/.ssh/staging_key
