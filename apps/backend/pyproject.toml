@@ -139,6 +139,9 @@ extend-select = ["I", "UP", "T20"]
 # T20 (flake8-print, #288) bans print() in application code only. CLI/dev
 # scripts, one-off task runners, and test debug output legitimately use print().
 "scripts/**" = ["T20"]
+# The dependency probe is a CLI (`python -m app.health_probe`, #552); it lives
+# under app/ only because the runtime image ships nothing else.
+"app/health_probe.py" = ["T20"]
 "tasks/**" = ["T20"]
 "tests/**" = ["T20"]
 
