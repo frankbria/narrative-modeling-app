@@ -38,7 +38,7 @@ from app.services.domain_detector import Domain, domain_detector
 from app.services.model_training.problem_detector import ProblemDetector, ProblemType
 from app.services.redis_cache import cache_service
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,7 @@ def get_openai_client() -> OpenAI | None:
     return _openai_client
 
 
-# Feature suggestion model
-FEATURE_SUGGESTION_MODEL = os.getenv("OPENAI_FEATURE_SUGGESTION_MODEL", "gpt-4")
+FEATURE_SUGGESTION_MODEL = openai_model("OPENAI_FEATURE_SUGGESTION_MODEL")
 
 # Configuration
 FEATURE_SUGGESTION_CACHE_TTL = int(os.getenv("FEATURE_SUGGESTION_CACHE_TTL", "3600"))

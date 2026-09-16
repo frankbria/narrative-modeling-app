@@ -18,7 +18,7 @@ from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
 from app.utils.circuit_breaker import with_circuit_breaker
 from app.utils.datetime import utcnow
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class EnhancedAISummary(AISummary):
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     analysis_depth: str = Field(default="standard", pattern="^(basic|standard|comprehensive)$")
     generated_at: datetime = Field(default_factory=utcnow)
-    model_used: str = Field(default="gpt-4")
+    model_used: str = Field(default_factory=openai_model)
     processing_time: float = Field(default=0.0)
 
 
@@ -59,7 +59,7 @@ class DatasetSummarizationService:
         else:
             self.client = build_openai_client(api_key)
             
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        self.model = openai_model()
         logger.info(f"Using OpenAI model: {self.model}")
     
     async def generate_comprehensive_summary(

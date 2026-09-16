@@ -109,6 +109,18 @@ describe('Plan & usage', () => {
     )
   })
 
+  // #474 AC3: ENTERPRISE is sold sales-led, not self-serve. The tier must not be
+  // dead on the page: a contact link, never a checkout button.
+  it('points at sales for Enterprise instead of a dead tier', async () => {
+    mockStatus(status())
+
+    render(<BillingSettingsPage />)
+
+    const link = await screen.findByRole('link', { name: /contact us/i })
+    expect(link).toHaveAttribute('href', expect.stringMatching(/^mailto:/))
+    expect(screen.queryByRole('button', { name: /enterprise/i })).not.toBeInTheDocument()
+  })
+
   // #473 AC5: the checkout surface has to carry the terms the charge is made
   // under. This is the page that sends the customer to Stripe.
   it('shows the terms and refund policy alongside the upgrade button', async () => {
@@ -155,6 +167,8 @@ describe('Plan & usage', () => {
     expect(screen.queryByText(/-1/)).not.toBeInTheDocument()
     // No bar to draw when there is no ceiling.
     expect(screen.queryAllByRole('progressbar')).toHaveLength(0)
+    // Already on Enterprise: nothing to contact sales about (#474).
+    expect(screen.queryByRole('link', { name: /contact us/i })).not.toBeInTheDocument()
   })
 
   it('surfaces a failure instead of rendering an empty plan', async () => {

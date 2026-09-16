@@ -39,11 +39,10 @@ Build the billing surface as scoped in #370:
 with env overrides, not on the `Subscription` document. A limit is a product decision
 that changes without a migration; the document records what a tenant actually bought.
 
-**The tier numbers are an assumption.** #365–#369 specify the mechanism and never the
-tiers, limits or pricing. The defaults (free 10 training runs / 1,000 predictions /
-20 uploads per period; pro 200 / 100,000 / 500; enterprise unlimited) were chosen so
-the invite-only beta stays usable the moment enforcement is switched on. **They are
-placeholders and should be replaced with real numbers before charging anyone.**
+**The tier numbers were an assumption — until [ADR-003](./ADR-003-plan-limits-and-pricing.md).**
+#365–#369 specified the mechanism and never the tiers, limits or pricing, so the
+first defaults were placeholders sized to keep the beta usable. ADR-003 records the
+product values, the unit economics behind them and the Stripe steps.
 
 **Entitlement is derived, not stored.** `Subscription.effective_tier` returns FREE
 unless the subscription is entitled, so a canceled subscription stops granting the

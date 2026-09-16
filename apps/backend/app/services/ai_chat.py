@@ -13,7 +13,7 @@ from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field, model_validator
 
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class AIChatService:
     def __init__(self) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         self.client: OpenAI | None = build_openai_client(api_key) if api_key else None
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        self.model = openai_model()
 
     @staticmethod
     def messages_for(request: ChatRequest) -> list[dict[str, str]]:

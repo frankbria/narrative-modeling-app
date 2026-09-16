@@ -20,12 +20,11 @@ from app.models.data_issue import (
     SuggestedFix,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_async_openai_client
+from app.utils.openai_client import build_async_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
-# Get the model name from environment variable
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_MODEL = openai_model()
 
 # Maximum sample size to send to AI
 MAX_AI_SAMPLE_ROWS = 100

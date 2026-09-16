@@ -13,9 +13,11 @@ from pathlib import Path
 import pytest
 
 from app.utils.openai_client import (
+    DEFAULT_OPENAI_MODEL,
     OPENAI_REQUEST_TIMEOUT,
     build_async_openai_client,
     build_openai_client,
+    openai_model,
 )
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
@@ -37,10 +39,13 @@ def test_no_raw_openai_construction_outside_factory():
             continue
         for i, line in enumerate(path.read_text().splitlines(), 1):
             if _CONSTRUCTION.search(line):
-                offenders.append(f"{path.relative_to(APP_DIR.parent)}:{i}: {line.strip()}")
+                offenders.append(
+                    f"{path.relative_to(APP_DIR.parent)}:{i}: {line.strip()}"
+                )
     assert not offenders, (
         "OpenAI clients must be built via app.utils.openai_client so the request "
-        "timeout is always set (#501). Offending constructions:\n" + "\n".join(offenders)
+        "timeout is always set (#501). Offending constructions:\n"
+        + "\n".join(offenders)
     )
 
 
@@ -86,3 +91,42 @@ def test_too_large_env_timeout_is_clamped(monkeypatch):
     finally:
         monkeypatch.delenv("OPENAI_REQUEST_TIMEOUT", raising=False)
         importlib.reload(oc)  # restore module state for other tests
+
+
+# A model-name literal (`"gpt-4"`, `'gpt-4o-mini'`). Every call site reads the
+# model through `openai_model()` so the cost lever is one constant (#474).
+_MODEL_LITERAL = re.compile(r"""["']gpt-[0-9a-z.-]*["']""")
+
+
+@pytest.mark.unit
+def test_no_model_name_literal_outside_factory():
+    offenders = []
+    for path in APP_DIR.rglob("*.py"):
+        if path == FACTORY:
+            continue
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            if _MODEL_LITERAL.search(line):
+                offenders.append(
+                    f"{path.relative_to(APP_DIR.parent)}:{i}: {line.strip()}"
+                )
+    assert not offenders, (
+        "Model names are read via app.utils.openai_client.openai_model() so the "
+        "default is one constant (#474). Offending literals:\n" + "\n".join(offenders)
+    )
+
+
+@pytest.mark.unit
+def test_openai_model_treats_blank_env_as_unset(monkeypatch):
+    """Staging passes optional env through as "" (#457); blank must mean default."""
+    monkeypatch.setenv("OPENAI_MODEL", "")
+    assert openai_model() == DEFAULT_OPENAI_MODEL
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
+    assert openai_model() == "gpt-4.1"
+    monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "  ")
+    # A blank specialised name falls back to the global override, then the default.
+    assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == "gpt-4.1"
+    monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "gpt-4o")
+    assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == "gpt-4o"
+    monkeypatch.delenv("OPENAI_MODEL")
+    monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "")
+    assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == DEFAULT_OPENAI_MODEL

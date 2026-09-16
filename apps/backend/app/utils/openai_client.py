@@ -27,6 +27,31 @@ from openai import AsyncOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 
+#: The model every call site uses unless `OPENAI_MODEL` says otherwise (#474).
+#: One constant because the model is the dominant per-unit cost behind the plan
+#: limits in ADR-003: the limits are sized to hold even at gpt-4 prices, and this
+#: default is what gives them their margin.
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+
+def openai_model(env_name: str = "OPENAI_MODEL") -> str:
+    """The model name for a call site.
+
+    Read at the point of the call; note that some modules still bind the result to
+    a module-level constant at import (``ai_summary.OPENAI_MODEL``,
+    ``FEATURE_SUGGESTION_MODEL``), where an env change needs a reload to take effect.
+
+    A specialised name (``OPENAI_FEATURE_SUGGESTION_MODEL``) falls back to the
+    global ``OPENAI_MODEL`` before the default, so one override moves every call.
+    Blank counts as unset: staging passes optional env through as "" (#457).
+    """
+    for name in dict.fromkeys((env_name, "OPENAI_MODEL")):
+        value = (os.getenv(name) or "").strip()
+        if value:
+            return value
+    return DEFAULT_OPENAI_MODEL
+
+
 # The whole point of the timeout is that one logical call can never outlast the
 # gunicorn worker timeout. The circuit breaker retries up to 3 attempts with a
 # few seconds of exponential backoff between them, so worst case is
