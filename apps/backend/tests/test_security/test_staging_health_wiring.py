@@ -153,8 +153,10 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
         fake.write_text(
             "#!/usr/bin/env bash\n"
             'case " $* " in\n'
+            "  *\" ps -q \"*) echo 'c0ffee';;\n"
             "  *\" ps \"*) echo 'narrative-staging-backend  Restarting (3) 2 seconds ago';;\n"
-            "  *\" inspect \"*) echo 'RestartCount=41 OOMKilled=false ExitCode=3';;\n"
+            "  *\" inspect c0ffee \"*) echo 'RestartCount=41 OOMKilled=false ExitCode=3';;\n"
+            "  *\" inspect \"*) echo 'inspect got the wrong container id' >&2; exit 1;;\n"
             '  *" logs "*)\n'
             "    echo 'pymongo.errors.OperationFailure: bad auth : authentication failed, full error: {host: cluster0.abc123.mongodb.net}';\n"
             "    echo 'connecting to mongodb+srv://svc_user:hunter2@cluster0.abc123.mongodb.net/db';\n"
@@ -192,3 +194,25 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
         "full error",
     ):
         assert secret not in out, f"{secret!r} left the box"
+    assert "LogsFetchError" not in out
+    # A failed log fetch is a visible sentinel, never an empty section that reads as "clean".
+    with tempfile.TemporaryDirectory() as tmp2:
+        fake2 = Path(tmp2) / "bin" / "docker"
+        fake2.parent.mkdir()
+        fake2.write_text(
+            '#!/usr/bin/env bash\ncase " $* " in *" logs "*) exit 1;; *) echo x;; esac\n'
+        )
+        fake2.chmod(0o755)
+        failed = subprocess.run(
+            ["bash", str(STATE_SCRIPT)],
+            env={
+                **os.environ,
+                "PATH": f"{fake2.parent}:{os.environ['PATH']}",
+                "DEPLOY_PATH": tmp2,
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        ).stdout
+    assert "LogsFetchError" in failed

@@ -178,7 +178,9 @@ jobs:
         run: |
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/backend_state.sh \
-            | tee -a "$GITHUB_STEP_SUMMARY" || true
+            > /tmp/state.txt 2>&1 || echo "(state dump failed: exit $?)" >> /tmp/state.txt
+          cat /tmp/state.txt
+          { echo "## Backend container state"; echo; echo '```'; cat /tmp/state.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove SSH key
         if: always()
