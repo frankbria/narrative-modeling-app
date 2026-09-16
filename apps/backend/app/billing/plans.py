@@ -1,10 +1,10 @@
-"""Plan limits (#366/#368).
+"""Plan limits (#366/#368), product values per ADR-003 (#474).
 
-**These numbers are an assumption, not a product decision.** The billing issues
-specify the mechanism but never the tiers, limits or pricing. They are set here, in
-one place, with env overrides, precisely so changing them is a config edit rather
-than a code change — and so it is obvious where to look when the real numbers
-arrive.
+The numbers below are the decided tiers, sized against measured unit economics
+(`docs/architecture/ADR-003-plan-limits-and-pricing.md`); the ADR table and these
+defaults are held equal by `tests/test_billing/test_plan_limits_are_the_product_values.py`.
+They are the deployed values too — no deploy surface sets a `PLAN_*` override —
+so change the ADR and this file together.
 
 Kept out of the `Subscription` document deliberately: a limit changes without a
 migration, whereas the document records what a tenant actually bought.
@@ -110,30 +110,30 @@ def _env_positive_int(name: str, default: int) -> int:
     return value
 
 
-#: Per-tier, per-period ceilings. FREE is intentionally usable rather than a
-#: teaser: the app is an invite-only beta today (ADR-001), and a free tier that
-#: cannot train a single model would make the beta unusable the moment enforcement
-#: is switched on.
+#: Per-tier, per-period ceilings (ADR-003). FREE is sized to a ~$5/month worst-case
+#: acquisition budget, enough to load, summarise, engineer and train once end to
+#: end; PRO to a $49/month price at gpt-4 prices; ENTERPRISE is sales-led with the
+#: one finite ceiling that bounds the model invoice.
 PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
     PlanTier.FREE: PlanLimits(
-        training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 10),
+        training_runs=_env_int("PLAN_FREE_TRAINING_RUNS", 5),
         predictions=_env_int("PLAN_FREE_PREDICTIONS", 1_000),
-        uploads=_env_int("PLAN_FREE_UPLOADS", 20),
-        ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 100),
+        uploads=_env_int("PLAN_FREE_UPLOADS", 10),
+        ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 30),
         api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
     ),
     PlanTier.PRO: PlanLimits(
-        training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 200),
+        training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 100),
         predictions=_env_int("PLAN_PRO_PREDICTIONS", 100_000),
-        uploads=_env_int("PLAN_PRO_UPLOADS", 500),
-        ai_calls=_env_positive_int("PLAN_PRO_AI_CALLS", 5_000),
+        uploads=_env_int("PLAN_PRO_UPLOADS", 200),
+        ai_calls=_env_positive_int("PLAN_PRO_AI_CALLS", 400),
         api_key_rate_limit=_env_positive_int("PLAN_PRO_API_KEY_RATE_LIMIT", 10_000),
     ),
     PlanTier.ENTERPRISE: PlanLimits(
         training_runs=_env_int("PLAN_ENTERPRISE_TRAINING_RUNS", UNLIMITED),
         predictions=_env_int("PLAN_ENTERPRISE_PREDICTIONS", UNLIMITED),
         uploads=_env_int("PLAN_ENTERPRISE_UPLOADS", UNLIMITED),
-        ai_calls=_env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 50_000),
+        ai_calls=_env_positive_int("PLAN_ENTERPRISE_AI_CALLS", 5_000),
         api_key_rate_limit=_env_positive_int(
             "PLAN_ENTERPRISE_API_KEY_RATE_LIMIT", 60_000
         ),
@@ -168,7 +168,7 @@ class TrainingCeilings:
     max_features: int
 
 
-#: Placeholders like the rest of this module (#474 sets the real product values).
+#: Product values per ADR-003: they bound CPU per run and were not moved by #474.
 TRAINING_CEILINGS: dict[PlanTier, TrainingCeilings] = {
     PlanTier.FREE: TrainingCeilings(
         max_models=12,

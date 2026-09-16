@@ -8,7 +8,7 @@ from openai import OpenAIError
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -30,8 +30,7 @@ def initialize_openai_client():
     logging.info("OpenAI client initialized successfully")
 
 
-# Get the model name from environment variable, default to "gpt-4"
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_MODEL = openai_model()
 logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
 

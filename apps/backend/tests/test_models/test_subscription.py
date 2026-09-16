@@ -316,7 +316,7 @@ class TestEnvOverrides:
 
         reloaded = importlib.reload(plans)
         try:
-            assert reloaded.PLAN_LIMITS[PlanTier.FREE].training_runs == 10
+            assert reloaded.PLAN_LIMITS[PlanTier.FREE].training_runs == 5
         finally:
             monkeypatch.delenv("PLAN_FREE_TRAINING_RUNS", raising=False)
             importlib.reload(plans)

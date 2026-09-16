@@ -38,7 +38,7 @@ from app.schemas.ai_orchestration import (
     WorkflowStageId,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class AIOrchestrationService:
             self.client: OpenAI | None = None
         else:
             self.client = build_openai_client(api_key)
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        self.model = openai_model()
 
     # ------------------------------------------------------------------ profile
     async def build_profile(self, dataset_id: str, user_id: str) -> OrchestrationProfile | None:

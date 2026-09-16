@@ -168,7 +168,7 @@ class TestDatasetSummarizationService:
             assert len(summary.relationships) == 1
             assert summary.confidence_score > 0.5
             assert summary.analysis_depth == "comprehensive"
-            assert summary.model_used == "gpt-4-turbo"
+            assert summary.model_used == summarization_service.model
 
     async def test_generate_fallback_summary(self, summarization_service, sample_request):
         """Test fallback summary generation"""

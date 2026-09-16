@@ -21,7 +21,7 @@ from app.schemas.evaluation import (
     RegressionMetrics,
 )
 from app.utils.circuit_breaker import with_circuit_breaker
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class EvaluationExplanationService:
         else:
             self.client = build_openai_client(api_key)
 
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        self.model = openai_model()
 
     async def generate_report_card(
         self,

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useState } from 'react'
 import Link from 'next/link'
+import { COMPANY } from '@/lib/legal/company'
 
 const METRIC_LABELS: Record<string, string> = {
   training_runs: 'Training runs',
@@ -208,6 +209,20 @@ export default function BillingSettingsPage() {
         >
           {redirecting ? 'Redirecting…' : 'Manage subscription'}
         </Button>
+      )}
+
+      {/* ENTERPRISE is sales-led (#474 AC3): a contact link, never a dead tier. */}
+      {status.configured && status.tier !== 'enterprise' && (
+        <p className="text-sm text-muted-foreground">
+          Need unlimited training, predictions and uploads?{' '}
+          <a
+            href={`mailto:${COMPANY.supportEmail}?subject=Enterprise%20plan`}
+            className="text-primary hover:underline"
+          >
+            Contact us
+          </a>{' '}
+          about Enterprise.
+        </p>
       )}
     </div>
   )

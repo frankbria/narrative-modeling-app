@@ -9,7 +9,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from app.utils.openai_client import build_openai_client
+from app.utils.openai_client import build_openai_client, openai_model
 
 from .algorithm_selector import AlgorithmRecommendation, DataProfile
 from .problem_detector import ProblemType
@@ -31,8 +31,7 @@ def initialize_openai_client():
     logger.info("OpenAI client initialized for explanations")
 
 
-# Get model from environment
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_MODEL = openai_model()
 
 
 class ExplanationService:
