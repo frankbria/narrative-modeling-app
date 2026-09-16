@@ -37,9 +37,15 @@ DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 def openai_model(env_name: str = "OPENAI_MODEL") -> str:
     """The model name for a call site, read per call so tests can override it.
 
+    A specialised name (``OPENAI_FEATURE_SUGGESTION_MODEL``) falls back to the
+    global ``OPENAI_MODEL`` before the default, so one override moves every call.
     Blank counts as unset: staging passes optional env through as "" (#457).
     """
-    return (os.getenv(env_name) or "").strip() or DEFAULT_OPENAI_MODEL
+    for name in dict.fromkeys((env_name, "OPENAI_MODEL")):
+        value = (os.getenv(name) or "").strip()
+        if value:
+            return value
+    return DEFAULT_OPENAI_MODEL
 
 # The whole point of the timeout is that one logical call can never outlast the
 # gunicorn worker timeout. The circuit breaker retries up to 3 attempts with a

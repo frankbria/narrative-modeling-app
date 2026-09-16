@@ -123,4 +123,10 @@ def test_openai_model_treats_blank_env_as_unset(monkeypatch):
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
     assert openai_model() == "gpt-4.1"
     monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "  ")
+    # A blank specialised name falls back to the global override, then the default.
+    assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == "gpt-4.1"
+    monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "gpt-4o")
+    assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == "gpt-4o"
+    monkeypatch.delenv("OPENAI_MODEL")
+    monkeypatch.setenv("OPENAI_FEATURE_SUGGESTION_MODEL", "")
     assert openai_model("OPENAI_FEATURE_SUGGESTION_MODEL") == DEFAULT_OPENAI_MODEL
