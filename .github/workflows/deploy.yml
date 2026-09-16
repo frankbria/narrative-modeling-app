@@ -147,17 +147,25 @@ jobs:
         env:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          # Backend health endpoint is exposed on host port 8010 (see compose).
+          # Wait on /health/ready (Mongo-backed: 503 until the service's pool
+          # authenticates) — NOT bare /health, which answers 200 from a worker whose
+          # credentials are dead — then run the per-subsystem probe inside the
+          # container `up -d` just recreated. Every connection the probe makes is
+          # therefore fresh: this is the restart-after-rotation smoke step of #552.
+          # Backend is exposed on host port 8010 (see compose).
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "set -e
              for i in \$(seq 1 12); do
-               if curl -fsS http://localhost:8010/health >/dev/null; then
-                 echo 'Backend healthy.'; exit 0
+               if curl -fsS http://localhost:8010/health/ready >/dev/null; then
+                 echo 'Backend ready.'; break
                fi
-               echo \"Waiting for backend health (\$i/12)...\"; sleep 10
+               if [ \$i -eq 12 ]; then echo 'Backend did not become ready in time.'; exit 1; fi
+               echo \"Waiting for backend readiness (\$i/12)...\"; sleep 10
              done
-             echo 'Backend did not become healthy in time.'; exit 1"
+             cd '$DEPLOY_PATH'
+             docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe"
 
       - name: Remove SSH key
         if: always()

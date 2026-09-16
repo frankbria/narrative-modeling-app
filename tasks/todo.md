@@ -1,50 +1,44 @@
-# #493 [P1.25] — e2e smoke gate runs with SKIP_AUTH=true, so it cannot catch an isolation regression
+# #552 [P1.33] — A credential rotation can leave staging dead for weeks with nothing detecting it
 
-Plan source: the issue's analysis comment (2026-09-14). Adapted against the code on 2026-09-14.
+Plan source: self-authored (no plan comment on the issue). Authored against the code on 2026-09-15.
 
-## Why it is small
-- The frontend e2e already runs real NextAuth; only the **backend** is started with
-  `SKIP_AUTH=true` (`test-e2e.sh`). Two real identities already exist end to end:
-  `test-user-12345` (ordinary) and `test-admin-12345` (admin, #613), each with a minted
-  HS256 `session.apiToken` the backend verifies when SKIP_AUTH is off.
-- Every UI-driven request already goes browser -> Next proxy -> backend with that token.
-  What breaks under real auth is the set of **direct** backend calls in e2e that send a
-  made-up bearer (`e2e-test-token`, `dev-user-default`): fixtures (`trainModel`,
-  `cleanupDataset`, `cleanupModel`), `helpers/mlApi.ts`, `helpers/seedWorkflow.ts`, and
-  inline seed helpers in predict / data-preparation / beta-journey / performance /
-  model-config / ai-recommendations specs.
+## What the code already asserts (AC2, confirmed)
+- `/health` = liveness only (no I/O). `/health/ready` = MongoDB ping only, **by design** (#503:
+  unauthenticated, LB-polled, no outbound third-party calls). S3 + OpenAI live behind auth at
+  `GET /api/v1/health/dependencies`. `deploy.yml` curled bare `/health`, so a deploy passed with
+  dead Atlas credentials as long as the worker booted — and `/health/ready` passes with S3 gone.
+- Deepening readiness itself would reopen #503; the fix is a probe that *consults* the
+  per-subsystem checks on a schedule and after every restart.
 
 ## Steps
-1. `e2e/helpers/apiAuth.ts` — one helper: `apiAuthHeaders(request)` reads
-   `/api/auth/session` (same-origin, uses the context's stored session) and returns
-   `{ Authorization: Bearer <apiToken> }`; fails loudly when the session has none.
-   Plus `signInAs(browser, baseURL, email, password)` — a fresh context logged in via the
-   dev credentials provider (lifted from admin-guard.spec) — so a spec can act as the
-   second tenant.
-2. Replace every fake bearer with the real token (files above). `ML_AUTH` constant
-   becomes `mlAuth(request)`. `cleanupModel` also gets the right URL (`/ml/{id}` on the
-   backend; it was a relative `/api/v1/models/...` that never reached anything).
-3. `test-e2e.sh` — drop `export SKIP_AUTH=true`; keep `RATE_LIMIT_ENABLED=false` and the
-   `PLAN_*` lifts (still one shared ordinary user). Fix comments that explain SKIP_AUTH.
-   `scripts/seed_e2e_data.py` — own the optional `--with-data` sample by `TEST_USER_ID`
-   (the credentials id / token `sub`), not the NextAuth Mongo `_id`.
-4. New `e2e/workflows/tenant-isolation.spec.ts` (`@smoke`): tenant A (stored session)
-   uploads a dataset through the UI (UserData space) and seeds a `DatasetMetadata` via
-   `POST /datasets/upload` (which also creates a base `DatasetVersion`), seeds a
-   workflow, trains a model. Assert A reads each (proves the token path), then sign in
-   as B (admin creds) and assert B cannot read A's dataset (both id-spaces), version
-   list + version, workflow, or model — non-2xx and no dataset name in the body.
-   RED first: with `SKIP_AUTH=true` still exported the spec must FAIL (B == A).
-5. Docs: e2e README / CLAUDE.md notes that say "SKIP_AUTH collapses every e2e identity".
+1. `apps/backend/app/health_probe.py` — `python -m app.health_probe` (under `app/` because the
+   runtime image copies nothing else). GETs the running service's `/health/ready`, then runs
+   `check_s3_access` / `check_openai_api` in-process (fresh connection, container env). Exit 0
+   only when every status is `healthy`; `not_configured` is a failure on staging. T20 exemption
+   in `pyproject.toml`. Tests: `tests/test_scripts/test_health_probe.py` (MockTransport for the
+   HTTP half, stubbed checks; one test against the real app + real Mongo via ASGITransport).
+2. `.github/workflows/staging-health.yml` — hourly cron + dispatch; same secret gate, tailnet and
+   SSH steps as `deploy.yml`; runs the probe via `docker compose exec -T backend`; on failure
+   opens/comments a `[P1] [ops] Staging health probe is failing` issue, on success closes it.
+3. `deploy.yml` health step — poll `/health/ready` (not `/health`), then run the probe in the
+   freshly recreated container = the restart-after-rotation smoke step (AC4).
+4. `docs/operations/CREDENTIAL_ROTATION.md` — every store + every consumer per secret (from
+   compose + workflows, no hosts/users), the recreate-then-probe procedure (AC3).
+5. `tests/test_security/test_staging_health_wiring.py` — parses the real files: runbook names
+   every secret-like `${VAR}` compose interpolates; the health workflow has a schedule, the
+   probe and `gh issue`; the deploy gate runs the probe and never curls bare `/health`.
+6. Docs: link the runbook + probe from `docs/deployment/STAGING.md`; one CLAUDE.md bullet.
 
 ## Acceptance criteria
-- [ ] AC1 e2e runs with real auth, two distinct users seeded (A = test user, B = admin)
-- [ ] AC2 a @smoke test asserts A's dataset / model / version are unreadable by B
-- [ ] AC3 no e2e subset keeps SKIP_AUTH (none needs it; `transformation-preview.spec`'s
-      cookie hack is inert and stays out of smoke)
-- [ ] AC4 stage-gated pages seed the real backend workflow under the real user
+- [ ] AC1 scheduled check independent of deploys, failures reported where seen (step 2)
+- [ ] AC2 checks connection-dependent health per subsystem, not liveness (steps 1, 3)
+- [ ] AC3 rotation runbook enumerates every consumer (step 4, guarded by step 5)
+- [ ] AC4 restart-after-rotation smoke step (step 3 for deploys; runbook step 3–4 for manual)
 
-## Verification
-- `cd apps/frontend && npm run test:e2e:smoke` locally (Mongo :27017 + LocalStack :4566)
-  green; the isolation spec red under SKIP_AUTH=true (mutation check).
-- `npm run lint`, `npm run type-check` (e2e is in lint scope).
+## Decisions made autonomously
+- Probe is in-process for S3/OpenAI rather than minting a JWT for `/health/dependencies`: no
+  impersonated user, no invite-allowlist email to fake, and a fresh connection by construction.
+- Scheduled workflow over tailnet+SSH, per the issue ("does not need a monitoring stack").
+- Hourly cadence: one ssh per run; MTTD was "until the next deploy".
+- The operator half (the box must have `docker compose` + the rebuilt image before the probe
+  exists there) lands with the next deploy; nothing here needs a hand-run on the box.

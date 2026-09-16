@@ -332,6 +332,17 @@ curl http://localhost:8010/health  # Backend
 curl http://localhost:3010          # Frontend
 ```
 
+**Per-subsystem probe (#552)** — `/health` is liveness and `/health/ready` is
+Mongo-only, so neither notices a dead S3 bucket or a stale OpenAI key. The probe
+asserts every subsystem from inside the backend container:
+```bash
+docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+```
+`.github/workflows/staging-health.yml` runs it hourly and files an issue on failure;
+`deploy.yml` runs it as the post-deploy gate. After rotating any credential follow
+`docs/operations/CREDENTIAL_ROTATION.md` — a running process keeps its authenticated
+pool, so a stale secret only fails at the next restart.
+
 ### Resource Monitoring
 
 **System Resources**:
