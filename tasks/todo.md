@@ -1,6 +1,6 @@
 # #474 — Replace placeholder plan limits and set real prices
 
-Plan source: self-authored (issue has ACs, no implementation plan). Status: waiting on the owner's pricing decision (Phase 4 fork).
+Plan source: self-authored (issue has ACs, no implementation plan). Status: decided (PRO $49, ENTERPRISE contact-us, FREE ≈ $5 budget, model default → gpt-4o-mini); implemented in PR #763.
 
 ## AC1 evidence — unit economics (worst case per unit, list prices of the models the code configures today)
 
@@ -56,9 +56,9 @@ TrainingCeilings stay as-is (they already bound CPU per run; ENT wall clock 4 h 
 7. Update CLAUDE.md billing convention lines that quote the placeholder numbers.
 
 ## Acceptance criteria
-- [ ] AC1 real limits chosen against measured unit economics
-- [ ] AC2 Stripe Price ids created and set (operator)
-- [ ] AC3 ENTERPRISE decision — contact-us vs self-serve, no dead tier
-- [ ] AC4 plans.py defaults == deployed values (guard test)
-- [ ] AC5 ADR-003 with numbers + reasoning; ADR-002 placeholder note replaced
-- [ ] AC6 FREE tier worst case ≤ the acquisition budget
+- [x] AC1 real limits chosen against measured unit economics
+- [ ] AC2 Stripe Price ids created and set (operator — dashboard steps in ADR-003; staging provisioning #598)
+- [x] AC3 ENTERPRISE decision — contact-us vs self-serve, no dead tier
+- [x] AC4 plans.py defaults == deployed values (guard test)
+- [x] AC5 ADR-003 with numbers + reasoning; ADR-002 placeholder note replaced
+- [x] AC6 FREE tier worst case ≤ the acquisition budget
