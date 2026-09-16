@@ -47,6 +47,7 @@ def openai_model(env_name: str = "OPENAI_MODEL") -> str:
             return value
     return DEFAULT_OPENAI_MODEL
 
+
 # The whole point of the timeout is that one logical call can never outlast the
 # gunicorn worker timeout. The circuit breaker retries up to 3 attempts with a
 # few seconds of exponential backoff between them, so worst case is
