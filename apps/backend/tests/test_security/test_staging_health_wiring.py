@@ -53,6 +53,10 @@ def test_scheduled_probe_runs_independently_of_deploys():
     assert PROBE in runs
     assert "gh issue" in runs, "a red run nobody watches is not a report"
     assert doc["permissions"].get("issues") == "write"
+    # A tailnet/ssh failure leaves the probe step *skipped*; gating the report on
+    # the probe's own outcome would file nothing for exactly those failures.
+    report = next(s for s in doc["jobs"]["probe"]["steps"] if s["name"].startswith("Report"))
+    assert str(report["if"]).strip() == "failure()"
 
 
 def test_deploy_gate_asserts_connection_dependent_health():

@@ -35,8 +35,11 @@ MONGO_TIMEOUT_MS = 10_000
 
 async def _fresh_mongo_ping() -> dict[str, Any]:
     """Ping Mongo over a connection created right now, from ``MONGODB_URI``."""
+    uri = os.environ.get("MONGODB_URI")
+    if not uri:
+        return {"status": "not_configured"}  # a config gap, not a network one
     client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(
-        os.environ["MONGODB_URI"], serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
+        uri, serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
     )
     try:
         await client.admin.command("ping")
@@ -63,13 +66,16 @@ async def probe(
     """Status per subsystem. Never raises: a check that blows up is reported as
     ``unreachable``, which fails the probe like any other non-``healthy`` status."""
     statuses: dict[str, str] = {}
+    body: dict[str, Any] = {}
     try:
         code, body = await _ready(base_url, transport)
-        statuses["ready"] = "healthy" if code == 200 else f"http {code}"
-        for name, check in (body.get("checks") or {}).items():
-            statuses[name] = str(check.get("status"))
     except Exception as exc:
         statuses["ready"] = f"unreachable ({type(exc).__name__})"
+    else:
+        statuses["ready"] = "healthy" if code == 200 else f"http {code}"
+    # Parsed outside the try so a malformed entry can't relabel a reached service.
+    for name, check in (body.get("checks") or {}).items():
+        statuses[name] = str(check.get("status")) if isinstance(check, dict) else str(check)
     fresh = (
         ("mongodb_fresh", _fresh_mongo_ping),
         ("s3", check_s3_access),

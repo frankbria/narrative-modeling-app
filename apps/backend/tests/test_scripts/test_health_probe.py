@@ -104,6 +104,25 @@ def test_unreachable_service_and_raising_check_are_failures_not_crashes(s3_opena
     assert "s3: unreachable (RuntimeError)" in out
 
 
+def test_malformed_check_entry_does_not_relabel_a_reached_service(s3_openai, capsys):
+    """A future readiness shape drift must not turn a real 200 into `unreachable`."""
+    s3_openai(_healthy, _healthy)
+    transport = _ready_transport(200, {"mongodb": "healthy", "odd": None})
+    assert health_probe.main(transport=transport) == 1  # `odd: None` is not healthy
+    out = capsys.readouterr().out
+    assert "ready: healthy" in out
+    assert "mongodb: healthy" in out
+    assert "odd: None" in out
+
+
+def test_missing_mongodb_uri_reads_as_a_config_gap(s3_openai, monkeypatch, capsys):
+    s3_openai(_healthy, _healthy, mongo=health_probe._fresh_mongo_ping)
+    monkeypatch.delenv("MONGODB_URI", raising=False)
+    transport = _ready_transport(200, {"mongodb": {"status": "healthy"}})
+    assert health_probe.main(transport=transport) == 1
+    assert "mongodb_fresh: not_configured" in capsys.readouterr().out
+
+
 @pytest.mark.asyncio
 async def test_parses_the_real_readiness_response(setup_database, s3_openai, monkeypatch):
     """Against the real app and a real Mongo: the shape the probe reads is the shape

@@ -110,15 +110,20 @@ jobs:
           exit "$status"
 
       - name: Report the failure on an issue
-        if: failure() && steps.probe.outcome == 'failure'
+        # `failure()` alone, on purpose: a Tailscale or SSH step that fails first
+        # leaves the probe step `skipped`, and those connectivity failures are the
+        # ones nobody notices otherwise. (A preflight "not configured" skips every
+        # step without failing, so it does not file.)
+        if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
+          if [ -f /tmp/probe.txt ]; then detail=$(cat /tmp/probe.txt); else detail='probe did not run — an earlier step (tailnet or ssh) failed; see the run log'; fi
           # shellcheck disable=SC2016 # the backticks are a literal markdown fence
-          body=$(printf 'Run: %s\n\n```\n%s\n```\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' "$RUN_URL" "$(cat /tmp/probe.txt)")
+          body=$(printf 'Run: %s\n\n```\n%s\n```\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' "$RUN_URL" "$detail")
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.
           existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')

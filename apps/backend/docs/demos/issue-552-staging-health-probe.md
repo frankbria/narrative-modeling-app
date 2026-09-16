@@ -64,19 +64,6 @@ exit=0
 A service that is down at all (worker boot loop after a rotation) is the same verdict, not a crash: `ready` is reported `unreachable` and the fresh-process checks still run.
 
 ```bash
-cd apps/backend && HEALTH_PROBE_URL=http://localhost:1 MONGODB_URI=mongodb://localhost:27017 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
-```
-
-```output
-ready: unreachable (ConnectError)
-mongodb_fresh: healthy
-s3: healthy
-openai: healthy
-FAIL: ready
-exit=1
-```
-
-```bash
 actionlint .github/workflows/staging-health.yml .github/workflows/deploy.yml && echo "actionlint: clean"; uv run --project apps/backend python apps/backend/scripts/demo_issue_552.py --workflow
 ```
 
@@ -88,7 +75,7 @@ step: Check deploy secrets are configured | if: -
 step: Connect to Tailscale | if: steps.preflight.outputs.configured == 'true'
 step: Configure SSH | if: steps.preflight.outputs.configured == 'true'
 step: Run the probe in the backend container | if: steps.preflight.outputs.configured == 'true'
-step: Report the failure on an issue | if: failure() && steps.probe.outcome == 'failure'
+step: Report the failure on an issue | if: failure()
 step: Close a recovered alert | if: steps.probe.outcome == 'success'
 step: Remove SSH key | if: always()
 ```
@@ -165,7 +152,7 @@ sed -n "/- name: Health check/,/python -m app.health_probe\"/p" .github/workflow
 69:   docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
 ```
 
-The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (seven tests; two against the real app and a real Mongo over ASGITransport, one of them the stale-URI case above). Seven mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, a fresh ping that never connects, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed — each fail exactly the test written for them.
+The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (nine tests; two against the real app and a real Mongo over ASGITransport, one of them the stale-URI case above). Nine mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, a fresh ping that never connects, a malformed check entry relabelling `ready`, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed, the issue report gated back on the probe step's own outcome — each fail exactly the test written for them.
 
 ```bash
 cd apps/backend && PYTHONPATH=. uv run pytest tests/test_scripts/test_health_probe.py -q -p no:cacheprovider -W ignore --no-header -rA 2>/dev/null | grep -E "^PASSED|passed|failed"
@@ -177,6 +164,8 @@ PASSED tests/test_scripts/test_health_probe.py::test_dead_s3_behind_a_ready_200_
 PASSED tests/test_scripts/test_health_probe.py::test_not_ready_503_names_mongodb
 PASSED tests/test_scripts/test_health_probe.py::test_not_configured_counts_as_failure
 PASSED tests/test_scripts/test_health_probe.py::test_unreachable_service_and_raising_check_are_failures_not_crashes
+PASSED tests/test_scripts/test_health_probe.py::test_malformed_check_entry_does_not_relabel_a_reached_service
+PASSED tests/test_scripts/test_health_probe.py::test_missing_mongodb_uri_reads_as_a_config_gap
 PASSED tests/test_scripts/test_health_probe.py::test_parses_the_real_readiness_response
 PASSED tests/test_scripts/test_health_probe.py::test_stale_mongo_uri_fails_even_while_the_service_pool_is_fine
 ```

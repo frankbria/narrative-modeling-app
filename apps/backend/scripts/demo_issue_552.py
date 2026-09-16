@@ -7,13 +7,14 @@ the scheduled health workflow.
 
 import re
 import sys
+from pathlib import Path
 
 import yaml
 
 
 def consumers() -> None:
-    compose = open("docker-compose.staging.yml").read()
-    runbook = open("docs/operations/CREDENTIAL_ROTATION.md").read()
+    compose = Path("docker-compose.staging.yml").read_text()
+    runbook = Path("docs/operations/CREDENTIAL_ROTATION.md").read_text()
     backend, _, frontend = compose.partition("\n  frontend:")
     secrets = sorted(
         {
@@ -31,7 +32,7 @@ def consumers() -> None:
 
 
 def workflow() -> None:
-    wf = yaml.safe_load(open(".github/workflows/staging-health.yml"))
+    wf = yaml.safe_load(Path(".github/workflows/staging-health.yml").read_text())
     triggers = wf.get("on") or wf[True]  # PyYAML reads a bare `on:` key as True
     print("triggers:", triggers)
     print("permissions:", wf["permissions"])
