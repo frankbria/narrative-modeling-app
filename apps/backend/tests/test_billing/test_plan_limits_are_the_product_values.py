@@ -84,21 +84,19 @@ _SANCTIONED = {"apps/frontend/test-e2e.sh"}
 
 def _deploy_surfaces():
     """Every compose file, workflow, env file and shell script in the repo, recursively
-    (a nested `apps/backend/docker-compose.test.yml` counts as much as a root one)."""
-    for path in REPO.rglob("*"):
-        if not path.is_file() or _SKIP_DIRS & set(path.relative_to(REPO).parts):
-            continue
-        name = path.name
-        if (
-            (name.startswith("docker-compose") and name.endswith((".yml", ".yaml")))
-            or (
-                ".github/workflows" in path.as_posix()
-                and name.endswith((".yml", ".yaml"))
-            )
-            or name.startswith(".env")
-            or name.endswith(".sh")
-        ):
-            yield path
+    (a nested `apps/backend/docker-compose.test.yml` counts as much as a root one).
+    Pruned walk: descending into `node_modules` first and filtering after cost 3s."""
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+        in_workflows = Path(root).as_posix().endswith(".github/workflows")
+        for name in files:
+            if (
+                (name.startswith("docker-compose") and name.endswith((".yml", ".yaml")))
+                or (in_workflows and name.endswith((".yml", ".yaml")))
+                or name.startswith(".env")
+                or name.endswith(".sh")
+            ):
+                yield Path(root) / name
 
 
 @pytest.mark.unit
