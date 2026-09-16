@@ -152,7 +152,7 @@ sed -n "/- name: Health check/,/python -m app.health_probe\"/p" .github/workflow
 69:   docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
 ```
 
-The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (nine tests; two against the real app and a real Mongo over ASGITransport, one of them the stale-URI case above). Nine mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, a fresh ping that never connects, a malformed check entry relabelling `ready`, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed, the issue report gated back on the probe step's own outcome — each fail exactly the test written for them.
+The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (ten tests; two against the real app and a real Mongo over ASGITransport, one of them the stale-URI case above). Ten mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, a fresh ping that never connects, a malformed check entry relabelling `ready`, a list-shaped `checks` raising, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed, the issue report gated back on the probe step's own outcome — each fail exactly the test written for them.
 
 ```bash
 cd apps/backend && PYTHONPATH=. uv run pytest tests/test_scripts/test_health_probe.py -q -p no:cacheprovider -W ignore --no-header -rA 2>/dev/null | grep -E "^PASSED|passed|failed"
@@ -165,6 +165,7 @@ PASSED tests/test_scripts/test_health_probe.py::test_not_ready_503_names_mongodb
 PASSED tests/test_scripts/test_health_probe.py::test_not_configured_counts_as_failure
 PASSED tests/test_scripts/test_health_probe.py::test_unreachable_service_and_raising_check_are_failures_not_crashes
 PASSED tests/test_scripts/test_health_probe.py::test_malformed_check_entry_does_not_relabel_a_reached_service
+PASSED tests/test_scripts/test_health_probe.py::test_non_dict_checks_value_never_raises
 PASSED tests/test_scripts/test_health_probe.py::test_missing_mongodb_uri_reads_as_a_config_gap
 PASSED tests/test_scripts/test_health_probe.py::test_parses_the_real_readiness_response
 PASSED tests/test_scripts/test_health_probe.py::test_stale_mongo_uri_fails_even_while_the_service_pool_is_fine

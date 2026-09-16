@@ -73,8 +73,10 @@ async def probe(
         statuses["ready"] = f"unreachable ({type(exc).__name__})"
     else:
         statuses["ready"] = "healthy" if code == 200 else f"http {code}"
-    # Parsed outside the try so a malformed entry can't relabel a reached service.
-    for name, check in (body.get("checks") or {}).items():
+    # Parsed outside the try so a malformed entry can't relabel a reached service,
+    # and tolerant of any shape so the "never raises" contract holds on drift.
+    checks = body.get("checks")
+    for name, check in (checks.items() if isinstance(checks, dict) else ()):
         statuses[name] = str(check.get("status")) if isinstance(check, dict) else str(check)
     fresh = (
         ("mongodb_fresh", _fresh_mongo_ping),

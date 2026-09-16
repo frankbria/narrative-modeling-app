@@ -115,6 +115,15 @@ def test_malformed_check_entry_does_not_relabel_a_reached_service(s3_openai, cap
     assert "odd: None" in out
 
 
+def test_non_dict_checks_value_never_raises(s3_openai, capsys):
+    s3_openai(_healthy, _healthy)
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"status": "ready", "checks": ["mongodb"]})
+    )
+    assert health_probe.main(transport=transport) == 0  # nothing parseable, nothing failing
+    assert "ready: healthy" in capsys.readouterr().out
+
+
 def test_missing_mongodb_uri_reads_as_a_config_gap(s3_openai, monkeypatch, capsys):
     s3_openai(_healthy, _healthy, mongo=health_probe._fresh_mongo_ping)
     monkeypatch.delenv("MONGODB_URI", raising=False)
