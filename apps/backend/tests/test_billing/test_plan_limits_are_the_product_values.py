@@ -23,7 +23,6 @@ from app.models.subscription import PlanTier
 
 REPO = Path(__file__).resolve().parents[4]
 ADR = REPO / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
-E2E_RUNNER = REPO / "apps" / "frontend" / "test-e2e.sh"
 
 _METRICS = ("training_runs", "predictions", "uploads", "ai_calls")
 
@@ -78,30 +77,49 @@ def test_code_defaults_match_adr_003(default_plans):
             )
 
 
+_SKIP_DIRS = {"node_modules", ".venv", ".next", "__pycache__", ".git"}
+#: The one sanctioned override: every e2e test shares one user (#550).
+_SANCTIONED = {"apps/frontend/test-e2e.sh"}
+
+
+def _deploy_surfaces():
+    """Every compose file, workflow, env file and shell script in the repo, recursively
+    (a nested `apps/backend/docker-compose.test.yml` counts as much as a root one)."""
+    for path in REPO.rglob("*"):
+        if not path.is_file() or _SKIP_DIRS & set(path.relative_to(REPO).parts):
+            continue
+        name = path.name
+        if (
+            (name.startswith("docker-compose") and name.endswith((".yml", ".yaml")))
+            or (
+                ".github/workflows" in path.as_posix()
+                and name.endswith((".yml", ".yaml"))
+            )
+            or name.startswith(".env")
+            or name.endswith(".sh")
+        ):
+            yield path
+
+
 @pytest.mark.unit
 def test_no_deploy_surface_overrides_the_plan_limits():
     """AC4: the deployed limits are the code defaults, so the two cannot diverge."""
-    surfaces = [
-        *REPO.glob("docker-compose*.yml"),
-        *(REPO / ".github" / "workflows").glob("*.yml"),
-        *REPO.glob(".env*"),
-        *(REPO / "apps" / "backend").glob(".env*"),
-        *(REPO / "apps" / "frontend").glob(".env*"),
-        *(REPO / "scripts").rglob("*.sh"),
-    ]
     offenders = []
-    for path in surfaces:
-        if not path.is_file():
-            continue
+    sanctioned_seen = set()
+    for path in _deploy_surfaces():
+        rel = path.relative_to(REPO).as_posix()
         for i, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
             if re.search(r"\bPLAN_(FREE|PRO|ENTERPRISE)_[A-Z_]+\s*[:=]", line):
-                offenders.append(f"{path.relative_to(REPO)}:{i}: {line.strip()}")
+                if rel in _SANCTIONED:
+                    sanctioned_seen.add(rel)
+                else:
+                    offenders.append(f"{rel}:{i}: {line.strip()}")
     assert not offenders, (
         "PLAN_* overrides belong nowhere in deployment — app/billing/plans.py is the "
         "single source (#474 AC4). Offenders:\n" + "\n".join(offenders)
     )
-    # The e2e runner is the one sanctioned override (#550, one shared user).
-    assert "PLAN_FREE_UPLOADS" in E2E_RUNNER.read_text()
+    # Anti-stale: the allowlist must still be needed, or it is hiding nothing.
+    assert sanctioned_seen == _SANCTIONED
 
 
 #: Worst-case cost of one unit, USD, from the ADR-003 unit-economics table. An

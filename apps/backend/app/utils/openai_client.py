@@ -35,7 +35,11 @@ DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 def openai_model(env_name: str = "OPENAI_MODEL") -> str:
-    """The model name for a call site, read per call so tests can override it.
+    """The model name for a call site.
+
+    Read at the point of the call; note that some modules still bind the result to
+    a module-level constant at import (``ai_summary.OPENAI_MODEL``,
+    ``FEATURE_SUGGESTION_MODEL``), where an env change needs a reload to take effect.
 
     A specialised name (``OPENAI_FEATURE_SUGGESTION_MODEL``) falls back to the
     global ``OPENAI_MODEL`` before the default, so one override moves every call.
