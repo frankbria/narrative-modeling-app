@@ -8,9 +8,12 @@ this inside the backend container, where it:
 
 * GETs ``/health/ready`` on the RUNNING service — proves the workers booted and
   the service's own Mongo pool authenticates;
-* runs ``check_s3_access`` / ``check_openai_api`` in THIS fresh process with the
-  container's env — a new connection each run, so a stale credential fails here
-  the moment the env file is wrong, not at the next restart.
+* opens a brand-new Mongo connection (``mongodb_fresh``) and runs
+  ``check_s3_access`` / ``check_openai_api`` in THIS fresh process with the
+  container's env — new connections each run, so a stale credential fails here
+  the moment the env file is wrong, not at the next restart. The service's own
+  pool authenticated before any rotation and keeps working until then (SCRAM is
+  per connection), which is exactly how the Atlas rotation hid for three weeks.
 
 Exit 0 only when every status is ``healthy``. ``not_configured`` is a failure on
 purpose: staging must have S3 and OpenAI (upload is the first product step).
@@ -22,10 +25,24 @@ import sys
 from typing import Any
 
 import httpx
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.api.routes.health import check_openai_api, check_s3_access
 
 DEFAULT_URL = "http://localhost:8000"
+MONGO_TIMEOUT_MS = 10_000
+
+
+async def _fresh_mongo_ping() -> dict[str, Any]:
+    """Ping Mongo over a connection created right now, from ``MONGODB_URI``."""
+    client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(
+        os.environ["MONGODB_URI"], serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
+    )
+    try:
+        await client.admin.command("ping")
+    finally:
+        client.close()
+    return {"status": "healthy"}
 
 
 async def _ready(
@@ -53,7 +70,12 @@ async def probe(
             statuses[name] = str(check.get("status"))
     except Exception as exc:
         statuses["ready"] = f"unreachable ({type(exc).__name__})"
-    for name, check_fn in (("s3", check_s3_access), ("openai", check_openai_api)):
+    fresh = (
+        ("mongodb_fresh", _fresh_mongo_ping),
+        ("s3", check_s3_access),
+        ("openai", check_openai_api),
+    )
+    for name, check_fn in fresh:
         try:
             statuses[name] = str((await check_fn()).get("status"))
         except Exception as exc:

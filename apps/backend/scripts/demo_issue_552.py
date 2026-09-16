@@ -1,11 +1,43 @@
-"""Demo for #552: per-secret consumers derived from the real compose file vs the rotation runbook."""
-import re
+"""Demo helper for #552 (run from the repo root).
 
-compose = open("docker-compose.staging.yml").read()
-runbook = open("docs/operations/CREDENTIAL_ROTATION.md").read()
-backend, frontend = compose.split("\n  frontend:")[0], compose.split("\n  frontend:")[1]
-secrets = sorted({v for v in re.findall(r"\$\{([A-Z][A-Z0-9_]+)", compose)
-                  if re.search(r"SECRET|KEY|PASSWORD|URI|TOKEN|DSN", v)})
-print(f"{'secret':24s} backend frontend in-runbook")
-for v in secrets:
-    print(f"{v:24s} {'yes' if v in backend else 'no ':7s} {'yes' if v in frontend else 'no ':8s} {'yes' if f'`{v}`' in runbook else 'NO'}")
+Default: per-secret consumers derived from the real compose file, checked against
+the rotation runbook. ``--workflow``: the parsed triggers, permissions and steps of
+the scheduled health workflow.
+"""
+
+import re
+import sys
+
+import yaml
+
+
+def consumers() -> None:
+    compose = open("docker-compose.staging.yml").read()
+    runbook = open("docs/operations/CREDENTIAL_ROTATION.md").read()
+    backend, _, frontend = compose.partition("\n  frontend:")
+    secrets = sorted(
+        {
+            v
+            for v in re.findall(r"\$\{([A-Z][A-Z0-9_]+)", compose)
+            if re.search(r"SECRET|KEY|PASSWORD|URI|TOKEN|DSN", v)
+        }
+    )
+    print(f"{'secret':24s} backend frontend in-runbook")
+    for v in secrets:
+        in_backend = "yes" if v in backend else "no "
+        in_frontend = "yes" if v in frontend else "no "
+        in_runbook = "yes" if f"`{v}`" in runbook else "NO"
+        print(f"{v:24s} {in_backend:7s} {in_frontend:8s} {in_runbook}")
+
+
+def workflow() -> None:
+    wf = yaml.safe_load(open(".github/workflows/staging-health.yml"))
+    triggers = wf.get("on") or wf[True]  # PyYAML reads a bare `on:` key as True
+    print("triggers:", triggers)
+    print("permissions:", wf["permissions"])
+    for step in wf["jobs"]["probe"]["steps"]:
+        print("step:", step["name"], "| if:", step.get("if", "-"))
+
+
+if __name__ == "__main__":
+    workflow() if "--workflow" in sys.argv else consumers()

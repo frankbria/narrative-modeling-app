@@ -1,6 +1,6 @@
 # Issue #552: per-subsystem staging probe, on a schedule and after every deploy
 
-*2026-09-16T02:30:47Z*
+*2026-09-16T02:48:15Z*
 
 Staging sat dead behind green signals twice: a rotated Atlas credential (the running process kept its authenticated pool, so only the next restart failed) and a missing S3 bucket (`/health/ready` is Mongo-only by design, #503). `deploy.yml` curled bare `/health`, which is liveness. A local backend is running on :8765 against a scratch Mongo with the developer .env (real S3 + OpenAI keys). First, the old signal — readiness says `ready` no matter what S3 is doing:
 
@@ -9,66 +9,75 @@ curl -s -w "\nHTTP %{http_code}\n" http://localhost:8765/health/ready
 ```
 
 ```output
-{"status":"ready","timestamp":"2026-09-16T02:30:47.256381+00:00","checks":{"mongodb":{"status":"healthy","latency_ms":0.49,"database":"narrative_demo_552"}}}
+{"status":"ready","timestamp":"2026-09-16T02:48:15.852463+00:00","checks":{"mongodb":{"status":"healthy","latency_ms":0.47,"database":"narrative_demo_552"}}}
 HTTP 200
 ```
 
 **AC2 — the probe fails on a dead subsystem that readiness reports around.** Point the S3 resolver at a bucket that does not exist (the staging situation from the issue thread) and run the probe as the workflow does, `python -m app.health_probe`. Every line is a subsystem; the exit code is the verdict:
 
 ```bash
-cd apps/backend && HEALTH_PROBE_URL=http://localhost:8765 AWS_S3_BUCKET=bucket-that-does-not-exist-552 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
+cd apps/backend && HEALTH_PROBE_URL=http://localhost:8765 MONGODB_URI=mongodb://localhost:27017 AWS_S3_BUCKET=bucket-that-does-not-exist-552 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
 ```
 
 ```output
 ready: healthy
 mongodb: healthy
+mongodb_fresh: healthy
 s3: unhealthy
 openai: healthy
 FAIL: s3
 exit=1
 ```
 
-With the real bucket back, every subsystem is `healthy` and the probe exits 0 — the only outcome a scheduled run or a deploy gate accepts:
+**AC4 — a stale Mongo credential is caught on a fresh connection while the running service still looks fine.** The service on :8765 keeps its authenticated pool, so its `/health/ready` (and the `mongodb` line copied from it) stays `healthy`. The probe also opens a brand-new connection from `MONGODB_URI` — here pointed at a port where nothing listens, standing in for a rotated password — and that line fails:
 
 ```bash
-cd apps/backend && HEALTH_PROBE_URL=http://localhost:8765 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
+cd apps/backend && HEALTH_PROBE_URL=http://localhost:8765 MONGODB_URI="mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500" uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
 ```
 
 ```output
 ready: healthy
 mongodb: healthy
+mongodb_fresh: unreachable (ServerSelectionTimeoutError)
+s3: healthy
+openai: healthy
+FAIL: mongodb_fresh
+exit=1
+```
+
+With the real bucket and URI back, every subsystem is `healthy` and the probe exits 0 — the only outcome a scheduled run or a deploy gate accepts:
+
+```bash
+cd apps/backend && HEALTH_PROBE_URL=http://localhost:8765 MONGODB_URI=mongodb://localhost:27017 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
+```
+
+```output
+ready: healthy
+mongodb: healthy
+mongodb_fresh: healthy
 s3: healthy
 openai: healthy
 OK: every dependency healthy
 exit=0
 ```
 
-A service that is down at all (worker boot loop after a rotation) is the same verdict, not a crash: `ready` is reported `unreachable` and the fresh-process S3/OpenAI checks still run.
+A service that is down at all (worker boot loop after a rotation) is the same verdict, not a crash: `ready` is reported `unreachable` and the fresh-process checks still run.
 
 ```bash
-cd apps/backend && HEALTH_PROBE_URL=http://localhost:1 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
+cd apps/backend && HEALTH_PROBE_URL=http://localhost:1 MONGODB_URI=mongodb://localhost:27017 uv run python -m app.health_probe 2>/dev/null; echo "exit=$?"
 ```
 
 ```output
 ready: unreachable (ConnectError)
+mongodb_fresh: healthy
 s3: healthy
 openai: healthy
 FAIL: ready
 exit=1
 ```
 
-**AC1 — a check on a schedule, independent of deploys, that reports where it will be seen.** `.github/workflows/staging-health.yml` runs the probe hourly inside the backend container over the same tailnet + SSH path as `deploy.yml`, secret-gated the same way. A failed probe fails the run and opens (or comments on) a `[P1] [ops]` issue; the next green run closes it. Lint plus the parsed triggers and steps:
-
 ```bash
-actionlint .github/workflows/staging-health.yml .github/workflows/deploy.yml && echo "actionlint: clean"; uv run --project apps/backend python - <<'PY'
-import yaml
-wf = yaml.safe_load(open(".github/workflows/staging-health.yml"))
-on = wf.get("on") or wf[True]
-print("triggers:", {k: v for k, v in on.items()})
-print("permissions:", wf["permissions"])
-for s in wf["jobs"]["probe"]["steps"]:
-    print("step:", s["name"], "| if:", s.get("if", "-"))
-PY
+actionlint .github/workflows/staging-health.yml .github/workflows/deploy.yml && echo "actionlint: clean"; uv run --project apps/backend python apps/backend/scripts/demo_issue_552.py --workflow
 ```
 
 ```output
@@ -118,7 +127,7 @@ PASSED tests/test_security/test_staging_health_wiring.py::test_scheduled_probe_r
 PASSED tests/test_security/test_staging_health_wiring.py::test_deploy_gate_asserts_connection_dependent_health
 ```
 
-**AC4 — a restart-after-rotation smoke step on a fresh connection.** The deploy gate no longer curls bare `/health`: it waits on `/health/ready` (503 until the service's own pool authenticates) and then runs the probe inside the container that `up -d` just recreated, so every connection it makes is new. The manual rotation path in the runbook is the same two steps (`up -d --force-recreate`, then the probe):
+**AC4, deploy path.** The deploy gate no longer curls bare `/health`: it waits on `/health/ready` (503 until the service's own pool authenticates) and then runs the probe inside the container that `up -d` just recreated, so every connection it makes is new. The manual rotation path in the runbook is the same two steps (`up -d --force-recreate`, then the probe):
 
 ```bash
 sed -n "/- name: Health check/,/python -m app.health_probe\"/p" .github/workflows/deploy.yml; echo; grep -nE "force-recreate|python -m app.health_probe|never" docs/operations/CREDENTIAL_ROTATION.md
@@ -156,7 +165,7 @@ sed -n "/- name: Health check/,/python -m app.health_probe\"/p" .github/workflow
 69:   docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
 ```
 
-The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (six tests, one against the real app and a real Mongo over ASGITransport). Six mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed — each fail exactly the test written for them.
+The probe's own contract is covered by `tests/test_scripts/test_health_probe.py` (seven tests; two against the real app and a real Mongo over ASGITransport, one of them the stale-URI case above). Seven mutations — exit 0 on failure, ignoring the HTTP code, dropping the per-subsystem statuses, a fresh ping that never connects, the deploy gate back on `/health`, a secret removed from the runbook, the schedule removed — each fail exactly the test written for them.
 
 ```bash
 cd apps/backend && PYTHONPATH=. uv run pytest tests/test_scripts/test_health_probe.py -q -p no:cacheprovider -W ignore --no-header -rA 2>/dev/null | grep -E "^PASSED|passed|failed"
@@ -169,4 +178,5 @@ PASSED tests/test_scripts/test_health_probe.py::test_not_ready_503_names_mongodb
 PASSED tests/test_scripts/test_health_probe.py::test_not_configured_counts_as_failure
 PASSED tests/test_scripts/test_health_probe.py::test_unreachable_service_and_raising_check_are_failures_not_crashes
 PASSED tests/test_scripts/test_health_probe.py::test_parses_the_real_readiness_response
+PASSED tests/test_scripts/test_health_probe.py::test_stale_mongo_uri_fails_even_while_the_service_pool_is_fine
 ```

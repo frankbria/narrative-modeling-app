@@ -91,11 +91,15 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          # The probe's exit code is the verdict; its output is the summary.
+          # The probe's exit code is the verdict; its output is the summary. Capture
+          # via a redirect (not a pipe) so the status is read the same way whether or
+          # not the shell runs with pipefail, and `|| status=$?` keeps `-e` from
+          # aborting before the summary is written on the one path that matters.
+          status=0
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "cd '$DEPLOY_PATH' && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe" \
-            2>&1 | tee /tmp/probe.txt
-          status=${PIPESTATUS[0]}
+            > /tmp/probe.txt 2>&1 || status=$?
+          cat /tmp/probe.txt
           {
             echo "## Staging dependency probe"
             echo
@@ -115,7 +119,9 @@ jobs:
           title='[P1] [ops] Staging health probe is failing'
           # shellcheck disable=SC2016 # the backticks are a literal markdown fence
           body=$(printf 'Run: %s\n\n```\n%s\n```\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' "$RUN_URL" "$(cat /tmp/probe.txt)")
-          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          # `// empty`: on no match jq would print the 4-char string "null", which
+          # is non-empty and would send the very first failure to `gh issue comment null`.
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
@@ -130,7 +136,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
-          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
           [ -z "$existing" ] || gh issue close "$existing" --comment "Recovered: every subsystem healthy in $RUN_URL"
 
       - name: Remove SSH key

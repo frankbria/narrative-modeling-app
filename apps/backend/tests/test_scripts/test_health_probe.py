@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from app import health_probe
+from app.config import settings
 from app.main import app
 
 
@@ -37,9 +38,13 @@ async def _raising() -> dict:
 
 @pytest.fixture
 def s3_openai(monkeypatch):
-    def _set(s3, openai):
+    """Stub the fresh-process checks; the fresh Mongo ping is healthy unless a test
+    says otherwise (its own real-connection tests are below)."""
+
+    def _set(s3, openai, mongo=_healthy):
         monkeypatch.setattr(health_probe, "check_s3_access", s3)
         monkeypatch.setattr(health_probe, "check_openai_api", openai)
+        monkeypatch.setattr(health_probe, "_fresh_mongo_ping", mongo)
 
     return _set
 
@@ -49,7 +54,13 @@ def test_every_subsystem_healthy_exits_zero(s3_openai, capsys):
     transport = _ready_transport(200, {"mongodb": {"status": "healthy"}})
     assert health_probe.main(transport=transport) == 0
     out = capsys.readouterr().out
-    for line in ("ready: healthy", "mongodb: healthy", "s3: healthy", "openai: healthy"):
+    for line in (
+        "ready: healthy",
+        "mongodb: healthy",
+        "mongodb_fresh: healthy",
+        "s3: healthy",
+        "openai: healthy",
+    ):
         assert line in out
     assert "OK" in out
 
@@ -94,10 +105,28 @@ def test_unreachable_service_and_raising_check_are_failures_not_crashes(s3_opena
 
 
 @pytest.mark.asyncio
-async def test_parses_the_real_readiness_response(setup_database, s3_openai):
+async def test_parses_the_real_readiness_response(setup_database, s3_openai, monkeypatch):
     """Against the real app and a real Mongo: the shape the probe reads is the shape
-    ``/health/ready`` actually returns."""
-    s3_openai(_healthy, _healthy)
+    ``/health/ready`` actually returns, and the fresh ping reaches the same server.
+    (pytest binds Beanie to TEST_MONGODB_URI; the probe reads MONGODB_URI, as the
+    container does, so point it at the same test server.)"""
+    s3_openai(_healthy, _healthy, mongo=health_probe._fresh_mongo_ping)
+    monkeypatch.setenv("MONGODB_URI", settings.TEST_MONGODB_URI)
     statuses = await health_probe.probe(transport=httpx.ASGITransport(app=app))
     assert statuses["ready"] == "healthy"
     assert statuses["mongodb"] == "healthy"
+    assert statuses["mongodb_fresh"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_stale_mongo_uri_fails_even_while_the_service_pool_is_fine(
+    setup_database, s3_openai, monkeypatch
+):
+    """The #552 failure mode: the running service's pool authenticated before the
+    rotation and still answers ``ready``; only a NEW connection sees the stale URI."""
+    s3_openai(_healthy, _healthy, mongo=health_probe._fresh_mongo_ping)
+    monkeypatch.setenv("MONGODB_URI", "mongodb://127.0.0.1:1")  # nothing listens
+    monkeypatch.setattr(health_probe, "MONGO_TIMEOUT_MS", 300)
+    statuses = await health_probe.probe(transport=httpx.ASGITransport(app=app))
+    assert statuses["mongodb"] == "healthy", "the service's own pool is untouched"
+    assert statuses["mongodb_fresh"].startswith("unreachable (")
