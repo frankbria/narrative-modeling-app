@@ -160,7 +160,8 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
             "    echo 'connecting to mongodb+srv://svc_user:hunter2@cluster0.abc123.mongodb.net/db';\n"
             "    echo 'botocore.exceptions.ClientError: An error occurred (404) when calling the HeadBucket operation: Not Found bucket=narrative-secret-bucket';\n"
             "    echo '[ERROR] Worker (pid:12) exited with code 3';\n"
-            "    echo '[ERROR] Worker failed to boot.';;\n"
+            "    echo '[ERROR] Worker failed to boot.';\n"
+            "    echo \"RuntimeError: Configured S3 bucket 'narrative-secret-bucket' is not writable (ClientError); refusing to start (#495).\";;\n"
             "esac\n"
         )
         fake.chmod(0o755)
@@ -180,6 +181,9 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
     assert "OperationFailure" in out and "ClientError" in out
     assert "(404) when calling the HeadBucket operation" in out
     assert "Worker failed to boot" in out
+    assert "is not writable (ClientError)" in out, (
+        "the #495 boot-refusal mode, minus the bucket name"
+    )
     for secret in (
         "mongodb.net",
         "hunter2",

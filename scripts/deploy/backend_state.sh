@@ -18,6 +18,6 @@ docker inspect narrative-staging-backend --format \
 echo "## exception classes in the last 200 backend log lines"
 # Class names and a few fixed, hostname-free phrases; `grep -o` drops the rest of the line.
 compose logs --no-log-prefix --tail 200 backend 2>&1 \
-  | grep -oE '\b[A-Z][A-Za-z]*(Error|Exception|Failure)\b|An error occurred \([A-Za-z0-9]+\) when calling the [A-Za-z]+ operation|Worker failed to boot|exited with code [0-9]+|bad auth' \
+  | grep -oE '\b[A-Z][A-Za-z]*(Error|Exception|Failure)\b|An error occurred \([A-Za-z0-9]+\) when calling the [A-Za-z]+ operation|Worker failed to boot|exited with code [0-9]+|bad auth|No S3 bucket is configured|S3 is in mock mode|is not writable \([A-Za-z]+\)|SKIP_AUTH=true is only permitted|MONGODB_DB environment variable is not set' \
   | sort | uniq -c | sort -rn
 echo "(end)"
