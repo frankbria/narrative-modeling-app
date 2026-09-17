@@ -37,6 +37,11 @@ Quick reference guide to all project documentation with clear purposes and targe
    - **Audience**: Product owners, QA, developers
    - **When**: Implementing or testing features
 
+6. **[product/public-surface-gtm.md](product/public-surface-gtm.md)** - Public surface and go-to-market needs analysis (epic #764)
+   - **Purpose**: Evidence-based funnel analysis, owner decisions, success metrics, do-not-claim list, issue map
+   - **Audience**: Owner, anyone writing a public page or onboarding copy
+   - **When**: Before writing landing/pricing/trust pages or opening signup
+
 ---
 
 ## 🏃 Sprint Planning & Execution
