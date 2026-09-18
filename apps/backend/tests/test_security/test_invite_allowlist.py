@@ -16,7 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
 from app.auth.nextauth_auth import get_current_user_id
-from app.config import is_email_allowed, parse_invite_allowlist
+from app.config import parse_invite_allowlist, resolve_signup_mode, signup_admits
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
@@ -41,23 +41,48 @@ class TestParseInviteAllowlist:
         }
 
 
-class TestIsEmailAllowed:
+class TestResolveSignupMode:
+    """SIGNUP_MODE (#768): explicit, and unset fails CLOSED where it matters."""
+
+    def test_explicit_values_win_everywhere(self):
+        for prod in (True, False):
+            assert resolve_signup_mode("open", set(), prod) == "open"
+            assert resolve_signup_mode(" Invite ", set(), prod) == "invite"
+
+    def test_unset_in_production_like_is_invite(self):
+        # The fail-open "empty allowlist means everyone" can no longer reach a
+        # deployed environment by deleting one variable.
+        assert resolve_signup_mode(None, set(), True) == "invite"
+        assert resolve_signup_mode("  ", set(), True) == "invite"
+
+    def test_unset_in_dev_keeps_the_legacy_behaviour(self):
+        assert resolve_signup_mode(None, set(), False) == "open"
+        assert resolve_signup_mode(None, {"a@x.com"}, False) == "invite"
+
+    def test_unknown_value_fails_closed(self):
+        assert resolve_signup_mode("opne", set(), False) == "invite"
+        assert resolve_signup_mode("opne", set(), True) == "invite"
+
+
+class TestSignupAdmits:
     LIST = {"alice@example.com", "bob@example.com"}
 
-    def test_admits_listed_email_case_insensitive(self):
-        assert is_email_allowed("alice@example.com", self.LIST) is True
-        assert is_email_allowed("ALICE@Example.com", self.LIST) is True
+    def test_invite_admits_listed_email_case_insensitive(self):
+        assert signup_admits("alice@example.com", "invite", self.LIST) is True
+        assert signup_admits(" ALICE@Example.com", "invite", self.LIST) is True
 
-    def test_denies_unlisted_email(self):
-        assert is_email_allowed("eve@evil.com", self.LIST) is False
+    def test_invite_denies_unlisted_or_missing_email(self):
+        assert signup_admits("eve@evil.com", "invite", self.LIST) is False
+        assert signup_admits(None, "invite", self.LIST) is False
+        assert signup_admits("", "invite", self.LIST) is False
 
-    def test_denies_missing_email_when_gate_active(self):
-        assert is_email_allowed(None, self.LIST) is False
-        assert is_email_allowed("", self.LIST) is False
+    def test_invite_with_empty_allowlist_admits_nobody(self):
+        # Fails closed, like ADMIN_EMAILS (#477) — not "gate disabled".
+        assert signup_admits("eve@evil.com", "invite", set()) is False
 
-    def test_empty_allowlist_disables_gate(self):
-        assert is_email_allowed("eve@evil.com", set()) is True
-        assert is_email_allowed(None, set()) is True
+    def test_open_admits_anyone(self):
+        assert signup_admits("eve@evil.com", "open", set()) is True
+        assert signup_admits("eve@evil.com", "open", self.LIST) is True
 
 
 @pytest.fixture
@@ -103,10 +128,37 @@ class TestBackendMirrorEnforcement:
         assert exc.value.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_gate_off_when_empty_allows_any_email(self, auth_enabled):
-        # Empty INVITE_ALLOWLIST → gate disabled → any signed token passes.
-        with patch.dict("os.environ", {"INVITE_ALLOWLIST": ""}):
+    async def test_dev_with_nothing_set_allows_any_email(self, auth_enabled):
+        # Local dev/test: SIGNUP_MODE and the allowlist unset → open (legacy).
+        with patch.dict("os.environ", {"INVITE_ALLOWLIST": "", "SIGNUP_MODE": ""}):
             uid = await get_current_user_id(
                 _bearer({"sub": "user_3", "email": "eve@evil.com"})
             )
         assert uid == "user_3"
+
+    @pytest.mark.asyncio
+    async def test_production_with_nothing_set_denies_403(self, auth_enabled):
+        with patch.dict(
+            "os.environ",
+            {"INVITE_ALLOWLIST": "", "SIGNUP_MODE": "", "ENVIRONMENT": "production"},
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await get_current_user_id(
+                    _bearer({"sub": "user_4", "email": "eve@evil.com"})
+                )
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_open_mode_admits_unlisted_email_even_in_production(self, auth_enabled):
+        with patch.dict(
+            "os.environ",
+            {
+                "INVITE_ALLOWLIST": "alice@example.com",
+                "SIGNUP_MODE": "open",
+                "ENVIRONMENT": "production",
+            },
+        ):
+            uid = await get_current_user_id(
+                _bearer({"sub": "user_5", "email": "eve@evil.com"})
+            )
+        assert uid == "user_5"

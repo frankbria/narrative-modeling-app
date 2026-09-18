@@ -7,7 +7,7 @@ import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
 import client from "./lib/db"
 import { mintApiToken } from "./lib/api-token"
-import { isSignInAllowed } from "./lib/invite-allowlist"
+import { isSignInAllowed, signupMode } from "./lib/invite-allowlist"
 import { isAdminEmail } from "./lib/admin-allowlist"
 import { assertAuthConfig, assertDatabaseConfig } from "./lib/auth-config"
 import { resolveTestAdmin } from "./lib/test-credentials"
@@ -17,6 +17,10 @@ import { resolveTestAdmin } from "./lib/test-credentials"
 // No-op in development/test, where the dummy fallbacks below are intentional.
 assertAuthConfig()
 assertDatabaseConfig()
+// SIGNUP_MODE=open is a deliberate value (#768), so say it out loud at startup.
+if (signupMode() === 'open' && process.env.NODE_ENV === 'production') {
+  console.warn('[auth] Signup mode: OPEN — any Google/GitHub account may sign up (SIGNUP_MODE=open)')
+}
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
@@ -137,17 +141,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session
     },
     async signIn({ user, account }) {
-      // Invite-only beta gate (issue #261). Runs server-side in NextAuth, so a
-      // rejected user never gets a session or a minted API token — the primary
-      // control; the FastAPI backend mirrors it as defense-in-depth. Returning
-      // false redirects to /auth/error?error=AccessDenied (see that page for
-      // the "request access" message). An empty INVITE_ALLOWLIST disables the
-      // gate (dev/test/un-configured deploys).
-      //
-      // The credentials provider self-attests its email and is registered only
-      // in dev/test (see providers above), so it must never satisfy the email
-      // gate: when the allowlist is active, only federated OAuth sign-ins pass.
-      // The test user still signs in locally where INVITE_ALLOWLIST is unset.
+      // Signup gate (#261, #768). Runs server-side in NextAuth, so a rejected
+      // user never gets a session or a minted API token — the primary control;
+      // the FastAPI backend mirrors it as defense-in-depth. Returning false
+      // redirects to /auth/error?error=AccessDenied. SIGNUP_MODE decides:
+      // `open` admits everyone, `invite` only INVITE_ALLOWLIST emails; unset in
+      // production is `invite` (see lib/invite-allowlist.ts).
       return isSignInAllowed(account?.provider, user?.email)
     },
   },

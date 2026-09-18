@@ -8,8 +8,8 @@
 // comma-separated), checked server-side: in middleware.ts for the /admin route
 // and in the NextAuth session callback to expose `session.isAdmin` to the UI.
 //
-// Unlike the invite gate (lib/invite-allowlist.ts), an EMPTY / unset list FAILS
-// CLOSED: nobody is an admin. "Not configured" must never mean "everyone is".
+// Like invite mode of the signup gate (lib/invite-allowlist.ts), an EMPTY /
+// unset list FAILS CLOSED: nobody is an admin. "Not configured" must never mean "everyone is".
 
 import { parseAllowlist } from './invite-allowlist';
 

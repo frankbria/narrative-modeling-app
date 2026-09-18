@@ -80,7 +80,7 @@ from app.api.routes import (
 )
 from app.services.api_documentation import APIDocumentationService
 from app.auth.nextauth_auth import SKIP_AUTH
-from app.config import get_environment, settings, is_production_like
+from app.config import current_signup_mode, get_environment, settings, is_production_like
 from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
@@ -94,6 +94,12 @@ async def lifespan(app: FastAPI):
         "BYPASSED via SKIP_AUTH" if SKIP_AUTH else "ENFORCED (NextAuth JWT)",
         get_environment(),
     )
+    # Signup mode (#768): "open" is a deliberate value, so it is said out loud.
+    signup_mode = current_signup_mode()
+    if signup_mode == "open":
+        logger.warning("Signup mode: OPEN — any OAuth account may sign up (SIGNUP_MODE=open)")
+    else:
+        logger.info("Signup mode: invite (INVITE_ALLOWLIST only)")
 
     # Billing configuration, stated the same way (issue #457). Running with no
     # Stripe keys is supported (ADR-002) and silent, which is how staging shipped

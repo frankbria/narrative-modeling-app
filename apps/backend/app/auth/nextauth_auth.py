@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 from app.config import (  # noqa: E402
-    is_email_allowed,
+    current_signup_mode,
     parse_invite_allowlist,
+    signup_admits,
     validate_skip_auth,
 )
 
@@ -81,12 +82,12 @@ async def get_current_user_id(
             logger.error("No user ID found in token")
             raise HTTPException(status_code=401, detail="Invalid authentication token")
 
-        # Invite-only beta gate (issue #261): defense-in-depth mirror of the
-        # NextAuth signIn allowlist. Reads the env directly (a small split on a
-        # short list — negligible per request). Enforced only when
-        # INVITE_ALLOWLIST is set; the email claim is minted by the frontend.
+        # Signup gate (#261, #768): defense-in-depth mirror of the NextAuth
+        # signIn callback. SIGNUP_MODE decides; invite mode checks the email
+        # claim (minted by the frontend) against INVITE_ALLOWLIST. Reads the env
+        # per request so a revoked invitee is refused within the token TTL.
         allowlist = parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST"))
-        if allowlist and not is_email_allowed(payload.get("email"), allowlist):
+        if not signup_admits(payload.get("email"), current_signup_mode(), allowlist):
             logger.warning("Invite gate: rejected non-allowlisted user")
             raise HTTPException(
                 status_code=403,
