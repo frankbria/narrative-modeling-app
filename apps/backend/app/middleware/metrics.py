@@ -79,6 +79,15 @@ ai_ceiling_denials = Counter(
     registry=metrics_registry,
 )
 
+# Plan-limit 402s (#769 AC3), so a wall that tenants keep hitting is visible
+# before anyone reads the funnel. Both labels are bounded enums.
+quota_denials = Counter(
+    name="quota_denials_total",
+    documentation="Requests refused with 402 because a plan limit was reached",
+    labelnames=["metric", "tier"],
+    registry=metrics_registry,
+)
+
 # Label for requests that matched no route (404s, scans). Using the raw path here
 # would let an attacker mint unbounded time series, so collapse them to one.
 UNMATCHED_ENDPOINT = "__unmatched__"

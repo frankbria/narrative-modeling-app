@@ -24,6 +24,7 @@ from app.models.model import ModelConfig
 from app.models.onboarding import OnboardingProgress
 from app.models.plot import Plot
 from app.models.prediction_event import PredictionEvent
+from app.models.product_event import ProductEvent
 from app.models.revised_data import RevisedData
 from app.models.subscription import Subscription
 from app.models.trained_model import TrainedModel
@@ -66,6 +67,7 @@ DOCUMENT_MODELS = [
     StoredFeature,
     Subscription,
     PredictionEvent,
+    ProductEvent,
     TrainedModel,
     TrainingJob,
     TransformationConfig,

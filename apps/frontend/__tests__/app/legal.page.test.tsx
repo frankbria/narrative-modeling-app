@@ -127,6 +127,15 @@ describe('Privacy Policy', () => {
     }
   });
 
+  it('discloses the server-side funnel milestones and their 13-month expiry (#769)', () => {
+    // apps/backend/app/models/product_event.py: the events it names, the TTL it sets.
+    render(<PrivacyPage />);
+    const collect = screen.getByRole('heading', { name: /what we collect/i }).closest('section')!;
+    expect(within(collect).getByText(/first trained model/i)).toBeInTheDocument();
+    const retention = screen.getByRole('heading', { name: /retention/i }).closest('section')!;
+    expect(within(retention).getByText(/deleted after 13 months/i)).toBeInTheDocument();
+  });
+
   it('records the cookie decision rather than deferring it (AC6)', () => {
     render(<PrivacyPage />);
     const section = screen.getByRole('heading', { name: /cookies/i }).closest('section')!;

@@ -47,6 +47,7 @@ from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
     ab_testing,
+    admin,
     ai_analysis,
     ai_orchestration,
     analytics_result,
@@ -406,6 +407,7 @@ app.include_router(
     prefix="/webhooks/stripe",
     tags=["billing"],
 )
+app.include_router(admin.router, prefix=f"{settings.API_V1_STR}/admin", tags=["admin"])
 
 
 # AGPL-3.0 §13: a network-deployed service must offer its users the

@@ -23,6 +23,7 @@ from app.billing.plans import METERED_METRICS, limits_for
 from app.billing.refunds import is_in_refund_window, refund_window_ends_at
 from app.config import settings
 from app.models.subscription import PlanTier, Subscription
+from app.services import product_events
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,7 @@ async def start_checkout(
         )
 
     try:
-        return await stripe_client.create_checkout_session(
+        session = await stripe_client.create_checkout_session(
             user_id=current_user_id,
             price_id=price_id,
             success_url=body.success_url,
@@ -205,6 +206,10 @@ async def start_checkout(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="could not start checkout, please try again",
         ) from exc
+    await product_events.record(
+        current_user_id, product_events.CHECKOUT_STARTED, tier=body.tier.value
+    )
+    return session
 
 
 @router.post("/portal")

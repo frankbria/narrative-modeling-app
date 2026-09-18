@@ -813,6 +813,43 @@ class TestWebhookEndpoint:
 
         assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 1
 
+    async def test_funnel_counts_a_settled_checkout_once_across_redeliveries(
+        self, async_authorized_client, setup_database
+    ):
+        """#769: checkout_completed is keyed by session id, so Stripe's at-least-once
+        delivery cannot inflate the funnel, and an unsettled session is not counted."""
+        from app.models.product_event import ProductEvent
+
+        async def deliver(obj):
+            payload = event("checkout.session.completed", obj)
+            await async_authorized_client.post(
+                WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+            )
+
+        paid = {"id": "cs_paid", "client_reference_id": TEST_USER, "payment_status": "paid"}
+        await deliver(paid)
+        await deliver(paid)
+        await deliver({"id": "cs_debit", "client_reference_id": TEST_USER, "payment_status": "unpaid"})
+
+        rows = await ProductEvent.find(ProductEvent.event == "checkout_completed").to_list()
+        assert [(r.user_id, r.dedupe_key) for r in rows] == [(TEST_USER, "checkout:cs_paid")]
+
+    async def test_funnel_counts_a_cancellation_once(
+        self, async_authorized_client, setup_database
+    ):
+        from app.models.product_event import ProductEvent
+
+        payload = event(
+            "customer.subscription.deleted", {"id": "sub_1", "metadata": {"user_id": TEST_USER}}
+        )
+        for _ in range(2):
+            await async_authorized_client.post(
+                WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+            )
+
+        rows = await ProductEvent.find(ProductEvent.event == "subscription_cancelled").to_list()
+        assert [r.user_id for r in rows] == [TEST_USER]
+
     async def test_subscription_deleted_cancels_without_erasing_the_tier(
         self, async_authorized_client, setup_database
     ):

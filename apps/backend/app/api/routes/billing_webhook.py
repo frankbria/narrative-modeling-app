@@ -34,6 +34,7 @@ from app.models.subscription import (
     Subscription,
     SubscriptionStatus,
 )
+from app.services import product_events
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +363,10 @@ async def _handle(
         # Record it once, after the upsert created the row; a later charge won't move it.
         if paid:
             await _record_first_paid(user_id, event_at)
+        if settled:
+            await product_events.record(
+                user_id, product_events.CHECKOUT_COMPLETED, once=f"checkout:{obj.get('id')}"
+            )
         return True
 
     if event_type == "checkout.session.async_payment_failed":
@@ -395,6 +400,9 @@ async def _handle(
         # Tier is deliberately left alone: it records what was bought, and
         # `effective_tier` already drops to FREE once the status is CANCELED (#366).
         await _upsert(user_id, status_=SubscriptionStatus.CANCELED, event_at=event_at)
+        await product_events.record(
+            user_id, product_events.SUBSCRIPTION_CANCELLED, once=f"cancel:{obj.get('id')}"
+        )
         return True
 
     if event_type == "invoice.payment_failed":

@@ -220,6 +220,37 @@ class TestCheckout:
         assert captured["client_reference_id"] == TEST_USER
         assert captured["subscription_data"]["metadata"]["user_id"] == TEST_USER
 
+    async def test_a_started_checkout_is_a_funnel_event(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """#769: recorded only once Stripe has handed back a session."""
+        from app.models.product_event import ProductEvent
+
+        monkeypatch.setattr(
+            stripe_client,
+            "_client",
+            lambda: type(
+                "S",
+                (),
+                {"checkout": type("C", (), {"Session": type("Sess", (), {"create": staticmethod(
+                    lambda **_: {"id": "cs_f", "url": "https://checkout.stripe.test/cs_f"}
+                )})})},
+            ),
+        )
+
+        response = await async_authorized_client.post(
+            CHECKOUT,
+            json={
+                "tier": "pro",
+                "success_url": "http://localhost:3000/ok",
+                "cancel_url": "http://localhost:3000/no",
+            },
+        )
+
+        assert response.status_code == 200
+        rows = await ProductEvent.find(ProductEvent.event == "checkout_started").to_list()
+        assert [(r.user_id, r.properties) for r in rows] == [(TEST_USER, {"tier": "pro"})]
+
     async def test_an_existing_customer_is_reused(
         self, async_authorized_client, setup_database, monkeypatch
     ):

@@ -532,12 +532,14 @@ class DatasetErasureService:
         await self._erase_batch_jobs({"user_id": user_id}, manifest)
 
         from app.models.onboarding import OnboardingProgress
+        from app.models.product_event import ProductEvent
 
         for model_cls in [
             ABTest,
             Feedback,
             APIKey,
             OnboardingProgress,  # account-scoped onboarding state (#541)
+            ProductEvent,  # funnel telemetry (#769)
             StoredFeature,
             FeatureCollection,
             TransformationRecipe,
