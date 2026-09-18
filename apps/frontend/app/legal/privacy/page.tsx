@@ -44,7 +44,10 @@ export default function PrivacyPage() {
           <li>
             <strong>Usage records</strong> — the counts we meter for quotas (uploads, training runs,
             predictions), job status and timestamps, and server logs containing request paths, IP
-            addresses and error details.
+            addresses and error details. We also record a few product milestones against your
+            account id with a timestamp: account created, first upload, first trained model, a plan
+            limit reached, checkout started or completed, and a subscription cancelled. They are
+            recorded by our servers, not your browser, and hold no dataset content.
           </li>
           <li>
             <strong>Billing data</strong> — your subscription tier and status. Card details go
@@ -58,8 +61,9 @@ export default function PrivacyPage() {
         <p>
           We use account and dataset data to provide the service you asked for — storing your files,
           running analyses and training the models you request (performance of our contract with
-          you). We use usage records and logs to enforce quotas, keep the service secure and debug
-          failures (our legitimate interest in running a reliable service). We use billing data to
+          you). We use usage records and logs to enforce quotas, keep the service secure, debug
+          failures and see, in aggregate, where people get stuck getting started (our legitimate
+          interest in running and improving a reliable service). We use billing data to
           take payment and meet our accounting obligations (contract and legal obligation).
         </p>
         <p>
@@ -122,7 +126,8 @@ export default function PrivacyPage() {
         <h2>6. Retention and deletion</h2>
         <p>
           We do not expire your data automatically. Datasets, models and their derived records stay
-          until you remove them or your account is closed.
+          until you remove them or your account is closed. The one exception is the product
+          milestones described above, which are deleted after 13 months.
         </p>
         <ul>
           <li>
