@@ -363,8 +363,10 @@ async def init_chunked_upload(
         )
 
     # Refuse up front on the declared size (#768) rather than after the transfer;
-    # /complete re-checks against the bytes that actually arrived.
-    await enforce_storage_ceiling(current_user_id, max(file_size, 0))
+    # /complete re-checks against the bytes that actually arrived. An oversize
+    # declaration is init_upload's 413 to give, not a storage 402.
+    if 0 <= file_size <= MAX_UPLOAD_BYTES:
+        await enforce_storage_ceiling(current_user_id, file_size)
 
     # No rate_limiter.start_upload: the new session itself is the count (see above),
     # so complete/abort/expiry need no matching decrement.

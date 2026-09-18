@@ -130,3 +130,16 @@ async def test_the_datasets_upload_twin_records_its_size(setup_database):
         num_rows=2, num_columns=2, columns=["a", "b"], data_schema=[],
     )
     assert await storage.stored_bytes(TEST_USER) == 4242
+
+
+async def test_chunked_init_refuses_a_declared_size_past_the_ceiling(
+    async_authorized_client, setup_database
+):
+    """Refused before a single chunk is transferred, and no session is opened."""
+    await _dataset(TEST_USER, FREE_LIMIT - MB)
+    response = await async_authorized_client.post(
+        "/api/v1/upload/chunked/init",
+        data={"filename": "d.csv", "file_size": str(2 * MB)},
+    )
+    assert response.status_code == 402, response.text
+    assert response.json()["detail"]["metric"] == "storage_mb"
