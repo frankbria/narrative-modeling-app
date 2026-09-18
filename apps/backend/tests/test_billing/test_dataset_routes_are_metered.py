@@ -214,6 +214,37 @@ class TestEveryDatasetRouteIsMetered:
         assert _metered_metric(routes[path]) is None
 
 
+class TestEveryUploadEnforcesTheStorageCeiling:
+    """#768 AC5: every route that creates a dataset from caller bytes checks the FREE
+    storage ceiling before storing them. Read from source, one hop deep for the
+    onboarding loader whose bytes only exist inside the service."""
+
+    #: Where the check lives when it is not in the handler itself.
+    _VIA = {
+        "/api/v1/onboarding/sample-datasets/{dataset_id}/load": (
+            "app.services.onboarding_service", "OnboardingService.load_sample_dataset",
+        ),
+    }
+
+    def test_each_metered_upload_calls_the_check(self):
+        import importlib
+        import inspect
+
+        routes = _post_routes()
+        missing = []
+        for path in _MUST_BE_METERED:
+            if path in self._VIA:
+                module, qualname = self._VIA[path]
+                target = importlib.import_module(module)
+                for part in qualname.split("."):
+                    target = getattr(target, part)
+            else:
+                target = routes[path].endpoint
+            if "enforce_storage_ceiling(" not in inspect.getsource(target):
+                missing.append(path)
+        assert not missing, f"dataset-creating routes without the storage check: {missing}"
+
+
 class TestNoRouteDoubleCounts:
     """Enforcement reserves; a guarded route must not also `record()` (CLAUDE.md)."""
 

@@ -52,7 +52,7 @@ export function PlanLimitDialog() {
                   <span data-testid="plan-limit-usage">
                     {error.used!.toLocaleString()} of {error.limit!.toLocaleString()}
                   </span>{' '}
-                  {words} used this period.
+                  {words} used{error.resets_at ? ' this period' : ''}.
                 </p>
               )}
               {resets && <p>Your limit resets on {resets}.</p>}

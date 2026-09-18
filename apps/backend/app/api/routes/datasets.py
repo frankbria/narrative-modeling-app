@@ -25,6 +25,7 @@ from fastapi import (
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
+from app.billing.storage import enforce_storage_ceiling
 from app.models.dataset import DatasetMetadata
 from app.schemas.dataset import (
     DatasetDeleteResponse,
@@ -176,6 +177,7 @@ async def upload_dataset(
         # Read file content
         file_content = await read_upload_capped(file)
         file_size = len(file_content)
+        await enforce_storage_ceiling(current_user_id, file_size)
 
         # Server-derived key: datasets/{user}/{uuid}.{ext} (#496/#581). The client
         # filename never reaches the key, so a space ("Q3 sales data.csv"), a "..",

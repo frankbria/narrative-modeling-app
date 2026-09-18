@@ -61,8 +61,14 @@ export function limitLabel(limit: number): string {
  * A metric in plain words for a sentence: "training runs", "AI calls". Only a
  * leading capitalised word is lowercased, so an acronym label keeps its case.
  */
+/** Limits that are not per-period quotas, so not on the pricing table (#768). */
+const OTHER_LABELS: Record<string, string> = {
+  storage_mb: 'Storage (MB)',
+}
+
 export function metricWords(metric: string): string {
-  const label = (METRIC_LABELS as Record<string, string>)[metric] ?? metric.replace(/_/g, ' ')
+  const label =
+    (METRIC_LABELS as Record<string, string>)[metric] ?? OTHER_LABELS[metric] ?? metric.replace(/_/g, ' ')
   return label.replace(/^[A-Z][a-z]/, (m) => m.toLowerCase())
 }
 

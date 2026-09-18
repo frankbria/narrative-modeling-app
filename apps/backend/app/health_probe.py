@@ -15,19 +15,27 @@ this inside the backend container, where it:
   pool authenticated before any rotation and keeps working until then (SCRAM is
   per connection), which is exactly how the Atlas rotation hid for three weeks.
 
-Exit 0 only when every status is ``healthy``. ``not_configured`` is a failure on
-purpose: staging must have S3 and OpenAI (upload is the first product step).
+It also counts the accounts created in the last 24 hours (``signups_24h``, #768)
+from the NextAuth ``users`` collection and fails above
+``SIGNUP_ALERT_THRESHOLD_24H`` — the number that says a signup script is running.
+
+Exit 0 only when every status is ``healthy`` (optionally followed by a
+parenthesised detail). ``not_configured`` is a failure on purpose: staging must
+have S3 and OpenAI (upload is the first product step).
 """
 
 import asyncio
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.api.routes.health import check_openai_api, check_s3_access
+from app.billing.plans import _env_positive_int
 
 DEFAULT_URL = "http://localhost:8000"
 MONGO_TIMEOUT_MS = 10_000
@@ -46,6 +54,32 @@ async def _fresh_mongo_ping() -> dict[str, Any]:
     finally:
         client.close()
     return {"status": "healthy"}
+
+
+async def _signup_rate() -> dict[str, Any]:
+    """Accounts the NextAuth adapter created in the last 24 hours.
+
+    The adapter stores no creation time, but every OAuth signup inserts a fresh
+    ``ObjectId`` ``_id`` whose embedded timestamp is that time — so the count is
+    one indexed range query on ``_id``. Same database as the app (``MONGODB_DB``,
+    which the frontend adapter must share, #545).
+    """
+    threshold = _env_positive_int("SIGNUP_ALERT_THRESHOLD_24H", 100)
+    since = ObjectId.from_datetime(datetime.now(UTC) - timedelta(hours=24))
+    client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(
+        os.environ["MONGODB_URI"], serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
+    )
+    try:
+        users = client[os.getenv("MONGODB_DB", "narrative_modeling")]["users"]
+        count = await users.count_documents({"_id": {"$gte": since}})
+    finally:
+        client.close()
+    verdict = "healthy" if count <= threshold else "unhealthy"
+    return {"status": f"{verdict} ({count} new accounts in 24h, alert above {threshold})"}
+
+
+def _is_healthy(status: str) -> bool:
+    return status == "healthy" or status.startswith("healthy (")
 
 
 async def _ready(
@@ -82,6 +116,7 @@ async def probe(
         ("mongodb_fresh", _fresh_mongo_ping),
         ("s3", check_s3_access),
         ("openai", check_openai_api),
+        ("signups_24h", _signup_rate),
     )
     for name, check_fn in fresh:
         try:
@@ -95,7 +130,7 @@ def main(transport: httpx.AsyncBaseTransport | None = None) -> int:
     statuses = asyncio.run(probe(os.getenv("HEALTH_PROBE_URL", DEFAULT_URL), transport))
     for name, status in statuses.items():
         print(f"{name}: {status}")
-    failing = sorted(name for name, status in statuses.items() if status != "healthy")
+    failing = sorted(name for name, status in statuses.items() if not _is_healthy(status))
     if failing:
         print(f"FAIL: {', '.join(failing)}")
         return 1

@@ -67,6 +67,9 @@ class UserData(Document):
     columns: list[str] | None = None  # Column names after processing
     data_preview: list[dict[str, Any]] | None = None  # Preview rows
     file_type: str | None = None  # csv, excel, json, etc.
+    #: Bytes of the stored object, counted against the FREE storage ceiling (#768).
+    #: None on rows written before it existed — those count as 0.
+    file_size: int | None = None
     
     # Onboarding progress
     onboarding_progress: dict[str, Any] | None = None  # User's onboarding tutorial progress

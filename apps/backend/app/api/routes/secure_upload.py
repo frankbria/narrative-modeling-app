@@ -21,6 +21,7 @@ from fastapi import (
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, release
+from app.billing.storage import enforce_storage_ceiling
 from app.models.user_data import UserData
 from app.services.security.pii_detector import PIIDetector
 from app.services.security.upload_handler import ChunkedUploadHandler, RateLimiter
@@ -83,6 +84,7 @@ async def secure_upload(
 
         # Read file content
         content = await read_upload_capped(file)
+        await enforce_storage_ceiling(current_user_id, len(content))
 
         # Load into DataFrame
         try:
@@ -170,6 +172,7 @@ async def secure_upload(
             num_columns=len(df.columns),
             data_schema=schema,
             file_type=file_type,
+            file_size=len(content),
             columns=list(df.columns),
             data_preview=df.head(100).to_dict('records')
         )
@@ -228,6 +231,8 @@ async def confirm_pii_upload(
         raise HTTPException(status_code=400, detail="Missing filename")
 
     content = await read_upload_capped(file)
+    # The original's size; a masked copy differs by a few bytes per masked cell.
+    await enforce_storage_ceiling(current_user_id, len(content))
 
     if file.filename.endswith('.csv'):
         df = pd.read_csv(io.BytesIO(content))
@@ -255,10 +260,12 @@ async def confirm_pii_upload(
         processed_content = df_processed.to_csv(index=False).encode()
         masked_key = dataset_s3_key(current_user_id, file.filename, masked=True)
         success, s3_url = upload_file_to_s3(processed_content, masked_key, content_type="text/csv")
+        stored_size = len(processed_content)
     else:
         # Upload original
         s3_key = dataset_s3_key(current_user_id, file.filename)
         success, s3_url = upload_file_to_s3(content, s3_key, content_type=file.content_type)
+        stored_size = len(content)
         df_processed = df
     
     # Infer schema
@@ -283,7 +290,8 @@ async def confirm_pii_upload(
         contains_pii=True,
         pii_report=pii_report,
         pii_risk_level=pii_report["risk_level"],
-        pii_masked=mask_pii
+        pii_masked=mask_pii,
+        file_size=stored_size,
     )
     
     await user_data.insert()
@@ -353,6 +361,10 @@ async def init_chunked_upload(
             status_code=429,
             detail="Too many concurrent uploads"
         )
+
+    # Refuse up front on the declared size (#768) rather than after the transfer;
+    # /complete re-checks against the bytes that actually arrived.
+    await enforce_storage_ceiling(current_user_id, max(file_size, 0))
 
     # No rate_limiter.start_upload: the new session itself is the count (see above),
     # so complete/abort/expiry need no matching decrement.
@@ -441,6 +453,7 @@ async def complete_chunked_upload(
                 detail=f"File too large. Maximum upload size is "
                 f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
             )
+        await enforce_storage_ceiling(current_user_id, temp_path.stat().st_size)
 
         lowered = filename.lower()
         if not lowered.endswith(('.csv', '.xlsx', '.xls')):
@@ -497,6 +510,7 @@ async def complete_chunked_upload(
             num_columns=len(df.columns),
             data_schema=schema,
             file_type=file_type,
+            file_size=len(content),
             columns=list(df.columns),
             data_preview=df.head(100).to_dict('records'),
         )

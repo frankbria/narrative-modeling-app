@@ -41,10 +41,11 @@ def s3_openai(monkeypatch):
     """Stub the fresh-process checks; the fresh Mongo ping is healthy unless a test
     says otherwise (its own real-connection tests are below)."""
 
-    def _set(s3, openai, mongo=_healthy):
+    def _set(s3, openai, mongo=_healthy, signups=_healthy):
         monkeypatch.setattr(health_probe, "check_s3_access", s3)
         monkeypatch.setattr(health_probe, "check_openai_api", openai)
         monkeypatch.setattr(health_probe, "_fresh_mongo_ping", mongo)
+        monkeypatch.setattr(health_probe, "_signup_rate", signups)
 
     return _set
 
@@ -158,3 +159,61 @@ async def test_stale_mongo_uri_fails_even_while_the_service_pool_is_fine(
     statuses = await health_probe.probe(transport=httpx.ASGITransport(app=app))
     assert statuses["mongodb"] == "healthy", "the service's own pool is untouched"
     assert statuses["mongodb_fresh"].startswith("unreachable (")
+
+
+class TestSignupRate:
+    """#768 AC4: new accounts per day, with an alert threshold. The number that says
+    a signup script is running; staging-health turns a breach into a P1 issue."""
+
+    @pytest.fixture
+    async def users(self, setup_database, monkeypatch):
+        """The NextAuth adapter's `users` collection in the test database. Not a
+        Beanie model, so `setup_database` does not clean it — this fixture does."""
+        from datetime import UTC, datetime, timedelta
+
+        from bson import ObjectId
+        from motor.motor_asyncio import AsyncIOMotorClient
+
+        monkeypatch.setenv("MONGODB_URI", settings.TEST_MONGODB_URI)
+        monkeypatch.setenv("MONGODB_DB", settings.TEST_MONGODB_DB)
+        client = AsyncIOMotorClient(settings.TEST_MONGODB_URI)
+        coll = client[settings.TEST_MONGODB_DB]["users"]
+        now = datetime.now(UTC)
+        ids = [
+            # _id is a fresh ObjectId per OAuth signup; its timestamp is the creation time
+            ObjectId.from_datetime(now - timedelta(hours=1)),
+            ObjectId.from_datetime(now - timedelta(hours=5)),
+            ObjectId.from_datetime(now - timedelta(days=2)),
+        ]
+        await coll.insert_many([{"_id": i, "email": f"u{n}@example.com"} for n, i in enumerate(ids)])
+        yield
+        await coll.delete_many({"_id": {"$in": ids}})
+        client.close()
+
+    async def test_counts_only_the_last_24_hours(self, users, monkeypatch):
+        monkeypatch.setenv("SIGNUP_ALERT_THRESHOLD_24H", "5")
+        result = await health_probe._signup_rate()
+        assert result["status"] == "healthy (2 new accounts in 24h, alert above 5)"
+
+    async def test_above_the_threshold_is_unhealthy(self, users, monkeypatch):
+        monkeypatch.setenv("SIGNUP_ALERT_THRESHOLD_24H", "1")
+        result = await health_probe._signup_rate()
+        assert result["status"] == "unhealthy (2 new accounts in 24h, alert above 1)"
+
+    def test_a_healthy_count_passes_the_probe_and_is_printed(self, s3_openai, capsys):
+        async def _signups():
+            return {"status": "healthy (2 new accounts in 24h, alert above 100)"}
+
+        s3_openai(_healthy, _healthy, signups=_signups)
+        transport = _ready_transport(200, {"mongodb": {"status": "healthy"}})
+        assert health_probe.main(transport=transport) == 0
+        assert "signups_24h: healthy (2 new accounts in 24h" in capsys.readouterr().out
+
+    def test_a_breach_fails_the_probe(self, s3_openai, capsys):
+        async def _signups():
+            return {"status": "unhealthy (412 new accounts in 24h, alert above 100)"}
+
+        s3_openai(_healthy, _healthy, signups=_signups)
+        transport = _ready_transport(200, {"mongodb": {"status": "healthy"}})
+        assert health_probe.main(transport=transport) == 1
+        assert "FAIL: signups_24h" in capsys.readouterr().out

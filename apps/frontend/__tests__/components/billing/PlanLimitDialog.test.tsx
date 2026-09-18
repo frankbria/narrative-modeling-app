@@ -92,6 +92,17 @@ describe('PlanLimitDialog', () => {
     expect(screen.getByRole('dialog')).not.toHaveTextContent('resets on')
   })
 
+  it('storage (#768): reads in MB and does not claim a reset period', () => {
+    render(<PlanLimitDialog />)
+    show({ metric: 'storage_mb', limit: 500, used: 498, resets_at: null })
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent("You have reached the Free plan's storage (MB) limit")
+    expect(dialog).toHaveTextContent('498 of 500 storage (MB) used.')
+    expect(dialog).not.toHaveTextContent('this period')
+    expect(dialog).not.toHaveTextContent('resets')
+  })
+
   it('Escape closes the dialog and clears the store', () => {
     render(<PlanLimitDialog />)
     show()
