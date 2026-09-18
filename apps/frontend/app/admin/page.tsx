@@ -1,6 +1,7 @@
 'use client'
 
 import { HealthMonitor } from '@/components/HealthMonitor'
+import { FunnelReadout } from '@/components/admin/FunnelReadout'
 
 /**
  * Admin dashboard.
@@ -11,17 +12,19 @@ import { HealthMonitor } from '@/components/HealthMonitor'
  * to customers as a status report. Asserting an unverified security posture to a
  * customer is a false statement about their data, so the honest fix is to remove
  * them (issue AC3). What remains is the one live widget, HealthMonitor, which
- * reads real backend health (its own polling targets are #479).
+ * reads real backend health (its own polling targets are #479), and the funnel
+ * readout (#769), counted from server-written events.
  */
 export default function AdminPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="text-muted-foreground">Monitor system health</p>
+        <p className="text-muted-foreground">System health and the launch funnel</p>
       </div>
 
       <HealthMonitor refreshInterval={10000} />
+      <FunnelReadout />
     </div>
   )
 }

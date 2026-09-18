@@ -64,6 +64,7 @@ from app.schemas.model import (
     ModelDeployResponse,
     PredictionExplanation,
 )
+from app.services import product_events
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.error_analysis_service import error_analysis_service
 from app.services.evaluation_explanation_service import evaluation_explanation_service
@@ -834,6 +835,11 @@ async def train_model_task(
             model_id=model_id,
             evaluation_data=evaluation_data,
             shap_data=shap_data,
+        )
+        await product_events.record(
+            user_id,
+            product_events.FIRST_MODEL_TRAINED,
+            once=product_events.FIRST_MODEL_TRAINED,
         )
 
         # Persist comparison + recommendations + best-model explanation on the job.

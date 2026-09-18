@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from beanie import Document, Indexed, PydanticObjectId
+from beanie import Document, Indexed, Insert, PydanticObjectId, after_event
 from pydantic import BaseModel, Field
 
 from app.utils.filenames import SafeFilename
@@ -80,6 +80,15 @@ class UserData(Document):
     # current file — tracked so erasure can delete these now-unreferenced objects (#525).
     superseded_s3_urls: list[str] = Field(default_factory=list)
     transformation_history: list[dict[str, Any]] = Field(default_factory=list)  # History of transformations applied
+
+    @after_event(Insert)
+    async def _record_first_upload(self) -> None:
+        # Here rather than in each route, so every dataset writer is covered (#769).
+        from app.services import product_events
+
+        await product_events.record(
+            self.user_id, product_events.FIRST_UPLOAD, once=product_events.FIRST_UPLOAD
+        )
 
     class Settings:
         name = "user_data"

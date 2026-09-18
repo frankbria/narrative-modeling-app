@@ -33,7 +33,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import metering
 from app.billing.plans import limits_for
+from app.middleware.metrics import quota_denials
 from app.models.subscription import PlanTier
+from app.services import product_events
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,10 @@ async def reserve(
     used = await metering.usage_for(user_id, metric)
     logger.info(
         "quota denied", extra={"user_id": user_id, "metric": metric, "tier": tier.value}
+    )
+    quota_denials.labels(metric=metric, tier=tier.value).inc()
+    await product_events.record(
+        user_id, product_events.QUOTA_DENIED, metric=metric, tier=tier.value
     )
     raise HTTPException(
         # 402, not 429. The #151 middleware owns 429 for "too fast"; this is "you

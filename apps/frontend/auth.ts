@@ -11,6 +11,7 @@ import { isSignInAllowed, signupMode } from "./lib/invite-allowlist"
 import { isAdminEmail } from "./lib/admin-allowlist"
 import { assertAuthConfig, assertDatabaseConfig } from "./lib/auth-config"
 import { resolveTestAdmin } from "./lib/test-credentials"
+import { recordAccountCreated } from "./lib/product-events"
 
 // Fail fast (issue #271): in production, refuse to start when OAuth creds or
 // NEXTAUTH_SECRET are missing instead of silently running with dummy/weak auth.
@@ -148,6 +149,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // `open` admits everyone, `invite` only INVITE_ALLOWLIST emails; unset in
       // production is `invite` (see lib/invite-allowlist.ts).
       return isSignInAllowed(account?.provider, user?.email)
+    },
+  },
+  events: {
+    // Funnel telemetry (#769): the only server-side moment that knows an account
+    // was just created. Best-effort; see lib/product-events.ts.
+    async createUser({ user }) {
+      if (user.id) await recordAccountCreated(client, user.id)
     },
   },
   secret: process.env.NEXTAUTH_SECRET,

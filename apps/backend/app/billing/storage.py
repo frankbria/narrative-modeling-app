@@ -17,9 +17,11 @@ from fastapi import HTTPException, status
 
 from app.billing import metering
 from app.billing.plans import UNLIMITED, limits_for
+from app.middleware.metrics import quota_denials
 from app.models.ml_model import MLModel
 from app.models.subscription import PlanTier
 from app.models.user_data import UserData
+from app.services import product_events
 
 _MB = 1024 * 1024
 
@@ -52,6 +54,10 @@ async def enforce_storage_ceiling(user_id: str, incoming_bytes: int) -> None:
     used = await stored_bytes(user_id)
     if used + incoming_bytes <= limit:
         return
+    quota_denials.labels(metric="storage_mb", tier=tier.value).inc()
+    await product_events.record(
+        user_id, product_events.QUOTA_DENIED, metric="storage_mb", tier=tier.value
+    )
     raise HTTPException(
         status_code=status.HTTP_402_PAYMENT_REQUIRED,
         detail={
