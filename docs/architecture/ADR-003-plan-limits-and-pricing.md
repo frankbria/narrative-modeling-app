@@ -100,7 +100,9 @@ Stripe objects are created in the dashboard, not by code:
 
 ## Consequences
 
-- The pricing page (#475) has numbers to state: this table.
+- The pricing page (#475) states this table from `apps/frontend/lib/billing/plans.json`,
+  which `tests/test_billing/test_pricing_source_matches_plans.py` holds equal to
+  `plans.py` and to the price column above.
 - Reverting `OPENAI_MODEL` to a gpt-4-class model is safe for margin at these limits
   but not free; the worst-case table above is the bill.
 - #728 (three feature-suggestion routes charge an `ai_calls` unit for a cache read)

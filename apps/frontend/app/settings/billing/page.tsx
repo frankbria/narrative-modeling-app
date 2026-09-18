@@ -15,13 +15,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useState } from 'react'
 import Link from 'next/link'
 import { COMPANY } from '@/lib/legal/company'
+import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel } from '@/lib/billing/plans'
 
-const METRIC_LABELS: Record<string, string> = {
-  training_runs: 'Training runs',
-  predictions: 'Predictions',
-  uploads: 'Uploads',
-  ai_calls: 'AI calls',
-}
+const METRIC_LABELS: Record<string, string> = PLAN_METRIC_LABELS
 
 /** A metered row. `-1` is unlimited, which has no bar to draw. */
 function UsageRow({
@@ -185,12 +181,17 @@ export default function BillingSettingsPage() {
         </Alert>
       ) : status.tier === 'free' ? (
         <div className="space-y-2">
+          {/* The price is on the button that starts the charge (#475 AC3), from
+              the same source the public pricing page renders. */}
           <Button disabled={redirecting} onClick={() => go(() => BillingService.startCheckout('pro'))}>
-            {redirecting ? 'Redirecting…' : 'Upgrade to Pro'}
+            {redirecting ? 'Redirecting…' : `Upgrade to Pro · ${priceLabel(planFor('pro'))}`}
           </Button>
           {/* The terms the charge is made under, at the point of the charge (#473). */}
           <p className="text-xs text-muted-foreground">
-            Subscriptions renew monthly until cancelled. By upgrading you agree to our{' '}
+            <Link href="/pricing" className="text-primary hover:underline">
+              Compare plans
+            </Link>
+            . Subscriptions renew monthly until cancelled. By upgrading you agree to our{' '}
             <Link href="/legal/terms" className="text-primary hover:underline">
               Terms of Service
             </Link>{' '}

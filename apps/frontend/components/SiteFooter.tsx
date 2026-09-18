@@ -4,7 +4,8 @@
  * Carries two things that must be reachable from every page for both signed-in
  * and signed-out visitors: the AGPL-3.0 §13 offer of Corresponding Source
  * (issue #260 — the machine-readable half is the backend `GET /`), and the
- * Terms and Privacy Policy links (issue #473). The source offer is a plain
+ * Terms and Privacy Policy links (issue #473) — plus Pricing (issue #475), the
+ * other page a visitor reads before they have an account. The source offer is a plain
  * anchor because it leaves the app; the legal links use next/link so they
  * client-navigate like every other internal link here.
  *
@@ -36,6 +37,10 @@ export function SiteFooter({ withSidebar = false }: { withSidebar?: boolean }) {
       >
         AGPL-3.0 · Source
       </a>
+      <span aria-hidden="true">·</span>
+      <Link href="/pricing" className="pointer-events-auto hover:text-foreground hover:underline">
+        Pricing
+      </Link>
       <span aria-hidden="true">·</span>
       <Link href="/legal/terms" className="pointer-events-auto hover:text-foreground hover:underline">
         Terms

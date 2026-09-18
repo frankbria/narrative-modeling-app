@@ -22,6 +22,11 @@ describe('SiteFooter', () => {
     expect(screen.getByRole('link', { name: /^privacy$/i })).toHaveAttribute('href', '/legal/privacy')
   })
 
+  it('links to the public pricing page alongside the legal pages (issue #475 AC5)', () => {
+    render(<SiteFooter />)
+    expect(screen.getByRole('link', { name: /^pricing$/i })).toHaveAttribute('href', '/pricing')
+  })
+
   // It is the page's only contentinfo, so it needs no accessible name — the role
   // alone is what makes the legal links reachable via landmark navigation.
   it('is a contentinfo landmark', () => {

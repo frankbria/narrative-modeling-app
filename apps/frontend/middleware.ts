@@ -16,6 +16,8 @@ import { isAdminEmail } from "@/lib/admin-allowlist";
 // forged or stale cookie still fails signature/expiry inside decode.
 const SECURE_COOKIE_VARIANTS = [true, false] as const;
 
+const PUBLIC_PATHS = new Set(['/pricing']);
+
 async function readSessionToken(request: NextRequest) {
   const secret = process.env.NEXTAUTH_SECRET;
   // No presence-guard on the raw Cookie header: Auth.js chunks an oversized JWT
@@ -45,6 +47,14 @@ export default async function middleware(request: NextRequest) {
   // — so they cannot sit behind the session wall. The trailing slash keeps the
   // exemption to the /legal subtree: a future /legality page stays protected.
   if (pathname.startsWith('/legal/')) {
+    return NextResponse.next();
+  }
+
+  // Public marketing pages (issue #475): a prospective customer reads the price
+  // before they have an account. An EXACT-path allowlist, not a prefix — a prefix
+  // makes every future file under it public by construction (the /legal/ caveat
+  // above), so /pricingx and /pricing/anything stay behind the session wall.
+  if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();
   }
 

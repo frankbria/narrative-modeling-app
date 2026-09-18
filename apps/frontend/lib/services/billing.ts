@@ -8,11 +8,12 @@
 import { API_BASE_URL } from '@/lib/config'
 import { getAuthToken } from '@/lib/auth-helpers'
 
-export type PlanTier = 'free' | 'pro' | 'enterprise'
-
-/** `-1` means no ceiling. Passed through rather than omitted so the UI can tell
- *  "unlimited" from "not reported". */
-export const UNLIMITED = -1
+// The tier names and the "no ceiling" sentinel live with the published plan
+// source (#475) so the public pricing page and this client cannot disagree.
+// `-1` is passed through rather than omitted so the UI can tell "unlimited"
+// from "not reported".
+export { UNLIMITED, type PlanTier } from '@/lib/billing/plans'
+import type { PlanTier } from '@/lib/billing/plans'
 
 export interface BillingStatus {
   configured: boolean

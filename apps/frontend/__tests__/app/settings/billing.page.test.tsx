@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import BillingSettingsPage from '@/app/settings/billing/page'
 import { UNLIMITED } from '@/lib/services/billing'
+import { planFor, priceLabel } from '@/lib/billing/plans'
 
 /**
  * Plan & usage page (#365).
@@ -107,6 +108,19 @@ describe('Plan & usage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /upgrade to pro/i })).toBeInTheDocument()
     )
+  })
+
+  // #475 AC3: the price is stated on the button that sends the customer to
+  // Stripe, from the same source the public pricing page renders, with a link
+  // to compare plans before committing.
+  it('states the Pro price on the upgrade path and links to the pricing page', async () => {
+    mockStatus(status())
+
+    render(<BillingSettingsPage />)
+
+    const button = await screen.findByRole('button', { name: /upgrade to pro/i })
+    expect(button).toHaveTextContent(priceLabel(planFor('pro')))
+    expect(screen.getByRole('link', { name: /compare plans/i })).toHaveAttribute('href', '/pricing')
   })
 
   // #474 AC3: ENTERPRISE is sold sales-led, not self-serve. The tier must not be
