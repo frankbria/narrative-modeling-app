@@ -4,10 +4,11 @@
  * Every service used to hand-roll `throw new Error(detail || '…')`, which drops
  * the HTTP status and the parsed body — so a plan-limit 402 (which carries
  * metric/limit/used/resets_at/upgrade_available) rendered as a bare "HTTP 402".
- * `apiError(response, fallback)` keeps the old message behaviour (the backend's
- * `detail` string or message, else the caller's fallback) and adds the status and
- * body; a `quota_exceeded` 402 becomes a `QuotaExceededError` and opens the
- * PlanLimitDialog through the `planLimit` store.
+ * `apiError(response, fallback)` keeps the old message behaviour — a string
+ * `detail` becomes the message, anything else (a 422 array, an object) falls back
+ * to the caller's text — and adds the status and body. A `quota_exceeded` 402
+ * becomes a `QuotaExceededError` whose message is the backend's own sentence, and
+ * opens the PlanLimitDialog through the `planLimit` store.
  */
 import type { PlanTier } from '@/lib/billing/plans'
 import { planLimit } from '@/lib/billing/planLimit'
