@@ -10,7 +10,9 @@ pass with the dependency attached to nothing (see the #267 footgun).
 here unambiguous — a 429 would mean something else entirely.
 """
 
+import re
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1476,3 +1478,40 @@ class TestSuccessfulChargesPersist:
         assert await metering.usage_for(TEST_USER, "training_runs") == 1
         # Not "charge every tenant": B's pre-existing usage is unchanged.
         assert await metering.usage_for(OTHER_USER, "training_runs") == 2
+
+
+#: The frontend parser's list of the 402 detail's keys (#767 AC5). The schema ↔
+#: type mirror rule: `QuotaExceededError` in `lib/services/apiError.ts` reads these
+#: fields off the body `reserve()` raises above, and a field renamed on one side
+#: only would leave the PlanLimitDialog rendering blanks with every test green.
+_QUOTA_PARSER_TS = (
+    Path(__file__).resolve().parents[4]
+    / "apps"
+    / "frontend"
+    / "lib"
+    / "services"
+    / "apiError.ts"
+)
+
+
+def _frontend_quota_fields() -> list[str]:
+    src = _QUOTA_PARSER_TS.read_text()
+    block = re.search(r"QUOTA_DETAIL_FIELDS\s*=\s*\[(.*?)\]\s*as const", src, re.DOTALL)
+    assert block, f"QUOTA_DETAIL_FIELDS not found in {_QUOTA_PARSER_TS}"
+    return re.findall(r"'([a-z_]+)'", block.group(1))
+
+
+class TestQuotaBodyMatchesTheFrontendParser:
+    async def test_the_402_detail_fields_match_the_frontend_parser(
+        self, async_authorized_client, setup_database
+    ):
+        """A real 402 (not a hand-written dict) against the TS constant."""
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            "/api/v1/datasets/upload",
+            files={"file": ("d.csv", b"a,b\n1,2\n", "text/csv")},
+        )
+
+        assert response.status_code == 402, response.text
+        assert sorted(response.json()["detail"]) == sorted(_frontend_quota_fields())
