@@ -5,10 +5,11 @@ API routes for AI-powered data analysis using MCP
 
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
 
 from app.auth.nextauth_auth import get_current_user_id
+from app.billing import enforcement
 from app.billing.enforcement import quota
 from app.models.user_data import UserData
 from app.services.ai_chat import ChatRequest, ai_chat_service
@@ -17,6 +18,7 @@ from app.services.dataset_summarization import (
     dataset_summarization_service,
 )
 from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
+from app.utils.circuit_breaker import CircuitBreakerOpen
 
 router = APIRouter()
 
@@ -130,7 +132,15 @@ async def chat(
     Dataset chat (#461). The Next.js `/api/chat` proxy forwards here so the call is
     reserved against `ai_calls` and refunded by the middleware on any failure.
     """
-    reply = await ai_chat_service.reply(request)
+    try:
+        reply = await ai_chat_service.reply(request)
+    except CircuitBreakerOpen:
+        # Open breaker or the #768 daily ceiling: chat has no rule-based answer to
+        # fall back to, so it is a 503, which the refund middleware hands back.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI chat is temporarily unavailable. Please try again later.",
+        ) from None
     if reply is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -161,6 +171,7 @@ async def chat_with_data(
 
 @router.post("/summarize/{file_id}", dependencies=[Depends(quota("ai_calls"))])
 async def generate_ai_summary(
+    http_request: Request,
     file_id: str = Path(..., description="File ID"),
     focus_areas: list[str] | None = None,
     current_user_id: str = Depends(get_current_user_id)
@@ -196,6 +207,9 @@ async def generate_ai_summary(
 
         # Generate summary
         summary = await dataset_summarization_service.generate_comprehensive_summary(summary_request)
+        if getattr(summary, "model_used", None) in ("fallback", "error"):
+            # No model ran (no key, breaker open, or the #768 daily ceiling): no charge.
+            await enforcement.release(http_request)
 
         # Optionally save to database
         user_data.aiSummary = summary

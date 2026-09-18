@@ -16,6 +16,7 @@ from fastapi import (
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
+from app.billing.storage import enforce_storage_ceiling
 from app.models.user_data import UserData
 from app.utils.ai_summary import generate_dataset_summary
 from app.utils.s3 import (
@@ -69,6 +70,7 @@ async def upload_file(
 
         content = await read_upload_capped(file)
         logger.info(f"File content size: {len(content)} bytes")
+        await enforce_storage_ceiling(current_user_id, len(content))
 
         # Determine file type and read accordingly
         if file.filename.endswith(".csv"):
@@ -122,16 +124,6 @@ async def upload_file(
                 detail="File storage is not configured on this deployment.",
             )
         else:
-            # Log the environment variables (without sensitive values)
-            logger.info("AWS environment variables:")
-            for var in required_env_vars:
-                value = os.getenv(var) or ""
-                if var in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
-                    masked_value = value[:4] + "*" * (len(value) - 8) + value[-4:]
-                    logger.info(f"{var}: {masked_value}")
-                else:
-                    logger.info(f"{var}: {value}")
-
             # Upload to S3
             logger.info(f"Attempting to upload file to S3: {s3_filename}")
             success, upload_url = upload_file_to_s3(content, s3_filename, file.content_type)
@@ -195,6 +187,7 @@ async def upload_file(
             num_rows=num_rows,
             num_columns=num_columns,
             data_schema=schema_fields,
+            file_size=len(content),
         )
 
         # Save to database

@@ -21,7 +21,7 @@ from app.schemas.evaluation import (
 from app.services.evaluation_explanation_service import EvaluationExplanationService
 from app.utils.circuit_breaker import get_circuit_breaker
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("ai_ceiling_open")]
 
 
 @pytest.fixture(autouse=True)

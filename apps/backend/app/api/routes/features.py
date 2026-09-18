@@ -20,6 +20,7 @@ from fastapi import (
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import release, reserve
+from app.billing.storage import enforce_storage_ceiling
 from app.models.feature import (
     ExpressionNode,
     NodeType,
@@ -633,6 +634,11 @@ async def apply_feature(
         # would turn the 402 into a 500 (the #453 trap).
         if request.create_new_dataset:
             await reserve(http_request, current_user_id, "uploads")
+            # The derived dataset's size is only known once it is written, so this
+            # refuses a tenant with no room left (#768).
+            # ponytail: may overshoot by one derived dataset; its real size is
+            # recorded, so the next upload sees it.
+            await enforce_storage_ceiling(current_user_id, 1)
 
         result = await feature_builder_service.apply_feature_to_dataset(
             feature_id=feature_id,

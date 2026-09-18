@@ -145,6 +145,7 @@ class TestDatasetSummarizationService:
         assert len(highlights["outlier_columns"]) == 1
         assert highlights["outlier_columns"][0]["column"] == "value"
 
+    @pytest.mark.usefixtures("ai_ceiling_open")
     async def test_generate_comprehensive_summary_with_openai(self, summarization_service, sample_request):
         """Test summary generation with OpenAI"""
         # Mock OpenAI response

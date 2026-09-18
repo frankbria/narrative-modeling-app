@@ -49,6 +49,11 @@ class PlanLimits:
     #: UNLIMITED here would disable the only limiter on the paid serving surface
     #: — which is the hole #455 closes.
     api_key_rate_limit: int
+    #: Stored bytes — datasets plus model artifacts — a tenant may hold (#768).
+    #: A standing ceiling, not a per-period counter, so like `api_key_rate_limit`
+    #: it is outside `METERED_METRICS`; `app/billing/storage.py` enforces it at
+    #: upload. UNLIMITED on the paid tiers.
+    storage_bytes: int = UNLIMITED
 
     def limit_for(self, metric: str) -> int:
         """Look a metric up by the name the metering store uses.
@@ -121,6 +126,7 @@ PLAN_LIMITS: dict[PlanTier, PlanLimits] = {
         uploads=_env_int("PLAN_FREE_UPLOADS", 10),
         ai_calls=_env_positive_int("PLAN_FREE_AI_CALLS", 30),
         api_key_rate_limit=_env_positive_int("PLAN_FREE_API_KEY_RATE_LIMIT", 1_000),
+        storage_bytes=_env_int("PLAN_FREE_STORAGE_BYTES", 500 * 1024 * 1024),
     ),
     PlanTier.PRO: PlanLimits(
         training_runs=_env_int("PLAN_PRO_TRAINING_RUNS", 100),

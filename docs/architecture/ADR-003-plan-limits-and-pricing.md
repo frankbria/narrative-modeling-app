@@ -49,6 +49,29 @@ Worst-case cost per tenant-month at these limits, still priced at gpt-4:
 | FREE | $3.60 | $1.20 | $0.20 | $0.01 | **≈ $5** (the acquisition budget; AC6, guarded by the same test) |
 | PRO | $48 | $24 | $8 | $1 | **≈ $81 worst case, ≈ $25 typical** against $49 revenue |
 | ENTERPRISE | $600 | per deal | per deal | per deal | priced per deal |
+| **All tenants, aggregate** | **≤ $60 / day** | counted in the same ceiling | — | — | **≤ ≈ $1 800 / month** on the whole model bill, whatever the number of accounts (#768) |
+
+### Aggregate exposure (#768)
+
+Every row above is per tenant, so the aggregate scales with the number of accounts —
+and one person with a script and disposable OAuth accounts sets that number (N free
+accounts ≈ $5 × N). The backstop is a **global daily ceiling** on model calls across
+all tenants: `AI_CALLS_DAILY_CEILING` = 500 per UTC day (`app/billing/ai_ceiling.py`,
+read through `_env_positive_int`). The stated budget is **$60/day worst case** — 500 ×
+the $0.12 gpt-4 per-call figure above; ≈ $1/day at the `gpt-4o-mini` default. It
+counts every model call, including the post-upload summaries that `ai_calls` does not
+meter. Past it, every AI feature serves its rule-based fallback and hands the tenant's
+unit back, until 00:00 UTC; the operator is alerted by an ERROR log line and the
+`ai_ceiling_denials_total` Prometheus counter. Raise the ceiling deliberately when paid
+usage needs it — it bounds the bill, not any one tenant.
+
+**Storage is capped on FREE.** 10 uploads of up to 100 MB each, kept forever, is 1 GB
+per free account with no reclamation. FREE holds at most **500 MB** of stored datasets
+plus model artifacts (`PlanLimits.storage_bytes`, `PLAN_FREE_STORAGE_BYTES`); an upload
+that would cross it is refused with a 402 naming `storage_mb` (sizes in MB, the unit the plan-limit dialog prints). At $0.023/GB-month
+that is ≈ $0.01 per free account-month — the cap is about growth without bound, not
+this month's bill. PRO and ENTERPRISE are uncapped; #529's lifecycle rules handle
+reclamation.
 
 ### The reasoning
 

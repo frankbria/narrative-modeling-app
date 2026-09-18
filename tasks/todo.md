@@ -1,32 +1,29 @@
-# #767 — P0.38 Plan-limit (402) experience + checkout confirmation
+# #768 — Abuse and cost backstops before signup opens
 
-Plan source: self-authored (no plan comment on the issue). Branch: `feature/issue-767-plan-limit-402-experience`.
-
-## Design decisions (autonomous, no architectural fork)
-- **One error type**: `lib/services/apiError.ts` — `ApiError { status, detail }` and `QuotaExceededError extends ApiError` (metric, limit, used, tier, resets_at, upgrade_available; all but `metric` nullable so the thin `{error, metric}` variant parses). `apiError(response, fallback)` builds the right error from a `Response`; message = `detail.message` / string `detail` / fallback, so existing callers' messages are unchanged.
-- **Dialog fires structurally, not per call site**: `apiError()` hands a `QuotaExceededError` to a tiny external store (`lib/billing/planLimit.ts`, `useSyncExternalStore`) that a single `PlanLimitDialog` mounted once in the authenticated root layout renders. Any surface that throws through `apiError` gets the dialog for free; the throw still happens so existing inline error text keeps working.
-- **Chat proxy** passes the backend's 402 body through unchanged so the client parses it with the same helper (other upstream failures stay generic).
-- **80% warning**: `UsageWarningBanner` (sibling of `StageGuardBanner` in the layout) fetches `/billing/status` once per mount and links to `/settings/billing`. Silent on any fetch failure.
-- **Checkout confirmation**: billing page reads `?checkout=` via `useSearchParams` (Suspense-wrapped), shows success/cancel copy, polls status every 2s (max 15) until `tier` leaves the initial value, then reloads and clears the param via `router.replace`.
-- **Contract test direction** follows the repo idiom: backend pytest reads the frontend TS constant `QUOTA_DETAIL_FIELDS` and asserts it equals the real 402 detail's keys.
-- **E2E real 402**: FREE ceilings are lifted process-wide for the shared user (test-e2e.sh), and limits are per tier, so the only tenant that can hit a small ceiling is the second identity on a *different* tier: seed `test-admin-12345` a PRO `Subscription` in `seed_e2e_data.py` and set `PLAN_PRO_UPLOADS=2` in test-e2e.sh (the only sanctioned override surface). The spec uploads via the UI until the dialog appears (≤3 tries, counters persist across runs) and asserts the backend numbers + the action link. Deviation from AC5's "FREE user": the FREE branch (Upgrade → /settings/billing) is jest-covered.
-- Prediction/batch calls live in `lib/services/model.ts`, not `production.ts` (which is API keys/metrics, unmetered) — model.ts is adopted wholesale; production.ts is adopted too so the class of hand-rolled throws shrinks.
-- `/recommend-tools` and `/stage-guidance` have no frontend caller — nothing to adopt.
+Branch: feat/768-abuse-cost-backstops. Plan self-authored (none on the issue).
 
 ## Steps
-1. [x] `lib/services/apiError.ts` + `lib/billing/planLimit.ts` (+ `__tests__/lib/apiError.test.ts`): full 402 → QuotaExceededError with backend numbers + store populated; thin variant tolerated; non-402 → ApiError with status; message fallback preserved.
-2. [x] `components/billing/PlanLimitDialog.tsx` mounted in `app/layout.tsx` (+ test): metric words, used/limit, reset date, action by tier (free→Upgrade link `/settings/billing` with price; pro→mailto Contact us; enterprise→"highest plan").
-3. [x] Adopt: `lib/hooks/useChunkedUpload.ts` (init/chunk/complete/resume), `app/upload/page.tsx` (secure + confirm-pii), `lib/services/model.ts` (all sites), `lib/services/production.ts`, `lib/services/data-issues.ts`, `components/AIInsightsPanel.tsx`, `lib/hooks/useFeatureSuggestions.ts`, `components/AIChat.tsx` + `app/api/chat/route.ts` passthrough. Per-surface jest: a 402 body populates the store with the backend numbers.
-4. [x] `components/billing/UsageWarningBanner.tsx` in layout (+ test): ≥80% non-unlimited metric → amber `role="status"` banner with link; nothing when under, unlimited, or fetch fails.
-5. [x] `app/settings/billing/page.tsx` checkout param (+ tests): success → confirmation + bounded poll + param cleared; cancelled → notice + Upgrade button kept.
-6. [x] Backend: `tests/test_api/test_quota_enforcement.py` contract test parsing `QUOTA_DETAIL_FIELDS` from the TS file.
-7. [x] E2E: `scripts/seed_e2e_data.py` PRO subscription for admin; `test-e2e.sh` `PLAN_PRO_UPLOADS=2`; `e2e/workflows/plan-limit.spec.ts` (@smoke).
-8. [x] CLAUDE.md convention paragraph; run full frontend jest + lint + tsc, backend gate subset.
+1. AC1 SIGNUP_MODE (both halves)
+   - backend `app/config.py`: `resolve_signup_mode()` → "open"|"invite"; blank in production-like → invite (fail closed); blank in dev/test → legacy (allowlist set → invite, else open); invalid → invite + error log. `signup_admits(email)`; invite with empty allowlist admits nobody.
+   - `nextauth_auth.py` gate uses it; lifespan logs the mode (WARNING when open).
+   - frontend `lib/invite-allowlist.ts`: `resolveSignupMode(env, nodeEnv)`; `isSignInAllowed` uses it; auth.ts logs when open.
+   - compose: `SIGNUP_MODE: ${SIGNUP_MODE:-}` on both services (optional until provisioned — #457 rule; blank = invite in staging, i.e. today's behaviour). Operator follow-up flips it to `:?`.
+2. AC2 global AI ceiling
+   - `app/billing/ai_ceiling.py`: `AI_CALLS_DAILY_CEILING` (_env_positive_int, default 500 = $60/day at ADR-003's $0.12 gpt-4 worst case), `admit()` = conditional $inc on UsageRecord(user_id="__global__", period_key=YYYY-MM-DD, metric="ai_calls"); fails closed; on denial ERROR log + Prometheus counter.
+   - choke point: `with_circuit_breaker` for services named `openai*` checks the ceiling once per logical call (outside tenacity retries) and raises `AICeilingReached(CircuitBreakerOpen)` → every caller's existing fallback.
+   - fix release gaps: feature `/suggest` ai_used set only after a call ran; `/ai/summarize` releases on fallback.
+3. AC3 nginx `limit_req_zone` on `/api/auth/` + test (RATE_LIMIT_TRUST_PROXY already in compose, #483).
+4. AC4 health probe: accounts created in last 24h (NextAuth `users` `_id` timestamp) printed + `signup_rate` status unhealthy above `SIGNUP_ALERT_THRESHOLD_24H`.
+5. AC5 FREE storage ceiling: `PlanLimits.storage_bytes` (FREE 500 MB, PRO/ENT unlimited), `UserData.file_size` written at every dataset writer, `enforce_storage_ceiling(user, incoming)` → 402 quota_exceeded(metric=storage_bytes) at each dataset-creating route.
+6. AC6 `/metrics` requires backend ADMIN_EMAILS (fail closed, 404 otherwise) + test.
+7. AC7 ADR-003 aggregate line + storage limit.
+8. Docs: CLAUDE.md conventions, .env examples.
 
 ## Acceptance criteria
-- [x] AC1 one error type with status + parsed body; QuotaExceededError on 402, thin variant tolerated
-- [x] AC2 one PlanLimitDialog on upload (chunked + secure), training, batch + single prediction, every ai_calls surface; chat proxy adopts the copy
-- [x] AC3 ≥80% warning in the workflow shell with billing link
-- [x] AC4 checkout=success|cancelled handled on the billing page (bounded poll, param cleared)
-- [x] AC5 jest per surface, contract test vs enforcement.py, e2e real 402
-- [x] AC6 upgrade button shows price (already shipped in #775; unchanged)
+- [x] AC1 explicit signup mode, fail closed in prod, tests both halves
+- [x] AC2 global AI ceiling → fallback + release + alert
+- [x] AC3 auth edge rate limit (repo; deploy via #594)
+- [x] AC4 account-creation count + alert threshold
+- [x] AC5 FREE storage ceiling
+- [x] AC6 /metrics admin-only, test pins it
+- [x] AC7 ADR-003 aggregate exposure line

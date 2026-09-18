@@ -118,6 +118,9 @@ nano .env.staging
 - `BACKEND_CORS_ORIGINS`: https://narrative.yourdomain.com (explicit origin(s); the backend refuses `*` in production-like envs)
 - `ALLOWED_ORIGINS`: https://narrative.yourdomain.com (frontend page-middleware CORS allowlist)
 - `INVITE_ALLOWLIST`: comma-separated invitee emails (**required** — the invite-only beta gate; compose refuses to start if unset). See [Managing beta invitees](#managing-beta-invitees).
+- `SIGNUP_MODE`: `invite` or `open` (#768). Set it to `invite` explicitly; unset also resolves to `invite` in staging/production (fail closed). `open` admits any Google/GitHub account and logs a warning at startup on both halves — only after the #768 backstops and #769 telemetry are live.
+- `ADMIN_EMAILS`: comma-separated admin emails for `/admin` (frontend) and `GET /metrics` (backend). Unset means nobody.
+- Optional backstop tuning (defaults are the ADR-003 values): `AI_CALLS_DAILY_CEILING` (500 model calls/day across all tenants), `SIGNUP_ALERT_THRESHOLD_24H` (100 new accounts/day before the health probe fails).
 - Google/GitHub OAuth credentials (if using authentication)
 
 **Save and secure the file**:

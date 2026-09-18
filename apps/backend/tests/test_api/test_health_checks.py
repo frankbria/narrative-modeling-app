@@ -39,12 +39,56 @@ class TestHealthEndpoints:
         assert client.get("/api/v1/health/ready").status_code == 404
 
 
+ADMIN = "ops@example.com"
+_SECRET = "test-secret"
+
+
+@pytest.fixture
+def admin_auth():
+    """Real JWT verification with ADMIN_EMAILS set (#768: /metrics is admin-only)."""
+    with patch("app.auth.nextauth_auth.NEXTAUTH_SECRET", _SECRET), \
+         patch("app.auth.nextauth_auth.SKIP_AUTH", False), \
+         patch.dict("os.environ", {"ADMIN_EMAILS": ADMIN}):
+        yield
+
+
+def _bearer(email: str | None) -> dict[str, str]:
+    from jose import jwt
+
+    claims = {"sub": "u1", **({"email": email} if email else {})}
+    return {"Authorization": f"Bearer {jwt.encode(claims, _SECRET, algorithm='HS256')}"}
+
+
+class TestMetricsAreAdminOnly:
+    """#768 AC6: /metrics sits at the app root, outside the /api/v1 limiter, and had
+    no auth — only nginx not routing it kept it private. Everyone but an
+    ADMIN_EMAILS identity gets the same 404 as for a path that does not exist."""
+
+    def test_anonymous_gets_404(self, admin_auth):
+        assert client.get("/metrics").status_code == 404
+
+    def test_signed_in_non_admin_gets_404(self, admin_auth):
+        assert client.get("/metrics", headers=_bearer("tenant@example.com")).status_code == 404
+
+    def test_forged_token_gets_404(self, admin_auth):
+        headers = {"Authorization": "Bearer not-a-jwt"}
+        assert client.get("/metrics", headers=headers).status_code == 404
+
+    def test_unset_allowlist_fails_closed(self, admin_auth):
+        with patch.dict("os.environ", {"ADMIN_EMAILS": ""}):
+            assert client.get("/metrics", headers=_bearer(ADMIN)).status_code == 404
+
+    def test_admin_is_served(self, admin_auth):
+        response = client.get("/metrics", headers=_bearer(ADMIN.upper()))
+        assert response.status_code == 200
+
+
 class TestMetricsUnshadowed:
     """Regression guard (issue #273): /metrics must serve Prometheus text, not the
     old JSON health-router endpoint that shadowed it and broke scraping."""
 
-    def test_metrics_returns_prometheus_not_json(self):
-        response = client.get("/metrics")
+    def test_metrics_returns_prometheus_not_json(self, admin_auth):
+        response = client.get("/metrics", headers=_bearer(ADMIN))
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/plain")
         body = response.text

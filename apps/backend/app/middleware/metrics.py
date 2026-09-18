@@ -66,6 +66,19 @@ active_requests = Gauge(
     registry=metrics_registry,
 )
 
+# Global AI spend ceiling (#768, app/billing/ai_ceiling.py). Denials > 0 means
+# every AI feature is on its rule-based fallback for the rest of the UTC day.
+ai_calls_admitted = Counter(
+    name="ai_calls_admitted_total",
+    documentation="Model calls admitted under the global daily AI ceiling",
+    registry=metrics_registry,
+)
+ai_ceiling_denials = Counter(
+    name="ai_ceiling_denials_total",
+    documentation="Model calls refused because the global daily AI ceiling was reached",
+    registry=metrics_registry,
+)
+
 # Label for requests that matched no route (404s, scans). Using the raw path here
 # would let an attacker mint unbounded time series, so collapse them to one.
 UNMATCHED_ENDPOINT = "__unmatched__"

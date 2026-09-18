@@ -123,7 +123,8 @@ class DatasetService(BaseService[DatasetMetadata]):
             ai_summary=ai_summary,
             pii_report=pii_report,
             inferred_schema=inferred_schema,
-            onboarding_progress=onboarding_progress
+            onboarding_progress=onboarding_progress,
+            file_size=file_size,
         )
 
         return dataset
@@ -147,7 +148,8 @@ class DatasetService(BaseService[DatasetMetadata]):
         ai_summary: AISummary | None,
         pii_report: PIIReport | None,
         inferred_schema: dict[str, Any] | None,
-        onboarding_progress: dict[str, Any] | None
+        onboarding_progress: dict[str, Any] | None,
+        file_size: int | None = None,
     ) -> None:
         """
         Create legacy UserData for backward compatibility.
@@ -225,7 +227,8 @@ class DatasetService(BaseService[DatasetMetadata]):
             data_preview=data_preview,
             file_type=file_type,
             onboarding_progress=onboarding_progress,
-            file_path=file_path
+            file_path=file_path,
+            file_size=file_size,  # what the storage ceiling counts (#768)
         )
 
         await user_data.save()

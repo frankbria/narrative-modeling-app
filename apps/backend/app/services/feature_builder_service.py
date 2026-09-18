@@ -5,6 +5,7 @@ This service handles CRUD operations for feature definitions and
 provides preview/validation functionality using safe expression evaluation.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -31,7 +32,7 @@ from app.services.expression_evaluator import (
 )
 from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
-    upload_dataframe_to_s3,
+    upload_parquet_bytes,
 )
 
 logger = logging.getLogger(__name__)
@@ -673,7 +674,8 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
 
             # Upload modified dataframe to S3
             try:
-                new_s3_url = await upload_dataframe_to_s3(df, s3_key)
+                parquet = await asyncio.to_thread(df.to_parquet, index=False)
+                new_s3_url = await upload_parquet_bytes(parquet, s3_key)
             except Exception as upload_error:
                 logger.exception(f"Failed to upload dataframe to S3: {upload_error}")
                 return {
@@ -716,7 +718,7 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                     num_columns=len(new_columns),
                     columns=new_columns,
                     data_schema=new_schema,
-                    file_size=None,  # Will be calculated by S3
+                    file_size=len(parquet),  # what the storage ceiling counts (#768)
                 )
                 dataset_committed = True
                 final_dataset_id = new_dataset_id

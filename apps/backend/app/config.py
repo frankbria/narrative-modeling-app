@@ -167,27 +167,76 @@ def resolve_cors_origins(
 def parse_invite_allowlist(raw: str | None) -> set[str]:
     """Parse INVITE_ALLOWLIST (comma-separated emails) into a lowercased set.
 
-    Empty/unset ⇒ empty set ⇒ the invite gate is disabled (allow all). Mirrors
-    the frontend `parseAllowlist` so both tiers read one source of truth.
+    Mirrors the frontend `parseAllowlist` so both tiers read one source of
+    truth. Whether an empty list means "nobody" or "open" is `SIGNUP_MODE`'s
+    call, not this function's (see `resolve_signup_mode`).
     """
     if not raw or not raw.strip():
         return set()
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 
-def is_email_allowed(email: str | None, allowlist: set[str]) -> bool:
-    """True if the invite gate admits ``email``.
+SIGNUP_MODES = ("invite", "open")
 
-    An empty allowlist disables the gate (everyone allowed). When active, the
-    email must be listed (case-insensitive); a missing email is rejected — but
-    by construction every admitted user has an email (the signIn gate rejects
-    email-less sign-ins), so this only bites forged/stale tokens.
+
+def resolve_signup_mode(
+    raw: str | None, allowlist: set[str], production_like: bool
+) -> str:
+    """Which signup model applies: ``"invite"`` or ``"open"`` (#768).
+
+    ``SIGNUP_MODE`` is the deliberate switch, read by both halves (the frontend
+    mirror is ``lib/invite-allowlist.ts::resolveSignupMode``). Unset used to mean
+    "open" wherever ``INVITE_ALLOWLIST`` was also empty, so opening signup was
+    one deleted variable. Now:
+
+    * an explicit ``invite``/``open`` wins everywhere;
+    * unset in a production-like environment is ``invite`` — fail closed, like
+      the admin allowlist;
+    * unset in dev/test keeps the legacy behaviour (an allowlist makes it
+      invite-only, none makes it open) so local runs and e2e need no setting;
+    * anything else is a typo and fails closed to ``invite``.
     """
-    if not allowlist:
+    value = (raw or "").strip().lower()
+    if value in SIGNUP_MODES:
+        return value
+    if value:
+        logger.error("SIGNUP_MODE=%r is not one of %s; using 'invite'", raw, SIGNUP_MODES)
+        return "invite"
+    if production_like:
+        return "invite"
+    return "invite" if allowlist else "open"
+
+
+def signup_admits(email: str | None, mode: str, allowlist: set[str]) -> bool:
+    """True if the signup model admits ``email``.
+
+    ``open`` admits everyone. ``invite`` admits only a listed email
+    (case-insensitive) — and an EMPTY list admits nobody: invite mode with no
+    invitees is closed, never "gate disabled".
+    """
+    if mode == "open":
         return True
-    if not email:
-        return False
-    return email.strip().lower() in allowlist
+    return email is not None and email.strip().lower() in allowlist
+
+
+def is_admin_email(email: str | None, raw: str | None = None) -> bool:
+    """True if ``email`` is on ``ADMIN_EMAILS`` (#768 AC6).
+
+    Mirrors the frontend's ``lib/admin-allowlist.ts``: unset or empty FAILS
+    CLOSED — nobody is an admin. The only admin concept in the codebase; there
+    is no role field.
+    """
+    allowlist = parse_invite_allowlist(os.getenv("ADMIN_EMAILS") if raw is None else raw)
+    return email is not None and email.strip().lower() in allowlist
+
+
+def current_signup_mode() -> str:
+    """The signup mode for this process's environment."""
+    return resolve_signup_mode(
+        os.getenv("SIGNUP_MODE"),
+        parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST")),
+        is_production_like(),
+    )
 
 
 # One logical S3 bucket has historically been read under several env var names
