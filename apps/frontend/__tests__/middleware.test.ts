@@ -47,6 +47,8 @@ describe('middleware (deny-by-default)', () => {
     '/some-future-page', // proves new pages are protected automatically
     '/legality', // the /legal public prefix must not leak onto a lookalike path
     '/legal-review',
+    '/pricingx', // the /pricing exact-path exemption must not leak onto a lookalike
+    '/pricing/plans',
   ])('redirects requests without a valid session for protected page %s', async (pathname) => {
     mockGetToken.mockResolvedValue(null) // no / invalid token
     const res = await middleware(mockRequest(pathname))
@@ -88,6 +90,16 @@ describe('middleware (deny-by-default)', () => {
       expect(mockGetToken).not.toHaveBeenCalled()
     },
   )
+
+  // Issue #475: a prospective customer reads the price before they have an
+  // account. Exact path, not a prefix — a prefix would make every future file
+  // under it public by construction (the /legal/ note in CLAUDE.md).
+  it('always allows the public /pricing page (without checking a token)', async () => {
+    const res = await middleware(mockRequest('/pricing'))
+    expect(res.status).not.toBe(307)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+    expect(mockGetToken).not.toHaveBeenCalled()
+  })
 
   it('does not redirect API routes (they self-guard with 401)', async () => {
     const res = await middleware(mockRequest('/api/chat', { method: 'POST' }))

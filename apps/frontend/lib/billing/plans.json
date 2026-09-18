@@ -1,0 +1,23 @@
+{
+  "period": "calendar month",
+  "tiers": [
+    {
+      "tier": "free",
+      "name": "Free",
+      "price_usd_per_month": 0,
+      "limits": { "training_runs": 5, "predictions": 1000, "uploads": 10, "ai_calls": 30 }
+    },
+    {
+      "tier": "pro",
+      "name": "Pro",
+      "price_usd_per_month": 49,
+      "limits": { "training_runs": 100, "predictions": 100000, "uploads": 200, "ai_calls": 400 }
+    },
+    {
+      "tier": "enterprise",
+      "name": "Enterprise",
+      "price_usd_per_month": null,
+      "limits": { "training_runs": -1, "predictions": -1, "uploads": -1, "ai_calls": 5000 }
+    }
+  ]
+}
