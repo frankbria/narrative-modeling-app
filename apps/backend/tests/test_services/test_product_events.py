@@ -211,6 +211,23 @@ class TestFunnel:
         assert out["checkout_completed"] == 1
         assert out["subscriptions_cancelled"] == 1
 
+    async def test_a_short_window_still_judges_activation(self, setup_database):
+        """The cohort is the same-length window ending 7 days ago, so ?days=7 is not
+        structurally empty: nobody who signed up in the last 7 days can be judged yet."""
+        now = datetime(2026, 9, 18, 12, tzinfo=UTC)
+        day = timedelta(days=1)
+        await self._at("a", ACCOUNT_CREATED, now - 10 * day)
+        await self._at("a", FIRST_MODEL_TRAINED, now - 9 * day)
+        await self._at("b", ACCOUNT_CREATED, now - 3 * day)
+        await self._at("old", ACCOUNT_CREATED, now - 15 * day)  # before the cohort window
+        await self._at("a", CHECKOUT_STARTED, now - 9 * day)  # in the look-back, not the window
+
+        out = await funnel(days=7, now=now)
+
+        assert out["signups"] == 1  # only b signed up in the last 7 days
+        assert out["checkout_started"] == 0
+        assert out["activation"] == {"cohort": 1, "activated": 1, "rate": 1.0}
+
     async def test_an_empty_window_reports_zeroes_not_errors(self, setup_database):
         out = await funnel(days=7)
         assert out["signups"] == 0
