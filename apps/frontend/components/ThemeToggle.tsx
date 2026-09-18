@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
 import { Monitor, Moon, Sun } from 'lucide-react'
 
@@ -13,13 +13,12 @@ const OPTIONS = [
 /**
  * The control that makes dark mode reachable at all (#407).
  *
- * No `mounted` flag — and not for the reason this comment used to give. With
- * `defaultTheme="system"` and no stored preference, `useTheme()` returns `"system"`
- * on the very *first* render, and the server renders the same value, so the markup
- * agrees and there is nothing to guard against. (The earlier claim that `theme` is
- * `undefined` until storage is read was simply wrong; `ThemeToggle.test.tsx` now
- * asserts what actually happens.) A mount flag would also mean a setState inside an
- * effect, which `react-hooks/set-state-in-effect` rejects here.
+ * Nothing is selected until hydration. next-themes cannot read localStorage on the
+ * server, so `theme` is `undefined` there and `"system"` (or the stored choice) in
+ * the browser; rendering the selection straight from it made the server's
+ * `aria-checked="false"` disagree with the client's `true`, a hydration mismatch
+ * React never patches up (`ThemeToggle.hydration.test.tsx`). `useSyncExternalStore`
+ * reports false while hydrating and true afterwards, with no setState in an effect.
  *
  * Implements the APG radiogroup keyboard pattern: one tab stop for the group,
  * arrows move and select (selection follows focus), Home/End jump to the ends.
@@ -31,8 +30,11 @@ const OPTIONS = [
  * card colour in light mode, or blend into the sidebar in dark. `bg-white/15` is
  * correct here specifically — do not "fix" it back to a token.
  */
+const noSubscription = () => () => {}
+
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false)
   // Refs rather than walking `parentElement.querySelectorAll('[role=radio]')`: the
   // DOM walk holds only while these stay direct children, and would break silently
   // the moment a wrapper element is introduced.
@@ -51,7 +53,7 @@ export function ThemeToggle() {
       className="flex items-center gap-1 rounded-md border border-white/10 p-1"
     >
       {OPTIONS.map(({ value, label, Icon }, index) => {
-        const selected = theme === value
+        const selected = hydrated && theme === value
         return (
           <button
             key={value}
@@ -64,9 +66,8 @@ export function ThemeToggle() {
             aria-label={label}
             title={label}
             // Roving tabindex: the selected option is the group's single tab stop.
-            // `theme` is always set (see above), so no fallback branch is needed —
-            // one here would be dead code.
-            tabIndex={selected ? 0 : -1}
+            // Before hydration nothing is selected, so System holds it.
+            tabIndex={selected || (!hydrated && value === 'system') ? 0 : -1}
             onKeyDown={(e) => {
               switch (e.key) {
                 case 'ArrowRight':

@@ -67,17 +67,10 @@ describe('ThemeToggle', () => {
     }
   })
 
-  it('defaults to System with nothing else selected, which is what makes hydration safe', () => {
-    // As first written this asserted `aria-checked` matched /true|false/ — true of
-    // ANY render, so it could not fail. Flagged in the #421 review, and checking
-    // properly corrected my understanding: the first render is not "nothing
-    // selected". With `defaultTheme="system"` and no stored preference, `theme` is
-    // already "system" on the very first render — and crucially the SERVER renders
-    // the same thing, so the markup agrees and there is no mismatch to avoid.
-    //
-    // The assertion that can actually fail is therefore this one: System selected,
-    // the other two not. Changing defaultTheme, or reintroducing a mount flag that
-    // blanks the selection, both turn it red.
+  it('defaults to System with nothing else selected', () => {
+    // A client render with no stored preference selects System and nothing else.
+    // Server/client agreement is a separate question: the server has no theme at
+    // all, which ThemeToggle.hydration.test.tsx covers.
     renderToggle()
 
     expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
