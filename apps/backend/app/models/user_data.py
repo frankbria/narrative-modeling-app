@@ -96,6 +96,7 @@ class UserData(Document):
     # records, so the many later saves (AI summary, processing) cost nothing.
     @before_event(Insert, Save)
     def _note_creation(self) -> None:
+        # Relies on no writer pre-assigning an id before the first write.
         self._is_new = self.id is None
 
     @after_event(Insert, Save)

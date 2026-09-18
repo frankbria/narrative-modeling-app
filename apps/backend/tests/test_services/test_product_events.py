@@ -5,7 +5,9 @@ happened, against real Mongo. A mocked insert would pass no matter which path
 forgot to call the recorder.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -243,3 +245,36 @@ class TestCounterExists:
         quota_denials.labels(metric="uploads", tier="free")
         assert b"quota_denials_total" in generate_latest(metrics_registry)
 
+
+
+class TestContracts:
+    """Drift guards for the two things no runtime test would notice breaking."""
+
+    def test_the_frontend_writes_the_backend_document_shape(self):
+        """account_created is written by apps/frontend/lib/product-events.ts straight
+        into Mongo, and that write swallows errors by design, so a renamed field here
+        would silently stop counting signups."""
+        source = (
+            Path(__file__).resolve().parents[4] / "apps/frontend/lib/product-events.ts"
+        ).read_text()
+        collection = re.search(r"\.collection\('([^']+)'\)", source).group(1)
+        literal = re.search(r"insertOne\(\{(.*?)\}\)", source, re.S).group(1)
+        keys = set(re.findall(r"^\s*(\w+):", literal, re.M))
+
+        assert collection == ProductEvent.Settings.name
+        assert keys == set(ProductEvent.model_fields) - {"id", "revision_id"}
+
+    def test_no_writer_creates_user_data_around_the_first_upload_hook(self):
+        """The hook fires on insert()/save() only. A bulk or raw-collection write
+        would create datasets that never record first_upload."""
+        app = Path(__file__).resolve().parents[2] / "app"
+        bypass = re.compile(
+            r"UserData\.(insert_many\b|get_(motor|pymongo)_collection\(\)\.(insert|replace|update))"
+        )
+        offenders = [
+            f"{path.relative_to(app.parent)}:{n}"
+            for path in app.rglob("*.py")
+            for n, line in enumerate(path.read_text().splitlines(), 1)
+            if bypass.search(line)
+        ]
+        assert offenders == []

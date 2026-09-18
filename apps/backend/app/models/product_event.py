@@ -33,7 +33,6 @@ class ProductEvent(Document):
     class Settings:
         name = "product_events"
         indexes = [
-            IndexModel([("event", ASCENDING), ("timestamp", ASCENDING)]),
             IndexModel(
                 [("user_id", ASCENDING), ("dedupe_key", ASCENDING)],
                 name="user_dedupe_unique",
