@@ -22,27 +22,29 @@ PRICING_JSON = REPO / "apps" / "frontend" / "lib" / "billing" / "plans.json"
 ADR = REPO / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
 
 
-def _adr_prices() -> dict[PlanTier, int | None]:
+def _adr_prices(text: str | None = None) -> dict[PlanTier, int | None]:
     """The price cell of the ADR-003 decision table: `$0` → 0, `$49 / month` → 49,
-    `contact us` → None (sales-led, ADR-003 AC3)."""
-    # The decision table sits directly under "## Decision"; the worst-case cost
-    # table under "### The reasoning" also starts its rows with the tier names,
-    # so stop at the first subsection as well as at the next section.
-    decision = (
-        ADR.read_text()
-        .split("## Decision", 1)[1]
-        .split("\n## ", 1)[0]
-        .split("\n### ", 1)[0]
+    `contact us` → None (sales-led, ADR-003 AC3).
+
+    Anchored on the table whose header row is `| Tier | Price | ... |`, not on the
+    section it sits in: the worst-case cost tables in the same section also start
+    their rows with the tier names, so a heading-scoped parse would depend on the
+    tables' order in the file.
+    """
+    lines = (text if text is not None else ADR.read_text()).splitlines()
+    header = next(
+        i
+        for i, line in enumerate(lines)
+        if re.match(r"^\|\s*Tier\s*\|\s*Price\s*\|", line)
     )
     out: dict[PlanTier, int | None] = {}
-    for line in decision.splitlines():
+    for line in lines[header + 2 :]:  # skip the `|---|` separator row
         m = re.match(r"^\|\s*(FREE|PRO|ENTERPRISE)\s*\|\s*([^|]*)\|", line)
-        if not m or PlanTier[m.group(1)] in out:
-            continue
-        price = m.group(2).strip()
-        dollars = re.match(r"\$\s*(\d+)", price)
+        if not m:
+            break  # the table ends at the first non-row line
+        dollars = re.match(r"\$\s*(\d+)", m.group(2).strip())
         out[PlanTier[m.group(1)]] = int(dollars.group(1)) if dollars else None
-    assert set(out) == set(PlanTier), f"ADR-003 table is missing a tier: {ADR}"
+    assert set(out) == set(PlanTier), f"ADR-003 decision table is missing a tier: {ADR}"
     return out
 
 
@@ -88,3 +90,21 @@ def test_published_prices_equal_the_adr_003_prices(pricing_source):
     assert expected[PlanTier.ENTERPRISE] is None, (
         "ENTERPRISE is sales-led (ADR-003 AC3)"
     )
+
+
+@pytest.mark.unit
+def test_adr_price_parse_is_anchored_on_the_table_header():
+    """Table order in the ADR must not matter: a cost table with tier-named rows
+    placed *before* the decision table is ignored."""
+    reordered = (
+        "## Decision\n\n"
+        "| Tier | ai_calls | uploads |\n|---|---|---|\n"
+        "| FREE | $3.60 | $1.20 |\n| PRO | $48 | $24 |\n| ENTERPRISE | $600 | per deal |\n\n"
+        "| Tier | Price | training_runs |\n|---|---|---|\n"
+        "| FREE | $0 | 5 |\n| PRO | $49 / month | 100 |\n| ENTERPRISE | contact us | unlimited |\n"
+    )
+    assert _adr_prices(reordered) == {
+        PlanTier.FREE: 0,
+        PlanTier.PRO: 49,
+        PlanTier.ENTERPRISE: None,
+    }
