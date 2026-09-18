@@ -25,7 +25,10 @@ export default function GlobalError({
       <body style={{ fontFamily: 'system-ui, sans-serif', padding: '4rem 1rem', textAlign: 'center' }}>
         <title>Something went wrong</title>
         <h1>Something went wrong</h1>
-        <p>The error has been recorded{error.digest ? ` (reference ${error.digest})` : ''}.</p>
+        <p>
+          Please try again.
+          {error.digest ? ` If it keeps happening, quote reference ${error.digest} to support.` : ''}
+        </p>
         <button type="button" onClick={() => retry()}>
           Try again
         </button>
