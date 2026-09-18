@@ -4,6 +4,8 @@ import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useSession } from 'next-auth/react'
 import {
   BillingService,
+  CHECKOUT_POLL_MAX,
+  CHECKOUT_POLL_MS,
   UNLIMITED,
   type BillingStatus,
   type PlanTier,
@@ -12,12 +14,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { COMPANY } from '@/lib/legal/company'
 import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel } from '@/lib/billing/plans'
 
 const METRIC_LABELS: Record<string, string> = PLAN_METRIC_LABELS
+
+type CheckoutOutcome = 'success' | 'cancelled' | null
 
 /** A metered row. `-1` is unlimited, which has no bar to draw. */
 function UsageRow({
@@ -63,11 +68,21 @@ function UsageRow({
   )
 }
 
-export default function BillingSettingsPage() {
+function BillingSettings() {
   const { data: session, status: sessionStatus } = useSession()
   const userId = session?.user?.id
   const [redirecting, setRedirecting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  // Stripe sends the browser back with ?checkout=success|cancelled (#767 AC4).
+  // Read once into state, then clear the URL so a reload does not re-announce it.
+  const [checkout] = useState<CheckoutOutcome>(() => {
+    const value = searchParams.get('checkout')
+    return value === 'success' || value === 'cancelled' ? value : null
+  })
+  const [activated, setActivated] = useState(false)
+  const [pollTimedOut, setPollTimedOut] = useState(false)
 
   const {
     data: status,
@@ -81,6 +96,38 @@ export default function BillingSettingsPage() {
     [userId],
     { enabled: !!userId, errorMessage: 'Failed to load billing status' }
   )
+
+  useEffect(() => {
+    if (searchParams.get('checkout')) router.replace('/settings/billing')
+  }, [searchParams, router])
+
+  // The status endpoint still says FREE until the Stripe webhook lands, so the
+  // highest-intent moment in the product used to render an unchanged page. Poll
+  // (bounded) until the tier moves, then reload; past the bound, say so.
+  const initialTier = status?.tier
+  useEffect(() => {
+    if (checkout !== 'success' || !initialTier || initialTier !== 'free' || activated || pollTimedOut) return
+    let attempts = 0
+    const timer = setInterval(async () => {
+      attempts += 1
+      try {
+        const latest = await BillingService.getStatus()
+        if (latest.tier !== initialTier) {
+          clearInterval(timer)
+          setActivated(true)
+          reload()
+          return
+        }
+      } catch {
+        // Transient; the next tick retries until the bound.
+      }
+      if (attempts >= CHECKOUT_POLL_MAX) {
+        clearInterval(timer)
+        setPollTimedOut(true)
+      }
+    }, CHECKOUT_POLL_MS)
+    return () => clearInterval(timer)
+  }, [checkout, initialTier, activated, pollTimedOut, reload])
 
   const go = async (start: () => Promise<{ url: string }>) => {
     setActionError(null)
@@ -164,6 +211,26 @@ export default function BillingSettingsPage() {
         </CardContent>
       </Card>
 
+      {checkout === 'success' && (
+        <Alert data-testid="checkout-notice">
+          <AlertDescription>
+            {status.tier !== 'free' || activated
+              ? `Payment received — your ${tierLabel[status.tier]} plan is active.`
+              : pollTimedOut
+                ? 'Payment received. Activating your plan can take a minute — refresh this page to see it.'
+                : 'Payment received — activating your plan…'}
+          </AlertDescription>
+        </Alert>
+      )}
+      {checkout === 'cancelled' && (
+        <Alert data-testid="checkout-notice">
+          <AlertDescription>
+            Checkout was cancelled. You have not been charged and are still on the{' '}
+            {tierLabel[status.tier]} plan.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {actionError && (
         <Alert variant="destructive">
           <AlertDescription>{actionError}</AlertDescription>
@@ -226,5 +293,14 @@ export default function BillingSettingsPage() {
         </p>
       )}
     </div>
+  )
+}
+
+// useSearchParams needs a Suspense boundary above it or the prerender bails out.
+export default function BillingSettingsPage() {
+  return (
+    <Suspense fallback={<p className="p-8 text-muted-foreground">Loading billing…</p>}>
+      <BillingSettings />
+    </Suspense>
   )
 }
