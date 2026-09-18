@@ -11,6 +11,8 @@ import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
 import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
+import { PlanLimitDialog } from '@/components/billing/PlanLimitDialog'
+import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
 
@@ -61,6 +63,9 @@ export default async function RootLayout({
                 <main className="flex flex-1 min-w-0 min-h-screen flex-col">
                   <WorkflowBar />
                   <StageGuardBanner />
+                  {/* Plan-limit surfaces (#767): the 80% warning and the one 402 dialog. */}
+                  <UsageWarningBanner />
+                  <PlanLimitDialog />
                   <div className="flex flex-1">
                     {/* Sidebar/chat are `fixed`; reserve their gutters only at lg+
                         where they're pinned. Below lg the sidebar is a drawer and
