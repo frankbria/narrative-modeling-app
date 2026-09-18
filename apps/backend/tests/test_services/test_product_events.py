@@ -83,6 +83,20 @@ class TestHooks:
         assert len(await _events(FIRST_UPLOAD)) == 1
         assert len(await _events(FIRST_UPLOAD, "someone-else")) == 1
 
+    async def test_first_upload_fires_for_a_dataset_created_with_save(self, setup_database):
+        """/datasets/upload creates its UserData with save(), an upsert that fires no
+        Insert event."""
+        from app.services.dataset_service import DatasetService
+
+        await DatasetService().create_dataset(
+            user_id=TEST_USER, dataset_id="ds-1", filename="d.csv", original_filename="d.csv",
+            file_type="csv", file_path=f"datasets/{TEST_USER}/d.csv",
+            s3_url=f"s3://bucket/datasets/{TEST_USER}/d.csv", file_size=1,
+            num_rows=2, num_columns=2, columns=["a", "b"], data_schema=[],
+        )
+
+        assert len(await _events(FIRST_UPLOAD)) == 1
+
     async def test_quota_denial_is_recorded_and_counted(self, setup_database):
         before = quota_denials.labels(metric="uploads", tier="free")._value.get()
         request = Request({"type": "http", "headers": [], "state": {}})
