@@ -22,7 +22,7 @@ Environment Variables:
 
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pymongo import MongoClient
 
@@ -32,6 +32,12 @@ MONGODB_DB = os.getenv('MONGODB_DB', 'narrative-modeling-test')
 TEST_USER_EMAIL = os.getenv('TEST_USER_EMAIL', 'test@narrativeml.com')
 TEST_USER_ID = os.getenv('TEST_USER_ID', 'test-user-12345')
 TEST_USER_NAME = 'Test User'
+# The second dev-credentials identity (#613, `lib/test-credentials.ts`). It is put
+# on the PRO tier so one e2e spec can hit a real plan limit: FREE's ceilings are
+# lifted process-wide for the shared user (test-e2e.sh), and limits are per tier,
+# so only a tenant on a *different* tier can sit under a small ceiling
+# (`PLAN_PRO_UPLOADS` in test-e2e.sh; #767 AC5).
+TEST_ADMIN_ID = os.getenv('TEST_ADMIN_ID', 'test-admin-12345')
 
 def get_db_client():
     """Create and return MongoDB client with retry logic."""
@@ -170,6 +176,32 @@ def seed_sample_dataset(db, user_id):
     print(f"   ✅ Created sample dataset (ID: {result.inserted_id})")
     return result.inserted_id
 
+def seed_admin_subscription(db):
+    """Put the admin identity on an entitled PRO subscription (see TEST_ADMIN_ID).
+
+    Mirrors `app/models/subscription.py::Subscription` — an ACTIVE status with an
+    unlapsed `current_period_end` is what `is_entitled` requires. Upserted so a
+    re-seed converges instead of tripping the unique `user_id` index.
+    """
+    print("\n📝 Seeding PRO subscription for the admin e2e identity...")
+    now = datetime.now(UTC)
+    db['subscriptions'].update_one(
+        {'user_id': TEST_ADMIN_ID},
+        {
+            '$set': {
+                'plan_tier': 'pro',
+                'status': 'active',
+                'current_period_end': now + timedelta(days=365),
+                'cancel_at_period_end': False,
+                'updated_at': now,
+            },
+            '$setOnInsert': {'created_at': now},
+        },
+        upsert=True,
+    )
+    print(f"   ✅ {TEST_ADMIN_ID} is on PRO (active, period end in 365 days)")
+
+
 def clear_test_data(db):
     """Clear existing test data to ensure clean slate."""
     print("\n🧹 Clearing existing test data...")
@@ -267,6 +299,7 @@ def main():
 
         # Seed test user
         seed_nextauth_user(db)
+        seed_admin_subscription(db)
 
         # Seed sample dataset, owned by the credentials id (not the Mongo _id)
         if '--with-data' in sys.argv:

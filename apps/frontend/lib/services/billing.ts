@@ -15,6 +15,11 @@ import { getAuthToken } from '@/lib/auth-helpers'
 export { UNLIMITED, type PlanTier } from '@/lib/billing/plans'
 import type { PlanTier } from '@/lib/billing/plans'
 
+/** Checkout confirmation (#767 AC4): how often and how many times the billing
+ * page asks whether the Stripe webhook has landed before saying "refresh". */
+export const CHECKOUT_POLL_MS = 2000
+export const CHECKOUT_POLL_MAX = 15
+
 export interface BillingStatus {
   configured: boolean
   tier: PlanTier

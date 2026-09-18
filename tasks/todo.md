@@ -1,41 +1,32 @@
-# #475 — [P0.32] Build a pricing page (self-authored plan)
+# #767 — P0.38 Plan-limit (402) experience + checkout confirmation
 
-Branch: `feature/issue-475-pricing-page` (from `main` @ edb2625)
+Plan source: self-authored (no plan comment on the issue). Branch: `feature/issue-767-plan-limit-402-experience`.
 
-## Decisions (autonomous, no architectural fork)
-
-- **Shared source = a static JSON, not a public backend route.** The issue offers either
-  "a JSON built from plans.py/ADR-003" or a public `GET /billing/plans`. JSON wins on the
-  ponytail ladder: no runtime dependency on the backend for a marketing page, no new
-  unauthenticated route in an authenticated router, statically buildable (Docker build has
-  no backend), and the landing page (#766) imports the same file. Drift guard: a backend
-  pytest loads the JSON and compares every tier/metric to `plans.PLAN_LIMITS` and the price
-  column to the ADR-003 table — the same cross-repo pattern as `test_refund_window.py`.
-- **Public exemption is an exact-path allowlist** (`/pricing`), not a prefix (#766 AC1 wording,
-  CLAUDE.md `/legal/` note). `/pricingx`, `/pricing/x` stay protected.
-- **ENTERPRISE renders "Contact us"** (mailto `COMPANY.supportEmail`), never a price (ADR-003 AC3).
-- Landing-page link (AC5 first half) lands with #766 — there is no landing page yet; footer link now.
+## Design decisions (autonomous, no architectural fork)
+- **One error type**: `lib/services/apiError.ts` — `ApiError { status, detail }` and `QuotaExceededError extends ApiError` (metric, limit, used, tier, resets_at, upgrade_available; all but `metric` nullable so the thin `{error, metric}` variant parses). `apiError(response, fallback)` builds the right error from a `Response`; message = `detail.message` / string `detail` / fallback, so existing callers' messages are unchanged.
+- **Dialog fires structurally, not per call site**: `apiError()` hands a `QuotaExceededError` to a tiny external store (`lib/billing/planLimit.ts`, `useSyncExternalStore`) that a single `PlanLimitDialog` mounted once in the authenticated root layout renders. Any surface that throws through `apiError` gets the dialog for free; the throw still happens so existing inline error text keeps working.
+- **Chat proxy** passes the backend's 402 body through unchanged so the client parses it with the same helper (other upstream failures stay generic).
+- **80% warning**: `UsageWarningBanner` (sibling of `StageGuardBanner` in the layout) fetches `/billing/status` once per mount and links to `/settings/billing`. Silent on any fetch failure.
+- **Checkout confirmation**: billing page reads `?checkout=` via `useSearchParams` (Suspense-wrapped), shows success/cancel copy, polls status every 2s (max 15) until `tier` leaves the initial value, then reloads and clears the param via `router.replace`.
+- **Contract test direction** follows the repo idiom: backend pytest reads the frontend TS constant `QUOTA_DETAIL_FIELDS` and asserts it equals the real 402 detail's keys.
+- **E2E real 402**: FREE ceilings are lifted process-wide for the shared user (test-e2e.sh), and limits are per tier, so the only tenant that can hit a small ceiling is the second identity on a *different* tier: seed `test-admin-12345` a PRO `Subscription` in `seed_e2e_data.py` and set `PLAN_PRO_UPLOADS=2` in test-e2e.sh (the only sanctioned override surface). The spec uploads via the UI until the dialog appears (≤3 tries, counters persist across runs) and asserts the backend numbers + the action link. Deviation from AC5's "FREE user": the FREE branch (Upgrade → /settings/billing) is jest-covered.
+- Prediction/batch calls live in `lib/services/model.ts`, not `production.ts` (which is API keys/metrics, unmetered) — model.ts is adopted wholesale; production.ts is adopted too so the class of hand-rolled throws shrinks.
+- `/recommend-tools` and `/stage-guidance` have no frontend caller — nothing to adopt.
 
 ## Steps
-
-1. `apps/frontend/lib/billing/plans.json` + `lib/billing/plans.ts` (typed access, `priceLabel`, `limitLabel`).
-   Test: `apps/backend/tests/test_billing/test_pricing_source_matches_plans.py` (limits == plans.py, prices == ADR-003).
-2. `middleware.ts`: exact-path public set. Test: `__tests__/middleware.test.ts` (`/pricing` passes w/o token; lookalikes redirect).
-3. `app/pricing/page.tsx` (server component, metadata, 3 tiers from the JSON, limit semantics: 402, no queue/overage,
-   calendar-month reset; enterprise contact; CTA → `/auth/signin`). Test: `__tests__/app/pricing.page.test.tsx`
-   asserts every number from the JSON appears (page can't hard-code).
-4. `app/settings/billing/page.tsx`: price on the upgrade button + "Compare plans" link to `/pricing`.
-   Test: `__tests__/app/settings/billing.page.test.tsx`.
-5. `components/SiteFooter.tsx`: Pricing link. Test: `__tests__/components/SiteFooter.test.tsx`.
-   (`routeReachability.test.ts` then sees `/pricing` via the href.)
-6. `e2e/workflows/public-pricing.spec.ts` `@smoke`: anonymous `/pricing` → 200 + heading + price; `/pricingx` → 307 sign-in.
-7. Docs: CLAUDE.md public-pages note; ADR-003 consequence line.
+1. [x] `lib/services/apiError.ts` + `lib/billing/planLimit.ts` (+ `__tests__/lib/apiError.test.ts`): full 402 → QuotaExceededError with backend numbers + store populated; thin variant tolerated; non-402 → ApiError with status; message fallback preserved.
+2. [x] `components/billing/PlanLimitDialog.tsx` mounted in `app/layout.tsx` (+ test): metric words, used/limit, reset date, action by tier (free→Upgrade link `/settings/billing` with price; pro→mailto Contact us; enterprise→"highest plan").
+3. [x] Adopt: `lib/hooks/useChunkedUpload.ts` (init/chunk/complete/resume), `app/upload/page.tsx` (secure + confirm-pii), `lib/services/model.ts` (all sites), `lib/services/production.ts`, `lib/services/data-issues.ts`, `components/AIInsightsPanel.tsx`, `lib/hooks/useFeatureSuggestions.ts`, `components/AIChat.tsx` + `app/api/chat/route.ts` passthrough. Per-surface jest: a 402 body populates the store with the backend numbers.
+4. [x] `components/billing/UsageWarningBanner.tsx` in layout (+ test): ≥80% non-unlimited metric → amber `role="status"` banner with link; nothing when under, unlimited, or fetch fails.
+5. [x] `app/settings/billing/page.tsx` checkout param (+ tests): success → confirmation + bounded poll + param cleared; cancelled → notice + Upgrade button kept.
+6. [x] Backend: `tests/test_api/test_quota_enforcement.py` contract test parsing `QUOTA_DETAIL_FIELDS` from the TS file.
+7. [x] E2E: `scripts/seed_e2e_data.py` PRO subscription for admin; `test-e2e.sh` `PLAN_PRO_UPLOADS=2`; `e2e/workflows/plan-limit.spec.ts` (@smoke).
+8. [x] CLAUDE.md convention paragraph; run full frontend jest + lint + tsc, backend gate subset.
 
 ## Acceptance criteria
-
-- [ ] AC1 public `/pricing`, anonymous-reachable, each tier + price + limits
-- [ ] AC2 limits kept in sync with `plans.py` by a test
-- [ ] AC3 billing settings shows the price before the Stripe redirect
-- [ ] AC4 at-the-limit behaviour stated plainly (402, not queued, no overage)
-- [ ] AC5 footer link (landing link → #766)
-- [ ] (comment) one source shared with landing + billing; ENTERPRISE = contact us
+- [x] AC1 one error type with status + parsed body; QuotaExceededError on 402, thin variant tolerated
+- [x] AC2 one PlanLimitDialog on upload (chunked + secure), training, batch + single prediction, every ai_calls surface; chat proxy adopts the copy
+- [x] AC3 ≥80% warning in the workflow shell with billing link
+- [x] AC4 checkout=success|cancelled handled on the billing page (bounded poll, param cleared)
+- [x] AC5 jest per surface, contract test vs enforcement.py, e2e real 402
+- [x] AC6 upgrade button shows price (already shipped in #775; unchanged)

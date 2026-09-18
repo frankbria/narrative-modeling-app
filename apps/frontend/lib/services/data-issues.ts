@@ -2,6 +2,8 @@
  * Data Issues API service for issue detection and fix suggestions
  */
 
+import { apiError } from '@/lib/services/apiError'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 // Types
@@ -165,8 +167,7 @@ export class DataIssuesService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Detection failed' }))
-      throw new Error(error.detail || 'Issue detection failed')
+      throw await apiError(response, 'Issue detection failed')
     }
 
     return response.json()
@@ -199,8 +200,7 @@ export class DataIssuesService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get issues' }))
-      throw new Error(error.detail || 'Failed to get issues')
+      throw await apiError(response, 'Failed to get issues')
     }
 
     return response.json()
@@ -228,8 +228,7 @@ export class DataIssuesService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Preview failed' }))
-      throw new Error(error.detail || 'Fix preview failed')
+      throw await apiError(response, 'Fix preview failed')
     }
 
     return response.json()
@@ -261,8 +260,7 @@ export class DataIssuesService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Apply failed' }))
-      throw new Error(error.detail || 'Apply fix failed')
+      throw await apiError(response, 'Apply fix failed')
     }
 
     return response.json()
@@ -294,8 +292,7 @@ export class DataIssuesService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Batch fix failed' }))
-      throw new Error(error.detail || 'Batch fix failed')
+      throw await apiError(response, 'Batch fix failed')
     }
 
     return response.json()
@@ -323,8 +320,7 @@ export class DataIssuesService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get history' }))
-      throw new Error(error.detail || 'Failed to get history')
+      throw await apiError(response, 'Failed to get history')
     }
 
     return response.json()

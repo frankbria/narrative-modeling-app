@@ -146,6 +146,11 @@ export PLAN_FREE_UPLOADS=${PLAN_FREE_UPLOADS:-10000}
 export PLAN_FREE_TRAINING_RUNS=${PLAN_FREE_TRAINING_RUNS:-10000}
 export PLAN_FREE_PREDICTIONS=${PLAN_FREE_PREDICTIONS:-1000000}
 export PLAN_FREE_AI_CALLS=${PLAN_FREE_AI_CALLS:-100000}
+# The admin identity is seeded on PRO (scripts/seed_e2e_data.py) and PRO's upload
+# ceiling is made tiny so plan-limit.spec.ts can drive a REAL 402 through the UI
+# (#767 AC5) without touching the shared FREE user's lifted limits above. No other
+# spec uploads as the admin tenant.
+export PLAN_PRO_UPLOADS=${PLAN_PRO_UPLOADS:-2}
 
 # AWS S3 configuration (test/mock values for E2E)
 # When AWS_ENDPOINT_URL is set (e.g. http://localhost:9000 for MinIO in CI),

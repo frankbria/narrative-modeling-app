@@ -76,14 +76,40 @@ describe('POST /api/chat', () => {
     })
   })
 
-  it('passes the backend 402 through so the UI can name the plan limit', async () => {
-    fetchMock.mockResolvedValue(new Response('{"detail":{}}', { status: 402 }))
+  it('passes the backend 402 body through unchanged so the plan-limit dialog gets the real numbers (#767)', async () => {
+    // The shape `app/billing/enforcement.py::reserve` raises; AIChat.tsx parses it
+    // with apiError() into a QuotaExceededError, so the proxy must not rewrite it.
+    const detail = {
+      error: 'quota_exceeded', metric: 'ai_calls', limit: 30, used: 30, tier: 'free',
+      resets_at: '2026-10-01T00:00:00+00:00',
+      message: 'You have used all 30 ai calls included in the free plan this month.',
+      upgrade_available: true,
+    }
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail }), { status: 402 }))
 
     const res = await POST(chatRequest())
     expect(res.status).toBe(402)
+    expect(await res.json()).toEqual({ detail })
+  })
+
+  it('a 402 whose body is not JSON still tells the client it is a plan limit', async () => {
+    fetchMock.mockResolvedValue(new Response('<html>', { status: 402 }))
+
+    const res = await POST(chatRequest())
+    expect(res.status).toBe(402)
+    expect(await res.json()).toEqual({
+      detail: { error: 'quota_exceeded', metric: 'ai_calls', message: 'AI call limit reached for your plan' },
+    })
+  })
+
+  it('keeps a generic body for every other upstream failure', async () => {
+    fetchMock.mockResolvedValue(new Response('{"detail":"traceback…"}', { status: 500 }))
+
+    const res = await POST(chatRequest())
+    expect(res.status).toBe(500)
     const body = await res.json()
-    expect(body.error).toMatch(/limit/i)
-    expect(body.detail).toBe(body.error) // AIChat.tsx surfaces `detail`
+    expect(body.detail).toBe('AI service unavailable')
+    expect(JSON.stringify(body)).not.toContain('traceback')
   })
 
   // #461: the proxy is a spend amplifier — every client-controlled dimension is capped

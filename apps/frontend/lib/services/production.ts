@@ -2,6 +2,8 @@
  * Production API service for model deployment and API key management
  */
 
+import { apiError } from '@/lib/services/apiError'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 export interface CreateAPIKeyRequest {
@@ -132,8 +134,7 @@ export class ProductionService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Failed to create API key')
+      throw await apiError(response, 'Failed to create API key')
     }
 
     return response.json()
@@ -145,7 +146,7 @@ export class ProductionService {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch API keys')
+      throw await apiError(response, 'Failed to fetch API keys')
     }
 
     return response.json()
@@ -158,7 +159,7 @@ export class ProductionService {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to revoke API key')
+      throw await apiError(response, 'Failed to revoke API key')
     }
   }
 
@@ -176,7 +177,7 @@ export class ProductionService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch model metrics')
+      throw await apiError(response, 'Failed to fetch model metrics')
     }
 
     return response.json()
@@ -195,7 +196,7 @@ export class ProductionService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch usage timeline')
+      throw await apiError(response, 'Failed to fetch usage timeline')
     }
 
     return response.json()
@@ -214,7 +215,7 @@ export class ProductionService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch deployment health')
+      throw await apiError(response, 'Failed to fetch deployment health')
     }
 
     return response.json()
@@ -226,7 +227,7 @@ export class ProductionService {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch usage overview')
+      throw await apiError(response, 'Failed to fetch usage overview')
     }
 
     return response.json()
@@ -238,7 +239,7 @@ export class ProductionService {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch API key usage')
+      throw await apiError(response, 'Failed to fetch API key usage')
     }
 
     return response.json()
@@ -269,7 +270,7 @@ export class ProductionService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch prediction logs')
+      throw await apiError(response, 'Failed to fetch prediction logs')
     }
 
     return response.json()
@@ -295,7 +296,7 @@ export class ProductionService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch prediction distribution')
+      throw await apiError(response, 'Failed to fetch prediction distribution')
     }
 
     return response.json()

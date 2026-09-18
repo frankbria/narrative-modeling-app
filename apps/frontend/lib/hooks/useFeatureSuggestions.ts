@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { apiError } from '@/lib/services/apiError';
 
 export interface FeatureSuggestion {
   id: string;
@@ -180,8 +181,7 @@ export function useFeatureSuggestions(
         );
 
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || 'Failed to fetch suggestions');
+          throw await apiError(response, 'Failed to fetch suggestions');
         }
 
         const data: FeatureSuggestionResponse = await response.json();
@@ -224,7 +224,7 @@ export function useFeatureSuggestions(
         );
 
         if (!response.ok) {
-          throw new Error('Failed to record feedback');
+          throw await apiError(response, 'Failed to record feedback');
         }
 
         // Optimistic update - mark as accepted in UI
@@ -266,7 +266,7 @@ export function useFeatureSuggestions(
         );
 
         if (!response.ok) {
-          throw new Error('Failed to record feedback');
+          throw await apiError(response, 'Failed to record feedback');
         }
 
         // Remove rejected suggestion from UI
@@ -306,7 +306,7 @@ export function useFeatureSuggestions(
         );
 
         if (!response.ok) {
-          throw new Error('Failed to load more suggestions');
+          throw await apiError(response, 'Failed to load more suggestions');
         }
 
         const data: FeatureSuggestionResponse = await response.json();

@@ -56,3 +56,17 @@ export function priceLabel(plan: Plan): string {
 export function limitLabel(limit: number): string {
   return limit === UNLIMITED ? 'Unlimited' : limit.toLocaleString('en-US')
 }
+
+/**
+ * A metric in plain words for a sentence: "training runs", "AI calls". Only a
+ * leading capitalised word is lowercased, so an acronym label keeps its case.
+ */
+export function metricWords(metric: string): string {
+  const label = (METRIC_LABELS as Record<string, string>)[metric] ?? metric.replace(/_/g, ' ')
+  return label.replace(/^[A-Z][a-z]/, (m) => m.toLowerCase())
+}
+
+/** A tier's display name from the plan source; an unknown value passes through. */
+export function tierName(tier: string): string {
+  return PLANS.find((p) => p.tier === tier)?.name ?? tier
+}

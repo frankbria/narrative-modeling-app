@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { getAuthToken } from '@/lib/auth-helpers'
 import { API_BASE_URL } from '@/lib/config'
+import { apiError } from '@/lib/services/apiError'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -69,9 +70,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
       if (!response.ok) {
         // Carry the status: every failure collapsing into one message is what
         // made the missing route take a bisect to find.
-        throw new Error(
-          `Failed to generate AI summary (HTTP ${response.status})`
-        )
+        throw await apiError(response, `Failed to generate AI summary (HTTP ${response.status})`)
       }
       return response.json()
     },

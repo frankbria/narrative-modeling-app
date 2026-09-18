@@ -4,20 +4,24 @@ import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useSession } from 'next-auth/react'
 import {
   BillingService,
+  CHECKOUT_POLL_MAX,
+  CHECKOUT_POLL_MS,
   UNLIMITED,
   type BillingStatus,
-  type PlanTier,
 } from '@/lib/services/billing'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { COMPANY } from '@/lib/legal/company'
-import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel } from '@/lib/billing/plans'
+import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel, tierName } from '@/lib/billing/plans'
 
 const METRIC_LABELS: Record<string, string> = PLAN_METRIC_LABELS
+
+type CheckoutOutcome = 'success' | 'cancelled' | null
 
 /** A metered row. `-1` is unlimited, which has no bar to draw. */
 function UsageRow({
@@ -63,14 +67,29 @@ function UsageRow({
   )
 }
 
-export default function BillingSettingsPage() {
+function BillingSettings() {
   const { data: session, status: sessionStatus } = useSession()
   const userId = session?.user?.id
   const [redirecting, setRedirecting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  // Stripe sends the browser back with ?checkout=success|cancelled (#767 AC4).
+  // Read once into state, then clear the URL so a reload does not re-announce it.
+  const [checkout] = useState<CheckoutOutcome>(() => {
+    const value = searchParams.get('checkout')
+    return value === 'success' || value === 'cancelled' ? value : null
+  })
+  // The status the checkout poll saw once the tier moved. Rendered in place of the
+  // fetched status rather than calling reload(): a reload puts the hook back into
+  // `loading`, which swaps the whole page (the confirmation included) for the
+  // loading line, and a failed refetch would leave "Billing unavailable" where the
+  // payment confirmation should be.
+  const [activatedStatus, setActivatedStatus] = useState<BillingStatus | null>(null)
+  const [pollTimedOut, setPollTimedOut] = useState(false)
 
   const {
-    data: status,
+    data: fetched,
     loading,
     error,
     reload,
@@ -81,6 +100,38 @@ export default function BillingSettingsPage() {
     [userId],
     { enabled: !!userId, errorMessage: 'Failed to load billing status' }
   )
+  const status = activatedStatus ?? fetched
+
+  useEffect(() => {
+    if (searchParams.get('checkout')) router.replace('/settings/billing')
+  }, [searchParams, router])
+
+  // The status endpoint still says FREE until the Stripe webhook lands, so the
+  // highest-intent moment in the product used to render an unchanged page. Poll
+  // (bounded) until the tier moves, then show that status; past the bound, say so.
+  const initialTier = fetched?.tier
+  useEffect(() => {
+    if (checkout !== 'success' || initialTier !== 'free' || activatedStatus || pollTimedOut) return
+    let attempts = 0
+    const timer = setInterval(async () => {
+      attempts += 1
+      try {
+        const latest = await BillingService.getStatus()
+        if (latest.tier !== initialTier) {
+          clearInterval(timer)
+          setActivatedStatus(latest)
+          return
+        }
+      } catch {
+        // Transient; the next tick retries until the bound.
+      }
+      if (attempts >= CHECKOUT_POLL_MAX) {
+        clearInterval(timer)
+        setPollTimedOut(true)
+      }
+    }, CHECKOUT_POLL_MS)
+    return () => clearInterval(timer)
+  }, [checkout, initialTier, activatedStatus, pollTimedOut])
 
   const go = async (start: () => Promise<{ url: string }>) => {
     setActionError(null)
@@ -121,12 +172,6 @@ export default function BillingSettingsPage() {
     )
   }
 
-  const tierLabel: Record<PlanTier, string> = {
-    free: 'Free',
-    pro: 'Pro',
-    enterprise: 'Enterprise',
-  }
-
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-8">
       <div>
@@ -140,7 +185,7 @@ export default function BillingSettingsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>{tierLabel[status.tier]}</CardTitle>
+              <CardTitle>{tierName(status.tier)}</CardTitle>
               <CardDescription>
                 {status.cancel_at_period_end
                   ? 'Cancels at the end of the current period'
@@ -163,6 +208,26 @@ export default function BillingSettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      {checkout === 'success' && (
+        <Alert data-testid="checkout-notice">
+          <AlertDescription>
+            {status.tier !== 'free'
+              ? `Payment received — your ${tierName(status.tier)} plan is active.`
+              : pollTimedOut
+                ? 'Payment received. Activating your plan can take a minute — refresh this page to see it.'
+                : 'Payment received — activating your plan…'}
+          </AlertDescription>
+        </Alert>
+      )}
+      {checkout === 'cancelled' && (
+        <Alert data-testid="checkout-notice">
+          <AlertDescription>
+            Checkout was cancelled. You have not been charged and are still on the{' '}
+            {tierName(status.tier)} plan.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {actionError && (
         <Alert variant="destructive">
@@ -226,5 +291,14 @@ export default function BillingSettingsPage() {
         </p>
       )}
     </div>
+  )
+}
+
+// useSearchParams needs a Suspense boundary above it or the prerender bails out.
+export default function BillingSettingsPage() {
+  return (
+    <Suspense fallback={<p className="p-8 text-muted-foreground">Loading billing…</p>}>
+      <BillingSettings />
+    </Suspense>
   )
 }

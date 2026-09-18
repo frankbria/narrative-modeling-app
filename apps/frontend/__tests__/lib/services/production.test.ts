@@ -30,7 +30,10 @@ describe('ProductionService monitoring (issue #85)', () => {
     })
 
     it('throws on a non-ok response', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false })
+      // apiError() (#767 AC2) always reads the body to look for a quota_exceeded
+      // 402; the mock needs a `json` method for that read to resolve, same as
+      // every other non-ok mock in this file.
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: jest.fn().mockResolvedValue({}) })
       await expect(ProductionService.getUsageTimeline('m1', 24, null)).rejects.toThrow(
         'Failed to fetch usage timeline'
       )
@@ -63,7 +66,7 @@ describe('ProductionService monitoring (issue #85)', () => {
     })
 
     it('throws on a non-ok response', async () => {
-      ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false })
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: jest.fn().mockResolvedValue({}) })
       await expect(ProductionService.getDeploymentHealth('m1', 24, null)).rejects.toThrow(
         'Failed to fetch deployment health'
       )
