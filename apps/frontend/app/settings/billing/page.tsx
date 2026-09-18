@@ -8,7 +8,6 @@ import {
   CHECKOUT_POLL_MS,
   UNLIMITED,
   type BillingStatus,
-  type PlanTier,
 } from '@/lib/services/billing'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,7 +17,7 @@ import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { COMPANY } from '@/lib/legal/company'
-import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel } from '@/lib/billing/plans'
+import { METRIC_LABELS as PLAN_METRIC_LABELS, planFor, priceLabel, tierName } from '@/lib/billing/plans'
 
 const METRIC_LABELS: Record<string, string> = PLAN_METRIC_LABELS
 
@@ -81,11 +80,16 @@ function BillingSettings() {
     const value = searchParams.get('checkout')
     return value === 'success' || value === 'cancelled' ? value : null
   })
-  const [activated, setActivated] = useState(false)
+  // The status the checkout poll saw once the tier moved. Rendered in place of the
+  // fetched status rather than calling reload(): a reload puts the hook back into
+  // `loading`, which swaps the whole page (the confirmation included) for the
+  // loading line, and a failed refetch would leave "Billing unavailable" where the
+  // payment confirmation should be.
+  const [activatedStatus, setActivatedStatus] = useState<BillingStatus | null>(null)
   const [pollTimedOut, setPollTimedOut] = useState(false)
 
   const {
-    data: status,
+    data: fetched,
     loading,
     error,
     reload,
@@ -96,6 +100,7 @@ function BillingSettings() {
     [userId],
     { enabled: !!userId, errorMessage: 'Failed to load billing status' }
   )
+  const status = activatedStatus ?? fetched
 
   useEffect(() => {
     if (searchParams.get('checkout')) router.replace('/settings/billing')
@@ -103,10 +108,10 @@ function BillingSettings() {
 
   // The status endpoint still says FREE until the Stripe webhook lands, so the
   // highest-intent moment in the product used to render an unchanged page. Poll
-  // (bounded) until the tier moves, then reload; past the bound, say so.
-  const initialTier = status?.tier
+  // (bounded) until the tier moves, then show that status; past the bound, say so.
+  const initialTier = fetched?.tier
   useEffect(() => {
-    if (checkout !== 'success' || !initialTier || initialTier !== 'free' || activated || pollTimedOut) return
+    if (checkout !== 'success' || initialTier !== 'free' || activatedStatus || pollTimedOut) return
     let attempts = 0
     const timer = setInterval(async () => {
       attempts += 1
@@ -114,8 +119,7 @@ function BillingSettings() {
         const latest = await BillingService.getStatus()
         if (latest.tier !== initialTier) {
           clearInterval(timer)
-          setActivated(true)
-          reload()
+          setActivatedStatus(latest)
           return
         }
       } catch {
@@ -127,7 +131,7 @@ function BillingSettings() {
       }
     }, CHECKOUT_POLL_MS)
     return () => clearInterval(timer)
-  }, [checkout, initialTier, activated, pollTimedOut, reload])
+  }, [checkout, initialTier, activatedStatus, pollTimedOut])
 
   const go = async (start: () => Promise<{ url: string }>) => {
     setActionError(null)
@@ -168,12 +172,6 @@ function BillingSettings() {
     )
   }
 
-  const tierLabel: Record<PlanTier, string> = {
-    free: 'Free',
-    pro: 'Pro',
-    enterprise: 'Enterprise',
-  }
-
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-8">
       <div>
@@ -187,7 +185,7 @@ function BillingSettings() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>{tierLabel[status.tier]}</CardTitle>
+              <CardTitle>{tierName(status.tier)}</CardTitle>
               <CardDescription>
                 {status.cancel_at_period_end
                   ? 'Cancels at the end of the current period'
@@ -214,8 +212,8 @@ function BillingSettings() {
       {checkout === 'success' && (
         <Alert data-testid="checkout-notice">
           <AlertDescription>
-            {status.tier !== 'free' || activated
-              ? `Payment received — your ${tierLabel[status.tier]} plan is active.`
+            {status.tier !== 'free'
+              ? `Payment received — your ${tierName(status.tier)} plan is active.`
               : pollTimedOut
                 ? 'Payment received. Activating your plan can take a minute — refresh this page to see it.'
                 : 'Payment received — activating your plan…'}
@@ -226,7 +224,7 @@ function BillingSettings() {
         <Alert data-testid="checkout-notice">
           <AlertDescription>
             Checkout was cancelled. You have not been charged and are still on the{' '}
-            {tierLabel[status.tier]} plan.
+            {tierName(status.tier)} plan.
           </AlertDescription>
         </Alert>
       )}

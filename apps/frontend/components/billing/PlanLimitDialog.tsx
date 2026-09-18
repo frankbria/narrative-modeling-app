@@ -19,10 +19,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { planLimit, usePlanLimit } from '@/lib/billing/planLimit'
-import { metricWords, planFor, priceLabel } from '@/lib/billing/plans'
+import { metricWords, planFor, priceLabel, tierName } from '@/lib/billing/plans'
 import { COMPANY } from '@/lib/legal/company'
-
-const TIER_LABELS: Record<string, string> = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' }
 
 export function resetDate(iso: string | null): string | null {
   if (!iso) return null
@@ -36,7 +34,7 @@ export function PlanLimitDialog() {
   if (!error) return null
 
   const words = metricWords(error.metric)
-  const tier = error.tier ? TIER_LABELS[error.tier] ?? error.tier : null
+  const tier = error.tier ? tierName(error.tier) : null
   const resets = resetDate(error.resets_at)
   const counted = error.limit !== null && error.used !== null
 
@@ -68,7 +66,7 @@ export function PlanLimitDialog() {
           <Button variant="outline" onClick={planLimit.dismiss}>
             Not now
           </Button>
-          {error.upgrade_available ? (
+          {error.upgrade_available && error.tier !== 'enterprise' ? (
             <Button asChild>
               <Link href="/settings/billing" onClick={planLimit.dismiss}>
                 Upgrade to Pro · {priceLabel(planFor('pro'))}

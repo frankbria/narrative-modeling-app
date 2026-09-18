@@ -69,6 +69,15 @@ describe('UsageWarningBanner', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('a malformed status body renders nothing instead of crashing the layout', async () => {
+    // CI caught this: an e2e mock answered /billing/status with `{}` and the throw
+    // blanked every authenticated page, the stage-guard banner included.
+    getStatus.mockResolvedValue({} as BillingStatus)
+    render(<UsageWarningBanner />)
+    await waitFor(() => expect(getStatus).toHaveBeenCalled())
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
   it('can be dismissed', async () => {
     getStatus.mockResolvedValue(status({ uploads: 9 }, FREE))
     render(<UsageWarningBanner />)

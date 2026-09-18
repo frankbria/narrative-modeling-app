@@ -13,12 +13,10 @@ import { useState } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { BillingService, type BillingStatus } from '@/lib/services/billing'
-import { metricWords } from '@/lib/billing/plans'
+import { metricWords, tierName } from '@/lib/billing/plans'
 
 /** Same threshold as the billing page's amber bar. */
 export const WARNING_THRESHOLD = 0.8
-
-const TIER_LABELS: Record<string, string> = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' }
 
 export interface NearingMetric {
   metric: string
@@ -27,12 +25,17 @@ export interface NearingMetric {
   pct: number
 }
 
-/** Metered metrics at or past the threshold; unlimited (-1) never qualifies. */
+/**
+ * Metered metrics at or past the threshold; unlimited (-1) never qualifies.
+ *
+ * Tolerates a malformed body: this renders in the root layout, so a throw here
+ * blanks every authenticated page, not just the banner.
+ */
 export function nearingLimits(status: BillingStatus): NearingMetric[] {
-  return Object.entries(status.limits)
-    .filter(([, limit]) => limit > 0)
+  return Object.entries(status.limits ?? {})
+    .filter(([, limit]) => typeof limit === 'number' && limit > 0)
     .map(([metric, limit]) => {
-      const used = status.usage[metric] ?? 0
+      const used = status.usage?.[metric] ?? 0
       return { metric, used, limit, pct: Math.min(100, Math.round((used / limit) * 100)) }
     })
     .filter(({ used, limit }) => used / limit >= WARNING_THRESHOLD)
@@ -51,7 +54,7 @@ export function UsageWarningBanner() {
   const nearing = nearingLimits(status)
   if (nearing.length === 0) return null
 
-  const tier = TIER_LABELS[status.tier] ?? status.tier
+  const tier = tierName(status.tier)
   const items = nearing.map(({ metric, used, limit, pct }) => {
     return `${pct}% of your ${tier} plan's ${metricWords(metric)} (${used.toLocaleString()} of ${limit.toLocaleString()})`
   })

@@ -65,3 +65,8 @@ export function metricWords(metric: string): string {
   const label = (METRIC_LABELS as Record<string, string>)[metric] ?? metric.replace(/_/g, ' ')
   return label.replace(/^[A-Z][a-z]/, (m) => m.toLowerCase())
 }
+
+/** A tier's display name from the plan source; an unknown value passes through. */
+export function tierName(tier: string): string {
+  return PLANS.find((p) => p.tier === tier)?.name ?? tier
+}

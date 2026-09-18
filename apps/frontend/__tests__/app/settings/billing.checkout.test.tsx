@@ -83,6 +83,30 @@ describe('checkout confirmation', () => {
     expect(screen.queryByRole('button', { name: /upgrade to pro/i })).toBeNull()
   })
 
+  it('success: once the tier moves, the confirmation stays even if the status endpoint then fails', async () => {
+    // The page used to reload() after detecting the change, which dropped it back
+    // to "Loading billing…" and, on a failed refetch, to "Billing unavailable".
+    search = 'checkout=success'
+    let calls = 0
+    global.fetch = jest.fn().mockImplementation(async () => {
+      calls += 1
+      if (calls <= 2) {
+        return { ok: true, status: 200, json: async () => (calls === 1 ? status('free') : status('pro')) }
+      }
+      return { ok: false, status: 503, json: async () => ({}) }
+    })
+    render(<BillingSettingsPage />)
+    await screen.findByTestId('checkout-notice')
+
+    await tick() // poll → pro
+    await waitFor(() => expect(screen.getByTestId('checkout-notice')).toHaveTextContent(/Pro plan is active/))
+    await tick()
+    await tick()
+    expect(screen.getByTestId('checkout-notice')).toHaveTextContent(/Pro plan is active/)
+    expect(screen.queryByText(/failed to load billing status/i)).toBeNull()
+    expect(screen.queryByText(/loading billing/i)).toBeNull()
+  })
+
   it('success but the webhook never lands: stops polling at the bound and tells the user to refresh', async () => {
     search = 'checkout=success'
     mockStatusSequence([status('free')])

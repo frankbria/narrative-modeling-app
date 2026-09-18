@@ -68,6 +68,13 @@ describe('PlanLimitDialog', () => {
     expect(screen.queryByRole('link')).toBeNull()
   })
 
+  it('never offers an upgrade to ENTERPRISE, even if the flag says one is available', () => {
+    render(<PlanLimitDialog />)
+    show({ tier: 'enterprise', metric: 'ai_calls', limit: 5000, used: 5000, upgrade_available: true })
+    expect(screen.queryByRole('link', { name: /upgrade/i })).toBeNull()
+    expect(screen.getByRole('dialog')).toHaveTextContent('highest plan')
+  })
+
   it('tolerates the thin variant: opens without numbers, still dismissable', () => {
     render(<PlanLimitDialog />)
     act(() =>
