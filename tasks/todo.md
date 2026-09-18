@@ -14,19 +14,19 @@ Plan source: self-authored (no plan comment on the issue). Branch: `feature/issu
 - `/recommend-tools` and `/stage-guidance` have no frontend caller — nothing to adopt.
 
 ## Steps
-1. [ ] `lib/services/apiError.ts` + `lib/billing/planLimit.ts` (+ `__tests__/lib/apiError.test.ts`): full 402 → QuotaExceededError with backend numbers + store populated; thin variant tolerated; non-402 → ApiError with status; message fallback preserved.
-2. [ ] `components/billing/PlanLimitDialog.tsx` mounted in `app/layout.tsx` (+ test): metric words, used/limit, reset date, action by tier (free→Upgrade link `/settings/billing` with price; pro→mailto Contact us; enterprise→"highest plan").
-3. [ ] Adopt: `lib/hooks/useChunkedUpload.ts` (init/chunk/complete/resume), `app/upload/page.tsx` (secure + confirm-pii), `lib/services/model.ts` (all sites), `lib/services/production.ts`, `lib/services/data-issues.ts`, `components/AIInsightsPanel.tsx`, `lib/hooks/useFeatureSuggestions.ts`, `components/AIChat.tsx` + `app/api/chat/route.ts` passthrough. Per-surface jest: a 402 body populates the store with the backend numbers.
-4. [ ] `components/billing/UsageWarningBanner.tsx` in layout (+ test): ≥80% non-unlimited metric → amber `role="status"` banner with link; nothing when under, unlimited, or fetch fails.
-5. [ ] `app/settings/billing/page.tsx` checkout param (+ tests): success → confirmation + bounded poll + param cleared; cancelled → notice + Upgrade button kept.
-6. [ ] Backend: `tests/test_api/test_quota_enforcement.py` contract test parsing `QUOTA_DETAIL_FIELDS` from the TS file.
-7. [ ] E2E: `scripts/seed_e2e_data.py` PRO subscription for admin; `test-e2e.sh` `PLAN_PRO_UPLOADS=2`; `e2e/workflows/plan-limit.spec.ts` (@smoke).
-8. [ ] CLAUDE.md convention paragraph; run full frontend jest + lint + tsc, backend gate subset.
+1. [x] `lib/services/apiError.ts` + `lib/billing/planLimit.ts` (+ `__tests__/lib/apiError.test.ts`): full 402 → QuotaExceededError with backend numbers + store populated; thin variant tolerated; non-402 → ApiError with status; message fallback preserved.
+2. [x] `components/billing/PlanLimitDialog.tsx` mounted in `app/layout.tsx` (+ test): metric words, used/limit, reset date, action by tier (free→Upgrade link `/settings/billing` with price; pro→mailto Contact us; enterprise→"highest plan").
+3. [x] Adopt: `lib/hooks/useChunkedUpload.ts` (init/chunk/complete/resume), `app/upload/page.tsx` (secure + confirm-pii), `lib/services/model.ts` (all sites), `lib/services/production.ts`, `lib/services/data-issues.ts`, `components/AIInsightsPanel.tsx`, `lib/hooks/useFeatureSuggestions.ts`, `components/AIChat.tsx` + `app/api/chat/route.ts` passthrough. Per-surface jest: a 402 body populates the store with the backend numbers.
+4. [x] `components/billing/UsageWarningBanner.tsx` in layout (+ test): ≥80% non-unlimited metric → amber `role="status"` banner with link; nothing when under, unlimited, or fetch fails.
+5. [x] `app/settings/billing/page.tsx` checkout param (+ tests): success → confirmation + bounded poll + param cleared; cancelled → notice + Upgrade button kept.
+6. [x] Backend: `tests/test_api/test_quota_enforcement.py` contract test parsing `QUOTA_DETAIL_FIELDS` from the TS file.
+7. [x] E2E: `scripts/seed_e2e_data.py` PRO subscription for admin; `test-e2e.sh` `PLAN_PRO_UPLOADS=2`; `e2e/workflows/plan-limit.spec.ts` (@smoke).
+8. [x] CLAUDE.md convention paragraph; run full frontend jest + lint + tsc, backend gate subset.
 
 ## Acceptance criteria
-- [ ] AC1 one error type with status + parsed body; QuotaExceededError on 402, thin variant tolerated
-- [ ] AC2 one PlanLimitDialog on upload (chunked + secure), training, batch + single prediction, every ai_calls surface; chat proxy adopts the copy
-- [ ] AC3 ≥80% warning in the workflow shell with billing link
-- [ ] AC4 checkout=success|cancelled handled on the billing page (bounded poll, param cleared)
-- [ ] AC5 jest per surface, contract test vs enforcement.py, e2e real 402
-- [ ] AC6 upgrade button shows price (already shipped in #775; unchanged)
+- [x] AC1 one error type with status + parsed body; QuotaExceededError on 402, thin variant tolerated
+- [x] AC2 one PlanLimitDialog on upload (chunked + secure), training, batch + single prediction, every ai_calls surface; chat proxy adopts the copy
+- [x] AC3 ≥80% warning in the workflow shell with billing link
+- [x] AC4 checkout=success|cancelled handled on the billing page (bounded poll, param cleared)
+- [x] AC5 jest per surface, contract test vs enforcement.py, e2e real 402
+- [x] AC6 upgrade button shows price (already shipped in #775; unchanged)
