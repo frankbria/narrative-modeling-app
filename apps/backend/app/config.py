@@ -219,6 +219,17 @@ def signup_admits(email: str | None, mode: str, allowlist: set[str]) -> bool:
     return bool(email) and email.strip().lower() in allowlist
 
 
+def is_admin_email(email: str | None, raw: str | None = None) -> bool:
+    """True if ``email`` is on ``ADMIN_EMAILS`` (#768 AC6).
+
+    Mirrors the frontend's ``lib/admin-allowlist.ts``: unset or empty FAILS
+    CLOSED — nobody is an admin. The only admin concept in the codebase; there
+    is no role field.
+    """
+    allowlist = parse_invite_allowlist(os.getenv("ADMIN_EMAILS") if raw is None else raw)
+    return bool(email) and email.strip().lower() in allowlist
+
+
 def current_signup_mode() -> str:
     """The signup mode for this process's environment."""
     return resolve_signup_mode(

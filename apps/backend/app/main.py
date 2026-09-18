@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -79,7 +79,7 @@ from app.api.routes import (
     workflows,
 )
 from app.services.api_documentation import APIDocumentationService
-from app.auth.nextauth_auth import SKIP_AUTH
+from app.auth.nextauth_auth import SKIP_AUTH, require_admin
 from app.config import current_signup_mode, get_environment, settings, is_production_like
 from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
@@ -428,12 +428,13 @@ async def root():
     }
 
 
-@app.get("/metrics")
+@app.get("/metrics", dependencies=[Depends(require_admin)])
 async def metrics():
     """
-    Prometheus metrics endpoint.
+    Prometheus metrics endpoint, for ``ADMIN_EMAILS`` identities only (#768).
 
-    Returns metrics in Prometheus text exposition format for scraping.
+    Returns metrics in Prometheus text exposition format for scraping. It sits
+    outside ``/api/v1`` and the rate limiter; everyone else gets a 404.
     """
     return Response(content=get_metrics(), media_type=CONTENT_TYPE_LATEST)
 

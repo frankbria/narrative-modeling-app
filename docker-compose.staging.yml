@@ -93,6 +93,9 @@ services:
       # passthrough until .env.staging carries it (#457): blank in a
       # production-like environment resolves to `invite`, today's behaviour.
       SIGNUP_MODE: ${SIGNUP_MODE:-}
+      # Admin allowlist (#768): the only identities GET /metrics answers. Same
+      # value as the frontend's; unset ⇒ nobody (fails closed), so optional.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Invite-only beta gate (#261): comma-separated allowlist of invitee
       # emails, checked in invite mode. The frontend signIn callback is the
       # primary gate; the backend mirrors it.

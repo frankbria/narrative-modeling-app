@@ -17,6 +17,7 @@ load_dotenv()
 
 from app.config import (  # noqa: E402
     current_signup_mode,
+    is_admin_email,
     parse_invite_allowlist,
     signup_admits,
     validate_skip_auth,
@@ -36,6 +37,7 @@ if not NEXTAUTH_SECRET and not SKIP_AUTH:
     logger.error("NEXTAUTH_SECRET environment variable is not set. Authentication will fail.")
 
 security = HTTPBearer()
+_optional_bearer = HTTPBearer(auto_error=False)
 
 async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -133,3 +135,28 @@ async def get_current_user_id_optional(
         # Catch HTTPException from get_current_user_id() - for optional auth,
         # invalid/expired tokens should return None, not raise to the client
         return None
+
+
+async def require_admin(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
+) -> None:
+    """Admit only a verified token whose email is on ``ADMIN_EMAILS`` (#768 AC6).
+
+    Everyone else — anonymous, a forged or expired token, a signed-in tenant —
+    gets the same 404 as a path that does not exist, like the frontend's
+    ``/admin`` rewrite (#477): the endpoint's existence is not advertised.
+    """
+    not_found = HTTPException(status_code=404, detail="Not Found")
+    if credentials is None or SKIP_AUTH or not NEXTAUTH_SECRET:
+        raise not_found
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            NEXTAUTH_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+    except JWTError:
+        raise not_found from None
+    if not is_admin_email(payload.get("email")):
+        raise not_found

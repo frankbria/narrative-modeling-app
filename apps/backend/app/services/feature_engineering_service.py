@@ -159,11 +159,13 @@ class FeatureEngineeringService:
         ai_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
         if include_ai:
             try:
-                ai_used = get_openai_client() is not None  # without a client the step below is a no-op
                 ai_suggestions = await self._generate_ai_suggestions(
                     analysis,
                     existing_suggestions=rule_based
                 )
+                # Set only once the call returned: an open breaker or the #768
+                # daily ceiling raises above, so no model ran and nothing is charged.
+                ai_used = get_openai_client() is not None  # without a client the step above is a no-op
                 logger.info(f"Generated {len(ai_suggestions)} AI suggestions")
             except Exception as e:
                 logger.warning(f"AI suggestion generation failed: {e}")

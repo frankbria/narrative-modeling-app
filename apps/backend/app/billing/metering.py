@@ -119,7 +119,13 @@ async def record(user_id: str, metric: str, amount: int = 1) -> None:
         )
 
 
-async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> bool:
+async def consume(
+    user_id: str,
+    metric: str,
+    limit: int,
+    amount: int = 1,
+    period_key: str | None = None,
+) -> bool:
     """Reserve `amount` if it fits under `limit`. True when reserved.
 
     The check and the consume are ONE operation, which is what `remaining()` +
@@ -136,6 +142,9 @@ async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> boo
     Fails CLOSED. Unlike `record()`, a storage error here denies rather than
     swallowing: this is the enforcement path, and an outage that hands out
     unlimited quota is the failure mode the whole module is built to avoid.
+
+    `period_key` overrides the calendar month — the global AI ceiling counts per
+    day (`app/billing/ai_ceiling.py`), under keys that cannot collide with `YYYY-MM`.
     """
     if metric not in METERED_METRICS:
         raise KeyError(f"unknown metered metric: {metric}")
@@ -159,7 +168,7 @@ async def consume(user_id: str, metric: str, limit: int, amount: int = 1) -> boo
     now = datetime.now(UTC)
     selector = {
         "user_id": user_id,
-        "period_key": period_key_for(now),
+        "period_key": period_key or period_key_for(now),
         "metric": metric,
         "units": {"$lte": limit - amount},
     }
@@ -266,7 +275,12 @@ async def refund(
         )
 
 
-async def usage_for(user_id: str, metric: str, moment: datetime | None = None) -> int:
+async def usage_for(
+    user_id: str,
+    metric: str,
+    moment: datetime | None = None,
+    period_key: str | None = None,
+) -> int:
     """How much of `metric` this tenant has used in the current period.
 
     Unlike `record`, this does NOT swallow errors. Enforcement reads this to decide
@@ -282,7 +296,7 @@ async def usage_for(user_id: str, metric: str, moment: datetime | None = None) -
 
     doc = await UsageRecord.find_one(
         UsageRecord.user_id == user_id,
-        UsageRecord.period_key == period_key_for(moment),
+        UsageRecord.period_key == (period_key or period_key_for(moment)),
         UsageRecord.metric == metric,
     )
     return doc.units if doc else 0

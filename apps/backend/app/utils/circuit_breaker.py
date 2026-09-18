@@ -291,6 +291,19 @@ class CircuitBreakerOpen(Exception):
         )
 
 
+class AICeilingReached(CircuitBreakerOpen):
+    """The global daily AI ceiling is spent (#768). A ``CircuitBreakerOpen`` so
+    every model call site's existing fallback path handles it unchanged."""
+
+    def __init__(self, service_name: str):
+        super().__init__(service_name, retry_after=0.0)
+
+
+#: Breakers guarding a paid model call. Each logical call through one of these
+#: spends a unit of the global daily AI ceiling (app/billing/ai_ceiling.py).
+MODEL_SERVICE_PREFIX = "openai"
+
+
 def with_circuit_breaker(
     service_name: str,
     max_attempts: int = 3,
@@ -355,7 +368,21 @@ def with_circuit_breaker(
 
                 raise
 
-        return async_wrapper
+        if not service_name.startswith(MODEL_SERVICE_PREFIX):
+            return async_wrapper
+
+        # Outside the tenacity retry on purpose: retries are one logical call and
+        # spend one unit, and a spent ceiling is not retried with backoff.
+        @wraps(func)
+        async def ceilinged(*args: P.args, **kwargs: P.kwargs) -> T:
+            # Lazy: app.billing pulls in the models, which import services built on this.
+            from app.billing import ai_ceiling
+
+            if not await ai_ceiling.admit():
+                raise AICeilingReached(service_name)
+            return await async_wrapper(*args, **kwargs)
+
+        return ceilinged
 
     return decorator
 

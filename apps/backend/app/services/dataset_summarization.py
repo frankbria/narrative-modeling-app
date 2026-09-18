@@ -16,7 +16,7 @@ from app.models.user_data import AISummary
 from app.services.data_processing.quality_assessment import QualityReport
 from app.services.data_processing.schema_inference import SchemaDefinition
 from app.services.data_processing.statistics_engine import DatasetStatistics
-from app.utils.circuit_breaker import with_circuit_breaker
+from app.utils.circuit_breaker import CircuitBreakerOpen, with_circuit_breaker
 from app.utils.datetime import utcnow
 from app.utils.openai_client import build_openai_client, openai_model
 
@@ -82,9 +82,15 @@ class DatasetSummarizationService:
             context = self._prepare_context(request)
             
             # Generate AI summary
+            summary = None
             if self.client:
-                summary = await self._generate_openai_summary(context, request)
-            else:
+                try:
+                    summary = await self._generate_openai_summary(context, request)
+                except CircuitBreakerOpen as exc:
+                    # Includes the global daily AI ceiling (#768): serve the
+                    # rule-based summary rather than an error summary.
+                    logger.warning(f"OpenAI summary unavailable, using fallback: {exc}")
+            if summary is None:
                 summary = self._generate_fallback_summary(context)
             
             # Calculate processing time
