@@ -92,6 +92,14 @@ describe('POST /api/chat', () => {
     expect(await res.json()).toEqual({ detail })
   })
 
+  it('a 402 whose body is not JSON still tells the client it is a plan limit', async () => {
+    fetchMock.mockResolvedValue(new Response('<html>', { status: 402 }))
+
+    const res = await POST(chatRequest())
+    expect(res.status).toBe(402)
+    expect(await res.json()).toEqual({ detail: 'AI call limit reached for your plan' })
+  })
+
   it('keeps a generic body for every other upstream failure', async () => {
     fetchMock.mockResolvedValue(new Response('{"detail":"traceback…"}', { status: 500 }))
 

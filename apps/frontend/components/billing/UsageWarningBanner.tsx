@@ -12,7 +12,7 @@ import { useSession } from 'next-auth/react'
 import { useState } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
-import { BillingService, UNLIMITED, type BillingStatus } from '@/lib/services/billing'
+import { BillingService, type BillingStatus } from '@/lib/services/billing'
 import { metricWords } from '@/lib/billing/plans'
 
 /** Same threshold as the billing page's amber bar. */
@@ -30,7 +30,7 @@ export interface NearingMetric {
 /** Metered metrics at or past the threshold; unlimited (-1) never qualifies. */
 export function nearingLimits(status: BillingStatus): NearingMetric[] {
   return Object.entries(status.limits)
-    .filter(([, limit]) => limit !== UNLIMITED && limit > 0)
+    .filter(([, limit]) => limit > 0)
     .map(([metric, limit]) => {
       const used = status.usage[metric] ?? 0
       return { metric, used, limit, pct: Math.min(100, Math.round((used / limit) * 100)) }

@@ -79,6 +79,19 @@ describe('PlanLimitDialog', () => {
     expect(dialog).not.toHaveTextContent('resets on')
   })
 
+  it('an unparseable resets_at is simply omitted', () => {
+    render(<PlanLimitDialog />)
+    show({ resets_at: 'not-a-date' })
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('resets on')
+  })
+
+  it('Escape closes the dialog and clears the store', () => {
+    render(<PlanLimitDialog />)
+    show()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(planLimit.get()).toBeNull()
+  })
+
   it('"Not now" clears the store and closes the dialog', () => {
     render(<PlanLimitDialog />)
     show()
