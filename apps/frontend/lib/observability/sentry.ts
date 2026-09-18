@@ -10,6 +10,9 @@ import type { ErrorEvent, Event, Integration } from '@sentry/core'
 
 const stripQuery = (url: unknown) => (typeof url === 'string' ? url.split('?', 1)[0] : url)
 
+// Scrubs the fields the SDK and this app populate today, not every field an
+// event can carry: a new Sentry call site (extra, tags, a custom breadcrumb) is
+// held to review by __tests__/observability/sentryCallSites.test.ts.
 export function scrubSentryEvent<T extends Event>(event: T): T {
   delete event.user
   if (event.request) {

@@ -69,7 +69,7 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     name: 'Sentry',
     purpose:
-      'Receives error reports when something breaks: the stack trace, page address without its query string, and browser details. Receives no dataset content and no account identity.',
+      'Receives error reports when something breaks: the stack trace, the page address without its query string (the address itself can include a dataset or model id), and browser details. Receives no dataset content and no account identity.',
     privacyUrl: 'https://sentry.io/privacy/',
   },
   {
