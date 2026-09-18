@@ -3,8 +3,16 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from beanie import Document, Indexed, Insert, PydanticObjectId, Save, after_event
-from pydantic import BaseModel, Field
+from beanie import (
+    Document,
+    Indexed,
+    Insert,
+    PydanticObjectId,
+    Save,
+    after_event,
+    before_event,
+)
+from pydantic import BaseModel, Field, PrivateAttr
 
 from app.utils.filenames import SafeFilename
 
@@ -81,12 +89,21 @@ class UserData(Document):
     superseded_s3_urls: list[str] = Field(default_factory=list)
     transformation_history: list[dict[str, Any]] = Field(default_factory=list)  # History of transformations applied
 
+    _is_new: bool = PrivateAttr(default=False)
+
     # Save too: `save()` on a new document is an upsert, not an insert, and fires no
-    # Insert event — that is how /datasets/upload creates its row. `once` makes the
-    # repeat on every later save a no-op.
+    # Insert event — that is how /datasets/upload creates its row. Only a creation
+    # records, so the many later saves (AI summary, processing) cost nothing.
+    @before_event(Insert, Save)
+    def _note_creation(self) -> None:
+        self._is_new = self.id is None
+
     @after_event(Insert, Save)
     async def _record_first_upload(self) -> None:
         # Here rather than in each route, so every dataset writer is covered (#769).
+        if not self._is_new:
+            return
+        self._is_new = False
         from app.services import product_events
 
         await product_events.record(

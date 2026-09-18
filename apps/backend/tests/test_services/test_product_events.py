@@ -97,6 +97,19 @@ class TestHooks:
 
         assert len(await _events(FIRST_UPLOAD)) == 1
 
+    async def test_saving_an_existing_dataset_does_not_touch_the_events(self, setup_database):
+        """Only a creation records first_upload. Every later save (AI summary,
+        processing) must not pay an insert attempt, so none is made."""
+        dataset = _dataset()
+        await dataset.insert()
+        await ProductEvent.find_all().delete()
+
+        with patch.object(ProductEvent, "insert") as insert:
+            dataset.num_rows = 2
+            await dataset.save()
+
+        insert.assert_not_called()
+
     async def test_quota_denial_is_recorded_and_counted(self, setup_database):
         before = quota_denials.labels(metric="uploads", tier="free")._value.get()
         request = Request({"type": "http", "headers": [], "state": {}})
