@@ -67,6 +67,12 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     privacyUrl: 'https://stripe.com/privacy',
   },
   {
+    name: 'Sentry',
+    purpose:
+      'Receives error reports when something breaks: the stack trace, the page address without its query string (the address itself can include a dataset or model id), and browser details. No account identity is attached, and the app sends no dataset content on purpose; an error message is sent as it was raised.',
+    privacyUrl: 'https://sentry.io/privacy/',
+  },
+  {
     name: 'Google',
     purpose: 'Authenticates you if you sign in with Google. Receives no dataset content.',
     privacyUrl: 'https://policies.google.com/privacy',

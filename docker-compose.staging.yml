@@ -161,6 +161,11 @@ services:
         # Full backend base URL INCLUDING the /api/v1 prefix, e.g.
         # https://dev.briaanalytics.com/api/v1 — baked in at build time.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        # Browser error reporting (#769 AC4), baked in like the API URL. The
+        # backend's DSN is reused; unset leaves the client SDK off.
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
+        # Same tag as the backend's ENVIRONMENT, or staging errors read as production.
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: staging
     container_name: narrative-staging-frontend
     restart: unless-stopped
     ports:
@@ -168,6 +173,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      # Server/edge error reporting (instrumentation.ts); optional like the backend's.
+      SENTRY_DSN: ${SENTRY_DSN:-}
       # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
       # lib/db.ts throws on startup without this.
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
