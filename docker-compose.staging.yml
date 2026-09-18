@@ -96,6 +96,10 @@ services:
       # Admin allowlist (#768): the only identities GET /metrics answers. Same
       # value as the frontend's; unset ⇒ nobody (fails closed), so optional.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Cost/abuse backstops (#768). Blank = the ADR-003 defaults (500 model
+      # calls/day across all tenants; health probe alerts above 100 signups/day).
+      AI_CALLS_DAILY_CEILING: ${AI_CALLS_DAILY_CEILING:-}
+      SIGNUP_ALERT_THRESHOLD_24H: ${SIGNUP_ALERT_THRESHOLD_24H:-}
       # Invite-only beta gate (#261): comma-separated allowlist of invitee
       # emails, checked in invite mode. The frontend signIn callback is the
       # primary gate; the backend mirrors it.
