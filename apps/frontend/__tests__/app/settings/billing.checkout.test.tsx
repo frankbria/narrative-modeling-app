@@ -23,9 +23,11 @@ jest.mock('next-auth/react', () => ({
   }),
 }))
 
+const ROUTER = (global as unknown as { __NEXT_ROUTER_MOCKS__: { replace: jest.Mock } }).__NEXT_ROUTER_MOCKS__
+
 let search = ''
 jest.mock('next/navigation', () => ({
-  useRouter: () => global.__NEXT_ROUTER_MOCKS__,
+  useRouter: () => ROUTER,
   useParams: () => ({}),
   useSearchParams: () => new URLSearchParams(search),
 }))
@@ -71,7 +73,7 @@ describe('checkout confirmation', () => {
     render(<BillingSettingsPage />)
 
     expect(await screen.findByTestId('checkout-notice')).toHaveTextContent(/activating your plan/i)
-    expect(global.__NEXT_ROUTER_MOCKS__.replace).toHaveBeenCalledWith('/settings/billing')
+    expect(ROUTER.replace).toHaveBeenCalledWith('/settings/billing')
 
     await tick() // poll 1 → still free
     await tick() // poll 2 → pro
@@ -117,7 +119,7 @@ describe('checkout confirmation', () => {
 
     expect(await screen.findByTestId('checkout-notice')).toHaveTextContent(/cancelled.*not been charged/i)
     expect(screen.getByRole('button', { name: /upgrade to pro/i })).toBeInTheDocument()
-    expect(global.__NEXT_ROUTER_MOCKS__.replace).toHaveBeenCalledWith('/settings/billing')
+    expect(ROUTER.replace).toHaveBeenCalledWith('/settings/billing')
     const calls = (global.fetch as jest.Mock).mock.calls.length
     await tick()
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(calls)
@@ -128,6 +130,6 @@ describe('checkout confirmation', () => {
     render(<BillingSettingsPage />)
     await screen.findByRole('button', { name: /upgrade to pro/i })
     expect(screen.queryByTestId('checkout-notice')).toBeNull()
-    expect(global.__NEXT_ROUTER_MOCKS__.replace).not.toHaveBeenCalled()
+    expect(ROUTER.replace).not.toHaveBeenCalled()
   })
 })

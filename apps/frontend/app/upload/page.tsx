@@ -7,6 +7,7 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { apiError } from '@/lib/services/apiError';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -194,9 +195,7 @@ export default function UploadPage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-        throw new Error(`Upload failed: ${response.status} ${errorText}`);
+        throw await apiError(response, `Upload failed: ${response.status}`);
       }
 
       const responseData = await response.json();
@@ -263,8 +262,7 @@ export default function UploadPage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to upload with PII: ${errorText}`);
+        throw await apiError(response, 'Failed to upload with PII');
       }
 
       const result = await response.json();

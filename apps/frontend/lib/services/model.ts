@@ -3,6 +3,7 @@
  */
 
 import { getAuthToken } from '@/lib/auth-helpers'
+import { apiError } from '@/lib/services/apiError'
 import type {
   ErrorAnalysisResponse,
   ModelComparisonResponse,
@@ -319,8 +320,7 @@ export class ModelService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Failed to start model training')
+      throw await apiError(response, 'Failed to start model training')
     }
 
     return response.json()
@@ -341,7 +341,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch training mode recommendation')
+      throw await apiError(response, 'Failed to fetch training mode recommendation')
     }
 
     return response.json()
@@ -362,7 +362,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch models')
+      throw await apiError(response, 'Failed to fetch models')
     }
 
     return response.json()
@@ -380,7 +380,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to fetch model details')
+      throw await apiError(response, 'Failed to fetch model details')
     }
 
     return response.json()
@@ -407,8 +407,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch training status')
+      throw await apiError(response, 'Failed to fetch training status')
     }
 
     return response.json()
@@ -439,8 +438,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch training jobs')
+      throw await apiError(response, 'Failed to fetch training jobs')
     }
 
     return response.json()
@@ -473,8 +471,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch training logs')
+      throw await apiError(response, 'Failed to fetch training logs')
     }
 
     return response.json()
@@ -502,8 +499,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to cancel training')
+      throw await apiError(response, 'Failed to cancel training')
     }
 
     return response.json()
@@ -531,8 +527,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch model evaluation')
+      throw await apiError(response, 'Failed to fetch model evaluation')
     }
 
     return response.json()
@@ -560,8 +555,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch error analysis')
+      throw await apiError(response, 'Failed to fetch error analysis')
     }
 
     return response.json()
@@ -588,8 +582,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to compare models')
+      throw await apiError(response, 'Failed to compare models')
     }
 
     return response.json()
@@ -613,8 +606,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch model versions')
+      throw await apiError(response, 'Failed to fetch model versions')
     }
 
     return response.json()
@@ -639,8 +631,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to promote model version')
+      throw await apiError(response, 'Failed to promote model version')
     }
 
     return response.json()
@@ -665,8 +656,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch SHAP summary')
+      throw await apiError(response, 'Failed to fetch SHAP summary')
     }
 
     return response.json()
@@ -687,8 +677,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Prediction failed')
+      throw await apiError(response, 'Prediction failed')
     }
 
     return response.json()
@@ -708,8 +697,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to load model features')
+      throw await apiError(response, 'Failed to load model features')
     }
 
     return response.json()
@@ -724,8 +712,7 @@ export class ModelService {
       headers: await this.getHeaders(token)
     })
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to load SDK info')
+      throw await apiError(response, 'Failed to load SDK info')
     }
     return response.json()
   }
@@ -741,8 +728,7 @@ export class ModelService {
       { headers: await this.getHeaders(token) }
     )
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to load SDK')
+      throw await apiError(response, 'Failed to load SDK')
     }
     return response.text()
   }
@@ -757,7 +743,7 @@ export class ModelService {
       { headers: await this.getHeaders(token) }
     )
     if (!response.ok) {
-      throw new Error('Failed to load Postman collection')
+      throw await apiError(response, 'Failed to load Postman collection')
     }
     return response.json()
   }
@@ -790,8 +776,7 @@ export class ModelService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to create batch job')
+      throw await apiError(response, 'Failed to create batch job')
     }
 
     return response.json()
@@ -808,8 +793,7 @@ export class ModelService {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch batch job')
+      throw await apiError(response, 'Failed to fetch batch job')
     }
 
     return response.json()
@@ -829,8 +813,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to fetch batch progress')
+      throw await apiError(response, 'Failed to fetch batch progress')
     }
 
     return response.json()
@@ -850,8 +833,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to download batch results')
+      throw await apiError(response, 'Failed to download batch results')
     }
 
     return response.blob()
@@ -871,8 +853,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.detail || 'Failed to cancel batch job')
+      throw await apiError(response, 'Failed to cancel batch job')
     }
   }
 
@@ -889,7 +870,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to delete model')
+      throw await apiError(response, 'Failed to delete model')
     }
   }
 
@@ -906,7 +887,7 @@ export class ModelService {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to deactivate model')
+      throw await apiError(response, 'Failed to deactivate model')
     }
   }
 }

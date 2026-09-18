@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
+import { apiError, QuotaExceededError } from '@/lib/services/apiError'
 import type { ChunkedUploadResponse } from '@/lib/types/api'
 
 interface ChunkUploadProgress {
@@ -67,7 +68,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to initialize chunked upload: ${response.statusText}`)
+      throw await apiError(response, `Failed to initialize chunked upload: ${response.statusText}`)
     }
 
     const data = await response.json()
@@ -94,12 +95,18 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       })
 
       if (!response.ok) {
-        throw new Error(`Chunk ${chunkNumber} upload failed: ${response.statusText}`)
+        throw await apiError(response, `Chunk ${chunkNumber} upload failed: ${response.statusText}`)
       }
 
       const result = await response.json()
       return result.complete || false
     } catch (error) {
+      // A quota 402 is not transient — retrying it burns backoff time for a
+      // request that will never succeed, and would keep re-showing (then
+      // re-hiding) the plan-limit dialog on every attempt.
+      if (error instanceof QuotaExceededError) {
+        throw error
+      }
       if (retryCount < maxRetries) {
         console.warn(`Retrying chunk ${chunkNumber}, attempt ${retryCount + 1}`)
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Exponential backoff
@@ -120,7 +127,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to complete upload: ${response.statusText}`)
+      throw await apiError(response, `Failed to complete upload: ${response.statusText}`)
     }
 
     return (await response.json()) as ChunkedUploadResponse
@@ -231,7 +238,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to get resume info: ${response.statusText}`)
+        throw await apiError(response, `Failed to get resume info: ${response.statusText}`)
       }
 
       const resumeInfo = await response.json()

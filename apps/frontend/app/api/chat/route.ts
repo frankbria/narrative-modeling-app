@@ -69,11 +69,18 @@ export async function POST(request: Request) {
       headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
+    if (upstream.status === 402) {
+      // Pass the backend's quota_exceeded detail through unchanged (#767 AC2) —
+      // it carries metric/limit/used/resets_at/upgrade_available, which apiError()
+      // on the AIChat.tsx side needs to open the plan-limit dialog with real numbers.
+      return NextResponse.json(
+        await upstream.json().catch(() => ({ detail: 'AI call limit reached for your plan' })),
+        { status: 402 }
+      )
+    }
     if (!upstream.ok) {
-      // 402 = plan limit reached; the status passes through so the UI can say so.
-      const error = upstream.status === 402 ? 'AI call limit reached for your plan' : 'AI service unavailable'
       // `detail` is the field AIChat.tsx reads for the message it shows.
-      return NextResponse.json({ error, detail: error }, { status: upstream.status })
+      return NextResponse.json({ error: 'AI service unavailable', detail: 'AI service unavailable' }, { status: upstream.status })
     }
     const { reply } = await upstream.json()
     return NextResponse.json({ reply })

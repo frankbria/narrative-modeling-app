@@ -5,6 +5,7 @@ import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
 import { useSession } from 'next-auth/react'
 import { Send, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import { apiError, QuotaExceededError } from '@/lib/services/apiError'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -108,8 +109,7 @@ export function AIChat() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to get response from AI');
+        throw await apiError(response, 'Failed to get response from AI');
       }
 
       const data = await response.json()
@@ -118,8 +118,13 @@ export function AIChat() {
       console.error('Error getting AI response:', error)
       
       let errorMessage = 'I apologize, but I encountered an error processing your request.';
-      
-      if (error instanceof Error) {
+
+      if (error instanceof QuotaExceededError) {
+        // The backend's own sentence (e.g. "You have used all 10 uploads
+        // included in the free plan this month.") is more useful here than a
+        // generic apology — planLimit.show() has already opened the dialog too.
+        errorMessage = error.message;
+      } else if (error instanceof Error) {
         if (error.message.includes('OpenAI')) {
           errorMessage = 'I apologize, but there was an issue connecting to the AI service. This might be due to rate limiting or a temporary service disruption. Please try again in a few minutes.';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
