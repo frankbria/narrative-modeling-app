@@ -3,8 +3,6 @@ Data utilities for transformation service
 """
 import asyncio
 import logging
-import os
-import tempfile
 
 import pandas as pd
 
@@ -35,39 +33,25 @@ async def get_dataframe_from_s3(s3_url: str, nrows: int | None = None) -> pd.Dat
 
 
 async def upload_dataframe_to_s3(df: pd.DataFrame, s3_key: str) -> str:
-    """
-    Upload a pandas DataFrame to S3
-    
-    Args:
-        df: DataFrame to upload
-        s3_key: S3 key for the file
-    
-    Returns:
-        S3 URL of uploaded file
+    """Upload a DataFrame to S3 as parquet and return the object's URL."""
+    return await upload_parquet_bytes(df.to_parquet(index=False), s3_key)
+
+
+async def upload_parquet_bytes(content: bytes, s3_key: str) -> str:
+    """Upload already-encoded parquet bytes and return the object's URL.
+
+    For a caller that also needs the stored size (#768's storage ceiling), so the
+    frame is encoded once rather than once to upload and again to measure.
     """
     try:
-        # Save dataframe to temporary file
-        with tempfile.NamedTemporaryFile(suffix='.parquet', delete=False) as tmp_file:
-            df.to_parquet(tmp_file.name, index=False)
-            temp_path = tmp_file.name
-        
-        # Upload to S3
-        with open(temp_path, 'rb') as file:
-            file_content = file.read()
-            success, s3_url = upload_file_to_s3(
-                file_content=file_content,
-                s3_filename=s3_key,
-                content_type='application/octet-stream'
-            )
-
-        # Clean up temp file
-        os.unlink(temp_path)
-
+        success, s3_url = upload_file_to_s3(
+            file_content=content,
+            s3_filename=s3_key,
+            content_type='application/octet-stream'
+        )
         if not success or s3_url is None:
             raise Exception("Failed to upload dataframe to S3")
-
         return s3_url
-        
     except Exception as e:
         logger.error(f"Error uploading dataframe to S3: {str(e)}")
         raise

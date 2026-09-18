@@ -170,13 +170,22 @@ class TestEveryModelCallIsBehindTheCeiling:
                 and str(dec.args[0].value).startswith("openai")
             )
 
-        def calls_the_model(node: ast.AST) -> bool:
+        def own_nodes(fn: ast.AST):
+            """The function's body, not descending into nested defs (checked on their own)."""
+            stack = list(ast.iter_child_nodes(fn))
+            while stack:
+                node = stack.pop()
+                yield node
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    stack.extend(ast.iter_child_nodes(node))
+
+        def calls_the_model(fn: ast.AST) -> bool:
             return any(
                 isinstance(n, ast.Attribute)
                 and n.attr == "create"
                 and isinstance(n.value, ast.Attribute)
                 and n.value.attr == "completions"
-                for n in ast.walk(node)
+                for n in own_nodes(fn)
             )
 
         unguarded = []
@@ -187,10 +196,7 @@ class TestEveryModelCallIsBehindTheCeiling:
                 for child in ast.iter_child_nodes(node):
                     if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         inner = guarded or any(map(is_model_breaker, child.decorator_list))
-                        if not inner and calls_the_model(child) and not any(
-                            isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef))
-                            for c in ast.walk(child) if c is not child
-                        ):
+                        if not inner and calls_the_model(child):
                             unguarded.append(f"{path.relative_to(app_dir)}::{child.name}")
                         visit(child, inner)
                     else:

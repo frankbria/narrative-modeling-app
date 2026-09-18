@@ -356,11 +356,11 @@ class TestTheServiceActuallySetsCommitted:
         async def _load(_url):
             return pd.DataFrame({"amount": [1, 2, 3]})
 
-        async def _upload(_df, key):
+        async def _upload(_content, key):
             return f"s3://bucket/{key}"
 
         monkeypatch.setattr(fbs, "get_dataframe_from_s3", _load)
-        monkeypatch.setattr(fbs, "upload_dataframe_to_s3", _upload)
+        monkeypatch.setattr(fbs, "upload_parquet_bytes", _upload)
 
         result = await FeatureBuilderService().apply_feature_to_dataset(
             feature_id="feat-commit", user_id=user_id, create_new_dataset=True
