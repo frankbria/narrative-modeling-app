@@ -1455,3 +1455,11 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A mutation edit and its revert inside the same second leave a stale `.pyc`.** Same mtime (1s resolution) and same byte length (30→31) means CPython reuses the bytecode compiled with the mutant; the demo printed a $5.13 worst case from a file that read 30. `touch` the file (or delete `__pycache__/<mod>*.pyc`) after every inverse-edit revert before trusting a re-read.
 - **Never put `&&`-gated checks in front of a `;`-separated commit+push.** `ruff format --check` failed, the `&&` chain skipped mypy and pytest, and the `; git commit … ; git push` after it still ran — an unformatted, untested commit reached the PR. Gate the commit on the checks (`… && git commit`) or run the checks in a separate call and read the exit code first.
 - **opencode outage signature reconfirmed:** zero events in the raw stream for 10 min + a 60s trivial probe timing out = down. Kill by PID (not `pkill -f`), fall back to `codex review --base main` (needs a commit on the branch first).
+
+## #475 (2026-09-17) — pricing page
+
+- **A heading-scoped parse is still order-dependent.** "Stop at the next `###`" did not remove the reliance on which table came first inside the section; the reviewer bot caught what my own fix claimed to fix. Anchor a table parse on its header row and pin it with a reordered-input test.
+- **`pkill -f <pattern>` killed the tool shell again** (exit 144) even though the memory said to anchor it. Stop demo servers by port: `fuser -k 8000/tcp 3010/tcp`.
+- **Subagent completion reports did not arrive this session** (explore, review, demo agents all went idle with no notification). Workaround that worked: SendMessage asking the agent to write its report to a scratchpad file, then read the file.
+- **opencode outage signature reconfirmed**: raw stream frozen at `prompt_submit` for >5 min and a trivial `PONG` probe timing out → go straight to `codex review --base main`.
+- Local browser demo of a page that fetches the backend needs `BACKEND_CORS_ORIGINS=http://localhost:3010` on the backend, or the preflight 400s and the page shows "Failed to load".
