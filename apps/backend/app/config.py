@@ -216,7 +216,7 @@ def signup_admits(email: str | None, mode: str, allowlist: set[str]) -> bool:
     """
     if mode == "open":
         return True
-    return bool(email) and email.strip().lower() in allowlist
+    return email is not None and email.strip().lower() in allowlist
 
 
 def is_admin_email(email: str | None, raw: str | None = None) -> bool:
@@ -227,7 +227,7 @@ def is_admin_email(email: str | None, raw: str | None = None) -> bool:
     is no role field.
     """
     allowlist = parse_invite_allowlist(os.getenv("ADMIN_EMAILS") if raw is None else raw)
-    return bool(email) and email.strip().lower() in allowlist
+    return email is not None and email.strip().lower() in allowlist
 
 
 def current_signup_mode() -> str:
