@@ -49,10 +49,13 @@ test.describe('plan-limit dialog (#767)', () => {
         const uploadButton = page.getByTestId('upload-button');
         await uploadButton.and(page.locator(':not([disabled])')).waitFor({ state: 'visible', timeout: 5000 });
         await uploadButton.click();
+        // On a 402 the inline error panel and the dialog appear together, so
+        // `.first()` keeps the union out of strict mode.
         await page
           .getByTestId('upload-status')
           .or(page.getByTestId('upload-error'))
           .or(dialog)
+          .first()
           .waitFor({ state: 'visible', timeout: 30000 });
         if (await dialog.isVisible()) break;
       }
