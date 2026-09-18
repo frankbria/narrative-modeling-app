@@ -754,3 +754,18 @@ def mock_user_data():
     }
     
     return mock
+
+
+@pytest.fixture
+def ai_ceiling_open():
+    """Admit every model call past the global daily AI ceiling (#768).
+
+    The ceiling lives in every ``openai*`` circuit breaker and its counter is a
+    Mongo row, so a unit test that drives a mocked OpenAI client without
+    ``setup_database`` would otherwise fail closed to the rule-based fallback.
+    Opt in explicitly; the ceiling itself is tested in test_billing/test_ai_ceiling.py.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.billing.ai_ceiling.admit", new=AsyncMock(return_value=True)):
+        yield

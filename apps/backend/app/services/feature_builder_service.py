@@ -5,6 +5,7 @@ This service handles CRUD operations for feature definitions and
 provides preview/validation functionality using safe expression evaluation.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -716,7 +717,8 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
                     num_columns=len(new_columns),
                     columns=new_columns,
                     data_schema=new_schema,
-                    file_size=None,  # Will be calculated by S3
+                    # What the storage ceiling counts (#768): the parquet just written.
+                    file_size=len(await asyncio.to_thread(df.to_parquet, index=False)),
                 )
                 dataset_committed = True
                 final_dataset_id = new_dataset_id

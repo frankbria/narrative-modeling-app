@@ -18,7 +18,7 @@ from app.services.dataset_summarization import (
     dataset_summarization_service,
 )
 from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
-from app.utils.circuit_breaker import AICeilingReached
+from app.utils.circuit_breaker import CircuitBreakerOpen
 
 router = APIRouter()
 
@@ -134,11 +134,12 @@ async def chat(
     """
     try:
         reply = await ai_chat_service.reply(request)
-    except AICeilingReached:
-        # Chat has no rule-based answer to fall back to; the 503 is refunded.
+    except CircuitBreakerOpen:
+        # Open breaker or the #768 daily ceiling: chat has no rule-based answer to
+        # fall back to, so it is a 503, which the refund middleware hands back.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI chat has reached today's capacity. Please try again after 00:00 UTC.",
+            detail="AI chat is temporarily unavailable. Please try again later.",
         ) from None
     if reply is None:
         raise HTTPException(

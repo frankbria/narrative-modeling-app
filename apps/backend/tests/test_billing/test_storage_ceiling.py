@@ -101,3 +101,32 @@ async def test_secure_upload_is_refused_before_anything_is_stored(
     put.assert_not_called()
     assert await UserData.find(UserData.user_id == TEST_USER).count() == 1
     assert await metering.usage_for(TEST_USER, "uploads") == 0
+
+
+async def test_an_accepted_upload_records_its_size(async_authorized_client, setup_database):
+    """The ceiling can only count what the writers record: a successful upload
+    stores `file_size`, so the next upload sees it."""
+    body = b"a,b\n1,2\n3,4\n"
+    with patch(
+        "app.api.routes.secure_upload.upload_file_to_s3",
+        return_value=(True, f"s3://bucket/datasets/{TEST_USER}/x.csv"),
+    ), patch("app.utils.ai_summary.generate_dataset_summary"):
+        response = await async_authorized_client.post(
+            "/api/v1/upload/secure", files={"file": ("d.csv", body, "text/csv")}
+        )
+    assert response.status_code == 200, response.text
+    assert await storage.stored_bytes(TEST_USER) == len(body)
+
+
+async def test_the_datasets_upload_twin_records_its_size(setup_database):
+    """`/datasets/upload` writes DatasetMetadata and a UserData twin; the twin is
+    what the ceiling sums, so it must carry the size."""
+    from app.services.dataset_service import DatasetService
+
+    await DatasetService().create_dataset(
+        user_id=TEST_USER, dataset_id="ds-size", filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=f"datasets/{TEST_USER}/d.csv",
+        s3_url=f"s3://bucket/datasets/{TEST_USER}/d.csv", file_size=4242,
+        num_rows=2, num_columns=2, columns=["a", "b"], data_schema=[],
+    )
+    assert await storage.stored_bytes(TEST_USER) == 4242

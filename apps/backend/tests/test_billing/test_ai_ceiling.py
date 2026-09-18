@@ -276,3 +276,19 @@ class TestReleaseGaps:
             )
         assert response.status_code == 503  # body sanitised like every 5xx (#269)
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+    async def test_chat_answers_503_and_refunds_when_the_breaker_is_open(
+        self, async_authorized_client, setup_database
+    ):
+        """A genuinely open breaker (upstream failures, not the ceiling) takes the
+        same refunded 503, rather than escaping as a 500."""
+        from app.services.ai_chat import ai_chat_service
+
+        with patch.object(
+            ai_chat_service, "reply", new=AsyncMock(side_effect=CircuitBreakerOpen("openai", 60))
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/ai/chat", json={"message": "hi", "context": "", "history": []}
+            )
+        assert response.status_code == 503
+        assert await metering.usage_for(TEST_USER, "ai_calls") == 0

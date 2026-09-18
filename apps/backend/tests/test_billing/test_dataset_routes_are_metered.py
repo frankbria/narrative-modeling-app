@@ -232,7 +232,7 @@ class TestEveryUploadEnforcesTheStorageCeiling:
 
         routes = _post_routes()
         missing = []
-        for path in _MUST_BE_METERED:
+        for path in _MUST_BE_METERED | _CONDITIONALLY_METERED:
             if path in self._VIA:
                 module, qualname = self._VIA[path]
                 target = importlib.import_module(module)
@@ -368,6 +368,14 @@ class TestTheServiceActuallySetsCommitted:
 
         assert result["success"] is True, result.get("error")
         assert result["dataset_committed"] is True
+
+    async def test_the_derived_dataset_records_its_size(self, setup_database, monkeypatch):
+        """#768: the storage ceiling sums `UserData.file_size`; a derived dataset
+        that recorded None would be free storage forever."""
+        from app.billing.storage import stored_bytes
+
+        await self.test_a_real_create_reports_dataset_committed(setup_database, monkeypatch)
+        assert await stored_bytes("committed-user") > 0
 
 
 class TestBatchRetryMetersTheRightMetric:
