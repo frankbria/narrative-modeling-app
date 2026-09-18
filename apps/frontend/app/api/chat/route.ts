@@ -73,10 +73,12 @@ export async function POST(request: Request) {
       // Pass the backend's quota_exceeded detail through unchanged (#767 AC2) —
       // it carries metric/limit/used/resets_at/upgrade_available, which apiError()
       // on the AIChat.tsx side needs to open the plan-limit dialog with real numbers.
-      return NextResponse.json(
-        await upstream.json().catch(() => ({ detail: 'AI call limit reached for your plan' })),
-        { status: 402 }
-      )
+      // A body that fails to parse still gets the quota shape, so the client's
+      // parser opens the dialog rather than falling through to a generic apology.
+      const fallback = {
+        detail: { error: 'quota_exceeded', metric: 'ai_calls', message: 'AI call limit reached for your plan' },
+      }
+      return NextResponse.json(await upstream.json().catch(() => fallback), { status: 402 })
     }
     if (!upstream.ok) {
       // `detail` is the field AIChat.tsx reads for the message it shows.

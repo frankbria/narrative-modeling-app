@@ -97,7 +97,9 @@ describe('POST /api/chat', () => {
 
     const res = await POST(chatRequest())
     expect(res.status).toBe(402)
-    expect(await res.json()).toEqual({ detail: 'AI call limit reached for your plan' })
+    expect(await res.json()).toEqual({
+      detail: { error: 'quota_exceeded', metric: 'ai_calls', message: 'AI call limit reached for your plan' },
+    })
   })
 
   it('keeps a generic body for every other upstream failure', async () => {
