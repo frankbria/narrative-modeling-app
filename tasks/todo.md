@@ -9,7 +9,7 @@ Branch: feat/768-abuse-cost-backstops. Plan self-authored (none on the issue).
    - frontend `lib/invite-allowlist.ts`: `resolveSignupMode(env, nodeEnv)`; `isSignInAllowed` uses it; auth.ts logs when open.
    - compose: `SIGNUP_MODE: ${SIGNUP_MODE:-}` on both services (optional until provisioned — #457 rule; blank = invite in staging, i.e. today's behaviour). Operator follow-up flips it to `:?`.
 2. AC2 global AI ceiling
-   - `app/billing/ai_ceiling.py`: `AI_CALLS_DAILY_CEILING` (_env_positive_int, default 1000 = $120/day at ADR-003's $0.12 gpt-4 worst case), `admit()` = conditional $inc on UsageRecord(user_id="__global__", period_key=YYYY-MM-DD, metric="ai_calls"); fails closed; on denial ERROR log + Prometheus counter.
+   - `app/billing/ai_ceiling.py`: `AI_CALLS_DAILY_CEILING` (_env_positive_int, default 500 = $60/day at ADR-003's $0.12 gpt-4 worst case), `admit()` = conditional $inc on UsageRecord(user_id="__global__", period_key=YYYY-MM-DD, metric="ai_calls"); fails closed; on denial ERROR log + Prometheus counter.
    - choke point: `with_circuit_breaker` for services named `openai*` checks the ceiling once per logical call (outside tenacity retries) and raises `AICeilingReached(CircuitBreakerOpen)` → every caller's existing fallback.
    - fix release gaps: feature `/suggest` ai_used set only after a call ran; `/ai/summarize` releases on fallback.
 3. AC3 nginx `limit_req_zone` on `/api/auth/` + test (RATE_LIMIT_TRUST_PROXY already in compose, #483).
@@ -20,10 +20,10 @@ Branch: feat/768-abuse-cost-backstops. Plan self-authored (none on the issue).
 8. Docs: CLAUDE.md conventions, .env examples.
 
 ## Acceptance criteria
-- [ ] AC1 explicit signup mode, fail closed in prod, tests both halves
-- [ ] AC2 global AI ceiling → fallback + release + alert
-- [ ] AC3 auth edge rate limit (repo; deploy via #594)
-- [ ] AC4 account-creation count + alert threshold
-- [ ] AC5 FREE storage ceiling
-- [ ] AC6 /metrics admin-only, test pins it
-- [ ] AC7 ADR-003 aggregate exposure line
+- [x] AC1 explicit signup mode, fail closed in prod, tests both halves
+- [x] AC2 global AI ceiling → fallback + release + alert
+- [x] AC3 auth edge rate limit (repo; deploy via #594)
+- [x] AC4 account-creation count + alert threshold
+- [x] AC5 FREE storage ceiling
+- [x] AC6 /metrics admin-only, test pins it
+- [x] AC7 ADR-003 aggregate exposure line

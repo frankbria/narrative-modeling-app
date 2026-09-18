@@ -4,6 +4,7 @@ Onboarding service for managing user tutorial and guidance experience
 from datetime import UTC, datetime
 from typing import Any
 
+from app.billing.storage import enforce_storage_ceiling
 from app.models.onboarding import OnboardingProgress
 from app.models.user_data import UserData
 from app.schemas.onboarding import (
@@ -371,8 +372,6 @@ class OnboardingService:
 
         s3_key = dataset_s3_key(user_id, f"{dataset_id}.csv")
         csv_bytes = df.to_csv(index=False).encode("utf-8")
-        from app.billing.storage import enforce_storage_ceiling
-
         await enforce_storage_ceiling(user_id, len(csv_bytes))
         success, s3_url = upload_file_to_s3(csv_bytes, s3_key, content_type="text/csv")
         if not success:

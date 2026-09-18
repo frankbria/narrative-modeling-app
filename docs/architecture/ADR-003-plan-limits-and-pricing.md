@@ -68,7 +68,7 @@ usage needs it — it bounds the bill, not any one tenant.
 **Storage is capped on FREE.** 10 uploads of up to 100 MB each, kept forever, is 1 GB
 per free account with no reclamation. FREE holds at most **500 MB** of stored datasets
 plus model artifacts (`PlanLimits.storage_bytes`, `PLAN_FREE_STORAGE_BYTES`); an upload
-that would cross it is refused with a 402 naming `storage_bytes`. At $0.023/GB-month
+that would cross it is refused with a 402 naming `storage_mb` (sizes in MB, the unit the plan-limit dialog prints). At $0.023/GB-month
 that is ≈ $0.01 per free account-month — the cap is about growth without bound, not
 this month's bill. PRO and ENTERPRISE are uncapped; #529's lifecycle rules handle
 reclamation.
