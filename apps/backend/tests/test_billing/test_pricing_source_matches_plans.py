@@ -25,7 +25,15 @@ ADR = REPO / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
 def _adr_prices() -> dict[PlanTier, int | None]:
     """The price cell of the ADR-003 decision table: `$0` → 0, `$49 / month` → 49,
     `contact us` → None (sales-led, ADR-003 AC3)."""
-    decision = ADR.read_text().split("## Decision", 1)[1].split("\n## ", 1)[0]
+    # The decision table sits directly under "## Decision"; the worst-case cost
+    # table under "### The reasoning" also starts its rows with the tier names,
+    # so stop at the first subsection as well as at the next section.
+    decision = (
+        ADR.read_text()
+        .split("## Decision", 1)[1]
+        .split("\n## ", 1)[0]
+        .split("\n### ", 1)[0]
+    )
     out: dict[PlanTier, int | None] = {}
     for line in decision.splitlines():
         m = re.match(r"^\|\s*(FREE|PRO|ENTERPRISE)\s*\|\s*([^|]*)\|", line)
