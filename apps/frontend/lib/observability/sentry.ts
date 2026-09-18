@@ -16,6 +16,9 @@ export function scrubSentryEvent<T extends Event>(event: T): T {
     const url = stripQuery(event.request.url) as string | undefined
     event.request = url ? { url } : {}
   }
+  // captureRequestError records the raw request path, query included.
+  const nextjs = event.contexts?.nextjs
+  if (nextjs) nextjs.request_path = stripQuery(nextjs.request_path)
   // Console lines can stringify data; fetch/navigation crumbs carry URLs.
   event.breadcrumbs = event.breadcrumbs
     ?.filter((b) => b.category !== 'console')
@@ -35,7 +38,8 @@ export function sentryOptions(dsn: string | undefined) {
   if (!trimmed) return undefined
   return {
     dsn: trimmed,
-    environment: process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV,
+    // Build-time like the DSN, so the browser and server halves agree.
+    environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV,
     sendDefaultPii: false,
     // ponytail: errors only; add tracing when there's a perf question to answer.
     tracesSampleRate: 0,
