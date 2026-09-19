@@ -660,6 +660,9 @@ jobs:
           uvx pip-audit -r requirements-audit.txt \
             --ignore-vuln PYSEC-2026-1325
       - name: pip-audit (mcp)
+        # Runs even when the backend audit failed: a red backend step used to
+        # skip this one, hiding an mcp-only CVE (anyio, #784).
+        if: ${{ !cancelled() }}
         working-directory: apps/mcp
         # A second, independent lockfile. It pinned an advisory-affected
         # cryptography (46.0.3, PYSEC-2026-3552) for as long as the backend did,
@@ -669,11 +672,13 @@ jobs:
             --format requirements-txt -o requirements-audit.txt
           uvx pip-audit -r requirements-audit.txt
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ !cancelled() }}
         with:
           node-version: 22
           cache: 'npm'
           cache-dependency-path: apps/frontend/package-lock.json
       - name: npm audit (frontend)
+        if: ${{ !cancelled() }}
         working-directory: apps/frontend
         run: npm audit --audit-level=high
 
