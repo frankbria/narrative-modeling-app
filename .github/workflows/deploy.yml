@@ -142,6 +142,24 @@ jobs:
              docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
              docker compose -f docker-compose.staging.yml --env-file .env.staging ps"
 
+      # The edge config used to be pasted onto the box by hand (#594), so the live
+      # file drifted from the repo for two months and everything the repo file
+      # thinks it owns — the #273 request-id map, the security headers, #768's
+      # auth rate limit — was in git and had never run. The script renders
+      # nginx-staging.conf from .env.staging and installs it; it is a NO-OP that
+      # exits 0 until NGINX_SERVER_NAME is provisioned there, and a failed
+      # `nginx -t` restores the previous file before failing the step.
+      # Runs before the health check so a broken edge fails the deploy.
+      - name: Apply nginx edge config
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/apply_nginx_conf.sh
+
       - name: Health check
         if: steps.preflight.outputs.configured == 'true'
         env:

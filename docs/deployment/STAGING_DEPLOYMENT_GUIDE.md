@@ -183,42 +183,49 @@ at `STAGING_DEPLOY_PATH` with `origin` pointing at this repo (Step 5, Option A).
 
 ## Step 6: Configure Nginx Reverse Proxy
 
+The edge config is **deployed, not pasted** (#594). `nginx-staging.conf` is a template;
+`scripts/deploy/apply_nginx_conf.sh` renders it and installs it, and `deploy.yml` runs
+that script on the box on every staging deploy. Two variables in `.env.staging` drive it:
+
 ```bash
-# SSH as root
-ssh root@dev.briaanalytics.com
-
-# Copy nginx configuration
-nano /etc/nginx/sites-available/narrative-staging.conf
-# Paste contents from nginx-staging.conf
-# Replace yourdomain.com with actual domain
-
-# Test nginx configuration
-nginx -t
-
-# If test passes, enable the site
-ln -s /etc/nginx/sites-available/narrative-staging.conf /etc/nginx/sites-enabled/
-
-# Reload nginx
-systemctl reload nginx
+# On the box, in .env.staging (the only manual step):
+NGINX_SERVER_NAME=dev.briaanalytics.com
+# Optional; defaults to /etc/letsencrypt/live/$NGINX_SERVER_NAME, which is what
+# certbot creates. Set it only if the cert lives somewhere else.
+# NGINX_CERT_DIR=/etc/letsencrypt/live/dev.briaanalytics.com
 ```
+
+**Until `NGINX_SERVER_NAME` is set, the script is a no-op that exits 0** and prints a
+warning — deploys stay green and the live file is not touched. That is the safe default
+for a shared VPS: nothing is written to `/etc/nginx` until someone provisions the value.
+
+```bash
+# Dry run / drift check — diffs the live file against the rendered repo config,
+# exit 1 if they differ. Changes nothing.
+cd /opt/narrative-modeling-app/staging
+bash scripts/deploy/apply_nginx_conf.sh --check
+
+# Apply by hand (the deploy does this for you)
+bash scripts/deploy/apply_nginx_conf.sh
+```
+
+What the apply does, in order: render → compare with live (identical ⇒ no write, no
+reload) → **back the live file up to `<target>.bak-<utc>`** → install → `nginx -t` → on
+failure **restore the backup** and exit non-zero → symlink into `sites-enabled` if it is
+not there → `systemctl reload nginx`. Only this site's file is touched.
+
+> **First run after #594: diff the backup.** The repo file becomes authoritative, so
+> anything that existed only in the hand-maintained live copy is replaced. The backup is
+> written next to the target — `diff <target>.bak-<utc> <target>` — and anything worth
+> keeping belongs in `nginx-staging.conf`, not back on the box.
 
 > **The Stripe webhook needs its own `location`.** The backend mounts
 > `POST /webhooks/stripe/webhook` *outside* `/api/v1` (so the rate limiter cannot 429
 > Stripe's small IP pool, #367), which means a `location /api/` block does not cover
 > it — it falls through to the frontend and the event is lost silently. `#456`.
-> Copy the `location /webhooks/stripe/` block across too, and keep its
-> `client_max_body_size` cap: the endpoint is unauthenticated and the backend reads the
-> whole body before verifying the signature.
-
-> **This step is a manual copy-paste, so the live config drifts — and nothing detects
-> it.** `nginx-staging.conf` is not deployed by `deploy.yml` or anything else, and the
-> repo file carries placeholder `yourdomain.com` names that cannot be applied verbatim,
-> so the live file is edited by hand and the two diverge. **Editing the repo file alone
-> changes nothing in production.** Diff the box against the repo before assuming an edge
-> fix has shipped, and apply it in both places. Tracked in
-> [#594](https://github.com/frankbria/narrative-modeling-app/issues/594), which has the
-> current state of the divergence — this note stays true regardless of what that state
-> happens to be today.
+> `nginx-staging.conf` carries that block and its `client_max_body_size` cap: the
+> endpoint is unauthenticated and the backend reads the whole body before verifying the
+> signature. `tests/test_security/test_nginx_webhook_route.py` pins it.
 
 ---
 
