@@ -33,6 +33,10 @@ SUBST_VARS=(NGINX_SERVER_NAME NGINX_CERT_DIR)
 # Read one variable out of an env file without sourcing it: .env.staging is full of
 # secrets with shell-significant characters, and sourcing it would execute them.
 # Last assignment wins (that is what a later duplicate line means), quotes stripped.
+# A trailing `# comment` is NOT stripped, deliberately: the same file is read by
+# `docker compose --env-file`, which does not support inline comments either, so
+# stripping here would make the two halves disagree about one file. Such a value
+# fails `nginx -t` and rolls back; the deploy guide says to keep comments on their own line.
 env_get() {
   local var="$1" file="$2" value
   [ -f "$file" ] || return 0

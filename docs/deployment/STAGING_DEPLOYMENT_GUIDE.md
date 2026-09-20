@@ -199,6 +199,12 @@ NGINX_SERVER_NAME=dev.briaanalytics.com
 warning — deploys stay green and the live file is not touched. That is the safe default
 for a shared VPS: nothing is written to `/etc/nginx` until someone provisions the value.
 
+> **No inline comments in `.env.staging`.** `VAR=value  # note` makes the comment part
+> of the value — for *every* variable in the file, not just these two, because
+> `docker compose --env-file` does not support them either. Put comments on their own
+> line. Here the consequence is a malformed `server_name` that fails `nginx -t` and
+> rolls back, which reads like an unrelated failure.
+
 ```bash
 # Dry run / drift check — diffs the live file against the rendered repo config,
 # exit 1 if they differ. Changes nothing.
