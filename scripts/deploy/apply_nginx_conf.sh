@@ -72,6 +72,8 @@ main() {
   local SRC="${NGINX_CONF_SRC:-nginx-staging.conf}"
   local TARGET="${NGINX_TARGET:-/etc/nginx/sites-available/narrative-staging.conf}"
   local env_file="${NGINX_ENV_FILE:-.env.staging}"
+  # Deliberately unquoted at every use: these are commands with arguments
+  # (`nginx -t`, `systemctl reload nginx`) and must word-split. Do not "fix".
   local test_cmd="${NGINX_TEST_CMD:-nginx -t}"
   local reload_cmd="${NGINX_RELOAD_CMD:-systemctl reload nginx}"
   cd "${DEPLOY_PATH:-.}"
@@ -118,12 +120,24 @@ main() {
     return 1
   fi
 
+  local had_target=no; [ -f "$TARGET" ] && had_target=yes
   local backup=""
-  if [ -f "$TARGET" ]; then
-    backup="$TARGET.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  # Only when the CONTENT changes: getting here with identical content means we are
+  # just re-linking a disabled site, and a backup of a byte-identical file is noise.
+  if [ "$had_target" = yes ] && ! cmp -s "$rendered" "$TARGET"; then
+    # The stamp is second-granular, so two applies in the same second would reuse
+    # one name and the second would overwrite the first backup it just took.
+    local stamp n=1
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    backup="$TARGET.bak-$stamp"
+    while [ -e "$backup" ]; do n=$((n + 1)); backup="$TARGET.bak-$stamp.$n"; done
     cp -p "$TARGET" "$backup"
     echo "apply_nginx_conf: live config backed up to $backup"
     diff -u "$backup" "$rendered" || true
+    # Keep the last few. Unbounded backups on a shared VPS is somebody's disk-full
+    # page, and the useful one is always the most recent.
+    # shellcheck disable=SC2012  # our own timestamped names, no odd characters
+    ls -1t "$TARGET".bak-* 2>/dev/null | tail -n +6 | while read -r old; do rm -f "$old"; done
   fi
 
   # Staged write + rename, not a straight `install` over the target: `install`
@@ -154,6 +168,12 @@ main() {
       cp -p "$backup" "$TARGET"
       echo "apply_nginx_conf: nginx -t FAILED — restored $backup${linked:+ and removed $linked}" >&2
       $test_cmd || echo "apply_nginx_conf: nginx -t still fails after restore; the box was already broken" >&2
+    elif [ "$had_target" = yes ]; then
+      # No backup because the content never changed (a re-link). The file on disk is
+      # already the prior state byte for byte, so removing it would destroy a good
+      # config over a failure it had no part in — branch on had_target, not on backup.
+      echo "apply_nginx_conf: nginx -t FAILED — left $TARGET as it was${linked:+ and removed $linked}" >&2
+      $test_cmd || echo "apply_nginx_conf: nginx -t still fails; the box was already broken" >&2
     else
       rm -f "$TARGET"
       echo "apply_nginx_conf: nginx -t FAILED — removed the newly written $TARGET${linked:+ and $linked}" >&2
@@ -248,6 +268,35 @@ self_check() {
   else
     check "current-but-disabled gets re-enabled" "still disabled" "re-enabled"
   fi
+
+  # Re-linking a site whose content is already current makes no backup (nothing
+  # changed to back up) and, if the test then fails, must LEAVE the good file alone
+  # rather than remove it as if it were newly written.
+  # Count backups with a glob, not `ls | grep` (shellcheck SC2010).
+  count_backups() { local f n=0; for f in "$tmp/nginx/sites-available/"*.bak-*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
+  local before
+  before=$(count_backups)
+  rm -f "$tmp/nginx/sites-enabled/narrative-staging.conf"
+  NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" \
+    NGINX_TEST_CMD=false main >/dev/null 2>&1 || true
+  check "re-link makes no backup" "$(count_backups)" "$before"
+  if [ -s "$tmp/nginx/sites-available/narrative-staging.conf" ]; then
+    check "failed re-link keeps the good config" "kept" "kept"
+  else
+    check "failed re-link keeps the good config" "deleted" "kept"
+  fi
+  NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" main >/dev/null
+
+  # Backups are pruned: eight content changes must not leave eight files behind.
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    # shellcheck disable=SC2016  # placeholder stays literal
+    printf 'server_name ${NGINX_SERVER_NAME};\n# rev %s\n' "$i" > "$tmp/src.conf"
+    NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" main >/dev/null
+  done
+  check "backups are pruned to 5" "$(count_backups)" "5"
+  # shellcheck disable=SC2016  # placeholders stay literal
+  printf 'server_name ${NGINX_SERVER_NAME};\nssl_certificate ${NGINX_CERT_DIR}/fullchain.pem;\nproxy_set_header X-Real-IP $remote_addr;\n' > "$tmp/src.conf"
 
   # sed metacharacters in an operator-supplied value render literally.
   printf 'NGINX_SERVER_NAME=amp.test\nNGINX_CERT_DIR=/certs/a&b\\c\n' > "$tmp/env"

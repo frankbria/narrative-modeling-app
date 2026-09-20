@@ -152,6 +152,10 @@ jobs:
       # Runs before the health check so a broken edge fails the deploy.
       - name: Apply nginx edge config
         if: steps.preflight.outputs.configured == 'true'
+        # Its own bound: a wedged `nginx -t` or `systemctl reload` on the box would
+        # otherwise hold the ssh session until the job's 20-minute timeout, and a
+        # job-level kill would skip the health check and the state dump with it.
+        timeout-minutes: 5
         env:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}

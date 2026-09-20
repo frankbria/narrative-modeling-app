@@ -58,7 +58,24 @@ class TestConfigIsParameterised:
 
 class TestSomethingAppliesIt:
     def test_the_deploy_workflow_runs_the_script(self):
-        assert "apply_nginx_conf.sh" in DEPLOY_WORKFLOW.read_text()
+        # The step must actually invoke it, not merely mention it in a comment.
+        text = DEPLOY_WORKFLOW.read_text()
+        step = re.search(
+            r"^      - name: Apply nginx edge config$(.*?)(?=^      - name: )",
+            text,
+            re.S | re.M,
+        )
+        assert step, "expected an `Apply nginx edge config` step in deploy.yml"
+        assert "apply_nginx_conf.sh" in step.group(1)
+
+    def test_the_apply_runs_before_the_health_check(self):
+        # Ordering is load-bearing: a broken edge must fail the deploy, and the
+        # health check probes through the app rather than the edge, so a later apply
+        # would report a green deploy over a config that never passed `nginx -t`.
+        text = DEPLOY_WORKFLOW.read_text()
+        assert text.index("- name: Apply nginx edge config") < text.index(
+            "- name: Health check"
+        )
 
     def test_script_self_check_passes(self):
         # The script's own assertions: rendering leaves nginx's `$variables` alone,
