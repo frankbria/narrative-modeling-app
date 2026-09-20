@@ -100,25 +100,35 @@ main() {
   fi
 
   install -m 0644 "$rendered" "$TARGET"
+
+  # Enable the site if it never was, BEFORE testing. nginx only reads what
+  # sites-enabled links to, so on a first enable a pre-symlink `nginx -t` passes
+  # without ever parsing this file — and the real failure would then surface after
+  # the link exists, leaving a broken symlink that fails every later reload on the
+  # box, this app's and its co-tenants'. One test, after enabling, covers both.
+  # enabled_dir is derived from TARGET, so the self-check's temp dir simply has none.
+  local linked=""
+  local enabled_dir="${TARGET%/sites-available/*}/sites-enabled"
+  local link
+  link="$enabled_dir/$(basename "$TARGET")"
+  if [ -d "$enabled_dir" ] && [ ! -e "$link" ]; then
+    ln -s "$TARGET" "$link"
+    linked="$link"
+    echo "apply_nginx_conf: symlinked into $enabled_dir"
+  fi
+
   if ! $test_cmd; then
+    # Undo in reverse order, so the box ends exactly where it started.
+    [ -n "$linked" ] && rm -f "$linked"
     if [ -n "$backup" ]; then
       cp -p "$backup" "$TARGET"
-      echo "apply_nginx_conf: nginx -t FAILED — restored $backup" >&2
+      echo "apply_nginx_conf: nginx -t FAILED — restored $backup${linked:+ and removed $linked}" >&2
       $test_cmd || echo "apply_nginx_conf: nginx -t still fails after restore; the box was already broken" >&2
     else
       rm -f "$TARGET"
-      echo "apply_nginx_conf: nginx -t FAILED — removed the newly written $TARGET" >&2
+      echo "apply_nginx_conf: nginx -t FAILED — removed the newly written $TARGET${linked:+ and $linked}" >&2
     fi
     return 1
-  fi
-
-  # Enable the site if it never was. Derived from TARGET so the self-check's temp
-  # dir simply has no sites-enabled and this is skipped.
-  local enabled_dir="${TARGET%/sites-available/*}/sites-enabled"
-  if [ -d "$enabled_dir" ] && [ ! -e "$enabled_dir/$(basename "$TARGET")" ]; then
-    ln -s "$TARGET" "$enabled_dir/$(basename "$TARGET")"
-    echo "apply_nginx_conf: symlinked into $enabled_dir"
-    $test_cmd
   fi
 
   $reload_cmd
@@ -165,6 +175,34 @@ self_check() {
   NGINX_TEST_CMD=false main >/dev/null 2>&1 || true
   check "failed nginx -t restores the backup" "$(cat "$tmp/live.conf")" "hand edited"
   if ls "$tmp"/live.conf.bak-* >/dev/null 2>&1; then check "a backup was kept" "kept" "kept"; else check "a backup was kept" "missing" "kept"; fi
+
+  # First enable with a failing `nginx -t`: the site was never in sites-enabled, so
+  # the config is new AND the symlink is new. Both must be gone afterwards — a
+  # surviving symlink to a bad config fails every later reload on the box,
+  # including other apps' deploys.
+  mkdir -p "$tmp/nginx/sites-available" "$tmp/nginx/sites-enabled"
+  NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" \
+    NGINX_TEST_CMD=false main >/dev/null 2>&1 || true
+  # -e alone is FALSE for a dangling symlink, which is exactly what a botched
+  # rollback leaves behind — so -L too, or this assertion is vacuous.
+  if [ -e "$tmp/nginx/sites-enabled/narrative-staging.conf" ] || [ -L "$tmp/nginx/sites-enabled/narrative-staging.conf" ]; then
+    check "failed first enable removes the symlink" "symlink survived" "removed"
+  else
+    check "failed first enable removes the symlink" "removed" "removed"
+  fi
+  if [ -e "$tmp/nginx/sites-available/narrative-staging.conf" ]; then
+    check "failed first enable removes the config" "config survived" "removed"
+  else
+    check "failed first enable removes the config" "removed" "removed"
+  fi
+
+  # The same first enable, succeeding: the symlink is made and survives.
+  NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" main >/dev/null
+  if [ -L "$tmp/nginx/sites-enabled/narrative-staging.conf" ]; then
+    check "successful first enable symlinks the site" "symlinked" "symlinked"
+  else
+    check "successful first enable symlinks the site" "missing" "symlinked"
+  fi
 
   # No hostname configured => the live file is left exactly as it is, exit 0. The
   # stubbed `nginx -t` passes here on purpose: an apply that wrongly proceeded
