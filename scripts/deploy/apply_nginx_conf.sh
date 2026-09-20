@@ -37,18 +37,30 @@ env_get() {
   local var="$1" file="$2" value
   [ -f "$file" ] || return 0
   value=$(sed -n "s/^[[:space:]]*${var}=//p" "$file" | tail -n 1)
+  # A trailing space, or a CR from a file edited on Windows, would otherwise land
+  # inside an nginx directive. `[[:space:]]` covers the CR, so one trim does both.
+  # Trim before stripping quotes so `X = "v" ` works.
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
   value="${value%\"}"; value="${value#\"}"
   value="${value%\'}"; value="${value#\'}"
   printf '%s' "$value"
 }
 
 render() {
-  local text
+  local text value
   text=$(cat "$SRC")
   local var
   for var in "${SUBST_VARS[@]}"; do
-    # Values are a hostname and a filesystem path, so `|` is a safe delimiter.
-    text=$(printf '%s' "$text" | sed "s|\${${var}}|${!var}|g")
+    # sed's REPLACEMENT text is not literal: `&` means the whole match and `\` escapes.
+    # These values come from a file an operator edits, so escape them rather than
+    # assume a hostname and a path are well behaved. Backslash first, or it doubles
+    # the escapes added after it. `|` is escaped because it is the delimiter.
+    value="${!var}"
+    value="${value//\\/\\\\}"
+    value="${value//&/\\&}"
+    value="${value//|/\\|}"
+    text=$(printf '%s' "$text" | sed "s|\${${var}}|${value}|g")
   done
   printf '%s\n' "$text"
 }
@@ -80,14 +92,29 @@ main() {
   trap "rm -f '$rendered'" RETURN
   render > "$rendered"
 
-  if [ -f "$TARGET" ] && cmp -s "$rendered" "$TARGET"; then
+  # enabled_dir may legitimately not exist (a box that includes sites-available
+  # directly, and the self-check's temp dir); then "enabled" is not a thing to check.
+  local enabled_dir="${TARGET%/sites-available/*}/sites-enabled"
+  local link
+  link="$enabled_dir/$(basename "$TARGET")"
+  local enabled=yes
+  if [ -d "$enabled_dir" ] && [ ! -e "$link" ] && [ ! -L "$link" ]; then enabled=no; fi
+
+  # "No change" must mean the box is in the right STATE, not just that the bytes
+  # match: a site whose file is current but is not linked into sites-enabled is not
+  # serving this config, and a content-only comparison would no-op forever.
+  if [ -f "$TARGET" ] && cmp -s "$rendered" "$TARGET" && [ "$enabled" = yes ]; then
     echo "apply_nginx_conf: $TARGET already matches the repo config — no change."
     return 0
   fi
 
   if [ "$mode" = "check" ]; then
-    echo "apply_nginx_conf: DRIFT — $TARGET differs from the rendered repo config:"
-    diff -u "$TARGET" "$rendered" || true
+    if [ -f "$TARGET" ] && cmp -s "$rendered" "$TARGET" ; then
+      echo "apply_nginx_conf: DRIFT — $TARGET matches the repo config but is NOT enabled in $enabled_dir."
+    else
+      echo "apply_nginx_conf: DRIFT — $TARGET differs from the rendered repo config:"
+      diff -u "$TARGET" "$rendered" || true
+    fi
     return 1
   fi
 
@@ -99,19 +126,22 @@ main() {
     diff -u "$backup" "$rendered" || true
   fi
 
-  install -m 0644 "$rendered" "$TARGET"
+  # Staged write + rename, not a straight `install` over the target: `install`
+  # truncates in place, so an ssh session cut between the write and `nginx -t`
+  # leaves a PARTIAL config on disk that nobody reloads — fine until an unrelated
+  # certbot or logrotate reload hits it and takes every site on the box down.
+  # A rename within the same directory is atomic: the target is one file or the other.
+  local staged="$TARGET.new-$$"
+  install -m 0644 "$rendered" "$staged"
+  mv -f "$staged" "$TARGET"
 
   # Enable the site if it never was, BEFORE testing. nginx only reads what
   # sites-enabled links to, so on a first enable a pre-symlink `nginx -t` passes
   # without ever parsing this file — and the real failure would then surface after
   # the link exists, leaving a broken symlink that fails every later reload on the
   # box, this app's and its co-tenants'. One test, after enabling, covers both.
-  # enabled_dir is derived from TARGET, so the self-check's temp dir simply has none.
   local linked=""
-  local enabled_dir="${TARGET%/sites-available/*}/sites-enabled"
-  local link
-  link="$enabled_dir/$(basename "$TARGET")"
-  if [ -d "$enabled_dir" ] && [ ! -e "$link" ]; then
+  if [ "$enabled" = no ]; then
     ln -s "$TARGET" "$link"
     linked="$link"
     echo "apply_nginx_conf: symlinked into $enabled_dir"
@@ -203,6 +233,34 @@ self_check() {
   else
     check "successful first enable symlinks the site" "missing" "symlinked"
   fi
+
+  # A current file that is NOT enabled must not read as "no change" — otherwise the
+  # script no-ops forever over a site nginx is not serving.
+  rm -f "$tmp/nginx/sites-enabled/narrative-staging.conf"
+  if NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" main check >/dev/null 2>&1; then
+    check "current-but-disabled is drift" "reported in sync" "reported as drift"
+  else
+    check "current-but-disabled is drift" "reported as drift" "reported as drift"
+  fi
+  NGINX_TARGET="$tmp/nginx/sites-available/narrative-staging.conf" main >/dev/null
+  if [ -L "$tmp/nginx/sites-enabled/narrative-staging.conf" ]; then
+    check "current-but-disabled gets re-enabled" "re-enabled" "re-enabled"
+  else
+    check "current-but-disabled gets re-enabled" "still disabled" "re-enabled"
+  fi
+
+  # sed metacharacters in an operator-supplied value render literally.
+  printf 'NGINX_SERVER_NAME=amp.test\nNGINX_CERT_DIR=/certs/a&b\\c\n' > "$tmp/env"
+  rm -f "$tmp/live.conf"
+  main >/dev/null
+  check "sed metacharacters survive" "$(sed -n 2p "$tmp/live.conf")" "ssl_certificate /certs/a&b\\c/fullchain.pem;"
+
+  # A CR and stray whitespace never reach an nginx directive.
+  printf 'NGINX_SERVER_NAME=  crlf.test  \r\n' > "$tmp/env"
+  rm -f "$tmp/live.conf"
+  unset NGINX_CERT_DIR || true
+  main >/dev/null
+  check "whitespace and CR are trimmed" "$(sed -n 1p "$tmp/live.conf")" "server_name crlf.test;"
 
   # No hostname configured => the live file is left exactly as it is, exit 0. The
   # stubbed `nginx -t` passes here on purpose: an apply that wrongly proceeded
