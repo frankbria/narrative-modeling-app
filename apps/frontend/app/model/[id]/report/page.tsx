@@ -72,7 +72,14 @@ export default function ModelReportPage() {
       const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${report?.model_name ?? modelId}-report.md`;
+      // The backend runs the same value through `sanitize_filename` + RFC 5987 for
+      // its Content-Disposition; browsers sanitize `download` themselves, but the
+      // two paths naming the same file should not disagree about what it is called.
+      const base = (report?.model_name ?? modelId)
+        .replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_')
+        .trim()
+        .slice(0, 100);
+      link.download = `${base || modelId}-report.md`;
       document.body.appendChild(link);
       link.click();
       link.remove();

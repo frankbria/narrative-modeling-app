@@ -463,7 +463,23 @@ class TestFreeTextCannotInjectStructure:
         )
         md = render_markdown(report)
 
-        assert "\n## Injected" not in md
+        # Case-insensitive: `_baseline` lower-cases `kind` before it reaches the
+        # note, so asserting the capitalised form passed even with the flattening
+        # deleted — the first version of this test could not fail.
+        assert "\n## injected" not in md.lower()
+        # Stronger and independent of this payload: the only headings in the
+        # document are the ones the renderer itself writes.
+        headings = {ln for ln in md.split("\n") if ln.startswith("#")}
+        assert headings <= {
+            f"# Model report — {report.model_name}",
+            "## The data",
+            "## Algorithms tried",
+            "## Baseline",
+            "## Why this model",
+            "## What drives it",
+            "## Caveats",
+            "## Reproducibility",
+        }, headings
 
     @pytest.mark.asyncio
     async def test_a_missing_explanation_is_not_rendered_as_not_recorded(
@@ -481,3 +497,37 @@ class TestFreeTextCannotInjectStructure:
         why = md.split("## Why this model")[1].split("##")[0]
         assert "Random Forest" in why
         assert "Not recorded" not in why
+
+    @pytest.mark.asyncio
+    async def test_a_nan_label_does_not_produce_a_nan_baseline(self, setup_database):
+        """`float("nan")` does not raise, and json.loads parses bare NaN literals.
+
+        A NaN score renders as "**nan**" labelled computed_at_report_time, and
+        Starlette's `allow_nan=False` dump turns it into a 500 on an owned model —
+        the third way this route could have broken its never-500 guarantee.
+        """
+        model = _model("m-nan", problem_type="regression")
+        await model.insert()
+
+        report = await build_model_report(
+            model,
+            USER,
+            artifacts={"y_test": [1.0, float("nan")], "problem_type": "regression"},
+        )
+
+        assert report.baseline.provenance is Provenance.NOT_RECORDED
+        assert report.baseline.score is None
+
+    @pytest.mark.asyncio
+    async def test_a_truncated_driver_list_says_so(self, setup_database):
+        model = _model(
+            "m-many", feature_importance={f"f{i}": i / 100 for i in range(35)}
+        )
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+        md = render_markdown(report)
+
+        assert len(report.drivers.features) == 20
+        assert "of 35 features" in (report.drivers.note or "")
+        assert "of 35 features" in md

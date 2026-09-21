@@ -30,6 +30,7 @@ print a plausible number.
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from datetime import UTC, datetime
@@ -122,6 +123,7 @@ class ModelReport(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+_MAX_DRIVERS = 20
 _NO_JOB_NOTE = (
     "No training job is recorded for this model, so the algorithms tried and their "
     "scores are unavailable. This is not a statement that only one algorithm was "
@@ -166,11 +168,19 @@ def _baseline(artifacts: dict[str, Any] | None, problem_type: str) -> BaselineSe
     if "regress" in kind:
         try:
             values = [float(v) for v in y_test]
+            # `float()` accepts "nan" and "1e999", and stdlib json.loads parses bare
+            # NaN/Infinity literals — so a hand-edited blob yields score=nan, which
+            # Starlette's `json.dumps(allow_nan=False)` turns into a 500 on an owned
+            # model, and which renders in the .md as "**nan**" labelled
+            # computed_at_report_time. "Did float() raise" is not the question;
+            # "is it a real number" is.
+            if not all(math.isfinite(v) for v in values):
+                raise ValueError("non-finite label")
         except (TypeError, ValueError):
             return BaselineSection(
                 provenance=Provenance.NOT_RECORDED,
-                note="The stored held-out labels are not numeric, so no baseline "
-                "could be computed from them.",
+                note="The stored held-out labels are not finite numbers, so no "
+                "baseline could be computed from them.",
             )
         mean = sum(values) / len(values)
         ss_res = sum((v - mean) ** 2 for v in values)
@@ -299,16 +309,25 @@ async def build_model_report(
     if not isinstance(importance, dict):
         importance = {}
     ranked = shap_importance or importance
-    if ranked:
+    ranked_features = sorted(
+        _numeric_pairs(ranked), key=lambda kv: abs(kv[1]), reverse=True
+    )
+    if ranked_features:
         drivers = DriversSection(
             provenance=Provenance.STORED,
-            features=sorted(
-                _numeric_pairs(ranked), key=lambda kv: abs(kv[1]), reverse=True
-            )[:20],
+            features=ranked_features[:_MAX_DRIVERS],
             explainer_type=(
                 getattr(model, "shap_explainer_type", None)
                 if shap_importance
                 else "model_native_importance"
+            ),
+            # "Here are the drivers" is an implicit claim when the tail is dropped
+            # without saying so — the same shape the rest of the module avoids.
+            note=(
+                f"Showing the top {_MAX_DRIVERS} of {len(ranked_features)} features "
+                "by magnitude."
+                if len(ranked_features) > _MAX_DRIVERS
+                else None
             ),
         )
     else:
@@ -498,9 +517,9 @@ def render_markdown(report: ModelReport) -> str:
 
     out += ["## What drives it", ""]
     if report.drivers.features:
-        out.append(
-            f"Source: {_flatten(report.drivers.explainer_type or 'stored importance')}."
-        )
+        source = _flatten(report.drivers.explainer_type or "stored importance")
+        truncation = f" {_flatten(report.drivers.note)}" if report.drivers.note else ""
+        out.append(f"Source: {source}.{truncation}")
         out.append("")
         out += ["| Feature | Importance |", "|---|---|"]
         out += [
