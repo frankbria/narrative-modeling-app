@@ -4,6 +4,7 @@
 
 import { getAuthToken } from '@/lib/auth-helpers'
 import { apiError } from '@/lib/services/apiError'
+import type { ModelReport } from '@/lib/types/modelReport'
 import type {
   ErrorAnalysisResponse,
   ModelComparisonResponse,
@@ -662,6 +663,43 @@ export class ModelService {
     return response.json()
   }
 
+  static async getModelReport(
+    modelId: string,
+    token: string | null
+  ): Promise<ModelReport> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/report`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      throw await apiError(response, 'Failed to fetch model report')
+    }
+
+    return response.json()
+  }
+
+  /** The same report as Markdown. Returns the raw text so the caller can download it. */
+  static async getModelReportMarkdown(
+    modelId: string,
+    token: string | null
+  ): Promise<string> {
+    const response = await fetch(
+      `${API_BASE_URL}/ml/${modelId}/report.md`,
+      {
+        headers: await this.getHeaders(token)
+      }
+    )
+
+    if (!response.ok) {
+      throw await apiError(response, 'Failed to download model report')
+    }
+
+    return response.text()
+  }
+
   static async predict(
     modelId: string,
     request: PredictRequest,
@@ -1048,6 +1086,15 @@ class ModelServiceClient {
   async deactivateModel(modelId: string): Promise<void> {
     const token = await getAuthToken()
     return ModelService.deactivateModel(modelId, token)
+  }
+  async getModelReport(modelId: string): Promise<ModelReport> {
+    const token = await getAuthToken()
+    return ModelService.getModelReport(modelId, token)
+  }
+
+  async getModelReportMarkdown(modelId: string): Promise<string> {
+    const token = await getAuthToken()
+    return ModelService.getModelReportMarkdown(modelId, token)
   }
 }
 
