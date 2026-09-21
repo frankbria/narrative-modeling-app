@@ -100,10 +100,16 @@ check_command() {
   while IFS= read -r seg; do
     # Strip the parens a subshell or $( ) capture leaves on the tokens.
     seg="${seg//[()]/ }"
-    segment_is_push "$seg" && { found=0; break; }
+    segment_is_push "$seg"
     rc=$?
-    # 3 = this push carries its own override; that clears the whole command.
-    [ "$rc" = 3 ] && return 0
+    # 0 = a push with no override of its own: refuse the command.
+    # 3 = a push carrying its own override: THIS segment is cleared, keep looking.
+    #     Returning 0 here instead would let one overridden push waive every push
+    #     after it — `ALLOW_MAIN_PUSH=1 git push origin feat-x && git push origin
+    #     main` was allowed, which is the opposite of "read from the segment's own
+    #     leading assignments".
+    # 1 = not a push.
+    [ "$rc" = 0 ] && { found=0; break; }
     # `%s\n`, not `%s`: without a trailing newline `read` returns non-zero on the
     # final segment and the loop body never runs for it — which for a plain
     # `git push` (one segment, no operators) skips the only segment there is.
@@ -182,6 +188,11 @@ if [ "${1:-}" = "--self-check" ]; then
   t 0 main "git status && ALLOW_MAIN_PUSH=1 git push"
   t 2 main 'git commit -m "document ALLOW_MAIN_PUSH=1 usage" && git push origin main'
   t 2 main 'echo "ALLOW_MAIN_PUSH=1" && git push'
+  # An override clears ONLY the segment it is attached to. Both orders, because the
+  # first version short-circuited on the overridden segment and never read the rest.
+  t 2 main 'ALLOW_MAIN_PUSH=1 git push origin feat/x && git push origin main'
+  t 2 main 'git push origin main && ALLOW_MAIN_PUSH=1 git push origin feat/x'
+  t 0 main 'ALLOW_MAIN_PUSH=1 git push && ALLOW_MAIN_PUSH=1 git push origin main'
 
   # The real invocation path: stdin JSON, python3 parse, live branch resolution.
   # The case table above calls check_command directly, so none of that was covered —
