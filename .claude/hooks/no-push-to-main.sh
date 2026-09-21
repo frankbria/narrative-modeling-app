@@ -30,17 +30,34 @@ set -uo pipefail
 # most ordinary way to push a first commit, and exactly what it exists to catch —
 # and allowed it through. Flags are dropped first, then positionals are counted.
 pushes_default() {
-  # This push's arguments end at the first shell operator, and the operator does not
-  # need a space in front of it: in `git push;echo done` the first token is `;echo`,
-  # which is neither a flag nor a separator by itself, so it was counted as the
-  # remote and `done` became the refspec. Cut the string first, then tokenize.
-  local args="${cmd#*push}"
-  args="${args%%;*}"
-  args="${args%%&*}"
-  args="${args%%|*}"
+  # Split the command on shell operators and examine each segment that IS a git
+  # push. Anything less breaks on ordinary commands:
+  #   * `${cmd#*push}` cuts at the FIRST literal "push" anywhere, so
+  #     `git commit -m "push notification fix" && git push origin main` fed the
+  #     parser `notification fix"` and read `fix"` as the refspec — a false allow.
+  #   * A segment must START with git push (after whitespace and any leading
+  #     VAR=val), or the quoted text in `git push origin feat/x && echo "git push
+  #     done"` counts as a second push and refuses a legitimate command.
+  # Any single segment that pushes the default branch refuses the whole command.
+  local seg
+  while IFS= read -r seg; do
+    seg="${seg#"${seg%%[![:space:]]*}"}"
+    while printf '%s' "$seg" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]'; do
+      seg="${seg#* }"
+    done
+    printf '%s' "$seg" | grep -qE '^git[[:space:]]+push([[:space:]]|$)' || continue
+    segment_pushes_default "${seg#*push}" && return 0
+    # `%s\n`, not `%s`: without the trailing newline `read` returns non-zero on the
+    # last segment, so the loop body never runs for it — which for a plain
+    # `git push` (one segment, no operators) means the only segment is skipped.
+  done < <(printf '%s\n' "$cmd" | sed -E 's/(\|\||&&|[;&|])/\n/g')
+  return 1
+}
 
+# The argument string of one `git push`, already isolated from its neighbours.
+segment_pushes_default() {
   local -a words positional=()
-  read -r -a words <<<"$args"
+  read -r -a words <<<"$1"
   local i=0 w
   while [ $i -lt ${#words[@]} ]; do
     w="${words[$i]}"
@@ -115,6 +132,8 @@ if [ "${1:-}" = "--self-check" ]; then
   t 2 main "git add x && git push"
   t 2 main "git push;echo done"               # no space before the separator
   t 2 main "git push&&echo done"
+  t 2 main 'git commit -m "push notification fix" && git push origin main'
+  t 2 main "cd /repo && git push -u origin main"
   # Allowed: a different branch, or not a push at all.
   t 0 main "git push origin feat/x"
   t 0 main "git push -u origin feat/x"
@@ -124,6 +143,8 @@ if [ "${1:-}" = "--self-check" ]; then
   t 0 main "git status"
   t 0 main "cat docs/git-push-notes.md"
   t 0 main "echo 'git push' >> notes.md"      # a quote before git guards it
+  t 0 main 'git commit -m "push notification fix" && git push origin feat/x'
+  t 0 main 'git push origin feat/x && echo "git push done"'
   # The override, checked separately since t() clears it.
   ( cmd="git push"; branch=main; default=main; ALLOW_MAIN_PUSH=1; check_command ) >/dev/null 2>&1
   if [ $? = 0 ]; then printf '  ok   [main] ALLOW_MAIN_PUSH=1 git push\n'
