@@ -1,53 +1,59 @@
-# #594 (P1.37) — Deploy the nginx edge config
+# #795 — The model report
 
-The repo's `nginx-staging.conf` is applied by nothing; the live file was last touched
-2026-07-01 and is missing the security headers, the #273 request-id map, `/api/health`,
-the #456 webhook block (hand-applied later) and #768's auth rate limit. Editing the repo
-file ships nothing, and nothing says so at runtime.
+A generated, exportable account of why this model, for the user who has to defend it.
 
-## Steps
+## What already exists (verified, with sources)
 
-1. **Template the two placeholders out of `nginx-staging.conf`** — `${NGINX_SERVER_NAME}`
-   (both server blocks) and `${NGINX_CERT_DIR}` (the three cert paths). Those placeholders
-   are why the file could never be applied verbatim. Nothing else changes, so the three
-   existing guard tests keep parsing it.
-2. **`scripts/deploy/apply_nginx_conf.sh`** — runs on the box over `ssh … bash -s`, same
-   shape as `backend_state.sh`:
-   - reads `NGINX_SERVER_NAME` / `NGINX_CERT_DIR` from `.env.staging`;
-   - **unset ⇒ no-op with a warning, exit 0** — nothing touches the live edge until the
-     operator provisions them, which is also how the deploy-secret preflight behaves;
-   - renders with `envsubst '${NGINX_SERVER_NAME} ${NGINX_CERT_DIR}'` (the explicit var
-     list is load-bearing: a bare `envsubst` eats `$remote_addr`, `$host`, `$req_id`);
-   - identical to live ⇒ prints "no change" and does not reload;
-   - otherwise backs the live file up to `<target>.bak-<utc>`, writes, `nginx -t`, and on
-     failure **restores the backup and re-tests** before exiting non-zero;
-   - symlinks into `sites-enabled` if missing, then `systemctl reload nginx`;
-   - `--check` diffs only (exit 1 on drift), `--self-check` runs the parsing/rendering
-     assertions locally, following `preflight_staging_env.sh`'s convention.
-3. **`deploy.yml`** gains an "Apply nginx edge config" step between the deploy and the
-   health check, piping the script over ssh with `DEPLOY_PATH`.
-4. **Test** `apps/backend/tests/test_security/test_nginx_template.py`: no `yourdomain.com`
-   placeholder survives; every `${…}` in the config is in the script's substitution list
-   (a new placeholder that `envsubst` is not told about renders literally into live nginx);
-   `deploy.yml` actually invokes the script.
-5. **Docs**: rewrite Step 6 of `STAGING_DEPLOYMENT_GUIDE.md`, update the CLAUDE.md
-   "edge config is not deployed by anything" bullet.
-6. **Operator follow-up issue**: provision the two variables, run the first apply, diff the
-   backup against the rendered file and confirm nothing live-only was lost (AC2's other
-   half — the live file is not readable from an agent session).
+The report is an **assembly** job, not a computation job. Almost everything AC1 asks
+for is already persisted:
 
-## Decisions (autonomous)
+| Section | Source |
+|---|---|
+| Winner, metrics, features, target, timings | `MLModel` — `algorithm`, `cv_score`, `test_score`, `metrics`, `feature_importance`, `n_samples_train`, `n_features`, `training_time` |
+| **Algorithms tried with CV scores** | `TrainingJob.model_comparison` → `ModelComparisonEntry(algorithm, cv_score, test_score, training_time)`, written at `model_training.py:846-863`. Joins to `MLModel` on the shared `model_id` |
+| **Why the winner won** | `TrainingJob.best_model_explanation`, built by `build_best_model_explanation(result.best_model, result.all_models, …)` |
+| Algorithm recommendations | `TrainingJob.algorithm_recommendations` |
+| Confusion matrix / ROC / PR | Computed from the persisted held-out arrays via `MetricsService.load_evaluation_artifacts` (the #79 path) |
+| SHAP drivers | `MLModel.shap_values_path`, `shap_explainer_type`, `feature_importance` |
+| Tuning | `tuning_strategy`, `tuning_results`, `improvement_from_tuning` |
+| **Honest caveats** | `is_calibrated` + `calibration_score_is_insample` + `evaluation_on_calibration_set` (#201), and `early_stopped` + `stop_reason` + `algorithms_evaluated` (#101) — "the run stopped early, so not every candidate was tried" is a real caveat the data supports |
 
-- **The repo file becomes authoritative** on first apply, with the live copy backed up in
-  place. The alternative — merge live into repo first — needs the live file, which no agent
-  session can read; the backup plus the operator diff covers the same ground without
-  blocking the mechanism.
-- **Fail-safe by omission**: no variables ⇒ no write. A first deploy after merge changes
-  nothing on the box, so this cannot break a shared VPS on the way in.
-- **`.env.staging`, not compose**, carries the two variables: nginx runs on the host, not
-  in a container, so the compose contract (#457) does not reach it.
+## What does NOT exist
+
+1. **No baseline row.** Nothing trains a dummy/majority-class estimator — grep finds no
+   `DummyClassifier`/`DummyRegressor` in the candidate set. AC1 asks for it.
+2. **No persisted seed.** `random_state=42` is an engine default (`automl_engine.py:188`),
+   never written to `MLModel`, so a run with an overridden seed cannot be reported truthfully.
+3. **No library versions** captured at training time.
+
+AC2 forbids inventing any of these. Each is either computed from something real, or the
+report says "not recorded" — the #536 rule: a number a customer cannot trust is worse
+than no number.
+
+## Plan
+
+1. **`app/services/model_report.py`** — assembles a `ModelReport` from the stored
+   documents above. Pure function of what is stored; no model call, no AI.
+2. **`GET /api/v1/ml/{model_id}/report`** — tenant-scoped, registered *before* the
+   catch-all `/{model_id}`. Follows `_partial_evaluation_response`'s degradation: a
+   model with no `TrainingJob` or no artifacts yields `partial=true` and the sections
+   it can support, never a 500.
+3. **Provenance on every section** — each carries where its numbers came from
+   (`stored` / `computed_at_report_time` / `not_recorded`), so AC2 is structural rather
+   than a promise in a docstring.
+4. **Markdown rendering server-side** — the canonical artifact, testable in pytest and
+   reusable by the API. `GET …/report.md` downloads it.
+5. **Frontend `/models/[id]/report`** — renders the sections, reachable from the model
+   views so `routeReachability.test.ts` passes without an allowlist entry. "Download
+   Markdown" plus print-to-PDF via `@media print` CSS.
+6. **Tests** — the classifier of each section's provenance, the degradation path on a
+   model with no job, and a real end-to-end assembly against seeded documents.
+
+## Open decisions (asked before building)
+
+- The baseline row, the PDF mechanism, and whether generated prose is in scope at all.
 
 ## Known limitation
 
-`nginx -t` validates the *whole* server config, so a pre-existing unrelated error on the
-box makes the apply refuse and roll back — correct, but it will read as this step's failure.
+Pre-existing models trained before `model_comparison` was populated will report the
+leaderboard as `not_recorded`. That is correct, not a bug — the data was never captured.
