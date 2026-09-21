@@ -109,3 +109,16 @@ async def test_a_non_latin1_model_name_does_not_500_the_download(
     # RFC 5987: an ASCII fallback plus the real name, percent-encoded as UTF-8.
     assert "filename*=UTF-8''" in disposition
     disposition.encode("latin-1")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_another_tenants_markdown_is_not_found(
+    async_authorized_client, setup_database
+):
+    """The code path is shared with /report, but tenant isolation is pinned per
+    route in this suite — a shared path today is a refactor away from not being."""
+    await _model("rep-md-foreign", user_id="someone-else").insert()
+
+    response = await async_authorized_client.get("/api/v1/ml/rep-md-foreign/report.md")
+
+    assert response.status_code == 404

@@ -451,7 +451,14 @@ def render_markdown(report: ModelReport) -> str:
         f"test {_fmt(report.winner.test_score)}."
     )
     out.append("")
-    out.append(report.winner.explanation or _absent(report.winner))
+    # Flattened like every other free text reaching the document. It is
+    # LLM-free and deterministic today, but #795 scopes generated prose as a
+    # later addition landing exactly here, and that would be user-influenced.
+    out.append(
+        _flatten(report.winner.explanation)
+        if report.winner.explanation
+        else _absent(report.winner)
+    )
     out.append("")
 
     out += ["## What drives it", ""]

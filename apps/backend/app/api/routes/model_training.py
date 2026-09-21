@@ -1499,6 +1499,27 @@ async def get_model_evaluation(
 # baseline from stored labels. No model is ever called, so there is no `ai_calls`
 # unit to reserve and no fallback to detect — AC5 ("works with no AI key") holds by
 # construction rather than by a release-the-unit branch.
+async def _owned_model_report(model_id: str, user_id: str):
+    """Resolve an owned model and assemble its report.
+
+    Shared by both report routes so the ownership check and the artifact loads
+    cannot drift apart — an unknown and a foreign id must keep answering
+    identically, and that is a property of one code path, not two.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    artifacts = await MetricsService.load_evaluation_artifacts(model)
+    shap_artifacts = await MetricsService.load_shap_artifacts(model)
+    report = await build_model_report(
+        model, user_id, artifacts=artifacts, shap_artifacts=shap_artifacts
+    )
+    return model, report
+
+
 @router.get("/{model_id}/report", response_model=ModelReport)
 async def get_model_report(
     model_id: str, current_user_id: str = Depends(get_current_user_id)
@@ -1508,17 +1529,8 @@ async def get_model_report(
     Never 500s on an owned model: each section degrades to `not_recorded` with a
     note rather than failing, and the artifact loads are best-effort.
     """
-    model = await MLModel.find_one(
-        MLModel.model_id == model_id, MLModel.user_id == current_user_id
-    )
-    if not model:
-        raise HTTPException(status_code=404, detail="Model not found")
-
-    artifacts = await MetricsService.load_evaluation_artifacts(model)
-    shap_artifacts = await MetricsService.load_shap_artifacts(model)
-    return await build_model_report(
-        model, current_user_id, artifacts=artifacts, shap_artifacts=shap_artifacts
-    )
+    _, report = await _owned_model_report(model_id, current_user_id)
+    return report
 
 
 @router.get("/{model_id}/report.md")
@@ -1526,17 +1538,7 @@ async def get_model_report_markdown(
     model_id: str, current_user_id: str = Depends(get_current_user_id)
 ):
     """The same report as a downloadable Markdown file."""
-    model = await MLModel.find_one(
-        MLModel.model_id == model_id, MLModel.user_id == current_user_id
-    )
-    if not model:
-        raise HTTPException(status_code=404, detail="Model not found")
-
-    artifacts = await MetricsService.load_evaluation_artifacts(model)
-    shap_artifacts = await MetricsService.load_shap_artifacts(model)
-    report = await build_model_report(
-        model, current_user_id, artifacts=artifacts, shap_artifacts=shap_artifacts
-    )
+    model, report = await _owned_model_report(model_id, current_user_id)
     # `sanitize_filename` is the model-level rule for client-supplied names; the
     # model name reaches this header, so it goes through the same normaliser (#585).
     # But normalising is not encoding: it deliberately keeps non-ASCII characters,

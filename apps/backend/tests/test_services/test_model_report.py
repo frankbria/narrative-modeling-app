@@ -391,3 +391,19 @@ class TestFreeTextCannotInjectStructure:
         md = render_markdown(await build_model_report(model, USER))
 
         assert "\r" not in md
+
+    @pytest.mark.asyncio
+    async def test_a_newline_in_the_stored_explanation_is_flattened(
+        self, setup_database
+    ):
+        """Deterministic and LLM-free today, but #795 scopes generated prose as a
+        later addition landing in exactly this field."""
+        await _model("m-expl").insert()
+        await _job(
+            "m-expl", best_model_explanation="It won.\n## Not a real heading"
+        ).insert()
+
+        md = render_markdown(await build_model_report(_model("m-expl"), USER))
+
+        assert "\n## Not a real heading" not in md
+        assert "It won. ## Not a real heading" in md
