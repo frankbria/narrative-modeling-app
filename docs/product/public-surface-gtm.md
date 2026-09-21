@@ -38,16 +38,20 @@ The funnel is discover → understand → trust → try → activate → convert
 
 ## 4. Decisions required (owner)
 
-| # | Decision | Recommended default | Recorded in |
-|---|---|---|---|
-| D1 | One product name | pick one of the three; apply everywhere | #765 |
-| D2 | Positioning and primary persona | the churn-prediction analyst; the shipped sample, both screenshots and the 0.82 score already tell that story | #765 |
-| D3 | Signup model at launch | **open, OAuth-only**, switched on only after #768 lands; invite + request-access form is the alternative | #765, #476 AC7 |
-| D4 | Production hostname | a subdomain of the company domain already carrying support mail | #765, #476 |
-| D5 | Launch features: A/B testing, recipes, data-issues UI | hide until #502 / #738 / #635 are decided | #765 |
-| D6 | Trial, annual price, promo codes, tax | none / not yet / yes / Stripe Tax if selling outside the US | #771 |
-| D7 | Analytics approach | server-side events + cookieless public-page analytics; no tag inside the app | #769 |
-| D8 | Email vendor | needed for welcome/quota/dunning; not a launch blocker under D3 = open | #494 |
+Status as of 2026-09-21. The **Recommended default** column is what this document
+proposed; **Outcome** is what the owner decided. Where they differ, the outcome wins —
+D2 is the one that reversed.
+
+| # | Decision | Recommended default | Outcome | Recorded in |
+|---|---|---|---|---|
+| D1 | One product name | pick one of the three; apply everywhere | **Chosen, not cleared.** Trademark search and domain registration pending; the name stays out of this repo until both pass | #765, **#793** |
+| D2 | Positioning and primary persona | the churn-prediction analyst; the shipped sample, both screenshots and the 0.82 score already tell that story | **Signed, and reversed.** Primary is the **applied researcher** who must defend a prediction to a reviewer, committee or PI; the defend-the-number analyst is secondary. The analyst persona has the least evidence of willingness to pay, the most substitutes, and a data-location mismatch (no connectors, no joins) | #765, **#794** |
+| D3 | Signup model at launch | **open, OAuth-only**, switched on only after #768 lands; invite + request-access form is the alternative | **Signed as recommended**, gated on #768 and #769 AC1–AC3 being live in production. Invite mode stays available via `SIGNUP_MODE` | #765, #476 AC7 |
+| D4 | Production hostname | a subdomain of the company domain already carrying support mail | **Chosen with D1**, pending the same clearance | #765, #476, **#793** |
+| D5 | Launch features: A/B testing, recipes, data-issues UI | hide until #502 / #738 / #635 are decided | **Signed as recommended** — all three hidden at launch | #765 |
+| D6 | Trial, annual price, promo codes, tax | none / not yet / yes / Stripe Tax if selling outside the US | **Open**, and widened: a full price-ladder revision is proposed against ADR-003. Must be decided before live Stripe keys | #771, **#796** |
+| D7 | Analytics approach | server-side events + cookieless public-page analytics; no tag inside the app | **Partly done.** Server-side events, the quota-denial counter and the admin funnel shipped; frontend Sentry shipped; cookieless public-page analytics still blocked on the landing page | #769 |
+| D8 | Email vendor | needed for welcome/quota/dunning; not a launch blocker under D3 = open | **Conditional.** Still not a blocker for signup, but an academic tier would gate on institution-email verification, which makes it a blocker for D6's ladder | #494, #796 |
 
 ## 5. Definition of success
 
