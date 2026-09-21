@@ -129,6 +129,15 @@ guard deliberately does not try to work out what a command pushes. If you do mea
 to push from here, put the override in the command itself:
     ALLOW_MAIN_PUSH=1 git push ...
 EOF
+  # This layer reads text and has known gaps (see the header). Say so when the
+  # exact one is not installed, rather than leaving the guarantee silently opt-in.
+  if [ ! -e "$(git rev-parse --git-path hooks 2>/dev/null)/pre-push" ]; then
+    cat >&2 <<'EOF'
+NOTE: the git pre-push hook — the layer that catches this exactly, from any
+caller — is NOT installed in this clone. Install it with:
+    ./scripts/install-git-hooks.sh
+EOF
+  fi
   return 2
 }
 

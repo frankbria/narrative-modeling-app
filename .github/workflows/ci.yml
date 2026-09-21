@@ -429,10 +429,11 @@ jobs:
       - name: hook self-checks
         run: |
           shopt -s globstar nullglob
-          for hook in .claude/hooks/*.sh; do
+          for hook in .claude/hooks/*.sh .githooks/*; do
+            [ -f "$hook" ] || continue
             grep -q -- '--self-check' "$hook" || continue
             echo "== $hook"
-            "$hook" --self-check
+            bash "$hook" --self-check
           done
           # preflight_staging_env.sh gates every staging deploy, and its parsing
           # is subtle enough to have had a real bug: it derived the required set

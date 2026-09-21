@@ -30,6 +30,27 @@
 # triggered by an accident of quoting the way a grepped token could.
 set -uo pipefail
 
+# git calls this with $1=remote name, $2=url. `--self-check` is not a remote name.
+if [ "${1:-}" = "--self-check" ]; then
+  fails=0
+  t() { # <expected> <label> <stdin>
+    local want="$1" label="$2" got
+    got=$(printf '%s\n' "$3" | "$0" origin https://example.invalid/r.git >/dev/null 2>&1; echo $?)
+    if [ "$got" = "$want" ]; then printf '  ok   %s\n' "$label"
+    else printf '  FAIL %s -- want %s got %s\n' "$label" "$want" "$got"; fails=$((fails + 1)); fi
+  }
+  t 1 "pushing main"                "refs/heads/main a1 refs/heads/main b1"
+  t 0 "pushing a feature branch"    "refs/heads/feat/x a1 refs/heads/feat/x b1"
+  t 1 "feature branch AND main"     "refs/heads/feat/x a1 refs/heads/feat/x b1
+refs/heads/main a2 refs/heads/main b2"
+  t 0 "deleting a feature branch"   "(delete) 0000000 refs/heads/feat/x b1"
+  t 1 "deleting main"               "(delete) 0000000 refs/heads/main b1"
+  t 0 "pushing a tag"               "refs/tags/v1 a1 refs/tags/v1 b1"
+  t 0 "nothing to push"             ""
+  [ "$fails" -eq 0 ] || { echo "self-check FAILED ($fails)"; exit 1; }
+  echo "self-check OK"; exit 0
+fi
+
 default=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
 default="${default:-main}"
 
