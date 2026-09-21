@@ -10,8 +10,8 @@ echo "GitHub Issue Labeling for Beta Prioritization"
 echo "=============================================="
 echo ""
 
-# Color codes for output
-RED='\033[0;31m'
+# Color codes for output. No RED: nothing here reports a failure in colour —
+# every `gh label create` ends in `|| true` because re-running is normal.
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
