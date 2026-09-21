@@ -8,100 +8,94 @@
 # past in the push output, and nothing afterwards distinguishes a bypassed commit
 # from one that passed. For docs commits under tasks/ it had become the habit.
 #
-# A prose rule can be forgotten mid-session. This cannot.
+# DESIGN: on the default branch, ANY git push is refused. There is deliberately no
+# analysis of what it pushes.
 #
-# SCOPE: this is a backstop for direct invocations, not a hard guarantee. It reads
-# the command string, so it cannot see through `bash -c "git push"`, xargs, a shell
-# alias, or a script that pushes. Those are not the failure mode it exists for —
-# the observed one is an agent typing an ordinary `git push` while on main.
+# The first four versions of this hook tried to exempt "a push of some other branch"
+# by parsing the refspec, and review found a bypass in every one: a flag before the
+# remote shifted the positions (`git push -u origin main`), `;` glued to the command
+# hid it from the detector, `${cmd#*push}` cut at the word "push" inside an earlier
+# commit message, only the first of several refspecs was inspected, a trailing `)`
+# made `main)` not match `main`, and a global option (`git -C x push`) stopped it
+# being recognised as a push at all. Each fix was correct and the next round found
+# another shape, because a command string is a shell language and this was an ad-hoc
+# parser for it. The exemption bought a rare convenience — pushing someone else's
+# branch while sitting on main — at the cost of the guarantee the hook exists for.
 #
-# Deliberate override, for the case where pushing main really is the intent:
+# So it fails closed. A push of another branch from the default branch is refused
+# too; the override below clears it in one prefix. Over-refusing costs a keystroke,
+# under-refusing costs the thing this was written to prevent.
+#
+# SCOPE: it reads the command string, so `bash -c "git push"`, xargs, aliases and a
+# script that pushes are all out of scope. Backstop for direct invocation, not a
+# guarantee.
+#
+# OVERRIDE — as a token IN THE COMMAND, which is the only thing the hook can see:
 #   ALLOW_MAIN_PUSH=1 git push
+# (An exported ALLOW_MAIN_PUSH=1 in the hook's own environment works too. The
+# command-string form is what the refusal message teaches, and for four versions it
+# could not possibly have worked: the assignment applies inside the command's shell,
+# which does not exist until after this hook has already decided.)
 #
 # Exit 2 blocks the call and returns stderr to Claude.
-# `--self-check` runs the case table at the bottom; wire it into CI, not into faith.
+# `--self-check` runs the case table at the bottom; CI runs that.
 set -uo pipefail
 
-# Does this command push the DEFAULT branch? Uses $cmd and $default.
-#
-# A token parse, not a positional regex. "the ref is the second word after push" is
-# only true for `git push origin main`; one flag shifts every position, so the first
-# version of this hook read `origin` as the ref in `git push -u origin main` — the
-# most ordinary way to push a first commit, and exactly what it exists to catch —
-# and allowed it through. Flags are dropped first, then positionals are counted.
-pushes_default() {
-  # Split the command on shell operators and examine each segment that IS a git
-  # push. Anything less breaks on ordinary commands:
-  #   * `${cmd#*push}` cuts at the FIRST literal "push" anywhere, so
-  #     `git commit -m "push notification fix" && git push origin main` fed the
-  #     parser `notification fix"` and read `fix"` as the refspec — a false allow.
-  #   * A segment must START with git push (after whitespace and any leading
-  #     VAR=val), or the quoted text in `git push origin feat/x && echo "git push
-  #     done"` counts as a second push and refuses a legitimate command.
-  # Any single segment that pushes the default branch refuses the whole command.
-  local seg
-  while IFS= read -r seg; do
-    seg="${seg#"${seg%%[![:space:]]*}"}"
-    while printf '%s' "$seg" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]'; do
-      seg="${seg#* }"
-    done
-    printf '%s' "$seg" | grep -qE '^git[[:space:]]+push([[:space:]]|$)' || continue
-    segment_pushes_default "${seg#*push}" && return 0
-    # `%s\n`, not `%s`: without the trailing newline `read` returns non-zero on the
-    # last segment, so the loop body never runs for it — which for a plain
-    # `git push` (one segment, no operators) means the only segment is skipped.
-  done < <(printf '%s\n' "$cmd" | sed -E 's/(\|\||&&|[;&|])/\n/g')
-  return 1
-}
-
-# The argument string of one `git push`, already isolated from its neighbours.
-segment_pushes_default() {
-  local -a words positional=()
-  read -r -a words <<<"$1"
-  local i=0 w
-  while [ $i -lt ${#words[@]} ]; do
-    w="${words[$i]}"
-    case "$w" in
-      # Flags that consume the NEXT word as their value.
-      -o|--push-option|--repo|--exec|--receive-pack) i=$((i + 2)); continue;;
-      # Anything else dash-prefixed is a standalone flag.
-      -*) i=$((i + 1)); continue;;
-    esac
-    positional+=("$w")
+# Is this ONE shell segment a git push? Tokenised, not pattern-matched: skip any
+# leading VAR=val assignments, require `git`, skip git's global options, require
+# `push`. A segment that merely mentions the words (`git commit -m "fix git push"`,
+# `echo "git push done"`) does not start with them and is not a push.
+segment_is_push() {
+  local -a w=()
+  read -r -a w <<<"$1"
+  local i=0
+  while [ $i -lt ${#w[@]} ] && [[ "${w[$i]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
     i=$((i + 1))
   done
-  # Fewer than 2 positionals means no refspec: `git push` and `git push origin` push
-  # the CURRENT branch, which on this path is the default branch.
-  [ "${#positional[@]}" -lt 2 ] && return 0
-  # With a refspec, the DESTINATION is what lands — `src:dst` pushes to dst.
-  local ref="${positional[1]}"
-  ref="${ref##*:}"
-  ref="${ref#refs/heads/}"
-  [ "$ref" = "$default" ] || [ "$ref" = "HEAD" ]
+  [ $i -lt ${#w[@]} ] && [ "${w[$i]}" = "git" ] || return 1
+  i=$((i + 1))
+  while [ $i -lt ${#w[@]} ]; do
+    case "${w[$i]}" in
+      # Global options that consume the next word.
+      -C|-c|--git-dir|--work-tree|--namespace|--exec-path) i=$((i + 2));;
+      -*) i=$((i + 1));;
+      *) break;;
+    esac
+  done
+  [ $i -lt ${#w[@]} ] && [ "${w[$i]}" = "push" ]
 }
 
 # Uses $cmd, $branch, $default. Returns 0 to allow, 2 to refuse.
 check_command() {
-  # Not a push at all (and not a push hidden behind && or ;) — nothing to say.
-  # Both boundaries accept a separator OR whitespace OR the string edge: `git push;x`
-  # and `git push&&x` are pushes too, and requiring whitespace *after* `push` let
-  # both through the first gate entirely.
-  printf '%s' "$cmd" | grep -qE '(^|[;&|(]|[[:space:]])git[[:space:]]+push([;&|)[:space:]]|$)' || return 0
-
-  [ "${ALLOW_MAIN_PUSH:-}" = "1" ] && return 0
   [ "$branch" = "$default" ] || return 0
-  pushes_default || return 0
+
+  # The override has to be visible in the command text — see OVERRIDE above.
+  printf '%s' "$cmd" | grep -qE '(^|[[:space:]])ALLOW_MAIN_PUSH=1([[:space:]]|$)' && return 0
+  [ "${ALLOW_MAIN_PUSH:-}" = "1" ] && return 0
+
+  local seg found=1
+  while IFS= read -r seg; do
+    # Strip the parens a subshell or $( ) capture leaves on the tokens.
+    seg="${seg//[()]/ }"
+    if segment_is_push "$seg"; then found=0; break; fi
+    # `%s\n`, not `%s`: without a trailing newline `read` returns non-zero on the
+    # final segment and the loop body never runs for it — which for a plain
+    # `git push` (one segment, no operators) skips the only segment there is.
+  done < <(printf '%s\n' "$cmd" | sed -E 's/(\|\||&&|[;&|])/\n/g')
+  [ "$found" = 0 ] || return 0
 
   cat >&2 <<EOF
-Refused: this would push '$branch', the default branch, bypassing the required
-"CI Success" check. That has happened three times already (#604) — the push
+Refused: '$branch' is the default branch, and pushing it directly bypasses the
+required "CI Success" check. That has happened three times (#604) — the push
 succeeds with only an easily-missed "remote: Bypassed rule violations" line.
 
 Branch first, then open a PR:
     git switch -c <branch> && git push -u origin <branch>
 
-If pushing '$branch' directly is genuinely what you want, say so explicitly and
-re-run it as:  ALLOW_MAIN_PUSH=1 git push ...
+This refuses ANY push from '$branch', including a push of another branch — the
+guard deliberately does not try to work out what a command pushes. If you do mean
+to push from here, put the override in the command itself:
+    ALLOW_MAIN_PUSH=1 git push ...
 EOF
   return 2
 }
@@ -118,37 +112,43 @@ if [ "${1:-}" = "--self-check" ]; then
       printf '  FAIL [%s] %s -- want %s got %s\n' "$br" "$c" "$want" "$got"; fails=$((fails + 1))
     fi
   }
-  # Refused: every shape that updates the default branch from the default branch.
+  # Refused: any push at all from the default branch. Each of these was a live
+  # bypass in some earlier version of this hook.
   t 2 main "git push"
   t 2 main "git push -q"
   t 2 main "git push origin"
   t 2 main "git push origin main"
-  t 2 main "git push -u origin main"          # the bypass a PR review caught
+  t 2 main "git push -u origin main"                  # flag shifted the positions
   t 2 main "git push --force origin main"
-  t 2 main "git push -o ci.skip origin main"  # flag that eats the next word
+  t 2 main "git push -o ci.skip origin main"
   t 2 main "git push origin HEAD"
-  t 2 main "git push origin HEAD:main"        # src:dst — dst is what lands
+  t 2 main "git push origin HEAD:main"
   t 2 main "git push origin refs/heads/main"
+  t 2 main "git push origin feat/x main"              # main in a later refspec
+  t 2 main "git push origin feat/x"                   # deliberate: no exemption
+  t 2 main "git -C /repo push origin main"            # global option before push
+  t 2 main "git --no-pager push"
+  t 2 main "git -c user.name=x push origin main"
   t 2 main "git add x && git push"
-  t 2 main "git push;echo done"               # no space before the separator
+  t 2 main "git push;echo done"                       # separator glued on
   t 2 main "git push&&echo done"
+  t 2 main '(cd /repo && git push origin main)'       # parens on the tokens
   t 2 main 'git commit -m "push notification fix" && git push origin main'
+  t 2 main "FOO=1 git push"
   t 2 main "cd /repo && git push -u origin main"
-  # Allowed: a different branch, or not a push at all.
-  t 0 main "git push origin feat/x"
-  t 0 main "git push -u origin feat/x"
-  t 0 main "git push origin HEAD:feat/x"
+  t 2 main 'git push origin feat/x && echo "git push done"' # the first segment is a push
+  # Allowed: not the default branch, or not a push.
   t 0 feat/x "git push"
   t 0 feat/x "git push -u origin feat/x"
+  t 0 feat/x "git push origin main"                   # scope: only guards the branch you are ON
   t 0 main "git status"
   t 0 main "cat docs/git-push-notes.md"
-  t 0 main "echo 'git push' >> notes.md"      # a quote before git guards it
-  t 0 main 'git commit -m "push notification fix" && git push origin feat/x'
-  t 0 main 'git push origin feat/x && echo "git push done"'
-  # The override, checked separately since t() clears it.
-  ( cmd="git push"; branch=main; default=main; ALLOW_MAIN_PUSH=1; check_command ) >/dev/null 2>&1
-  if [ $? = 0 ]; then printf '  ok   [main] ALLOW_MAIN_PUSH=1 git push\n'
-  else printf '  FAIL [main] ALLOW_MAIN_PUSH=1 git push -- want 0\n'; fails=$((fails + 1)); fi
+  t 0 main "echo 'git push' >> notes.md"
+  t 0 main 'git commit -m "fix the git push hook"'    # mentions it, does not run it
+  t 0 main 'git log --grep="git push"'
+  # The override, in the command text — the form the refusal message teaches.
+  t 0 main "ALLOW_MAIN_PUSH=1 git push"
+  t 0 main "ALLOW_MAIN_PUSH=1 git push origin main"
   [ "$fails" -eq 0 ] || { echo "self-check FAILED ($fails)"; exit 1; }
   echo "self-check OK"; exit 0
 fi
