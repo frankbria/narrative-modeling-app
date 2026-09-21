@@ -4,6 +4,7 @@
  * empty table, which would read as "nothing else was tried".
  */
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ModelReportPage from '@/app/model/[id]/report/page';
 import { modelService } from '@/lib/services/model';
 import type { ModelReport } from '@/lib/types/modelReport';
@@ -70,6 +71,19 @@ describe('ModelReportPage', () => {
 
     await waitFor(() => expect(screen.getByText('Logistic Regression')).toBeInTheDocument());
     expect(screen.getByText('winner')).toBeInTheDocument();
+  });
+
+  it('shows an error when the Markdown download fails, instead of doing nothing', async () => {
+    const user = userEvent.setup();
+    (modelService.getModelReportMarkdown as jest.Mock).mockRejectedValue(
+      new Error('HTTP 401')
+    );
+
+    render(<ModelReportPage />);
+    await waitFor(() => expect(screen.getByText('Download Markdown')).toBeInTheDocument());
+    await user.click(screen.getByText('Download Markdown'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 401');
   });
 
   it('surfaces caveats', async () => {

@@ -10,7 +10,7 @@
  * the data does not support (#536).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { modelService } from '@/lib/services/model';
@@ -57,17 +57,32 @@ export default function ModelReportPage() {
     };
   }, [modelId]);
 
-  const downloadMarkdown = useCallback(async () => {
-    const text = await modelService.getModelReportMarkdown(modelId);
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${report?.model_name ?? modelId}-report.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [modelId, report?.model_name]);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // Not memoized: this is a click handler on a plain button, so `useCallback` buys
+  // nothing — and reading `report?.model_name` from a dependency array trips the
+  // React Compiler's preserve-manual-memoization rule, which is a blocking error here.
+  const downloadMarkdown = async () => {
+    // A rejection here (expired session → 401, network drop) was an unhandled
+    // promise and the button simply did nothing — the worst outcome for an export
+    // someone is about to send to a reviewer, because it looks like it worked.
+    setDownloadError(null);
+    try {
+      const text = await modelService.getModelReportMarkdown(modelId);
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${report?.model_name ?? modelId}-report.md`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setDownloadError(
+        e instanceof Error ? e.message : 'Could not download the report.'
+      );
+    }
+  };
 
   if (loading) return <div className="p-8 text-muted-foreground">Loading report…</div>;
   if (error) return <div className="p-8 text-destructive">{error}</div>;
@@ -100,6 +115,15 @@ export default function ModelReportPage() {
           </button>
         </div>
       </div>
+
+      {downloadError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-border bg-muted p-3 text-sm text-destructive print:hidden"
+        >
+          {downloadError}
+        </p>
+      )}
 
       <p className="mb-8 rounded-md border border-border bg-muted p-4 text-sm text-muted-foreground">
         Every figure below is either read from what the training run recorded, or

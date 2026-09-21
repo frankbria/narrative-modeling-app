@@ -362,3 +362,32 @@ class TestReviewFindings:
         rows = [line for line in md.split("\n") if line.startswith("| a")]
         assert rows, "the drivers table did not render"
         assert len(re.findall(r"(?<!\\)\|", rows[0])) == 3
+
+
+class TestFreeTextCannotInjectStructure:
+    """`MLModel.name` and `target_column` are free text, never newline-stripped
+    upstream, and land in the document's heading and body (#799 round 2)."""
+
+    @pytest.mark.asyncio
+    async def test_a_newline_in_the_model_name_stays_on_the_heading_line(
+        self, setup_database
+    ):
+        model = _model("m-inject")
+        model.name = "Churn\n## Injected heading"
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        assert md.splitlines()[0].startswith("# Model report — Churn")
+        assert "\n## Injected heading" not in md
+
+    @pytest.mark.asyncio
+    async def test_a_carriage_return_in_a_feature_name_is_flattened(
+        self, setup_database
+    ):
+        model = _model("m-cr", feature_importance={"a\rb": 0.5})
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        assert "\r" not in md

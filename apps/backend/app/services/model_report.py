@@ -364,6 +364,16 @@ def _numeric_pairs(ranked: dict[Any, Any]) -> list[tuple[str, float]]:
     return out
 
 
+def _flatten(text: str) -> str:
+    """Collapse free text to one line before it enters the document.
+
+    `MLModel.name` and `target_column` are user-supplied and are not newline-
+    stripped anywhere upstream, so a name containing a newline injects structure
+    into the exported Markdown — a heading or a list item the user never wrote.
+    """
+    return " ".join(str(text).split())
+
+
 def _cell(text: str) -> str:
     """Escape a value for a Markdown table cell.
 
@@ -371,7 +381,7 @@ def _cell(text: str) -> str:
     contain `|` — unescaped, one such name silently breaks the table structure of
     the exported document.
     """
-    return str(text).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+    return _flatten(str(text).replace("\\", "\\\\").replace("|", "\\|"))
 
 
 def _fmt(value: float | None, digits: int = 4) -> str:
@@ -386,7 +396,7 @@ def render_markdown(report: ModelReport) -> str:
     """The canonical export. Rendered here, not in the browser, so it is one
     artifact the API and the UI agree on and pytest can assert against."""
     out: list[str] = [
-        f"# Model report — {report.model_name}",
+        f"# Model report — {_flatten(report.model_name)}",
         "",
         f"- **Model id:** `{report.model_id}`",
         f"- **Problem type:** {report.problem_type}",
@@ -399,7 +409,7 @@ def render_markdown(report: ModelReport) -> str:
         "",
         "## The data",
         "",
-        f"- Target column: `{report.dataset.target_column}`",
+        f"- Target column: `{_flatten(report.dataset.target_column)}`",
         f"- Training rows: {report.dataset.n_samples_train or '—'}",
         f"- Features: {report.dataset.n_features or '—'}",
         "",
@@ -437,7 +447,7 @@ def render_markdown(report: ModelReport) -> str:
 
     out += ["## Why this model", ""]
     out.append(
-        f"**{report.winner.algorithm}** — CV {_fmt(report.winner.cv_score)}, "
+        f"**{_flatten(report.winner.algorithm)}** — CV {_fmt(report.winner.cv_score)}, "
         f"test {_fmt(report.winner.test_score)}."
     )
     out.append("")
