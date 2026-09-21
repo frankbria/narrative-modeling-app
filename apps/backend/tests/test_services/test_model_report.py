@@ -13,7 +13,7 @@ rather than a docstring promising good behaviour.
 
 import math
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -579,3 +579,35 @@ class TestFreeTextCannotInjectStructure:
 
         names = [name for name, _ in report.drivers.features]
         assert names == ["good"]
+
+    @pytest.mark.asyncio
+    async def test_trained_at_is_utc_aware_so_readers_do_not_shift_it(
+        self, setup_database
+    ):
+        """Mongo reads datetimes back naive.
+
+        Serialized without an offset, the page parses the string in the viewer's
+        LOCAL zone — a wrong training time for every non-UTC reader, in a document
+        whose purpose is being checkable.
+        """
+        await _model("m-tz").insert()
+        stored = await MLModel.find_one(MLModel.model_id == "m-tz")
+
+        report = await build_model_report(stored, USER)
+
+        assert report.trained_at is not None
+        assert report.trained_at.tzinfo is not None
+        assert report.trained_at.utcoffset() == timedelta(0)
+
+    @pytest.mark.asyncio
+    async def test_a_zero_row_count_is_shown_as_zero_not_as_absent(
+        self, setup_database
+    ):
+        """`or` renders a legitimate 0 as the em-dash used for absent values."""
+        model = _model("m-zero", n_samples_train=0, n_features=0)
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        assert "- Training rows: 0" in md
+        assert "- Training rows: —" not in md

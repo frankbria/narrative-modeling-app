@@ -41,6 +41,7 @@ from pydantic import BaseModel, Field
 
 from app.models.ml_model import MLModel
 from app.models.training_job import TrainingJob
+from app.utils.datetime import as_utc
 
 
 class Provenance(str, Enum):
@@ -370,7 +371,11 @@ async def build_model_report(
         model_name=model.name,
         problem_type=model.problem_type,
         generated_at=datetime.now(UTC),
-        trained_at=getattr(model, "created_at", None),
+        # `as_utc`: Mongo reads datetimes back NAIVE, so this serialized with no
+        # offset and the page parsed the zone-less string as the VIEWER's local
+        # zone — a wrong training time for every non-UTC reader, in a document
+        # whose whole purpose is being checkable.
+        trained_at=as_utc(getattr(model, "created_at", None)),
         partial=any(s.provenance is Provenance.NOT_RECORDED for s in sections),
         dataset=dataset,
         leaderboard=leaderboard,
@@ -434,6 +439,10 @@ def _code(text: str) -> str:
     return f"{fence}{pad}{flat}{pad}{fence}"
 
 
+def _or_dash(value: int | None) -> str:
+    return "—" if value is None else str(value)
+
+
 def _fmt(value: float | None, digits: int = 4) -> str:
     return "—" if value is None else f"{value:.{digits}f}"
 
@@ -471,8 +480,11 @@ def render_markdown(report: ModelReport) -> str:
         "## The data",
         "",
         f"- Target column: {_code(report.dataset.target_column)}",
-        f"- Training rows: {report.dataset.n_samples_train or '—'}",
-        f"- Features: {report.dataset.n_features or '—'}",
+        # `is None`, not `or`: a legitimate 0 is a fact, and rendering it as the
+        # same em-dash used for absent values is exactly the mislabelling the
+        # provenance design exists to prevent.
+        f"- Training rows: {_or_dash(report.dataset.n_samples_train)}",
+        f"- Features: {_or_dash(report.dataset.n_features)}",
         "",
         "## Algorithms tried",
         "",
