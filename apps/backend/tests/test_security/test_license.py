@@ -84,7 +84,11 @@ def test_legal_pages_name_the_same_entity_as_the_license() -> None:
     m = re.search(r"legalEntity:\s*'([^']+)'", src)
     assert m, f"legalEntity not found in {COMPANY_TS}"
     entity = m.group(1)
-    assert entity.startswith(HOLDER), (
+    # Anchored, not a bare prefix: `startswith(HOLDER)` also accepts
+    # "Noatak Enterprises, LLCs" and "…LLC2", so the guard against a wrong value
+    # would pass on the class of typo it exists to catch. The entity is either
+    # exactly the holder, or the holder followed by the `, dba …` trading name.
+    assert entity == HOLDER or entity.startswith(HOLDER + ","), (
         f"company.ts names '{entity}', but the LICENSE and README name "
         f"'{HOLDER}'. The Terms and Privacy pages render this string, so the two "
         f"must agree — change both or neither."
