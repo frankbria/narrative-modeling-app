@@ -415,7 +415,7 @@ jobs:
       - name: shellcheck
         run: |
           shopt -s globstar nullglob
-          shellcheck --severity=warning scripts/**/*.sh
+          shellcheck --severity=warning scripts/**/*.sh .claude/hooks/*.sh .githooks/*
       # Lint proves syntax, not behaviour. The lifecycle merge in
       # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
       # tests against a stubbed `aws` — no AWS account needed.
@@ -429,6 +429,18 @@ jobs:
           # pattern demanded a variable literally named VAR and failed the deploy
           # (#457). The self-check covers that and the quoting/whitespace rules.
           ./scripts/deploy/preflight_staging_env.sh --self-check
+      # Same argument for the hooks: no-push-to-main.sh decides whether a `git push`
+      # is allowed, and its first version let `git push -u origin main` through
+      # because it read the refspec by position. Both case tables run here.
+      - name: hook self-checks
+        run: |
+          shopt -s globstar nullglob
+          for hook in .claude/hooks/*.sh .githooks/*; do
+            [ -f "$hook" ] || continue
+            grep -q -- '--self-check' "$hook" || continue
+            echo "== $hook"
+            bash "$hook" --self-check
+          done
       # shellcheck's scripts/**/*.sh glob cannot see the bash inside workflow
       # `run:` blocks, and that is where three subtle bugs hid in #434 (a lost
       # summary under `bash -e`, a never-matching cron comparison). actionlint
