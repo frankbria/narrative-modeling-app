@@ -166,27 +166,27 @@ def _baseline(artifacts: dict[str, Any] | None, problem_type: str) -> BaselineSe
     # a ~1/N "accuracy" over continuous labels — a fabricated number wearing a
     # computed-at-report-time label.
     if "regress" in kind:
+        # Validate the RESULT, not just the inputs. Guarding the inputs alone left
+        # two holes: a big JSON integer raises OverflowError (an ArithmeticError,
+        # not a ValueError) during conversion, and finite-but-huge labels such as
+        # [1e308, 1e308] overflow to inf inside the sum. Either way a non-finite
+        # score reaches the response, where Starlette's `allow_nan=False` dump 500s
+        # an owned model and the .md prints "**nan**" labelled computed_at_report_time.
         try:
             values = [float(v) for v in y_test]
-            # `float()` accepts "nan" and "1e999", and stdlib json.loads parses bare
-            # NaN/Infinity literals — so a hand-edited blob yields score=nan, which
-            # Starlette's `json.dumps(allow_nan=False)` turns into a 500 on an owned
-            # model, and which renders in the .md as "**nan**" labelled
-            # computed_at_report_time. "Did float() raise" is not the question;
-            # "is it a real number" is.
-            if not all(math.isfinite(v) for v in values):
-                raise ValueError("non-finite label")
-        except (TypeError, ValueError):
+            mean = sum(values) / len(values)
+            ss_res = sum((v - mean) ** 2 for v in values)
+            # R² of the mean predictor is 0 by definition; report MAE, which is a
+            # number the reader can compare against the model's own error.
+            mae = sum(abs(v - mean) for v in values) / len(values)
+        except (TypeError, ValueError, ArithmeticError):
+            mae = ss_res = float("nan")
+        if not math.isfinite(mae):
             return BaselineSection(
                 provenance=Provenance.NOT_RECORDED,
-                note="The stored held-out labels are not finite numbers, so no "
-                "baseline could be computed from them.",
+                note="The stored held-out labels do not yield a finite baseline, so "
+                "none is shown.",
             )
-        mean = sum(values) / len(values)
-        ss_res = sum((v - mean) ** 2 for v in values)
-        # R² of the mean predictor is 0 by definition; report MAE, which is a number
-        # the reader can compare against the model's own error.
-        mae = sum(abs(v - mean) for v in values) / len(values)
         return BaselineSection(
             provenance=Provenance.COMPUTED,
             strategy="mean",

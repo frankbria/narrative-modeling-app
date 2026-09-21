@@ -11,6 +11,7 @@ trust is worse than no score — and the reason every section carries a `provena
 rather than a docstring promising good behaviour.
 """
 
+import math
 import re
 from datetime import UTC, datetime
 
@@ -531,3 +532,37 @@ class TestFreeTextCannotInjectStructure:
         assert len(report.drivers.features) == 20
         assert "of 35 features" in (report.drivers.note or "")
         assert "of 35 features" in md
+
+    @pytest.mark.asyncio
+    async def test_huge_labels_do_not_produce_an_infinite_baseline(
+        self, setup_database
+    ):
+        """Finite inputs, non-finite result: [1e308, 1e308] overflows inside the sum.
+
+        Guarding the inputs was not enough — the arithmetic has to be checked too.
+        """
+        model = _model("m-huge", problem_type="regression")
+        await model.insert()
+
+        report = await build_model_report(
+            model,
+            USER,
+            artifacts={"y_test": [1e308, 1e308, -1e308], "problem_type": "regression"},
+        )
+
+        assert report.baseline.score is None or math.isfinite(report.baseline.score)
+
+    @pytest.mark.asyncio
+    async def test_an_oversized_integer_label_does_not_raise(self, setup_database):
+        """`float(10**400)` raises OverflowError, an ArithmeticError — not caught by
+        a `(TypeError, ValueError)` handler. json.loads produces ints this large."""
+        model = _model("m-bigint", problem_type="regression")
+        await model.insert()
+
+        report = await build_model_report(
+            model,
+            USER,
+            artifacts={"y_test": [10**400, 1], "problem_type": "regression"},
+        )
+
+        assert report.baseline.provenance is Provenance.NOT_RECORDED
