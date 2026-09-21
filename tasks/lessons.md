@@ -1498,3 +1498,42 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **`install` truncates in place; `mv` within a directory is atomic.** A write interrupted between `install` and the validation leaves a partial config nobody reloads — fine until an unrelated certbot or logrotate reload hits it.
 - **Validate infra config against the real binary, not a parser.** `docker run nginx:stable-alpine` with a generated self-signed cert exercised first enable, idempotent re-run, drift, rollback and live traffic in ~30s, and produced the outcome evidence the issue actually wanted (security headers present, #768's rate limit returning 429).
 - **opencode was down again** (trivial one-word probe returned the same `UnknownError`), so `codex review --base main` was the pre-PR reviewer — and it found the P0-class defect. Fourth outage in three days; probe with one word before assuming slowness.
+
+## #795 (2026-09-21) — the model report, and ten review rounds
+- **Fixing at the symptom guarantees the next symptom.** Every finding I fixed at its
+  point of occurrence was found again one layer over: Markdown table cells → headings →
+  notes → free text generally; input validation → the arithmetic's result; `_baseline`'s
+  "did `float()` raise" → the identical non-question in `_numeric_pairs` two rounds
+  later. The fixes that ended the class were the ones that moved up a level (flatten at
+  the single point text enters the document; validate the computed score, not its
+  inputs). When a reviewer finds the same shape twice, stop patching and go up.
+- **`float("nan")` does not raise, and `float(10**400)` raises `OverflowError` —** an
+  `ArithmeticError`, not a `ValueError`. "Did the conversion raise" is never the
+  question; "is the result a finite number" is. A NaN reaching a response is a 500
+  under Starlette's `allow_nan=False`.
+- **Mislabelling stored data as absent is the same defect as fabricating it**, pointing
+  the other way. A section whose numbers are stored but whose *optional* narrative is
+  missing is not an absent section, and `x or '—'` renders a legitimate `0` as "not
+  recorded".
+- **A mutation test can be vacuous in a way that looks rigorous.** Mine asserted
+  `"\n## Injected"` while the code lower-cased the payload to `"\n## injected"`, so it
+  passed with the guard deleted — in the one suite whose whole claim was
+  mutation-verification, and which I had cited three times as grounds to trust the rest.
+  Assert case-insensitively, and prefer an assertion that does not depend on guessing the
+  payload's shape (here: the only headings present are the ones the renderer writes).
+- **Read the findings table, not the summary paragraph.** Three times I under-counted a
+  round's findings — a frontend item folded into a backend count, inline comments never
+  opened, a three-row table answered one row of. Each time I then *claimed* the round was
+  fixed. A fix comment is a claim; check it against the diff.
+- **Filtering `gh api` output by a local-time string against UTC timestamps silently
+  matches nothing**, which reads exactly like "no findings". Take the last N items
+  instead of comparing times.
+- **Run a check, then read it.** I committed with a mypy error already printed on screen.
+- **Ask where data already lives before designing storage.** The leaderboard the report
+  needed was already persisted — on `TrainingJob`, not `MLModel`, joined by a shared
+  `model_id`. Two explorer subagents in parallel (backend data surface, frontend nav)
+  paid for themselves; the backend one also found that `dataset_version_id` is null in
+  the normal flow because the resolver queries two different id spaces.
+- **The push guard's own documented case caught me twice**: `git switch -c x && git push`
+  is refused, because the hook runs before the command and the branch is still `main` at
+  decision time. Two separate commands.
