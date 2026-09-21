@@ -71,6 +71,11 @@ from app.services.evaluation_explanation_service import evaluation_explanation_s
 from app.services.exceptions import NotFoundError
 from app.services.interpretability_service import InterpretabilityService
 from app.services.metrics_service import MetricsService
+from app.services.model_report import (
+    ModelReport,
+    build_model_report,
+    render_markdown,
+)
 from app.services.model_storage import (
     ModelArtifactDeletionError,
     ModelStorageService,
@@ -104,6 +109,7 @@ from app.services.training_admission import (
     enforce_training_per_user_cap,
     training_semaphore,
 )
+from app.utils.filenames import sanitize_filename
 from app.utils.heartbeat import heartbeat_pump
 from app.utils.job_failures import user_safe_failure_reason
 from app.utils.s3 import parse_s3_url
@@ -1469,6 +1475,60 @@ async def get_model_evaluation(
         )
         await enforcement.release(request)  # no model call on this branch
         return _partial_evaluation_response(model)
+
+
+# Model report (issue #795). Two-segment paths, so route order does not matter.
+#
+# Deliberately NOT metered: the report assembles stored documents and computes a
+# baseline from stored labels. No model is ever called, so there is no `ai_calls`
+# unit to reserve and no fallback to detect — AC5 ("works with no AI key") holds by
+# construction rather than by a release-the-unit branch.
+@router.get("/{model_id}/report", response_model=ModelReport)
+async def get_model_report(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """A defensible account of one model, assembled from what was recorded.
+
+    Never 500s on an owned model: each section degrades to `not_recorded` with a
+    note rather than failing, and the artifact loads are best-effort.
+    """
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    artifacts = await MetricsService.load_evaluation_artifacts(model)
+    shap_artifacts = await MetricsService.load_shap_artifacts(model)
+    return await build_model_report(
+        model, current_user_id, artifacts=artifacts, shap_artifacts=shap_artifacts
+    )
+
+
+@router.get("/{model_id}/report.md")
+async def get_model_report_markdown(
+    model_id: str, current_user_id: str = Depends(get_current_user_id)
+):
+    """The same report as a downloadable Markdown file."""
+    model = await MLModel.find_one(
+        MLModel.model_id == model_id, MLModel.user_id == current_user_id
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    artifacts = await MetricsService.load_evaluation_artifacts(model)
+    shap_artifacts = await MetricsService.load_shap_artifacts(model)
+    report = await build_model_report(
+        model, current_user_id, artifacts=artifacts, shap_artifacts=shap_artifacts
+    )
+    # `sanitize_filename` is the model-level rule for client-supplied names; the
+    # model name reaches this header, so it goes through the same normaliser (#585).
+    safe = sanitize_filename(f"{model.name or model.model_id}-report.md")
+    return Response(
+        content=render_markdown(report),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{safe}"'},
+    )
 
 
 # Interpretability endpoints (issue #80). These are two-segment paths, so the
