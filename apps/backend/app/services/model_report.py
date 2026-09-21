@@ -489,6 +489,12 @@ def render_markdown(report: ModelReport) -> str:
         # provenance design exists to prevent.
         f"- Training rows: {_or_dash(report.dataset.n_samples_train)}",
         f"- Features: {_or_dash(report.dataset.n_features)}",
+        (
+            "- Feature columns: "
+            + ", ".join(_code(name) for name in report.dataset.feature_names)
+            if report.dataset.feature_names
+            else "- Feature columns: _Not recorded._"
+        ),
         "",
         "## Algorithms tried",
         "",
@@ -536,6 +542,19 @@ def render_markdown(report: ModelReport) -> str:
         if report.winner.explanation
         else _missing_field(report.winner.note)
     )
+    # The stored metrics were on the wire from the first commit and rendered
+    # nowhere, while the PR summary claimed them as covered. Someone defending a
+    # prediction wants precision/recall/AUC, not only the headline CV score.
+    extra = {
+        k: v
+        for k, v in (report.winner.metrics or {}).items()
+        if k not in {"cv_score", "test_score", "training_time"}
+        and isinstance(v, (int, float))
+        and math.isfinite(float(v))
+    }
+    if extra:
+        out += ["", "| Metric | Value |", "|---|---|"]
+        out += [f"| {_cell(k)} | {_fmt(float(v))} |" for k, v in sorted(extra.items())]
     out.append("")
 
     out += ["## What drives it", ""]

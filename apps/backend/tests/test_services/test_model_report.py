@@ -611,3 +611,36 @@ class TestFreeTextCannotInjectStructure:
 
         assert "- Training rows: 0" in md
         assert "- Training rows: —" not in md
+
+    @pytest.mark.asyncio
+    async def test_the_stored_metrics_are_actually_rendered(self, setup_database):
+        """They were on the wire from the first commit and shown nowhere, while the
+        PR summary listed them as covered."""
+        model = _model("m-metrics", metrics={"precision": 0.91, "recall": 0.78})
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        assert "precision" in md
+        assert "0.9100" in md
+
+    @pytest.mark.asyncio
+    async def test_feature_columns_are_listed(self, setup_database):
+        await _model("m-feat").insert()
+
+        md = render_markdown(await build_model_report(_model("m-feat"), USER))
+
+        assert "tenure" in md and "monthly_charges" in md
+
+    @pytest.mark.asyncio
+    async def test_exactly_one_row_is_the_winner_when_a_job_exists(
+        self, setup_database
+    ):
+        """`entry.algorithm == winner_name` marks nothing if the two naming
+        conventions ever drift; nothing pinned that invariant."""
+        await _model("m-win").insert()
+        await _job("m-win").insert()
+
+        report = await build_model_report(_model("m-win"), USER)
+
+        assert sum(1 for row in report.leaderboard.rows if row.is_winner) == 1

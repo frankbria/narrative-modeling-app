@@ -1499,7 +1499,9 @@ async def get_model_evaluation(
 # baseline from stored labels. No model is ever called, so there is no `ai_calls`
 # unit to reserve and no fallback to detect — AC5 ("works with no AI key") holds by
 # construction rather than by a release-the-unit branch.
-async def _owned_model_report(model_id: str, user_id: str):
+async def _owned_model_report(
+    model_id: str, user_id: str
+) -> tuple[MLModel, ModelReport]:
     """Resolve an owned model and assemble its report.
 
     Shared by both report routes so the ownership check and the artifact loads
