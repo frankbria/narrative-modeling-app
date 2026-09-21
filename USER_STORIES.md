@@ -4,11 +4,31 @@
 ### Document Overview
 This document contains comprehensive user stories covering both happy path scenarios and edge cases for the Narrative Modeling Application. Stories are organized by workflow stage and user persona, with acceptance criteria and technical notes included.
 
+> **These are desired behaviours, not shipped ones.** Several stories describe features
+> that do not exist — database connections, multi-file joins, upload sizes far above the
+> real cap — and a few describe shipped features as planned. Do not read this document as
+> a description of the product, and never write public copy from it: the binding list of
+> what may be claimed is the do-not-claim list in `docs/product/public-surface-gtm.md` §6.
+> The remaining drift is tracked in #535.
+
 ### User Personas Reference
-- **Sarah** - Marketing Analyst (Excel user, ML novice)
-- **Dr. Chen** - Medical Researcher (Domain expert, limited coding)
+
+> **Audience is owned by the positioning document, not by this file.** Until it lands
+> (it carries the product name, gated on #793), the decision record is
+> `docs/product/public-surface-gtm.md` §4. Re-ranked to the signed D2 in #765 — see #794.
+
+- **Dr. Chen** - Medical Researcher *(primary)* — domain expert, limited coding, has to
+  defend the result to a reviewer, committee or PI
+- **Sarah** - Marketing Analyst *(secondary)* — Excel user, ML novice, has to convince a
+  stakeholder the number is trustworthy
 - **Marcus** - Operations Manager (Data-literate, non-technical)
 - **Alex** - Data Scientist (Technical expert seeking efficiency)
+
+Most stories below are written in Sarah's voice. That is deliberate and still correct:
+the workflow is identical for both leading personas — upload, profile, train, explain —
+and only the *motivation* differs, so re-voicing every story would churn the document
+without changing a single acceptance criterion. Where the motivation is the point, the
+story says whose it is.
 
 ---
 
@@ -17,12 +37,12 @@ This document contains comprehensive user stories covering both happy path scena
 ### Happy Path Stories
 
 #### STORY-001: First-Time Data Upload
-**As** Sarah, a marketing analyst  
-**I want to** upload my customer data CSV file  
-**So that** I can start building a churn prediction model  
+**As** Dr. Chen, a medical researcher  
+**I want to** upload my study data as a CSV file  
+**So that** I can build an outcome model I can explain to my committee  
 
 **Acceptance Criteria:**
-- Drag-and-drop accepts CSV, XLSX, TXT files up to 100GB
+- Drag-and-drop accepts CSV, XLSX, TXT files up to the configured size cap
 - Progress bar shows upload status with time remaining
 - Preview shows first 10 rows immediately after upload
 - Schema is auto-detected with field types identified

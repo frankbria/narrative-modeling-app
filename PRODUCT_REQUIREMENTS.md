@@ -5,26 +5,49 @@
 The Narrative Modeling Application is an AI-guided platform that democratizes machine learning by enabling non-expert analysts to build, explore, and deploy predictive models through an intuitive, story-driven interface. The platform removes technical barriers by automating complex ML workflows while maintaining transparency and user control throughout the modeling journey.
 
 ### Vision Statement
-To empower business analysts, researchers, and domain experts to harness the power of machine learning without requiring programming skills or deep statistical knowledge, while maintaining the rigor and reliability expected from professional data science work.
+To empower researchers, analysts, and domain experts to harness the power of machine learning without requiring programming skills or deep statistical knowledge, while maintaining the rigor and reliability expected from professional data science work — so that the person who has to defend the result can.
 
 ### Target Users
 
+> **Audience and public copy are owned by the positioning document, not by this file.**
+> Until it lands (it carries the product name, which is gated on #793), the decision
+> record is `docs/product/public-surface-gtm.md` §4. This section was re-ranked to match
+> the signed D2 in #765 — see #794. If the two ever disagree, the positioning document
+> wins and this file is the one that is wrong.
+
+The audience is defined by a shared situation rather than a job title: **someone who has
+a flat tabular dataset and has to defend a prediction made from it to a person who can
+reject it.** That is what the product is built for — cross-validation rather than one
+split, an explanation of why the winner won, SHAP drivers, a version trail, and an export
+that runs without us. Convenience is not the differentiator; being able to stand behind
+the result is.
+
 #### Primary Users
-- **Business Analysts**: Need to create predictive models for business metrics without coding
-- **Domain Experts**: Have deep subject knowledge but limited ML expertise
-- **Research Scientists**: Require quick prototyping of predictive models
-- **Data-Curious Professionals**: Want to explore data patterns and make predictions
+- **Applied researchers**: Doctoral students, postdocs, clinical and social-science
+  research coordinators, institutional-research analysts. Their data is already a flat
+  file; their reviewer, committee or PI will ask "why this model, and what drives it?"
+- **Analysts with no data-science team behind them**: Asked for a churn, attrition,
+  renewal or demand model that a stakeholder will not accept as a black box.
+- **Domain experts**: Deep subject knowledge, limited ML expertise, high standards for
+  how a result is justified.
 
 #### User Personas
-1. **Sarah, Marketing Analyst**
-   - Needs to predict customer churn
+
+1. **Dr. Chen, Medical Researcher** *(primary)*
+   - Analyzing patient outcomes; the result goes into a paper, a grant report or a
+     committee review, so the method has to survive being questioned
+   - Strong domain knowledge, limited coding skills; uses SPSS, JASP or copied R today
+   - Requires reproducible, explainable results — cross-validated scores, SHAP drivers,
+     a version history, and a written account of what was done
+   - Must not put identifiable rows into a chat window
+
+2. **Sarah, Marketing Analyst** *(secondary)*
+   - Needs to predict customer churn, and needs a stakeholder to believe the number
    - Comfortable with Excel, new to ML
    - Values clear explanations and visual insights
-
-2. **Dr. Chen, Medical Researcher**
-   - Analyzing patient outcomes
-   - Strong domain knowledge, limited coding skills
-   - Requires reproducible, explainable results
+   - Known limit for this persona: her source data often lives in a CRM or warehouse,
+     and the product has no connectors and no joins — she has to bring a flat export.
+     The shipped churn sample and the product screenshots tell her story end to end
 
 3. **Marcus, Operations Manager**
    - Forecasting inventory needs
