@@ -39,8 +39,15 @@
 # too; the override below clears it in one prefix. Over-refusing costs a keystroke,
 # under-refusing costs the thing this was written to prevent.
 #
-# SCOPE: it reads the command string and requires the literal first word of a
-# segment to be `git`, so all of these are out of scope — `bash -c "git push"`,
+# SCOPE, the branch-vs-ref half: this layer only ever looks at the branch you are
+# ON, never at the ref a command pushes. `git push origin main` from a feature
+# branch passes here (there is a case pinning that). It is a materially different
+# gap from the text-parsing ones below — no amount of parsing closes it, because
+# the answer depends on the refspec, and deciding refspecs is what six rounds of
+# bypasses came from. The pre-push hook reads the actual target ref and refuses it.
+#
+# SCOPE, the text half: it reads the command string and requires the literal first
+# word of a segment to be `git`, so all of these are out of scope — `bash -c "git push"`,
 # xargs, a shell alias or function, a script that pushes, `env git push`,
 # `command git push`, `\git push`, and a push inside a command substitution whose
 # outer command is something else. Backstop for direct invocation, not a guarantee;

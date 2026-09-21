@@ -83,7 +83,7 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
 - **Version ownership (#446–#448, #453):** everything under `/api/v1/versions` and `/api/v1/datasets/{id}/versions` authorizes on **`DatasetVersion.user_id`** (server-set, indexed) via the `require_owned_dataset` / `require_owned_version` helpers in `app/api/routes/versions.py`. Call them **outside** the handler's `try` — the module's broad `except Exception` blocks turn a 404 into a 500, and `compare_versions` has no `except HTTPException: raise` at all. Unknown and foreign ids must answer identically, and the ownership check runs **before** any other guard, or the guard's own 400 (`Cannot delete base version`) becomes an existence oracle. `versioning_service.get_version(user_id=...)` compares against the same `DatasetVersion.user_id` since #453 (it used to join to `DatasetMetadata` and read `if dataset and ...`, so a version whose dataset row was gone **passed**); `create_transformation_version` resolves its parent through it (#559), so a parent the caller does not own is refused inside the service — a caller that skipped its own guard is no longer a hole. Scoping the entry point is not enough for lineage — `get_lineage_chain` and `compare_versions` walk `parent_version_id`, so they take a `user_id` and stop at the first hop the caller does not own, or another tenant's lineage reaches `lineage_chain`/`lineage_path`/`transformation_count`. **Deleting a version deletes its S3 object too, S3-first, and keeps the row if S3 fails (#561):** `VersioningService.delete_version` removes the object before the Mongo doc and, on failure, raises `VersionArtifactDeletionError` (route → retryable **502**) keeping the row — the only record of the key — so the object stays findable, the same choice #521 made for model artifacts (never the swallow-and-orphan the retention path `cleanup_old_versions` uses). The key is resolved through `parse_s3_url` for any URL shape, and a URL naming a **different** bucket than the configured one is refused (row kept), the #616 guard — deleting that key from our bucket would no-op and orphan the real object, or hit a same-named one. The `DELETE /versions/{id}` route previously dropped only the doc, orphaning the object and destroying its only key-record in the same request.
 
 ## Git hooks
-- **Run `./scripts/install-git-hooks.sh` once per clone.** It symlinks the tracked
+- **`./scripts/install-git-hooks.sh` runs automatically at session start** (a `SessionStart` hook in `.claude/settings.json`) and is idempotent; run it by hand in a clone that Claude Code has not opened. It symlinks the tracked
   `.githooks/pre-push`, which refuses a push that updates the default branch — `main`
   requires `CI Success` but `enforce_admins` is false, so a direct push succeeds with
   only a `remote: Bypassed rule violations` line that scrolls past (#604, three times).
@@ -93,7 +93,9 @@ Narrative Modeling App — an AI-guided platform that democratizes machine learn
   feedback layer for agent sessions: it refuses before the command runs and explains
   why. It parses command text, so it has known gaps listed in its header — the pre-push
   hook is the guarantee, and the refusal message says so when it is not installed.
-  Override: `ALLOW_MAIN_PUSH=1 git push ...`, as a token in the command.
+  Override: `ALLOW_MAIN_PUSH=1 git push ...`, as a token in the command. Note it
+  only inspects the branch you are ON, so `git push origin main` from a feature
+  branch passes this layer and is caught by the pre-push hook instead.
 - The installer never clobbers a real file in `.git/hooks`, which is where the
   untracked secret-scanning `pre-commit` hook lives. `core.hooksPath` stays as it is
   for the same reason. Both hooks carry `--self-check` case tables that CI runs.
