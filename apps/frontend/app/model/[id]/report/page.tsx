@@ -206,9 +206,13 @@ export default function ModelReportPage() {
         {report.winner.explanation ? (
           <p className="mt-2 text-sm text-muted-foreground">{report.winner.explanation}</p>
         ) : (
-          <div className="mt-2">
-            <Absent section={report.winner} />
-          </div>
+          /* The winner's numbers ARE stored — only the narrative is missing. Using
+             the Absent block here would print the same "Not recorded" used for
+             genuinely absent sections, which is the mislabelling this design exists
+             to prevent, pointing the other way. */
+          <p className="mt-2 text-sm italic text-muted-foreground">
+            {report.winner.note ?? 'No stored explanation of why this algorithm won.'}
+          </p>
         )}
       </section>
 

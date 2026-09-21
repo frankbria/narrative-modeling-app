@@ -153,7 +153,11 @@ def _baseline(artifacts: dict[str, Any] | None, problem_type: str) -> BaselineSe
             provenance=Provenance.NOT_RECORDED, note=_NO_ARTIFACTS_NOTE
         )
 
-    kind = ((artifacts or {}).get("problem_type") or problem_type or "").lower()
+    # `str(...)` before `.lower()`: `problem_type` comes from the artifact blob,
+    # which is hand-editable JSON — a truthy non-string (a number, a list) raised
+    # AttributeError and 500'd both report routes on an owned model.
+    raw_kind = (artifacts or {}).get("problem_type") or problem_type or ""
+    kind = str(raw_kind).lower()
     # Substring, not `startswith`: the problem types in use include
     # `time_series_regression` and `time_series_classification`, so a prefix test
     # sent every time-series regression into the majority-class branch and printed
@@ -409,7 +413,18 @@ def _fmt(value: float | None, digits: int = 4) -> str:
 
 
 def _absent(section: Section) -> str:
-    return f"_Not recorded._ {section.note or ''}".strip()
+    """Render a genuinely absent section.
+
+    Only for `NOT_RECORDED`. A `STORED` section missing one optional field is not
+    absent, and saying so is the mirror of the fabrication this module exists to
+    prevent — see `_missing_field` below.
+    """
+    return f"_Not recorded._ {_flatten(section.note or '')}".strip()
+
+
+def _missing_field(note: str | None) -> str:
+    """Render one absent field inside a section whose data IS stored."""
+    return f"_{_flatten(note or 'Not available for this model.')}_"
 
 
 def render_markdown(report: ModelReport) -> str:
@@ -459,7 +474,7 @@ def render_markdown(report: ModelReport) -> str:
             f"**{_fmt(report.baseline.score)}** ({report.baseline.metric}) on the same "
             f"held-out rows.",
             "",
-            f"_{report.baseline.note}_",
+            f"_{_flatten(report.baseline.note or '')}_",
         ]
     else:
         out.append(_absent(report.baseline))
@@ -477,13 +492,15 @@ def render_markdown(report: ModelReport) -> str:
     out.append(
         _flatten(report.winner.explanation)
         if report.winner.explanation
-        else _absent(report.winner)
+        else _missing_field(report.winner.note)
     )
     out.append("")
 
     out += ["## What drives it", ""]
     if report.drivers.features:
-        out.append(f"Source: {report.drivers.explainer_type or 'stored importance'}.")
+        out.append(
+            f"Source: {_flatten(report.drivers.explainer_type or 'stored importance')}."
+        )
         out.append("")
         out += ["| Feature | Importance |", "|---|---|"]
         out += [
@@ -496,7 +513,7 @@ def render_markdown(report: ModelReport) -> str:
 
     if report.caveats:
         out += ["## Caveats", ""]
-        out += [f"- {c}" for c in report.caveats]
+        out += [f"- {_flatten(c)}" for c in report.caveats]
         out.append("")
 
     out += ["## Reproducibility", ""]

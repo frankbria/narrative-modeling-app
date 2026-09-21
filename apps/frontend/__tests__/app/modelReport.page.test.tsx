@@ -86,6 +86,21 @@ describe('ModelReportPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 401');
   });
 
+  it('does not label the winner Not recorded when only the explanation is missing', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      winner: { ...base.winner, explanation: null, note: 'No stored explanation.' },
+    });
+
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('No stored explanation.')).toBeInTheDocument());
+    // Exactly the two genuinely-absent sections (leaderboard, drivers) carry the
+    // label. Scoped to <p> so the intro banner's own <strong>Not recorded</strong>
+    // — which explains what the label means — is not counted as a section.
+    expect(screen.getAllByText('Not recorded', { selector: 'p' })).toHaveLength(2);
+  });
+
   it('surfaces caveats', async () => {
     render(<ModelReportPage />);
 

@@ -440,3 +440,44 @@ class TestFreeTextCannotInjectStructure:
         # A longer fence than any run inside, so the value survives verbatim.
         assert "weird`col" in line
         assert line.startswith("- Target column: ``")
+
+    @pytest.mark.asyncio
+    async def test_a_non_string_problem_type_does_not_500(self, setup_database):
+        """The artifact blob is hand-editable JSON; `problem_type` may not be a str."""
+        await _model("m-badtype").insert()
+
+        report = await build_model_report(
+            _model("m-badtype"), USER, artifacts={"y_test": [1, 2], "problem_type": 7}
+        )
+
+        assert report.baseline.provenance is Provenance.NOT_RECORDED
+
+    @pytest.mark.asyncio
+    async def test_a_newline_in_a_note_does_not_inject_a_heading(self, setup_database):
+        await _model("m-note").insert()
+
+        report = await build_model_report(
+            _model("m-note"),
+            USER,
+            artifacts={"y_test": [1, 2], "problem_type": "clustering\n## Injected"},
+        )
+        md = render_markdown(report)
+
+        assert "\n## Injected" not in md
+
+    @pytest.mark.asyncio
+    async def test_a_missing_explanation_is_not_rendered_as_not_recorded(
+        self, setup_database
+    ):
+        """The winner's numbers ARE stored; only the narrative is absent.
+
+        Printing the same "_Not recorded._" used for genuinely absent sections is
+        the round-4 mislabelling again, one layer down in the rendering.
+        """
+        await _model("m-noexpl").insert()
+
+        md = render_markdown(await build_model_report(_model("m-noexpl"), USER))
+
+        why = md.split("## Why this model")[1].split("##")[0]
+        assert "Random Forest" in why
+        assert "Not recorded" not in why
