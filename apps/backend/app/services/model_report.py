@@ -30,6 +30,7 @@ print a plausible number.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import UTC, datetime
 from enum import Enum
@@ -267,8 +268,13 @@ async def build_model_report(
             provenance=Provenance.NOT_RECORDED, note=_NO_JOB_NOTE
         )
 
+    # STORED unconditionally: `algorithm`, `cv_score` and `test_score` come off the
+    # already-loaded MLModel and are always present. Only the "why it won" narrative
+    # depends on the TrainingJob, and its absence is carried by `note`. Marking the
+    # whole section NOT_RECORDED labelled real stored numbers as absent — the
+    # inverse of fabricating one, and the same contract breach.
     winner = WinnerSection(
-        provenance=Provenance.STORED if job else Provenance.NOT_RECORDED,
+        provenance=Provenance.STORED,
         algorithm=model.algorithm,
         cv_score=model.cv_score,
         test_score=model.test_score,
@@ -384,6 +390,20 @@ def _cell(text: str) -> str:
     return _flatten(str(text).replace("\\", "\\\\").replace("|", "\\|"))
 
 
+def _code(text: str) -> str:
+    """Wrap free text in an inline code span that its own backticks cannot close.
+
+    `target_column` comes from an uploaded CSV header, where a backtick is legal.
+    Markdown's own answer is a fence longer than the longest run inside, so the
+    value survives verbatim rather than being mangled or stripped.
+    """
+    flat = _flatten(text)
+    runs = [len(m) for m in re.findall(r"`+", flat)]
+    fence = "`" * ((max(runs) if runs else 0) + 1)
+    pad = " " if flat.startswith("`") or flat.endswith("`") else ""
+    return f"{fence}{pad}{flat}{pad}{fence}"
+
+
 def _fmt(value: float | None, digits: int = 4) -> str:
     return "—" if value is None else f"{value:.{digits}f}"
 
@@ -409,7 +429,7 @@ def render_markdown(report: ModelReport) -> str:
         "",
         "## The data",
         "",
-        f"- Target column: `{_flatten(report.dataset.target_column)}`",
+        f"- Target column: {_code(report.dataset.target_column)}",
         f"- Training rows: {report.dataset.n_samples_train or '—'}",
         f"- Features: {report.dataset.n_features or '—'}",
         "",

@@ -407,3 +407,36 @@ class TestFreeTextCannotInjectStructure:
 
         assert "\n## Not a real heading" not in md
         assert "It won. ## Not a real heading" in md
+
+    @pytest.mark.asyncio
+    async def test_the_winner_is_stored_even_when_the_job_is_not(self, setup_database):
+        """Its numbers come off MLModel and are always present.
+
+        Labelling the whole section `not_recorded` because the *explanation* is
+        missing marks real stored numbers as absent — the inverse of inventing one,
+        and the same breach of the contract `provenance` exists to carry.
+        """
+        await _model("m-nojob2").insert()
+
+        report = await build_model_report(_model("m-nojob2"), USER)
+
+        assert report.winner.provenance is Provenance.STORED
+        assert report.winner.cv_score == pytest.approx(0.87)
+        # The absent half is carried by the note, not by mislabelling the whole.
+        assert report.winner.explanation is None
+        assert report.winner.note
+
+    @pytest.mark.asyncio
+    async def test_a_backtick_in_the_target_column_cannot_close_the_code_span(
+        self, setup_database
+    ):
+        """CSV headers may legally contain a backtick."""
+        model = _model("m-tick", target_column="weird`col")
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        line = next(ln for ln in md.split("\n") if ln.startswith("- Target column:"))
+        # A longer fence than any run inside, so the value survives verbatim.
+        assert "weird`col" in line
+        assert line.startswith("- Target column: ``")
