@@ -375,7 +375,11 @@ async def build_model_report(
         # offset and the page parsed the zone-less string as the VIEWER's local
         # zone — a wrong training time for every non-UTC reader, in a document
         # whose whole purpose is being checkable.
-        trained_at=as_utc(getattr(model, "created_at", None)),
+        trained_at=(
+            as_utc(_created)
+            if (_created := getattr(model, "created_at", None))
+            else None
+        ),
         partial=any(s.provenance is Provenance.NOT_RECORDED for s in sections),
         dataset=dataset,
         leaderboard=leaderboard,
