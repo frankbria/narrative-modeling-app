@@ -47,7 +47,7 @@ the result is.
    - Values clear explanations and visual insights
    - Known limit for this persona: her source data often lives in a CRM or warehouse,
      and the product has no connectors and no joins — she has to bring a flat export.
-     The shipped churn sample and the product screenshots tell her story end to end
+     The shipped churn sample and the product screenshots tell her story end to end.
 
 3. **Marcus, Operations Manager**
    - Forecasting inventory needs

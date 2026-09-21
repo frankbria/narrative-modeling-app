@@ -17,10 +17,10 @@ This document contains comprehensive user stories covering both happy path scena
 > (it carries the product name, gated on #793), the decision record is
 > `docs/product/public-surface-gtm.md` §4. Re-ranked to the signed D2 in #765 — see #794.
 
-- **Dr. Chen** - Medical Researcher *(primary)* — domain expert, limited coding, has to
-  defend the result to a reviewer, committee or PI
-- **Sarah** - Marketing Analyst *(secondary)* — Excel user, ML novice, has to convince a
-  stakeholder the number is trustworthy
+- **Dr. Chen** - Medical Researcher, **primary** (Domain expert, limited coding; must
+  defend the result to a reviewer, committee or PI)
+- **Sarah** - Marketing Analyst, **secondary** (Excel user, ML novice; must convince a
+  stakeholder the number is trustworthy)
 - **Marcus** - Operations Manager (Data-literate, non-technical)
 - **Alex** - Data Scientist (Technical expert seeking efficiency)
 
