@@ -101,6 +101,24 @@ describe('ModelReportPage', () => {
     expect(screen.getAllByText('Not recorded', { selector: 'p' })).toHaveLength(2);
   });
 
+  it('shows the truncation note, which the PDF export depends on', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      drivers: {
+        provenance: 'stored',
+        note: 'Showing the top 20 of 35 features by magnitude.',
+        features: [['tenure', 0.9]],
+        explainer_type: 'tree',
+      },
+    });
+
+    render(<ModelReportPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/top 20 of 35 features/)).toBeInTheDocument()
+    );
+  });
+
   it('surfaces caveats', async () => {
     render(<ModelReportPage />);
 

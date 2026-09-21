@@ -226,14 +226,22 @@ export default function ModelReportPage() {
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-semibold text-foreground">What drives it</h2>
         {report.drivers.features.length > 0 ? (
-          <ul className="space-y-1 text-sm">
+          <>
+            {/* The truncation note must appear here too: "Print / Save as PDF" IS
+                this page, so without it the PDF shows 20 rows implying "here are
+                the drivers" — the unstated claim the backend added the note for. */}
+            {report.drivers.note && (
+              <p className="mb-2 text-sm text-muted-foreground">{report.drivers.note}</p>
+            )}
+            <ul className="space-y-1 text-sm">
             {report.drivers.features.map(([name, value]) => (
               <li key={name} className="flex justify-between border-b border-border py-1">
                 <span className="text-foreground">{name}</span>
                 <span className="text-muted-foreground">{num(value)}</span>
               </li>
             ))}
-          </ul>
+            </ul>
+          </>
         ) : (
           <Absent section={report.drivers} />
         )}

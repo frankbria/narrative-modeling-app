@@ -387,9 +387,16 @@ def _numeric_pairs(ranked: dict[Any, Any]) -> list[tuple[str, float]]:
     out: list[tuple[str, float]] = []
     for key, value in ranked.items():
         try:
-            out.append((str(key), float(value)))
-        except (TypeError, ValueError):
+            number = float(value)
+        except (TypeError, ValueError, ArithmeticError):
             continue
+        # Same non-question as `_baseline` had: "did float() raise" lets NaN and
+        # ±Infinity straight through (stdlib json.loads parses both as bare
+        # literals), and a non-finite value here 500s the response on an owned
+        # model. Ask whether it is a real number.
+        if not math.isfinite(number):
+            continue
+        out.append((str(key), number))
     return out
 
 

@@ -566,3 +566,16 @@ class TestFreeTextCannotInjectStructure:
         )
 
         assert report.baseline.provenance is Provenance.NOT_RECORDED
+
+    @pytest.mark.asyncio
+    async def test_a_nan_feature_importance_is_dropped_not_served(self, setup_database):
+        """The same non-question as the baseline had, one function up."""
+        model = _model(
+            "m-nanfeat", feature_importance={"good": 0.5, "bad": float("nan")}
+        )
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+
+        names = [name for name, _ in report.drivers.features]
+        assert names == ["good"]
