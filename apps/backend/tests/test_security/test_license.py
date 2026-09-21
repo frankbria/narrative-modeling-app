@@ -7,6 +7,7 @@ declaration correct and self-consistent, mirroring the deploy-config guards in
 services) so they run in the service-free CI lane.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -60,3 +61,31 @@ async def test_root_endpoint_offers_source() -> None:
     assert payload["license"] == "AGPL-3.0-or-later"
     assert payload["source_code"] == SOURCE_URL
     assert "source" in payload["source_offer"].lower()
+
+
+# ── The legal pages must name the same entity as the licence ──────────────────
+# `company.ts` is the single source for what the Terms and Privacy pages say the
+# contracting party IS, and it had "Noaysk Enterprises" — an entity that does not
+# exist — while the LICENSE and README correctly said "Noatak". The published legal
+# pages therefore named the wrong company, which is worse than naming none: those
+# pages are what Stripe's reviewers, regulators and customers read before an account
+# exists, and terms signed with a non-existent party are not obviously enforceable.
+#
+# It survived because the test that "covers" it, `__tests__/app/legal.page.test.tsx`,
+# asserts the pages render `COMPANY.legalEntity` — reading the same constant it is
+# checking, so any spelling passes. Same shape as #406, where the suite built the
+# expected URL with the same expression as the code. The assertion below is against
+# the LITERAL holder string, which is the only version that can fail.
+COMPANY_TS = REPO_ROOT / "apps" / "frontend" / "lib" / "legal" / "company.ts"
+
+
+def test_legal_pages_name_the_same_entity_as_the_license() -> None:
+    src = COMPANY_TS.read_text(encoding="utf-8")
+    m = re.search(r"legalEntity:\s*'([^']+)'", src)
+    assert m, f"legalEntity not found in {COMPANY_TS}"
+    entity = m.group(1)
+    assert entity.startswith(HOLDER), (
+        f"company.ts names '{entity}', but the LICENSE and README name "
+        f"'{HOLDER}'. The Terms and Privacy pages render this string, so the two "
+        f"must agree — change both or neither."
+    )

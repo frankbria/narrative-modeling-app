@@ -22,7 +22,7 @@ export const COMPANY = {
   /** Product name as it appears to users. */
   serviceName: 'Narrative Modeling App',
   /** The contracting party. */
-  legalEntity: 'Noaysk Enterprises, LLC, dba Bria Strategy Group',
+  legalEntity: 'Noatak Enterprises, LLC, dba Bria Strategy Group',
   governingLaw: 'State of Arizona, USA',
   privacyEmail: 'privacy@briaanalytics.com',
   supportEmail: 'support@briaanalytics.com',
