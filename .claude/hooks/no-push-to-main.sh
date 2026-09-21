@@ -128,8 +128,12 @@ Refused: '$branch' is the default branch, and pushing it directly bypasses the
 required "CI Success" check. That has happened three times (#604) — the push
 succeeds with only an easily-missed "remote: Bypassed rule violations" line.
 
-Branch first, then open a PR:
-    git switch -c <branch> && git push -u origin <branch>
+Branch first, then open a PR — as TWO commands, not one:
+    git switch -c <branch>
+    git push -u origin <branch>
+
+(Chaining them with && is refused too: this hook runs before the command does, so
+at that moment you are still on '$branch' and the push is still a push from it.)
 
 This refuses ANY push from '$branch', including a push of another branch — the
 guard deliberately does not try to work out what a command pushes. If you do mean
@@ -186,6 +190,12 @@ if [ "${1:-}" = "--self-check" ]; then
   t 2 main "FOO=1 git push"
   t 2 main "cd /repo && git push -u origin main"
   t 2 main 'git push origin feat/x && echo "git push done"' # the first segment is a push
+  # Known false positive, pinned deliberately: the hook runs BEFORE the command, so
+  # a `switch -c` earlier in the same line has not happened yet and the push is
+  # still a push from the default branch. Detecting it would mean tracking branch
+  # state through a command string — the parsing this design gave up. The refusal
+  # message therefore tells you to run the two commands separately.
+  t 2 main 'git switch -c feat/x && git push -u origin feat/x'
   # Allowed: not the default branch, or not a push.
   t 0 feat/x "git push"
   t 0 feat/x "git push -u origin feat/x"
