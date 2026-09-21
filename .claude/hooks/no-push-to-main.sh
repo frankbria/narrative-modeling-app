@@ -8,6 +8,19 @@
 # past in the push output, and nothing afterwards distinguishes a bypassed commit
 # from one that passed. For docs commits under tasks/ it had become the habit.
 #
+# THIS IS THE EARLY-FEEDBACK LAYER, NOT THE GUARANTEE. `.githooks/pre-push` is the
+# guarantee: git hands that hook the refs it is actually about to update, on stdin,
+# so there is no command string to parse and nothing to slip past. This one exists
+# because it refuses *before* the command runs and can explain why — but it reads
+# text, and text is where the bypasses live. Six review rounds on PR #791 found six:
+# a flag before the remote, `;` glued to the command, the word "push" inside an
+# earlier commit message, a second refspec, a `)` left on a token, and a global
+# option between `git` and `push`. A seventh is known and deliberately NOT patched
+# here — the segment split is a plain `sed`, so a quoted separator inside an
+# argument (`git -c http.extraHeader="X-Custom: a;b" push`) cuts the command in the
+# wrong place and hides the push. Chasing it would be round seven of writing a shell
+# parser in bash; the pre-push hook catches that case exactly, from any caller.
+#
 # DESIGN: on the default branch, ANY git push is refused. There is deliberately no
 # analysis of what it pushes.
 #

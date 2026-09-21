@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# git pre-push: refuse a push that updates the default branch.
+#
+# This is the GUARANTEE. Its sibling, .claude/hooks/no-push-to-main.sh, is a
+# PreToolUse hook that reads the command text an agent is about to run — useful
+# because it refuses early with an explanation, but it is a parser for a shell
+# language, and six rounds of review on PR #791 found six ways to slip past it
+# (a flag before the remote, `;` glued to the command, the word "push" inside an
+# earlier commit message, a second refspec, a `)` on the token, a global option
+# between `git` and `push`, a quoted separator inside a `-c` value).
+#
+# git hands THIS hook the refs it is actually about to update, on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# There is no command string, no quoting, no shell. It also fires for a push from
+# anywhere — an alias, a script, `bash -c`, an IDE, a coding agent — which the
+# PreToolUse hook cannot see by construction.
+#
+# Why it exists: main requires the "CI Success" check, but `enforce_admins` is
+# false, so a direct push succeeds with only a `remote: Bypassed rule violations`
+# line that scrolls past, and nothing afterwards tells a bypassed commit from one
+# that passed. It happened three times (#604) before this.
+#
+# INSTALL (per clone — core.hooksPath here is .git/hooks, which also holds the
+# untracked secret-scanning pre-commit hook, so this is symlinked in rather than
+# relocating that):
+#   ln -sf ../../.githooks/pre-push .git/hooks/pre-push
+#
+# OVERRIDE: `git push --no-verify`, git's own standard escape. Deliberately not a
+# custom env var — --no-verify is explicit, already understood, and cannot be
+# triggered by an accident of quoting the way a grepped token could.
+set -uo pipefail
+
+default=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+default="${default:-main}"
+
+status=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ -n "${remote_ref:-}" ] || continue
+  if [ "$remote_ref" = "refs/heads/$default" ]; then
+    cat >&2 <<EOF
+
+Refused: this push updates '$default', which requires the "CI Success" check.
+A direct push bypasses it and succeeds with only an easily-missed
+"remote: Bypassed rule violations" warning (#604 — it happened three times).
+
+Open a PR instead:
+    git switch -c <branch> && git push -u origin <branch>
+
+If you really mean to push '$default' directly:
+    git push --no-verify ...
+
+EOF
+    status=1
+  fi
+done
+
+exit $status

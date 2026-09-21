@@ -415,7 +415,7 @@ jobs:
       - name: shellcheck
         run: |
           shopt -s globstar nullglob
-          shellcheck --severity=warning scripts/**/*.sh .claude/hooks/*.sh
+          shellcheck --severity=warning scripts/**/*.sh .claude/hooks/*.sh .githooks/*
       # Lint proves syntax, not behaviour. The lifecycle merge in
       # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
       # tests against a stubbed `aws` — no AWS account needed.
