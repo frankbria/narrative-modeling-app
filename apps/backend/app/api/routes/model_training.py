@@ -11,6 +11,7 @@ import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -166,7 +167,9 @@ class FeatureConfigRequest(BaseModel):
     max_features: int | None = Field(None, ge=1)
     scaling_method: Literal["standard", "minmax", "robust"] | None = None
     encoding_method: Literal["onehot", "label"] | None = None
-    missing_strategy: Literal["mean", "median", "most_frequent", "constant"] | None = None
+    missing_strategy: Literal["mean", "median", "most_frequent", "constant"] | None = (
+        None
+    )
 
 
 class TuningConfigRequest(BaseModel):
@@ -229,7 +232,11 @@ class TrainModelRequest(BaseModel):
         tune = t.tuning_config if t else None
         f = self.feature_config
         checks: list[tuple[str, int | None, int]] = [
-            ("training_config.max_models", t.max_models if t else None, ceilings.max_models),
+            (
+                "training_config.max_models",
+                t.max_models if t else None,
+                ceilings.max_models,
+            ),
             ("training_config.cv_folds", t.cv_folds if t else None, ceilings.cv_folds),
             (
                 "training_config.time_limit",
@@ -251,7 +258,11 @@ class TrainModelRequest(BaseModel):
                 tune.cv_folds if tune else None,
                 ceilings.cv_folds,
             ),
-            ("feature_config.max_features", f.max_features if f else None, ceilings.max_features),
+            (
+                "feature_config.max_features",
+                f.max_features if f else None,
+                ceilings.max_features,
+            ),
         ]
         return [
             f"{name}={value} exceeds your plan's limit of {limit}"
@@ -1432,7 +1443,9 @@ async def _full_evaluation_response(
 @router.get(
     "/{model_id}/evaluation",
     response_model=ModelEvaluationResponse,
-    dependencies=[Depends(quota("ai_calls"))],  # the report card is an OpenAI call (#461)
+    dependencies=[
+        Depends(quota("ai_calls"))
+    ],  # the report card is an OpenAI call (#461)
 )
 async def get_model_evaluation(
     model_id: str, request: Request, current_user_id: str = Depends(get_current_user_id)
@@ -1464,7 +1477,10 @@ async def get_model_evaluation(
 
     try:
         response = await _full_evaluation_response(model, artifacts)
-        if response.ai_explanation is None or response.ai_explanation.generated_by != "openai":
+        if (
+            response.ai_explanation is None
+            or response.ai_explanation.generated_by != "openai"
+        ):
             # rule-based fallback (no key, breaker open, call failed): no paid call, no charge
             await enforcement.release(request)
         return response
@@ -1523,20 +1539,28 @@ async def get_model_report_markdown(
     )
     # `sanitize_filename` is the model-level rule for client-supplied names; the
     # model name reaches this header, so it goes through the same normaliser (#585).
+    # But normalising is not encoding: it deliberately keeps non-ASCII characters,
+    # and Starlette encodes headers as latin-1, so a CJK/Cyrillic/emoji model name
+    # raised UnicodeEncodeError and made the download a permanent 500. RFC 5987 is
+    # the header's own answer: an ASCII fallback for old clients plus the real name
+    # percent-encoded as UTF-8.
     safe = sanitize_filename(f"{model.name or model.model_id}-report.md")
+    ascii_fallback = safe.encode("ascii", "replace").decode("ascii").replace('"', "_")
+    disposition = (
+        f'attachment; filename="{ascii_fallback}"; '
+        f"filename*=UTF-8''{quote(safe, safe='')}"
+    )
     return Response(
         content=render_markdown(report),
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{safe}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 
 # Interpretability endpoints (issue #80). These are two-segment paths, so the
 # one-segment GET /{model_id} never captures them regardless of order; they are
 # kept here next to the evaluation endpoint for readability.
-@router.get(
-    "/{model_id}/feature-importance", response_model=FeatureImportanceResponse
-)
+@router.get("/{model_id}/feature-importance", response_model=FeatureImportanceResponse)
 async def get_feature_importance(
     model_id: str, current_user_id: str = Depends(get_current_user_id)
 ):
@@ -1680,7 +1704,9 @@ async def get_tuning_results(
 @router.get(
     "/{model_id}/errors",
     response_model=ErrorAnalysisResponse,
-    dependencies=[Depends(quota("ai_calls"))],  # improvement suggestions are an OpenAI call (#461)
+    dependencies=[
+        Depends(quota("ai_calls"))
+    ],  # improvement suggestions are an OpenAI call (#461)
 )
 async def get_error_analysis(
     model_id: str, request: Request, current_user_id: str = Depends(get_current_user_id)
@@ -1737,7 +1763,9 @@ async def get_error_analysis(
         data, problem_type=model.problem_type, algorithm=model.algorithm
     )
     if generated_by != "openai":
-        await enforcement.release(request)  # rule-based fallback: no paid call, no charge
+        await enforcement.release(
+            request
+        )  # rule-based fallback: no paid call, no charge
 
     message = None
     if not data.has_feature_matrix:
@@ -1808,12 +1836,8 @@ async def list_model_versions(
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="Model not found") from exc
 
-    versions = [
-        _version_entry(model, idx) for idx, model in enumerate(family, start=1)
-    ]
-    production_id = next(
-        (m.model_id for m in family if m.is_production), None
-    )
+    versions = [_version_entry(model, idx) for idx, model in enumerate(family, start=1)]
+    production_id = next((m.model_id for m in family if m.is_production), None)
     anchor = next((m for m in family if m.model_id == model_id), None)
     if anchor is None:  # anchor deleted between the two reads in list_family
         raise HTTPException(status_code=404, detail="Model not found")
@@ -2246,7 +2270,7 @@ async def delete_model(
         raise HTTPException(
             status_code=502,
             detail="Could not delete the model's stored files; the model was not "
-                   "deleted. Please retry.",
+            "deleted. Please retry.",
         ) from e
 
     if not deleted:

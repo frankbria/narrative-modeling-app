@@ -85,3 +85,27 @@ async def test_markdown_download_is_attached_with_a_safe_filename(
     assert "Model report" in response.text
     # The section that has no data says so in the document itself.
     assert "not recorded" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_a_non_latin1_model_name_does_not_500_the_download(
+    async_authorized_client, setup_database
+):
+    """Starlette encodes headers as latin-1.
+
+    `sanitize_filename` deliberately normalises rather than rejects, so a CJK,
+    Cyrillic or emoji model name survives into `Content-Disposition` and used to
+    raise `UnicodeEncodeError` inside the response construction — a permanent 500
+    on the download, contradicting the route's own "never 500s" guarantee.
+    """
+    model = _model("rep-utf8")
+    model.name = "顧客離反モデル"
+    await model.insert()
+
+    response = await async_authorized_client.get("/api/v1/ml/rep-utf8/report.md")
+
+    assert response.status_code == 200
+    disposition = response.headers["content-disposition"]
+    # RFC 5987: an ASCII fallback plus the real name, percent-encoded as UTF-8.
+    assert "filename*=UTF-8''" in disposition
+    disposition.encode("latin-1")  # must not raise

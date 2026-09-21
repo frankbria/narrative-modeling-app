@@ -144,14 +144,29 @@ def _baseline(artifacts: dict[str, Any] | None, problem_type: str) -> BaselineSe
     trained long before this feature existed.
     """
     y_test = (artifacts or {}).get("y_test")
-    if not y_test:
+    # A stored artifact is a JSON blob that can be truncated or hand-edited; the
+    # route promises it never 500s on an owned model, so a wrong shape degrades
+    # exactly like `/shap` does rather than propagating a TypeError.
+    if not isinstance(y_test, (list, tuple)) or not y_test:
         return BaselineSection(
             provenance=Provenance.NOT_RECORDED, note=_NO_ARTIFACTS_NOTE
         )
 
     kind = ((artifacts or {}).get("problem_type") or problem_type or "").lower()
-    if kind.startswith("regress"):
-        values = [float(v) for v in y_test]
+    # Substring, not `startswith`: the problem types in use include
+    # `time_series_regression` and `time_series_classification`, so a prefix test
+    # sent every time-series regression into the majority-class branch and printed
+    # a ~1/N "accuracy" over continuous labels — a fabricated number wearing a
+    # computed-at-report-time label.
+    if "regress" in kind:
+        try:
+            values = [float(v) for v in y_test]
+        except (TypeError, ValueError):
+            return BaselineSection(
+                provenance=Provenance.NOT_RECORDED,
+                note="The stored held-out labels are not numeric, so no baseline "
+                "could be computed from them.",
+            )
         mean = sum(values) / len(values)
         ss_res = sum((v - mean) ** 2 for v in values)
         # R² of the mean predictor is 0 by definition; report MAE, which is a number
@@ -164,6 +179,15 @@ def _baseline(artifacts: dict[str, Any] | None, problem_type: str) -> BaselineSe
             metric="mean_absolute_error",
             note=_BASELINE_NOTE
             + (" R² of a mean predictor is 0 by construction." if ss_res else ""),
+        )
+
+    if "classif" not in kind:
+        return BaselineSection(
+            provenance=Provenance.NOT_RECORDED,
+            note=(
+                f"No no-skill baseline is defined for a {kind or 'unknown'} problem, "
+                "so none is shown."
+            ),
         )
 
     counts = Counter(str(v) for v in y_test)
@@ -258,15 +282,18 @@ async def build_model_report(
     )
 
     importance = getattr(model, "feature_importance", None) or {}
-    shap_importance = (shap_artifacts or {}).get("shap_importance") or {}
+    shap_importance = (shap_artifacts or {}).get("shap_importance")
+    # Same reasoning as `y_test` above — this is a raw S3 blob, not a validated model.
+    if not isinstance(shap_importance, dict):
+        shap_importance = {}
+    if not isinstance(importance, dict):
+        importance = {}
     ranked = shap_importance or importance
     if ranked:
         drivers = DriversSection(
             provenance=Provenance.STORED,
             features=sorted(
-                ((k, float(v)) for k, v in ranked.items()),
-                key=lambda kv: abs(kv[1]),
-                reverse=True,
+                _numeric_pairs(ranked), key=lambda kv: abs(kv[1]), reverse=True
             )[:20],
             explainer_type=(
                 getattr(model, "shap_explainer_type", None)
@@ -326,6 +353,27 @@ async def build_model_report(
     )
 
 
+def _numeric_pairs(ranked: dict[Any, Any]) -> list[tuple[str, float]]:
+    """Only the entries that are actually a name and a number."""
+    out: list[tuple[str, float]] = []
+    for key, value in ranked.items():
+        try:
+            out.append((str(key), float(value)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _cell(text: str) -> str:
+    """Escape a value for a Markdown table cell.
+
+    Feature and column names come from uploaded CSV headers, which may legally
+    contain `|` — unescaped, one such name silently breaks the table structure of
+    the exported document.
+    """
+    return str(text).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+
+
 def _fmt(value: float | None, digits: int = 4) -> str:
     return "—" if value is None else f"{value:.{digits}f}"
 
@@ -367,7 +415,7 @@ def render_markdown(report: ModelReport) -> str:
         for row in report.leaderboard.rows:
             mark = " **(winner)**" if row.is_winner else ""
             out.append(
-                f"| {row.algorithm}{mark} | {_fmt(row.cv_score)} | "
+                f"| {_cell(row.algorithm)}{mark} | {_fmt(row.cv_score)} | "
                 f"{_fmt(row.test_score)} | {_fmt(row.training_time, 1)} |"
             )
     else:
@@ -402,7 +450,8 @@ def render_markdown(report: ModelReport) -> str:
         out.append("")
         out += ["| Feature | Importance |", "|---|---|"]
         out += [
-            f"| {name} | {_fmt(value)} |" for name, value in report.drivers.features
+            f"| {_cell(name)} | {_fmt(value)} |"
+            for name, value in report.drivers.features
         ]
     else:
         out.append(_absent(report.drivers))
@@ -417,7 +466,7 @@ def render_markdown(report: ModelReport) -> str:
     if report.reproducibility.environment:
         out += ["| Component | Version |", "|---|---|"]
         out += [
-            f"| {k} | {v} |"
+            f"| {_cell(k)} | {_cell(v)} |"
             for k, v in sorted(report.reproducibility.environment.items())
         ]
     else:

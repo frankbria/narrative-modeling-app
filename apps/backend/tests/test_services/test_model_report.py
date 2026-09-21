@@ -11,6 +11,7 @@ trust is worse than no score — and the reason every section carries a `provena
 rather than a docstring promising good behaviour.
 """
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -282,3 +283,82 @@ class TestReproducibilityReportsOnlyWhatWasCaptured:
         report = await build_model_report(model, USER)
 
         assert any("dataset version" in c.lower() for c in report.caveats)
+
+
+class TestReviewFindings:
+    """Four defects found in review of #799, each pinned here."""
+
+    @pytest.mark.asyncio
+    async def test_time_series_regression_does_not_get_a_classification_baseline(
+        self, setup_database
+    ):
+        """`startswith("regress")` is False for `time_series_regression`.
+
+        It fell through to the majority-class branch, which counts distinct float
+        labels and prints a ~1/N "accuracy" over continuous values — a fabricated
+        number wearing a `computed_at_report_time` label, which is worse than the
+        absence it was meant to prevent.
+        """
+        model = _model(problem_type="time_series_regression")
+        await model.insert()
+        artifacts = {
+            "y_test": [1.5, 2.5, 3.5, 4.5],
+            "problem_type": "time_series_regression",
+        }
+
+        report = await build_model_report(model, USER, artifacts=artifacts)
+
+        assert report.baseline.strategy == "mean"
+        assert report.baseline.metric == "mean_absolute_error"
+
+    @pytest.mark.asyncio
+    async def test_clustering_has_no_baseline_rather_than_a_meaningless_one(
+        self, setup_database
+    ):
+        model = _model(problem_type="clustering")
+        await model.insert()
+        artifacts = {"y_test": [0, 1, 0, 2], "problem_type": "clustering"}
+
+        report = await build_model_report(model, USER, artifacts=artifacts)
+
+        assert report.baseline.provenance is Provenance.NOT_RECORDED
+        assert report.baseline.score is None
+
+    @pytest.mark.asyncio
+    async def test_a_corrupt_shap_payload_does_not_raise(self, setup_database):
+        """The route promises it never 500s on an owned model; a hand-edited or
+        truncated S3 blob must degrade like `/shap` does, not propagate."""
+        model = _model()
+        await model.insert()
+
+        report = await build_model_report(
+            model, USER, shap_artifacts={"shap_importance": ["not", "a", "dict"]}
+        )
+
+        assert report.drivers.provenance is Provenance.NOT_RECORDED
+
+    @pytest.mark.asyncio
+    async def test_a_corrupt_y_test_does_not_raise(self, setup_database):
+        model = _model()
+        await model.insert()
+
+        report = await build_model_report(model, USER, artifacts={"y_test": "oops"})
+
+        assert report.baseline.provenance is Provenance.NOT_RECORDED
+
+    @pytest.mark.asyncio
+    async def test_a_pipe_in_a_feature_name_does_not_break_the_table(
+        self, setup_database
+    ):
+        """Feature names come from uploaded CSV headers, which may contain `|`."""
+        model = _model(feature_importance={"a|b": 0.9, "plain": 0.1})
+        await model.insert()
+
+        md = render_markdown(await build_model_report(model, USER))
+
+        assert r"a\|b" in md
+        # Structure is intact: exactly three UNESCAPED pipes (leading, middle,
+        # trailing). The escaped one is still a pipe character, so count delimiters.
+        rows = [line for line in md.split("\n") if line.startswith("| a")]
+        assert rows, "the drivers table did not render"
+        assert len(re.findall(r"(?<!\\)\|", rows[0])) == 3
