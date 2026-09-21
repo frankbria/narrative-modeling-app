@@ -149,6 +149,15 @@ export default function ModelDetailPage() {
           )}
         </div>
         <div className="flex gap-2">
+          {/* #795: the full account of this model, for handing to whoever asks
+              "why this model, and what drives it?". The literal href is also what
+              makes the route reachable to routeReachability.test.ts. */}
+          <Button asChild variant="outline">
+            <Link href={`/model/${model.model_id}/report`}>
+              <FileText className="mr-2 h-4 w-4" />
+              Model report
+            </Link>
+          </Button>
           <Button 
             onClick={() => router.push(`/predict?model=${model.model_id}`)}
             disabled={!model.is_active}

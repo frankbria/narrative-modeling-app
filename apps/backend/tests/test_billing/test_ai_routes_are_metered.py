@@ -147,6 +147,10 @@ _EXEMPT = {
         "/api/v1/ml/{model_id}/logs", "/api/v1/ml/{model_id}/predict", "/api/v1/ml/{model_id}/promote",
         "/api/v1/ml/{model_id}/sdk", "/api/v1/ml/{model_id}/sdk/postman", "/api/v1/ml/{model_id}/sdk/{language}",
         "/api/v1/ml/{model_id}/shap", "/api/v1/ml/{model_id}/status", "/api/v1/ml/{model_id}/tuning-results",
+        # #795: the report assembles stored documents and computes a baseline from
+        # stored labels. No model is reachable from it, which is also how it keeps
+        # working with no AI key configured.
+        "/api/v1/ml/{model_id}/report", "/api/v1/ml/{model_id}/report.md",
         "/api/v1/ml/{model_id}/versions",
     )},
     **{p: _UPLOAD_SUMMARY for p in (
