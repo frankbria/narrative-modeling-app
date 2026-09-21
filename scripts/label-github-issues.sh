@@ -1,19 +1,21 @@
 #!/bin/bash
-# Script to label GitHub issues for beta readiness prioritization
-# Generated: 2026-01-01
+# The repo's GitHub label taxonomy, as code. Idempotent — safe to re-run.
+#
+# Originally generated 2026-01-01 as a one-time beta-triage migration; tracked and
+# reduced to the taxonomy in PR #791 (see the note at the bottom for why).
+#
 # Usage: ./scripts/label-github-issues.sh
 
 set -e  # Exit on error
 
 echo "=============================================="
-echo "GitHub Issue Labeling for Beta Prioritization"
+echo "GitHub Label Taxonomy"
 echo "=============================================="
 echo ""
 
 # Color codes for output. No RED: nothing here reports a failure in colour —
 # every `gh label create` ends in `|| true` because re-running is normal.
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
@@ -63,157 +65,31 @@ gh label create "blocked" --description "Cannot proceed: needs external access, 
 echo -e "${GREEN}✓ Labels created${NC}"
 echo ""
 
-# Step 2: Label P0 issues (Beta Blockers)
-echo -e "${BLUE}Step 2: Labeling P0 - Beta Blockers...${NC}"
-echo ""
+# ─────────────────────────────────────────────────────────────────────────────
+# This script creates the LABEL TAXONOMY and nothing else. It is idempotent and
+# safe to re-run: every create ends in `|| true` because "already exists" is the
+# normal case.
+#
+# It used to carry Steps 2-6, a one-time January 2026 migration that applied
+# priorities to 31 specific issues by number. That was removed when the script was
+# tracked (PR #791): all 31 have since closed, and several were re-triaged (#75 is
+# P2.1 today, the script re-added P0-Critical), so re-running it would have stacked
+# contradictory priority labels onto closed issues. Per-issue triage belongs in the
+# issues, not frozen in a script.
+#
+# Priority lives in the issue TITLE as a `PX.Y` prefix; the PX-* labels mirror the
+# tier. `needs-owner` / `needs-operator` / `blocked` are read by the issue-lifecycle
+# `--next` discovery to skip what an agent cannot start.
 
-echo "Issue #125: Fix 23 failing E2E smoke tests"
-gh issue edit 125 --add-label "P0-Critical,bug,frontend,testing"
-
-echo "Issue #132: Feature Store security sandboxing"
-gh issue edit 132 --add-label "P0-Critical,security,backend,ml-core"
-
-echo "Issue #75: Core AutoML Engine"
-gh issue edit 75 --add-label "P0-Critical,enhancement,backend,ml-core"
-
-echo "Issue #79: Comprehensive Model Evaluation Dashboard"
-gh issue edit 79 --add-label "P0-Critical,enhancement,frontend,backend,ml-core"
-
-echo "Issue #82: Single Record and Batch Prediction Interface"
-gh issue edit 82 --add-label "P0-Critical,enhancement,frontend,backend,ml-core"
-
-echo -e "${GREEN}✓ P0 issues labeled (5 issues)${NC}"
-echo ""
-
-# Step 3: Label P1 issues (Beta Critical)
-echo -e "${BLUE}Step 3: Labeling P1 - Beta Critical...${NC}"
-echo ""
-
-echo "Issue #76: Real-Time Training Monitoring"
-gh issue edit 76 --add-label "P1-High,enhancement,frontend,backend,ml-core"
-
-echo "Issue #80: Model Interpretability Tools (SHAP)"
-gh issue edit 80 --add-label "P1-High,enhancement,backend,ml-core"
-
-echo "Issue #83: Prediction Confidence Scores and Explanations"
-gh issue edit 83 --add-label "P1-High,enhancement,backend,ml-core"
-
-echo "Issue #87: Backend Workflow Persistence"
-gh issue edit 87 --add-label "P1-High,enhancement,backend"
-
-echo "Issue #88: Seamless Stage Transitions with Data Persistence"
-gh issue edit 88 --add-label "P1-High,enhancement,frontend"
-
-echo -e "${GREEN}✓ P1 issues labeled (5 issues)${NC}"
-echo ""
-
-# Step 4: Label P2 issues (Post-Beta V2)
-echo -e "${BLUE}Step 4: Labeling P2 - Post-Beta V2...${NC}"
-echo ""
-
-echo "Issue #77: Automated Hyperparameter Tuning"
-gh issue edit 77 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #78: Model Versioning and History Tracking"
-gh issue edit 78 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #81: Error Analysis with Pattern Detection"
-gh issue edit 81 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #84: One-Click REST API Deployment"
-gh issue edit 84 --add-label "P2-Medium,enhancement,backend,deployment"
-
-echo "Issue #85: Deployment Monitoring Dashboard"
-gh issue edit 85 --add-label "P2-Medium,enhancement,frontend,deployment"
-
-echo "Issue #86: Integration Tools (Client SDKs, Postman)"
-gh issue edit 86 --add-label "P2-Medium,enhancement,backend,deployment,documentation"
-
-echo "Issue #89: AI Decision Engine for Tool Selection"
-gh issue edit 89 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #90: Comprehensive AI Integration Points"
-gh issue edit 90 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #101: Progressive Model Training Mode"
-gh issue edit 101 --add-label "P2-Medium,enhancement,backend,ml-core"
-
-echo "Issue #102: Data Quality Scoring System"
-gh issue edit 102 --add-label "P2-Medium,enhancement,backend"
-
-echo -e "${GREEN}✓ P2 issues labeled (10 issues)${NC}"
-echo ""
-
-# Step 5: Label P3 issues (Future Enhancements)
-echo -e "${BLUE}Step 5: Labeling P3 - Future Enhancements...${NC}"
-echo ""
-
-echo "Issue #91: Role-Based Access Control (RBAC)"
-gh issue edit 91 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #92: Comprehensive Audit Logging System"
-gh issue edit 92 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #93: Database Connectors for Live Data Sources"
-gh issue edit 93 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #94: Cloud Storage Integrations"
-gh issue edit 94 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #95: Data Drift Detection"
-gh issue edit 95 --add-label "P3-Low,enhancement,backend,ml-core"
-
-echo "Issue #96: Model Performance Degradation Detection"
-gh issue edit 96 --add-label "P3-Low,enhancement,backend,ml-core"
-
-echo "Issue #97: Domain-Specific Feature Engineering Templates"
-gh issue edit 97 --add-label "P3-Low,enhancement,backend,ml-core"
-
-echo "Issue #98: Plugin Architecture"
-gh issue edit 98 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #99: Data Governance Features"
-gh issue edit 99 --add-label "P3-Low,enhancement,backend"
-
-echo "Issue #100: A/B Testing Framework"
-gh issue edit 100 --add-label "P3-Low,enhancement,backend,deployment"
-
-echo -e "${GREEN}✓ P3 issues labeled (10 issues)${NC}"
-echo ""
-
-# Step 6: Label special cases
-echo -e "${BLUE}Step 6: Labeling special cases...${NC}"
-echo ""
-
-echo "Issue #35: E2E Test Failures (7 tests) - needs investigation"
-gh issue edit 35 --add-label "bug,frontend,testing" || echo -e "${YELLOW}Warning: Issue #35 not found or already closed${NC}"
-
-echo -e "${GREEN}✓ Special cases labeled${NC}"
-echo ""
-
-# Summary
 echo "=============================================="
-echo -e "${GREEN}Labeling Complete!${NC}"
+echo -e "${GREEN}Label taxonomy applied${NC}"
 echo "=============================================="
 echo ""
-echo "Summary:"
-echo "  P0-Critical:  5 issues (Beta blockers)"
-echo "  P1-High:      5 issues (Beta critical)"
-echo "  P2-Medium:   10 issues (Post-beta V2)"
-echo "  P3-Low:      10 issues (Future enhancements)"
-echo "  Special:      1 issue  (Needs investigation)"
-echo "  ─────────────────────────────────"
-echo "  Total:       31 issues labeled"
+echo "Verify against what is live:"
+echo "  gh label list --limit 100"
 echo ""
-echo "Next steps:"
-echo "  1. Review labels on GitHub"
-echo "  2. Investigate if #35 is duplicate of #125"
-echo "  3. Create GitHub Project board (see instructions below)"
-echo "  4. Start work on #125 (E2E tests)"
-echo ""
-echo "View labeled issues:"
-echo "  gh issue list --label P0-Critical"
-echo "  gh issue list --label P1-High"
-echo "  gh issue list --label P2-Medium"
-echo "  gh issue list --label P3-Low"
+echo "Labels that gate issue selection:"
+echo "  gh issue list --label needs-owner      # waiting on a product decision"
+echo "  gh issue list --label needs-operator   # waiting on box/production access"
+echo "  gh issue list --label blocked          # waiting on something external"
 echo ""

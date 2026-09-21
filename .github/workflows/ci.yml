@@ -415,7 +415,7 @@ jobs:
       - name: shellcheck
         run: |
           shopt -s globstar nullglob
-          shellcheck --severity=warning scripts/**/*.sh
+          shellcheck --severity=warning scripts/**/*.sh .claude/hooks/*.sh
       # Lint proves syntax, not behaviour. The lifecycle merge in
       # configure-s3-backup.sh is the destructive-if-wrong part, so it gets real
       # tests against a stubbed `aws` — no AWS account needed.
@@ -423,6 +423,17 @@ jobs:
         run: |
           ./scripts/ops/test-configure-s3-backup.sh
           ./scripts/ops/test-verify-backup-config.sh
+      # Same argument for the hooks: no-push-to-main.sh decides whether a `git push`
+      # is allowed, and its first version let `git push -u origin main` through
+      # because it read the refspec by position. Its case table runs here.
+      - name: hook self-checks
+        run: |
+          shopt -s globstar nullglob
+          for hook in .claude/hooks/*.sh; do
+            grep -q -- '--self-check' "$hook" || continue
+            echo "== $hook"
+            "$hook" --self-check
+          done
           # preflight_staging_env.sh gates every staging deploy, and its parsing
           # is subtle enough to have had a real bug: it derived the required set
           # from the raw compose text, so a COMMENT documenting the ${VAR:?}
