@@ -99,7 +99,6 @@ describe('OnboardingStep', () => {
       target_column: 'churn',
       feature_columns: ['customer_id'],
       learning_objectives: ['Learn classification'],
-      download_url: '/download/customer_churn',
     };
 
     global.fetch = jest.fn((url: string, init?: RequestInit) => {
@@ -150,7 +149,6 @@ describe('OnboardingStep', () => {
       target_column: 'churn',
       feature_columns: ['customer_id'],
       learning_objectives: ['Learn classification'],
-      download_url: '/download/customer_churn',
     };
 
     global.fetch = jest.fn((url: string) => {

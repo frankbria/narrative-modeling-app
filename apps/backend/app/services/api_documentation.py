@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from app.config import settings
+from app.config import SUPPORT_EMAIL, settings
 
 
 class APIDocumentationService:
@@ -55,7 +55,7 @@ class APIDocumentationService:
         Returns:
             Detailed API description string
         """
-        return """
+        return f"""
 # Narrative Modeling API
 
 A comprehensive AI-guided platform for democratizing Machine Learning, enabling non-expert
@@ -94,8 +94,7 @@ Specify version using:
 
 ## Support
 
-For API support and questions, please visit our documentation at https://docs.narrativeml.com
-or contact support@narrativeml.com
+For API support and questions, contact {SUPPORT_EMAIL}
 """
 
     def _enhance_openapi_spec(self, spec: dict[str, Any]) -> dict[str, Any]:
@@ -114,20 +113,13 @@ or contact support@narrativeml.com
         # Add contact information
         spec["info"]["contact"] = {
             "name": "Narrative Modeling Support",
-            "email": "support@narrativeml.com",
-            "url": "https://docs.narrativeml.com"
+            "email": SUPPORT_EMAIL,
         }
 
         # Add license information
         spec["info"]["license"] = {
             "name": "MIT",
             "url": "https://opensource.org/licenses/MIT"
-        }
-
-        # Add external documentation
-        spec["externalDocs"] = {
-            "description": "Complete API Documentation",
-            "url": "https://docs.narrativeml.com/api"
         }
 
         # Add servers

@@ -34,7 +34,6 @@ interface StepInfo {
   instructions: string[];
   help_text?: string;
   code_examples?: Array<{ title: string; code: string }>;
-  video_url?: string;
   completed_at?: string;
 }
 

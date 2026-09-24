@@ -13,6 +13,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { ErasureConfirmDialog } from '@/components/settings/ErasureConfirmDialog';
+import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { erasureApi } from '@/lib/services/erasure';
 import {
   Upload,
@@ -163,6 +165,7 @@ export default function DashboardPage() {
   const recentDatasets = datasetList ?? [];
   // Per-dataset right-to-erasure (#482): the row targeted for permanent deletion.
   const [datasetToErase, setDatasetToErase] = useState<DatasetItem | null>(null);
+  const [samplesOpen, setSamplesOpen] = useState(false);
 
   const { data: modelList, loading: isLoadingModels, error: modelsError, reload: fetchRecentModels } = useAsyncData(
     () => fetchList<ModelItem>('models', 'models', 'models'),
@@ -426,16 +429,22 @@ export default function DashboardPage() {
                 </Button>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <Database size={32} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-muted-foreground text-sm mb-4">No datasets yet</p>
-                <Button
-                  size="sm"
-                  onClick={() => router.push('/upload')}
-                >
-                  <Upload size={14} className="mr-1" />
-                  Upload Dataset
-                </Button>
+              <div className="text-center py-8" data-testid="datasets-empty-state">
+                <Database size={32} className="mx-auto text-muted-foreground mb-3" />
+                <p className="font-medium text-sm mb-1">Start with some data</p>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Upload a CSV of your own, or start with a sample that trains in under a minute.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                  <Button size="sm" onClick={() => router.push('/upload')}>
+                    <Upload size={14} className="mr-1" />
+                    Upload a CSV
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setSamplesOpen(true)}>
+                    <Sparkles size={14} className="mr-1" />
+                    Try a sample dataset
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -566,6 +575,18 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={samplesOpen} onOpenChange={setSamplesOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Try a sample dataset</DialogTitle>
+            <DialogDescription>
+              Each sample is a few thousand rows and trains in quick mode in under a minute.
+            </DialogDescription>
+          </DialogHeader>
+          <SampleDatasetSelector onDatasetSelected={(datasetId) => router.push(`/explore/${datasetId}`)} />
+        </DialogContent>
+      </Dialog>
 
       {datasetToErase && (
         <ErasureConfirmDialog

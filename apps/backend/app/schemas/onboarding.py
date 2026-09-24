@@ -99,9 +99,9 @@ class SampleDatasetResponse(BaseModel):
     target_column: str
     feature_columns: list[str]
     learning_objectives: list[str]
-    expected_accuracy: float | None = None
-    download_url: str
-    documentation_url: str | None = None
+    expected_accuracy: float | None = Field(
+        None, description="Quick-mode score floor: accuracy, or R² for regression"
+    )
 
 
 class OnboardingUserProgress(BaseModel):

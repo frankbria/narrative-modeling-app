@@ -101,8 +101,6 @@ def mock_sample_datasets():
             "feature_columns": ["tenure", "monthly_charges"],
             "learning_objectives": ["Learn binary classification"],
             "expected_accuracy": 0.82,
-            "download_url": "/api/v1/sample-datasets/customer_churn/download",
-            "documentation_url": "https://docs.example.com/churn"
         }
     ]
 
@@ -507,16 +505,8 @@ class TestOnboardingRoutes:
         mock_help_articles = [
             {
                 "title": "Understanding Data Quality",
-                "url": "/docs/data-quality",
+                "url": "/quickstart",
                 "category": "data_preparation"
-            }
-        ]
-        
-        mock_video_tutorials = [
-            {
-                "title": "Platform Overview",
-                "url": "/videos/overview",
-                "duration": "3:24"
             }
         ]
         
@@ -524,7 +514,6 @@ class TestOnboardingRoutes:
         mock_service = Mock()
         mock_service.get_contextual_help = AsyncMock(return_value=mock_tips)
         mock_service.get_help_articles.return_value = mock_help_articles
-        mock_service.get_video_tutorials.return_value = mock_video_tutorials
         mock_service_class.return_value = mock_service
         
         # Make request
@@ -537,7 +526,7 @@ class TestOnboardingRoutes:
         assert len(data["tips"]) == 1
         assert data["tips"][0]["title"] == "File Formats"
         assert len(data["help_articles"]) == 1
-        assert len(data["video_tutorials"]) == 1
+        assert "video_tutorials" not in data
         assert "support_contact" in data
         
         # Verify service was called

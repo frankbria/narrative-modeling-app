@@ -26,7 +26,6 @@ const sampleDataset = {
   target_column: 'churn',
   feature_columns: ['customer_id'],
   learning_objectives: ['Learn classification'],
-  download_url: '/download/customer_churn',
 };
 
 const mockFetch = (url: string) => {

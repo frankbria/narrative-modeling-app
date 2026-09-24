@@ -162,7 +162,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   pages: {
     signIn: '/auth/signin',
     signOut: '/auth/signout',
-    verifyRequest: '/auth/verify-request',
     newUser: '/auth/new-user', // New users will be directed here after signing in
     error: '/auth/error',
   },

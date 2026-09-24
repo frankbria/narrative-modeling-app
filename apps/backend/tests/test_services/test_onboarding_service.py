@@ -375,16 +375,6 @@ class TestOnboardingService:
         assert all("title" in article for article in articles)
         assert all("url" in article for article in articles)
     
-    def test_get_video_tutorials(self, onboarding_service):
-        """Test getting video tutorials"""
-        
-        videos = onboarding_service.get_video_tutorials()
-        
-        assert len(videos) > 0
-        assert all("title" in video for video in videos)
-        assert all("url" in video for video in videos)
-        assert all("duration" in video for video in videos)
-    
     def test_get_next_step(self, onboarding_service, mock_user_progress):
         """Test finding next step"""
         

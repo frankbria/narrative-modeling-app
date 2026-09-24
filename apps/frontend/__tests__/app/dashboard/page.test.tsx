@@ -344,10 +344,29 @@ describe('DashboardPage', () => {
 
       render(<DashboardPage />);
 
-      await waitFor(() => {
-        expect(screen.getByText('No datasets yet')).toBeInTheDocument();
-        expect(screen.getByText('Upload Dataset')).toBeInTheDocument();
-      });
+      // #770: the empty state says what to do first and offers both ways in.
+      const empty = await screen.findByTestId('datasets-empty-state');
+      expect(empty).toHaveTextContent(/upload a csv of your own, or start with a sample/i);
+      expect(screen.queryByText('No datasets yet')).not.toBeInTheDocument();
+
+      fireEvent.click(within(empty).getByRole('button', { name: /upload a csv/i }));
+      expect(mockPush).toHaveBeenCalledWith('/upload');
+
+      mockFetch.mockImplementation((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(url.includes('/sample-datasets') ? [] : { datasets: [], models: [] }),
+        }),
+      );
+      fireEvent.click(within(empty).getByRole('button', { name: /try a sample dataset/i }));
+      const dialog = await screen.findByRole('dialog', { name: /try a sample dataset/i });
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/onboarding/sample-datasets'),
+          expect.anything(),
+        ),
+      );
+      expect(dialog).toBeInTheDocument();
     });
 
     it('handles malformed API response for datasets', async () => {
@@ -680,9 +699,7 @@ describe('DashboardPage', () => {
       render(<DashboardPage />);
 
       // Wait for loading to complete (empty state shows)
-      await waitFor(() => {
-        expect(screen.getByText('No datasets yet')).toBeInTheDocument();
-      });
+      await screen.findByTestId('datasets-empty-state');
 
       // Get all Train Model buttons and find the one in Quick Actions (first one)
       const trainButtons = screen.getAllByRole('button', { name: /Train Model/i });

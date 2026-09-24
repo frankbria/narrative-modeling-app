@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import FastAPI
 
+from app.config import SUPPORT_EMAIL
 from app.services.api_documentation import APIDocumentationService
 
 
@@ -126,7 +127,8 @@ class TestAPIDocumentationService:
         # Verify enhancements
         assert "contact" in enhanced_spec["info"]
         assert "license" in enhanced_spec["info"]
-        assert "externalDocs" in enhanced_spec
+        # No docs site exists, so there is no externalDocs link (#770)
+        assert "externalDocs" not in enhanced_spec
         assert "securitySchemes" in enhanced_spec["components"]
         assert "security" in enhanced_spec
         assert "tags" in enhanced_spec
@@ -134,16 +136,12 @@ class TestAPIDocumentationService:
         # Verify contact info
         contact = enhanced_spec["info"]["contact"]
         assert "name" in contact
-        assert "email" in contact
-        assert "url" in contact
+        assert contact["email"] == SUPPORT_EMAIL
         
         # Verify license
         license_info = enhanced_spec["info"]["license"]
         assert license_info["name"] == "MIT"
-        
-        # Verify external docs
-        assert "description" in enhanced_spec["externalDocs"]
-        assert "url" in enhanced_spec["externalDocs"]
+
     
     def test_add_response_examples(self, doc_service):
         """Test adding response examples to OpenAPI spec"""

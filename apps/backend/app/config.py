@@ -18,6 +18,10 @@ ALLOWED_SKIP_AUTH_ENVIRONMENTS = {"development", "test"}
 # Environments where production-grade safety checks must apply
 PRODUCTION_LIKE_ENVIRONMENTS = {"production", "prod", "staging", "live", "release"}
 
+# The support mailbox the legal pages publish (apps/frontend/lib/legal/company.ts,
+# `supportEmail`); tests/test_api/test_onboarding_links.py holds the two equal.
+SUPPORT_EMAIL = "support@briaanalytics.com"
+
 
 def environment_signals() -> list[str]:
     """All explicitly set environment signals (ENVIRONMENT, legacy NODE_ENV),

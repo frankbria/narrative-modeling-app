@@ -2,7 +2,11 @@
 Onboarding service for managing user tutorial and guidance experience
 """
 from datetime import UTC, datetime
+from functools import cache
+from pathlib import Path
 from typing import Any
+
+import pandas as pd
 
 from app.billing.storage import enforce_storage_ceiling
 from app.models.onboarding import OnboardingProgress
@@ -14,6 +18,80 @@ from app.schemas.onboarding import (
 )
 from app.services.redis_cache import cache_service
 from app.services.s3_service import S3Service
+
+# Resolved relative to this module (apps/backend/app/services/ ->
+# apps/backend/sample_datasets/) so the loader works on any host or container.
+_SAMPLE_DIR = Path(__file__).resolve().parents[2] / "sample_datasets"
+
+# Curated copy only. ``expected_accuracy`` is the floor a quick-mode run clears
+# (accuracy, or R² for regression); tests/test_services/test_sample_datasets.py
+# re-measures it, and scripts/generate_sample_datasets.py builds the files.
+_SAMPLE_CATALOGUE: list[dict[str, Any]] = [
+    {
+        "dataset_id": "customer_churn",
+        "name": "Customer Churn Prediction",
+        "description": "Predict which customers are likely to cancel their subscription",
+        "problem_type": "binary_classification",
+        "difficulty_level": "beginner",
+        "tags": ["business", "classification", "customer_analysis"],
+        "target_column": "churn",
+        "learning_objectives": [
+            "Learn binary classification",
+            "Understand customer retention metrics",
+            "Practice data exploration",
+        ],
+        "expected_accuracy": 0.80,
+    },
+    {
+        "dataset_id": "house_prices",
+        "name": "House Price Prediction",
+        "description": "Predict house prices based on features like size, location, and amenities",
+        "problem_type": "regression",
+        "difficulty_level": "beginner",
+        "tags": ["real_estate", "regression", "price_prediction"],
+        "target_column": "price",
+        "learning_objectives": [
+            "Learn regression modeling",
+            "Understand feature importance",
+            "Practice price prediction",
+        ],
+        "expected_accuracy": 0.80,
+    },
+    {
+        "dataset_id": "marketing_response",
+        "name": "Marketing Campaign Response",
+        "description": "Predict customer response to marketing campaigns",
+        "problem_type": "binary_classification",
+        "difficulty_level": "intermediate",
+        "tags": ["marketing", "classification", "campaign_optimization"],
+        "target_column": "responded",
+        "learning_objectives": [
+            "Learn advanced classification",
+            "Understand marketing analytics",
+            "Practice A/B testing concepts",
+        ],
+        "expected_accuracy": 0.75,
+    },
+]
+
+
+def _sample_path(dataset_id: str) -> Path:
+    return _SAMPLE_DIR / f"{dataset_id}.csv"
+
+
+@cache
+def _file_facts(dataset_id: str, target_column: str) -> dict[str, Any]:
+    """The catalogue figures that must match the file. The files ship in the image
+    and never change at runtime, so one read per process is enough."""
+    path = _sample_path(dataset_id)
+    df = pd.read_csv(path)
+    return {
+        "rows": len(df),
+        "columns": len(df.columns),
+        "size_mb": round(path.stat().st_size / 1_000_000, 2),
+        "preview_data": df.head(5).to_dict("records"),
+        "feature_columns": [c for c in df.columns if c != target_column],
+    }
 
 
 class OnboardingService:
@@ -236,95 +314,14 @@ class OnboardingService:
         }
     
     async def get_sample_datasets(self) -> list[dict[str, Any]]:
-        """Get available sample datasets for onboarding"""
-        
-        return [
-            {
-                "dataset_id": "customer_churn",
-                "name": "Customer Churn Prediction",
-                "description": "Predict which customers are likely to cancel their subscription",
-                "size_mb": 2.5,
-                "rows": 10000,
-                "columns": 20,
-                "problem_type": "binary_classification",
-                "difficulty_level": "beginner",
-                "tags": ["business", "classification", "customer_analysis"],
-                "preview_data": [
-                    {"customer_id": "C001", "tenure": 12, "monthly_charges": 50.0, "total_charges": 600.0, "churn": 0},
-                    {"customer_id": "C002", "tenure": 24, "monthly_charges": 80.0, "total_charges": 1920.0, "churn": 1},
-                    {"customer_id": "C003", "tenure": 6, "monthly_charges": 35.0, "total_charges": 210.0, "churn": 0},
-                    {"customer_id": "C004", "tenure": 36, "monthly_charges": 90.0, "total_charges": 3240.0, "churn": 0},
-                    {"customer_id": "C005", "tenure": 3, "monthly_charges": 25.0, "total_charges": 75.0, "churn": 1}
-                ],
-                "target_column": "churn",
-                "feature_columns": ["tenure", "monthly_charges", "total_charges", "contract_type", "payment_method"],
-                "learning_objectives": [
-                    "Learn binary classification",
-                    "Understand customer retention metrics",
-                    "Practice data exploration"
-                ],
-                "expected_accuracy": 0.82,
-                "download_url": "/api/v1/onboarding/sample-datasets/customer_churn/download",
-                "documentation_url": "https://docs.narrativemodeling.ai/samples/customer-churn"
-            },
-            {
-                "dataset_id": "house_prices",
-                "name": "House Price Prediction",
-                "description": "Predict house prices based on features like size, location, and amenities",
-                "size_mb": 1.8,
-                "rows": 5000,
-                "columns": 15,
-                "problem_type": "regression",
-                "difficulty_level": "beginner",
-                "tags": ["real_estate", "regression", "price_prediction"],
-                "preview_data": [
-                    {"house_id": "H001", "sqft": 1500, "bedrooms": 3, "bathrooms": 2, "price": 350000},
-                    {"house_id": "H002", "sqft": 2200, "bedrooms": 4, "bathrooms": 3, "price": 480000},
-                    {"house_id": "H003", "sqft": 1200, "bedrooms": 2, "bathrooms": 1, "price": 280000},
-                    {"house_id": "H004", "sqft": 2800, "bedrooms": 5, "bathrooms": 4, "price": 620000},
-                    {"house_id": "H005", "sqft": 1800, "bedrooms": 3, "bathrooms": 2, "price": 420000}
-                ],
-                "target_column": "price",
-                "feature_columns": ["sqft", "bedrooms", "bathrooms", "location", "year_built"],
-                "learning_objectives": [
-                    "Learn regression modeling",
-                    "Understand feature importance",
-                    "Practice price prediction"
-                ],
-                "expected_accuracy": 0.85,
-                "download_url": "/api/v1/onboarding/sample-datasets/house_prices/download",
-                "documentation_url": "https://docs.narrativemodeling.ai/samples/house-prices"
-            },
-            {
-                "dataset_id": "marketing_response",
-                "name": "Marketing Campaign Response",
-                "description": "Predict customer response to marketing campaigns",
-                "size_mb": 3.2,
-                "rows": 15000,
-                "columns": 25,
-                "problem_type": "binary_classification",
-                "difficulty_level": "intermediate",
-                "tags": ["marketing", "classification", "campaign_optimization"],
-                "preview_data": [
-                    {"customer_id": "M001", "age": 35, "income": 50000, "campaign_channel": "email", "responded": 1},
-                    {"customer_id": "M002", "age": 42, "income": 75000, "campaign_channel": "phone", "responded": 0},
-                    {"customer_id": "M003", "age": 28, "income": 45000, "campaign_channel": "social", "responded": 1},
-                    {"customer_id": "M004", "age": 55, "income": 90000, "campaign_channel": "direct_mail", "responded": 0},
-                    {"customer_id": "M005", "age": 31, "income": 60000, "campaign_channel": "email", "responded": 1}
-                ],
-                "target_column": "responded",
-                "feature_columns": ["age", "income", "campaign_channel", "previous_purchases", "customer_segment"],
-                "learning_objectives": [
-                    "Learn advanced classification",
-                    "Understand marketing analytics",
-                    "Practice A/B testing concepts"
-                ],
-                "expected_accuracy": 0.78,
-                "download_url": "/api/v1/onboarding/sample-datasets/marketing_response/download",
-                "documentation_url": "https://docs.narrativemodeling.ai/samples/marketing-response"
-            }
-        ]
-    
+        """Get available sample datasets for onboarding.
+
+        Sizes, preview rows and feature columns are read from the shipped file
+        (#770); only the copy and the measured score live in ``_SAMPLE_CATALOGUE``.
+        """
+        return [{**entry, **_file_facts(entry["dataset_id"], entry["target_column"])}
+                for entry in _SAMPLE_CATALOGUE]
+
     async def load_sample_dataset(self, user_id: str, dataset_id: str) -> dict[str, Any]:
         """Load a sample dataset for the user"""
         
@@ -339,20 +336,11 @@ class OnboardingService:
         try:
             import os
 
-            import pandas as pd
-
             from app.models.user_data import SchemaField, UserData
         except ImportError as e:
             raise ValueError(f"Required dependencies not available: {e}")
         
-        # Read the sample CSV file. Resolve relative to this module
-        # (apps/backend/app/services/ -> apps/backend/sample_datasets/) so the
-        # loader works on any host/container, not just the author's machine.
-        from pathlib import Path
-
-        sample_file_path = str(
-            Path(__file__).resolve().parents[2] / "sample_datasets" / f"{dataset_id}.csv"
-        )
+        sample_file_path = _sample_path(dataset_id)
 
         if not os.path.exists(sample_file_path):
             raise ValueError(f"Sample dataset file not found: {dataset_id}")
@@ -525,50 +513,27 @@ class OnboardingService:
         return help_tips.get("welcome", [])
     
     def get_help_articles(self) -> list[dict[str, Any]]:
-        """Get available help articles"""
+        """Get available help articles. There is no per-article docs site yet
+        (#770), so each points at the in-app quickstart that covers it."""
         
         return [
             {
                 "title": "Understanding Data Quality",
-                "url": "/docs/data-quality",
+                "url": "/quickstart",
                 "category": "data_preparation",
                 "estimated_read_time": "5 minutes"
             },
             {
                 "title": "Choosing the Right Model Type", 
-                "url": "/docs/model-types",
+                "url": "/quickstart",
                 "category": "machine_learning",
                 "estimated_read_time": "7 minutes"
             },
             {
                 "title": "Interpreting Model Results",
-                "url": "/docs/model-interpretation",
+                "url": "/quickstart",
                 "category": "analysis",
                 "estimated_read_time": "6 minutes"
-            }
-        ]
-    
-    def get_video_tutorials(self) -> list[dict[str, Any]]:
-        """Get available video tutorials"""
-        
-        return [
-            {
-                "title": "Platform Overview (3 min)",
-                "url": "/videos/platform-overview",
-                "duration": "3:24",
-                "category": "getting_started"
-            },
-            {
-                "title": "Your First Model (8 min)",
-                "url": "/videos/first-model",
-                "duration": "8:15", 
-                "category": "tutorial"
-            },
-            {
-                "title": "Advanced Features (12 min)",
-                "url": "/videos/advanced-features",
-                "duration": "12:30",
-                "category": "advanced"
             }
         ]
     
@@ -586,16 +551,13 @@ class OnboardingService:
                 "is_skippable": False,
                 "estimated_duration": "2 minutes",
                 "completion_criteria": [
-                    "View welcome video",
                     "Read platform overview"
                 ],
                 "instructions": [
-                    "Watch the welcome video to understand the platform",
                     "Review the key features and capabilities",
                     "Click 'Get Started' when ready to proceed"
                 ],
-                "help_text": "This step introduces you to the platform's core concepts.",
-                "video_url": "/videos/welcome-intro"
+                "help_text": "This step introduces you to the platform's core concepts."
             },
             {
                 "step_id": "upload_data",

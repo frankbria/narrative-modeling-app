@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
+from app.config import SUPPORT_EMAIL
 from app.schemas.onboarding import (
     CompleteStepRequest,
     OnboardingStatusResponse,
@@ -211,10 +212,5 @@ async def get_contextual_help(
     return {
         "tips": tips,
         "help_articles": service.get_help_articles(),
-        "video_tutorials": service.get_video_tutorials(),
-        "support_contact": {
-            "email": "support@narrativemodeling.ai",
-            "docs": "https://docs.narrativemodeling.ai",
-            "chat": "/support/chat"
-        }
+        "support_contact": {"email": SUPPORT_EMAIL},
     }

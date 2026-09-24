@@ -8,6 +8,7 @@
 
 import { render, screen } from '@testing-library/react';
 import AuthErrorPage from '@/app/auth/error/page';
+import { COMPANY } from '@/lib/legal/company';
 
 let mockError: string | null = 'AccessDenied';
 
@@ -23,6 +24,14 @@ describe('AuthErrorPage', () => {
     expect(screen.getByText(/invite-only beta/i)).toBeInTheDocument();
     // asChild renders the action as a real <a> (role "link"), not a nested <button>.
     expect(screen.getByRole('link', { name: /request access/i })).toBeInTheDocument();
+  });
+
+  it('requests access at the company support mailbox by default (#770)', () => {
+    mockError = 'AccessDenied';
+    render(<AuthErrorPage />);
+    expect(screen.getByRole('link', { name: /request access/i }).getAttribute('href')).toBe(
+      `mailto:${COMPANY.supportEmail}?subject=Beta%20access%20request`,
+    );
   });
 
   it('shows no Request access action for unrelated errors', () => {
