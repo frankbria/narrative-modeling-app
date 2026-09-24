@@ -6,15 +6,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
+import { COMPANY } from '@/lib/legal/company';
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
 
   // Where rejected users request an invite. Configurable per deploy; falls back
-  // to a mailto so the "request access" path always works (issue #261).
+  // to the company support mailbox so the "request access" path always works
+  // (issues #261, #770).
   const requestAccessUrl =
-    process.env.NEXT_PUBLIC_INVITE_REQUEST_URL ?? 'mailto:beta@narrativeml.com?subject=Beta%20access%20request';
+    process.env.NEXT_PUBLIC_INVITE_REQUEST_URL ??
+    `mailto:${COMPANY.supportEmail}?subject=Beta%20access%20request`;
 
   const errorMessages: Record<string, string> = {
     Configuration: 'There is a problem with the server configuration.',

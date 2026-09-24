@@ -81,8 +81,8 @@ RUN groupadd --system --gid 1001 appuser \
 WORKDIR /app
 
 # Copy only what the server needs at runtime, leaving build/test artifacts
-# (tests/, docs/, tasks/, sample_datasets/, pyproject.toml, uv.lock, …) out of
-# the image: the virtualenv and the `app` package. gunicorn runs from
+# (tests/, docs/, tasks/, pyproject.toml, uv.lock, …) out of the image: the
+# virtualenv and the `app` package, which carries the onboarding sample CSVs. gunicorn runs from
 # WORKDIR /app, so /app is on sys.path and the package resolves. No compiler
 # toolchain is carried forward. --chown hands ownership to the non-root appuser.
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv

@@ -42,8 +42,6 @@ class OnboardingStepResponse(BaseModel):
     instructions: list[str]
     help_text: str | None = None
     code_examples: list[dict[str, str]] | None = None
-    screenshot_url: str | None = None
-    video_url: str | None = None
     completed_at: datetime | None = None
     completion_data: dict[str, Any] | None = None
 
@@ -99,9 +97,9 @@ class SampleDatasetResponse(BaseModel):
     target_column: str
     feature_columns: list[str]
     learning_objectives: list[str]
-    expected_accuracy: float | None = None
-    download_url: str
-    documentation_url: str | None = None
+    expected_accuracy: float | None = Field(
+        None, description="Quick-mode score floor: accuracy, or R² for regression"
+    )
 
 
 class OnboardingUserProgress(BaseModel):

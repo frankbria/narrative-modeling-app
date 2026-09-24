@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { OnboardingStep } from '@/components/OnboardingStep';
 
+// The sample selector completes the data-loading stage on load (#770).
+jest.mock('@/lib/contexts/WorkflowContext', () => ({
+  useWorkflow: () => ({ completeStage: jest.fn() }),
+}));
+
 const mockStep = {
   step_id: 'upload_data',
   title: 'Upload Your First Dataset',
@@ -99,7 +104,6 @@ describe('OnboardingStep', () => {
       target_column: 'churn',
       feature_columns: ['customer_id'],
       learning_objectives: ['Learn classification'],
-      download_url: '/download/customer_churn',
     };
 
     global.fetch = jest.fn((url: string, init?: RequestInit) => {
@@ -150,7 +154,6 @@ describe('OnboardingStep', () => {
       target_column: 'churn',
       feature_columns: ['customer_id'],
       learning_objectives: ['Learn classification'],
-      download_url: '/download/customer_churn',
     };
 
     global.fetch = jest.fn((url: string) => {

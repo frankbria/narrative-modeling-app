@@ -305,13 +305,11 @@ class TestOnboardingService:
         'not found' check only on the original author's machine. Assert the
         real shipped sample gets past that check (fails later on a mocked S3
         insert, which proves the file WAS found)."""
-        from pathlib import Path
 
         from app.services import onboarding_service as svc_mod
 
-        # The shipped sample file resolves relative to apps/backend/.
-        sample_dir = Path(svc_mod.__file__).resolve().parents[2] / "sample_datasets"
-        assert (sample_dir / "customer_churn.csv").exists()
+        # The shipped sample file resolves inside the app package.
+        assert (svc_mod._SAMPLE_DIR / "customer_churn.csv").exists()
 
         # Loading a real sample must NOT raise "file not found" (it will fail
         # later when it tries to persist, since Mongo/S3 aren't wired here).
@@ -374,16 +372,6 @@ class TestOnboardingService:
         assert len(articles) > 0
         assert all("title" in article for article in articles)
         assert all("url" in article for article in articles)
-    
-    def test_get_video_tutorials(self, onboarding_service):
-        """Test getting video tutorials"""
-        
-        videos = onboarding_service.get_video_tutorials()
-        
-        assert len(videos) > 0
-        assert all("title" in video for video in videos)
-        assert all("url" in video for video in videos)
-        assert all("duration" in video for video in videos)
     
     def test_get_next_step(self, onboarding_service, mock_user_progress):
         """Test finding next step"""

@@ -344,10 +344,38 @@ describe('DashboardPage', () => {
 
       render(<DashboardPage />);
 
-      await waitFor(() => {
-        expect(screen.getByText('No datasets yet')).toBeInTheDocument();
-        expect(screen.getByText('Upload Dataset')).toBeInTheDocument();
-      });
+      // #770: the empty state says what to do first and offers both ways in.
+      const empty = await screen.findByTestId('datasets-empty-state');
+      expect(empty).toHaveTextContent(/upload a csv of your own, or start with a sample/i);
+      expect(screen.queryByText('No datasets yet')).not.toBeInTheDocument();
+
+      fireEvent.click(within(empty).getByRole('button', { name: /upload a csv/i }));
+      expect(mockPush).toHaveBeenCalledWith('/upload');
+
+      const sample = {
+        dataset_id: 'customer_churn', name: 'Customer Churn Prediction', description: 'd', size_mb: 0.24,
+        rows: 2000, columns: 19, problem_type: 'binary_classification', difficulty_level: 'beginner',
+        tags: [], preview_data: [], target_column: 'churn', feature_columns: [], learning_objectives: [],
+      };
+      mockFetch.mockImplementation((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve(
+              url.endsWith('/load')
+                ? { success: true, dataset_id: 'ud-1' }
+                : url.includes('/sample-datasets')
+                  ? [sample]
+                  : { datasets: [], models: [] },
+            ),
+        }),
+      );
+      fireEvent.click(within(empty).getByRole('button', { name: /try a sample dataset/i }));
+      const dialog = await screen.findByRole('dialog', { name: /try a sample dataset/i });
+
+      // Loading a sample takes the user straight to their new dataset.
+      fireEvent.click(await within(dialog).findByRole('button', { name: /use this/i }));
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/explore/ud-1'));
     });
 
     it('handles malformed API response for datasets', async () => {
@@ -680,9 +708,7 @@ describe('DashboardPage', () => {
       render(<DashboardPage />);
 
       // Wait for loading to complete (empty state shows)
-      await waitFor(() => {
-        expect(screen.getByText('No datasets yet')).toBeInTheDocument();
-      });
+      await screen.findByTestId('datasets-empty-state');
 
       // Get all Train Model buttons and find the one in Quick Actions (first one)
       const trainButtons = screen.getAllByRole('button', { name: /Train Model/i });

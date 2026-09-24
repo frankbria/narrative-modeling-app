@@ -278,7 +278,11 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
   },
 
   trainModel: async ({ request }, use) => {
-    const train = async (datasetId: string, targetColumn: string): Promise<string> => {
+    const train = async (
+      datasetId: string,
+      targetColumn: string,
+      trainingConfig?: Record<string, unknown>,
+    ): Promise<string> => {
       // API calls must target the backend directly — Next.js does not proxy
       // /api/v1/* to the FastAPI server. The backend verifies the session's
       // minted JWT (#493), so the model is owned by the user the page loads as.
@@ -300,7 +304,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         try {
           const response = await request.post(`${apiBase}/ml/train`, {
             headers,
-            data: { dataset_id: datasetId, target_column: targetColumn },
+            data: { dataset_id: datasetId, target_column: targetColumn, training_config: trainingConfig },
             timeout: 30000,
           });
           if (!response.ok()) {

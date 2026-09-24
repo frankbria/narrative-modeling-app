@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { onboardingApi } from '@/lib/services/onboarding';
+import { useWorkflow } from '@/lib/contexts/WorkflowContext';
+import { WorkflowStage } from '@/lib/types/workflow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +17,6 @@ import {
   Download,
   Eye,
   CheckCircle,
-  ArrowRight,
   BarChart,
   Target
 } from 'lucide-react';
@@ -34,9 +35,8 @@ interface SampleDataset {
   target_column: string;
   feature_columns: string[];
   learning_objectives: string[];
+  /** Measured quick-mode floor (#770): accuracy, or R² for regression. */
   expected_accuracy?: number;
-  download_url: string;
-  documentation_url?: string;
 }
 
 interface SampleDatasetSelectorProps {
@@ -47,6 +47,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [selectedDataset, setSelectedDataset] = useState<SampleDataset | null>(null);
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { completeStage } = useWorkflow();
 
   const { data: datasetData, loading, error: listError, reload } = useAsyncData<SampleDataset[]>(
     () => onboardingApi.getSampleDatasets<SampleDataset[]>(), // backend base URL + bearer (#470)
@@ -69,6 +70,13 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         // /explore/{id}, which only resolves against the real dataset id. A
         // missing dataset_id is treated as a failure rather than silently
         // falling back to the slug (which would reintroduce the fixed bug).
+        // A loaded sample is a completed data-loading stage, exactly like an upload:
+        // without this, /explore/{id} is still gated and bounces the user to /upload (#770).
+        completeStage(WorkflowStage.DATA_LOADING, {
+          datasetId: result.dataset_id,
+          filename: datasets.find((d) => d.dataset_id === datasetId)?.name ?? datasetId,
+          timestamp: new Date().toISOString(),
+        });
         onDatasetSelected(result.dataset_id);
       } else {
         // Surface the failure instead of silently re-enabling the button.
@@ -128,7 +136,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   }
 
   return (
-    <div className="space-y-6">
+    <div className="@container space-y-6">
       <div className="text-center space-y-2">
         <h3 className="text-lg font-semibold">Choose a Sample Dataset</h3>
         <p className="text-muted-foreground">
@@ -155,7 +163,10 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Columns follow the container, not the viewport (#770): onboarding step 2 renders
+          this in a ~450px panel on a desktop screen, where a viewport breakpoint gave three
+          overlapping cards whose "Use This" buttons sat under the next card. */}
+      <div className="grid grid-cols-1 @2xl:grid-cols-2 @4xl:grid-cols-3 gap-4">
         {datasets.map((dataset) => (
           <Card 
             key={dataset.dataset_id} 
@@ -222,12 +233,16 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                 )}
               </div>
 
-              {/* Expected Accuracy */}
-              {dataset.expected_accuracy && (
+              {/* Measured quick-mode score (#770) */}
+              {dataset.expected_accuracy != null && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Expected Accuracy:</span>
+                  <span className="text-muted-foreground">
+                    {dataset.problem_type === 'regression' ? 'Quick-mode R²:' : 'Quick-mode accuracy:'}
+                  </span>
                   <span className="font-medium text-green-600">
-                    {(dataset.expected_accuracy * 100).toFixed(0)}%
+                    {dataset.problem_type === 'regression'
+                      ? `${dataset.expected_accuracy.toFixed(2)}+`
+                      : `${(dataset.expected_accuracy * 100).toFixed(0)}%+`}
                   </span>
                 </div>
               )}
@@ -360,13 +375,6 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                   </>
                 )}
               </Button>
-              
-              {selectedDataset.documentation_url && (
-                <Button variant="outline">
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                  Learn More
-                </Button>
-              )}
             </div>
           </CardContent>
         </Card>
