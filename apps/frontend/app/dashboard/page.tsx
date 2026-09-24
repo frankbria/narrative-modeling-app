@@ -435,7 +435,7 @@ export default function DashboardPage() {
                 <p className="text-muted-foreground text-sm mb-4">
                   Upload a CSV of your own, or start with a sample that trains in under a minute.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                <div className="flex flex-wrap gap-2 justify-center">
                   <Button size="sm" onClick={() => router.push('/upload')}>
                     <Upload size={14} className="mr-1" />
                     Upload a CSV
@@ -577,7 +577,7 @@ export default function DashboardPage() {
       </Card>
 
       <Dialog open={samplesOpen} onOpenChange={setSamplesOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Try a sample dataset</DialogTitle>
             <DialogDescription>

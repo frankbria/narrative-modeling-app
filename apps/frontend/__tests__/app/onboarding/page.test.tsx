@@ -4,6 +4,11 @@ import '@testing-library/jest-dom';
 import OnboardingPage from '@/app/onboarding/page';
 import { API_URL } from '@/lib/constants';
 
+// The sample selector completes the data-loading stage on load (#770).
+jest.mock('@/lib/contexts/WorkflowContext', () => ({
+  useWorkflow: () => ({ completeStage: jest.fn() }),
+}));
+
 // Radix tab triggers need the full pointer sequence in JSDOM.
 const activateTab = (name: RegExp) => {
   const tab = screen.getByRole('tab', { name });

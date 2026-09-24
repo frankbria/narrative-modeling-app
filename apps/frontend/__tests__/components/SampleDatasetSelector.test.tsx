@@ -3,6 +3,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 import { API_URL } from '@/lib/constants';
+import { WorkflowStage } from '@/lib/types/workflow';
+
+const mockCompleteStage = jest.fn();
+jest.mock('@/lib/contexts/WorkflowContext', () => ({
+  useWorkflow: () => ({ completeStage: mockCompleteStage }),
+}));
 
 // #470: the selector fetched '/api/v1/onboarding/sample-datasets' relative to the frontend origin.
 const dataset = {
@@ -65,5 +71,20 @@ describe('SampleDatasetSelector (#470)', () => {
     fireEvent.click(screen.getByRole('button', { name: /preview/i }));
     expect(await screen.findByRole('button', { name: /load this dataset/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /learn more/i })).not.toBeInTheDocument();
+  });
+
+  // #770: /explore/{id} is gated on DATA_LOADING. An upload completes that stage; a
+  // loaded sample did not, so "Use This" bounced the user back to /upload.
+  it('completes the data-loading stage for the loaded sample before handing it back', async () => {
+    mockCompleteStage.mockClear();
+    const onSelected = jest.fn(() => expect(mockCompleteStage).toHaveBeenCalled());
+    render(<SampleDatasetSelector onDatasetSelected={onSelected} />);
+    await screen.findByText('Customer Churn');
+    fireEvent.click(screen.getByRole('button', { name: /use this/i }));
+    await waitFor(() => expect(onSelected).toHaveBeenCalledWith('ud-1'));
+    expect(mockCompleteStage).toHaveBeenCalledWith(
+      WorkflowStage.DATA_LOADING,
+      expect.objectContaining({ datasetId: 'ud-1', filename: 'Customer Churn' }),
+    );
   });
 });

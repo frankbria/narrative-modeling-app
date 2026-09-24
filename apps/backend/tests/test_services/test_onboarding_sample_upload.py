@@ -43,6 +43,9 @@ async def test_load_sample_uploads_a_real_object_not_a_fabricated_url(setup_data
     ud = await UserData.get(result["upload_id"])
     assert ud is not None and ud.s3_url == result["s3_url"]
     assert ud.num_rows > 0 and ud.is_processed is True
+    # #770: the displayed name is the sample's name, never an internal user id.
+    assert ud.filename == "Customer Churn Prediction.csv"
+    assert USER not in ud.filename
 
 
 async def test_progress_persists_for_a_user_with_no_dataset(setup_database, monkeypatch):

@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { OnboardingStep } from '@/components/OnboardingStep';
 
+// The sample selector completes the data-loading stage on load (#770).
+jest.mock('@/lib/contexts/WorkflowContext', () => ({
+  useWorkflow: () => ({ completeStage: jest.fn() }),
+}));
+
 const mockStep = {
   step_id: 'upload_data',
   title: 'Upload Your First Dataset',

@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { onboardingApi } from '@/lib/services/onboarding';
+import { useWorkflow } from '@/lib/contexts/WorkflowContext';
+import { WorkflowStage } from '@/lib/types/workflow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +47,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
   const [selectedDataset, setSelectedDataset] = useState<SampleDataset | null>(null);
   const [loadingDataset, setLoadingDataset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { completeStage } = useWorkflow();
 
   const { data: datasetData, loading, error: listError, reload } = useAsyncData<SampleDataset[]>(
     () => onboardingApi.getSampleDatasets<SampleDataset[]>(), // backend base URL + bearer (#470)
@@ -67,6 +70,13 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         // /explore/{id}, which only resolves against the real dataset id. A
         // missing dataset_id is treated as a failure rather than silently
         // falling back to the slug (which would reintroduce the fixed bug).
+        // A loaded sample is a completed data-loading stage, exactly like an upload:
+        // without this, /explore/{id} is still gated and bounces the user to /upload (#770).
+        completeStage(WorkflowStage.DATA_LOADING, {
+          datasetId: result.dataset_id,
+          filename: datasets.find((d) => d.dataset_id === datasetId)?.name ?? datasetId,
+          timestamp: new Date().toISOString(),
+        });
         onDatasetSelected(result.dataset_id);
       } else {
         // Surface the failure instead of silently re-enabling the button.

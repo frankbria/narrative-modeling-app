@@ -353,8 +353,9 @@ class OnboardingService:
         # Read and process the dataset
         df = pd.read_csv(sample_file_path)
         
-        # Create a unique filename for this user
-        filename = f"sample_{dataset_id}_{user_id}_{int(datetime.now(UTC).timestamp())}.csv"
+        # Shown as the dataset's title. The S3 key is server-derived and unique, so the
+        # name need not be; it used to carry the user id and a timestamp (#770).
+        filename = f"{dataset['name']}.csv"
         
         # Upload the sample to S3 under the user's prefix with a server-derived key, and
         # store the URL of the REAL object (#541). Previously this wrote the CSV to a temp
