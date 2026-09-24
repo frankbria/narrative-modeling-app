@@ -1537,3 +1537,31 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **The push guard's own documented case caught me twice**: `git switch -c x && git push`
   is refused, because the hook runs before the command and the branch is still `main` at
   decision time. Two separate commands.
+
+## #770 (2026-09-23) — truthful onboarding samples
+- **A data file outside `app/` does not exist in production.** The runtime image copies
+  only `/app/app`, and `.dockerignore` listed `sample_datasets/`, so sample loading had
+  failed in every deployed build, green the whole time. CI never builds the image. Codex
+  caught it only because my change made the *listing* read the files as well. When code
+  reads a file at runtime, check the Dockerfile's runtime `COPY`, and pin that with a test.
+- **The demo found three defects that 1,672 jest tests, the backend gate and 38 e2e tests
+  missed:**
+  - "Use This" was bounced to `/upload` by the stage guard.
+  - The dataset title carried the user id.
+  - A dialog was held at its default width.
+
+  The e2e passed because it read the URL at push time, before the guard redirected (#810).
+  Assert where a navigation *settles*, not that it started.
+- **Viewport breakpoints lie about embedded components.** `md:grid-cols-2 lg:grid-cols-3`
+  put three overlapping cards in a 450px onboarding panel on a desktop screen. A reusable
+  component that is rendered in panels, dialogs and pages needs container queries
+  (`@container` plus `@2xl:`, built into Tailwind v4). Playwright's click actionability
+  check ("another element intercepts pointer events") is what surfaced it.
+- **Measure a quoted score before writing it down.** The first generated data beat the
+  majority class by only 2–3 points, and the engine one-hot encoded `customer_id` into
+  1,324 features (#806). Re-measuring is what exposed both.
+- **Review tooling:** opencode/GLM stalled with the outage signature. `codex` is not on the
+  harness shell's PATH (nvm is not initialised there), so a bare `codex` exits 127 and
+  looks like "no reviewer". Use `~/.nvm/versions/node/<ver>/bin/codex` (and the same for
+  `agent-browser`). Re-run the reviewer after every post-review fix commit, so the review
+  on record matches the merged diff.
