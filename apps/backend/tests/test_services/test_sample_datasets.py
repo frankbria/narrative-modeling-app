@@ -8,6 +8,7 @@ from the file, and the score the copy quotes is re-measured here, the way
 """
 
 import asyncio
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pandas as pd
@@ -18,11 +19,27 @@ from app.services.model_training.automl_engine import AutoMLEngine
 from app.services.model_training.training_mode import resolve_mode_config
 from app.services.onboarding_service import OnboardingService
 
-_SAMPLES = Path(__file__).resolve().parents[2] / "sample_datasets"
+_BACKEND = Path(__file__).resolve().parents[2]
+_SAMPLES = _BACKEND / "app" / "sample_datasets"
 
 
 def _catalogue() -> list[dict]:
     return asyncio.run(OnboardingService().get_sample_datasets())
+
+
+def test_the_samples_ship_in_the_runtime_image():
+    """The runtime stage copies only the `app` package, so the files must live in it
+    and `.dockerignore` must not drop them. Outside it, loading never worked when deployed."""
+    dockerfile = (_BACKEND / "Dockerfile").read_text()
+    assert "COPY --from=builder --chown=appuser:appuser /app/app /app/app" in dockerfile
+    assert _SAMPLES.is_relative_to(_BACKEND / "app")
+    ignored = [
+        line.strip().rstrip("/")
+        for line in (_BACKEND / ".dockerignore").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    for f in ("app", "app/sample_datasets", "app/sample_datasets/customer_churn.csv"):
+        assert not any(fnmatch(f, pattern) for pattern in ignored), f"{f} is excluded by .dockerignore"
 
 
 def test_there_are_three_samples_and_each_has_its_file():
@@ -44,6 +61,15 @@ def test_catalogue_figures_are_read_from_the_file(entry):
     assert entry["target_column"] in df.columns
     assert entry["feature_columns"] == [c for c in df.columns if c != entry["target_column"]]
     assert entry["preview_data"] == df.head(5).to_dict("records")
+
+
+def test_a_caller_mutating_the_catalogue_cannot_poison_the_cache():
+    first = _catalogue()
+    first[0]["feature_columns"].clear()
+    first[0]["preview_data"][0]["tenure"] = -1
+    again = _catalogue()[0]
+    assert again["feature_columns"]
+    assert again["preview_data"][0]["tenure"] != -1
 
 
 @pytest.mark.parametrize("entry", _catalogue(), ids=lambda d: d["dataset_id"])

@@ -15,7 +15,7 @@ from app.services.onboarding_service import OnboardingService
 pytestmark = pytest.mark.asyncio
 
 USER = "onboarding_sample_user"
-DATASET_ID = "customer_churn"  # a real file under apps/backend/sample_datasets/
+DATASET_ID = "customer_churn"  # a real file under apps/backend/app/sample_datasets/
 
 
 async def test_load_sample_uploads_a_real_object_not_a_fabricated_url(setup_database, monkeypatch):

@@ -42,8 +42,6 @@ class OnboardingStepResponse(BaseModel):
     instructions: list[str]
     help_text: str | None = None
     code_examples: list[dict[str, str]] | None = None
-    screenshot_url: str | None = None
-    video_url: str | None = None
     completed_at: datetime | None = None
     completion_data: dict[str, Any] | None = None
 

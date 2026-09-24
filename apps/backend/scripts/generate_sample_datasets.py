@@ -1,6 +1,6 @@
 """Generate the onboarding sample datasets (#770).
 
-The files in ``sample_datasets/`` are synthetic but plausible. Every row is drawn
+The files in ``app/sample_datasets/`` are synthetic but plausible. Every row is drawn
 from the seeded relationships below, so a model has real signal to learn and the
 score the onboarding copy quotes (``expected_accuracy`` in onboarding_service.py)
 can be measured instead of assumed. Re-run after changing a relationship, then
@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-OUT = Path(__file__).resolve().parents[1] / "sample_datasets"
+OUT = Path(__file__).resolve().parents[1] / "app" / "sample_datasets"
 SEED = 770
 
 

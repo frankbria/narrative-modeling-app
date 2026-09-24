@@ -30,7 +30,6 @@ docs/
 claudedocs/
 tests/
 tasks/
-sample_datasets/
 scripts/
 .benchmarks/
 .apm/

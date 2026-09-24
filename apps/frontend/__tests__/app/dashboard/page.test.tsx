@@ -352,21 +352,30 @@ describe('DashboardPage', () => {
       fireEvent.click(within(empty).getByRole('button', { name: /upload a csv/i }));
       expect(mockPush).toHaveBeenCalledWith('/upload');
 
+      const sample = {
+        dataset_id: 'customer_churn', name: 'Customer Churn Prediction', description: 'd', size_mb: 0.24,
+        rows: 2000, columns: 19, problem_type: 'binary_classification', difficulty_level: 'beginner',
+        tags: [], preview_data: [], target_column: 'churn', feature_columns: [], learning_objectives: [],
+      };
       mockFetch.mockImplementation((url: string) =>
         Promise.resolve({
           ok: true,
-          json: () => Promise.resolve(url.includes('/sample-datasets') ? [] : { datasets: [], models: [] }),
+          json: () =>
+            Promise.resolve(
+              url.endsWith('/load')
+                ? { success: true, dataset_id: 'ud-1' }
+                : url.includes('/sample-datasets')
+                  ? [sample]
+                  : { datasets: [], models: [] },
+            ),
         }),
       );
       fireEvent.click(within(empty).getByRole('button', { name: /try a sample dataset/i }));
       const dialog = await screen.findByRole('dialog', { name: /try a sample dataset/i });
-      await waitFor(() =>
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/onboarding/sample-datasets'),
-          expect.anything(),
-        ),
-      );
-      expect(dialog).toBeInTheDocument();
+
+      // Loading a sample takes the user straight to their new dataset.
+      fireEvent.click(await within(dialog).findByRole('button', { name: /use this/i }));
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/explore/ud-1'));
     });
 
     it('handles malformed API response for datasets', async () => {

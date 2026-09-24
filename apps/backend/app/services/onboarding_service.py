@@ -1,6 +1,7 @@
 """
 Onboarding service for managing user tutorial and guidance experience
 """
+from copy import deepcopy
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -19,9 +20,9 @@ from app.schemas.onboarding import (
 from app.services.redis_cache import cache_service
 from app.services.s3_service import S3Service
 
-# Resolved relative to this module (apps/backend/app/services/ ->
-# apps/backend/sample_datasets/) so the loader works on any host or container.
-_SAMPLE_DIR = Path(__file__).resolve().parents[2] / "sample_datasets"
+# Inside the `app` package on purpose: the runtime image copies only /app/app, so
+# a sample directory beside it never shipped and every deployed load failed (#770).
+_SAMPLE_DIR = Path(__file__).resolve().parents[1] / "sample_datasets"
 
 # Curated copy only. ``expected_accuracy`` is the floor a quick-mode run clears
 # (accuracy, or R² for regression); tests/test_services/test_sample_datasets.py
@@ -319,8 +320,12 @@ class OnboardingService:
         Sizes, preview rows and feature columns are read from the shipped file
         (#770); only the copy and the measured score live in ``_SAMPLE_CATALOGUE``.
         """
-        return [{**entry, **_file_facts(entry["dataset_id"], entry["target_column"])}
-                for entry in _SAMPLE_CATALOGUE]
+        # deepcopy: the facts are cached per process, so a caller mutating a
+        # returned list must not rewrite them for every later request.
+        return [
+            deepcopy({**entry, **_file_facts(entry["dataset_id"], entry["target_column"])})
+            for entry in _SAMPLE_CATALOGUE
+        ]
 
     async def load_sample_dataset(self, user_id: str, dataset_id: str) -> dict[str, Any]:
         """Load a sample dataset for the user"""
