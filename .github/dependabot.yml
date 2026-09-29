@@ -27,6 +27,9 @@ updates:
       - dependency-name: "python"
         update-types: ["version-update:semver-major"]
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       minor-and-patch:
         update-types: ["minor", "patch"]
 
@@ -51,6 +54,9 @@ updates:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       minor-and-patch:
         update-types: ["minor", "patch"]
 
@@ -68,6 +74,9 @@ updates:
       - "dependencies"
       - "docker"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       minor-and-patch:
         update-types: ["minor", "patch"]
 
@@ -87,6 +96,9 @@ updates:
       - "dependencies"
       - "security"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       python-minor-patch:
         update-types:
           - "minor"
@@ -115,6 +127,9 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       npm-minor-patch:
         update-types:
           - "minor"
@@ -138,6 +153,9 @@ updates:
       - "dependencies"
       - "github-actions"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       github-actions:
         patterns:
           - "*"
