@@ -552,36 +552,21 @@ jobs:
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium
 
-      # GitHub Actions `services:` blocks cannot override a container's command,
-      # and minio/minio requires `server /data` — so MinIO is started manually.
-      # Pulled from quay.io: Docker Hub's minio/minio repository was removed
-      # upstream (404, 2026-09-11) and took every smoke run down with it. Tag AND
-      # digest are pinned so the image cannot change under the gate again.
-      - name: Start MinIO (S3-compatible storage)
+      # S3-compatible storage: LocalStack from apps/backend/docker-compose.test.yml,
+      # the same digest-pinned image backend-integration uses, so the pin lives in
+      # one file. MinIO left both public registries (Docker Hub 404 on 2026-09-11,
+      # quay.io unauthorized from 2026-09-29) and took every run down with it
+      # (#813). test-e2e.sh's seed step creates the bucket.
+      - name: Start LocalStack (S3-compatible storage)
+        working-directory: apps/backend
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772@sha256:cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd \
-            server /data
-          echo "Waiting for MinIO to become healthy..."
-          for _ in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              echo "MinIO is ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "MinIO failed to start" >&2
-          docker logs minio >&2
-          exit 1
-
-      - name: Create test bucket in MinIO
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_REGION: us-east-1
-        run: aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
+          docker compose -f docker-compose.test.yml up -d localstack
+          if ! timeout 120 bash -c 'until [ "$(docker inspect --format="{{.State.Health.Status}}" narrative-localstack-test 2>/dev/null)" = "healthy" ]; do sleep 3; done'; then
+            echo "::error::LocalStack did not become healthy in time."
+            docker logs narrative-localstack-test 2>&1 | tail -50 || true
+            exit 1
+          fi
+          echo "LocalStack healthy."
 
       - name: Run Smoke Tests
         working-directory: apps/frontend
@@ -603,11 +588,11 @@ jobs:
           PORT: 3010
           BACKEND_PORT: 8000
           NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-          # S3 storage backed by the MinIO container (no real AWS credentials).
+          # S3 storage backed by the LocalStack container (no real AWS credentials).
           # NOTE: credentials must NOT start with "test-" — that prefix puts
-          # S3Service into no-op mock mode; MinIO mode needs the real client.
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
+          # S3Service into no-op mock mode; LocalStack needs the real client.
+          AWS_ACCESS_KEY_ID: localstack
+          AWS_SECRET_ACCESS_KEY: localstack
           AWS_REGION: us-east-1
           # Three names for the same bucket: AWS_BUCKET_NAME (upload paths),
           # AWS_S3_BUCKET (download whitelist), S3_BUCKET (settings/versioning).
@@ -615,7 +600,7 @@ jobs:
           AWS_BUCKET_NAME: test-bucket
           AWS_S3_BUCKET: test-bucket
           S3_BUCKET: test-bucket
-          AWS_ENDPOINT_URL: http://localhost:9000
+          AWS_ENDPOINT_URL: http://localhost:4566
           # OpenAI API key (dummy value for testing)
           OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
 
