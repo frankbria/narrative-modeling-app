@@ -26,6 +26,12 @@ updates:
       # minor/patch refreshes still flow.
       - dependency-name: "python"
         update-types: ["version-update:semver-major"]
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
   # Frontend production image — refreshes the `node:22-alpine@sha256:…` base digest.
   - package-ecosystem: "docker"
@@ -47,6 +53,12 @@ updates:
       # refreshes still flow.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
   # Staging compose — refreshes the `redis:7-alpine@sha256:…` digest pinned in the
   # repo-root `docker-compose.staging.yml` (deploy path, not CI).
@@ -61,6 +73,12 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
   # Backend Python deps (issue #270) — opens PRs for CVE fixes surfaced by the
   # advisory pip-audit CI job. Grouped so patch/minor security bumps land in one
@@ -78,6 +96,9 @@ updates:
       - "dependencies"
       - "security"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       python-minor-patch:
         update-types:
           - "minor"
@@ -106,6 +127,9 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       npm-minor-patch:
         update-types:
           - "minor"
@@ -129,6 +153,9 @@ updates:
       - "dependencies"
       - "github-actions"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       github-actions:
         patterns:
           - "*"
