@@ -88,21 +88,22 @@ class TestWriteMethodsValidateTheirKey:
         client.generate_presigned_url.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_still_admits_a_pre_581_root_key(self, monkeypatch):
-        # Erasure must keep removing the legacy root objects until #615 moves them.
+    async def test_no_method_admits_the_pre_581_root_shape(self, monkeypatch):
+        # #615: no deployed database references a root key, so reads, deletes and
+        # writes all require the tenant namespace now.
         svc, client = _live_service(monkeypatch, "test-bucket")
-        assert await svc.delete_file(LEGACY_ROOT) is True
-        client.delete_object.assert_called_once_with(Bucket="test-bucket", Key=LEGACY_ROOT)
-
-    @pytest.mark.asyncio
-    async def test_a_new_write_may_not_use_the_legacy_root_shape(self, monkeypatch):
-        # Only delete/head admit the pre-#581 root shape; a NEW object must be namespaced.
-        svc, client = _live_service(monkeypatch, "test-bucket")
-        with pytest.raises(ValueError):
-            await svc.upload_file_obj(MagicMock(), LEGACY_ROOT)
+        for call in (
+            lambda: svc.upload_file_obj(MagicMock(), LEGACY_ROOT),
+            lambda: svc.delete_file(LEGACY_ROOT),
+            lambda: svc.get_file_size(LEGACY_ROOT),
+            lambda: svc.download_file_bytes(LEGACY_ROOT),
+        ):
+            with pytest.raises(ValueError):
+                await call()
         with pytest.raises(ValueError):
             svc.generate_presigned_url(LEGACY_ROOT)
-        client.upload_fileobj.assert_not_called()
+        for method in ("upload_fileobj", "delete_object", "head_object", "get_object"):
+            getattr(client, method).assert_not_called()
 
     @pytest.mark.asyncio
     async def test_every_namespace_a_writer_uses_is_admitted(self, monkeypatch):

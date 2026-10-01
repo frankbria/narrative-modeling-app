@@ -1,32 +1,20 @@
-# #770 — Truthful, activating onboarding (P1.52)
+# #615 — Retire the pre-#581 legacy root-key allowance (P1.39)
 
-Scope: AC1, AC2, AC3, AC5, AC6, and AC4's deletion of verify-request.
-Waiting on P0.36 (#765, needs-owner): AC4's value line on /auth/new-user and AC7 (one product name).
-The CTA order is already Google, then GitHub.
+Ops half was done on staging on 2026-10-01 and posted on the issue. Root objects: 156. Dry run found 0 moves.
+Staging's DB has never held a dataset. The owners sit in two legacy DBs that no deployed service reads.
+Production does not exist (#476), and it will start after #581, so no deployed environment reads a root key.
 
-## Steps
-1. [ ] `apps/backend/scripts/generate_sample_datasets.py`: seeded numpy generator, no new deps. Writes
-   churn (2 000 rows), house_prices (3 000) and marketing_response (2 500) with plausible signal.
-2. [ ] `onboarding_service.get_sample_datasets`: the catalogue keeps only curated copy.
-   `rows`, `columns`, `size_mb`, `preview_data` and `feature_columns` are read from the file (cached per process).
-   `expected_accuracy` is re-measured with a quick-mode run.
-   Drop `download_url` (no such route), `documentation_url` (dead domain) and `video_url`. Point help articles at
-   `/quickstart` and drop the video tutorials (no videos exist). Update the schema to match.
-3. [ ] Backend tests:
-   - the catalogue matches the file; rows fall in 1 000–5 000
-   - every sample trains in quick mode under FREE ceilings, with a score of at least the stated `expected_accuracy`
-   - dead-link guard: every URL in the onboarding service output is app-relative and resolves to a frontend page
-     or a mounted backend route
-4. [ ] Frontend:
-   - SampleDatasetSelector: drop the docs link and `download_url`; label the score R² for regression
-   - dashboard empty state: explanation plus "Upload" and "Try a sample" buttons
-   - delete `/auth/verify-request` and its `auth.ts` pages entry
-   - auth/error: the request-access fallback uses `COMPANY.supportEmail`
-   - grep guard banning `narrativeml.com` outside test fixtures
-5. [ ] E2E `@smoke`: load a sample from the onboarding UI, train it on the real backend (quick), complete
-   step 4, and assert that no onboarding request failed.
+## Plan (self-authored, no architectural fork)
+1. RED: rewrite the legacy-allowance tests so they assert refusal:
+   - `test_utils/test_s3.py`: validate_object_key, resolve_validated_object, get_file_from_s3
+   - `test_services/test_s3_write_contract.py`: delete_file, get_file_size, download_file_bytes
+   - drop the legacy case from `test_feature_store_service.py`'s location-shape parametrize
+2. GREEN: delete `_LEGACY_ROOT_KEY` and the `allow_legacy_root` parameter. Drop the kwarg at all 5 call sites
+   (utils/s3.py get_file_from_s3, s3_service download_file_bytes/get_file_size/delete_file, feature_store_service).
+3. Docs: update CLAUDE.md where it mentions the allowance and #615.
 
-## Decisions (autonomous)
-- Remove dead URLs rather than repoint them per sample. `/quickstart` is generic, so a per-sample
-  "documentation" link to it would be fiction too.
-- Regression's `expected_accuracy` is R² (what the engine reports), and the UI labels it that way.
+## Acceptance (from the issue's DoD)
+- [x] Dry-run output and root-object count posted (apply was a no-op: 0 attributable)
+- [x] Orphan count posted, with a recommendation. The delete decision belongs to the owner, and nothing was deleted.
+- [x] Readers refuse a bare root key, with a test (plus an erasure residual test)
+- [x] `_LEGACY_ROOT_KEY` deleted

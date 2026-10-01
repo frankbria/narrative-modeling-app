@@ -292,12 +292,6 @@ _APP_NAMESPACES = ("datasets", "transformed", "models", "batch-jobs", "exports")
 _NAMESPACED_KEY = re.compile(
     r"^(?:" + "|".join(re.escape(ns) for ns in _APP_NAMESPACES) + r")/[a-zA-Z0-9_-]+/(?:[^/]+/)*[^/]+$"
 )
-#: The pre-#581 shape still sitting at the production bucket root until the
-#: operator runs the reconciliation (#615): (masked_){uuid4}.{ext}, nothing else.
-_LEGACY_ROOT_KEY = re.compile(
-    r"^(?:masked_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]+)?$",
-    re.IGNORECASE,
-)
 
 
 def allowed_bucket() -> str:
@@ -317,7 +311,17 @@ def allowed_bucket() -> str:
     return bucket
 
 
-def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
+def _has_traversal(decoded: str) -> bool:
+    """Traversal is a *segment* that is "." or "..", or an absolute/empty segment
+    ("/etc/passwd", "a//b"). A ".." inside a filename ("experiment..csv") is a
+    legitimate name datasets.py will happily store, and cannot traverse because
+    the segment contains no slash."""
+    if not decoded or decoded.startswith("/"):
+        return True
+    return any(seg in ("", ".", "..") for seg in decoded.split("/"))
+
+
+def validate_object_key(key: str) -> str:
     """URL-decode ``key`` and prove it names something this app is allowed to read.
 
     Bucket, traversal and namespace **hygiene, not per-tenant authorization**:
@@ -325,24 +329,15 @@ def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     the caller's. Callers pass an ownership-checked URL or key (#622).
 
     Refuses traversal (a ``.``/``..`` segment), an absolute or empty segment, and
-    any key outside the app namespaces or without a tenant segment.
-    ``allow_legacy_root`` additionally admits exactly the
-    pre-#581 root-level ``(masked_){uuid}.{ext}`` shape that ``UserData.s3_url``
-    still points at in production until #615 moves those objects; nothing else at
-    the root is ever accepted. Returns the decoded key.
+    any key outside the app namespaces or without a tenant segment — including
+    the pre-#581 bucket-root ``(masked_){uuid}.{ext}`` shape, retired in #615.
+    Returns the decoded key.
     """
     decoded = unquote(key or "")
-    # Traversal is a *segment* that is "." or "..", or an absolute/empty segment
-    # ("/etc/passwd", "a//b"). A ".." inside a filename ("experiment..csv") is a
-    # legitimate name datasets.py will happily store, and cannot traverse
-    # because the segment contains no slash.
-    segments = decoded.split("/")
-    if not decoded or decoded.startswith("/") or any(seg in ("", ".", "..") for seg in segments):
+    if _has_traversal(decoded):
         logger.error("Path traversal or absolute path in S3 key: %r", key)
         raise ValueError("Invalid S3 path: path traversal detected")
     if _NAMESPACED_KEY.match(decoded):
-        return decoded
-    if allow_legacy_root and _LEGACY_ROOT_KEY.match(decoded):
         return decoded
     logger.error("Invalid S3 path structure: %r", decoded)
     raise ValueError(
@@ -351,7 +346,7 @@ def validate_object_key(key: str, *, allow_legacy_root: bool = False) -> str:
     )
 
 
-def resolve_validated_object(s3_url: str, *, allow_legacy_root: bool = False) -> tuple[str, str]:
+def resolve_validated_object(s3_url: str) -> tuple[str, str]:
     """Turn a stored URL into ``(bucket, key)`` that may be downloaded (#531, #567).
 
     The one place every reader goes through: parse (all persisted shapes), refuse
@@ -363,7 +358,7 @@ def resolve_validated_object(s3_url: str, *, allow_legacy_root: bool = False) ->
     if bucket is None:
         raise ValueError(f"Invalid S3 URL format: {s3_url}")
     require_allowed_bucket(bucket)
-    return bucket, validate_object_key(key, allow_legacy_root=allow_legacy_root)
+    return bucket, validate_object_key(key)
 
 
 def check_object_size(client, bucket: str, key: str) -> int:
@@ -421,8 +416,7 @@ def require_allowed_bucket(bucket_name: str) -> None:
     `get_file_from_s3` — `column_stats` parses and fetches on its own. If no bucket is configured the
     check cannot be evaluated, so it fails closed rather than allowing anything.
 
-    The key is validated separately by `validate_object_key`, which admits the
-    legacy root shape only where a reader explicitly asks for it (#581/#615).
+    The key is validated separately by `validate_object_key`.
     """
     allowed = allowed_bucket()  # raises the one "not configured" error when unset
     if bucket_name != allowed:
@@ -467,15 +461,14 @@ def get_file_from_s3(s3_url: str) -> io.BytesIO:
     Same validated core as ``s3_service.download_file_from_s3`` (bucket allowlist,
     traversal and namespace checks, size cap); differs only in where the bytes
     land. This reader serves preview/viz/column-stats, which read
-    ``UserData.s3_url`` — and production still has pre-#581 objects at the bucket
-    root — so it alone admits the legacy root shape, until #615 retires it.
+    ``UserData.s3_url``.
     """
     client = get_s3_client()
     if client is None:
         raise Exception("Failed to initialize S3 client")
 
     try:
-        bucket_name, key = resolve_validated_object(s3_url, allow_legacy_root=True)
+        bucket_name, key = resolve_validated_object(s3_url)
         check_object_size(client, bucket_name, key)
 
         file_obj = io.BytesIO()

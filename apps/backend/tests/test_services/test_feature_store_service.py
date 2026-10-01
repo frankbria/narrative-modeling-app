@@ -390,7 +390,6 @@ class TestFeatureStoreServiceApplication:
     @pytest.mark.parametrize("stored", [
         "datasets/test_user_123/file.csv",                          # fresh upload: namespaced raw key
         "s3://test-bucket/transformed/test_user_123/x.parquet",     # after a transformation: full URL
-        "3f2a9c1e-8b7d-4c6e-9a1f-2b3c4d5e6f70.csv",                  # pre-#581 legacy root key (codex)
     ])
     async def test_apply_feature_resolves_every_stored_location_shape(self, stored):
         """#466: whatever `file_path` holds, the key-only downloader gets a validated key."""

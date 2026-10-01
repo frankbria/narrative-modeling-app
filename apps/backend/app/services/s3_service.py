@@ -53,9 +53,7 @@ def download_file_from_s3(s3_url: str) -> str:
     """
     try:
         # One validated core for every reader (#531/#567): parse, bucket
-        # allowlist, traversal + namespace checks. Strict here — this path serves
-        # transformations and data processing, which only ever read the two app
-        # namespaces; the legacy root allowance belongs to the BytesIO reader.
+        # allowlist, traversal + namespace checks.
         bucket_name, object_key = resolve_validated_object(s3_url)
 
         # Initialize S3 client
@@ -230,9 +228,9 @@ class S3Service:
 
         # The same core as the URL readers (#531/#567): the bucket is the one
         # allowlisted bucket (fail closed when unconfigured), the key follows the
-        # same rules (legacy root allowed until #615), and the size cap applies.
+        # same rules, and the size cap applies.
         bucket = self._live_bucket()  # same pin-or-live answer as the writers (#622)
-        file_key = validate_object_key(file_key, allow_legacy_root=True)
+        file_key = validate_object_key(file_key)
 
         def _download() -> bytes:
             # boto3 is blocking; run the request + body read off the event loop.
@@ -327,7 +325,7 @@ class S3Service:
     async def get_file_size(self, file_key: str) -> int:
         """Return an object's size in bytes via head_object (no download)."""
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        file_key = validate_object_key(file_key, allow_legacy_root=True)
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot stat files")
         response = await asyncio.to_thread(
@@ -409,7 +407,7 @@ class S3Service:
     async def delete_file(self, file_key: str) -> bool:
         """Delete a file from S3"""
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        file_key = validate_object_key(file_key, allow_legacy_root=True)
+        file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot delete files")
 

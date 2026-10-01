@@ -377,6 +377,20 @@ class FeatureStoreService(BaseService[StoredFeature]):
             "suggestions": suggestions
         }
 
+    @staticmethod
+    async def _load_dataset_frame(dataset: DatasetMetadata) -> pd.DataFrame:
+        # file_path may be a raw key or (after a transformation) a full URL (#466)
+        _, file_key = resolve_validated_object(downloadable_url(dataset.file_path, dataset.s3_url))
+        file_bytes = await s3_service.download_file_bytes(file_key)
+        if dataset.file_type == "csv":
+            return pd.read_csv(io.StringIO(file_bytes.decode('utf-8')))
+        if dataset.file_type in ["xls", "xlsx"]:
+            return pd.read_excel(io.BytesIO(file_bytes))
+        raise ValidationError(
+            message=f"Unsupported file type: {dataset.file_type}",
+            details={"file_type": dataset.file_type}
+        )
+
     async def apply_feature(
         self,
         feature_id: str,
@@ -417,24 +431,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
                 resource_id=dataset_id
             )
 
-        # Load data from S3
-        # file_path may be a raw key or (after a transformation) a full URL (#466)
-        # allow_legacy_root: pre-#581 datasets still sit at the bucket root until #615 reconciles them
-        _, file_key = resolve_validated_object(
-            downloadable_url(dataset.file_path, dataset.s3_url), allow_legacy_root=True
-        )
-        file_bytes = await s3_service.download_file_bytes(file_key)
-        if dataset.file_type == "csv":
-            file_str = file_bytes.decode('utf-8')
-            df = pd.read_csv(io.StringIO(file_str))
-        elif dataset.file_type in ["xls", "xlsx"]:
-            file_io = io.BytesIO(file_bytes)
-            df = pd.read_excel(file_io)
-        else:
-            raise ValidationError(
-                message=f"Unsupported file type: {dataset.file_type}",
-                details={"file_type": dataset.file_type}
-            )
+        df = await self._load_dataset_frame(dataset)
 
         # Apply feature using FeatureEngineer (validates the definition and
         # raises if it cannot be applied; result is not persisted here)
