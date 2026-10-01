@@ -153,7 +153,7 @@ export PLAN_FREE_AI_CALLS=${PLAN_FREE_AI_CALLS:-100000}
 export PLAN_PRO_UPLOADS=${PLAN_PRO_UPLOADS:-2}
 
 # AWS S3 configuration (test/mock values for E2E)
-# When AWS_ENDPOINT_URL is set (e.g. http://localhost:9000 for MinIO in CI),
+# When AWS_ENDPOINT_URL is set (e.g. http://localhost:4566 for LocalStack in CI),
 # the backend routes all S3 calls to that endpoint instead of real AWS.
 export AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-test-bucket}
 export AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-test-bucket}
@@ -175,11 +175,11 @@ if [ -z "${AWS_ENDPOINT_URL:-}" ]; then
 fi
 
 if [ -n "${AWS_ENDPOINT_URL:-}" ]; then
-  # Real S3-compatible storage (MinIO/LocalStack): credentials must NOT start
-  # with "test-" or S3Service enters no-op mock mode instead of using MinIO.
+  # Real S3-compatible storage (LocalStack): credentials must NOT start
+  # with "test-" or S3Service enters no-op mock mode instead of using it.
   export AWS_ENDPOINT_URL
-  export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-minioadmin}
-  export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-minioadmin}
+  export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-localstack}
+  export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-localstack}
 else
   export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test-access-key-id}
   export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test-secret-access-key}

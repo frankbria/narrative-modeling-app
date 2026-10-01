@@ -18,7 +18,7 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
   /* 2 workers on CI: GitHub runners have 2 cores and each test drives the
-     full stack (Next dev server + FastAPI + MinIO + MongoDB). 4 workers
+     full stack (Next dev server + FastAPI + LocalStack + MongoDB). 4 workers
      caused cascading navigation/upload timeouts once uploads actually
      started exercising real storage. */
   workers: process.env.CI ? 2 : undefined,
