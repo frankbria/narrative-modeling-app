@@ -277,7 +277,7 @@ def test_upload_file_to_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_cli
 def test_get_file_from_s3_endpoint_url(mock_env_vars_with_endpoint, mock_s3_client):
     """Test downloading a file referenced by an endpoint-style URL (MinIO)."""
     with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
-        # #531: keys live under a tenant prefix (or the transitional legacy root shape).
+        # #531: keys live under a tenant prefix.
         s3_url = "http://localhost:9000/test_bucket/datasets/u1/test_file.txt"
         expected_content = b"test file content"
 
@@ -556,17 +556,14 @@ class TestValidateObjectKey:
         with pytest.raises(ValueError):
             validate_object_key(key)
 
-    def test_legacy_root_shape_only_when_allowed(self):
-        # Exactly what #615 reconciles: (masked_){uuid}.{ext} at the bucket root.
-        legacy = "masked_3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
-        with pytest.raises(ValueError):
-            validate_object_key(legacy)
-        assert validate_object_key(legacy, allow_legacy_root=True) == legacy
-        # ...and nothing else at the root, even with the allowance.
-        with pytest.raises(ValueError):
-            validate_object_key("report.csv", allow_legacy_root=True)
-        with pytest.raises(ValueError):
-            validate_object_key("../3fa85f64-5717-4562-b3fc-2c963f66afa6.csv", allow_legacy_root=True)
+    def test_legacy_root_shape_is_refused(self):
+        # The pre-#581 (masked_){uuid}.{ext} root shape is retired (#615).
+        for legacy in (
+            "masked_3fa85f64-5717-4562-b3fc-2c963f66afa6.csv",
+            "3fa85f64-5717-4562-b3fc-2c963f66afa6.csv",
+        ):
+            with pytest.raises(ValueError):
+                validate_object_key(legacy)
 
 
 class TestResolveValidatedObject:
@@ -584,11 +581,9 @@ class TestResolveValidatedObject:
             "transformed/u/f.parquet",
         )
 
-    def test_legacy_root_needs_the_allowance(self, mock_env_vars):
-        url = "https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
+    def test_legacy_root_url_is_refused(self, mock_env_vars):
         with pytest.raises(ValueError):
-            resolve_validated_object(url)
-        assert resolve_validated_object(url, allow_legacy_root=True)[1].endswith(".csv")
+            resolve_validated_object("https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv")
 
 
 class TestGetFileFromS3Validation:
@@ -604,15 +599,13 @@ class TestGetFileFromS3Validation:
                 get_file_from_s3("https://victim.s3.amazonaws.com/datasets/u/f.csv")
         mock_s3_client.download_fileobj.assert_not_called()
 
-    def test_legacy_root_uuid_object_still_downloads(self, mock_env_vars, mock_s3_client):
-        # Production still holds these until the operator runs #615.
-        mock_s3_client.head_object.return_value = {"ContentLength": 3}
-        mock_s3_client.download_fileobj.side_effect = lambda b, k, f: f.write(b"a,b")
+    def test_legacy_root_uuid_object_is_refused_before_any_download(self, mock_env_vars, mock_s3_client):
+        # #615: the BytesIO reader no longer admits the pre-#581 root shape.
         with patch("app.utils.s3.get_s3_client", return_value=mock_s3_client):
-            out = get_file_from_s3(
-                "https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
-            )
-        assert out.getvalue() == b"a,b"
+            with pytest.raises(ValueError):
+                get_file_from_s3("https://test_bucket.s3.amazonaws.com/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv")
+        mock_s3_client.head_object.assert_not_called()
+        mock_s3_client.download_fileobj.assert_not_called()
 
     def test_regional_url_downloads_without_the_old_fallback(self, mock_env_vars, mock_s3_client):
         mock_s3_client.head_object.return_value = {"ContentLength": 1}

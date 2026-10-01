@@ -340,3 +340,25 @@ async def test_foreign_bucket_url_is_recorded_but_does_not_block_the_parent(setu
         control = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
     delete_file.assert_awaited_once_with(f"datasets/{USER}/{DATASET_ID}_d.csv")
     assert control.status == "completed"
+
+
+async def test_retired_root_key_is_recorded_but_does_not_block_the_parent(setup_database):
+    """#615: no reader admits the pre-#581 bucket-root shape any more, delete included.
+    A row still pointing at one (only legacy, unserved databases have them) must not
+    500 the erase: the refusal is an ``s3 delete`` residual on the manifest, nothing is
+    deleted from the bucket, and the parent still goes."""
+    root = f"s3://{BUCKET}/3fa85f64-5717-4562-b3fc-2c963f66afa6.csv"
+    await DatasetMetadata(
+        user_id=USER, dataset_id=DATASET_ID, filename="d.csv", original_filename="d.csv",
+        file_type="csv", file_path=root, s3_url=root, num_rows=10, num_columns=3,
+    ).insert()
+    svc = dataset_erasure_service.s3_service
+    client = MagicMock()
+    with patch.object(svc, "is_mock_mode", False), patch.object(svc, "s3_client", client):
+        manifest = await dataset_erasure_service.erase_dataset(DATASET_ID, USER, actor_id=USER)
+    client.delete_object.assert_not_called()
+    assert manifest.s3_objects_deleted == []
+    assert [f for f in manifest.failures if f.startswith("s3 delete 3fa85f64-")]
+    assert manifest.status == "completed_with_residuals"
+    assert await DatasetMetadata.find(DatasetMetadata.dataset_id == DATASET_ID).count() == 0
+    assert not [n for n in manifest.notes if "tombstone" in n]

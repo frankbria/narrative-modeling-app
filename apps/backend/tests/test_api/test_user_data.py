@@ -793,6 +793,6 @@ class TestS3BucketAllowlist:
         monkeypatch.setenv("AWS_BUCKET_NAME", "our-own-bucket")
         with patch("app.utils.s3.get_s3_client", return_value=MagicMock()) as client:
             client.return_value.head_object.return_value = {"ContentLength": 3}
-            # #531: keys live under a tenant prefix (or the transitional legacy root shape).
+            # #531: keys live under a tenant prefix.
             get_file_from_s3("s3://our-own-bucket/datasets/u/mine.csv")
             client.return_value.download_fileobj.assert_called_once()
