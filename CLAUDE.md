@@ -156,5 +156,5 @@ See `apps/mcp/README.md` for tools, env, and the security model. Recommended ext
 Keep docs synchronized with code: update OpenAPI specs when endpoints change; Python docstrings + TS JSDoc on public/complex surfaces; remove outdated comments immediately; update the relevant section of **this file** when a convention changes (don't add per-issue narrative — that's git/PR history).
 
 ## Automated Workflow Configuration
-- **Quality gates before PR:** all tests pass, coverage >85%, ruff/eslint clean, mypy/tsc clean, no TODO/FIXME/NotImplemented markers, security scan (OWASP).
+- **Quality gates before PR:** all tests pass, coverage >85%, ruff/eslint clean, mypy/tsc clean, no TODO/FIXME/NotImplemented markers, security scan (OWASP), `scripts/quality/crap.sh` passes (every function the change adds or modifies scores CRAP < 6, so it is small or tested; split or cover it, never skip it. Exit 2 = a measurement is missing: follow the hint and rerun. Backend coverage needs MongoDB).
 - **CodeRabbit:** max 3 iterations; auto-fix style/types/simple-bugs/docs. Escalate on iteration-3 failures, architecture changes, or security decisions.

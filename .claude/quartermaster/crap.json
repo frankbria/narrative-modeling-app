@@ -1,0 +1,6 @@
+{
+  "coverageCommand": "bash scripts/quality/crap-coverage.sh",
+  "sources": ["apps/backend/app", "apps/frontend/app", "apps/frontend/components", "apps/frontend/lib"],
+  "exclude": ["**/__tests__/**", "**/*.test.*", "**/node_modules/**"],
+  "base": "main"
+}
