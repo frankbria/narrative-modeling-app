@@ -152,6 +152,12 @@ export PLAN_FREE_AI_CALLS=${PLAN_FREE_AI_CALLS:-100000}
 # spec uploads as the admin tenant.
 export PLAN_PRO_UPLOADS=${PLAN_PRO_UPLOADS:-2}
 
+# The browser calls the backend from the e2e frontend origin. apps/backend/.env
+# pins BACKEND_CORS_ORIGINS to the dev ports, so without this every upload's
+# preflight is refused and the page shows "Failed to fetch" on a local run.
+# load_dotenv never overrides an exported variable, so this wins over .env.
+export BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-http://localhost:${TEST_PORT}}
+
 # AWS S3 configuration (test/mock values for E2E)
 # When AWS_ENDPOINT_URL is set (e.g. http://localhost:4566 for LocalStack in CI),
 # the backend routes all S3 calls to that endpoint instead of real AWS.
