@@ -344,7 +344,7 @@ class S3Service:
         Pass ``filename`` to force a clean download name via Content-Disposition.
         """
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        # New writes are namespaced.
         file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
@@ -368,7 +368,7 @@ class S3Service:
     async def upload_file_obj(self, file_obj, file_key: str) -> str:
         """Upload a file-like object to S3"""
         # Hygiene, not authorization (#622): the caller has already checked ownership.
-        # New writes are namespaced; only delete/head need the pre-#581 root shape.
+        # New writes are namespaced.
         file_key = validate_object_key(file_key)
         if self.is_mock_mode or self.s3_client is None:
             raise RuntimeError("S3Service is in mock mode - cannot upload files")
