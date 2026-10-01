@@ -11,18 +11,21 @@ out="${QUARTERMASTER_COVERAGE_DIR:?run this through: quartermaster crap}/lcov.in
 root="$(git rev-parse --show-toplevel)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-changed="$(git -C "$root" diff --name-only main)"
+# The merge-base, so apps that changed only upstream on main are not run.
+changed="$(git -C "$root" diff --name-only "$(git -C "$root" merge-base main HEAD)")"
 : > "$out"
 
 if grep -q '^apps/backend/' <<<"$changed"; then
   (cd "$root/apps/backend" && PYTHONPATH=. uv run pytest tests/ \
     -m "not integration and not performance" -q -p no:cacheprovider \
-    --cov=app --cov-report="lcov:$tmp/backend.info" >/dev/null)
+    --cov=app --cov-report="lcov:$tmp/backend.info" >"$tmp/backend.log" 2>&1) \
+    || { cat "$tmp/backend.log" >&2; exit 1; }
   sed 's|^SF:|SF:apps/backend/|' "$tmp/backend.info" >> "$out"
 fi
 
 if grep -q '^apps/frontend/' <<<"$changed"; then
   (cd "$root/apps/frontend" && npx jest --coverage --coverageReporters=lcov \
-    --coverageDirectory="$tmp/frontend" >/dev/null 2>&1)
+    --coverageDirectory="$tmp/frontend" >"$tmp/frontend.log" 2>&1) \
+    || { cat "$tmp/frontend.log" >&2; exit 1; }
   sed 's|^SF:|SF:apps/frontend/|' "$tmp/frontend/lcov.info" >> "$out"
 fi
