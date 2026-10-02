@@ -8,7 +8,7 @@ This document contains comprehensive user stories covering both happy path scena
 > that do not exist — database connections, multi-file joins, upload sizes far above the
 > real cap — and a few describe shipped features as planned. Do not read this document as
 > a description of the product, and never write public copy from it: the binding list of
-> what may be claimed is the do-not-claim list in `docs/product/public-surface-gtm.md` §6.
+> what may be claimed is the do-not-claim list in `docs/product/positioning.md` §6.
 > The remaining drift is tracked in #535.
 
 ### User Personas Reference

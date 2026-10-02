@@ -1,7 +1,7 @@
 # Positioning
 
 - **Status:** Signed 2026-10-02 (D1/D4); D2, D3, D5 signed 2026-09-18 (decisions D1–D5 of [#765](https://github.com/frankbria/narrative-modeling-app/issues/765); clearance in #793)
-- **Date:** 2026-09-16
+- **Date:** drafted 2026-09-16, signed 2026-10-02
 - **Follows:** [public-surface-gtm.md](./public-surface-gtm.md) (§4 decisions D1–D8) and [ADR-003](../architecture/ADR-003-plan-limits-and-pricing.md)
 - **Feeds:** #766 landing page, #475 pricing page, #770 onboarding copy, #772 trust pages
 - **Location:** `docs/product/positioning.md`
@@ -54,7 +54,7 @@ Supporting claims that may also be used, with evidence: eight guided stages (`li
 - **vs. enterprise platforms (DataRobot, Dataiku, Pecan):** "For one person with a spreadsheet, not a platform team with a procurement process."
 - Do not name Akkio, Obviously AI, Graphite Note or other vendors that no longer sell to this buyer.
 
-## 6. Do-not-claim list (binding; carried from public-surface-gtm.md §6)
+## 6. Do-not-claim list (binding; extends public-surface-gtm.md §6)
 
 auto-scaling · auto-provisioning · global or low-latency infrastructure · per-request pricing · uploads above 100 MB · database or cloud-storage connectors · multi-file joins · a broad transformation library (four types execute, #499) · per-dataset chat (`POST /ai/chat/{file_id}` is 501) · guaranteed ONNX/PMML export · any sample-dataset row count until #770 lands · recipes, A/B testing or data-issues detection until #738, #502 and #635 are decided · "replaces your statistics package" (no inference testing) · "better than ChatGPT" · any comparative accuracy claim against a named vendor.
 

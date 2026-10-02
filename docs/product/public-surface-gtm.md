@@ -69,7 +69,7 @@ Targets are hypotheses to instrument (#769) and revise, not promises.
 
 ## 6. Do-not-claim list
 
-Binding on every public page. Each item is either removed code, a 501, or a documented gap:
+The binding list is now [positioning.md](./positioning.md) §6, which carries every item below and adds to it. This copy stays as the evidence for each item: removed code, a 501, or a documented gap.
 
 auto-scaling · auto-provisioning · global or low-latency infrastructure · per-request pricing (all five removed in #511) · 100 GB uploads (cap is 100 MB) · database or cloud-storage connectors · multi-file joins · a broad transformation library (four types execute, #499) · per-dataset chat (`POST /ai/chat/{file_id}` is 501) · guaranteed ONNX/PMML export (ONNX is 501 in the image; PMML needs Java) · any sample-dataset row count · recipes, A/B testing or data-issues detection until #738, #502 and #635 are decided.
 
@@ -103,4 +103,4 @@ Order:
 
 ## 9. What this document is not
 
-It is not a marketing plan (channels, content calendar, launch announcement) and not a pricing revision; ADR-003 owns the numbers. When D1–D8 are decided, the positioning document lands beside this file and the pages are written from it.
+It is not a marketing plan (channels, content calendar, launch announcement) and not a pricing revision; ADR-003 owns the numbers. The positioning document, [positioning.md](./positioning.md), landed beside this file once D1–D5 were signed, and the pages are written from it. D6–D8 remain tracked in §4.
