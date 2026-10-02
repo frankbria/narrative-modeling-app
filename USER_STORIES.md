@@ -13,9 +13,8 @@ This document contains comprehensive user stories covering both happy path scena
 
 ### User Personas Reference
 
-> **Audience is owned by the positioning document, not by this file.** Until it lands
-> (it carries the product name, gated on #793), the decision record is
-> `docs/product/public-surface-gtm.md` §4. Re-ranked to the signed D2 in #765 — see #794.
+> **Audience is owned by the positioning document, not by this file:**
+> `docs/product/positioning.md`. Re-ranked to the signed D2 in #765 — see #794.
 
 - **Dr. Chen** - Medical Researcher, **primary** (Domain expert, limited coding; must
   defend the result to a reviewer, committee or PI)
