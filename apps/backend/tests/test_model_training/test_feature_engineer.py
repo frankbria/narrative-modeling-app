@@ -341,3 +341,61 @@ class TestFeatureEngineer:
         })
         result = await engineer.fit_transform(all_missing)
         assert result.X_transformed.isnull().sum().sum() == 0
+
+def _churn_frame(n: int, seed: int) -> pd.DataFrame:
+    rng = np.random.RandomState(seed)
+    plan = rng.choice(["basic", "pro", "premium"], n)
+    tenure = rng.randint(1, 120, n)
+    return pd.DataFrame(
+        {
+            "age": rng.randint(20, 70, n),
+            "tenure": tenure,
+            "plan": plan,
+            "region": rng.choice(["north", "south", "east", "west"], n),
+            "churned": ((plan == "basic") & (tenure < 60)).astype(int),
+        }
+    )
+
+
+async def _train_label_encoded():
+    """A real AutoML run with label encoding (#697) — no mocks."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    engine = AutoMLEngine(max_models=2, cv_folds=2, random_state=0)
+    result = await engine.run(
+        _churn_frame(200, seed=1),
+        "churned",
+        FeatureEngineeringConfig(encoding_method="label", select_features=False),
+    )
+    return engine.feature_engineer, result.best_model.estimator
+
+
+class TestLabelEncodingAtServing:
+    """#697: transform gated the label branch behind "encoder", which label
+    encoding never sets — serving fed raw strings to the estimator."""
+
+    @pytest.mark.asyncio
+    async def test_held_out_rows_get_the_training_encoding(self):
+        fe, model = await _train_label_encoded()
+        held_out = _churn_frame(25, seed=2).drop(columns=["churned"])
+
+        out = await fe.transform(held_out)
+
+        assert fe.categorical_features  # the label path actually ran
+        for col in fe.categorical_features:
+            classes = list(fe.transformers["label_encoders"][col].classes_)
+            expected = [classes.index(v) for v in held_out[col].astype(str)]
+            assert out[col].tolist() == expected
+        assert len(model.predict(out)) == len(held_out)
+
+    @pytest.mark.asyncio
+    async def test_unseen_category_encodes_to_minus_one(self):
+        fe, model = await _train_label_encoded()
+        held_out = _churn_frame(3, seed=3).drop(columns=["churned"])
+        held_out.loc[0, "plan"] = "enterprise"  # never seen at fit time
+
+        out = await fe.transform(held_out)
+
+        assert out.loc[0, "plan"] == -1
+        assert out.loc[1:, "plan"].ge(0).all()
+        assert len(model.predict(out)) == 3

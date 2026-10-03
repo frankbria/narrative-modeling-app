@@ -34,9 +34,7 @@ def feature_engineer_state(feature_engineer: Any) -> dict[str, Any] | None:
     transformers = getattr(feature_engineer, "transformers", None) or {}
     if not transformers:
         return None
-    config = getattr(feature_engineer, "config", None)
     return {
-        "encoding_method": getattr(config, "encoding_method", "onehot"),
         "transformers": transformers,
         "numeric_features": list(getattr(feature_engineer, "numeric_features", [])),
         "categorical_features": list(getattr(feature_engineer, "categorical_features", [])),

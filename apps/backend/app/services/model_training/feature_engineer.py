@@ -258,27 +258,28 @@ class FeatureEngineer:
                 X_transformed[self.categorical_features]
             )
         
-        # Encode categorical
+        # Encode categorical — gate on the key each method actually fitted
+        # (one-hot sets "encoder", label sets "label_encoders"; #697).
         if "encoder" in self.transformers:
-            if self.config.encoding_method == "onehot":
-                encoded = self.transformers["encoder"].transform(
-                    X_transformed[self.categorical_features]
-                )
-                encoded_df = pd.DataFrame(
-                    encoded,
-                    columns=self.transformers["encoded_columns"],
-                    index=X_transformed.index
-                )
-                X_transformed = pd.concat([
-                    X_transformed.drop(columns=self.categorical_features),
-                    encoded_df
-                ], axis=1)
-            else:
-                for col in self.categorical_features:
-                    if col in self.transformers["label_encoders"]:
-                        X_transformed[col] = self.transformers["label_encoders"][col].transform(
-                            X_transformed[col]
-                        )
+            encoded = self.transformers["encoder"].transform(
+                X_transformed[self.categorical_features]
+            )
+            encoded_df = pd.DataFrame(
+                encoded,
+                columns=self.transformers["encoded_columns"],
+                index=X_transformed.index
+            )
+            X_transformed = pd.concat([
+                X_transformed.drop(columns=self.categorical_features),
+                encoded_df
+            ], axis=1)
+        elif "label_encoders" in self.transformers:
+            # Cast to str exactly as fit did. A category unseen at fit time maps
+            # to -1 instead of raising — the label analog of one-hot's
+            # handle_unknown="ignore" (all-zeros row).
+            for col, le in self.transformers["label_encoders"].items():
+                codes = {label: code for code, label in enumerate(le.classes_)}
+                X_transformed[col] = X_transformed[col].astype(str).map(codes).fillna(-1).astype(int)
         
         # Scale numeric
         if "scaler" in self.transformers:

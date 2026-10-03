@@ -12,7 +12,7 @@ export ships a plain **state dict** instead — only fitted stock sklearn transf
 plus lists/strings — and this class reconstructs the transform from it.
 
 ``transform`` here mirrors ``FeatureEngineer.transform`` step-for-step (same order,
-same transformer keys, same ``"encoder"`` gate) so the container's predictions match
+same transformer keys, same encoder gates) so the container's predictions match
 the platform's, and it is **synchronous** (the platform's is async only because its
 sibling steps are).
 """
@@ -26,7 +26,6 @@ class StandaloneFeatureEngineer:
     """Applies a fitted FeatureEngineer's transformers without the platform code."""
 
     def __init__(self, state: dict):
-        self.encoding_method = state.get("encoding_method", "onehot")
         self.transformers = state.get("transformers", {})
         self.numeric_features = state.get("numeric_features", [])
         self.categorical_features = state.get("categorical_features", [])
@@ -52,25 +51,21 @@ class StandaloneFeatureEngineer:
                 X_transformed[self.categorical_features]
             )
 
-        # Mirror the platform gate exactly: the label branch also sits under
-        # "encoder", so a label-encoded model applies neither here — same as the
-        # platform's own serving path (a pre-existing quirk, kept for parity).
+        # Same gate as the platform: one-hot fits "encoder", label fits
+        # "label_encoders"; an unseen label category maps to -1 (#697).
         if "encoder" in t:
-            if self.encoding_method == "onehot":
-                encoded = t["encoder"].transform(X_transformed[self.categorical_features])
-                encoded_df = pd.DataFrame(
-                    encoded, columns=t["encoded_columns"], index=X_transformed.index
-                )
-                X_transformed = pd.concat(
-                    [X_transformed.drop(columns=self.categorical_features), encoded_df],
-                    axis=1,
-                )
-            else:
-                for col in self.categorical_features:
-                    if col in t.get("label_encoders", {}):
-                        X_transformed[col] = t["label_encoders"][col].transform(
-                            X_transformed[col]
-                        )
+            encoded = t["encoder"].transform(X_transformed[self.categorical_features])
+            encoded_df = pd.DataFrame(
+                encoded, columns=t["encoded_columns"], index=X_transformed.index
+            )
+            X_transformed = pd.concat(
+                [X_transformed.drop(columns=self.categorical_features), encoded_df],
+                axis=1,
+            )
+        elif "label_encoders" in t:
+            for col, le in t["label_encoders"].items():
+                codes = {label: code for code, label in enumerate(le.classes_)}
+                X_transformed[col] = X_transformed[col].astype(str).map(codes).fillna(-1).astype(int)
 
         if "scaler" in t:
             X_transformed[self.numeric_features] = t["scaler"].transform(

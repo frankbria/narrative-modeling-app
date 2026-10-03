@@ -1,20 +1,30 @@
-# #615 — Retire the pre-#581 legacy root-key allowance (P1.39)
+# #697 — Label-encoded models skip encoding at serving (P0.38)
 
-Ops half was done on staging on 2026-10-01 and posted on the issue. Root objects: 156. Dry run found 0 moves.
-Staging's DB has never held a dataset. The owners sit in two legacy DBs that no deployed service reads.
-Production does not exist (#476), and it will start after #581, so no deployed environment reads a root key.
+Plan self-authored (no plan on the issue). No architectural fork.
 
-## Plan (self-authored, no architectural fork)
-1. RED: rewrite the legacy-allowance tests so they assert refusal:
-   - `test_utils/test_s3.py`: validate_object_key, resolve_validated_object, get_file_from_s3
-   - `test_services/test_s3_write_contract.py`: delete_file, get_file_size, download_file_bytes
-   - drop the legacy case from `test_feature_store_service.py`'s location-shape parametrize
-2. GREEN: delete `_LEGACY_ROOT_KEY` and the `allow_legacy_root` parameter. Drop the kwarg at all 5 call sites
-   (utils/s3.py get_file_from_s3, s3_service download_file_bytes/get_file_size/delete_file, feature_store_service).
-3. Docs: update CLAUDE.md where it mentions the allowance and #615.
+## Root cause
+`FeatureEngineer.transform` nests the label branch under `if "encoder" in self.transformers`,
+but label encoding stores only `"label_encoders"`. So serving (and AutoML's own test-set
+transform, `automl_engine.py:331`) feeds raw strings to the estimator.
 
-## Acceptance (from the issue's DoD)
-- [x] Dry-run output and root-object count posted (apply was a no-op: 0 attributable)
-- [x] Orphan count posted, with a recommendation. The delete decision belongs to the owner, and nothing was deleted.
-- [x] Readers refuse a bare root key, with a test (plus an erasure residual test)
-- [x] `_LEGACY_ROOT_KEY` deleted
+## Steps
+1. RED: tests in `tests/test_model_training/test_feature_engineer.py`
+   - AutoMLEngine run with `encoding_method="label"` (real models) → engine's
+     `feature_engineer.transform(held_out)` equals the fit-time encoding; `model.predict` succeeds.
+   - unseen category at serving → `-1`, no crash.
+2. GREEN: `transform` gates on keys — `"encoder"` → one-hot, `"label_encoders"` → label.
+   Label path casts to `str` (as fit does) and maps via `classes_`; unseen → `-1`.
+3. Mirror in `_standalone_fe.py` (no `app` imports; keep everything after the class marker).
+   Parametrize `test_standalone_transform_matches_the_platform` over onehot + label (+ unseen row).
+4. Docs: CLAUDE.md #632 bullet ("preserves the label-encoding-under-encoder quirk") → updated.
+
+## Decisions
+- Unseen category → `-1` sentinel: deterministic, never raises; the label-encoded analog of
+  one-hot's `handle_unknown="ignore"` (all-zeros). Existing pickled `LabelEncoder`s keep working
+  (no switch to `OrdinalEncoder`, which would change stored artifacts).
+
+## Acceptance criteria
+- [ ] AC1 transform applies `label_encoders` (gated on that key)
+- [ ] AC2 real-model test: held-out encoding == training encoding; predict succeeds
+- [ ] AC3 StandaloneFeatureEngineer matches; parity test green (label case added)
+- [ ] AC4 unseen categories don't crash; behavior documented

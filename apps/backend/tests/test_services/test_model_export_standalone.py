@@ -42,11 +42,15 @@ def _frame() -> pd.DataFrame:
     )
 
 
-async def _trained_model_with_fe():
+async def _trained_model_with_fe(encoding_method: str = "onehot"):
     df = _frame()
     X, y = df.drop(columns=["churned"]), df["churned"]
     fe = FeatureEngineer(
-        FeatureEngineeringConfig(select_features=False, create_interactions=False)
+        FeatureEngineeringConfig(
+            select_features=False,
+            create_interactions=False,
+            encoding_method=encoding_method,
+        )
     )
     result = await fe.fit_transform(X, y, "binary_classification")
     clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(result.X_transformed, y)
@@ -155,24 +159,28 @@ async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
     assert proc.stdout.strip().splitlines()[-1] == "3"
 
 
-async def test_standalone_transform_matches_the_platform():
+@pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+async def test_standalone_transform_matches_the_platform(encoding_method):
     """The container's preprocessing must produce the SAME matrix the platform's
     FeatureEngineer.transform does, or predictions silently diverge. Compares the
     source-of-truth StandaloneFeatureEngineer (inlined into every export) against
-    the platform, driven by the shipped state dict."""
+    the platform, driven by the shipped state dict — for both encodings, with a
+    category unseen at fit time (#697)."""
     import pickle
 
     from app.services.model_export_assets._standalone_fe import (
         StandaloneFeatureEngineer,
     )
 
-    _, _, fe, X = await _trained_model_with_fe()
+    _, _, fe, X = await _trained_model_with_fe(encoding_method)
+    rows = X.head(5).copy()
+    rows.loc[rows.index[0], "plan"] = "enterprise"  # unseen at fit time
     state = feature_engineer_state(fe)
     # round-trip the state exactly as the export does (pickle → unpickle)
     engineer = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(state)))
-    got = engineer.transform(X.head(5))
+    got = engineer.transform(rows)
 
-    expected = await fe.transform(X.head(5))
+    expected = await fe.transform(rows)
     pd.testing.assert_frame_equal(
         got.reset_index(drop=True), expected.reset_index(drop=True), check_dtype=False
     )
