@@ -115,10 +115,11 @@ async def test_docker_zip_is_self_contained_with_inlined_preprocessing(monkeypat
         assert "from feature_engineer import" not in inference_src
 
 
-async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
+@pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+async def test_clean_environment_load_and_predict(monkeypatch, tmp_path, encoding_method):
     """AC3: unzip in an environment with no `app` on sys.path, load both pickles via
-    the shipped standalone module, and predict."""
-    model, clf, fe, X = await _trained_model_with_fe()
+    the shipped standalone module, and predict — for both encodings (#697)."""
+    model, clf, fe, X = await _trained_model_with_fe(encoding_method)
     svc = ModelExportService()
 
     async def fake_load(model_id, user_id):
@@ -192,7 +193,7 @@ async def test_standalone_transform_matches_the_platform(encoding_method, full_p
 
 
 @pytest.mark.parametrize("impl", ["platform", "standalone"])
-def test_interaction_value_skips_missing_inputs_and_divides(impl):
+async def test_interaction_value_skips_missing_inputs_and_divides(impl):
     from app.services.model_export_assets._standalone_fe import (
         StandaloneFeatureEngineer,
     )
