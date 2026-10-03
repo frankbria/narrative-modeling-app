@@ -393,17 +393,39 @@ class TestLabelEncodingAtServing:
         assert len(model.predict(out)) == len(held_out)
 
     @pytest.mark.asyncio
-    async def test_unseen_category_encodes_to_minus_one(self):
+    async def test_unseen_category_is_served_like_a_missing_one(self):
+        """An unseen category takes the code a blank cell is imputed to (the
+        training mode), not an out-of-range code a model extrapolates from."""
         fe, model = await _train_label_encoded()
         held_out = _churn_frame(3, seed=3).drop(columns=["churned"])
-        held_out.loc[0, "plan"] = "enterprise"  # never seen at fit time
+        unseen, blank = held_out.copy(), held_out.copy()
+        unseen.loc[0, ["plan", "region"]] = ["enterprise", "mars"]  # never seen at fit
+        blank.loc[0, ["plan", "region"]] = [None, None]
 
-        out = await fe.transform(held_out)
+        out = await fe.transform(unseen)
 
-        assert out.loc[0, "plan"] == -1
-        assert out.loc[1:, "plan"].ge(0).all()
+        pd.testing.assert_frame_equal(out, await fe.transform(blank))
+        assert out[["plan", "region"]].ge(0).all().all()
         assert len(model.predict(out)) == 3
 
+
+@pytest.mark.asyncio
+async def test_unseen_category_without_an_imputer_falls_back_to_minus_one():
+    """With handle_missing off there is no training mode to fall back on."""
+    X = pd.DataFrame({"plan": ["a", "b", "a", "b"] * 10, "n": range(40)})
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(
+            encoding_method="label", handle_missing=False, select_features=False
+        )
+    )
+    await fe.fit_transform(X)
+
+    rows = pd.DataFrame({"plan": ["a", "zzz"], "n": [1, 2]})
+    out = await fe.transform(rows)
+
+    assert out["plan"].tolist() == [0, -1]
+    standalone = StandaloneFeatureEngineer(feature_engineer_state(fe))
+    assert standalone.transform(rows)["plan"].tolist() == [0, -1]
 
 @pytest.mark.asyncio
 async def test_integral_floats_and_ints_share_a_label_code():

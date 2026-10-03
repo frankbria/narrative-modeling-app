@@ -269,8 +269,7 @@ class FeatureEngineer:
     def _apply_encoders(self, X: pd.DataFrame) -> pd.DataFrame:
         """Gate on the key each method actually fitted: one-hot sets "encoder",
         label sets "label_encoders" (#697). A label category unseen at fit time
-        maps to -1 instead of raising — the label analog of one-hot's
-        handle_unknown="ignore" (all-zeros row)."""
+        is served like a missing one (see ``_unseen_label_code``) instead of raising."""
         if "encoder" in self.transformers:
             encoded_df = pd.DataFrame(
                 self.transformers["encoder"].transform(X[self.categorical_features]),
@@ -280,8 +279,21 @@ class FeatureEngineer:
             return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
         for col, le in self.transformers.get("label_encoders", {}).items():
             codes = {label: code for code, label in enumerate(le.classes_)}
-            X[col] = self._label_keys(X[col]).map(codes).fillna(-1).astype(int)
+            unseen = self._unseen_label_code(col, codes)
+            X[col] = self._label_keys(X[col]).map(codes).fillna(unseen).astype(int)
         return X
+
+    def _unseen_label_code(self, col: str, codes: dict[str, int]) -> int:
+        """Code for a category unseen at fit: the column's most-frequent training
+        value, which is what a blank cell is already imputed to — so an unseen
+        value is served like a missing one rather than as an out-of-range code a
+        linear model would extrapolate from (#697). -1 only when no categorical
+        imputer was fitted (``handle_missing=False``)."""
+        stats = getattr(self.transformers.get("imputer_categorical"), "statistics_", None)
+        if stats is None or col not in self.categorical_features:
+            return -1
+        mode = stats[self.categorical_features.index(col)]
+        return codes.get(self._label_keys(pd.Series([mode])).iloc[0], -1)
 
     def _apply_interactions(self, X: pd.DataFrame) -> pd.DataFrame:
         """Recreate the interaction features fit created, where both inputs exist."""

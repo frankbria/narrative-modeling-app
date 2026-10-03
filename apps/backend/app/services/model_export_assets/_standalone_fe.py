@@ -66,7 +66,7 @@ class StandaloneFeatureEngineer:
 
     def _apply_encoders(self, X: pd.DataFrame) -> pd.DataFrame:
         # Same gate as the platform: one-hot fits "encoder", label fits
-        # "label_encoders"; an unseen label category maps to -1 (#697).
+        # "label_encoders"; an unseen label category is served like a missing one (#697).
         t = self.transformers
         if "encoder" in t:
             encoded_df = pd.DataFrame(
@@ -77,8 +77,18 @@ class StandaloneFeatureEngineer:
             return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
         for col, le in t.get("label_encoders", {}).items():
             codes = {label: code for code, label in enumerate(le.classes_)}
-            X[col] = self._label_keys(X[col]).map(codes).fillna(-1).astype(int)
+            unseen = self._unseen_label_code(col, codes)
+            X[col] = self._label_keys(X[col]).map(codes).fillna(unseen).astype(int)
         return X
+
+    def _unseen_label_code(self, col: str, codes: dict) -> int:
+        # Same as the platform: the training's most-frequent value (what a blank
+        # cell is imputed to); -1 only when no categorical imputer was fitted.
+        stats = getattr(self.transformers.get("imputer_categorical"), "statistics_", None)
+        if stats is None or col not in self.categorical_features:
+            return -1
+        mode = stats[self.categorical_features.index(col)]
+        return codes.get(self._label_keys(pd.Series([mode])).iloc[0], -1)
 
     def _apply_interactions(self, X: pd.DataFrame) -> pd.DataFrame:
         for feat in self.transformers.get("interaction_features", []):
