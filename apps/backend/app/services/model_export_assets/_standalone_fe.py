@@ -3,7 +3,9 @@
 This file ships **verbatim** inside the model-export ZIP as ``feature_engineer.py``
 and runs in the delivered container, which does NOT have the platform's ``app``
 package on ``sys.path``. So it must import nothing from ``app`` — only pandas and
-the stock scikit-learn objects that were pickled into the state dict.
+the stock scikit-learn objects that were pickled into the state dict. Its
+``pickle``/``numpy``/``pandas`` imports are dropped on inlining; ``inference.py``
+imports all three itself.
 
 The platform's real ``FeatureEngineer`` (``app.services.model_training.feature_engineer``)
 pickles its own class, whose module imports ``app.models.feature`` etc.; unpickling
@@ -19,6 +21,7 @@ sibling steps are).
 
 import pickle
 
+import numpy as np
 import pandas as pd
 
 
@@ -40,7 +43,7 @@ class StandaloneFeatureEngineer:
     @staticmethod
     def _label_keys(s: pd.Series) -> pd.Series:
         # Same keying as the platform's fit: integral floats drop their ".0".
-        return s.map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
+        return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X_transformed = self._coerce_booleans(X.copy())

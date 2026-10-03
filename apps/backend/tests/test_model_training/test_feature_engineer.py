@@ -451,3 +451,10 @@ async def test_integral_floats_and_ints_share_a_label_code():
 
         assert out["tier"].tolist() == [classes.index(v) for v in ("1", "2", "3")]
         pd.testing.assert_frame_equal(standalone.transform(rows), out, check_dtype=False)
+
+
+@pytest.mark.parametrize("impl", [FeatureEngineer, StandaloneFeatureEngineer])
+def test_label_keys_normalise_numpy_float_scalars(impl):
+    """An object column can hold raw np.float32 scalars, which are not Python floats."""
+    cells = pd.Series([np.float32(1.0), np.float64(2.0), 3.0, 4, "a", np.nan], dtype=object)
+    assert impl._label_keys(cells).tolist() == ["1", "2", "3", "4", "a", "nan"]

@@ -335,7 +335,7 @@ class FeatureEngineer:
         Integral floats drop their ``.0``: a column fitted as floats (NaNs force
         float64) must still match the same value sent as an int (#697).
         """
-        return s.map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
+        return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
 
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""
