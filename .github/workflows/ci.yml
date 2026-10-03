@@ -627,8 +627,8 @@ jobs:
     # without any code change. It is therefore EXCLUDED from the required
     # `CI Success` aggregate (like backend-typecheck) and surfaces vulnerable
     # deps on every PR; Dependabot (.github/dependabot.yml, pip + npm ecosystems)
-    # opens the fix PRs. npm audit is clean today, so it goes red only on a NEW
-    # high/critical; pip-audit surfaces the transitive long tail for ongoing
+    # opens the fix PRs. npm audit gates the production tree, which is clean, so
+    # it goes red only on a NEW high/critical there (see the step); pip-audit surfaces the transitive long tail for ongoing
     # Dependabot triage. The known-fixable CVE tail (cryptography/pillow/lxml/
     # pyarrow/idna/pygments/python-dotenv/pyasn1/ecdsa/pytest) was bumped to fixed
     # releases; the single remaining advisory has no upstream fix and is ignored
@@ -677,7 +677,15 @@ jobs:
       - name: npm audit (frontend)
         if: ${{ !cancelled() }}
         working-directory: apps/frontend
-        run: npm audit --audit-level=high
+        # Fails on high/critical in the production tree, which is what reaches
+        # the running image. The full tree (dev tooling included) is printed but
+        # does not fail the step: GHSA-vfj7-8cjw-p6xm (braces <=3.0.3, every
+        # release) has no upstream fix and reaches us only through
+        # eslint-config-next's lint tooling, so a full-tree gate would stay red
+        # until upstream ships and stop meaning "something new".
+        run: |
+          npm audit --audit-level=high || true
+          npm audit --omit=dev --audit-level=high
 
   # ── Aggregate gate ─────────────────────────────────────────────────────────
   ci-success:
