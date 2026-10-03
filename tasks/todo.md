@@ -19,12 +19,16 @@ transform, `automl_engine.py:331`) feeds raw strings to the estimator.
 4. Docs: CLAUDE.md #632 bullet ("preserves the label-encoding-under-encoder quirk") → updated.
 
 ## Decisions
-- Unseen category → `-1` sentinel: deterministic, never raises; the label-encoded analog of
-  one-hot's `handle_unknown="ignore"` (all-zeros). Existing pickled `LabelEncoder`s keep working
-  (no switch to `OrdinalEncoder`, which would change stored artifacts).
+- Unseen category → the column's training mode (what a blank is imputed to); `-1` only with no
+  categorical imputer. Chosen by the user after the demo showed `-1` extrapolating (0.999
+  confidence, unflagged). `LabelEncoder`s kept (no `OrdinalEncoder` switch).
+- Both `transform`s split into step helpers for the CRAP gate.
+- Flagging unseen/null inputs in responses + imputing JSON null → #838.
+
+PR #839.
 
 ## Acceptance criteria
-- [ ] AC1 transform applies `label_encoders` (gated on that key)
-- [ ] AC2 real-model test: held-out encoding == training encoding; predict succeeds
-- [ ] AC3 StandaloneFeatureEngineer matches; parity test green (label case added)
-- [ ] AC4 unseen categories don't crash; behavior documented
+- [x] AC1 transform applies `label_encoders` (gated on that key)
+- [x] AC2 real-model test: held-out encoding == training encoding; predict succeeds
+- [x] AC3 StandaloneFeatureEngineer matches; parity test green (label case added)
+- [x] AC4 unseen categories don't crash; behavior documented
