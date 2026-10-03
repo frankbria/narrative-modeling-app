@@ -400,7 +400,7 @@ class TestLabelEncodingAtServing:
         held_out = _churn_frame(3, seed=3).drop(columns=["churned"])
         unseen, blank = held_out.copy(), held_out.copy()
         unseen.loc[0, ["plan", "region"]] = ["enterprise", "mars"]  # never seen at fit
-        blank.loc[0, ["plan", "region"]] = [None, None]
+        blank.loc[0, ["plan", "region"]] = [np.nan, np.nan]  # imputed to the training mode
 
         out = await fe.transform(unseen)
 
