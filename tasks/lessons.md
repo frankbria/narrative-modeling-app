@@ -1565,3 +1565,10 @@ checked, and the fix is always the same: the claim is a query, so run it.
   looks like "no reviewer". Use `~/.nvm/versions/node/<ver>/bin/codex` (and the same for
   `agent-browser`). Re-run the reviewer after every post-review fix commit, so the review
   on record matches the merged diff.
+- **Measure a sentinel's effect on a real model before choosing it (#697).** I picked `-1`
+  for an unseen label category and called it "the label analog of one-hot's ignore". It
+  isn't. A logistic regression extrapolated `-1` past the first category to 0.999
+  confidence with no `low_confidence` flag, while one-hot's all-zeros row gave 0.58 and
+  was flagged. A one-line comparison on the demo server showed it. The fix was to serve
+  unseen like missing (the imputer's mode). Also: `SimpleImputer` treats only NaN as
+  missing, so a `None` "blank" in a test silently takes a different path (#838).

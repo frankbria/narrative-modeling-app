@@ -3,7 +3,9 @@
 This file ships **verbatim** inside the model-export ZIP as ``feature_engineer.py``
 and runs in the delivered container, which does NOT have the platform's ``app``
 package on ``sys.path``. So it must import nothing from ``app`` — only pandas and
-the stock scikit-learn objects that were pickled into the state dict.
+the stock scikit-learn objects that were pickled into the state dict. Its
+``pickle``/``numpy``/``pandas`` imports are dropped on inlining; ``inference.py``
+imports all three itself.
 
 The platform's real ``FeatureEngineer`` (``app.services.model_training.feature_engineer``)
 pickles its own class, whose module imports ``app.models.feature`` etc.; unpickling
@@ -12,13 +14,14 @@ export ships a plain **state dict** instead — only fitted stock sklearn transf
 plus lists/strings — and this class reconstructs the transform from it.
 
 ``transform`` here mirrors ``FeatureEngineer.transform`` step-for-step (same order,
-same transformer keys, same ``"encoder"`` gate) so the container's predictions match
+same transformer keys, same encoder gates) so the container's predictions match
 the platform's, and it is **synchronous** (the platform's is async only because its
 sibling steps are).
 """
 
 import pickle
 
+import numpy as np
 import pandas as pd
 
 
@@ -26,7 +29,6 @@ class StandaloneFeatureEngineer:
     """Applies a fitted FeatureEngineer's transformers without the platform code."""
 
     def __init__(self, state: dict):
-        self.encoding_method = state.get("encoding_method", "onehot")
         self.transformers = state.get("transformers", {})
         self.numeric_features = state.get("numeric_features", [])
         self.categorical_features = state.get("categorical_features", [])
@@ -38,61 +40,73 @@ class StandaloneFeatureEngineer:
             df[col] = df[col].astype(str)
         return df
 
+    @staticmethod
+    def _label_keys(s: pd.Series) -> pd.Series:
+        # Same keying as the platform's fit: integral floats drop their ".0".
+        return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
+
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        X_transformed = X.copy()
-        X_transformed = self._coerce_booleans(X_transformed)
-        t = self.transformers
-
-        if "imputer_numeric" in t:
-            X_transformed[self.numeric_features] = t["imputer_numeric"].transform(
+        X_transformed = self._coerce_booleans(X.copy())
+        X_transformed = self._apply_imputers(X_transformed)
+        X_transformed = self._apply_encoders(X_transformed)
+        if "scaler" in self.transformers:
+            X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
                 X_transformed[self.numeric_features]
             )
-        if "imputer_categorical" in t:
-            X_transformed[self.categorical_features] = t["imputer_categorical"].transform(
-                X_transformed[self.categorical_features]
-            )
-
-        # Mirror the platform gate exactly: the label branch also sits under
-        # "encoder", so a label-encoded model applies neither here — same as the
-        # platform's own serving path (a pre-existing quirk, kept for parity).
-        if "encoder" in t:
-            if self.encoding_method == "onehot":
-                encoded = t["encoder"].transform(X_transformed[self.categorical_features])
-                encoded_df = pd.DataFrame(
-                    encoded, columns=t["encoded_columns"], index=X_transformed.index
-                )
-                X_transformed = pd.concat(
-                    [X_transformed.drop(columns=self.categorical_features), encoded_df],
-                    axis=1,
-                )
-            else:
-                for col in self.categorical_features:
-                    if col in t.get("label_encoders", {}):
-                        X_transformed[col] = t["label_encoders"][col].transform(
-                            X_transformed[col]
-                        )
-
-        if "scaler" in t:
-            X_transformed[self.numeric_features] = t["scaler"].transform(
-                X_transformed[self.numeric_features]
-            )
-
-        if "interaction_features" in t:
-            for feat in t["interaction_features"]:
-                if "_x_" in feat:
-                    col1, col2 = feat.split("_x_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] * X_transformed[col2]
-                elif "_div_" in feat:
-                    col1, col2 = feat.split("_div_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] / (X_transformed[col2] + 1e-8)
-
-        if "selector" in t:
-            available = [f for f in t["selected_features"] if f in X_transformed.columns]
+        X_transformed = self._apply_interactions(X_transformed)
+        if "selector" in self.transformers:
+            available = [f for f in self.transformers["selected_features"] if f in X_transformed.columns]
             X_transformed = X_transformed[available]
-
         return X_transformed
+
+    def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
+        t = self.transformers
+        if "imputer_numeric" in t:
+            X[self.numeric_features] = t["imputer_numeric"].transform(X[self.numeric_features])
+        if "imputer_categorical" in t:
+            X[self.categorical_features] = t["imputer_categorical"].transform(X[self.categorical_features])
+        return X
+
+    def _apply_encoders(self, X: pd.DataFrame) -> pd.DataFrame:
+        # Same gate as the platform: one-hot fits "encoder", label fits
+        # "label_encoders"; an unseen label category is served like a missing one (#697).
+        t = self.transformers
+        if "encoder" in t:
+            encoded_df = pd.DataFrame(
+                t["encoder"].transform(X[self.categorical_features]),
+                columns=t["encoded_columns"],
+                index=X.index,
+            )
+            return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
+        for col, le in t.get("label_encoders", {}).items():
+            codes = {label: code for code, label in enumerate(le.classes_)}
+            unseen = self._unseen_label_code(col, codes)
+            X[col] = self._label_keys(X[col]).map(codes).fillna(unseen).astype(int)
+        return X
+
+    def _unseen_label_code(self, col: str, codes: dict) -> int:
+        # Same as the platform: the training's most-frequent value (what a blank
+        # cell is imputed to); -1 only when no categorical imputer was fitted.
+        stats = getattr(self.transformers.get("imputer_categorical"), "statistics_", None)
+        if stats is None or col not in self.categorical_features:
+            return -1
+        mode = stats[self.categorical_features.index(col)]
+        return codes.get(self._label_keys(pd.Series([mode])).iloc[0], -1)
+
+    def _apply_interactions(self, X: pd.DataFrame) -> pd.DataFrame:
+        for feat in self.transformers.get("interaction_features", []):
+            value = self._interaction_value(X, feat)
+            if value is not None:
+                X[feat] = value
+        return X
+
+    @staticmethod
+    def _interaction_value(X: pd.DataFrame, feat: str):
+        sep = "_x_" if "_x_" in feat else "_div_"
+        col1, _, col2 = feat.partition(sep)
+        if col1 not in X.columns or col2 not in X.columns:
+            return None
+        return X[col1] * X[col2] if sep == "_x_" else X[col1] / (X[col2] + 1e-8)
 
 
 def load_feature_engineer(path: str):

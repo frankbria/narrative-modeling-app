@@ -2,10 +2,14 @@
 Tests for feature engineering
 """
 
+import pickle
+
 import numpy as np
 import pandas as pd
 import pytest
 
+from app.services.model_export_assets._standalone_fe import StandaloneFeatureEngineer
+from app.services.model_export_runtime import feature_engineer_state
 from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     FeatureEngineeringConfig,
@@ -341,3 +345,116 @@ class TestFeatureEngineer:
         })
         result = await engineer.fit_transform(all_missing)
         assert result.X_transformed.isnull().sum().sum() == 0
+
+def _churn_frame(n: int, seed: int) -> pd.DataFrame:
+    rng = np.random.RandomState(seed)
+    plan = rng.choice(["basic", "pro", "premium"], n)
+    tenure = rng.randint(1, 120, n)
+    return pd.DataFrame(
+        {
+            "age": rng.randint(20, 70, n),
+            "tenure": tenure,
+            "plan": plan,
+            "region": rng.choice(["north", "south", "east", "west"], n),
+            "churned": ((plan == "basic") & (tenure < 60)).astype(int),
+        }
+    )
+
+
+async def _train_label_encoded():
+    """A real AutoML run with label encoding (#697) — no mocks."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    engine = AutoMLEngine(max_models=2, cv_folds=2, random_state=0)
+    result = await engine.run(
+        _churn_frame(200, seed=1),
+        "churned",
+        FeatureEngineeringConfig(encoding_method="label", select_features=False),
+    )
+    return engine.feature_engineer, result.best_model.estimator
+
+
+class TestLabelEncodingAtServing:
+    """#697: transform gated the label branch behind "encoder", which label
+    encoding never sets — serving fed raw strings to the estimator."""
+
+    @pytest.mark.asyncio
+    async def test_held_out_rows_get_the_training_encoding(self):
+        fe, model = await _train_label_encoded()
+        held_out = _churn_frame(25, seed=2).drop(columns=["churned"])
+
+        out = await fe.transform(held_out)
+
+        assert fe.categorical_features  # the label path actually ran
+        for col in fe.categorical_features:
+            classes = list(fe.transformers["label_encoders"][col].classes_)
+            expected = [classes.index(v) for v in held_out[col].astype(str)]
+            assert out[col].tolist() == expected
+        assert len(model.predict(out)) == len(held_out)
+
+    @pytest.mark.asyncio
+    async def test_unseen_category_is_served_like_a_missing_one(self):
+        """An unseen category takes the code a blank cell is imputed to (the
+        training mode), not an out-of-range code a model extrapolates from."""
+        fe, model = await _train_label_encoded()
+        held_out = _churn_frame(3, seed=3).drop(columns=["churned"])
+        unseen, blank = held_out.copy(), held_out.copy()
+        unseen.loc[0, ["plan", "region"]] = ["enterprise", "mars"]  # never seen at fit
+        blank.loc[0, ["plan", "region"]] = [np.nan, np.nan]  # imputed to the training mode
+
+        out = await fe.transform(unseen)
+
+        pd.testing.assert_frame_equal(out, await fe.transform(blank))
+        assert out[["plan", "region"]].ge(0).all().all()
+        assert len(model.predict(out)) == 3
+
+
+@pytest.mark.asyncio
+async def test_unseen_category_without_an_imputer_falls_back_to_minus_one():
+    """With handle_missing off there is no training mode to fall back on."""
+    X = pd.DataFrame({"plan": ["a", "b", "a", "b"] * 10, "n": range(40)})
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(
+            encoding_method="label", handle_missing=False, select_features=False
+        )
+    )
+    await fe.fit_transform(X)
+
+    rows = pd.DataFrame({"plan": ["a", "zzz"], "n": [1, 2]})
+    out = await fe.transform(rows)
+
+    assert out["plan"].tolist() == [0, -1]
+    standalone = StandaloneFeatureEngineer(feature_engineer_state(fe))
+    assert standalone.transform(rows)["plan"].tolist() == [0, -1]
+
+@pytest.mark.asyncio
+async def test_integral_floats_and_ints_share_a_label_code():
+    """A low-cardinality numeric column fitted as floats (NaNs force float64) must
+    still match the same value sent as an int at serving — "1.0" vs "1" would
+    silently encode a known category as unseen (#697). The exported standalone
+    transform must agree."""
+    rng = np.random.RandomState(0)
+    tier = rng.choice([1.0, 2.0, 3.0], 120)
+    tier[:5] = np.nan
+    X = pd.DataFrame({"tier": tier, "plan": rng.choice(["a", "b"], 120)})
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(encoding_method="label", select_features=False)
+    )
+    await fe.fit_transform(X)
+    assert "tier" in fe.categorical_features
+
+    classes = list(fe.transformers["label_encoders"]["tier"].classes_)
+    standalone = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(feature_engineer_state(fe))))
+    for tiers in ([1, 2, 3], [1.0, 2.0, 3.0]):  # served as ints, then as floats
+        rows = pd.DataFrame({"tier": tiers, "plan": ["a", "b", "a"]})
+        out = await fe.transform(rows)
+
+        assert out["tier"].tolist() == [classes.index(v) for v in ("1", "2", "3")]
+        pd.testing.assert_frame_equal(standalone.transform(rows), out, check_dtype=False)
+
+
+@pytest.mark.parametrize("impl", [FeatureEngineer, StandaloneFeatureEngineer])
+def test_label_keys_normalise_numpy_float_scalars(impl):
+    """An object column can hold raw np.float32 scalars, which are not Python floats."""
+    cells = pd.Series([np.float32(1.0), np.float64(2.0), 3.0, 4, "a", np.nan], dtype=object)
+    assert impl._label_keys(cells).tolist() == ["1", "2", "3", "4", "a", "nan"]

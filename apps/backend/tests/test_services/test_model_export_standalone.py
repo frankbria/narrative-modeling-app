@@ -42,11 +42,16 @@ def _frame() -> pd.DataFrame:
     )
 
 
-async def _trained_model_with_fe():
+async def _trained_model_with_fe(encoding_method: str = "onehot", full_pipeline: bool = False):
     df = _frame()
     X, y = df.drop(columns=["churned"]), df["churned"]
     fe = FeatureEngineer(
-        FeatureEngineeringConfig(select_features=False, create_interactions=False)
+        FeatureEngineeringConfig(
+            select_features=full_pipeline,
+            create_interactions=full_pipeline,
+            max_features=3 if full_pipeline else None,  # selection must drop columns
+            encoding_method=encoding_method,
+        )
     )
     result = await fe.fit_transform(X, y, "binary_classification")
     clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(result.X_transformed, y)
@@ -110,10 +115,11 @@ async def test_docker_zip_is_self_contained_with_inlined_preprocessing(monkeypat
         assert "from feature_engineer import" not in inference_src
 
 
-async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
+@pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+async def test_clean_environment_load_and_predict(monkeypatch, tmp_path, encoding_method):
     """AC3: unzip in an environment with no `app` on sys.path, load both pickles via
-    the shipped standalone module, and predict."""
-    model, clf, fe, X = await _trained_model_with_fe()
+    the shipped standalone module, and predict — for both encodings (#697)."""
+    model, clf, fe, X = await _trained_model_with_fe(encoding_method)
     svc = ModelExportService()
 
     async def fake_load(model_id, user_id):
@@ -155,24 +161,45 @@ async def test_clean_environment_load_and_predict(monkeypatch, tmp_path):
     assert proc.stdout.strip().splitlines()[-1] == "3"
 
 
-async def test_standalone_transform_matches_the_platform():
+@pytest.mark.parametrize("full_pipeline", [False, True], ids=["encode-only", "interactions+selection"])
+@pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+async def test_standalone_transform_matches_the_platform(encoding_method, full_pipeline):
     """The container's preprocessing must produce the SAME matrix the platform's
     FeatureEngineer.transform does, or predictions silently diverge. Compares the
     source-of-truth StandaloneFeatureEngineer (inlined into every export) against
-    the platform, driven by the shipped state dict."""
+    the platform, driven by the shipped state dict — for both encodings, with a
+    category unseen at fit time (#697)."""
     import pickle
 
     from app.services.model_export_assets._standalone_fe import (
         StandaloneFeatureEngineer,
     )
 
-    _, _, fe, X = await _trained_model_with_fe()
+    _, _, fe, X = await _trained_model_with_fe(encoding_method, full_pipeline)
+    if full_pipeline:  # the steps this variant exists to cover actually ran
+        assert {"interaction_features", "selector"} <= fe.transformers.keys()
+        assert len(fe.transformers["selected_features"]) == 3
+    rows = X.head(5).copy()
+    rows.loc[rows.index[0], "plan"] = "enterprise"  # unseen at fit time
     state = feature_engineer_state(fe)
     # round-trip the state exactly as the export does (pickle → unpickle)
     engineer = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(state)))
-    got = engineer.transform(X.head(5))
+    got = engineer.transform(rows)
 
-    expected = await fe.transform(X.head(5))
+    expected = await fe.transform(rows)
     pd.testing.assert_frame_equal(
         got.reset_index(drop=True), expected.reset_index(drop=True), check_dtype=False
     )
+
+
+@pytest.mark.parametrize("impl", ["platform", "standalone"])
+async def test_interaction_value_skips_missing_inputs_and_divides(impl):
+    from app.services.model_export_assets._standalone_fe import (
+        StandaloneFeatureEngineer,
+    )
+
+    cls = FeatureEngineer if impl == "platform" else StandaloneFeatureEngineer
+    X = pd.DataFrame({"a": [6.0, 9.0], "b": [2.0, 3.0]})
+    assert cls._interaction_value(X, "a_x_gone") is None
+    assert cls._interaction_value(X, "a_x_b").tolist() == [12.0, 27.0]
+    assert cls._interaction_value(X, "a_div_b").round(6).tolist() == [3.0, 3.0]
