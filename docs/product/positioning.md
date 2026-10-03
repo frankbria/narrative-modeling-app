@@ -10,7 +10,7 @@ Every claim below is either traceable to code (file or issue cited) or listed un
 
 ## 1. Product name (D1)
 
-**SheetPredict.** Public site `sheetpredict.app`, product `app.sheetpredict.app`, serving surface `api.sheetpredict.app`.
+**SheetPredict.** Production `www.sheetpredict.app` (landing page, app and API on one host, as nginx serves it today); the apex `sheetpredict.app` redirects to it. Staging is `dev.sheetpredict.app`.
 
 Rationale: `narrativeml.com` is registered and in use by an unrelated ML consultancy; "NarrativeML" is an academic markup language; "narrative modeling" is a dbt data-modeling term; NARRATIVE SCIENCE (Reg. 5865083, Cl. 9/42) is a registered mark for AI software; and "narrative + data" reads as text generation, not prediction. SheetPredict says exactly what the product does and searches well. Foresheet was the evocative alternative, not taken. `sheetpredict.app` registered 2026-10-02; `sheetpredict.com` is registered (2025-12-30, Cloudflare) with no live site. `.app` is HSTS-preloaded, so every host on it is HTTPS-only in browsers.
 
@@ -81,5 +81,5 @@ Not in the name. It names one feature: the **Narrative** — a generated, export
 | D1 Name | SheetPredict | 2026-10-02 |
 | D2 Persona | Applied researcher primary; defend-the-number analyst secondary | 2026-09-18 |
 | D3 Signup | Open OAuth after #768/#769 | 2026-09-18 |
-| D4 Hostname | sheetpredict.app / app.sheetpredict.app / api.sheetpredict.app | 2026-10-02 |
+| D4 Hostname | www.sheetpredict.app (prod, apex redirects) / dev.sheetpredict.app (staging) | 2026-10-02 |
 | D5 Hidden features | recipes, A/B, data-issues | 2026-09-18 |
