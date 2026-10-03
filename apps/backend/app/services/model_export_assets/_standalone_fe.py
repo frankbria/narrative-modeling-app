@@ -43,56 +43,57 @@ class StandaloneFeatureEngineer:
         return s.map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        X_transformed = X.copy()
-        X_transformed = self._coerce_booleans(X_transformed)
-        t = self.transformers
-
-        if "imputer_numeric" in t:
-            X_transformed[self.numeric_features] = t["imputer_numeric"].transform(
+        X_transformed = self._coerce_booleans(X.copy())
+        X_transformed = self._apply_imputers(X_transformed)
+        X_transformed = self._apply_encoders(X_transformed)
+        if "scaler" in self.transformers:
+            X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
                 X_transformed[self.numeric_features]
             )
-        if "imputer_categorical" in t:
-            X_transformed[self.categorical_features] = t["imputer_categorical"].transform(
-                X_transformed[self.categorical_features]
-            )
+        X_transformed = self._apply_interactions(X_transformed)
+        if "selector" in self.transformers:
+            available = [f for f in self.transformers["selected_features"] if f in X_transformed.columns]
+            X_transformed = X_transformed[available]
+        return X_transformed
 
+    def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
+        t = self.transformers
+        if "imputer_numeric" in t:
+            X[self.numeric_features] = t["imputer_numeric"].transform(X[self.numeric_features])
+        if "imputer_categorical" in t:
+            X[self.categorical_features] = t["imputer_categorical"].transform(X[self.categorical_features])
+        return X
+
+    def _apply_encoders(self, X: pd.DataFrame) -> pd.DataFrame:
         # Same gate as the platform: one-hot fits "encoder", label fits
         # "label_encoders"; an unseen label category maps to -1 (#697).
+        t = self.transformers
         if "encoder" in t:
-            encoded = t["encoder"].transform(X_transformed[self.categorical_features])
             encoded_df = pd.DataFrame(
-                encoded, columns=t["encoded_columns"], index=X_transformed.index
+                t["encoder"].transform(X[self.categorical_features]),
+                columns=t["encoded_columns"],
+                index=X.index,
             )
-            X_transformed = pd.concat(
-                [X_transformed.drop(columns=self.categorical_features), encoded_df],
-                axis=1,
-            )
-        elif "label_encoders" in t:
-            for col, le in t["label_encoders"].items():
-                codes = {label: code for code, label in enumerate(le.classes_)}
-                X_transformed[col] = self._label_keys(X_transformed[col]).map(codes).fillna(-1).astype(int)
+            return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
+        for col, le in t.get("label_encoders", {}).items():
+            codes = {label: code for code, label in enumerate(le.classes_)}
+            X[col] = self._label_keys(X[col]).map(codes).fillna(-1).astype(int)
+        return X
 
-        if "scaler" in t:
-            X_transformed[self.numeric_features] = t["scaler"].transform(
-                X_transformed[self.numeric_features]
-            )
+    def _apply_interactions(self, X: pd.DataFrame) -> pd.DataFrame:
+        for feat in self.transformers.get("interaction_features", []):
+            value = self._interaction_value(X, feat)
+            if value is not None:
+                X[feat] = value
+        return X
 
-        if "interaction_features" in t:
-            for feat in t["interaction_features"]:
-                if "_x_" in feat:
-                    col1, col2 = feat.split("_x_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] * X_transformed[col2]
-                elif "_div_" in feat:
-                    col1, col2 = feat.split("_div_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] / (X_transformed[col2] + 1e-8)
-
-        if "selector" in t:
-            available = [f for f in t["selected_features"] if f in X_transformed.columns]
-            X_transformed = X_transformed[available]
-
-        return X_transformed
+    @staticmethod
+    def _interaction_value(X: pd.DataFrame, feat: str):
+        sep = "_x_" if "_x_" in feat else "_div_"
+        col1, _, col2 = feat.partition(sep)
+        if col1 not in X.columns or col2 not in X.columns:
+            return None
+        return X[col1] * X[col2] if sep == "_x_" else X[col1] / (X[col2] + 1e-8)
 
 
 def load_feature_engineer(path: str):

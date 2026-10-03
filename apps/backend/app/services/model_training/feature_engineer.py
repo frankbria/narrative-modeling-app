@@ -242,71 +242,63 @@ class FeatureEngineer:
         )
     
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Transform new data using fitted transformers"""
-        X_transformed = X.copy()
-        X_transformed = self._coerce_booleans(X_transformed)
-
-        # Apply transformations in the same order
-        # Handle missing values
-        if "imputer_numeric" in self.transformers:
-            X_transformed[self.numeric_features] = self.transformers["imputer_numeric"].transform(
-                X_transformed[self.numeric_features]
-            )
-        
-        if "imputer_categorical" in self.transformers:
-            X_transformed[self.categorical_features] = self.transformers["imputer_categorical"].transform(
-                X_transformed[self.categorical_features]
-            )
-        
-        # Encode categorical — gate on the key each method actually fitted
-        # (one-hot sets "encoder", label sets "label_encoders"; #697).
-        if "encoder" in self.transformers:
-            encoded = self.transformers["encoder"].transform(
-                X_transformed[self.categorical_features]
-            )
-            encoded_df = pd.DataFrame(
-                encoded,
-                columns=self.transformers["encoded_columns"],
-                index=X_transformed.index
-            )
-            X_transformed = pd.concat([
-                X_transformed.drop(columns=self.categorical_features),
-                encoded_df
-            ], axis=1)
-        elif "label_encoders" in self.transformers:
-            # Key values exactly as fit did. A category unseen at fit time maps
-            # to -1 instead of raising — the label analog of one-hot's
-            # handle_unknown="ignore" (all-zeros row).
-            for col, le in self.transformers["label_encoders"].items():
-                codes = {label: code for code, label in enumerate(le.classes_)}
-                X_transformed[col] = self._label_keys(X_transformed[col]).map(codes).fillna(-1).astype(int)
-        
-        # Scale numeric
+        """Transform new data using fitted transformers, in fit's step order."""
+        X_transformed = self._coerce_booleans(X.copy())
+        X_transformed = self._apply_imputers(X_transformed)
+        X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
             X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
                 X_transformed[self.numeric_features]
             )
-        
-        # Create interaction features if they were created during training
-        if "interaction_features" in self.transformers:
-            for feat in self.transformers["interaction_features"]:
-                if "_x_" in feat:
-                    col1, col2 = feat.split("_x_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] * X_transformed[col2]
-                elif "_div_" in feat:
-                    col1, col2 = feat.split("_div_")
-                    if col1 in X_transformed.columns and col2 in X_transformed.columns:
-                        X_transformed[feat] = X_transformed[col1] / (X_transformed[col2] + 1e-8)
-        
-        # Select features
+        X_transformed = self._apply_interactions(X_transformed)
         if "selector" in self.transformers:
             # Only keep columns that exist in the transformed data
             available_features = [f for f in self.transformers["selected_features"] if f in X_transformed.columns]
             X_transformed = X_transformed[available_features]
-        
         return X_transformed
-    
+
+    def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
+        if "imputer_numeric" in self.transformers:
+            X[self.numeric_features] = self.transformers["imputer_numeric"].transform(X[self.numeric_features])
+        if "imputer_categorical" in self.transformers:
+            X[self.categorical_features] = self.transformers["imputer_categorical"].transform(
+                X[self.categorical_features]
+            )
+        return X
+
+    def _apply_encoders(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Gate on the key each method actually fitted: one-hot sets "encoder",
+        label sets "label_encoders" (#697). A label category unseen at fit time
+        maps to -1 instead of raising — the label analog of one-hot's
+        handle_unknown="ignore" (all-zeros row)."""
+        if "encoder" in self.transformers:
+            encoded_df = pd.DataFrame(
+                self.transformers["encoder"].transform(X[self.categorical_features]),
+                columns=self.transformers["encoded_columns"],
+                index=X.index,
+            )
+            return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
+        for col, le in self.transformers.get("label_encoders", {}).items():
+            codes = {label: code for code, label in enumerate(le.classes_)}
+            X[col] = self._label_keys(X[col]).map(codes).fillna(-1).astype(int)
+        return X
+
+    def _apply_interactions(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Recreate the interaction features fit created, where both inputs exist."""
+        for feat in self.transformers.get("interaction_features", []):
+            value = self._interaction_value(X, feat)
+            if value is not None:
+                X[feat] = value
+        return X
+
+    @staticmethod
+    def _interaction_value(X: pd.DataFrame, feat: str) -> pd.Series | None:
+        sep = "_x_" if "_x_" in feat else "_div_"
+        col1, _, col2 = feat.partition(sep)
+        if col1 not in X.columns or col2 not in X.columns:
+            return None
+        return X[col1] * X[col2] if sep == "_x_" else X[col1] / (X[col2] + 1e-8)
+
     @staticmethod
     def _coerce_booleans(df: pd.DataFrame) -> pd.DataFrame:
         """Cast boolean columns to strings so they are handled as ordinary
