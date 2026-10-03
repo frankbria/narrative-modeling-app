@@ -2,10 +2,14 @@
 Tests for feature engineering
 """
 
+import pickle
+
 import numpy as np
 import pandas as pd
 import pytest
 
+from app.services.model_export_assets._standalone_fe import StandaloneFeatureEngineer
+from app.services.model_export_runtime import feature_engineer_state
 from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     FeatureEngineeringConfig,
@@ -399,3 +403,29 @@ class TestLabelEncodingAtServing:
         assert out.loc[0, "plan"] == -1
         assert out.loc[1:, "plan"].ge(0).all()
         assert len(model.predict(out)) == 3
+
+
+@pytest.mark.asyncio
+async def test_integral_floats_and_ints_share_a_label_code():
+    """A low-cardinality numeric column fitted as floats (NaNs force float64) must
+    still match the same value sent as an int at serving — "1.0" vs "1" would
+    silently encode a known category as unseen (#697). The exported standalone
+    transform must agree."""
+    rng = np.random.RandomState(0)
+    tier = rng.choice([1.0, 2.0, 3.0], 120)
+    tier[:5] = np.nan
+    X = pd.DataFrame({"tier": tier, "plan": rng.choice(["a", "b"], 120)})
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(encoding_method="label", select_features=False)
+    )
+    await fe.fit_transform(X)
+    assert "tier" in fe.categorical_features
+
+    classes = list(fe.transformers["label_encoders"]["tier"].classes_)
+    standalone = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(feature_engineer_state(fe))))
+    for tiers in ([1, 2, 3], [1.0, 2.0, 3.0]):  # served as ints, then as floats
+        rows = pd.DataFrame({"tier": tiers, "plan": ["a", "b", "a"]})
+        out = await fe.transform(rows)
+
+        assert out["tier"].tolist() == [classes.index(v) for v in ("1", "2", "3")]
+        pd.testing.assert_frame_equal(standalone.transform(rows), out, check_dtype=False)

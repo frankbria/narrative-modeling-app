@@ -37,6 +37,11 @@ class StandaloneFeatureEngineer:
             df[col] = df[col].astype(str)
         return df
 
+    @staticmethod
+    def _label_keys(s: pd.Series) -> pd.Series:
+        # Same keying as the platform's fit: integral floats drop their ".0".
+        return s.map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
+
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X_transformed = X.copy()
         X_transformed = self._coerce_booleans(X_transformed)
@@ -65,7 +70,7 @@ class StandaloneFeatureEngineer:
         elif "label_encoders" in t:
             for col, le in t["label_encoders"].items():
                 codes = {label: code for code, label in enumerate(le.classes_)}
-                X_transformed[col] = X_transformed[col].astype(str).map(codes).fillna(-1).astype(int)
+                X_transformed[col] = self._label_keys(X_transformed[col]).map(codes).fillna(-1).astype(int)
 
         if "scaler" in t:
             X_transformed[self.numeric_features] = t["scaler"].transform(

@@ -274,12 +274,12 @@ class FeatureEngineer:
                 encoded_df
             ], axis=1)
         elif "label_encoders" in self.transformers:
-            # Cast to str exactly as fit did. A category unseen at fit time maps
+            # Key values exactly as fit did. A category unseen at fit time maps
             # to -1 instead of raising — the label analog of one-hot's
             # handle_unknown="ignore" (all-zeros row).
             for col, le in self.transformers["label_encoders"].items():
                 codes = {label: code for code, label in enumerate(le.classes_)}
-                X_transformed[col] = X_transformed[col].astype(str).map(codes).fillna(-1).astype(int)
+                X_transformed[col] = self._label_keys(X_transformed[col]).map(codes).fillna(-1).astype(int)
         
         # Scale numeric
         if "scaler" in self.transformers:
@@ -323,6 +323,15 @@ class FeatureEngineer:
         for col in bool_cols:
             df[col] = df[col].astype(str)
         return df
+
+    @staticmethod
+    def _label_keys(s: pd.Series) -> pd.Series:
+        """The string a label encoder keys a value on, at fit and at serving.
+
+        Integral floats drop their ``.0``: a column fitted as floats (NaNs force
+        float64) must still match the same value sent as an int (#697).
+        """
+        return s.map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
 
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""
@@ -402,7 +411,7 @@ class FeatureEngineer:
             label_encoders = {}
             for col in self.categorical_features:
                 le = LabelEncoder()
-                df[col] = le.fit_transform(df[col].astype(str))
+                df[col] = le.fit_transform(self._label_keys(df[col]))
                 label_encoders[col] = le
             
             self.transformers["label_encoders"] = label_encoders
