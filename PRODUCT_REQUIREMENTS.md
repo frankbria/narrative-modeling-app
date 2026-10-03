@@ -9,9 +9,8 @@ To empower researchers, analysts, and domain experts to harness the power of mac
 
 ### Target Users
 
-> **Audience and public copy are owned by the positioning document, not by this file.**
-> Until it lands (it carries the product name, which is gated on #793), the decision
-> record is `docs/product/public-surface-gtm.md` §4. This section was re-ranked to match
+> **Audience and public copy are owned by the positioning document, not by this file:**
+> `docs/product/positioning.md`. This section was re-ranked to match
 > the signed D2 in #765 — see #794. If the two ever disagree, the positioning document
 > wins and this file is the one that is wrong.
 

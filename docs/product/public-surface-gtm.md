@@ -38,16 +38,16 @@ The funnel is discover → understand → trust → try → activate → convert
 
 ## 4. Decisions required (owner)
 
-Status as of 2026-09-21. The **Recommended default** column is what this document
+Status as of 2026-10-02. The **Recommended default** column is what this document
 proposed; **Outcome** is what the owner decided. Where they differ, the outcome wins —
 D2 is the one that reversed.
 
 | # | Decision | Recommended default | Outcome | Recorded in |
 |---|---|---|---|---|
-| D1 | One product name | pick one of the three; apply everywhere | **Chosen, not cleared.** Trademark search and domain registration pending; the name stays out of this repo until both pass | #765, **#793** |
+| D1 | One product name | pick one of the three; apply everywhere | **Signed 2026-10-02: SheetPredict.** Domain registered and common-law check clean; the USPTO Classes 9/42 search is still open. See [positioning.md](./positioning.md) | #765, **#793** |
 | D2 | Positioning and primary persona | the churn-prediction analyst; the shipped sample, both screenshots and the 0.82 score already tell that story | **Signed, and reversed.** Primary is the **applied researcher** who must defend a prediction to a reviewer, committee or PI; the defend-the-number analyst is secondary. The analyst persona has the least evidence of willingness to pay, the most substitutes, and a data-location mismatch (no connectors, no joins) | #765, **#794** |
 | D3 | Signup model at launch | **open, OAuth-only**, switched on only after #768 lands; invite + request-access form is the alternative | **Signed as recommended**, gated on #768 and #769 AC1–AC3 being live in production. Invite mode stays available via `SIGNUP_MODE` | #765, #476 AC7 |
-| D4 | Production hostname | a subdomain of the company domain already carrying support mail | **Chosen with D1**, pending the same clearance | #765, #476, **#793** |
+| D4 | Production hostname | a subdomain of the company domain already carrying support mail | **Signed 2026-10-02:** production `www.sheetpredict.app` (apex redirects), staging `dev.sheetpredict.app`, each on its own box. `.app` is HSTS-preloaded, so every host is HTTPS-only | #765, #476, **#793** |
 | D5 | Launch features: A/B testing, recipes, data-issues UI | hide until #502 / #738 / #635 are decided | **Signed as recommended** — all three hidden at launch | #765 |
 | D6 | Trial, annual price, promo codes, tax | none / not yet / yes / Stripe Tax if selling outside the US | **Open**, and widened: a full price-ladder revision is proposed against ADR-003. Must be decided before live Stripe keys | #771, **#796** |
 | D7 | Analytics approach | server-side events + cookieless public-page analytics; no tag inside the app | **Partly done.** Server-side events, the quota-denial counter and the admin funnel shipped; frontend Sentry shipped; cookieless public-page analytics still blocked on the landing page | #769 |
@@ -69,7 +69,7 @@ Targets are hypotheses to instrument (#769) and revise, not promises.
 
 ## 6. Do-not-claim list
 
-Binding on every public page. Each item is either removed code, a 501, or a documented gap:
+The binding list is now [positioning.md](./positioning.md) §6, which carries every item below and adds to it. This copy stays as the evidence for each item: removed code, a 501, or a documented gap.
 
 auto-scaling · auto-provisioning · global or low-latency infrastructure · per-request pricing (all five removed in #511) · 100 GB uploads (cap is 100 MB) · database or cloud-storage connectors · multi-file joins · a broad transformation library (four types execute, #499) · per-dataset chat (`POST /ai/chat/{file_id}` is 501) · guaranteed ONNX/PMML export (ONNX is 501 in the image; PMML needs Java) · any sample-dataset row count · recipes, A/B testing or data-issues detection until #738, #502 and #635 are decided.
 
@@ -103,4 +103,4 @@ Order:
 
 ## 9. What this document is not
 
-It is not a marketing plan (channels, content calendar, launch announcement) and not a pricing revision; ADR-003 owns the numbers. When D1–D8 are decided, the positioning document lands beside this file and the pages are written from it.
+It is not a marketing plan (channels, content calendar, launch announcement) and not a pricing revision; ADR-003 owns the numbers. The positioning document, [positioning.md](./positioning.md), landed beside this file once D1–D5 were signed, and the pages are written from it. D6–D8 remain tracked in §4.

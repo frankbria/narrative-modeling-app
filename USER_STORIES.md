@@ -8,14 +8,13 @@ This document contains comprehensive user stories covering both happy path scena
 > that do not exist — database connections, multi-file joins, upload sizes far above the
 > real cap — and a few describe shipped features as planned. Do not read this document as
 > a description of the product, and never write public copy from it: the binding list of
-> what may be claimed is the do-not-claim list in `docs/product/public-surface-gtm.md` §6.
+> what may be claimed is the do-not-claim list in `docs/product/positioning.md` §6.
 > The remaining drift is tracked in #535.
 
 ### User Personas Reference
 
-> **Audience is owned by the positioning document, not by this file.** Until it lands
-> (it carries the product name, gated on #793), the decision record is
-> `docs/product/public-surface-gtm.md` §4. Re-ranked to the signed D2 in #765 — see #794.
+> **Audience is owned by the positioning document, not by this file:**
+> `docs/product/positioning.md`. Re-ranked to the signed D2 in #765 — see #794.
 
 - **Dr. Chen** - Medical Researcher, **primary** (Domain expert, limited coding; must
   defend the result to a reviewer, committee or PI)
