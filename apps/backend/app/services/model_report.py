@@ -255,6 +255,113 @@ def _caveats(model: MLModel, job: TrainingJob | None) -> list[str]:
     return out
 
 
+def _leaderboard(job: TrainingJob | None, model: MLModel) -> LeaderboardSection:
+    if not (job and job.model_comparison):
+        return LeaderboardSection(provenance=Provenance.NOT_RECORDED, note=_NO_JOB_NOTE)
+    winner_name = job.best_algorithm or model.algorithm
+    rows = [
+        LeaderboardRow(
+            algorithm=entry.algorithm,
+            cv_score=entry.cv_score,
+            test_score=entry.test_score,
+            training_time=entry.training_time,
+            is_winner=entry.algorithm == winner_name,
+        )
+        for entry in job.model_comparison
+    ]
+    return LeaderboardSection(provenance=Provenance.STORED, rows=rows)
+
+
+def _winner(model: MLModel, job: TrainingJob | None) -> WinnerSection:
+    # STORED unconditionally: `algorithm`, `cv_score` and `test_score` come off the
+    # already-loaded MLModel and are always present. Only the "why it won" narrative
+    # depends on the TrainingJob, and its absence is carried by `note`. Marking the
+    # whole section NOT_RECORDED labelled real stored numbers as absent — the
+    # inverse of fabricating one, and the same contract breach.
+    explanation = job.best_model_explanation if job else None
+    return WinnerSection(
+        provenance=Provenance.STORED,
+        algorithm=model.algorithm,
+        cv_score=model.cv_score,
+        test_score=model.test_score,
+        explanation=explanation,
+        metrics=getattr(model, "metrics", {}) or {},
+        note=None if explanation else "No stored explanation of why this algorithm won.",
+    )
+
+
+def _as_dict(value: Any) -> dict[Any, Any]:
+    # A raw S3 blob or stored field, not a validated model: a wrong shape degrades
+    # to empty, like `y_test` in `_baseline`.
+    return value if isinstance(value, dict) else {}
+
+
+def _drivers(model: MLModel, shap_artifacts: dict[str, Any] | None) -> DriversSection:
+    shap_importance = _as_dict(_as_dict(shap_artifacts).get("shap_importance"))
+    ranked = shap_importance or _as_dict(getattr(model, "feature_importance", None))
+    ranked_features = sorted(_numeric_pairs(ranked), key=lambda kv: abs(kv[1]), reverse=True)
+    if not ranked_features:
+        return DriversSection(
+            provenance=Provenance.NOT_RECORDED,
+            note=(
+                "Neither SHAP values nor model-native feature importance were stored "
+                "for this model — some algorithms do not expose either."
+            ),
+        )
+    return DriversSection(
+        provenance=Provenance.STORED,
+        features=ranked_features[:_MAX_DRIVERS],
+        explainer_type=(
+            getattr(model, "shap_explainer_type", None) if shap_importance else "model_native_importance"
+        ),
+        # "Here are the drivers" is an implicit claim when the tail is dropped
+        # without saying so — the same shape the rest of the module avoids.
+        note=(
+            f"Showing the top {_MAX_DRIVERS} of {len(ranked_features)} features by magnitude."
+            if len(ranked_features) > _MAX_DRIVERS
+            else None
+        ),
+    )
+
+
+def _reproducibility(model: MLModel) -> ReproducibilitySection:
+    environment = _as_dict(getattr(model, "environment_metadata", None))
+    provenance, note = Provenance.STORED, None
+    if not environment:
+        provenance = Provenance.NOT_RECORDED
+        note = "No library versions were captured when this model was trained."
+    return ReproducibilitySection(
+        provenance=provenance,
+        environment={str(k): str(v) for k, v in environment.items()},
+        # Deliberately None — see the module docstring.
+        seed=None,
+        dataset_version_id=getattr(model, "dataset_version_id", None),
+        training_config=getattr(model, "training_config", None) or {},
+        note=note,
+    )
+
+
+def _dataset(model: MLModel) -> DatasetSection:
+    config = getattr(model, "training_config", None) or {}
+    return DatasetSection(
+        provenance=Provenance.STORED,
+        target_column=model.target_column,
+        n_samples_train=model.n_samples_train,
+        n_features=model.n_features,
+        feature_names=list(model.feature_names or []),
+        excluded_columns=list(config.get("excluded_identifier_columns") or []),
+    )
+
+
+def _trained_at(model: MLModel) -> datetime | None:
+    # `as_utc`: Mongo reads datetimes back NAIVE, so this serialized with no
+    # offset and the page parsed the zone-less string as the VIEWER's local
+    # zone — a wrong training time for every non-UTC reader, in a document
+    # whose whole purpose is being checkable.
+    created = getattr(model, "created_at", None)
+    return as_utc(created) if created else None
+
+
 async def build_model_report(
     model: MLModel,
     user_id: str,
@@ -265,108 +372,11 @@ async def build_model_report(
     job = await TrainingJob.find_one(
         TrainingJob.model_id == model.model_id, TrainingJob.user_id == user_id
     )
-
-    if job and job.model_comparison:
-        winner_name = job.best_algorithm or model.algorithm
-        rows = [
-            LeaderboardRow(
-                algorithm=entry.algorithm,
-                cv_score=entry.cv_score,
-                test_score=entry.test_score,
-                training_time=entry.training_time,
-                is_winner=entry.algorithm == winner_name,
-            )
-            for entry in job.model_comparison
-        ]
-        leaderboard = LeaderboardSection(provenance=Provenance.STORED, rows=rows)
-    else:
-        leaderboard = LeaderboardSection(
-            provenance=Provenance.NOT_RECORDED, note=_NO_JOB_NOTE
-        )
-
-    # STORED unconditionally: `algorithm`, `cv_score` and `test_score` come off the
-    # already-loaded MLModel and are always present. Only the "why it won" narrative
-    # depends on the TrainingJob, and its absence is carried by `note`. Marking the
-    # whole section NOT_RECORDED labelled real stored numbers as absent — the
-    # inverse of fabricating one, and the same contract breach.
-    winner = WinnerSection(
-        provenance=Provenance.STORED,
-        algorithm=model.algorithm,
-        cv_score=model.cv_score,
-        test_score=model.test_score,
-        explanation=(job.best_model_explanation if job else None),
-        metrics=getattr(model, "metrics", {}) or {},
-        note=(
-            None
-            if job and job.best_model_explanation
-            else "No stored explanation of why this algorithm won."
-        ),
-    )
-
-    importance = getattr(model, "feature_importance", None) or {}
-    shap_importance = (shap_artifacts or {}).get("shap_importance")
-    # Same reasoning as `y_test` above — this is a raw S3 blob, not a validated model.
-    if not isinstance(shap_importance, dict):
-        shap_importance = {}
-    if not isinstance(importance, dict):
-        importance = {}
-    ranked = shap_importance or importance
-    ranked_features = sorted(
-        _numeric_pairs(ranked), key=lambda kv: abs(kv[1]), reverse=True
-    )
-    if ranked_features:
-        drivers = DriversSection(
-            provenance=Provenance.STORED,
-            features=ranked_features[:_MAX_DRIVERS],
-            explainer_type=(
-                getattr(model, "shap_explainer_type", None)
-                if shap_importance
-                else "model_native_importance"
-            ),
-            # "Here are the drivers" is an implicit claim when the tail is dropped
-            # without saying so — the same shape the rest of the module avoids.
-            note=(
-                f"Showing the top {_MAX_DRIVERS} of {len(ranked_features)} features "
-                "by magnitude."
-                if len(ranked_features) > _MAX_DRIVERS
-                else None
-            ),
-        )
-    else:
-        drivers = DriversSection(
-            provenance=Provenance.NOT_RECORDED,
-            note=(
-                "Neither SHAP values nor model-native feature importance were stored "
-                "for this model — some algorithms do not expose either."
-            ),
-        )
-
-    environment = getattr(model, "environment_metadata", None) or {}
-    reproducibility = ReproducibilitySection(
-        provenance=Provenance.STORED if environment else Provenance.NOT_RECORDED,
-        environment={str(k): str(v) for k, v in environment.items()},
-        # Deliberately None — see the module docstring.
-        seed=None,
-        dataset_version_id=getattr(model, "dataset_version_id", None),
-        training_config=getattr(model, "training_config", None) or {},
-        note=(
-            None
-            if environment
-            else "No library versions were captured when this model was trained."
-        ),
-    )
-
-    dataset = DatasetSection(
-        provenance=Provenance.STORED,
-        target_column=model.target_column,
-        n_samples_train=model.n_samples_train,
-        n_features=model.n_features,
-        feature_names=list(model.feature_names or []),
-        excluded_columns=list(
-            (getattr(model, "training_config", None) or {}).get("excluded_identifier_columns") or []
-        ),
-    )
-
+    leaderboard = _leaderboard(job, model)
+    winner = _winner(model, job)
+    drivers = _drivers(model, shap_artifacts)
+    reproducibility = _reproducibility(model)
+    dataset = _dataset(model)
     baseline = _baseline(artifacts, model.problem_type)
     sections = (leaderboard, winner, baseline, drivers, reproducibility, dataset)
 
@@ -375,15 +385,7 @@ async def build_model_report(
         model_name=model.name,
         problem_type=model.problem_type,
         generated_at=datetime.now(UTC),
-        # `as_utc`: Mongo reads datetimes back NAIVE, so this serialized with no
-        # offset and the page parsed the zone-less string as the VIEWER's local
-        # zone — a wrong training time for every non-UTC reader, in a document
-        # whose whole purpose is being checkable.
-        trained_at=(
-            as_utc(_created)
-            if (_created := getattr(model, "created_at", None))
-            else None
-        ),
+        trained_at=_trained_at(model),
         partial=any(s.provenance is Provenance.NOT_RECORDED for s in sections),
         dataset=dataset,
         leaderboard=leaderboard,
@@ -470,10 +472,8 @@ def _missing_field(note: str | None) -> str:
     return f"_{_flatten(note or 'Not available for this model.')}_"
 
 
-def render_markdown(report: ModelReport) -> str:
-    """The canonical export. Rendered here, not in the browser, so it is one
-    artifact the API and the UI agree on and pytest can assert against."""
-    out: list[str] = [
+def _md_header(report: ModelReport) -> list[str]:
+    return [
         f"# Model report — {_flatten(report.model_name)}",
         "",
         f"- **Model id:** `{report.model_id}`",
@@ -485,120 +485,146 @@ def render_markdown(report: ModelReport) -> str:
         "computed here from stored data and labelled as such. Sections marked "
         "**Not recorded** were never captured — that is not the same as zero.",
         "",
+    ]
+
+
+def _md_data(report: ModelReport) -> list[str]:
+    data = report.dataset
+    out = [
         "## The data",
         "",
-        f"- Target column: {_code(report.dataset.target_column)}",
+        f"- Target column: {_code(data.target_column)}",
         # `is None`, not `or`: a legitimate 0 is a fact, and rendering it as the
         # same em-dash used for absent values is exactly the mislabelling the
         # provenance design exists to prevent.
-        f"- Training rows: {_or_dash(report.dataset.n_samples_train)}",
-        f"- Features: {_or_dash(report.dataset.n_features)}",
-        (
-            "- Feature columns: "
-            + ", ".join(_code(name) for name in report.dataset.feature_names)
-            if report.dataset.feature_names
-            else "- Feature columns: _Not recorded._"
-        ),
-        *(
-            ["- Excluded as identifiers: " + ", ".join(_code(c) for c in report.dataset.excluded_columns)]
-            if report.dataset.excluded_columns
-            else []
-        ),
+        f"- Training rows: {_or_dash(data.n_samples_train)}",
+        f"- Features: {_or_dash(data.n_features)}",
+        "- Feature columns: " + (", ".join(map(_code, data.feature_names)) or "_Not recorded._"),
+    ]
+    if data.excluded_columns:
+        out.append("- Excluded as identifiers: " + ", ".join(map(_code, data.excluded_columns)))
+    return out + [""]
+
+
+def _md_leaderboard(report: ModelReport) -> list[str]:
+    out = ["## Algorithms tried", ""]
+    if not report.leaderboard.rows:
+        return out + [_absent(report.leaderboard), ""]
+    out += ["| Algorithm | CV score | Test score | Fit time (s) |", "|---|---|---|---|"]
+    for row in report.leaderboard.rows:
+        mark = " **(winner)**" if row.is_winner else ""
+        out.append(
+            f"| {_cell(row.algorithm)}{mark} | {_fmt(row.cv_score)} | "
+            f"{_fmt(row.test_score)} | {_fmt(row.training_time, 1)} |"
+        )
+    return out + [""]
+
+
+def _md_baseline(report: ModelReport) -> list[str]:
+    baseline = report.baseline
+    if baseline.score is None:
+        return ["## Baseline", "", _absent(baseline), ""]
+    return [
+        "## Baseline",
         "",
-        "## Algorithms tried",
+        f"A no-skill **{baseline.strategy}** predictor scores "
+        f"**{_fmt(baseline.score)}** ({baseline.metric}) on the same "
+        f"held-out rows.",
+        "",
+        f"_{_flatten(baseline.note or '')}_",
         "",
     ]
 
-    if report.leaderboard.rows:
-        out += [
-            "| Algorithm | CV score | Test score | Fit time (s) |",
-            "|---|---|---|---|",
-        ]
-        for row in report.leaderboard.rows:
-            mark = " **(winner)**" if row.is_winner else ""
-            out.append(
-                f"| {_cell(row.algorithm)}{mark} | {_fmt(row.cv_score)} | "
-                f"{_fmt(row.test_score)} | {_fmt(row.training_time, 1)} |"
-            )
-    else:
-        out.append(_absent(report.leaderboard))
-    out.append("")
 
-    out += ["## Baseline", ""]
-    if report.baseline.score is not None:
-        out += [
-            f"A no-skill **{report.baseline.strategy}** predictor scores "
-            f"**{_fmt(report.baseline.score)}** ({report.baseline.metric}) on the same "
-            f"held-out rows.",
-            "",
-            f"_{_flatten(report.baseline.note or '')}_",
-        ]
-    else:
-        out.append(_absent(report.baseline))
-    out.append("")
+def _extra_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
+    """The stored metrics beyond the headline scores, finite numbers only."""
+    return {k: v for k, v in (metrics or {}).items() if _is_extra_metric(k, v)}
 
-    out += ["## Why this model", ""]
-    out.append(
-        f"**{_flatten(report.winner.algorithm)}** — CV {_fmt(report.winner.cv_score)}, "
-        f"test {_fmt(report.winner.test_score)}."
+
+def _is_extra_metric(name: str, value: Any) -> bool:
+    return (
+        name not in {"cv_score", "test_score", "training_time"}
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
     )
-    out.append("")
-    # Flattened like every other free text reaching the document. It is
-    # LLM-free and deterministic today, but #795 scopes generated prose as a
-    # later addition landing exactly here, and that would be user-influenced.
-    out.append(
-        _flatten(report.winner.explanation)
-        if report.winner.explanation
-        else _missing_field(report.winner.note)
-    )
+
+
+def _md_winner(report: ModelReport) -> list[str]:
+    winner = report.winner
+    out = [
+        "## Why this model",
+        "",
+        f"**{_flatten(winner.algorithm)}** — CV {_fmt(winner.cv_score)}, "
+        f"test {_fmt(winner.test_score)}.",
+        "",
+        # Flattened like every other free text reaching the document. It is
+        # LLM-free and deterministic today, but #795 scopes generated prose as a
+        # later addition landing exactly here, and that would be user-influenced.
+        _flatten(winner.explanation) if winner.explanation else _missing_field(winner.note),
+    ]
     # The stored metrics were on the wire from the first commit and rendered
     # nowhere, while the PR summary claimed them as covered. Someone defending a
     # prediction wants precision/recall/AUC, not only the headline CV score.
-    extra = {
-        k: v
-        for k, v in (report.winner.metrics or {}).items()
-        if k not in {"cv_score", "test_score", "training_time"}
-        and isinstance(v, (int, float))
-        and math.isfinite(float(v))
-    }
+    extra = _extra_metrics(winner.metrics)
     if extra:
         out += ["", "| Metric | Value |", "|---|---|"]
         out += [f"| {_cell(k)} | {_fmt(float(v))} |" for k, v in sorted(extra.items())]
-    out.append("")
+    return out + [""]
 
-    out += ["## What drives it", ""]
-    if report.drivers.features:
-        source = _flatten(report.drivers.explainer_type or "stored importance")
-        truncation = f" {_flatten(report.drivers.note)}" if report.drivers.note else ""
-        out.append(f"Source: {source}.{truncation}")
-        out.append("")
-        out += ["| Feature | Importance |", "|---|---|"]
-        out += [
-            f"| {_cell(name)} | {_fmt(value)} |"
-            for name, value in report.drivers.features
-        ]
-    else:
-        out.append(_absent(report.drivers))
-    out.append("")
 
-    if report.caveats:
-        out += ["## Caveats", ""]
-        out += [f"- {_flatten(c)}" for c in report.caveats]
-        out.append("")
+def _md_drivers(report: ModelReport) -> list[str]:
+    drivers = report.drivers
+    if not drivers.features:
+        return ["## What drives it", "", _absent(drivers), ""]
+    source = _flatten(drivers.explainer_type or "stored importance")
+    truncation = f" {_flatten(drivers.note)}" if drivers.note else ""
+    return [
+        "## What drives it",
+        "",
+        f"Source: {source}.{truncation}",
+        "",
+        "| Feature | Importance |",
+        "|---|---|",
+        *[f"| {_cell(name)} | {_fmt(value)} |" for name, value in drivers.features],
+        "",
+    ]
 
-    out += ["## Reproducibility", ""]
-    if report.reproducibility.environment:
+
+def _md_caveats(report: ModelReport) -> list[str]:
+    if not report.caveats:
+        return []
+    return ["## Caveats", "", *[f"- {_flatten(c)}" for c in report.caveats], ""]
+
+
+def _md_reproducibility(report: ModelReport) -> list[str]:
+    environment = report.reproducibility.environment
+    out = ["## Reproducibility", ""]
+    if environment:
         out += ["| Component | Version |", "|---|---|"]
-        out += [
-            f"| {_cell(k)} | {_cell(v)} |"
-            for k, v in sorted(report.reproducibility.environment.items())
-        ]
+        out += [f"| {_cell(k)} | {_cell(v)} |" for k, v in sorted(environment.items())]
     else:
         out.append(_absent(report.reproducibility))
-    out += [
+    return out + [
         "",
         "The random seed used for this run is **not recorded** by the platform, so "
         "this report does not state one.",
         "",
     ]
-    return "\n".join(out)
+
+
+_MD_SECTIONS = (
+    _md_header,
+    _md_data,
+    _md_leaderboard,
+    _md_baseline,
+    _md_winner,
+    _md_drivers,
+    _md_caveats,
+    _md_reproducibility,
+)
+
+
+def render_markdown(report: ModelReport) -> str:
+    """The canonical export. Rendered here, not in the browser, so it is one
+    artifact the API and the UI agree on and pytest can assert against."""
+    return "\n".join(line for section in _MD_SECTIONS for line in section(report))
