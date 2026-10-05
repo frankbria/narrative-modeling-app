@@ -24,7 +24,7 @@ const base: ModelReport = {
   generated_at: '2026-09-21T00:00:00Z',
   trained_at: '2026-09-20T00:00:00Z',
   partial: true,
-  dataset: { provenance: 'stored', target_column: 'churned', n_samples_train: 800, n_features: 2, feature_names: [] },
+  dataset: { provenance: 'stored', target_column: 'churned', n_samples_train: 800, n_features: 2, feature_names: [], excluded_columns: [] },
   leaderboard: { provenance: 'not_recorded', note: 'No training job is recorded for this model.', rows: [] },
   winner: { provenance: 'stored', algorithm: 'Random Forest', cv_score: 0.87, test_score: 0.85, explanation: 'It won on CV.', metrics: {} },
   baseline: { provenance: 'computed_at_report_time', strategy: 'majority_class', score: 0.7, metric: 'accuracy', note: 'Computed at report time.' },
@@ -117,6 +117,26 @@ describe('ModelReportPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/top 20 of 35 features/)).toBeInTheDocument()
     );
+  });
+
+  it('names the columns excluded as identifiers (#806)', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      dataset: { ...base.dataset, excluded_columns: ['customer_id', 'row_number'] },
+    });
+    render(<ModelReportPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText('customer_id, row_number')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Excluded as identifiers')).toBeInTheDocument();
+  });
+
+  it('shows no exclusion row when nothing was excluded', async () => {
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('Training rows')).toBeInTheDocument());
+    expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
   });
 
   it('surfaces caveats', async () => {

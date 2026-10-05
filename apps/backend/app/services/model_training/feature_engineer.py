@@ -4,7 +4,8 @@ Feature engineering for AutoML
 
 import json
 import logging
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -39,6 +40,39 @@ if TYPE_CHECKING:
     from app.models.feature_store import StoredFeature
 
 logger = logging.getLogger(__name__)
+
+# A text column whose values are this unique per row is an identifier (#806).
+IDENTIFIER_UNIQUE_RATIO = 0.95
+# A unique, monotone integer column is only a row counter if it is also NAMED
+# like one: a file sorted by a real integer feature (sqft) is unique and monotone too.
+_IDENTIFIER_NAME = re.compile(
+    r"^(unnamed: \d+|(.*[\s_.-])?(id|uuid|guid|key|pk|index|idx|row|rownum|row_?number|number|num|no))$",
+    re.IGNORECASE,
+)
+
+
+def _is_text_identifier(s: pd.Series) -> bool:
+    """Text that is (nearly) unique over its filled cells; blanks don't make an ID
+    less unique."""
+    text = s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s)
+    filled = s.notna().sum()
+    return text and bool(filled) and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO
+
+
+def _is_row_counter(name: Any, s: pd.Series) -> bool:
+    """An ID-named integer column, unique and monotone in the ORIGINAL row order:
+    the index is sorted first because the training split shuffles rows."""
+    return (
+        pd.api.types.is_numeric_dtype(s)
+        and _IDENTIFIER_NAME.match(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(name))) is not None
+        and s.notna().all()
+        and s.is_unique
+        and _monotone_integers(s.sort_index())
+    )
+
+
+def _monotone_integers(s: pd.Series) -> bool:
+    return bool((s % 1 == 0).all()) and (s.is_monotonic_increasing or s.is_monotonic_decreasing)
 
 
 def parse_feature_definition(definition_code: str | None) -> ExpressionNode:
@@ -157,6 +191,7 @@ class FeatureEngineeringConfig:
     scaling_method: str = "standard"  # standard, minmax, robust
     encoding_method: str = "onehot"  # onehot, label
     missing_strategy: str = "mean"  # mean, median, most_frequent, constant
+    keep_columns: list[str] = field(default_factory=list)  # never excluded as identifiers
 
 
 @dataclass
@@ -178,7 +213,8 @@ class FeatureEngineer:
         self.feature_names: list[str] = []
         self.numeric_features: list[str] = []
         self.categorical_features: list[str] = []
-    
+        self.excluded_features: list[str] = []
+
     async def fit_transform(
         self,
         X: pd.DataFrame,
@@ -196,35 +232,12 @@ class FeatureEngineer:
         Returns:
             FeatureEngineeringResult with transformed features
         """
-        X_transformed = X.copy()
-        X_transformed = self._coerce_booleans(X_transformed)
-
-        # Identify feature types
+        X_transformed = self._exclude_identifiers(self._coerce_booleans(X.copy()))
         self._identify_feature_types(X_transformed)
-        
-        # Handle missing values
-        if self.config.handle_missing:
-            X_transformed = await self._handle_missing_values(X_transformed)
-        
-        # Encode categorical features
-        if self.config.encode_categorical and self.categorical_features:
-            X_transformed = await self._encode_categorical_features(X_transformed)
-        
-        # Scale numeric features
-        if self.config.scale_features and self.numeric_features:
-            X_transformed = await self._scale_numeric_features(X_transformed)
-        
-        # Create interaction features
-        if self.config.create_interactions:
-            X_transformed = await self._create_interaction_features(X_transformed)
-        
-        # Select best features
-        feature_importance = None
-        if self.config.select_features and y is not None:
-            X_transformed, feature_importance = await self._select_features(
-                X_transformed, y, problem_type
-            )
-        
+        X_transformed = await self._fit_categorical_steps(X_transformed)
+        X_transformed = await self._fit_numeric_steps(X_transformed)
+        X_transformed, feature_importance = await self._fit_selection(X_transformed, y, problem_type)
+
         # Update feature names
         self.feature_names = list(X_transformed.columns)
         
@@ -237,13 +250,50 @@ class FeatureEngineer:
                 "original_features": list(X.columns),
                 "numeric_features": self.numeric_features,
                 "categorical_features": self.categorical_features,
+                "excluded_features": self.excluded_features,
                 "final_feature_count": len(self.feature_names)
             }
         )
     
+    def _exclude_identifiers(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Record and drop the per-row identifier columns (#806)."""
+        self.excluded_features = self._identifier_columns(X, self.config.keep_columns)
+        if not self.excluded_features:
+            return X
+        if len(self.excluded_features) == X.shape[1]:
+            raise ValueError("Every feature column is a per-row identifier, so there is nothing to learn from")
+        logger.info("Excluding identifier columns from features: %s", self.excluded_features)
+        return X.drop(columns=self.excluded_features)
+
+    async def _fit_categorical_steps(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Impute missing values, then encode the categoricals."""
+        if self.config.handle_missing:
+            X = await self._handle_missing_values(X)
+        if self.config.encode_categorical and self.categorical_features:
+            X = await self._encode_categorical_features(X)
+        return X
+
+    async def _fit_numeric_steps(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Scale the numerics, then build interactions."""
+        if self.config.scale_features and self.numeric_features:
+            X = await self._scale_numeric_features(X)
+        if self.config.create_interactions:
+            X = await self._create_interaction_features(X)
+        return X
+
+    async def _fit_selection(
+        self, X: pd.DataFrame, y: pd.Series | None, problem_type: str | None
+    ) -> tuple[pd.DataFrame, dict[str, float] | None]:
+        """Select the best features when asked and a target is given."""
+        if self.config.select_features and y is not None:
+            return await self._select_features(X, y, problem_type)
+        return X, None
+
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Transform new data using fitted transformers, in fit's step order."""
         X_transformed = self._coerce_booleans(X.copy())
+        # getattr: engineers pickled before #806 have no exclusion list.
+        X_transformed = X_transformed.drop(columns=getattr(self, "excluded_features", []), errors="ignore")
         X_transformed = self._apply_imputers(X_transformed)
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
@@ -336,6 +386,16 @@ class FeatureEngineer:
         float64) must still match the same value sent as an int (#697).
         """
         return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
+
+    @staticmethod
+    def _identifier_columns(df: pd.DataFrame, keep: list[str]) -> list[str]:
+        """Per-row identifiers, which carry no signal and one-hot into a feature
+        per row (#806). ``keep`` is the caller's override."""
+        return [
+            col
+            for col in df.columns
+            if col not in keep and (_is_text_identifier(df[col]) or _is_row_counter(col, df[col]))
+        ]
 
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""

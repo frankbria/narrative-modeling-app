@@ -33,6 +33,8 @@ export interface ModelReport {
     n_samples_train: number | null;
     n_features: number | null;
     feature_names: string[];
+    /** Columns dropped from the features as per-row identifiers (#806). */
+    excluded_columns: string[];
   };
   leaderboard: ReportSection & { rows: LeaderboardRow[] };
   winner: ReportSection & {

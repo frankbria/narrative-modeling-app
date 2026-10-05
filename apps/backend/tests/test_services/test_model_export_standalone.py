@@ -61,7 +61,9 @@ async def _trained_model_with_fe(encoding_method: str = "onehot", full_pipeline:
         version="1.0.0",
         algorithm="RandomForestClassifier",
         problem_type="binary_classification",
-        feature_names=list(X.columns),
+        # What train_model_task persists: the ENGINEERED names, not the raw inputs.
+        # A raw-name fixture hid the generated predict() rejecting every raw row.
+        feature_names=result.feature_names,
         target_column="churned",
         created_at=pd.Timestamp("2026-01-01", tz="UTC").to_pydatetime(),
         cv_score=0.8,
@@ -145,6 +147,9 @@ async def test_clean_environment_load_and_predict(monkeypatch, tmp_path, encodin
         from inference import ModelInference
         inf = ModelInference("model.pkl", "feature_engineer.pkl")
         out = inf.predict({sample!r})
+        # A blank the shipped imputer fills is valid input, as predict() agrees.
+        blank = dict({sample!r}[0], age=None)
+        assert inf.validate_input(blank) and len(inf.predict(blank)["predictions"]) == 1
         print(len(out["predictions"]))
         """
     )
@@ -203,3 +208,28 @@ async def test_interaction_value_skips_missing_inputs_and_divides(impl):
     assert cls._interaction_value(X, "a_x_gone") is None
     assert cls._interaction_value(X, "a_x_b").tolist() == [12.0, 27.0]
     assert cls._interaction_value(X, "a_div_b").round(6).tolist() == [3.0, 3.0]
+
+
+async def test_the_export_drops_an_identifier_column_like_the_platform():
+    """#806: an identifier excluded at fit must be dropped by the container too,
+    and a state shipped before #806 (no key) must still load."""
+    from app.services.model_export_assets._standalone_fe import (
+        StandaloneFeatureEngineer,
+    )
+
+    X = _frame().drop(columns=["churned"])
+    X.insert(0, "customer_id", [f"C{i:04d}" for i in range(len(X))])
+    y = _frame()["churned"]
+    fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+    await fe.fit_transform(X, y, "binary_classification")
+    state = pickle.loads(pickle.dumps(feature_engineer_state(fe)))
+    assert state["excluded_features"] == ["customer_id"]
+
+    rows = X.head(5)
+    got = StandaloneFeatureEngineer(state).transform(rows)
+    pd.testing.assert_frame_equal(got, await fe.transform(rows), check_dtype=False)
+    assert "customer_id" not in got.columns
+
+    state.pop("excluded_features")
+    legacy = StandaloneFeatureEngineer(state).transform(rows.drop(columns=["customer_id"]))
+    assert list(legacy.columns) == list(got.columns)

@@ -34,6 +34,16 @@ class ExportFormatUnavailable(RuntimeError):
     """The format's converter is not installed on this deployment (routes answer 501)."""
 
 
+def _input_features(model: Any, feature_engineer: Any) -> list[str]:
+    """The raw columns an exported model's caller supplies: the engineer's inputs when
+    it ships preprocessing, else ``model.feature_names``. With preprocessing,
+    ``feature_names`` are the ENGINEERED columns (one-hot etc.), which no caller has."""
+    state = feature_engineer_state(feature_engineer)
+    if state is None:
+        return list(model.feature_names)
+    return state["numeric_features"] + state["categorical_features"]
+
+
 class ModelExportService:
     """Service for exporting models to various formats"""
     
@@ -187,6 +197,7 @@ class ModelExportService:
         use_preprocessing = (
             include_preprocessing and feature_engineer_state(feature_engineer) is not None
         )
+        input_features = _input_features(model, feature_engineer if use_preprocessing else None)
         if use_preprocessing:
             standalone_block = "\n\n" + standalone_class_source()
             fe_load_line = (
@@ -244,6 +255,7 @@ class ModelInference:
         """
         self.metadata = {json.dumps(metadata, indent=4)}
         self.feature_names = {model.feature_names}
+        self.input_features = {input_features}
         self.target_column = "{model.target_column}"
         
         # Load model
@@ -275,7 +287,7 @@ class ModelInference:
             raise ValueError("Input data must be dict, list of dicts, or pandas DataFrame")
         
         # Validate features
-        missing_features = set(self.feature_names) - set(df.columns)
+        missing_features = set(self.input_features) - set(df.columns)
         if missing_features:
             raise ValueError(f"Missing required features: {{missing_features}}")
         
@@ -356,16 +368,28 @@ class ModelInference:
             raise ValueError("Data must be dict or DataFrame")
         
         # Check required features
-        missing_features = set(self.feature_names) - set(df.columns)
+        missing_features = set(self.input_features) - set(df.columns)
         if missing_features:
             raise ValueError(f"Missing required features: {{missing_features}}")
         
-        # Check data types (basic validation)
-        for feature in self.feature_names:
+        # Nulls are an error only where no shipped imputer fills them, as in predict().
+        for feature in set(self.input_features) - self._imputed_features():
             if df[feature].isnull().any():
                 raise ValueError(f"Feature '{{feature}}' contains null values")
         
         return True
+
+    def _imputed_features(self) -> set:
+        """Input columns the shipped preprocessing imputes."""
+        fe = self.feature_engineer
+        if fe is None:
+            return set()
+        imputed = set()
+        if "imputer_numeric" in fe.transformers:
+            imputed |= set(fe.numeric_features)
+        if "imputer_categorical" in fe.transformers:
+            imputed |= set(fe.categorical_features)
+        return imputed
 
 
 # Example usage
@@ -375,7 +399,7 @@ if __name__ == "__main__":
     
     # Example prediction
     sample_data = {{
-        {', '.join([f'"{feature}": 0.0' for feature in model.feature_names[:5]])}  # Add your feature values here
+        {', '.join([f'"{feature}": 0.0' for feature in input_features])}  # Add your feature values here
     }}
     
     try:
@@ -543,7 +567,7 @@ import requests
 
 # Make a prediction
 response = requests.post("http://localhost:8000/predict", json={{
-    "data": {{{', '.join([f'"{feature}": 0.0' for feature in model.feature_names[:3]])}}}
+    "data": {{{', '.join([f'"{feature}": 0.0' for feature in _input_features(model, feature_engineer)[:3]])}}}
 }})
 
 print(response.json())

@@ -154,6 +154,12 @@ export default function ModelReportPage() {
             <dt className="text-muted-foreground">Features</dt>
             <dd className="text-foreground">{report.dataset.n_features ?? '—'}</dd>
           </div>
+          {report.dataset.excluded_columns?.length > 0 && (
+            <div className="col-span-3">
+              <dt className="text-muted-foreground">Excluded as identifiers</dt>
+              <dd className="text-foreground">{report.dataset.excluded_columns.join(', ')}</dd>
+            </div>
+          )}
         </dl>
       </section>
 

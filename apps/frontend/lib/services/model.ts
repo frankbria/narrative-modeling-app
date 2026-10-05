@@ -31,6 +31,8 @@ export interface TrainModelRequest {
     create_interactions?: boolean
     select_features?: boolean
     max_features?: number
+    /** Columns never excluded as per-row identifiers (#806). */
+    keep_columns?: string[]
   }
   training_config?: {
     max_models?: number

@@ -39,6 +39,7 @@ def feature_engineer_state(feature_engineer: Any) -> dict[str, Any] | None:
         "numeric_features": list(getattr(feature_engineer, "numeric_features", [])),
         "categorical_features": list(getattr(feature_engineer, "categorical_features", [])),
         "feature_names": list(getattr(feature_engineer, "feature_names", [])),
+        "excluded_features": list(getattr(feature_engineer, "excluded_features", [])),
     }
 
 

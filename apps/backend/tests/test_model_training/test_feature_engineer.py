@@ -458,3 +458,145 @@ def test_label_keys_normalise_numpy_float_scalars(impl):
     """An object column can hold raw np.float32 scalars, which are not Python floats."""
     cells = pd.Series([np.float32(1.0), np.float64(2.0), 3.0, 4, "a", np.nan], dtype=object)
     assert impl._label_keys(cells).tolist() == ["1", "2", "3", "4", "a", "nan"]
+
+
+def _with_ids(n: int = 200) -> tuple[pd.DataFrame, pd.Series]:
+    rng = np.random.RandomState(0)
+    X = pd.DataFrame(
+        {
+            "customer_id": [f"C{i:05d}" for i in range(n)],
+            "row_number": np.arange(1, n + 1),
+            "tenure": rng.randint(1, 72, n),
+            "monthly_charges": rng.uniform(20, 120, n).round(2),
+            "plan": rng.choice(["basic", "pro", "premium"], n),
+        }
+    )
+    y = pd.Series(rng.choice([0, 1], n))
+    return X, y
+
+
+class TestIdentifierColumnsAreExcluded:
+    """#806: a per-row identifier is not a feature."""
+
+    async def test_unique_text_and_monotone_numeric_ids_are_excluded_at_fit(self):
+        X, y = _with_ids()
+        # train_test_split shuffles before the engineer sees the rows; the
+        # row-counter check must survive that.
+        X, y = X.sample(frac=1, random_state=1), y.sample(frac=1, random_state=1)
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_features == ["customer_id", "row_number"]
+        assert result.metadata["excluded_features"] == ["customer_id", "row_number"]
+        assert "customer_id" not in fe.categorical_features
+        assert "row_number" not in fe.numeric_features
+        assert not any(n.startswith(("customer_id", "row_number")) for n in result.feature_names)
+        assert len(result.feature_names) == 2 + 3  # tenure, monthly_charges, plan one-hot
+
+    async def test_ordinary_columns_are_kept(self):
+        """Continuous values are unique but not a row counter; a categorical
+        repeats. Neither is an identifier."""
+        X, y = _with_ids()
+        X = X.drop(columns=["customer_id", "row_number"])
+        X["sorted_unique_floats"] = np.sort(np.random.RandomState(2).uniform(0, 1, len(X)))
+        # A file sorted by a real integer feature: unique and monotone, but not
+        # named like an ID.
+        X["sqft"] = np.arange(500, 500 + 3 * len(X), 3)
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_features == []
+
+    @pytest.mark.parametrize(
+        "name", ["id", "ID", "customerId", "row_number", "RowNumber", "order_no", "Unnamed: 0"]
+    )
+    def test_id_named_row_counters_are_identifiers(self, name):
+        df = pd.DataFrame({name: np.arange(1, 51), "x": np.tile([1.0, 2.0], 25)})
+
+        assert FeatureEngineer._identifier_columns(df, []) == [name]
+
+    def test_a_text_id_with_blanks_is_still_an_identifier(self):
+        """Uniqueness is measured over the filled cells: a 10%-blank ID is unique
+        everywhere it has a value."""
+        ids = [f"C{i:03d}" if i % 10 else None for i in range(100)]
+        df = pd.DataFrame({"customer_id": ids, "all_blank": [None] * 100})
+
+        assert FeatureEngineer._identifier_columns(df, []) == ["customer_id"]
+
+    def test_a_unique_timestamp_is_not_a_text_identifier(self):
+        """Only text is held to the uniqueness rule: a parquet upload keeps
+        datetime64, and dates are #840's question, not #806's."""
+        df = pd.DataFrame({"event_time": pd.date_range("2026-01-01", periods=50, freq="h")})
+
+        assert FeatureEngineer._identifier_columns(df, []) == []
+
+    @pytest.mark.parametrize("name", ["paid", "valid", "grid", "tenure", "sqft"])
+    def test_names_that_merely_end_like_an_id_are_not(self, name):
+        df = pd.DataFrame({name: np.arange(1, 51)})
+
+        assert FeatureEngineer._identifier_columns(df, []) == []
+
+    async def test_keep_columns_overrides_the_heuristic(self):
+        X, y = _with_ids()
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(select_features=False, keep_columns=["row_number"])
+        )
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_features == ["customer_id"]
+        assert "row_number" in fe.numeric_features
+
+    async def test_transform_drops_an_excluded_column_when_it_is_supplied(self):
+        X, y = _with_ids()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        with_ids = await fe.transform(X.head(3))
+        without = await fe.transform(X.head(3).drop(columns=["customer_id", "row_number"]))
+
+        assert list(with_ids.columns) == result.feature_names
+        pd.testing.assert_frame_equal(with_ids, without)
+
+    async def test_an_engineer_pickled_before_806_still_transforms(self):
+        X, y = _with_ids()
+        X = X.drop(columns=["customer_id", "row_number"])
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(X, y, "binary_classification")
+        del fe.excluded_features  # the attribute did not exist on old pickles
+        old = pickle.loads(pickle.dumps(fe))
+
+        out = await old.transform(X.head(3))
+
+        assert len(out.columns) == 5
+
+    async def test_a_frame_of_only_identifiers_fails_with_a_clear_message(self):
+        X, y = _with_ids()
+        fe = FeatureEngineer()
+
+        with pytest.raises(ValueError, match="identifier"):
+            await fe.fit_transform(X[["customer_id", "row_number"]], y, "binary_classification")
+
+
+async def test_the_engine_excludes_ids_through_its_own_split_and_honours_keep_columns():
+    """#806 on the real pipeline, not a hand-shuffled frame: AutoMLEngine splits
+    (and shuffles) before the engineer sees the rows, the numeric row counter is
+    still caught, keep_columns reaches the engineer, and the exclusion lands under
+    the metadata key train_model_task persists from."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    df = _churn_frame(200, seed=3)
+    df.insert(0, "customer_id", [f"C{i:04d}" for i in range(len(df))])
+    df.insert(1, "row_number", range(1, len(df) + 1))
+    df.insert(2, "order_no", range(5000, 5000 + len(df)))
+    engine = AutoMLEngine(max_models=1, cv_folds=2, random_state=0)
+
+    result = await engine.run(
+        df, "churned", FeatureEngineeringConfig(select_features=False, keep_columns=["order_no"])
+    )
+
+    assert engine.feature_engineer.excluded_features == ["customer_id", "row_number"]
+    assert result.metadata["feature_engineering"]["excluded_features"] == ["customer_id", "row_number"]
+    assert "order_no" in engine.feature_engineer.numeric_features

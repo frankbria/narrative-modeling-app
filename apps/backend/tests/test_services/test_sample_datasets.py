@@ -101,3 +101,30 @@ async def test_each_sample_trains_in_quick_mode_to_its_stated_score(entry):
 
     assert result.problem_type.value == entry["problem_type"]
     assert result.best_model.test_score >= entry["expected_accuracy"]
+
+
+async def test_an_added_customer_id_changes_neither_the_features_nor_the_score():
+    """#806 AC3: an identifier column is excluded, so the run is the one without it."""
+    df = pd.read_csv(_SAMPLES / "customer_churn.csv")
+    with_id = df.copy()
+    with_id.insert(0, "customer_id", [f"C{i:05d}" for i in range(1, len(df) + 1)])
+    quick = resolve_mode_config("quick")
+
+    async def run(frame):
+        engine = AutoMLEngine(
+            max_models=quick["max_models"],
+            time_limit=quick["time_limit"],
+            cv_folds=5,
+            test_size=0.2,
+            random_state=42,
+            enable_tuning=False,
+            early_stop_score=quick["early_stop_score"],
+        )
+        return engine, await engine.run(frame, "churn", None)
+
+    _, baseline = await run(df)
+    engine, result = await run(with_id)
+
+    assert engine.feature_engineer.excluded_features == ["customer_id"]
+    assert result.feature_names == baseline.feature_names
+    assert result.best_model.test_score == pytest.approx(baseline.best_model.test_score)
