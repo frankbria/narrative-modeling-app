@@ -34,7 +34,6 @@ class ExportFormatUnavailable(RuntimeError):
     """The format's converter is not installed on this deployment (routes answer 501)."""
 
 
-
 def _input_features(model: Any, feature_engineer: Any) -> list[str]:
     """The raw columns an exported model's caller supplies: the engineer's inputs when
     it ships preprocessing, else ``model.feature_names``. With preprocessing,
@@ -43,6 +42,7 @@ def _input_features(model: Any, feature_engineer: Any) -> list[str]:
     if state is None:
         return list(model.feature_names)
     return state["numeric_features"] + state["categorical_features"]
+
 
 class ModelExportService:
     """Service for exporting models to various formats"""
@@ -372,12 +372,24 @@ class ModelInference:
         if missing_features:
             raise ValueError(f"Missing required features: {{missing_features}}")
         
-        # Check data types (basic validation)
-        for feature in self.input_features:
+        # Nulls are an error only where no shipped imputer fills them, as in predict().
+        for feature in set(self.input_features) - self._imputed_features():
             if df[feature].isnull().any():
                 raise ValueError(f"Feature '{{feature}}' contains null values")
         
         return True
+
+    def _imputed_features(self) -> set:
+        """Input columns the shipped preprocessing imputes."""
+        fe = self.feature_engineer
+        if fe is None:
+            return set()
+        imputed = set()
+        if "imputer_numeric" in fe.transformers:
+            imputed |= set(fe.numeric_features)
+        if "imputer_categorical" in fe.transformers:
+            imputed |= set(fe.categorical_features)
+        return imputed
 
 
 # Example usage

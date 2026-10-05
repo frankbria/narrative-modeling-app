@@ -147,6 +147,9 @@ async def test_clean_environment_load_and_predict(monkeypatch, tmp_path, encodin
         from inference import ModelInference
         inf = ModelInference("model.pkl", "feature_engineer.pkl")
         out = inf.predict({sample!r})
+        # A blank the shipped imputer fills is valid input, as predict() agrees.
+        blank = dict({sample!r}[0], age=None)
+        assert inf.validate_input(blank) and len(inf.predict(blank)["predictions"]) == 1
         print(len(out["predictions"]))
         """
     )
