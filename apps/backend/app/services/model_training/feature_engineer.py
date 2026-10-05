@@ -54,8 +54,9 @@ _IDENTIFIER_NAME = re.compile(
 def _is_text_identifier(s: pd.Series) -> bool:
     """Text that is (nearly) unique over its filled cells; blanks don't make an ID
     less unique."""
+    text = s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s)
     filled = s.notna().sum()
-    return not pd.api.types.is_numeric_dtype(s) and bool(filled) and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO
+    return text and bool(filled) and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO
 
 
 def _is_row_counter(name: Any, s: pd.Series) -> bool:

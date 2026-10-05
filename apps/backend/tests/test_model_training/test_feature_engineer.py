@@ -525,6 +525,13 @@ class TestIdentifierColumnsAreExcluded:
 
         assert FeatureEngineer._identifier_columns(df, []) == ["customer_id"]
 
+    def test_a_unique_timestamp_is_not_a_text_identifier(self):
+        """Only text is held to the uniqueness rule: a parquet upload keeps
+        datetime64, and dates are #840's question, not #806's."""
+        df = pd.DataFrame({"event_time": pd.date_range("2026-01-01", periods=50, freq="h")})
+
+        assert FeatureEngineer._identifier_columns(df, []) == []
+
     @pytest.mark.parametrize("name", ["paid", "valid", "grid", "tenure", "sqft"])
     def test_names_that_merely_end_like_an_id_are_not(self, name):
         df = pd.DataFrame({name: np.arange(1, 51)})
