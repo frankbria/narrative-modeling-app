@@ -1572,3 +1572,29 @@ checked, and the fix is always the same: the claim is a query, so run it.
   was flagged. A one-line comparison on the demo server showed it. The fix was to serve
   unseen like missing (the imputer's mode). Also: `SimpleImputer` treats only NaN as
   missing, so a `None` "blank" in a test silently takes a different path (#838).
+- **Read the lessons file before saying a tool is absent (#806).** I wrote "codex is not
+  installed" and "agent-browser is not installed" in the PR body because `command -v`
+  found neither. The entry above already says both live under `~/.nvm/versions/node/<ver>/bin/`.
+  The browser screenshot was skipped on that false premise, and the PR needed a
+  correction comment. Probe `ls ~/.nvm/versions/node/*/bin/` before declaring a tool missing.
+- **A "behaviour-preserving" split for the CRAP gate needs its own adversarial review
+  (#806).** Rewriting `object|category|string` as `not is_numeric_dtype` to save a
+  branch quietly widened the text-ID rule to datetime64 columns. Only a reviewer told to
+  "find ANY behaviour change in this refactor commit" caught it. Golden-diff whatever
+  output can be diffed (the Markdown renderer was byte-diffed and was clean), and send
+  the refactor commit to review on its own.
+- **A fixture with the wrong shape hid an export bug for months (#806).** The container
+  test set `feature_names` to the raw columns, but `train_model_task` persists the
+  engineered (one-hot) names. So every categorical export refused every raw row, and the
+  test stayed green. Only the live demo, which used real artifacts, showed it.
+- **The repo CRAP rule and the issue-lifecycle skill disagree on legacy functions (#806).**
+  CLAUDE.md says every touched function must score < 6. The skill says a touched legacy
+  function goes to a debt issue. The owner's call this time: split the mid-sized ones
+  (cc 9–27) in the PR, and file the two giants (`train_model_task` 41,
+  `AutoMLEngine.run` 32) as #842. Until #842 lands, a PR that touches either one fails
+  `crap.sh`. Say so up front.
+- **Two local backends that share artifacts need one `ARTIFACT_SIGNING_KEY` (#806).**
+  Without it each process falls back to its own dev key, and a model trained by one is
+  refused by the other ("Artifact signature mismatch"). A demo that trains repeatedly as
+  one user also needs `test-e2e.sh`'s `PLAN_FREE_*` lifts, or the fourth `/ml/train`
+  answers 402.
