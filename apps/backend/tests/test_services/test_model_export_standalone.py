@@ -61,7 +61,9 @@ async def _trained_model_with_fe(encoding_method: str = "onehot", full_pipeline:
         version="1.0.0",
         algorithm="RandomForestClassifier",
         problem_type="binary_classification",
-        feature_names=list(X.columns),
+        # What train_model_task persists: the ENGINEERED names, not the raw inputs.
+        # A raw-name fixture hid the generated predict() rejecting every raw row.
+        feature_names=result.feature_names,
         target_column="churned",
         created_at=pd.Timestamp("2026-01-01", tz="UTC").to_pydatetime(),
         cv_score=0.8,

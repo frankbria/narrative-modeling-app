@@ -571,3 +571,25 @@ class TestIdentifierColumnsAreExcluded:
 
         with pytest.raises(ValueError, match="identifier"):
             await fe.fit_transform(X[["customer_id", "row_number"]], y, "binary_classification")
+
+
+async def test_the_engine_excludes_ids_through_its_own_split_and_honours_keep_columns():
+    """#806 on the real pipeline, not a hand-shuffled frame: AutoMLEngine splits
+    (and shuffles) before the engineer sees the rows, the numeric row counter is
+    still caught, keep_columns reaches the engineer, and the exclusion lands under
+    the metadata key train_model_task persists from."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    df = _churn_frame(200, seed=3)
+    df.insert(0, "customer_id", [f"C{i:04d}" for i in range(len(df))])
+    df.insert(1, "row_number", range(1, len(df) + 1))
+    df.insert(2, "order_no", range(5000, 5000 + len(df)))
+    engine = AutoMLEngine(max_models=1, cv_folds=2, random_state=0)
+
+    result = await engine.run(
+        df, "churned", FeatureEngineeringConfig(select_features=False, keep_columns=["order_no"])
+    )
+
+    assert engine.feature_engineer.excluded_features == ["customer_id", "row_number"]
+    assert result.metadata["feature_engineering"]["excluded_features"] == ["customer_id", "row_number"]
+    assert "order_no" in engine.feature_engineer.numeric_features
