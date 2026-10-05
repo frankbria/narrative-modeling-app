@@ -170,6 +170,9 @@ class FeatureConfigRequest(BaseModel):
     missing_strategy: Literal["mean", "median", "most_frequent", "constant"] | None = (
         None
     )
+    # Columns never excluded as per-row identifiers (#806), for when the
+    # heuristic drops a real feature.
+    keep_columns: list[str] | None = Field(None, max_length=1000)
 
 
 class TuningConfigRequest(BaseModel):
@@ -775,6 +778,10 @@ async def train_model_task(
         training_config["early_stopped"] = result.early_stopped
         training_config["stop_reason"] = result.stop_reason
         training_config["algorithms_evaluated"] = result.algorithms_evaluated
+        # Identifier columns the engineer left out of the features (#806).
+        training_config["excluded_identifier_columns"] = result.metadata.get(
+            "feature_engineering", {}
+        ).get("excluded_features", [])
 
         # Prepare metadata
         model_metadata: dict[str, Any] = {

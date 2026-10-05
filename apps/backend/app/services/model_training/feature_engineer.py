@@ -4,7 +4,8 @@ Feature engineering for AutoML
 
 import json
 import logging
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -39,6 +40,15 @@ if TYPE_CHECKING:
     from app.models.feature_store import StoredFeature
 
 logger = logging.getLogger(__name__)
+
+# A text column whose values are this unique per row is an identifier (#806).
+IDENTIFIER_UNIQUE_RATIO = 0.95
+# A unique, monotone integer column is only a row counter if it is also NAMED
+# like one: a file sorted by a real integer feature (sqft) is unique and monotone too.
+_IDENTIFIER_NAME = re.compile(
+    r"^(unnamed: \d+|(.*[\s_.-])?(id|uuid|guid|key|pk|index|idx|row|rownum|row_?number|number|num|no))$",
+    re.IGNORECASE,
+)
 
 
 def parse_feature_definition(definition_code: str | None) -> ExpressionNode:
@@ -157,6 +167,7 @@ class FeatureEngineeringConfig:
     scaling_method: str = "standard"  # standard, minmax, robust
     encoding_method: str = "onehot"  # onehot, label
     missing_strategy: str = "mean"  # mean, median, most_frequent, constant
+    keep_columns: list[str] = field(default_factory=list)  # never excluded as identifiers
 
 
 @dataclass
@@ -178,7 +189,8 @@ class FeatureEngineer:
         self.feature_names: list[str] = []
         self.numeric_features: list[str] = []
         self.categorical_features: list[str] = []
-    
+        self.excluded_features: list[str] = []
+
     async def fit_transform(
         self,
         X: pd.DataFrame,
@@ -198,6 +210,15 @@ class FeatureEngineer:
         """
         X_transformed = X.copy()
         X_transformed = self._coerce_booleans(X_transformed)
+
+        self.excluded_features = self._identifier_columns(X_transformed, self.config.keep_columns)
+        if self.excluded_features:
+            if len(self.excluded_features) == X_transformed.shape[1]:
+                raise ValueError(
+                    "Every feature column is a per-row identifier, so there is nothing to learn from"
+                )
+            logger.info("Excluding identifier columns from features: %s", self.excluded_features)
+            X_transformed = X_transformed.drop(columns=self.excluded_features)
 
         # Identify feature types
         self._identify_feature_types(X_transformed)
@@ -237,6 +258,7 @@ class FeatureEngineer:
                 "original_features": list(X.columns),
                 "numeric_features": self.numeric_features,
                 "categorical_features": self.categorical_features,
+                "excluded_features": self.excluded_features,
                 "final_feature_count": len(self.feature_names)
             }
         )
@@ -244,6 +266,8 @@ class FeatureEngineer:
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Transform new data using fitted transformers, in fit's step order."""
         X_transformed = self._coerce_booleans(X.copy())
+        # getattr: engineers pickled before #806 have no exclusion list.
+        X_transformed = X_transformed.drop(columns=getattr(self, "excluded_features", []), errors="ignore")
         X_transformed = self._apply_imputers(X_transformed)
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
@@ -336,6 +360,34 @@ class FeatureEngineer:
         float64) must still match the same value sent as an int (#697).
         """
         return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
+
+    @staticmethod
+    def _identifier_columns(df: pd.DataFrame, keep: list[str]) -> list[str]:
+        """Per-row identifiers, which carry no signal and one-hot into a feature
+        per row (#806): text that is (nearly) unique per row, or an ID-named
+        integer column that is unique and monotone in the original row order (a
+        row counter). The index is sorted first because the training split
+        shuffles rows. ``keep`` is the caller's override."""
+        n = len(df)
+        excluded = []
+        for col in df.columns:
+            s = df[col]
+            if col in keep:
+                continue
+            if s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s):
+                if n and s.nunique() / n >= IDENTIFIER_UNIQUE_RATIO:
+                    excluded.append(col)
+            elif (
+                pd.api.types.is_numeric_dtype(s)
+                and _IDENTIFIER_NAME.match(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(col)))
+                and s.notna().all()
+                and s.is_unique
+            ):
+                ordered = s.sort_index()
+                integral = bool((ordered % 1 == 0).all())
+                if integral and (ordered.is_monotonic_increasing or ordered.is_monotonic_decreasing):
+                    excluded.append(col)
+        return excluded
 
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""

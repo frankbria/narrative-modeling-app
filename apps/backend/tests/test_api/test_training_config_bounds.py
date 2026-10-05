@@ -287,3 +287,13 @@ class TestWallClock:
         assert resp.status_code == 200
         assert task.call_args.kwargs["wall_clock_seconds"] == FREE.wall_clock_seconds
         await TrainingJob.find_one(TrainingJob.model_id == resp.json()["model_id"]).delete()
+
+
+def test_keep_columns_reaches_the_feature_engineer_config():
+    """#806: the override is a declared request field, mapped onto the engine config."""
+    from app.api.routes.model_training import FeatureConfigRequest
+    from app.services.model_training.feature_engineer import FeatureEngineeringConfig
+
+    req = FeatureConfigRequest(keep_columns=["row_number"])
+
+    assert FeatureEngineeringConfig(**req.model_dump(exclude_none=True)).keep_columns == ["row_number"]

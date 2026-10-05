@@ -33,6 +33,14 @@ def user_safe_failure_reason(exc: BaseException) -> str:
     if name == "TrainingWallClockExceeded":
         return str(exc)
 
+    # Checked before the substring buckets below, which could match a column name.
+    if has("per-row identifier"):
+        return (
+            "Every column other than the target looks like a per-row identifier "
+            "(such as a customer ID), so there is nothing to learn from. Add the "
+            "columns that describe each row and try again."
+        )
+
     # A generic timeout (e.g. a slow S3 read) — a transient infra hiccup, NOT the
     # plan's wall-clock limit (that is TrainingWallClockExceeded, handled above).
     # Keep the two distinct: never say "wall-clock" here.

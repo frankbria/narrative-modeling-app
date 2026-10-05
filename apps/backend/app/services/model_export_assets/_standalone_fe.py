@@ -33,6 +33,7 @@ class StandaloneFeatureEngineer:
         self.numeric_features = state.get("numeric_features", [])
         self.categorical_features = state.get("categorical_features", [])
         self.feature_names = state.get("feature_names", [])
+        self.excluded_features = state.get("excluded_features", [])
 
     @staticmethod
     def _coerce_booleans(df: pd.DataFrame) -> pd.DataFrame:
@@ -47,6 +48,7 @@ class StandaloneFeatureEngineer:
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X_transformed = self._coerce_booleans(X.copy())
+        X_transformed = X_transformed.drop(columns=self.excluded_features, errors="ignore")
         X_transformed = self._apply_imputers(X_transformed)
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:

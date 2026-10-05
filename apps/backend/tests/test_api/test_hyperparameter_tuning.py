@@ -89,77 +89,85 @@ class TestTuningResultsEndpoint:
         assert resp.status_code == 404
 
 
+async def _run_train_task(training_config: dict, metadata: dict | None = None):
+    """Run train_model_task over a mocked engine; return (EngineCls, save_model mock)."""
+    from app.api.routes.model_training import TrainModelRequest, train_model_task
+
+    sample_dataset = MagicMock()
+    sample_dataset.id = "dataset_123"
+    sample_dataset.user_id = "test_user"
+    sample_dataset.filename = "test.csv"
+    sample_dataset.file_type = "csv"
+    sample_dataset.s3_url = "s3://test-bucket/uploads/test_user/test.csv"
+
+    df = pd.DataFrame(
+        {
+            "f1": np.random.randn(100),
+            "f2": np.random.randn(100),
+            "target": np.random.choice([0, 1], 100),
+        }
+    )
+
+    result = AutoMLResult(
+        best_model=ModelCandidate(
+            name="Random Forest",
+            estimator=MagicMock(),
+            hyperparameters={},
+            cv_score=0.9,
+            test_score=0.88,
+            training_time=5.0,
+        ),
+        all_models=[],
+        problem_type=ProblemType.BINARY_CLASSIFICATION,
+        feature_names=["f1", "f2"],
+        feature_importance=None,
+        training_time=12.0,
+        metadata=metadata or {},
+        tuning_results={"Random Forest": {"improvement_over_default": 0.03}},
+        tuning_strategy="bayesian",
+        improvement_from_tuning=0.03,
+    )
+
+    csv = io.BytesIO()
+    df.to_csv(csv, index=False)
+
+    with patch(
+        "app.services.s3_service.S3Service.download_file_bytes",
+        new_callable=AsyncMock,
+        return_value=csv.getvalue(),
+    ), patch(
+        "app.api.routes.model_training.AutoMLEngine"
+    ) as EngineCls, patch(
+        "app.models.training_job.TrainingJob.find_one",
+        new_callable=AsyncMock,
+        return_value=None,
+    ), patch(
+        "app.services.model_storage.ModelStorageService.save_model",
+        new_callable=AsyncMock,
+        return_value=MagicMock(model_id="model_123"),
+    ) as save_model:
+        EngineCls.return_value.run = AsyncMock(return_value=result)
+        request = TrainModelRequest(
+            dataset_id="dataset_123",
+            target_column="target",
+            name="Tuned",
+            training_config=training_config,
+        )
+        await train_model_task(sample_dataset, request, "test_user", "model_123")
+    return EngineCls, save_model
+
+
 @pytest.mark.asyncio
 class TestTrainTaskTuningWiring:
     async def test_training_config_builds_tuning_engine(self):
         """enable_tuning in training_config is plumbed into AutoMLEngine + persisted."""
-        from app.api.routes.model_training import TrainModelRequest, train_model_task
-
-        sample_dataset = MagicMock()
-        sample_dataset.id = "dataset_123"
-        sample_dataset.user_id = "test_user"
-        sample_dataset.filename = "test.csv"
-        sample_dataset.file_type = "csv"
-        sample_dataset.s3_url = "s3://test-bucket/uploads/test_user/test.csv"
-
-        df = pd.DataFrame(
+        EngineCls, _ = await _run_train_task(
             {
-                "f1": np.random.randn(100),
-                "f2": np.random.randn(100),
-                "target": np.random.choice([0, 1], 100),
+                "enable_tuning": True,
+                "tuning_strategy": "bayesian",
+                "tuning_config": {"n_trials": 10},
             }
         )
-
-        result = AutoMLResult(
-            best_model=ModelCandidate(
-                name="Random Forest",
-                estimator=MagicMock(),
-                hyperparameters={},
-                cv_score=0.9,
-                test_score=0.88,
-                training_time=5.0,
-            ),
-            all_models=[],
-            problem_type=ProblemType.BINARY_CLASSIFICATION,
-            feature_names=["f1", "f2"],
-            feature_importance=None,
-            training_time=12.0,
-            metadata={},
-            tuning_results={"Random Forest": {"improvement_over_default": 0.03}},
-            tuning_strategy="bayesian",
-            improvement_from_tuning=0.03,
-        )
-
-        csv = io.BytesIO()
-        df.to_csv(csv, index=False)
-
-        with patch(
-            "app.services.s3_service.S3Service.download_file_bytes",
-            new_callable=AsyncMock,
-            return_value=csv.getvalue(),
-        ), patch(
-            "app.api.routes.model_training.AutoMLEngine"
-        ) as EngineCls, patch(
-            "app.models.training_job.TrainingJob.find_one",
-            new_callable=AsyncMock,
-            return_value=None,
-        ), patch(
-            "app.services.model_storage.ModelStorageService.save_model",
-            new_callable=AsyncMock,
-            return_value=MagicMock(model_id="model_123"),
-        ):
-            EngineCls.return_value.run = AsyncMock(return_value=result)
-            request = TrainModelRequest(
-                dataset_id="dataset_123",
-                target_column="target",
-                name="Tuned",
-                training_config={
-                    "enable_tuning": True,
-                    "tuning_strategy": "bayesian",
-                    "tuning_config": {"n_trials": 10},
-                },
-            )
-            await train_model_task(sample_dataset, request, "test_user", "model_123")
 
         # Engine constructed with tuning enabled and a TuningConfig.
         _, kwargs = EngineCls.call_args
@@ -167,3 +175,15 @@ class TestTrainTaskTuningWiring:
         assert kwargs["tuning_config"] is not None
         assert kwargs["tuning_config"].strategy == "bayesian"
         assert kwargs["tuning_config"].n_trials == 10
+
+
+@pytest.mark.asyncio
+async def test_excluded_identifier_columns_persist_on_the_model():
+    """#806: the training run's identifier exclusions reach MLModel.training_config,
+    which the model report reads."""
+    _, save_model = await _run_train_task(
+        {}, metadata={"feature_engineering": {"excluded_features": ["customer_id"]}}
+    )
+
+    metadata = save_model.call_args.args[4]
+    assert metadata["training_config"]["excluded_identifier_columns"] == ["customer_id"]

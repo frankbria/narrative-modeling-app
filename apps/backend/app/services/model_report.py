@@ -98,6 +98,7 @@ class DatasetSection(Section):
     n_samples_train: int | None = None
     n_features: int | None = None
     feature_names: list[str] = Field(default_factory=list)
+    excluded_columns: list[str] = Field(default_factory=list)
 
 
 class ReproducibilitySection(Section):
@@ -361,6 +362,9 @@ async def build_model_report(
         n_samples_train=model.n_samples_train,
         n_features=model.n_features,
         feature_names=list(model.feature_names or []),
+        excluded_columns=list(
+            (getattr(model, "training_config", None) or {}).get("excluded_identifier_columns") or []
+        ),
     )
 
     baseline = _baseline(artifacts, model.problem_type)
@@ -494,6 +498,11 @@ def render_markdown(report: ModelReport) -> str:
             + ", ".join(_code(name) for name in report.dataset.feature_names)
             if report.dataset.feature_names
             else "- Feature columns: _Not recorded._"
+        ),
+        *(
+            ["- Excluded as identifiers: " + ", ".join(_code(c) for c in report.dataset.excluded_columns)]
+            if report.dataset.excluded_columns
+            else []
         ),
         "",
         "## Algorithms tried",

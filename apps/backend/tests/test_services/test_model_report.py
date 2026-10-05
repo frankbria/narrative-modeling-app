@@ -633,6 +633,25 @@ class TestFreeTextCannotInjectStructure:
         assert "tenure" in md and "monthly_charges" in md
 
     @pytest.mark.asyncio
+    async def test_excluded_identifier_columns_are_reported(self, setup_database):
+        """#806: a column dropped as a per-row identifier is named, not silently gone."""
+        model = _model(
+            "m-ids", training_config={"excluded_identifier_columns": ["customer_id"]}
+        )
+
+        report = await build_model_report(model, USER)
+
+        assert report.dataset.excluded_columns == ["customer_id"]
+        assert "Excluded as identifiers: `customer_id`" in render_markdown(report)
+
+    @pytest.mark.asyncio
+    async def test_a_model_without_the_record_lists_no_exclusions(self, setup_database):
+        report = await build_model_report(_model("m-old"), USER)
+
+        assert report.dataset.excluded_columns == []
+        assert "Excluded as identifiers" not in render_markdown(report)
+
+    @pytest.mark.asyncio
     async def test_exactly_one_row_is_the_winner_when_a_job_exists(
         self, setup_database
     ):

@@ -26,6 +26,7 @@ _WallClock.__name__ = "TrainingWallClockExceeded"
         (ValueError("could not convert string to float: 'abc'"), "non-numeric text"),
         (ZeroDivisionError("division by zero"), "prediction task"),
         (ValueError("Could not determine problem type"), "prediction task"),
+        (ValueError("Every feature column is a per-row identifier"), "identifier"),
     ],
 )
 def test_known_modes_get_specific_messages(exc, needle):
