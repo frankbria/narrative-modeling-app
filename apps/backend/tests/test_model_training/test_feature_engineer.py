@@ -517,6 +517,14 @@ class TestIdentifierColumnsAreExcluded:
 
         assert FeatureEngineer._identifier_columns(df, []) == [name]
 
+    def test_a_text_id_with_blanks_is_still_an_identifier(self):
+        """Uniqueness is measured over the filled cells: a 10%-blank ID is unique
+        everywhere it has a value."""
+        ids = [f"C{i:03d}" if i % 10 else None for i in range(100)]
+        df = pd.DataFrame({"customer_id": ids, "all_blank": [None] * 100})
+
+        assert FeatureEngineer._identifier_columns(df, []) == ["customer_id"]
+
     @pytest.mark.parametrize("name", ["paid", "valid", "grid", "tenure", "sqft"])
     def test_names_that_merely_end_like_an_id_are_not(self, name):
         df = pd.DataFrame({name: np.arange(1, 51)})

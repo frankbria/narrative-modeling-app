@@ -368,14 +368,14 @@ class FeatureEngineer:
         integer column that is unique and monotone in the original row order (a
         row counter). The index is sorted first because the training split
         shuffles rows. ``keep`` is the caller's override."""
-        n = len(df)
         excluded = []
         for col in df.columns:
             s = df[col]
             if col in keep:
                 continue
             if s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s):
-                if n and s.nunique() / n >= IDENTIFIER_UNIQUE_RATIO:
+                filled = s.notna().sum()  # blanks don't make an ID less unique
+                if filled and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO:
                     excluded.append(col)
             elif (
                 pd.api.types.is_numeric_dtype(s)
