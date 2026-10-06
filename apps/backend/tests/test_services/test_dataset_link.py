@@ -99,7 +99,8 @@ class TestRecordNewFile:
         from unittest.mock import AsyncMock, patch
 
         meta, ud = await _twins()
-        with patch.object(DatasetMetadata, "save", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")), \
+        # The move writes with a targeted set() (#723), so that is where Mongo fails.
+        with patch.object(DatasetMetadata, "set", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")), \
              caplog.at_level(logging.ERROR):
             with pytest.raises(RuntimeError):
                 await record_new_file(meta, NEW)
@@ -140,7 +141,7 @@ class TestRecordNewFile:
         from unittest.mock import AsyncMock, patch
 
         meta, ud = await _twins()
-        with patch.object(UserData, "save", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")), \
+        with patch.object(UserData, "set", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")), \
              caplog.at_level(logging.ERROR):
             with pytest.raises(RuntimeError):
                 await record_new_file(meta, NEW)
@@ -179,3 +180,69 @@ class TestRevisitedUrlLeavesSuperseded:
         assert OLD not in (meta3.superseded_s3_urls or []), "the current file must not be in superseded"
         assert NEW in (meta3.superseded_s3_urls or []), "the file moved off should be superseded"
         assert ud3.s3_url == OLD, "the twin must follow back too"
+
+
+class TestAConcurrentWriteSurvivesTheMove:
+    """#723: the move used to end in a full-document save() of the in-memory snapshot, so
+    any field another writer changed meanwhile was silently reverted (#520's clobber class).
+    Only the fields the move owns are written now."""
+
+    async def test_a_field_changed_after_the_caller_loaded_the_dataset_is_kept(self, setup_database):
+        meta, ud = await _twins()
+        stale = await DatasetMetadata.get(meta.id)  # what a transformation holds while it runs
+        # Processing finishes meanwhile and stores statistics on both twins.
+        await DatasetMetadata.find_one(DatasetMetadata.id == meta.id).update({"$set": {"statistics": {"rows": 3}}})
+        await UserData.find_one(UserData.id == ud.id).update({"$set": {"statistics": {"rows": 3}}})
+
+        stale.num_rows = 2  # the caller's own change still lands
+        await record_new_file(stale, NEW)
+
+        meta2, ud2 = await DatasetMetadata.get(meta.id), await UserData.get(ud.id)
+        assert meta2.statistics == {"rows": 3}, "the move must not revert another writer's field"
+        assert ud2.statistics == {"rows": 3}
+        assert (meta2.s3_url, meta2.num_rows, ud2.s3_url, ud2.num_rows) == (NEW, 2, NEW, 2)
+
+    async def test_a_write_to_the_twin_between_its_read_and_the_move_is_kept(self, setup_database):
+        from unittest.mock import patch
+
+        meta, ud = await _twins()
+        real_find_one = UserData.find_one
+
+        raced = []
+
+        def find_then_race(*args, **kwargs):
+            query = real_find_one(*args, **kwargs)
+            if raced:  # Beanie's own writes call find_one too; only the twin lookup races
+                return query
+            raced.append(True)
+
+            async def race():
+                twin = await query
+                await real_find_one(UserData.id == ud.id).update({"$set": {"pii_masked": True}})
+                return twin  # the in-memory twin no longer matches the database
+
+            return race()
+
+        with patch.object(UserData, "find_one", side_effect=find_then_race):
+            await record_new_file(meta, NEW)
+
+        ud2 = await UserData.get(ud.id)
+        assert ud2.pii_masked is True and ud2.s3_url == NEW
+
+    async def test_a_schema_field_the_caller_appended_is_stored(self, setup_database):
+        """The feature builder appends a SchemaField before moving the dataset; the
+        targeted set() must encode and persist it (the full save() used to)."""
+        from app.models.dataset import SchemaField
+
+        meta, ud = await _twins()
+        meta.columns = ["a", "b", "ratio"]
+        meta.data_schema.append(SchemaField(
+            field_name="ratio", field_type="numeric", inferred_dtype="float64",
+            unique_values=3, missing_values=0,
+        ))
+        await record_new_file(meta, NEW)
+
+        stored = await DatasetMetadata.get(meta.id)
+        assert [f.field_name for f in stored.data_schema] == ["ratio"]
+        assert stored.columns == ["a", "b", "ratio"]
+        assert (await UserData.get(ud.id)).data_schema == [], "the schema is not copied to the twin"

@@ -42,6 +42,7 @@ def mock_user_data(sample_dataframe):
     user_data.s3_url = "https://test-bucket.s3.amazonaws.com/test-file.parquet"
     user_data.transformation_history = []
     user_data.save = AsyncMock()
+    user_data.set = AsyncMock()  # record_new_file's targeted write (#723)
     return user_data
 
 
@@ -59,6 +60,7 @@ def mock_dataset(sample_dataframe):
     dataset.columns = sample_dataframe.columns.tolist()
     dataset.update_timestamp = MagicMock()
     dataset.save = AsyncMock()
+    dataset.set = AsyncMock()  # record_new_file's targeted write (#723)
     return dataset
 
 
