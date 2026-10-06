@@ -74,3 +74,8 @@ async def test_the_frontend_fixture_has_the_real_response_shape(
     assert processed.status_code == 200
     _check(PROCESS, processed.json())
     assert "is_processed" not in processed.json()  # the page must set it itself
+    # The nested values the page reads, which a top-level key check cannot see.
+    fixture = json.loads(PROCESS.read_text())
+    for body in (processed.json(), fixture):
+        assert {"row_count", "column_count", "columns"} <= set(body["schema"])
+        assert "overall_quality_score" in body["quality_report"]
