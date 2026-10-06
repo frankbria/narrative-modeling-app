@@ -16,6 +16,8 @@ it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 import logging
 from datetime import UTC, datetime
 
+from bson import ObjectId
+
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
 
@@ -156,3 +158,72 @@ def _log_half_move(moved: list[str], d: Dataset, new_url: str, old_url: str | No
             "run scripts/inventory_dataset_links.py and repair",
             ", ".join(moved), new_url, type(d).__name__, old_url, d.user_id,
         )
+
+
+async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata | None:
+    """The `DatasetMetadata` a transformation runs on, for either id space (#850).
+
+    The UI uploads through `/upload/secure` and chunked `complete`, which write only a
+    `UserData` row, and hands its ObjectId to the Prepare stage. The transformation
+    service and its history are keyed on `DatasetMetadata`, so every transformation on a
+    UI upload answered 404. An id that names the caller's `UserData` resolves to its
+    twin (joined on `(user_id, s3_url)`), created with a base version on first use.
+    None when the caller owns neither.
+    """
+    meta = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
+    if meta:
+        return meta
+    upload = await _owned_upload(dataset_id, user_id)
+    if upload is None:
+        return None
+    twin = await DatasetMetadata.find_one(
+        DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
+    )
+    return twin or await _create_twin(upload)
+
+
+async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:
+    if not ObjectId.is_valid(dataset_id):
+        return None
+    return await UserData.find_one(UserData.id == ObjectId(dataset_id), UserData.user_id == user_id)
+
+
+async def _create_twin(upload: UserData) -> DatasetMetadata:
+    """The upload's metadata twin, keyed by the upload's own id so the id the UI holds
+    resolves directly from now on."""
+    # ponytail: find-then-insert with no unique (user_id, dataset_id) index, so a
+    # double-click on a dataset's very first transform can write two twins. A unique
+    # index needs CLAUDE.md's #565 new-name migration; tracked with #853.
+    twin = await DatasetMetadata(
+        user_id=upload.user_id,
+        dataset_id=str(upload.id),
+        filename=upload.filename,
+        original_filename=upload.original_filename,
+        file_type=upload.file_type or _file_type_of(upload.s3_url) or "csv",
+        file_path=upload.file_path or upload.s3_url,
+        s3_url=upload.s3_url,
+        file_size=upload.file_size,
+        num_rows=upload.num_rows,
+        num_columns=upload.num_columns,
+        columns=list(upload.columns or []),
+    ).insert()
+    await _base_version(twin)
+    return twin
+
+
+async def _base_version(twin: DatasetMetadata) -> None:
+    """Version 1, which undo restores to, from the uploaded bytes. Best-effort, like
+    /datasets/upload: versioning is auxiliary and must not fail the transformation."""
+    from app.services.s3_service import s3_service
+    from app.services.versioning_service import versioning_service
+    from app.utils.s3 import downloadable_url, resolve_validated_object
+
+    try:
+        _, key = resolve_validated_object(downloadable_url(twin.file_path, twin.s3_url))
+        content = await s3_service.download_file_bytes(key)
+        await versioning_service.create_base_version(
+            dataset_metadata=twin, file_content=content, user_id=twin.user_id
+        )
+    except Exception:
+        logger.warning("No base version for the twin of upload %s", twin.dataset_id, exc_info=True)
+

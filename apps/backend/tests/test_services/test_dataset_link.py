@@ -246,3 +246,40 @@ class TestAConcurrentWriteSurvivesTheMove:
         assert [f.field_name for f in stored.data_schema] == ["ratio"]
         assert stored.columns == ["a", "b", "ratio"]
         assert (await UserData.get(ud.id)).data_schema == [], "the schema is not copied to the twin"
+
+
+class TestEnsureMetadataTwin:
+    """#850: a transformation on a UI upload (a UserData id) runs on its metadata twin."""
+
+    async def test_a_metadata_id_resolves_to_itself(self, setup_database):
+        from app.services.dataset_link import ensure_metadata_twin
+
+        meta, _ = await _twins()
+        assert (await ensure_metadata_twin("ds", USER)).id == meta.id
+
+    async def test_an_upload_with_a_twin_resolves_to_that_twin(self, setup_database):
+        from app.services.dataset_link import ensure_metadata_twin
+
+        meta, ud = await _twins()
+        resolved = await ensure_metadata_twin(str(ud.id), USER)
+        assert resolved.id == meta.id, "the existing twin is reused, not duplicated"
+        assert await DatasetMetadata.find(DatasetMetadata.user_id == USER).count() == 1
+
+    async def test_an_upload_without_a_twin_gets_one_even_if_the_base_version_fails(self, setup_database):
+        """The base version is best-effort: S3 is in mock mode here, so it cannot be
+        written, and the twin must still exist for the transformation to run on."""
+        from app.services.dataset_link import ensure_metadata_twin
+
+        ud = await UserData(
+            user_id=USER, filename="u.csv", original_filename="u.csv", s3_url=OLD,
+            num_rows=3, num_columns=2, data_schema=[], file_type="csv", columns=["a", "b"],
+        ).insert()
+        twin = await ensure_metadata_twin(str(ud.id), USER)
+        assert (twin.dataset_id, twin.s3_url, twin.num_rows, twin.columns) == (str(ud.id), OLD, 3, ["a", "b"])
+
+    async def test_unknown_or_foreign_ids_resolve_to_nothing(self, setup_database):
+        from app.services.dataset_link import ensure_metadata_twin
+
+        _, ud = await _twins()
+        assert await ensure_metadata_twin("not-an-id", USER) is None
+        assert await ensure_metadata_twin(str(ud.id), "someone_else") is None

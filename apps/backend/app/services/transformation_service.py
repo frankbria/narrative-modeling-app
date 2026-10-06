@@ -19,7 +19,7 @@ from app.models.transformation import (
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
-from app.services.dataset_link import record_new_file
+from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -432,14 +432,11 @@ class TransformationService(BaseService[TransformationConfig]):
             NotFoundError: If dataset not found or user doesn't own it
             OperationError: If transformation preview fails
         """
-        from app.models.dataset import DatasetMetadata
         from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
+        # Either id space: a UI upload's UserData id resolves to its twin (#850).
+        dataset = await ensure_metadata_twin(dataset_id, user_id)
 
         if not dataset:
             raise NotFoundError(
@@ -505,7 +502,6 @@ class TransformationService(BaseService[TransformationConfig]):
         import time
         from datetime import datetime
 
-        from app.models.dataset import DatasetMetadata
         from app.services.redis_cache import cache_service
         from app.services.transformation_engine.data_utils import (
             get_dataframe_from_s3,
@@ -515,10 +511,8 @@ class TransformationService(BaseService[TransformationConfig]):
         start_time = time.time()
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
+        # Either id space: a UI upload's UserData id resolves to its twin (#850).
+        dataset = await ensure_metadata_twin(dataset_id, user_id)
 
         if not dataset:
             raise NotFoundError(
