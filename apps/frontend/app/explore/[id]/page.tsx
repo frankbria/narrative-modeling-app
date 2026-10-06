@@ -154,6 +154,54 @@ function ProfilingActions(props: {
   )
 }
 
+function Unavailable(props: { message: string }) {
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">{props.message}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** The children when `when` holds data, else a "not available" card. */
+function Present(props: { when: unknown; fallback: string; children: ReactNode }) {
+  return props.when ? props.children : <Unavailable message={props.fallback} />
+}
+
+function DatasetMissing(props: { message: string; className: string }) {
+  return (
+    <div className="p-6">
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
+          <p className={`${props.className} text-lg`}>{props.message}</p>
+          <Link href="/explore">
+            <Button variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Datasets
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/** What the page shows instead of the dataset while it loads, fails or is missing. */
+function blockingView(isLoading: boolean, error: string | null, dataset: ProcessedDataset | null) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <span className="text-lg">Loading dataset...</span>
+      </div>
+    )
+  }
+  if (error) return <DatasetMissing message={error} className="text-destructive" />
+  if (!dataset) return <DatasetMissing message="Dataset not found" className="text-muted-foreground" />
+  return null
+}
+
 export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
@@ -319,50 +367,8 @@ export default function DatasetAnalysisPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
-        <span className="text-lg">Loading dataset...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <p className="text-destructive text-lg">{error}</p>
-            <Link href="/explore">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Datasets
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!dataset) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <p className="text-muted-foreground text-lg">Dataset not found</p>
-            <Link href="/explore">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Datasets
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  const blocker = blockingView(isLoading, error, dataset)
+  if (blocker || !dataset) return blocker
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -447,59 +453,33 @@ export default function DatasetAnalysisPage() {
           </TabsContent>
 
           <TabsContent value="schema">
-            {dataset.schema ? (
-              <SchemaViewer schema={dataset.schema} />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Schema information not available</p>
-                </CardContent>
-              </Card>
-            )}
+            <Present when={dataset.schema} fallback="Schema information not available">
+              <SchemaViewer schema={dataset.schema as DatasetSchema} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="statistics">
-            {dataset.statistics ? (
-              <StatisticsDashboard 
-                datasetId={dataset.id} 
-                statistics={dataset.statistics}
-              />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Statistics not available</p>
-                </CardContent>
-              </Card>
-            )}
+            <Present when={dataset.statistics} fallback="Statistics not available">
+              <StatisticsDashboard datasetId={dataset.id} statistics={dataset.statistics} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="visualizations">
-            {vizColumns ? (
+            <Present when={vizColumns} fallback="Schema information required for visualizations">
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={vizColumns}
+                columns={vizColumns as NonNullable<typeof vizColumns>}
                 statistics={dataset.statistics}
               />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Schema information required for visualizations</p>
-                </CardContent>
-              </Card>
-            )}
+            </Present>
           </TabsContent>
 
           <TabsContent value="quality" className="space-y-4">
-            {dataset.id && <QualityDashboard fileId={dataset.id} datasetId={dataset.id} />}
-            {dataset.quality_report ? (
-              <QualityReportCard report={dataset.quality_report} />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Quality report not available</p>
-                </CardContent>
-              </Card>
-            )}
+            {/* id is never empty: normalized at fetch, with the route param as fallback */}
+            <QualityDashboard fileId={dataset.id} datasetId={dataset.id} />
+            <Present when={dataset.quality_report} fallback="Quality report not available">
+              <QualityReportCard report={dataset.quality_report as DatasetQualityReport} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="insights">
