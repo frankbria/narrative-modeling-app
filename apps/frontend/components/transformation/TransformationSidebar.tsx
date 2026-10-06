@@ -82,11 +82,9 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
                 <span className="text-xl">{CATEGORY_ICONS[category.name] ?? '⚙️'}</span>
                 <span className="font-medium">{category.name}</span>
               </div>
-              {!collapsed.has(category.name) ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
+              {collapsed.has(category.name)
+                ? <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
             </button>
 
             {!collapsed.has(category.name) && (
