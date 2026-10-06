@@ -283,3 +283,32 @@ class TestEnsureMetadataTwin:
         _, ud = await _twins()
         assert await ensure_metadata_twin("not-an-id", USER) is None
         assert await ensure_metadata_twin(str(ud.id), "someone_else") is None
+
+    async def test_an_upload_stored_as_txt_still_gets_a_valid_twin(self, setup_database):
+        """/upload/ accepts TSV and stores file_type="txt", which DatasetMetadata refuses;
+        the twin must not turn a dataset that used to 404 into a 500 (#850 review)."""
+        from app.services.dataset_link import ensure_metadata_twin
+
+        ud = await UserData(
+            user_id=USER, filename="t.txt", original_filename="t.txt",
+            s3_url=f"s3://test-bucket/datasets/{USER}/t.txt",
+            num_rows=2, num_columns=2, data_schema=[], file_type="txt",
+        ).insert()
+        twin = await ensure_metadata_twin(str(ud.id), USER)
+        assert twin.file_type == "csv"
+
+    async def test_the_bulk_service_resolves_an_upload_id(self, setup_database):
+        """The bulk column operations sit on the same Prepare stage (#850 review)."""
+        from app.models.bulk_transformation import ColumnSelectionPattern, PatternType
+        from app.services.bulk_transformation_service import BulkTransformationService
+
+        ud = await UserData(
+            user_id=USER, filename="b.csv", original_filename="b.csv",
+            s3_url=f"s3://test-bucket/datasets/{USER}/b.csv",
+            num_rows=2, num_columns=2, data_schema=[], file_type="csv",
+        ).insert()
+        result = await BulkTransformationService().select_columns_by_pattern(
+            user_id=USER, dataset_id=str(ud.id),
+            pattern=ColumnSelectionPattern(pattern_type=PatternType.DATA_TYPE, criteria={"types": ["numeric"]}),
+        )
+        assert result == []  # resolved (no NotFoundError); the new twin has no schema yet

@@ -199,7 +199,7 @@ async def _create_twin(upload: UserData) -> DatasetMetadata:
         dataset_id=str(upload.id),
         filename=upload.filename,
         original_filename=upload.original_filename,
-        file_type=upload.file_type or _file_type_of(upload.s3_url) or "csv",
+        file_type=_twin_file_type(upload),
         file_path=upload.file_path or upload.s3_url,
         s3_url=upload.s3_url,
         file_size=upload.file_size,
@@ -207,23 +207,14 @@ async def _create_twin(upload: UserData) -> DatasetMetadata:
         num_columns=upload.num_columns,
         columns=list(upload.columns or []),
     ).insert()
-    await _base_version(twin)
+    # No base version here: the first apply writes it from the frame it transforms
+    # (TransformationService._version_for), which also heals a failed write later.
     return twin
 
 
-async def _base_version(twin: DatasetMetadata) -> None:
-    """Version 1, which undo restores to, from the uploaded bytes. Best-effort, like
-    /datasets/upload: versioning is auxiliary and must not fail the transformation."""
-    from app.services.s3_service import s3_service
-    from app.services.versioning_service import versioning_service
-    from app.utils.s3 import downloadable_url, resolve_validated_object
 
-    try:
-        _, key = resolve_validated_object(downloadable_url(twin.file_path, twin.s3_url))
-        content = await s3_service.download_file_bytes(key)
-        await versioning_service.create_base_version(
-            dataset_metadata=twin, file_content=content, user_id=twin.user_id
-        )
-    except Exception:
-        logger.warning("No base version for the twin of upload %s", twin.dataset_id, exc_info=True)
-
+def _twin_file_type(upload: UserData) -> str:
+    """A file type DatasetMetadata accepts. /upload/ stores "txt" for a TSV, which it
+    refuses, and that must not turn a dataset that used to 404 into a 500."""
+    stored = (upload.file_type or "").lower()
+    return stored if stored in _KNOWN_TYPES else (_file_type_of(upload.s3_url) or "csv")

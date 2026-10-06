@@ -91,3 +91,28 @@ async def test_another_tenants_upload_id_is_not_found(client, real_s3_env):
             user_id="someone_else", dataset_id=dataset_id,
             transformation_type="trim_whitespace", parameters={"columns": ["color"]},
         )
+
+
+async def test_a_dataset_without_a_base_version_still_gets_a_restorable_history(client, real_s3_env):
+    """#850 review: a missing base version (a failed write, or a dataset the feature
+    builder created) left every step with version_id=None, so undo refused forever.
+    The first apply now creates the base version from the frame it is about to change."""
+    from app.models.version import DatasetVersion
+
+    dataset_id = await _ui_upload(client)
+    first = await client.post("/api/v1/transformations/preview", json={
+        "dataset_id": dataset_id,
+        "transformation_steps": [{"transformation_type": "trim_whitespace", "parameters": {"columns": ["color"]}}],
+    })
+    assert first.status_code == 200, first.text
+    await DatasetVersion.find(DatasetVersion.dataset_id == dataset_id).delete()  # the write that failed
+
+    for step in (
+        {"transformation_type": "trim_whitespace", "parameters": {"columns": ["color"]}},
+        {"transformation_type": "fill_missing", "parameters": {"columns": ["score"], "method": "mean"}},
+    ):
+        applied = await client.post("/api/v1/transformations/apply", json={"dataset_id": dataset_id, **step})
+        assert applied.status_code == 200, applied.text
+
+    undo = await client.post(f"/api/v1/transformations/datasets/{dataset_id}/history/undo")
+    assert undo.status_code == 200, undo.text

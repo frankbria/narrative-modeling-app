@@ -140,7 +140,7 @@ class TransformationService(BaseService[TransformationConfig]):
         # unscoped "latest" here would turn a stray row into a denial.
         parent_version = await DatasetVersion.find(
             {"dataset_id": dataset_id, "user_id": user_id}
-        ).sort("-version_number").first_or_none()
+        ).sort("-version_number").first_or_none() or await self._base_version(dataset, df, user_id)
 
         version_id = None
         if parent_version:
@@ -193,6 +193,27 @@ class TransformationService(BaseService[TransformationConfig]):
             )
             version_id = version.version_id
         return version_id
+
+    async def _base_version(self, dataset: Any, df: Any, user_id: str) -> Any:
+        """Version 1 from the frame about to be transformed, when the dataset has none.
+
+        A UI upload's twin starts without one (#850), as does a dataset the feature builder
+        made; without it every history step has no version and undo refuses. Best-effort,
+        and a failure is retried on the next apply.
+        """
+        import io
+
+        from app.services.versioning_service import versioning_service
+
+        buffer = io.BytesIO()
+        df.to_parquet(buffer, index=False)
+        try:
+            return await versioning_service.create_base_version(
+                dataset_metadata=dataset, file_content=buffer.getvalue(), user_id=user_id
+            )
+        except Exception:
+            logger.warning("No base version for dataset %s", dataset.dataset_id, exc_info=True)
+            return None
 
     async def _history_config_id(
         self, dataset_id: str, user_id: str, timestamp: float, file_path: str

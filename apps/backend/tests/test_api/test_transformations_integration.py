@@ -233,7 +233,9 @@ class TestTransformationApply:
         with patch('app.models.dataset.DatasetMetadata.find_one', new_callable=AsyncMock, return_value=mock_dataset), \
              patch('app.services.transformation_service.TransformationService.create_transformation_config', new_callable=AsyncMock), \
              patch('app.services.transformation_service.TransformationService.add_transformation_step', new_callable=AsyncMock), \
-             patch('app.services.transformation_service.TransformationService.mark_transformations_applied', new_callable=AsyncMock):
+             patch('app.services.transformation_service.TransformationService.mark_transformations_applied', new_callable=AsyncMock), \
+             patch('app.services.transformation_service.TransformationService._version_for',
+                   new_callable=AsyncMock, return_value=None):  # versioning has its own tests (#850)
             request = {
                 "dataset_id": mock_dataset.dataset_id,
                 "transformation_type": "trim_whitespace",
