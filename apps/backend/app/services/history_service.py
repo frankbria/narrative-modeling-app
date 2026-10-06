@@ -57,16 +57,22 @@ class HistoryService:
         return config
 
     async def _move_to_step(self, dataset_id: str, user_id: str, version_id: str | None) -> None:
-        """Point the dataset (and its twin) at the version a history step produced."""
-        if not version_id:
-            return
+        """Point the dataset (and its twin) at the version a history step produced.
+
+        Raises rather than returning quietly: a step with nothing to restore used to
+        answer 200 and move the cursor while the data stayed where it was (#800 review).
+        The caller saves the cursor only after this succeeds.
+        """
+        # Version metadata only; the move needs its URL and shape, not its content.
+        version = await self.versioning_service.get_version(version_id, mark_accessed=False) if version_id else None
+        if not version:
+            raise ValidationError(
+                message="This history step has no saved version, so the data cannot be restored to it",
+                details={"version_id": version_id},
+            )
         dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
         if not dataset:
-            return
-        # Version metadata only; the move needs its URL and shape, not its content.
-        version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-        if not version:
-            return
+            raise NotFoundError(resource_type="Dataset", resource_id=dataset_id)
         # Bring the restored version's shape with the move so BOTH twins describe the
         # restored file — record_new_file copies these onto the UserData twin, and a stale
         # count silently mis-drives the training mode recommendation (model_training reads
@@ -286,8 +292,8 @@ class HistoryService:
         """
         config = await self._config(dataset_id, user_id)
 
-        # Clear history
-        config.transformation_steps = []
+        # The model's own reset (steps, counters, applied state), plus the cursor it leaves alone.
+        config.clear_transformations()
         config.current_position = -1
 
         # Save config

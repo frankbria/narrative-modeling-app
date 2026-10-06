@@ -437,7 +437,8 @@ class TestHistoryServiceClearHistory:
 
         # Verify
         assert result is True
-        assert mock_transformation_config.transformation_steps == []
+        # The model's own reset clears steps and counters (test_transformation.py covers it).
+        mock_transformation_config.clear_transformations.assert_called_once()
         assert mock_transformation_config.current_position == -1
         mock_transformation_config.save.assert_called_once()
 
@@ -559,3 +560,20 @@ async def test_history_navigation_moves_the_userdata_twin(setup_database, start_
     # And the metadata side moved too (both twins agree on the RESTORED file).
     meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds629")
     assert meta.s3_url == restored and meta.file_path == restored
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_navigating_to_a_step_without_a_saved_version_fails_loudly(
+    history_service, mock_transformation_service, mock_transformation_config
+):
+    """#800 review: a step applied while the dataset had no base version (a dataset the
+    feature builder created) has no version to restore. Undo used to answer 200 and move
+    the cursor while the data stayed put; now it refuses and the cursor does not move."""
+    mock_transformation_config.transformation_steps[1].version_id = None
+    mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
+
+    with pytest.raises(ValidationError, match="no saved version"):
+        await history_service.undo("ds1", "user1")
+
+    mock_transformation_config.save.assert_not_awaited()
