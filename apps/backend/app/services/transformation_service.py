@@ -23,11 +23,17 @@ from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
+    TransformationResult,
     TransformationType,
 )
 from app.utils.s3 import downloadable_url
 
 logger = logging.getLogger(__name__)
+
+
+def _name_step(result: TransformationResult, number: int, step_type: TransformationType) -> TransformationResult:
+    result.error = f"Step {number} ({step_type.value}) failed: {result.error}"
+    return result
 
 
 class TransformationService(BaseService[TransformationConfig]):
@@ -455,18 +461,17 @@ class TransformationService(BaseService[TransformationConfig]):
         self,
         user_id: str,
         dataset_id: str,
-        transformation_type: str,
-        parameters: dict[str, Any],
+        steps: list[tuple[TransformationType, dict[str, Any]]],
         preview_rows: int = 10
     ) -> dict[str, Any]:
         """
-        Preview transformation without applying it.
+        Preview a pipeline without applying it: every step but the last runs on the
+        whole frame, in order, and the last is previewed on the result (#855).
 
         Args:
             user_id: User identifier (for ownership verification)
             dataset_id: Dataset identifier
-            transformation_type: Type of transformation
-            parameters: Transformation parameters
+            steps: (transformation type, parameters) pairs, in pipeline order
             preview_rows: Number of rows to preview
 
         Returns:
@@ -494,13 +499,7 @@ class TransformationService(BaseService[TransformationConfig]):
             file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(file_path)
 
-            # Preview transformation using engine
-            result = self.engine.preview_transformation(
-                df=df,
-                transformation_type=TransformationType(transformation_type),
-                parameters=parameters,
-                n_rows=preview_rows
-            )
+            result = self._preview_steps(df, steps, preview_rows)
 
             return {
                 "success": result.success,
@@ -517,8 +516,24 @@ class TransformationService(BaseService[TransformationConfig]):
                 message="Failed to preview transformation",
                 operation="preview_transformation",
                 original_error=e,
-                details={"dataset_id": dataset_id, "transformation_type": transformation_type}
+                details={"dataset_id": dataset_id, "steps": [t.value for t, _ in steps]}
             )
+
+    def _preview_steps(
+        self, df: pd.DataFrame, steps: list[tuple[TransformationType, dict[str, Any]]], n_rows: int
+    ) -> TransformationResult:
+        """Apply every step but the last in order, then preview the last on the result.
+        A failure names its step, so the user knows which node to fix."""
+        *earlier, (last_type, last_parameters) = steps
+        for number, (step_type, parameters) in enumerate(earlier, start=1):
+            frame, result = self.engine.apply_transformation_frame(df, step_type, parameters)
+            if frame is None:
+                return _name_step(result, number, step_type)
+            df = frame
+        result = self.engine.preview_transformation(
+            df=df, transformation_type=last_type, parameters=last_parameters, n_rows=n_rows
+        )
+        return result if result.success else _name_step(result, len(steps), last_type)
 
     async def apply_transformation(
         self,

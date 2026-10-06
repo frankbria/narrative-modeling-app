@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockPipelineFetch } from '@/__tests__/utils/pipelineFetch';
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
@@ -88,6 +88,10 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    // Escape closes it.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('suppresses the built-in toggle when a host provides its own (showViewToggle=false)', () => {

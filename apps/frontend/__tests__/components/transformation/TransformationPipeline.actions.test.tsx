@@ -18,12 +18,14 @@ function respond(path: string, body: unknown) {
   );
 }
 
-async function addTrimWhitespace() {
+async function addSteps(...labels: RegExp[]) {
   const user = userEvent.setup();
   render(<TransformationPipeline datasetId="dataset-1" onComplete={onComplete} />);
-  await user.click(await screen.findByRole('button', { name: /add trim whitespace/i }));
+  for (const label of labels) await user.click(await screen.findByRole('button', { name: label }));
   return user;
 }
+
+const addTrimWhitespace = () => addSteps(/add trim whitespace/i);
 
 const onComplete = jest.fn();
 
@@ -68,5 +70,71 @@ describe('TransformationPipeline actions (#855)', () => {
 
     expect(await screen.findByText('Applied 1 transformation')).toBeInTheDocument();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith('dataset-1'));
+  });
+
+  it('drops the steps a failed apply already applied, so a retry sends only the rest', async () => {
+    let applies = 0;
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (!String(url).endsWith('/transformations/apply')) return mountTime(url, init);
+      applies += 1;
+      return { ok: true, json: async () => (applies === 1 ? { success: true } : { success: false, error: 'not numeric' }) };
+    });
+    const user = await addSteps(/add trim whitespace/i, /add remove duplicates/i);
+
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent(
+      'Applied 1 of 2 steps. Step 2 (remove_duplicates) failed: not numeric',
+    );
+    // Each label is in the sidebar once; the chain keeps only the step still to apply.
+    expect(screen.getAllByText('Trim Whitespace')).toHaveLength(1);
+    expect(screen.getAllByText('Remove Duplicates')).toHaveLength(2);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('shows a failed code export instead of doing nothing', async () => {
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url).endsWith('/transformations/export-code')
+        ? { ok: false, status: 404, json: async () => ({ detail: 'Not Found' }) }
+        : mountTime(url, init),
+    );
+    const user = await addTrimWhitespace();
+
+    await user.click(screen.getByTitle('Export as Code'));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent('Not Found');
+  });
+
+  it('says when the transformation list could not be loaded', async () => {
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url).endsWith('/transformations/available')
+        ? { ok: false, status: 500, json: async () => ({ detail: 'Internal server error' }) }
+        : mountTime(url, init),
+    );
+    render(<TransformationPipeline datasetId="dataset-1" />);
+
+    expect(await screen.findByText(/could not load the transformations/i)).toBeInTheDocument();
+  });
+
+  it('shows a failed recipe save on the page, not behind the closed manager', async () => {
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url).endsWith('/transformations/recipes')
+        ? { ok: false, status: 422, json: async () => ({ detail: 'A recipe needs at least one step' }) }
+        : mountTime(url, init),
+    );
+    const user = await addTrimWhitespace();
+
+    await user.click(screen.getByTitle('Manage Recipes'));
+    await user.click(screen.getAllByRole('button', { name: /save recipe/i })[0]);
+    await user.type(screen.getByPlaceholderText('Enter a descriptive name'), 'Tidy');
+    await user.type(screen.getByPlaceholderText('Describe what this recipe does...'), 'trims');
+    await user.click(screen.getAllByRole('button', { name: /save recipe/i }).at(-1)!);
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent('A recipe needs at least one step');
+    expect(screen.queryByText('Recipe Manager')).not.toBeInTheDocument();
   });
 });

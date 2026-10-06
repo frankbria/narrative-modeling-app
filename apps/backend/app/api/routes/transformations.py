@@ -87,50 +87,49 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _preview_steps(
+    request: TransformationPreviewRequest,
+) -> list[tuple[EngineTransformationType, dict[str, Any]]]:
+    """Every step, in order: the Prepare stage previews its whole pipeline (#855).
+    The request schema already restricts each type to the registry's enum."""
+    if not request.transformation_steps:
+        raise HTTPException(status_code=400, detail="No transformation steps provided")
+    return [
+        (EngineTransformationType(step.transformation_type), step.parameters or {})
+        for step in request.transformation_steps
+    ]
+
+
+async def _run_preview(request: TransformationPreviewRequest, user_id: str) -> dict[str, Any]:
+    """Preview through TransformationService, answering 408 past 30 seconds."""
+    from app.services.transformation_service import TransformationService
+
+    steps = _preview_steps(request)
+    try:
+        # SECURITY: Defense-in-depth timeout at API layer (service layer also has timeout)
+        async with asyncio.timeout(30.0):
+            return await TransformationService().preview_transformation(
+                user_id=user_id,
+                dataset_id=request.dataset_id,
+                steps=steps,
+                preview_rows=request.preview_rows or 10,
+            )
+    except TimeoutError:
+        logger.error(f"Preview timeout at API layer for dataset {request.dataset_id}")
+        raise HTTPException(
+            status_code=408,
+            detail="Preview timeout (30s). Try reducing preview_rows or simplifying transformations."
+        )
+
+
 @router.post("/preview", response_model=TransformationPreviewResponse)
 async def preview_transformation(
     request: TransformationPreviewRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Preview a transformation on a subset of data using TransformationService"""
+    """Preview a transformation pipeline on a subset of data using TransformationService"""
     try:
-        # Extract transformation data from first step
-        if not request.transformation_steps:
-            raise HTTPException(status_code=400, detail="No transformation steps provided")
-
-        first_step = request.transformation_steps[0]
-
-        # Validate transformation type against whitelist
-        try:
-            transformation_type = EngineTransformationType(first_step.transformation_type)
-        except ValueError:
-            valid_types = [t.value for t in EngineTransformationType]
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid transformation type '{first_step.transformation_type}'. Allowed types: {', '.join(valid_types)}"
-            )
-
-        # Use TransformationService for preview
-        from app.services.transformation_service import TransformationService
-        service = TransformationService()
-
-        # SECURITY: Defense-in-depth timeout at API layer (service layer also has timeout)
-        try:
-            async with asyncio.timeout(30.0):
-                # Use validated enum value to prevent bypass
-                result = await service.preview_transformation(
-                    user_id=current_user_id,
-                    dataset_id=request.dataset_id,
-                    transformation_type=transformation_type.value,
-                    parameters=first_step.parameters or {},
-                    preview_rows=request.preview_rows or 10
-                )
-        except TimeoutError:
-            logger.error(f"Preview timeout at API layer for dataset {request.dataset_id}")
-            raise HTTPException(
-                status_code=408,
-                detail="Preview timeout (30s). Try reducing preview_rows or simplifying transformations."
-            )
+        result = await _run_preview(request, current_user_id)
 
         return TransformationPreviewResponse(
             success=result["success"],

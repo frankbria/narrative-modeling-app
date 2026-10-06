@@ -8,9 +8,11 @@
  * `test_transformation_request_schemas_fixture.py`.
  */
 import schemas from '@/__tests__/fixtures/transformationRequestSchemas.json';
+import available from '@/__tests__/fixtures/availableTransformations.json';
 import { applyRequest, previewRequest, recipeRequest } from '@/lib/services/pipelineApi';
 
 type Schema = {
+  type?: string;
   properties?: Record<string, Schema>;
   required?: string[];
   items?: Schema;
@@ -19,8 +21,19 @@ type Schema = {
 };
 type Root = Schema & { $defs?: Record<string, Schema> };
 
-/** Field-name check against a pydantic JSON schema: every required key present, no
- * key the model does not declare, recursing into objects, arrays and $refs. */
+const JSON_TYPES: Record<string, (v: unknown) => boolean> = {
+  string: (v) => typeof v === 'string',
+  integer: (v) => Number.isInteger(v),
+  number: (v) => typeof v === 'number',
+  boolean: (v) => typeof v === 'boolean',
+  array: Array.isArray,
+  object: (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
+  null: (v) => v === null,
+};
+
+/** Check against a pydantic JSON schema: every required key present, no key the model
+ * does not declare, each value of the declared JSON type, recursing into objects,
+ * arrays and $refs. */
 function violations(value: unknown, schema: Schema, root: Root, path = '$'): string[] {
   if (schema.$ref) return violations(value, root.$defs![schema.$ref.split('/').pop()!], root, path);
   if (schema.anyOf) {
@@ -28,6 +41,7 @@ function violations(value: unknown, schema: Schema, root: Root, path = '$'): str
       ? []
       : [`${path}: matches no allowed shape`];
   }
+  if (schema.type && !JSON_TYPES[schema.type]?.(value)) return [`${path}: not ${schema.type}`];
   if (Array.isArray(value) && schema.items) {
     return value.flatMap((v, i) => violations(v, schema.items!, root, `${path}[${i}]`));
   }
@@ -48,6 +62,11 @@ const steps = [
   { type: 'fill_missing', parameters: { columns: ['score'], method: 'mean' } },
 ];
 const routes = schemas as Record<string, Root>;
+
+it('the payloads are built from types the engine executes', () => {
+  const executable = new Set(available.map((t) => t.type));
+  expect(steps.filter((s) => !executable.has(s.type))).toEqual([]);
+});
 
 describe('Prepare-stage payloads match the API request models', () => {
   it('preview', () => {
@@ -75,5 +94,11 @@ describe('Prepare-stage payloads match the API request models', () => {
       '$.transformation_steps: missing',
       "$.transformations: not in the API's model",
     ]);
+  });
+
+  it('the checker itself rejects a value of the wrong type', () => {
+    const schema = routes['POST /transformations/apply'];
+    const wrong = { dataset_id: 42, transformation_type: 'trim_whitespace', parameters: [] };
+    expect(violations(wrong, schema, schema)).toEqual(['$.dataset_id: not string', '$.parameters: matches no allowed shape']);
   });
 });

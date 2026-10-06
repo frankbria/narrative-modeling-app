@@ -4,7 +4,9 @@
  */
 import { API_URL } from '@/lib/constants';
 import {
+  PipelineApplyError,
   applyPipeline,
+  exportPipelineCode,
   fetchDatasetRows,
   fetchTransformationTypes,
   previewPipeline,
@@ -75,6 +77,28 @@ describe('applyPipeline', () => {
     );
     expect(fetchMock()).toHaveBeenCalledTimes(1);
   });
+
+  it('says how many steps were applied before one failed, so a retry does not repeat them', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(ok({ success: true }))
+      .mockResolvedValueOnce(ok({ success: false, error: 'not numeric' }));
+
+    const failure = await applyPipeline('ds1', steps).catch((e) => e);
+
+    expect(failure).toBeInstanceOf(PipelineApplyError);
+    expect(failure.applied).toBe(1);
+    expect(failure.message).toBe('Applied 1 of 2 steps. Step 2 (fill_missing) failed: not numeric');
+  });
+
+  it('keeps the step on an HTTP failure too', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(ok({ success: true }))
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ detail: 'Internal server error' }) });
+
+    await expect(applyPipeline('ds1', steps)).rejects.toThrow(
+      'Applied 1 of 2 steps. Step 2 (fill_missing) failed: Internal server error',
+    );
+  });
 });
 
 describe('saveRecipe', () => {
@@ -100,5 +124,26 @@ describe('reference data', () => {
     fetchMock().mockResolvedValueOnce(ok({ columns: ['score', 'name'], data: [{ name: 'a', score: 1 }] }));
     expect(await fetchDatasetRows('ds1')).toEqual({ columns: ['score', 'name'], data: [[1, 'a']] });
     expect(fetchMock().mock.calls[0][0]).toBe(`${API_URL}/data/ds1/preview`);
+  });
+});
+
+describe('exportPipelineCode', () => {
+  it('downloads the script the API returns', async () => {
+    const createObjectURL = jest.fn(() => 'blob:script');
+    Object.assign(window.URL, { createObjectURL, revokeObjectURL: jest.fn() });
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    fetchMock().mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['print(1)']) });
+
+    await exportPipelineCode(steps);
+
+    expect(fetchMock().mock.calls[0][0]).toBe(`${API_URL}/transformations/export-code`);
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    click.mockRestore();
+  });
+
+  it('throws when the export fails, so the page can say so', async () => {
+    fetchMock().mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ detail: 'Not Found' }) });
+    await expect(exportPipelineCode(steps)).rejects.toThrow('Not Found');
   });
 });

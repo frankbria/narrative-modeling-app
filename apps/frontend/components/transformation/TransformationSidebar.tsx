@@ -26,8 +26,10 @@ export function groupByCategory(types: TransformationTypeMeta[], search: string)
 }
 
 interface TransformationSidebarProps {
-  /** The executable transformation types, from GET /transformations/available. */
-  types?: TransformationTypeMeta[];
+  /** The executable transformation types, from GET /transformations/available.
+   * `null` means that request failed, which the sidebar says rather than showing
+   * an empty menu (#855). */
+  types?: TransformationTypeMeta[] | null;
   /**
    * Keyboard/click affordance for adding a transformation without dragging.
    * When provided, each transformation card becomes an activatable button so
@@ -48,12 +50,7 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
     setCollapsed(next);
   };
 
-  const filteredCategories = groupByCategory(types, searchTerm);
-
-  const onDragStart = (event: React.DragEvent, transformationType: string) => {
-    event.dataTransfer.setData('transformationType', transformationType);
-    event.dataTransfer.effectAllowed = 'move';
-  };
+  const filteredCategories = groupByCategory(types ?? [], searchTerm);
 
   return (
     <div className="w-80 bg-muted border-r flex flex-col">
@@ -72,42 +69,19 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        {types === null && (
+          <p role="alert" className="p-4 text-sm text-destructive">
+            Could not load the transformations. Reload the page to try again.
+          </p>
+        )}
         {filteredCategories.map((category) => (
-          <div key={category.name} className="border-b">
-            <button
-              onClick={() => toggleCategory(category.name)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{CATEGORY_ICONS[category.name] ?? '⚙️'}</span>
-                <span className="font-medium">{category.name}</span>
-              </div>
-              {collapsed.has(category.name)
-                ? <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-            </button>
-
-            {!collapsed.has(category.name) && (
-              <div className="px-2 py-2">
-                {category.transformations.map((transformation) => (
-                  <button
-                    type="button"
-                    key={transformation.type}
-                    draggable
-                    onDragStart={(e) => onDragStart(e, transformation.type)}
-                    onClick={() => onAdd?.(transformation.type, transformation.label)}
-                    aria-label={`Add ${transformation.label}`}
-                    className="w-full text-left p-3 mb-2 bg-card rounded-lg border border-border cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <div className="font-medium text-sm">{transformation.label}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {transformation.description}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <CategorySection
+            key={category.name}
+            category={category}
+            collapsed={collapsed.has(category.name)}
+            onToggle={toggleCategory}
+            onAdd={onAdd}
+          />
         ))}
       </div>
 
@@ -116,6 +90,56 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
           Click or drag a transformation to add it
         </p>
       </div>
+    </div>
+  );
+}
+function onDragStart(event: React.DragEvent, transformationType: string) {
+  event.dataTransfer.setData('transformationType', transformationType);
+  event.dataTransfer.effectAllowed = 'move';
+}
+
+function CategorySection(props: {
+  category: TransformationCategory;
+  collapsed: boolean;
+  onToggle(name: string): void;
+  onAdd?(transformationType: string, label: string): void;
+}) {
+  const { category, collapsed, onToggle, onAdd } = props;
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  return (
+    <div className="border-b">
+      <button
+        onClick={() => onToggle(category.name)}
+        aria-expanded={!collapsed}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{CATEGORY_ICONS[category.name] ?? '⚙️'}</span>
+          <span className="font-medium">{category.name}</span>
+        </div>
+        <Chevron className="w-4 h-4 text-muted-foreground" />
+      </button>
+
+      {!collapsed && (
+        <div className="px-2 py-2">
+          {category.transformations.map((transformation) => (
+            <button
+              type="button"
+              key={transformation.type}
+              draggable
+              onDragStart={(e) => onDragStart(e, transformation.type)}
+              onClick={() => onAdd?.(transformation.type, transformation.label)}
+              aria-label={`Add ${transformation.label}`}
+              className="w-full text-left p-3 mb-2 bg-card rounded-lg border border-border cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <div className="font-medium text-sm">{transformation.label}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {transformation.description}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

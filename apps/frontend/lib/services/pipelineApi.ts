@@ -91,13 +91,24 @@ function table(rows: Record<string, unknown>[], columns: string[] = Object.keys(
   return { columns, data: rows.map((row) => columns.map((c) => row[c])) };
 }
 
+const count = (value: number | undefined) => value ?? 0;
+
 function summary(before: Stats | undefined, after: Stats | undefined): PipelinePreview['summary'] {
   if (!before || !after) return null;
   return {
-    rows_before: before.row_count ?? 0,
-    rows_after: after.row_count ?? 0,
-    cols_before: before.column_count ?? 0,
-    cols_after: after.column_count ?? 0,
+    rows_before: count(before.row_count),
+    rows_after: count(after.row_count),
+    cols_before: count(before.column_count),
+    cols_after: count(after.column_count),
+  };
+}
+
+function adaptPreview(result: Record<string, unknown>, before: PreviewTable | null): PipelinePreview {
+  const rows = (result.preview_data as Record<string, unknown>[] | null) ?? [];
+  return {
+    before,
+    after: table(rows),
+    summary: summary(result.stats_before as Stats | undefined, result.stats_after as Stats | undefined),
   };
 }
 
@@ -109,20 +120,38 @@ export async function previewPipeline(
 ): Promise<PipelinePreview> {
   const result = await post('/transformations/preview', previewRequest(datasetId, steps), 'Preview failed');
   if (result.success === false) throw new Error(String(result.error ?? 'Preview failed'));
-  return {
-    before,
-    after: table((result.preview_data as Record<string, unknown>[] | null) ?? []),
-    summary: summary(result.stats_before as Stats | undefined, result.stats_after as Stats | undefined),
-  };
+  return adaptPreview(result, before);
+}
+
+/** A pipeline apply that stopped part-way. `applied` steps are already in the dataset's
+ * history, so the caller must not send them again. */
+export class PipelineApplyError extends Error {
+  constructor(
+    readonly applied: number,
+    total: number,
+    step: PipelineStep,
+    reason: string,
+  ) {
+    const done = applied > 0 ? `Applied ${applied} of ${total} steps. ` : '';
+    super(`${done}Step ${applied + 1} (${step.type}) failed: ${reason}`);
+    this.name = 'PipelineApplyError';
+  }
+}
+
+async function applyStep(datasetId: string, step: PipelineStep): Promise<void> {
+  const result = await post('/transformations/apply', applyRequest(datasetId, step), 'Apply failed');
+  if (result.success === false) throw new Error(String(result.error ?? 'unknown error'));
 }
 
 /** Apply each step as its own request, in order, so each becomes a history step that
- * undo can reach (#800). Stops at the first failure and names the step. */
+ * undo can reach (#800). Stops at the first failure, naming the step and how many
+ * steps before it are already applied. */
 export async function applyPipeline(datasetId: string, steps: PipelineStep[]): Promise<void> {
   for (const [index, step] of steps.entries()) {
-    const result = await post('/transformations/apply', applyRequest(datasetId, step), `Step ${index + 1} failed`);
-    if (result.success === false) {
-      throw new Error(`Step ${index + 1} (${step.type}) failed: ${String(result.error ?? 'unknown error')}`);
+    try {
+      await applyStep(datasetId, step);
+    } catch (e) {
+      throw new PipelineApplyError(index, steps.length, step, (e as Error).message);
     }
   }
 }
@@ -147,4 +176,21 @@ export async function fetchDatasetRows(datasetId: string): Promise<PreviewTable>
     'Could not load the dataset preview',
   );
   return table(body.data, body.columns);
+}
+
+/** Download the pipeline as a Python script. A failure throws, so the page shows it
+ * instead of the button silently doing nothing. */
+export async function exportPipelineCode(steps: PipelineStep[]): Promise<void> {
+  const response = await fetch(`${API_URL}/transformations/export-code`, {
+    method: 'POST',
+    headers: await headers(),
+    body: JSON.stringify({ transformations: steps }),
+  });
+  if (!response.ok) throw await apiError(response, 'Exporting the pipeline as code failed');
+  const url = window.URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'transformation_pipeline.py';
+  link.click();
+  window.URL.revokeObjectURL(url);
 }
