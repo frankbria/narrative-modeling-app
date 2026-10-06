@@ -29,6 +29,9 @@ test.describe('Prepare pipeline', () => {
     await page.getByRole('button', { name: 'Complete & Continue to Data Preparation' }).click();
     await expect(page.getByRole('heading', { name: 'Data Preparation' })).toBeVisible({ timeout: 15000 });
 
+    // Before any preview, the panel shows the dataset's own rows (GET /data/{id}/preview).
+    await expect(page.locator('th', { hasText: 'age' })).toBeVisible({ timeout: 15000 });
+
     // The sidebar lists the registry (GET /transformations/available).
     await page.getByRole('button', { name: /add remove duplicates/i }).click();
 
