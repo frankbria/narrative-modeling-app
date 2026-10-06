@@ -26,8 +26,8 @@ from app.models.bulk_transformation import (
     ColumnSelectionPattern,
     PatternType,
 )
-from app.models.dataset import SchemaField
-from app.services.dataset_link import ensure_metadata_twin, record_new_file
+from app.models.dataset import DatasetMetadata, SchemaField
+from app.services.dataset_link import record_new_file
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
 from app.services.redis_cache import cache_service
 from app.services.transformation_engine.data_utils import (
@@ -131,7 +131,10 @@ class BulkTransformationService:
         Raises:
             NotFoundError: If dataset not found
         """
-        dataset = await ensure_metadata_twin(dataset_id, user_id)  # either id space (#850)
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             raise NotFoundError(
@@ -242,7 +245,10 @@ class BulkTransformationService:
             NotFoundError: If dataset not found
             OperationError: If preview fails
         """
-        dataset = await ensure_metadata_twin(dataset_id, user_id)  # either id space (#850)
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             raise NotFoundError(
@@ -416,7 +422,10 @@ class BulkTransformationService:
             )
 
         # Verify dataset exists
-        dataset = await ensure_metadata_twin(dataset_id, user_id)  # either id space (#850)
+        dataset = await DatasetMetadata.find_one({
+            "dataset_id": dataset_id,
+            "user_id": user_id
+        })
 
         if not dataset:
             raise NotFoundError(
@@ -470,7 +479,10 @@ class BulkTransformationService:
             await job.save()
 
             # Load dataset
-            dataset = await ensure_metadata_twin(job.dataset_id, job.user_id)  # either id space (#850)
+            dataset = await DatasetMetadata.find_one({
+                "dataset_id": job.dataset_id,
+                "user_id": job.user_id
+            })
 
             if not dataset:
                 job.mark_failed("Dataset not found")

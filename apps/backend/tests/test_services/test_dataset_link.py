@@ -296,19 +296,3 @@ class TestEnsureMetadataTwin:
         ).insert()
         twin = await ensure_metadata_twin(str(ud.id), USER)
         assert twin.file_type == "csv"
-
-    async def test_the_bulk_service_resolves_an_upload_id(self, setup_database):
-        """The bulk column operations sit on the same Prepare stage (#850 review)."""
-        from app.models.bulk_transformation import ColumnSelectionPattern, PatternType
-        from app.services.bulk_transformation_service import BulkTransformationService
-
-        ud = await UserData(
-            user_id=USER, filename="b.csv", original_filename="b.csv",
-            s3_url=f"s3://test-bucket/datasets/{USER}/b.csv",
-            num_rows=2, num_columns=2, data_schema=[], file_type="csv",
-        ).insert()
-        result = await BulkTransformationService().select_columns_by_pattern(
-            user_id=USER, dataset_id=str(ud.id),
-            pattern=ColumnSelectionPattern(pattern_type=PatternType.DATA_TYPE, criteria={"types": ["numeric"]}),
-        )
-        assert result == []  # resolved (no NotFoundError); the new twin has no schema yet

@@ -774,7 +774,7 @@ async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
         raise RuntimeError("stop here")
 
     with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
-         patch("app.services.bulk_transformation_service.ensure_metadata_twin", new_callable=AsyncMock, return_value=dataset), \
+         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=stop), \
          patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
         await bulk_service._process_bulk_job(job)
@@ -801,7 +801,7 @@ async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk
 
     with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
          patch.object(BulkTransformationJob, "find_one", new_callable=AsyncMock, return_value=job), \
-         patch("app.services.bulk_transformation_service.ensure_metadata_twin", new_callable=AsyncMock, return_value=dataset), \
+         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=get_df), \
          patch("app.services.bulk_transformation_service.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
          patch("app.services.bulk_transformation_service.record_new_file", new_callable=AsyncMock) as move, \

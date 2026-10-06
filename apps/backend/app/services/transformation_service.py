@@ -138,9 +138,7 @@ class TransformationService(BaseService[TransformationConfig]):
         from app.services.versioning_service import versioning_service
         # Owner-scoped (#559): the service now refuses a foreign parent, so an
         # unscoped "latest" here would turn a stray row into a denial.
-        parent_version = await DatasetVersion.find(
-            {"dataset_id": dataset_id, "user_id": user_id}
-        ).sort("-version_number").first_or_none() or await self._base_version(dataset, df, user_id)
+        parent_version = await self._parent_version(DatasetVersion, dataset, df, user_id)
 
         version_id = None
         if parent_version:
@@ -193,6 +191,13 @@ class TransformationService(BaseService[TransformationConfig]):
             )
             version_id = version.version_id
         return version_id
+
+    async def _parent_version(self, version_model: Any, dataset: Any, df: Any, user_id: str) -> Any:
+        """The latest version to derive from, or a base version made now if there is none."""
+        latest = await version_model.find(
+            {"dataset_id": dataset.dataset_id, "user_id": user_id}
+        ).sort("-version_number").first_or_none()
+        return latest or await self._base_version(dataset, df, user_id)
 
     async def _base_version(self, dataset: Any, df: Any, user_id: str) -> Any:
         """Version 1 from the frame about to be transformed, when the dataset has none.
