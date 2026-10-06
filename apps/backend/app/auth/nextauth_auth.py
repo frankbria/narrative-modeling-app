@@ -3,10 +3,10 @@
 import logging
 import os
 
+import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -37,6 +37,16 @@ if not NEXTAUTH_SECRET and not SKIP_AUTH:
     logger.error("NEXTAUTH_SECRET environment variable is not set. Authentication will fail.")
 
 security = HTTPBearer()
+
+
+def _verify(token: str, secret: str) -> dict:
+    """Verify an API token as the frontend mints it (`lib/api-token.ts`): HS256 only,
+    signed with NEXTAUTH_SECRET, carrying `sub` and an unexpired `exp`. Raises a
+    ``jwt.PyJWTError`` otherwise (``ExpiredSignatureError`` for expiry); callers catch
+    that base, since a key error such as ``InvalidKeyError`` is not an
+    ``InvalidTokenError``.
+    PyJWT since #844: python-jose had an unpatched critical CVE."""
+    return jwt.decode(token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]})
 _optional_bearer = HTTPBearer(auto_error=False)
 
 async def get_current_user_id(
@@ -65,24 +75,8 @@ async def get_current_user_id(
     token = credentials.credentials
 
     try:
-        # Decode the JWT token using the NextAuth secret
-        # NextAuth uses HS256 algorithm by default
-        payload = jwt.decode(
-            token,
-            NEXTAUTH_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # NextAuth doesn't use audience by default
-        )
-
-        # Extract user ID from the payload
-        # NextAuth stores user info in the token
-        user_id = payload.get("sub") or payload.get("id")
-        
-        if not user_id:
-            # If no user ID in token, might be a session token
-            # In that case, we'd need to validate with the NextAuth API
-            logger.error("No user ID found in token")
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        payload = _verify(token, NEXTAUTH_SECRET)
+        user_id = payload["sub"]
 
         # Signup gate (#261, #768): defense-in-depth mirror of the NextAuth
         # signIn callback. SIGNUP_MODE decides; invite mode checks the email
@@ -101,7 +95,7 @@ async def get_current_user_id(
     except jwt.ExpiredSignatureError:
         logger.error("Token has expired")
         raise HTTPException(status_code=401, detail="Token has expired")
-    except JWTError as e:
+    except jwt.PyJWTError as e:
         # Log library internals server-side; return a fixed message (issue #269
         # — never echo JWT/stack details to the client).
         logger.error(f"JWT validation error: {str(e)}")
@@ -150,13 +144,8 @@ async def require_admin(
     if credentials is None or SKIP_AUTH or not NEXTAUTH_SECRET:
         raise not_found
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            NEXTAUTH_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-    except JWTError:
+        payload = _verify(credentials.credentials, NEXTAUTH_SECRET)
+    except jwt.PyJWTError:
         raise not_found from None
     if not is_admin_email(payload.get("email")):
         raise not_found
