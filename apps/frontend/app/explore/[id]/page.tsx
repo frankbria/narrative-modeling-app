@@ -66,7 +66,8 @@ function withProcessed(
   return prev && { ...prev, ...processed, is_processed: true, id: prev.id }
 }
 
-function ProcessingStatus({ dataset }: { dataset: ProcessedDataset }) {
+function ProcessingStatus(props: { dataset: ProcessedDataset }) {
+  const { dataset } = props
   return (
     <div className="flex items-center gap-4 text-muted-foreground">
       {dataset.is_processed ? (
